@@ -374,6 +374,7 @@ pub const ME_OP_CH_MUL_CONST: usize = 4;
 pub const ME_OP_CH_MUL_EVAL_PLUS_CONST: usize = 5;
 pub const ME_OP_CH_MUL_EVAL_PLUS_DYN: usize = 6;
 pub const ME_OP_BYTE_VALUE_PAIR: usize = 7;
+pub const ME_OP_CH_MUL_SCALED_EVAL: usize = 8;
 #[inline(always)]
 #[allow(unused_variables)]
 pub unsafe fn eval_memory_expr(
@@ -452,6 +453,15 @@ pub unsafe fn eval_memory_expr(
                 field_ops::add_assign(&mut hi, &evals.get_unchecked(op[2])[j]);
                 let mut t = challenges[op[1]];
                 field_ops::mul_assign(&mut t, &hi);
+                field_ops::add_assign(&mut result, &t);
+            }
+            ME_OP_CH_MUL_SCALED_EVAL => {
+                let mut t = evals.get_unchecked(op[2])[j];
+                field_ops::mul_assign_by_base(
+                    &mut t,
+                    &BabyBearField::from_reduced_raw_repr(op[3] as u32),
+                );
+                field_ops::mul_assign(&mut t, &challenges[op[1]]);
                 field_ops::add_assign(&mut result, &t);
             }
             _ => core::hint::unreachable_unchecked(),

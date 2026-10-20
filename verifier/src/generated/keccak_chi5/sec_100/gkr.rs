@@ -86,50 +86,6 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(6usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(6usize)[j],
-                    );
-                }
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(6usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(5usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(5usize)[j],
-                    );
-                }
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(5usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
                     let mut inner = evals.get_unchecked(4usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
@@ -217,292 +173,15 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                field_ops::add_assign(&mut val, &evals.get_unchecked(6usize)[j]);
-                field_ops::add_assign(&mut val, &evals.get_unchecked(22usize)[j]);
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(25usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                field_ops::add_assign_product_with_base(
-                    &mut val,
-                    &evals.get_unchecked(0usize)[j],
-                    &BabyBearField::from_reduced_raw_repr(1073741816u32),
-                );
-                field_ops::add_assign_product_with_base(
-                    &mut val,
-                    &evals.get_unchecked(6usize)[j],
-                    &BabyBearField::from_reduced_raw_repr(1880166674u32),
-                );
-                field_ops::add_assign(&mut val, &evals.get_unchecked(21usize)[j]);
-                field_ops::add_assign_product_with_base(
-                    &mut val,
-                    &evals.get_unchecked(23usize)[j],
-                    &BabyBearField::from_reduced_raw_repr(536870908u32),
-                );
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(24usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                field_ops::add_assign(&mut val, &evals.get_unchecked(5usize)[j]);
-                field_ops::add_assign(&mut val, &evals.get_unchecked(20usize)[j]);
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(25usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                field_ops::add_assign_product_with_base(
-                    &mut val,
-                    &evals.get_unchecked(0usize)[j],
-                    &BabyBearField::from_reduced_raw_repr(1073741816u32),
-                );
-                field_ops::add_assign_product_with_base(
-                    &mut val,
-                    &evals.get_unchecked(5usize)[j],
-                    &BabyBearField::from_reduced_raw_repr(1880166674u32),
-                );
-                field_ops::add_assign(&mut val, &evals.get_unchecked(19usize)[j]);
-                field_ops::add_assign_product_with_base(
-                    &mut val,
-                    &evals.get_unchecked(23usize)[j],
-                    &BabyBearField::from_reduced_raw_repr(1610612724u32),
-                );
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(24usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                field_ops::add_assign(&mut val, &evals.get_unchecked(4usize)[j]);
-                field_ops::add_assign(&mut val, &evals.get_unchecked(18usize)[j]);
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(25usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                field_ops::add_assign_product_with_base(
-                    &mut val,
-                    &evals.get_unchecked(0usize)[j],
-                    &BabyBearField::from_reduced_raw_repr(1073741816u32),
-                );
-                field_ops::add_assign_product_with_base(
-                    &mut val,
-                    &evals.get_unchecked(4usize)[j],
-                    &BabyBearField::from_reduced_raw_repr(1880166674u32),
-                );
-                field_ops::add_assign(&mut val, &evals.get_unchecked(17usize)[j]);
-                field_ops::add_assign_product_with_base(
-                    &mut val,
-                    &evals.get_unchecked(23usize)[j],
-                    &BabyBearField::from_reduced_raw_repr(671088619u32),
-                );
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(24usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                field_ops::add_assign(&mut val, &evals.get_unchecked(3usize)[j]);
-                field_ops::add_assign(&mut val, &evals.get_unchecked(16usize)[j]);
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(25usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                field_ops::add_assign_product_with_base(
-                    &mut val,
-                    &evals.get_unchecked(0usize)[j],
-                    &BabyBearField::from_reduced_raw_repr(1073741816u32),
-                );
-                field_ops::add_assign_product_with_base(
-                    &mut val,
-                    &evals.get_unchecked(3usize)[j],
-                    &BabyBearField::from_reduced_raw_repr(1880166674u32),
-                );
-                field_ops::add_assign(&mut val, &evals.get_unchecked(15usize)[j]);
-                field_ops::add_assign_product_with_base(
-                    &mut val,
-                    &evals.get_unchecked(23usize)[j],
-                    &BabyBearField::from_reduced_raw_repr(1744830435u32),
-                );
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(24usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                field_ops::add_assign(&mut val, &evals.get_unchecked(2usize)[j]);
-                field_ops::add_assign(&mut val, &evals.get_unchecked(14usize)[j]);
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(25usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                field_ops::add_assign_product_with_base(
-                    &mut val,
-                    &evals.get_unchecked(0usize)[j],
-                    &BabyBearField::from_reduced_raw_repr(1073741816u32),
-                );
-                field_ops::add_assign_product_with_base(
-                    &mut val,
-                    &evals.get_unchecked(2usize)[j],
-                    &BabyBearField::from_reduced_raw_repr(1880166674u32),
-                );
-                field_ops::add_assign(&mut val, &evals.get_unchecked(13usize)[j]);
-                field_ops::add_assign_product_with_base(
-                    &mut val,
-                    &evals.get_unchecked(23usize)[j],
-                    &BabyBearField::from_reduced_raw_repr(805306330u32),
-                );
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(24usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                field_ops::add_assign(&mut val, &evals.get_unchecked(1usize)[j]);
-                field_ops::add_assign(&mut val, &evals.get_unchecked(10usize)[j]);
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(25usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                field_ops::add_assign_product_with_base(
-                    &mut val,
-                    &evals.get_unchecked(1usize)[j],
-                    &BabyBearField::from_reduced_raw_repr(1880166674u32),
-                );
-                field_ops::add_assign(&mut val, &evals.get_unchecked(9usize)[j]);
-                field_ops::add_assign_product_with_base(
-                    &mut val,
-                    &evals.get_unchecked(23usize)[j],
-                    &BabyBearField::from_reduced_raw_repr(536870908u32),
-                );
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(24usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                field_ops::add_assign(&mut val, &evals.get_unchecked(12usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                field_ops::add_assign(&mut val, &evals.get_unchecked(11usize)[j]);
+                {
+                    let mut inner = evals.get_unchecked(0usize)[j];
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(0usize)[j],
+                    );
+                }
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(0usize)[j]);
                 val
             };
             {
@@ -517,14 +196,199 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(23usize)[j];
+                    let mut inner = evals.get_unchecked(1usize)[j];
+                    field_ops::mul_assign_by_base(
+                        &mut inner,
+                        &BabyBearField::from_reduced_raw_repr(268435422u32),
+                    );
+                    field_ops::add_assign_product_with_base(
+                        &mut inner,
+                        &evals.get_unchecked(2usize)[j],
+                        &BabyBearField::from_reduced_raw_repr(536870844u32),
+                    );
+                    field_ops::add_assign_product_with_base(
+                        &mut inner,
+                        &evals.get_unchecked(3usize)[j],
+                        &BabyBearField::from_reduced_raw_repr(1073741688u32),
+                    );
+                    field_ops::add_assign_product_with_base(
+                        &mut inner,
+                        &evals.get_unchecked(4usize)[j],
+                        &BabyBearField::from_reduced_raw_repr(134217455u32),
+                    );
+                    field_ops::add_assign_product_with_base(
+                        &mut inner,
+                        &evals.get_unchecked(7usize)[j],
+                        &BabyBearField::from_reduced_raw_repr(939524105u32),
+                    );
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(23usize)[j],
+                        &evals.get_unchecked(0usize)[j],
                     );
                 }
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(23usize)[j]);
+                {
+                    let mut inner = evals.get_unchecked(2usize)[j];
+                    field_ops::mul_assign_by_base(
+                        &mut inner,
+                        &BabyBearField::from_reduced_raw_repr(1073741688u32),
+                    );
+                    field_ops::add_assign_product_with_base(
+                        &mut inner,
+                        &evals.get_unchecked(3usize)[j],
+                        &BabyBearField::from_reduced_raw_repr(134217455u32),
+                    );
+                    field_ops::add_assign_product_with_base(
+                        &mut inner,
+                        &evals.get_unchecked(4usize)[j],
+                        &BabyBearField::from_reduced_raw_repr(268434910u32),
+                    );
+                    field_ops::add_assign_product_with_base(
+                        &mut inner,
+                        &evals.get_unchecked(7usize)[j],
+                        &BabyBearField::from_reduced_raw_repr(1879048210u32),
+                    );
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(1usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(3usize)[j];
+                    field_ops::mul_assign_by_base(
+                        &mut inner,
+                        &BabyBearField::from_reduced_raw_repr(268434910u32),
+                    );
+                    field_ops::add_assign_product_with_base(
+                        &mut inner,
+                        &evals.get_unchecked(4usize)[j],
+                        &BabyBearField::from_reduced_raw_repr(536869820u32),
+                    );
+                    field_ops::add_assign_product_with_base(
+                        &mut inner,
+                        &evals.get_unchecked(7usize)[j],
+                        &BabyBearField::from_reduced_raw_repr(1744830499u32),
+                    );
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(2usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(4usize)[j];
+                    field_ops::mul_assign_by_base(
+                        &mut inner,
+                        &BabyBearField::from_reduced_raw_repr(1073739640u32),
+                    );
+                    field_ops::add_assign_product_with_base(
+                        &mut inner,
+                        &evals.get_unchecked(7usize)[j],
+                        &BabyBearField::from_reduced_raw_repr(1476395077u32),
+                    );
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(3usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(7usize)[j];
+                    field_ops::mul_assign_by_base(
+                        &mut inner,
+                        &BabyBearField::from_reduced_raw_repr(939524233u32),
+                    );
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(4usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(7usize)[j];
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(7usize)[j],
+                    );
+                }
+                field_ops::add_assign_product_with_base(
+                    &mut val,
+                    &evals.get_unchecked(0usize)[j],
+                    &BabyBearField::from_reduced_raw_repr(1610612724u32),
+                );
+                field_ops::add_assign_product_with_base(
+                    &mut val,
+                    &evals.get_unchecked(1usize)[j],
+                    &BabyBearField::from_reduced_raw_repr(1342177238u32),
+                );
+                field_ops::add_assign_product_with_base(
+                    &mut val,
+                    &evals.get_unchecked(2usize)[j],
+                    &BabyBearField::from_reduced_raw_repr(1207959399u32),
+                );
+                field_ops::add_assign_product_with_base(
+                    &mut val,
+                    &evals.get_unchecked(3usize)[j],
+                    &BabyBearField::from_reduced_raw_repr(536870332u32),
+                );
+                field_ops::add_assign_product_with_base(
+                    &mut val,
+                    &evals.get_unchecked(4usize)[j],
+                    &BabyBearField::from_reduced_raw_repr(1610610484u32),
+                );
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(7usize)[j]);
+                val
+            };
+            {
+                let mut h = val;
+                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
+                acc[j] = h;
+            }
+        }
+    }
+    {
+        for j in 0..1 {
+            let val = {
+                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                field_ops::add_assign(&mut val, &evals.get_unchecked(9usize)[j]);
+                val
+            };
+            {
+                let mut h = val;
+                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
+                acc[j] = h;
+            }
+        }
+    }
+    {
+        for j in 0..1 {
+            let val = {
+                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                field_ops::add_assign(&mut val, &evals.get_unchecked(8usize)[j]);
+                val
+            };
+            {
+                let mut h = val;
+                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
+                acc[j] = h;
+            }
+        }
+    }
+    {
+        for j in 0..1 {
+            let val = {
+                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                {
+                    let mut inner = evals.get_unchecked(10usize)[j];
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(10usize)[j],
+                    );
+                }
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(10usize)[j]);
                 val
             };
             {
@@ -536,61 +400,61 @@ unsafe fn layer_0_final_step_accumulator(
     }
     {
         const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 26usize] = [
-            (SimpleGateType::Copy, [23usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [27usize, 28usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [29usize, 30usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [31usize, 32usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [33usize, 34usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [35usize, 36usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [37usize, 38usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [39usize, 40usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [41usize, 42usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [43usize, 44usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [45usize, 46usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [47usize, 48usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [49usize, 50usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [51usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [52usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [10usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [12usize, 13usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [14usize, 15usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [16usize, 17usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [18usize, 19usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [20usize, 21usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [22usize, 23usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [24usize, 25usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [26usize, 27usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [28usize, 29usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [30usize, 31usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [32usize, 33usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [34usize, 35usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [36usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [37usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupWithSetup,
-                [53usize, 7usize, 26usize, 0usize],
+                [38usize, 5usize, 11usize, 0usize],
             ),
-            (SimpleGateType::Copy, [54usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [39usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupWithSetup,
-                [55usize, 8usize, 56usize, 0usize],
+                [40usize, 6usize, 41usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [57usize, 58usize, 0usize, 0usize],
+                [42usize, 43usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [59usize, 60usize, 0usize, 0usize],
+                [44usize, 45usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [61usize, 62usize, 0usize, 0usize],
+                [46usize, 47usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [63usize, 64usize, 0usize, 0usize],
+                [48usize, 49usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [65usize, 66usize, 0usize, 0usize],
+                [50usize, 51usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [67usize, 68usize, 0usize, 0usize],
+                [52usize, 53usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [69usize, 70usize, 0usize, 0usize],
+                [54usize, 55usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [71usize, 72usize, 0usize, 0usize],
+                [56usize, 57usize, 0usize, 0usize],
             ),
         ];
         let mut _sg = 26usize;
@@ -1902,8 +1766,8 @@ fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
             field_ops::mul_assign(&mut result, &t);
             k += 1;
         }
-        if result != *state.prev_claims.get_unchecked(206usize) {
-            return Err(E::gkr_virtual_setup_eval_mismatch(206usize));
+        if result != *state.prev_claims.get_unchecked(194usize) {
+            return Err(E::gkr_virtual_setup_eval_mismatch(194usize));
         }
     }
     Ok(())
@@ -3422,7 +3286,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            const NUM_AT_POINT_EVALS: usize = 73usize;
+            const NUM_AT_POINT_EVALS: usize = 58usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -3445,7 +3309,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 0usize)?;
             }
-            const NUM_EXTRA_EVALS: usize = 180usize;
+            const NUM_EXTRA_EVALS: usize = 183usize;
             {
                 let mut i = 0;
                 while i < NUM_EXTRA_EVALS * EXT_DEGREE {
@@ -3472,44 +3336,42 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
             state.prev_claims.clear();
             {
-                const LAYOUT_KIND: [usize; 253usize] = [
-                    0usize, 0usize, 1usize, 0usize, 1usize, 0usize, 1usize, 1usize, 0usize, 0usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 0usize,
+                const LAYOUT_KIND: [usize; 241usize] = [
+                    0usize, 1usize, 0usize, 1usize, 0usize, 1usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 0usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    0usize, 0usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
                     1usize, 0usize, 0usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 0usize, 0usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize,
-                    0usize, 0usize, 0usize, 0usize, 0usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize,
+                    1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
-                    0usize, 0usize, 0usize,
+                    0usize,
                 ];
-                const LAYOUT_POS: [usize; 253usize] = [
-                    9usize, 10usize, 120usize, 11usize, 121usize, 12usize, 122usize, 123usize,
-                    13usize, 14usize, 124usize, 125usize, 126usize, 127usize, 128usize, 129usize,
-                    130usize, 131usize, 132usize, 15usize, 16usize, 133usize, 134usize, 135usize,
-                    136usize, 137usize, 138usize, 139usize, 140usize, 141usize, 17usize, 18usize,
+                const LAYOUT_POS: [usize; 241usize] = [
+                    7usize, 121usize, 8usize, 122usize, 9usize, 123usize, 124usize, 125usize,
+                    126usize, 127usize, 128usize, 129usize, 130usize, 131usize, 132usize, 133usize,
+                    134usize, 135usize, 136usize, 137usize, 138usize, 139usize, 140usize, 141usize,
                     142usize, 143usize, 144usize, 145usize, 146usize, 147usize, 148usize, 149usize,
-                    150usize, 19usize, 20usize, 151usize, 152usize, 153usize, 154usize, 155usize,
-                    156usize, 157usize, 158usize, 159usize, 21usize, 22usize, 160usize, 161usize,
-                    162usize, 163usize, 164usize, 165usize, 166usize, 167usize, 168usize, 23usize,
-                    24usize, 25usize, 0usize, 0usize, 1usize, 2usize, 3usize, 4usize, 5usize,
+                    150usize, 151usize, 152usize, 153usize, 154usize, 155usize, 156usize, 157usize,
+                    158usize, 159usize, 160usize, 161usize, 162usize, 163usize, 164usize, 165usize,
+                    166usize, 167usize, 168usize, 169usize, 10usize, 170usize, 171usize, 0usize,
+                    0usize, 1usize, 2usize, 3usize, 4usize, 1usize, 2usize, 3usize, 4usize, 5usize,
                     6usize, 7usize, 8usize, 9usize, 10usize, 11usize, 12usize, 13usize, 14usize,
                     15usize, 16usize, 17usize, 18usize, 19usize, 20usize, 21usize, 22usize,
                     23usize, 24usize, 25usize, 26usize, 27usize, 28usize, 29usize, 30usize,
@@ -3524,18 +3386,17 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     95usize, 96usize, 97usize, 98usize, 99usize, 100usize, 101usize, 102usize,
                     103usize, 104usize, 105usize, 106usize, 107usize, 108usize, 109usize, 110usize,
                     111usize, 112usize, 113usize, 114usize, 115usize, 116usize, 117usize, 118usize,
-                    119usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize, 8usize,
-                    169usize, 170usize, 171usize, 172usize, 173usize, 174usize, 175usize, 176usize,
-                    177usize, 178usize, 179usize, 26usize, 27usize, 28usize, 29usize, 30usize,
-                    31usize, 32usize, 33usize, 34usize, 35usize, 36usize, 37usize, 38usize,
-                    39usize, 40usize, 41usize, 42usize, 43usize, 44usize, 45usize, 46usize,
-                    47usize, 48usize, 49usize, 50usize, 51usize, 52usize, 53usize, 54usize,
-                    55usize, 56usize, 57usize, 58usize, 59usize, 60usize, 61usize, 62usize,
-                    63usize, 64usize, 65usize, 66usize, 67usize, 68usize, 69usize, 70usize,
-                    71usize, 72usize,
+                    119usize, 120usize, 5usize, 6usize, 172usize, 173usize, 174usize, 175usize,
+                    176usize, 177usize, 178usize, 179usize, 180usize, 181usize, 182usize, 11usize,
+                    12usize, 13usize, 14usize, 15usize, 16usize, 17usize, 18usize, 19usize,
+                    20usize, 21usize, 22usize, 23usize, 24usize, 25usize, 26usize, 27usize,
+                    28usize, 29usize, 30usize, 31usize, 32usize, 33usize, 34usize, 35usize,
+                    36usize, 37usize, 38usize, 39usize, 40usize, 41usize, 42usize, 43usize,
+                    44usize, 45usize, 46usize, 47usize, 48usize, 49usize, 50usize, 51usize,
+                    52usize, 53usize, 54usize, 55usize, 56usize, 57usize,
                 ];
                 let mut i = 0usize;
-                while i < 253usize {
+                while i < 241usize {
                     let kind = unsafe { *LAYOUT_KIND.get_unchecked(i) };
                     let pos = unsafe { *LAYOUT_POS.get_unchecked(i) };
                     let claim: BabyBearExt4 = if kind == 0usize {
@@ -3549,13 +3410,13 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             {
                 const SC_DESCS: [(usize, u32, usize, usize); 2usize] = [
-                    (233usize, 0u32, 0usize, 2usize),
-                    (234usize, 0u32, 2usize, 1usize),
+                    (221usize, 0u32, 0usize, 2usize),
+                    (222usize, 0u32, 2usize, 1usize),
                 ];
                 const SC_TERMS: [(u32, usize); 3usize] = [
-                    (1073741824u32, 64usize),
-                    (939524097u32, 63usize),
-                    (16777216u32, 6usize),
+                    (1073741824u32, 53usize),
+                    (939524097u32, 52usize),
+                    (16777216u32, 5usize),
                 ];
                 let mut _sc = 0;
                 while _sc < 2usize {
@@ -3582,23 +3443,23 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             {
                 const VL_DESCS: [(usize, usize, usize); 17usize] = [
-                    (235usize, 0usize, 11usize),
-                    (237usize, 11usize, 11usize),
-                    (238usize, 22usize, 11usize),
-                    (239usize, 33usize, 11usize),
-                    (240usize, 44usize, 11usize),
-                    (241usize, 55usize, 11usize),
-                    (242usize, 66usize, 11usize),
-                    (243usize, 77usize, 11usize),
-                    (244usize, 88usize, 11usize),
-                    (245usize, 99usize, 11usize),
-                    (246usize, 110usize, 11usize),
-                    (247usize, 121usize, 11usize),
-                    (248usize, 132usize, 11usize),
-                    (249usize, 143usize, 11usize),
-                    (250usize, 154usize, 11usize),
-                    (251usize, 165usize, 11usize),
-                    (252usize, 176usize, 11usize),
+                    (223usize, 0usize, 11usize),
+                    (225usize, 11usize, 11usize),
+                    (226usize, 22usize, 11usize),
+                    (227usize, 33usize, 11usize),
+                    (228usize, 44usize, 11usize),
+                    (229usize, 55usize, 11usize),
+                    (230usize, 66usize, 11usize),
+                    (231usize, 77usize, 11usize),
+                    (232usize, 88usize, 11usize),
+                    (233usize, 99usize, 11usize),
+                    (234usize, 110usize, 11usize),
+                    (235usize, 121usize, 11usize),
+                    (236usize, 132usize, 11usize),
+                    (237usize, 143usize, 11usize),
+                    (238usize, 154usize, 11usize),
+                    (239usize, 165usize, 11usize),
+                    (240usize, 176usize, 11usize),
                 ];
                 const VL_COLS: [(u32, usize, usize); 187usize] = [
                     (0u32, 0usize, 1usize),
@@ -3790,15 +3651,155 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (1342177142u32, 289usize, 0usize),
                 ];
                 const VL_TERMS: [(u32, usize); 289usize] = [
-                    (268435454u32, 2usize),
-                    (268435454u32, 63usize),
-                    (268435454u32, 4usize),
-                    (268435454u32, 12usize),
-                    (268435454u32, 23usize),
-                    (268435454u32, 34usize),
+                    (268435454u32, 1usize),
+                    (268435454u32, 52usize),
+                    (268435454u32, 3usize),
+                    (268435454u32, 9usize),
+                    (268435454u32, 18usize),
+                    (268435454u32, 27usize),
+                    (268435454u32, 36usize),
                     (268435454u32, 45usize),
-                    (268435454u32, 56usize),
+                    (268435454u32, 55usize),
+                    (268435454u32, 61usize),
+                    (268435454u32, 73usize),
+                    (268435454u32, 85usize),
+                    (268435454u32, 97usize),
+                    (268435454u32, 109usize),
+                    (268435454u32, 121usize),
+                    (268435454u32, 133usize),
+                    (268435454u32, 145usize),
+                    (268435454u32, 157usize),
+                    (268435454u32, 169usize),
+                    (268435454u32, 62usize),
+                    (268435454u32, 74usize),
+                    (268435454u32, 86usize),
+                    (268435454u32, 98usize),
+                    (268435454u32, 110usize),
+                    (268435454u32, 122usize),
+                    (268435454u32, 134usize),
+                    (268435454u32, 146usize),
+                    (268435454u32, 158usize),
+                    (268435454u32, 170usize),
+                    (268435454u32, 63usize),
+                    (268435454u32, 75usize),
+                    (268435454u32, 87usize),
+                    (268435454u32, 99usize),
+                    (268435454u32, 111usize),
+                    (268435454u32, 123usize),
+                    (268435454u32, 135usize),
+                    (268435454u32, 147usize),
+                    (268435454u32, 159usize),
+                    (268435454u32, 171usize),
+                    (1048576u32, 7usize),
+                    (2012217345u32, 61usize),
+                    (1996488705u32, 62usize),
+                    (1744830465u32, 63usize),
+                    (1048576u32, 16usize),
+                    (2012217345u32, 73usize),
+                    (1996488705u32, 74usize),
+                    (1744830465u32, 75usize),
+                    (1048576u32, 25usize),
+                    (2012217345u32, 85usize),
+                    (1996488705u32, 86usize),
+                    (1744830465u32, 87usize),
+                    (1048576u32, 34usize),
+                    (2012217345u32, 97usize),
+                    (1996488705u32, 98usize),
+                    (1744830465u32, 99usize),
+                    (1048576u32, 43usize),
+                    (2012217345u32, 109usize),
+                    (1996488705u32, 110usize),
+                    (1744830465u32, 111usize),
+                    (1048576u32, 10usize),
+                    (2012217345u32, 121usize),
+                    (1996488705u32, 122usize),
+                    (1744830465u32, 123usize),
+                    (1048576u32, 19usize),
+                    (2012217345u32, 133usize),
+                    (1996488705u32, 134usize),
+                    (1744830465u32, 135usize),
+                    (1048576u32, 28usize),
+                    (2012217345u32, 145usize),
+                    (1996488705u32, 146usize),
+                    (1744830465u32, 147usize),
+                    (1048576u32, 37usize),
+                    (2012217345u32, 157usize),
+                    (1996488705u32, 158usize),
+                    (1744830465u32, 159usize),
+                    (1048576u32, 46usize),
+                    (2012217345u32, 169usize),
+                    (1996488705u32, 170usize),
+                    (1744830465u32, 171usize),
+                    (268435454u32, 64usize),
+                    (268435454u32, 76usize),
+                    (268435454u32, 88usize),
+                    (268435454u32, 100usize),
+                    (268435454u32, 112usize),
+                    (268435454u32, 124usize),
+                    (268435454u32, 136usize),
+                    (268435454u32, 148usize),
+                    (268435454u32, 160usize),
+                    (268435454u32, 172usize),
+                    (268435454u32, 65usize),
+                    (268435454u32, 77usize),
+                    (268435454u32, 89usize),
+                    (268435454u32, 101usize),
+                    (268435454u32, 113usize),
+                    (268435454u32, 125usize),
+                    (268435454u32, 137usize),
+                    (268435454u32, 149usize),
+                    (268435454u32, 161usize),
+                    (268435454u32, 173usize),
                     (268435454u32, 66usize),
+                    (268435454u32, 78usize),
+                    (268435454u32, 90usize),
+                    (268435454u32, 102usize),
+                    (268435454u32, 114usize),
+                    (268435454u32, 126usize),
+                    (268435454u32, 138usize),
+                    (268435454u32, 150usize),
+                    (268435454u32, 162usize),
+                    (268435454u32, 174usize),
+                    (1048576u32, 8usize),
+                    (2012217345u32, 64usize),
+                    (1996488705u32, 65usize),
+                    (1744830465u32, 66usize),
+                    (1048576u32, 17usize),
+                    (2012217345u32, 76usize),
+                    (1996488705u32, 77usize),
+                    (1744830465u32, 78usize),
+                    (1048576u32, 26usize),
+                    (2012217345u32, 88usize),
+                    (1996488705u32, 89usize),
+                    (1744830465u32, 90usize),
+                    (1048576u32, 35usize),
+                    (2012217345u32, 100usize),
+                    (1996488705u32, 101usize),
+                    (1744830465u32, 102usize),
+                    (1048576u32, 44usize),
+                    (2012217345u32, 112usize),
+                    (1996488705u32, 113usize),
+                    (1744830465u32, 114usize),
+                    (1048576u32, 11usize),
+                    (2012217345u32, 124usize),
+                    (1996488705u32, 125usize),
+                    (1744830465u32, 126usize),
+                    (1048576u32, 20usize),
+                    (2012217345u32, 136usize),
+                    (1996488705u32, 137usize),
+                    (1744830465u32, 138usize),
+                    (1048576u32, 29usize),
+                    (2012217345u32, 148usize),
+                    (1996488705u32, 149usize),
+                    (1744830465u32, 150usize),
+                    (1048576u32, 38usize),
+                    (2012217345u32, 160usize),
+                    (1996488705u32, 161usize),
+                    (1744830465u32, 162usize),
+                    (1048576u32, 47usize),
+                    (2012217345u32, 172usize),
+                    (1996488705u32, 173usize),
+                    (1744830465u32, 174usize),
                     (268435454u32, 67usize),
                     (268435454u32, 79usize),
                     (268435454u32, 91usize),
@@ -3829,7 +3830,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (268435454u32, 153usize),
                     (268435454u32, 165usize),
                     (268435454u32, 177usize),
-                    (1048576u32, 10usize),
+                    (1048576u32, 12usize),
                     (2012217345u32, 67usize),
                     (1996488705u32, 68usize),
                     (1744830465u32, 69usize),
@@ -3837,35 +3838,35 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (2012217345u32, 79usize),
                     (1996488705u32, 80usize),
                     (1744830465u32, 81usize),
-                    (1048576u32, 32usize),
+                    (1048576u32, 30usize),
                     (2012217345u32, 91usize),
                     (1996488705u32, 92usize),
                     (1744830465u32, 93usize),
-                    (1048576u32, 43usize),
+                    (1048576u32, 39usize),
                     (2012217345u32, 103usize),
                     (1996488705u32, 104usize),
                     (1744830465u32, 105usize),
-                    (1048576u32, 54usize),
+                    (1048576u32, 48usize),
                     (2012217345u32, 115usize),
                     (1996488705u32, 116usize),
                     (1744830465u32, 117usize),
-                    (1048576u32, 13usize),
+                    (1048576u32, 14usize),
                     (2012217345u32, 127usize),
                     (1996488705u32, 128usize),
                     (1744830465u32, 129usize),
-                    (1048576u32, 24usize),
+                    (1048576u32, 23usize),
                     (2012217345u32, 139usize),
                     (1996488705u32, 140usize),
                     (1744830465u32, 141usize),
-                    (1048576u32, 35usize),
+                    (1048576u32, 32usize),
                     (2012217345u32, 151usize),
                     (1996488705u32, 152usize),
                     (1744830465u32, 153usize),
-                    (1048576u32, 46usize),
+                    (1048576u32, 41usize),
                     (2012217345u32, 163usize),
                     (1996488705u32, 164usize),
                     (1744830465u32, 165usize),
-                    (1048576u32, 57usize),
+                    (1048576u32, 50usize),
                     (2012217345u32, 175usize),
                     (1996488705u32, 176usize),
                     (1744830465u32, 177usize),
@@ -3899,7 +3900,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (268435454u32, 156usize),
                     (268435454u32, 168usize),
                     (268435454u32, 180usize),
-                    (1048576u32, 11usize),
+                    (1048576u32, 13usize),
                     (2012217345u32, 70usize),
                     (1996488705u32, 71usize),
                     (1744830465u32, 72usize),
@@ -3907,178 +3908,38 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (2012217345u32, 82usize),
                     (1996488705u32, 83usize),
                     (1744830465u32, 84usize),
-                    (1048576u32, 33usize),
+                    (1048576u32, 31usize),
                     (2012217345u32, 94usize),
                     (1996488705u32, 95usize),
                     (1744830465u32, 96usize),
-                    (1048576u32, 44usize),
+                    (1048576u32, 40usize),
                     (2012217345u32, 106usize),
                     (1996488705u32, 107usize),
                     (1744830465u32, 108usize),
-                    (1048576u32, 55usize),
+                    (1048576u32, 49usize),
                     (2012217345u32, 118usize),
                     (1996488705u32, 119usize),
                     (1744830465u32, 120usize),
-                    (1048576u32, 14usize),
+                    (1048576u32, 15usize),
                     (2012217345u32, 130usize),
                     (1996488705u32, 131usize),
                     (1744830465u32, 132usize),
-                    (1048576u32, 25usize),
+                    (1048576u32, 24usize),
                     (2012217345u32, 142usize),
                     (1996488705u32, 143usize),
                     (1744830465u32, 144usize),
-                    (1048576u32, 36usize),
+                    (1048576u32, 33usize),
                     (2012217345u32, 154usize),
                     (1996488705u32, 155usize),
                     (1744830465u32, 156usize),
-                    (1048576u32, 47usize),
+                    (1048576u32, 42usize),
                     (2012217345u32, 166usize),
                     (1996488705u32, 167usize),
                     (1744830465u32, 168usize),
-                    (1048576u32, 58usize),
+                    (1048576u32, 51usize),
                     (2012217345u32, 178usize),
                     (1996488705u32, 179usize),
                     (1744830465u32, 180usize),
-                    (268435454u32, 73usize),
-                    (268435454u32, 85usize),
-                    (268435454u32, 97usize),
-                    (268435454u32, 109usize),
-                    (268435454u32, 121usize),
-                    (268435454u32, 133usize),
-                    (268435454u32, 145usize),
-                    (268435454u32, 157usize),
-                    (268435454u32, 169usize),
-                    (268435454u32, 181usize),
-                    (268435454u32, 74usize),
-                    (268435454u32, 86usize),
-                    (268435454u32, 98usize),
-                    (268435454u32, 110usize),
-                    (268435454u32, 122usize),
-                    (268435454u32, 134usize),
-                    (268435454u32, 146usize),
-                    (268435454u32, 158usize),
-                    (268435454u32, 170usize),
-                    (268435454u32, 182usize),
-                    (268435454u32, 75usize),
-                    (268435454u32, 87usize),
-                    (268435454u32, 99usize),
-                    (268435454u32, 111usize),
-                    (268435454u32, 123usize),
-                    (268435454u32, 135usize),
-                    (268435454u32, 147usize),
-                    (268435454u32, 159usize),
-                    (268435454u32, 171usize),
-                    (268435454u32, 183usize),
-                    (1048576u32, 15usize),
-                    (2012217345u32, 73usize),
-                    (1996488705u32, 74usize),
-                    (1744830465u32, 75usize),
-                    (1048576u32, 26usize),
-                    (2012217345u32, 85usize),
-                    (1996488705u32, 86usize),
-                    (1744830465u32, 87usize),
-                    (1048576u32, 37usize),
-                    (2012217345u32, 97usize),
-                    (1996488705u32, 98usize),
-                    (1744830465u32, 99usize),
-                    (1048576u32, 48usize),
-                    (2012217345u32, 109usize),
-                    (1996488705u32, 110usize),
-                    (1744830465u32, 111usize),
-                    (1048576u32, 59usize),
-                    (2012217345u32, 121usize),
-                    (1996488705u32, 122usize),
-                    (1744830465u32, 123usize),
-                    (1048576u32, 17usize),
-                    (2012217345u32, 133usize),
-                    (1996488705u32, 134usize),
-                    (1744830465u32, 135usize),
-                    (1048576u32, 28usize),
-                    (2012217345u32, 145usize),
-                    (1996488705u32, 146usize),
-                    (1744830465u32, 147usize),
-                    (1048576u32, 39usize),
-                    (2012217345u32, 157usize),
-                    (1996488705u32, 158usize),
-                    (1744830465u32, 159usize),
-                    (1048576u32, 50usize),
-                    (2012217345u32, 169usize),
-                    (1996488705u32, 170usize),
-                    (1744830465u32, 171usize),
-                    (1048576u32, 61usize),
-                    (2012217345u32, 181usize),
-                    (1996488705u32, 182usize),
-                    (1744830465u32, 183usize),
-                    (268435454u32, 76usize),
-                    (268435454u32, 88usize),
-                    (268435454u32, 100usize),
-                    (268435454u32, 112usize),
-                    (268435454u32, 124usize),
-                    (268435454u32, 136usize),
-                    (268435454u32, 148usize),
-                    (268435454u32, 160usize),
-                    (268435454u32, 172usize),
-                    (268435454u32, 184usize),
-                    (268435454u32, 77usize),
-                    (268435454u32, 89usize),
-                    (268435454u32, 101usize),
-                    (268435454u32, 113usize),
-                    (268435454u32, 125usize),
-                    (268435454u32, 137usize),
-                    (268435454u32, 149usize),
-                    (268435454u32, 161usize),
-                    (268435454u32, 173usize),
-                    (268435454u32, 185usize),
-                    (268435454u32, 78usize),
-                    (268435454u32, 90usize),
-                    (268435454u32, 102usize),
-                    (268435454u32, 114usize),
-                    (268435454u32, 126usize),
-                    (268435454u32, 138usize),
-                    (268435454u32, 150usize),
-                    (268435454u32, 162usize),
-                    (268435454u32, 174usize),
-                    (268435454u32, 186usize),
-                    (1048576u32, 16usize),
-                    (2012217345u32, 76usize),
-                    (1996488705u32, 77usize),
-                    (1744830465u32, 78usize),
-                    (1048576u32, 27usize),
-                    (2012217345u32, 88usize),
-                    (1996488705u32, 89usize),
-                    (1744830465u32, 90usize),
-                    (1048576u32, 38usize),
-                    (2012217345u32, 100usize),
-                    (1996488705u32, 101usize),
-                    (1744830465u32, 102usize),
-                    (1048576u32, 49usize),
-                    (2012217345u32, 112usize),
-                    (1996488705u32, 113usize),
-                    (1744830465u32, 114usize),
-                    (1048576u32, 60usize),
-                    (2012217345u32, 124usize),
-                    (1996488705u32, 125usize),
-                    (1744830465u32, 126usize),
-                    (1048576u32, 18usize),
-                    (2012217345u32, 136usize),
-                    (1996488705u32, 137usize),
-                    (1744830465u32, 138usize),
-                    (1048576u32, 29usize),
-                    (2012217345u32, 148usize),
-                    (1996488705u32, 149usize),
-                    (1744830465u32, 150usize),
-                    (1048576u32, 40usize),
-                    (2012217345u32, 160usize),
-                    (1996488705u32, 161usize),
-                    (1744830465u32, 162usize),
-                    (1048576u32, 51usize),
-                    (2012217345u32, 172usize),
-                    (1996488705u32, 173usize),
-                    (1744830465u32, 174usize),
-                    (1048576u32, 62usize),
-                    (2012217345u32, 184usize),
-                    (1996488705u32, 185usize),
-                    (1744830465u32, 186usize),
                 ];
                 let mut _vl = 0;
                 while _vl < 17usize {
@@ -4116,10 +3977,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                const VS_DESCS: [(usize, usize, usize); 1usize] = [(236usize, 0usize, 11usize)];
+                const VS_DESCS: [(usize, usize, usize); 1usize] = [(224usize, 0usize, 11usize)];
                 const VS_DEPS: [usize; 11usize] = [
-                    195usize, 196usize, 197usize, 198usize, 199usize, 200usize, 201usize, 202usize,
-                    203usize, 204usize, 205usize,
+                    183usize, 184usize, 185usize, 186usize, 187usize, 188usize, 189usize, 190usize,
+                    191usize, 192usize, 193usize,
                 ];
                 let mut _vs = 0;
                 while _vs < 1usize {
@@ -4155,38 +4016,126 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 );
                 field_ops::add_assign(&mut expected, &t_addr);
                 {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(52usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1476395013u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(53usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(0usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(133099247u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(56usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1747067427u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(57usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1480868933u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(58usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(948471945u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(59usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1896943890u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(60usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1780621859u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(0usize);
-                    field_ops::add_assign_base(
-                        &mut ts_low,
-                        &BabyBearField::from_reduced_raw_repr(0u32),
-                    );
-                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
                 {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(54usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(0usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1744830467u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(56usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(536870908u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(57usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1073741816u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(58usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(134217711u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(59usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435422u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(60usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(536870844u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(1usize);
-                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
                 {
                     let mut t_val: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[4usize];
-                    let val_claim = *state.prev_claims.get_unchecked(2usize);
+                    let val_claim = *state.prev_claims.get_unchecked(1usize);
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
                 {
                     let mut t_val: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[5usize];
-                    let val_claim = *state.prev_claims.get_unchecked(3usize);
+                    let val_claim = *state.prev_claims.get_unchecked(2usize);
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(207usize);
+                let cached = *state.prev_claims.get_unchecked(195usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 1usize));
                 }
@@ -4204,38 +4153,126 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 );
                 field_ops::add_assign(&mut expected, &t_addr);
                 {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(52usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1476395013u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(53usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(0usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(133099247u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(56usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1747067427u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(57usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1480868933u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(58usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(948471945u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(59usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1896943890u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(60usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1780621859u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(0usize);
-                    field_ops::add_assign_base(
-                        &mut ts_low,
-                        &BabyBearField::from_reduced_raw_repr(0u32),
-                    );
-                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
                 {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(54usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(0usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1744830467u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(56usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(536870908u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(57usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1073741816u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(58usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(134217711u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(59usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435422u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(60usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(536870844u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(1usize);
-                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
                 {
                     let mut t_val: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[4usize];
-                    let val_claim = *state.prev_claims.get_unchecked(6usize);
+                    let val_claim = *state.prev_claims.get_unchecked(5usize);
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
                 {
                     let mut t_val: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[5usize];
-                    let val_claim = *state.prev_claims.get_unchecked(7usize);
+                    let val_claim = *state.prev_claims.get_unchecked(6usize);
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(208usize);
+                let cached = *state.prev_claims.get_unchecked(196usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 2usize));
                 }
@@ -4255,7 +4292,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(64usize);
+                    let mut ts_low = *state.prev_claims.get_unchecked(53usize);
                     field_ops::add_assign_base(
                         &mut ts_low,
                         &BabyBearField::from_reduced_raw_repr(536870908u32),
@@ -4266,25 +4303,25 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(65usize);
+                    let ts_high = *state.prev_claims.get_unchecked(54usize);
                     field_ops::mul_assign(&mut t_ts, &ts_high);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
                 {
                     let mut t_val: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[4usize];
-                    let val_claim = *state.prev_claims.get_unchecked(4usize);
+                    let val_claim = *state.prev_claims.get_unchecked(3usize);
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
                 {
                     let mut t_val: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[5usize];
-                    let val_claim = *state.prev_claims.get_unchecked(5usize);
+                    let val_claim = *state.prev_claims.get_unchecked(4usize);
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(209usize);
+                let cached = *state.prev_claims.get_unchecked(197usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 3usize));
                 }
@@ -4304,7 +4341,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(64usize);
+                    let mut ts_low = *state.prev_claims.get_unchecked(53usize);
                     field_ops::add_assign_base(
                         &mut ts_low,
                         &BabyBearField::from_reduced_raw_repr(536870908u32),
@@ -4315,25 +4352,25 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(65usize);
+                    let ts_high = *state.prev_claims.get_unchecked(54usize);
                     field_ops::mul_assign(&mut t_ts, &ts_high);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
                 {
                     let mut t_val: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[4usize];
-                    let val_claim = *state.prev_claims.get_unchecked(6usize);
+                    let val_claim = *state.prev_claims.get_unchecked(5usize);
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
                 {
                     let mut t_val: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[5usize];
-                    let val_claim = *state.prev_claims.get_unchecked(7usize);
+                    let val_claim = *state.prev_claims.get_unchecked(6usize);
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(210usize);
+                let cached = *state.prev_claims.get_unchecked(198usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 4usize));
                 }
@@ -4346,12 +4383,12 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_low: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
                     field_ops::add_assign_base(
                         &mut low,
                         &BabyBearField::from_reduced_raw_repr(0u32),
                     );
-                    let mut var_offset = *state.prev_claims.get_unchecked(12usize);
+                    let mut var_offset = *state.prev_claims.get_unchecked(9usize);
                     field_ops::mul_assign_by_base(
                         &mut var_offset,
                         &BabyBearField::from_reduced_raw_repr(134217711u32),
@@ -4363,17 +4400,217 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_high: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
+                    let high = *state.prev_claims.get_unchecked(6usize);
+                    field_ops::mul_assign(&mut t_high, &high);
+                    field_ops::add_assign(&mut expected, &t_high);
+                }
+                {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(52usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1207959591u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(53usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(55usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(939524105u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(56usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(133099247u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(54usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(56usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1744830467u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(7usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(8usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(199usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 5usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let c_addr_space = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut expected, &c_addr_space);
+                {
+                    let mut t_low: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[0usize];
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
+                    field_ops::add_assign_base(
+                        &mut low,
+                        &BabyBearField::from_reduced_raw_repr(1073741816u32),
+                    );
+                    let mut var_offset = *state.prev_claims.get_unchecked(9usize);
+                    field_ops::mul_assign_by_base(
+                        &mut var_offset,
+                        &BabyBearField::from_reduced_raw_repr(134217711u32),
+                    );
+                    field_ops::add_assign(&mut low, &var_offset);
+                    field_ops::mul_assign(&mut t_low, &low);
+                    field_ops::add_assign(&mut expected, &t_low);
+                }
+                {
+                    let mut t_high: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[1usize];
+                    let high = *state.prev_claims.get_unchecked(6usize);
+                    field_ops::mul_assign(&mut t_high, &high);
+                    field_ops::add_assign(&mut expected, &t_high);
+                }
+                {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(52usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1207959591u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(53usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(55usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(939524105u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(56usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(133099247u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(54usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(56usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1744830467u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(12usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(13usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(200usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 6usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let c_addr_space = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut expected, &c_addr_space);
+                {
+                    let mut t_low: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[0usize];
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
+                    field_ops::add_assign_base(
+                        &mut low,
+                        &BabyBearField::from_reduced_raw_repr(0u32),
+                    );
+                    let mut var_offset = *state.prev_claims.get_unchecked(9usize);
+                    field_ops::mul_assign_by_base(
+                        &mut var_offset,
+                        &BabyBearField::from_reduced_raw_repr(134217711u32),
+                    );
+                    field_ops::add_assign(&mut low, &var_offset);
+                    field_ops::mul_assign(&mut t_low, &low);
+                    field_ops::add_assign(&mut expected, &t_low);
+                }
+                {
+                    let mut t_high: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[1usize];
+                    let high = *state.prev_claims.get_unchecked(6usize);
                     field_ops::mul_assign(&mut t_high, &high);
                     field_ops::add_assign(&mut expected, &t_high);
                 }
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(8usize);
+                    let mut ts_low = *state.prev_claims.get_unchecked(53usize);
                     field_ops::add_assign_base(
                         &mut ts_low,
-                        &BabyBearField::from_reduced_raw_repr(0u32),
+                        &BabyBearField::from_reduced_raw_repr(536870908u32),
                     );
                     field_ops::mul_assign(&mut t_ts, &ts_low);
                     field_ops::add_assign(&mut expected, &t_ts);
@@ -4381,7 +4618,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(9usize);
+                    let ts_high = *state.prev_claims.get_unchecked(54usize);
                     field_ops::mul_assign(&mut t_ts, &ts_high);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
@@ -4399,139 +4636,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(211usize);
-                if expected != cached {
-                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 5usize));
-                }
-            }
-            {
-                let mut expected: BabyBearExt4 =
-                    external_challenges.permutation_argument_additive_part;
-                let c_addr_space = BabyBearField::from_reduced_raw_repr(268435454u32);
-                field_ops::add_assign_base(&mut expected, &c_addr_space);
-                {
-                    let mut t_low: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
-                    field_ops::add_assign_base(
-                        &mut low,
-                        &BabyBearField::from_reduced_raw_repr(1073741816u32),
-                    );
-                    let mut var_offset = *state.prev_claims.get_unchecked(12usize);
-                    field_ops::mul_assign_by_base(
-                        &mut var_offset,
-                        &BabyBearField::from_reduced_raw_repr(134217711u32),
-                    );
-                    field_ops::add_assign(&mut low, &var_offset);
-                    field_ops::mul_assign(&mut t_low, &low);
-                    field_ops::add_assign(&mut expected, &t_low);
-                }
-                {
-                    let mut t_high: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
-                    field_ops::mul_assign(&mut t_high, &high);
-                    field_ops::add_assign(&mut expected, &t_high);
-                }
-                {
-                    let mut t_ts: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(8usize);
-                    field_ops::add_assign_base(
-                        &mut ts_low,
-                        &BabyBearField::from_reduced_raw_repr(0u32),
-                    );
-                    field_ops::mul_assign(&mut t_ts, &ts_low);
-                    field_ops::add_assign(&mut expected, &t_ts);
-                }
-                {
-                    let mut t_ts: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(9usize);
-                    field_ops::mul_assign(&mut t_ts, &ts_high);
-                    field_ops::add_assign(&mut expected, &t_ts);
-                }
-                {
-                    let mut t_val: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[4usize];
-                    let val_claim = *state.prev_claims.get_unchecked(15usize);
-                    field_ops::mul_assign(&mut t_val, &val_claim);
-                    field_ops::add_assign(&mut expected, &t_val);
-                }
-                {
-                    let mut t_val: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[5usize];
-                    let val_claim = *state.prev_claims.get_unchecked(16usize);
-                    field_ops::mul_assign(&mut t_val, &val_claim);
-                    field_ops::add_assign(&mut expected, &t_val);
-                }
-                let cached = *state.prev_claims.get_unchecked(212usize);
-                if expected != cached {
-                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 6usize));
-                }
-            }
-            {
-                let mut expected: BabyBearExt4 =
-                    external_challenges.permutation_argument_additive_part;
-                let c_addr_space = BabyBearField::from_reduced_raw_repr(268435454u32);
-                field_ops::add_assign_base(&mut expected, &c_addr_space);
-                {
-                    let mut t_low: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
-                    field_ops::add_assign_base(
-                        &mut low,
-                        &BabyBearField::from_reduced_raw_repr(0u32),
-                    );
-                    let mut var_offset = *state.prev_claims.get_unchecked(12usize);
-                    field_ops::mul_assign_by_base(
-                        &mut var_offset,
-                        &BabyBearField::from_reduced_raw_repr(134217711u32),
-                    );
-                    field_ops::add_assign(&mut low, &var_offset);
-                    field_ops::mul_assign(&mut t_low, &low);
-                    field_ops::add_assign(&mut expected, &t_low);
-                }
-                {
-                    let mut t_high: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
-                    field_ops::mul_assign(&mut t_high, &high);
-                    field_ops::add_assign(&mut expected, &t_high);
-                }
-                {
-                    let mut t_ts: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(64usize);
-                    field_ops::add_assign_base(
-                        &mut ts_low,
-                        &BabyBearField::from_reduced_raw_repr(536870908u32),
-                    );
-                    field_ops::mul_assign(&mut t_ts, &ts_low);
-                    field_ops::add_assign(&mut expected, &t_ts);
-                }
-                {
-                    let mut t_ts: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(65usize);
-                    field_ops::mul_assign(&mut t_ts, &ts_high);
-                    field_ops::add_assign(&mut expected, &t_ts);
-                }
-                {
-                    let mut t_val: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[4usize];
-                    let val_claim = *state.prev_claims.get_unchecked(13usize);
-                    field_ops::mul_assign(&mut t_val, &val_claim);
-                    field_ops::add_assign(&mut expected, &t_val);
-                }
-                {
-                    let mut t_val: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[5usize];
-                    let val_claim = *state.prev_claims.get_unchecked(14usize);
-                    field_ops::mul_assign(&mut t_val, &val_claim);
-                    field_ops::add_assign(&mut expected, &t_val);
-                }
-                let cached = *state.prev_claims.get_unchecked(213usize);
+                let cached = *state.prev_claims.get_unchecked(201usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 7usize));
                 }
@@ -4544,12 +4649,12 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_low: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
                     field_ops::add_assign_base(
                         &mut low,
                         &BabyBearField::from_reduced_raw_repr(1073741816u32),
                     );
-                    let mut var_offset = *state.prev_claims.get_unchecked(12usize);
+                    let mut var_offset = *state.prev_claims.get_unchecked(9usize);
                     field_ops::mul_assign_by_base(
                         &mut var_offset,
                         &BabyBearField::from_reduced_raw_repr(134217711u32),
@@ -4561,14 +4666,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_high: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
+                    let high = *state.prev_claims.get_unchecked(6usize);
                     field_ops::mul_assign(&mut t_high, &high);
                     field_ops::add_assign(&mut expected, &t_high);
                 }
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(64usize);
+                    let mut ts_low = *state.prev_claims.get_unchecked(53usize);
                     field_ops::add_assign_base(
                         &mut ts_low,
                         &BabyBearField::from_reduced_raw_repr(536870908u32),
@@ -4579,25 +4684,25 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(65usize);
+                    let ts_high = *state.prev_claims.get_unchecked(54usize);
                     field_ops::mul_assign(&mut t_ts, &ts_high);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
                 {
                     let mut t_val: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[4usize];
-                    let val_claim = *state.prev_claims.get_unchecked(17usize);
+                    let val_claim = *state.prev_claims.get_unchecked(14usize);
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
                 {
                     let mut t_val: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[5usize];
-                    let val_claim = *state.prev_claims.get_unchecked(18usize);
+                    let val_claim = *state.prev_claims.get_unchecked(15usize);
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(214usize);
+                let cached = *state.prev_claims.get_unchecked(202usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 8usize));
                 }
@@ -4610,12 +4715,12 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_low: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
                     field_ops::add_assign_base(
                         &mut low,
                         &BabyBearField::from_reduced_raw_repr(0u32),
                     );
-                    let mut var_offset = *state.prev_claims.get_unchecked(23usize);
+                    let mut var_offset = *state.prev_claims.get_unchecked(18usize);
                     field_ops::mul_assign_by_base(
                         &mut var_offset,
                         &BabyBearField::from_reduced_raw_repr(134217711u32),
@@ -4627,26 +4732,160 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_high: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
+                    let high = *state.prev_claims.get_unchecked(6usize);
                     field_ops::mul_assign(&mut t_high, &high);
                     field_ops::add_assign(&mut expected, &t_high);
                 }
                 {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(52usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435486u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(53usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(55usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(939524105u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(57usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(133099247u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(19usize);
-                    field_ops::add_assign_base(
-                        &mut ts_low,
-                        &BabyBearField::from_reduced_raw_repr(0u32),
-                    );
-                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
                 {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(54usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(57usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1744830467u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(20usize);
-                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(16usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(17usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(203usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 9usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let c_addr_space = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut expected, &c_addr_space);
+                {
+                    let mut t_low: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[0usize];
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
+                    field_ops::add_assign_base(
+                        &mut low,
+                        &BabyBearField::from_reduced_raw_repr(1073741816u32),
+                    );
+                    let mut var_offset = *state.prev_claims.get_unchecked(18usize);
+                    field_ops::mul_assign_by_base(
+                        &mut var_offset,
+                        &BabyBearField::from_reduced_raw_repr(134217711u32),
+                    );
+                    field_ops::add_assign(&mut low, &var_offset);
+                    field_ops::mul_assign(&mut t_low, &low);
+                    field_ops::add_assign(&mut expected, &t_low);
+                }
+                {
+                    let mut t_high: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[1usize];
+                    let high = *state.prev_claims.get_unchecked(6usize);
+                    field_ops::mul_assign(&mut t_high, &high);
+                    field_ops::add_assign(&mut expected, &t_high);
+                }
+                {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(52usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435486u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(53usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(55usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(939524105u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(57usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(133099247u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(54usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(57usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1744830467u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
                 {
@@ -4663,73 +4902,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(215usize);
-                if expected != cached {
-                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 9usize));
-                }
-            }
-            {
-                let mut expected: BabyBearExt4 =
-                    external_challenges.permutation_argument_additive_part;
-                let c_addr_space = BabyBearField::from_reduced_raw_repr(268435454u32);
-                field_ops::add_assign_base(&mut expected, &c_addr_space);
-                {
-                    let mut t_low: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
-                    field_ops::add_assign_base(
-                        &mut low,
-                        &BabyBearField::from_reduced_raw_repr(1073741816u32),
-                    );
-                    let mut var_offset = *state.prev_claims.get_unchecked(23usize);
-                    field_ops::mul_assign_by_base(
-                        &mut var_offset,
-                        &BabyBearField::from_reduced_raw_repr(134217711u32),
-                    );
-                    field_ops::add_assign(&mut low, &var_offset);
-                    field_ops::mul_assign(&mut t_low, &low);
-                    field_ops::add_assign(&mut expected, &t_low);
-                }
-                {
-                    let mut t_high: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
-                    field_ops::mul_assign(&mut t_high, &high);
-                    field_ops::add_assign(&mut expected, &t_high);
-                }
-                {
-                    let mut t_ts: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(19usize);
-                    field_ops::add_assign_base(
-                        &mut ts_low,
-                        &BabyBearField::from_reduced_raw_repr(0u32),
-                    );
-                    field_ops::mul_assign(&mut t_ts, &ts_low);
-                    field_ops::add_assign(&mut expected, &t_ts);
-                }
-                {
-                    let mut t_ts: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(20usize);
-                    field_ops::mul_assign(&mut t_ts, &ts_high);
-                    field_ops::add_assign(&mut expected, &t_ts);
-                }
-                {
-                    let mut t_val: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[4usize];
-                    let val_claim = *state.prev_claims.get_unchecked(26usize);
-                    field_ops::mul_assign(&mut t_val, &val_claim);
-                    field_ops::add_assign(&mut expected, &t_val);
-                }
-                {
-                    let mut t_val: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[5usize];
-                    let val_claim = *state.prev_claims.get_unchecked(27usize);
-                    field_ops::mul_assign(&mut t_val, &val_claim);
-                    field_ops::add_assign(&mut expected, &t_val);
-                }
-                let cached = *state.prev_claims.get_unchecked(216usize);
+                let cached = *state.prev_claims.get_unchecked(204usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 10usize));
                 }
@@ -4742,12 +4915,12 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_low: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
                     field_ops::add_assign_base(
                         &mut low,
                         &BabyBearField::from_reduced_raw_repr(0u32),
                     );
-                    let mut var_offset = *state.prev_claims.get_unchecked(23usize);
+                    let mut var_offset = *state.prev_claims.get_unchecked(18usize);
                     field_ops::mul_assign_by_base(
                         &mut var_offset,
                         &BabyBearField::from_reduced_raw_repr(134217711u32),
@@ -4759,14 +4932,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_high: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
+                    let high = *state.prev_claims.get_unchecked(6usize);
                     field_ops::mul_assign(&mut t_high, &high);
                     field_ops::add_assign(&mut expected, &t_high);
                 }
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(64usize);
+                    let mut ts_low = *state.prev_claims.get_unchecked(53usize);
                     field_ops::add_assign_base(
                         &mut ts_low,
                         &BabyBearField::from_reduced_raw_repr(536870908u32),
@@ -4777,25 +4950,25 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(65usize);
+                    let ts_high = *state.prev_claims.get_unchecked(54usize);
                     field_ops::mul_assign(&mut t_ts, &ts_high);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
                 {
                     let mut t_val: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[4usize];
-                    let val_claim = *state.prev_claims.get_unchecked(24usize);
+                    let val_claim = *state.prev_claims.get_unchecked(19usize);
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
                 {
                     let mut t_val: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[5usize];
-                    let val_claim = *state.prev_claims.get_unchecked(25usize);
+                    let val_claim = *state.prev_claims.get_unchecked(20usize);
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(217usize);
+                let cached = *state.prev_claims.get_unchecked(205usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 11usize));
                 }
@@ -4808,12 +4981,12 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_low: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
                     field_ops::add_assign_base(
                         &mut low,
                         &BabyBearField::from_reduced_raw_repr(1073741816u32),
                     );
-                    let mut var_offset = *state.prev_claims.get_unchecked(23usize);
+                    let mut var_offset = *state.prev_claims.get_unchecked(18usize);
                     field_ops::mul_assign_by_base(
                         &mut var_offset,
                         &BabyBearField::from_reduced_raw_repr(134217711u32),
@@ -4825,14 +4998,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_high: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
+                    let high = *state.prev_claims.get_unchecked(6usize);
                     field_ops::mul_assign(&mut t_high, &high);
                     field_ops::add_assign(&mut expected, &t_high);
                 }
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(64usize);
+                    let mut ts_low = *state.prev_claims.get_unchecked(53usize);
                     field_ops::add_assign_base(
                         &mut ts_low,
                         &BabyBearField::from_reduced_raw_repr(536870908u32),
@@ -4843,7 +5016,273 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(65usize);
+                    let ts_high = *state.prev_claims.get_unchecked(54usize);
+                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(23usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(24usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(206usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 12usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let c_addr_space = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut expected, &c_addr_space);
+                {
+                    let mut t_low: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[0usize];
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
+                    field_ops::add_assign_base(
+                        &mut low,
+                        &BabyBearField::from_reduced_raw_repr(0u32),
+                    );
+                    let mut var_offset = *state.prev_claims.get_unchecked(27usize);
+                    field_ops::mul_assign_by_base(
+                        &mut var_offset,
+                        &BabyBearField::from_reduced_raw_repr(134217711u32),
+                    );
+                    field_ops::add_assign(&mut low, &var_offset);
+                    field_ops::mul_assign(&mut t_low, &low);
+                    field_ops::add_assign(&mut expected, &t_low);
+                }
+                {
+                    let mut t_high: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[1usize];
+                    let high = *state.prev_claims.get_unchecked(6usize);
+                    field_ops::mul_assign(&mut t_high, &high);
+                    field_ops::add_assign(&mut expected, &t_high);
+                }
+                {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(52usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1342177302u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(53usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(55usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(939524105u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(58usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(133099247u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(54usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(58usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1744830467u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(25usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(26usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(207usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 13usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let c_addr_space = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut expected, &c_addr_space);
+                {
+                    let mut t_low: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[0usize];
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
+                    field_ops::add_assign_base(
+                        &mut low,
+                        &BabyBearField::from_reduced_raw_repr(1073741816u32),
+                    );
+                    let mut var_offset = *state.prev_claims.get_unchecked(27usize);
+                    field_ops::mul_assign_by_base(
+                        &mut var_offset,
+                        &BabyBearField::from_reduced_raw_repr(134217711u32),
+                    );
+                    field_ops::add_assign(&mut low, &var_offset);
+                    field_ops::mul_assign(&mut t_low, &low);
+                    field_ops::add_assign(&mut expected, &t_low);
+                }
+                {
+                    let mut t_high: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[1usize];
+                    let high = *state.prev_claims.get_unchecked(6usize);
+                    field_ops::mul_assign(&mut t_high, &high);
+                    field_ops::add_assign(&mut expected, &t_high);
+                }
+                {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(52usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1342177302u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(53usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(55usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(939524105u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(58usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(133099247u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(54usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(58usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1744830467u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(30usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(31usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(208usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 14usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let c_addr_space = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut expected, &c_addr_space);
+                {
+                    let mut t_low: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[0usize];
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
+                    field_ops::add_assign_base(
+                        &mut low,
+                        &BabyBearField::from_reduced_raw_repr(0u32),
+                    );
+                    let mut var_offset = *state.prev_claims.get_unchecked(27usize);
+                    field_ops::mul_assign_by_base(
+                        &mut var_offset,
+                        &BabyBearField::from_reduced_raw_repr(134217711u32),
+                    );
+                    field_ops::add_assign(&mut low, &var_offset);
+                    field_ops::mul_assign(&mut t_low, &low);
+                    field_ops::add_assign(&mut expected, &t_low);
+                }
+                {
+                    let mut t_high: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[1usize];
+                    let high = *state.prev_claims.get_unchecked(6usize);
+                    field_ops::mul_assign(&mut t_high, &high);
+                    field_ops::add_assign(&mut expected, &t_high);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    let mut ts_low = *state.prev_claims.get_unchecked(53usize);
+                    field_ops::add_assign_base(
+                        &mut ts_low,
+                        &BabyBearField::from_reduced_raw_repr(536870908u32),
+                    );
+                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    let ts_high = *state.prev_claims.get_unchecked(54usize);
                     field_ops::mul_assign(&mut t_ts, &ts_high);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
@@ -4861,9 +5300,9 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(218usize);
+                let cached = *state.prev_claims.get_unchecked(209usize);
                 if expected != cached {
-                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 12usize));
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 15usize));
                 }
             }
             {
@@ -4874,12 +5313,12 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_low: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
                     field_ops::add_assign_base(
                         &mut low,
-                        &BabyBearField::from_reduced_raw_repr(0u32),
+                        &BabyBearField::from_reduced_raw_repr(1073741816u32),
                     );
-                    let mut var_offset = *state.prev_claims.get_unchecked(34usize);
+                    let mut var_offset = *state.prev_claims.get_unchecked(27usize);
                     field_ops::mul_assign_by_base(
                         &mut var_offset,
                         &BabyBearField::from_reduced_raw_repr(134217711u32),
@@ -4891,17 +5330,17 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_high: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
+                    let high = *state.prev_claims.get_unchecked(6usize);
                     field_ops::mul_assign(&mut t_high, &high);
                     field_ops::add_assign(&mut expected, &t_high);
                 }
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(30usize);
+                    let mut ts_low = *state.prev_claims.get_unchecked(53usize);
                     field_ops::add_assign_base(
                         &mut ts_low,
-                        &BabyBearField::from_reduced_raw_repr(0u32),
+                        &BabyBearField::from_reduced_raw_repr(536870908u32),
                     );
                     field_ops::mul_assign(&mut t_ts, &ts_low);
                     field_ops::add_assign(&mut expected, &t_ts);
@@ -4909,7 +5348,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(31usize);
+                    let ts_high = *state.prev_claims.get_unchecked(54usize);
                     field_ops::mul_assign(&mut t_ts, &ts_high);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
@@ -4927,9 +5366,9 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(219usize);
+                let cached = *state.prev_claims.get_unchecked(210usize);
                 if expected != cached {
-                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 13usize));
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 16usize));
                 }
             }
             {
@@ -4940,12 +5379,12 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_low: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
                     field_ops::add_assign_base(
                         &mut low,
-                        &BabyBearField::from_reduced_raw_repr(1073741816u32),
+                        &BabyBearField::from_reduced_raw_repr(0u32),
                     );
-                    let mut var_offset = *state.prev_claims.get_unchecked(34usize);
+                    let mut var_offset = *state.prev_claims.get_unchecked(36usize);
                     field_ops::mul_assign_by_base(
                         &mut var_offset,
                         &BabyBearField::from_reduced_raw_repr(134217711u32),
@@ -4957,17 +5396,217 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_high: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
+                    let high = *state.prev_claims.get_unchecked(6usize);
+                    field_ops::mul_assign(&mut t_high, &high);
+                    field_ops::add_assign(&mut expected, &t_high);
+                }
+                {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(52usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(402653197u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(53usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(55usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(939524105u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(59usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(133099247u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(54usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(59usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1744830467u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(34usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(35usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(211usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 17usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let c_addr_space = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut expected, &c_addr_space);
+                {
+                    let mut t_low: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[0usize];
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
+                    field_ops::add_assign_base(
+                        &mut low,
+                        &BabyBearField::from_reduced_raw_repr(1073741816u32),
+                    );
+                    let mut var_offset = *state.prev_claims.get_unchecked(36usize);
+                    field_ops::mul_assign_by_base(
+                        &mut var_offset,
+                        &BabyBearField::from_reduced_raw_repr(134217711u32),
+                    );
+                    field_ops::add_assign(&mut low, &var_offset);
+                    field_ops::mul_assign(&mut t_low, &low);
+                    field_ops::add_assign(&mut expected, &t_low);
+                }
+                {
+                    let mut t_high: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[1usize];
+                    let high = *state.prev_claims.get_unchecked(6usize);
+                    field_ops::mul_assign(&mut t_high, &high);
+                    field_ops::add_assign(&mut expected, &t_high);
+                }
+                {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(52usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(402653197u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(53usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(55usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(939524105u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(59usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(133099247u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(54usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(59usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1744830467u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(39usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(40usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(212usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 18usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let c_addr_space = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut expected, &c_addr_space);
+                {
+                    let mut t_low: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[0usize];
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
+                    field_ops::add_assign_base(
+                        &mut low,
+                        &BabyBearField::from_reduced_raw_repr(0u32),
+                    );
+                    let mut var_offset = *state.prev_claims.get_unchecked(36usize);
+                    field_ops::mul_assign_by_base(
+                        &mut var_offset,
+                        &BabyBearField::from_reduced_raw_repr(134217711u32),
+                    );
+                    field_ops::add_assign(&mut low, &var_offset);
+                    field_ops::mul_assign(&mut t_low, &low);
+                    field_ops::add_assign(&mut expected, &t_low);
+                }
+                {
+                    let mut t_high: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[1usize];
+                    let high = *state.prev_claims.get_unchecked(6usize);
                     field_ops::mul_assign(&mut t_high, &high);
                     field_ops::add_assign(&mut expected, &t_high);
                 }
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(30usize);
+                    let mut ts_low = *state.prev_claims.get_unchecked(53usize);
                     field_ops::add_assign_base(
                         &mut ts_low,
-                        &BabyBearField::from_reduced_raw_repr(0u32),
+                        &BabyBearField::from_reduced_raw_repr(536870908u32),
                     );
                     field_ops::mul_assign(&mut t_ts, &ts_low);
                     field_ops::add_assign(&mut expected, &t_ts);
@@ -4975,7 +5614,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(31usize);
+                    let ts_high = *state.prev_claims.get_unchecked(54usize);
                     field_ops::mul_assign(&mut t_ts, &ts_high);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
@@ -4993,9 +5632,9 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(220usize);
+                let cached = *state.prev_claims.get_unchecked(213usize);
                 if expected != cached {
-                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 14usize));
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 19usize));
                 }
             }
             {
@@ -5006,78 +5645,12 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_low: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
-                    field_ops::add_assign_base(
-                        &mut low,
-                        &BabyBearField::from_reduced_raw_repr(0u32),
-                    );
-                    let mut var_offset = *state.prev_claims.get_unchecked(34usize);
-                    field_ops::mul_assign_by_base(
-                        &mut var_offset,
-                        &BabyBearField::from_reduced_raw_repr(134217711u32),
-                    );
-                    field_ops::add_assign(&mut low, &var_offset);
-                    field_ops::mul_assign(&mut t_low, &low);
-                    field_ops::add_assign(&mut expected, &t_low);
-                }
-                {
-                    let mut t_high: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
-                    field_ops::mul_assign(&mut t_high, &high);
-                    field_ops::add_assign(&mut expected, &t_high);
-                }
-                {
-                    let mut t_ts: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(64usize);
-                    field_ops::add_assign_base(
-                        &mut ts_low,
-                        &BabyBearField::from_reduced_raw_repr(536870908u32),
-                    );
-                    field_ops::mul_assign(&mut t_ts, &ts_low);
-                    field_ops::add_assign(&mut expected, &t_ts);
-                }
-                {
-                    let mut t_ts: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(65usize);
-                    field_ops::mul_assign(&mut t_ts, &ts_high);
-                    field_ops::add_assign(&mut expected, &t_ts);
-                }
-                {
-                    let mut t_val: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[4usize];
-                    let val_claim = *state.prev_claims.get_unchecked(35usize);
-                    field_ops::mul_assign(&mut t_val, &val_claim);
-                    field_ops::add_assign(&mut expected, &t_val);
-                }
-                {
-                    let mut t_val: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[5usize];
-                    let val_claim = *state.prev_claims.get_unchecked(36usize);
-                    field_ops::mul_assign(&mut t_val, &val_claim);
-                    field_ops::add_assign(&mut expected, &t_val);
-                }
-                let cached = *state.prev_claims.get_unchecked(221usize);
-                if expected != cached {
-                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 15usize));
-                }
-            }
-            {
-                let mut expected: BabyBearExt4 =
-                    external_challenges.permutation_argument_additive_part;
-                let c_addr_space = BabyBearField::from_reduced_raw_repr(268435454u32);
-                field_ops::add_assign_base(&mut expected, &c_addr_space);
-                {
-                    let mut t_low: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
                     field_ops::add_assign_base(
                         &mut low,
                         &BabyBearField::from_reduced_raw_repr(1073741816u32),
                     );
-                    let mut var_offset = *state.prev_claims.get_unchecked(34usize);
+                    let mut var_offset = *state.prev_claims.get_unchecked(36usize);
                     field_ops::mul_assign_by_base(
                         &mut var_offset,
                         &BabyBearField::from_reduced_raw_repr(134217711u32),
@@ -5089,14 +5662,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_high: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
+                    let high = *state.prev_claims.get_unchecked(6usize);
                     field_ops::mul_assign(&mut t_high, &high);
                     field_ops::add_assign(&mut expected, &t_high);
                 }
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(64usize);
+                    let mut ts_low = *state.prev_claims.get_unchecked(53usize);
                     field_ops::add_assign_base(
                         &mut ts_low,
                         &BabyBearField::from_reduced_raw_repr(536870908u32),
@@ -5107,27 +5680,27 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(65usize);
+                    let ts_high = *state.prev_claims.get_unchecked(54usize);
                     field_ops::mul_assign(&mut t_ts, &ts_high);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
                 {
                     let mut t_val: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[4usize];
-                    let val_claim = *state.prev_claims.get_unchecked(39usize);
+                    let val_claim = *state.prev_claims.get_unchecked(41usize);
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
                 {
                     let mut t_val: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[5usize];
-                    let val_claim = *state.prev_claims.get_unchecked(40usize);
+                    let val_claim = *state.prev_claims.get_unchecked(42usize);
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(222usize);
+                let cached = *state.prev_claims.get_unchecked(214usize);
                 if expected != cached {
-                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 16usize));
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 20usize));
                 }
             }
             {
@@ -5138,7 +5711,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_low: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
                     field_ops::add_assign_base(
                         &mut low,
                         &BabyBearField::from_reduced_raw_repr(0u32),
@@ -5155,26 +5728,60 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_high: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
+                    let high = *state.prev_claims.get_unchecked(6usize);
                     field_ops::mul_assign(&mut t_high, &high);
                     field_ops::add_assign(&mut expected, &t_high);
                 }
                 {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(52usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1476395013u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(53usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(55usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(939524105u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(60usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(133099247u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(41usize);
-                    field_ops::add_assign_base(
-                        &mut ts_low,
-                        &BabyBearField::from_reduced_raw_repr(0u32),
-                    );
-                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
                 {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(54usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(60usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1744830467u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(42usize);
-                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
                 {
@@ -5191,9 +5798,9 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(223usize);
+                let cached = *state.prev_claims.get_unchecked(215usize);
                 if expected != cached {
-                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 17usize));
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 21usize));
                 }
             }
             {
@@ -5204,7 +5811,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_low: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
                     field_ops::add_assign_base(
                         &mut low,
                         &BabyBearField::from_reduced_raw_repr(1073741816u32),
@@ -5221,26 +5828,60 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_high: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
+                    let high = *state.prev_claims.get_unchecked(6usize);
                     field_ops::mul_assign(&mut t_high, &high);
                     field_ops::add_assign(&mut expected, &t_high);
                 }
                 {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(52usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1476395013u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(53usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(55usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(939524105u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(60usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(133099247u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(41usize);
-                    field_ops::add_assign_base(
-                        &mut ts_low,
-                        &BabyBearField::from_reduced_raw_repr(0u32),
-                    );
-                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
                 {
+                    let mut timestamp_limb: BabyBearExt4 =
+                        BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                    let mut term = *state.prev_claims.get_unchecked(54usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
+                    let mut term = *state.prev_claims.get_unchecked(60usize);
+                    field_ops::mul_assign_by_base(
+                        &mut term,
+                        &BabyBearField::from_reduced_raw_repr(1744830467u32),
+                    );
+                    field_ops::add_assign(&mut timestamp_limb, &term);
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(42usize);
-                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::mul_assign(&mut t_ts, &timestamp_limb);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
                 {
@@ -5257,9 +5898,9 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(224usize);
+                let cached = *state.prev_claims.get_unchecked(216usize);
                 if expected != cached {
-                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 18usize));
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 22usize));
                 }
             }
             {
@@ -5270,7 +5911,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_low: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
                     field_ops::add_assign_base(
                         &mut low,
                         &BabyBearField::from_reduced_raw_repr(0u32),
@@ -5287,14 +5928,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_high: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
+                    let high = *state.prev_claims.get_unchecked(6usize);
                     field_ops::mul_assign(&mut t_high, &high);
                     field_ops::add_assign(&mut expected, &t_high);
                 }
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(64usize);
+                    let mut ts_low = *state.prev_claims.get_unchecked(53usize);
                     field_ops::add_assign_base(
                         &mut ts_low,
                         &BabyBearField::from_reduced_raw_repr(536870908u32),
@@ -5305,7 +5946,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(65usize);
+                    let ts_high = *state.prev_claims.get_unchecked(54usize);
                     field_ops::mul_assign(&mut t_ts, &ts_high);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
@@ -5323,9 +5964,9 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(225usize);
+                let cached = *state.prev_claims.get_unchecked(217usize);
                 if expected != cached {
-                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 19usize));
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 23usize));
                 }
             }
             {
@@ -5336,7 +5977,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_low: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
+                    let mut low = *state.prev_claims.get_unchecked(5usize);
                     field_ops::add_assign_base(
                         &mut low,
                         &BabyBearField::from_reduced_raw_repr(1073741816u32),
@@ -5353,14 +5994,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_high: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
+                    let high = *state.prev_claims.get_unchecked(6usize);
                     field_ops::mul_assign(&mut t_high, &high);
                     field_ops::add_assign(&mut expected, &t_high);
                 }
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(64usize);
+                    let mut ts_low = *state.prev_claims.get_unchecked(53usize);
                     field_ops::add_assign_base(
                         &mut ts_low,
                         &BabyBearField::from_reduced_raw_repr(536870908u32),
@@ -5371,7 +6012,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(65usize);
+                    let ts_high = *state.prev_claims.get_unchecked(54usize);
                     field_ops::mul_assign(&mut t_ts, &ts_high);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
@@ -5389,271 +6030,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(226usize);
-                if expected != cached {
-                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 20usize));
-                }
-            }
-            {
-                let mut expected: BabyBearExt4 =
-                    external_challenges.permutation_argument_additive_part;
-                let c_addr_space = BabyBearField::from_reduced_raw_repr(268435454u32);
-                field_ops::add_assign_base(&mut expected, &c_addr_space);
-                {
-                    let mut t_low: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
-                    field_ops::add_assign_base(
-                        &mut low,
-                        &BabyBearField::from_reduced_raw_repr(0u32),
-                    );
-                    let mut var_offset = *state.prev_claims.get_unchecked(56usize);
-                    field_ops::mul_assign_by_base(
-                        &mut var_offset,
-                        &BabyBearField::from_reduced_raw_repr(134217711u32),
-                    );
-                    field_ops::add_assign(&mut low, &var_offset);
-                    field_ops::mul_assign(&mut t_low, &low);
-                    field_ops::add_assign(&mut expected, &t_low);
-                }
-                {
-                    let mut t_high: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
-                    field_ops::mul_assign(&mut t_high, &high);
-                    field_ops::add_assign(&mut expected, &t_high);
-                }
-                {
-                    let mut t_ts: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(52usize);
-                    field_ops::add_assign_base(
-                        &mut ts_low,
-                        &BabyBearField::from_reduced_raw_repr(0u32),
-                    );
-                    field_ops::mul_assign(&mut t_ts, &ts_low);
-                    field_ops::add_assign(&mut expected, &t_ts);
-                }
-                {
-                    let mut t_ts: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(53usize);
-                    field_ops::mul_assign(&mut t_ts, &ts_high);
-                    field_ops::add_assign(&mut expected, &t_ts);
-                }
-                {
-                    let mut t_val: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[4usize];
-                    let val_claim = *state.prev_claims.get_unchecked(54usize);
-                    field_ops::mul_assign(&mut t_val, &val_claim);
-                    field_ops::add_assign(&mut expected, &t_val);
-                }
-                {
-                    let mut t_val: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[5usize];
-                    let val_claim = *state.prev_claims.get_unchecked(55usize);
-                    field_ops::mul_assign(&mut t_val, &val_claim);
-                    field_ops::add_assign(&mut expected, &t_val);
-                }
-                let cached = *state.prev_claims.get_unchecked(227usize);
-                if expected != cached {
-                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 21usize));
-                }
-            }
-            {
-                let mut expected: BabyBearExt4 =
-                    external_challenges.permutation_argument_additive_part;
-                let c_addr_space = BabyBearField::from_reduced_raw_repr(268435454u32);
-                field_ops::add_assign_base(&mut expected, &c_addr_space);
-                {
-                    let mut t_low: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
-                    field_ops::add_assign_base(
-                        &mut low,
-                        &BabyBearField::from_reduced_raw_repr(1073741816u32),
-                    );
-                    let mut var_offset = *state.prev_claims.get_unchecked(56usize);
-                    field_ops::mul_assign_by_base(
-                        &mut var_offset,
-                        &BabyBearField::from_reduced_raw_repr(134217711u32),
-                    );
-                    field_ops::add_assign(&mut low, &var_offset);
-                    field_ops::mul_assign(&mut t_low, &low);
-                    field_ops::add_assign(&mut expected, &t_low);
-                }
-                {
-                    let mut t_high: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
-                    field_ops::mul_assign(&mut t_high, &high);
-                    field_ops::add_assign(&mut expected, &t_high);
-                }
-                {
-                    let mut t_ts: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(52usize);
-                    field_ops::add_assign_base(
-                        &mut ts_low,
-                        &BabyBearField::from_reduced_raw_repr(0u32),
-                    );
-                    field_ops::mul_assign(&mut t_ts, &ts_low);
-                    field_ops::add_assign(&mut expected, &t_ts);
-                }
-                {
-                    let mut t_ts: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(53usize);
-                    field_ops::mul_assign(&mut t_ts, &ts_high);
-                    field_ops::add_assign(&mut expected, &t_ts);
-                }
-                {
-                    let mut t_val: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[4usize];
-                    let val_claim = *state.prev_claims.get_unchecked(59usize);
-                    field_ops::mul_assign(&mut t_val, &val_claim);
-                    field_ops::add_assign(&mut expected, &t_val);
-                }
-                {
-                    let mut t_val: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[5usize];
-                    let val_claim = *state.prev_claims.get_unchecked(60usize);
-                    field_ops::mul_assign(&mut t_val, &val_claim);
-                    field_ops::add_assign(&mut expected, &t_val);
-                }
-                let cached = *state.prev_claims.get_unchecked(228usize);
-                if expected != cached {
-                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 22usize));
-                }
-            }
-            {
-                let mut expected: BabyBearExt4 =
-                    external_challenges.permutation_argument_additive_part;
-                let c_addr_space = BabyBearField::from_reduced_raw_repr(268435454u32);
-                field_ops::add_assign_base(&mut expected, &c_addr_space);
-                {
-                    let mut t_low: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
-                    field_ops::add_assign_base(
-                        &mut low,
-                        &BabyBearField::from_reduced_raw_repr(0u32),
-                    );
-                    let mut var_offset = *state.prev_claims.get_unchecked(56usize);
-                    field_ops::mul_assign_by_base(
-                        &mut var_offset,
-                        &BabyBearField::from_reduced_raw_repr(134217711u32),
-                    );
-                    field_ops::add_assign(&mut low, &var_offset);
-                    field_ops::mul_assign(&mut t_low, &low);
-                    field_ops::add_assign(&mut expected, &t_low);
-                }
-                {
-                    let mut t_high: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
-                    field_ops::mul_assign(&mut t_high, &high);
-                    field_ops::add_assign(&mut expected, &t_high);
-                }
-                {
-                    let mut t_ts: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(64usize);
-                    field_ops::add_assign_base(
-                        &mut ts_low,
-                        &BabyBearField::from_reduced_raw_repr(536870908u32),
-                    );
-                    field_ops::mul_assign(&mut t_ts, &ts_low);
-                    field_ops::add_assign(&mut expected, &t_ts);
-                }
-                {
-                    let mut t_ts: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(65usize);
-                    field_ops::mul_assign(&mut t_ts, &ts_high);
-                    field_ops::add_assign(&mut expected, &t_ts);
-                }
-                {
-                    let mut t_val: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[4usize];
-                    let val_claim = *state.prev_claims.get_unchecked(57usize);
-                    field_ops::mul_assign(&mut t_val, &val_claim);
-                    field_ops::add_assign(&mut expected, &t_val);
-                }
-                {
-                    let mut t_val: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[5usize];
-                    let val_claim = *state.prev_claims.get_unchecked(58usize);
-                    field_ops::mul_assign(&mut t_val, &val_claim);
-                    field_ops::add_assign(&mut expected, &t_val);
-                }
-                let cached = *state.prev_claims.get_unchecked(229usize);
-                if expected != cached {
-                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 23usize));
-                }
-            }
-            {
-                let mut expected: BabyBearExt4 =
-                    external_challenges.permutation_argument_additive_part;
-                let c_addr_space = BabyBearField::from_reduced_raw_repr(268435454u32);
-                field_ops::add_assign_base(&mut expected, &c_addr_space);
-                {
-                    let mut t_low: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[0usize];
-                    let mut low = *state.prev_claims.get_unchecked(6usize);
-                    field_ops::add_assign_base(
-                        &mut low,
-                        &BabyBearField::from_reduced_raw_repr(1073741816u32),
-                    );
-                    let mut var_offset = *state.prev_claims.get_unchecked(56usize);
-                    field_ops::mul_assign_by_base(
-                        &mut var_offset,
-                        &BabyBearField::from_reduced_raw_repr(134217711u32),
-                    );
-                    field_ops::add_assign(&mut low, &var_offset);
-                    field_ops::mul_assign(&mut t_low, &low);
-                    field_ops::add_assign(&mut expected, &t_low);
-                }
-                {
-                    let mut t_high: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[1usize];
-                    let high = *state.prev_claims.get_unchecked(7usize);
-                    field_ops::mul_assign(&mut t_high, &high);
-                    field_ops::add_assign(&mut expected, &t_high);
-                }
-                {
-                    let mut t_ts: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(64usize);
-                    field_ops::add_assign_base(
-                        &mut ts_low,
-                        &BabyBearField::from_reduced_raw_repr(536870908u32),
-                    );
-                    field_ops::mul_assign(&mut t_ts, &ts_low);
-                    field_ops::add_assign(&mut expected, &t_ts);
-                }
-                {
-                    let mut t_ts: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(65usize);
-                    field_ops::mul_assign(&mut t_ts, &ts_high);
-                    field_ops::add_assign(&mut expected, &t_ts);
-                }
-                {
-                    let mut t_val: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[4usize];
-                    let val_claim = *state.prev_claims.get_unchecked(61usize);
-                    field_ops::mul_assign(&mut t_val, &val_claim);
-                    field_ops::add_assign(&mut expected, &t_val);
-                }
-                {
-                    let mut t_val: BabyBearExt4 =
-                        external_challenges.permutation_argument_linearization_challenges[5usize];
-                    let val_claim = *state.prev_claims.get_unchecked(62usize);
-                    field_ops::mul_assign(&mut t_val, &val_claim);
-                    field_ops::add_assign(&mut expected, &t_val);
-                }
-                let cached = *state.prev_claims.get_unchecked(230usize);
+                let cached = *state.prev_claims.get_unchecked(218usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 24usize));
                 }
@@ -5673,7 +6050,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[2usize];
-                    let mut ts_low = *state.prev_claims.get_unchecked(64usize);
+                    let mut ts_low = *state.prev_claims.get_unchecked(53usize);
                     field_ops::add_assign_base(
                         &mut ts_low,
                         &BabyBearField::from_reduced_raw_repr(0u32),
@@ -5684,11 +6061,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 {
                     let mut t_ts: BabyBearExt4 =
                         external_challenges.permutation_argument_linearization_challenges[3usize];
-                    let ts_high = *state.prev_claims.get_unchecked(65usize);
+                    let ts_high = *state.prev_claims.get_unchecked(54usize);
                     field_ops::mul_assign(&mut t_ts, &ts_high);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
-                let cached = *state.prev_claims.get_unchecked(231usize);
+                let cached = *state.prev_claims.get_unchecked(219usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 25usize));
                 }
@@ -5705,7 +6082,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     &BabyBearField::from_reduced_raw_repr(805302106u32),
                 );
                 field_ops::add_assign(&mut expected, &t_addr);
-                let cached = *state.prev_claims.get_unchecked(232usize);
+                let cached = *state.prev_claims.get_unchecked(220usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 26usize));
                 }
