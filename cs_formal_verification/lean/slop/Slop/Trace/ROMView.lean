@@ -94,6 +94,7 @@ def row (before : Reference.RiscV.Sail.State) (native : Row p) : Row p :=
     split <;> simp [Row.decoderQuery, nativeDecoderQuery, Row.decoderColumns,
       Row.columns, WordMemory.importedConstraintsTraceColumns,
       WordMemory.importedConstraintsDecoderColumns, readData]
+    all_goals rfl
 
 theorem row_holds {p : Nat} [Fact p.Prime]
     (before : Reference.RiscV.Sail.State) (native : Row p) (rom : Table (ZMod p) (fields 9))
@@ -307,7 +308,7 @@ theorem seed_cell {before : Reference.RiscV.Sail.State} {cells : List Cell}
         (read.symm.trans (profile.ram address member (Nat.le_of_not_gt inside)))).1
       subst value
       have unmasked := mt (shadow_ram address).mp inside
-      simp only [token, Cell.initialToken, ite_eq_right unmasked]
+      simp only [token, Cell.initialToken, unmasked, ↓reduceIte]
 
 theorem seed_image {before : Reference.RiscV.Sail.State} {cells : List Cell}
     {image : List (MemoryToken p)} (profile : InitialProfile before cells)
