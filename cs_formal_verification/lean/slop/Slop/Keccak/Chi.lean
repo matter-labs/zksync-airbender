@@ -1,12 +1,13 @@
 import Human.Circuits.Keccak.Chi
 import Slop.Keccak.FixedLookups
+import Slop.Keccak.OpIndex
 import Slop.Arithmetic.BitwiseAssembly
 
 namespace Airbender.Keccak.Proofs
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2400000
+set_option maxHeartbeats 1200000
 
 private def nativeLimbs (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 4, start + 5]
 private def temporary (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 2, start + 3]
@@ -46,9 +47,9 @@ private theorem chi_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
     cases second <;> simpa [Variables.modeColumns, chiMode] using m4
   have rotations (i : Fin 5) : w (80 + i.val) = 0 := by
     have equation := Verification.assertion_of_holds h ⟨9 + i.val, by rw [constraint_count]; omega⟩
-    fin_cases i <;>
-      simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, rho] using equation.symm
+    fin_cases i
+    all_goals op_index at equation
+    all_goals simpa [Expression.eval, Verification.environment, rho] using equation.symm
   have r0 := rotations (0 : Fin 5); have r1 := rotations (1 : Fin 5)
   have r2 := rotations (2 : Fin 5); have r3 := rotations (3 : Fin 5); have r4 := rotations (4 : Fin 5)
   change w 80 = 0 at r0
@@ -64,8 +65,8 @@ private theorem chi_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
     ⟨22 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
   cases second <;> fin_cases operation <;> fin_cases limb <;>
     simp [Variables.modeColumns, chiMode] at m0 m1 m2 m3 m4 m5 m6
-  all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, m0, m1, m2, m3, m4, m5, m6,
+  all_goals op_index at a b c
+  all_goals simp [Expression.eval, Verification.environment, m0, m1, m2, m3, m4, m5, m6,
     r0, r1, r2, r3, r4, aColumns, bColumns, cColumns, nativeLimbs, temporary] at a b c ⊢
   all_goals exact ⟨by linear_combination a, by linear_combination b, by linear_combination c⟩
 
@@ -192,9 +193,9 @@ private theorem first_preserved {p : Nat} [Fact p.Prime]
   intro limb
   have equation := Verification.assertion_of_holds h
     ⟨136 + 4 * lane.val + limb.val, by rw [constraint_count]; omega⟩
-  fin_cases lane <;> fin_cases limb <;>
-    simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, selected] at equation ⊢
+  fin_cases lane <;> fin_cases limb
+  all_goals op_index at equation
+  all_goals simp [Expression.eval, Verification.environment, selected] at equation ⊢
   all_goals linear_combination equation
 
 private theorem second_preserved {p : Nat} [Fact p.Prime]
@@ -209,9 +210,9 @@ private theorem second_preserved {p : Nat} [Fact p.Prime]
   intro limb
   have equation := Verification.assertion_of_holds h
     ⟨144 + 4 * lane.val + limb.val, by rw [constraint_count]; omega⟩
-  fin_cases lane <;> fin_cases limb <;>
-    simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, selected] at equation ⊢
+  fin_cases lane <;> fin_cases limb
+  all_goals op_index at equation
+  all_goals simp [Expression.eval, Verification.environment, selected] at equation ⊢
   all_goals linear_combination equation
 
 private theorem first_scratch_copy {p : Nat} [Fact p.Prime]
@@ -221,8 +222,9 @@ private theorem first_scratch_copy {p : Nat} [Fact p.Prime]
   have limbs (i : Fin 4) : w (15 + (#v[0, 1, 4, 5] : Vector Nat 4)[i]) =
       w (57 + (#v[0, 1, 4, 5] : Vector Nat 4)[i]) := by
     have equation := Verification.assertion_of_holds h ⟨132 + i.val, by rw [constraint_count]; omega⟩
-    fin_cases i <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, selected] at equation ⊢
+    fin_cases i
+    all_goals op_index at equation
+    all_goals simp [Expression.eval, Verification.environment, selected] at equation ⊢
     all_goals linear_combination equation
   have l0 := limbs (0 : Fin 4); have l1 := limbs (1 : Fin 4)
   have l2 := limbs (2 : Fin 4); have l3 := limbs (3 : Fin 4)
@@ -250,8 +252,9 @@ theorem chi_written_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
           by rw [constraint_count]; cases second <;> simp only [Bool.false_eq_true, ite_false, ite_true] <;> omega⟩
       cases second <;> fin_cases i <;> fin_cases limb
       all_goals simp [Variables.modeColumns, chiMode] at selected
-      all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, selected, targets, sources] at equation ⊢
+      all_goals simp only [Bool.false_eq_true, ite_false, ite_true] at equation
+      all_goals op_index at equation
+      all_goals simp [Expression.eval, Verification.environment, selected, targets, sources] at equation ⊢
       all_goals linear_combination -equation
     rw [same]
     exact reads sources[i] limb
