@@ -1,13 +1,14 @@
 import Human.Circuits.Keccak.Iota
 import Slop.Keccak.DecodeControl
 import Slop.Keccak.FixedLookups
+import Slop.Keccak.OpIndex
 import Slop.Arithmetic.ByteAssembly
 
 namespace Airbender.Keccak.Proofs
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2400000
+set_option maxHeartbeats 1200000
 
 private def nativeLimbs (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 4, start + 5]
 private def temporary (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 2, start + 3]
@@ -37,8 +38,9 @@ private theorem iota_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
   simp [Variables.modeColumns] at m1 m2 m3 m4 m5 m6
   have rotations (i : Fin 5) : w (80 + i.val) = 0 := by
     have equation := Verification.assertion_of_holds h ⟨9 + i.val, by rw [constraint_count]; omega⟩
-    fin_cases i <;> simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, m4] using equation.symm
+    fin_cases i
+    all_goals op_index at equation
+    all_goals simpa [Expression.eval, Verification.environment, m4] using equation.symm
   have r0 := rotations (0 : Fin 5); have r1 := rotations (1 : Fin 5)
   have r2 := rotations (2 : Fin 5); have r3 := rotations (3 : Fin 5); have r4 := rotations (4 : Fin 5)
   change w 80 = 0 at r0
@@ -52,9 +54,9 @@ private theorem iota_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
     ⟨21 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
   have c := Verification.assertion_of_holds h
     ⟨22 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
-  fin_cases operation <;> fin_cases limb <;>
-    simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, selected, m1, m2, m3, m4, m5, m6,
+  fin_cases operation <;> fin_cases limb
+  all_goals op_index at a b c
+  all_goals simp [Expression.eval, Verification.environment, selected, m1, m2, m3, m4, m5, m6,
       r0, r1, r2, r3, r4, aColumns, bColumns, cColumns, nativeLimbs, temporary] at a b c ⊢
   all_goals exact ⟨by linear_combination a, by linear_combination b, by linear_combination c⟩
 
@@ -96,8 +98,8 @@ private theorem effective_round {p : Nat} [Fact p.Prime] (hp : 2048 ≤ p)
   have mode := decoded.1 (0 : Fin 7)
   have iter := decoded.2.1 (0 : Fin 5)
   have equation := Verification.assertion_of_holds h ⟨14, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at equation
+  op_index at equation
+  simp [Expression.eval, Verification.environment] at equation
   simp [Variables.modeColumns] at mode
   have flag : w 70 = if column.val = 0 then 1 else 0 := by
     by_cases zero : column.val = 0
@@ -150,8 +152,9 @@ private theorem control_pair {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   have pair : w (110 + 2 * limb.val) + 256 * w (111 + 2 * limb.val) =
       ((round.val + 32 * (2 * limb.val) +
         256 * (round.val + 32 * (2 * limb.val + 1)) : Nat) : ZMod p) := by
-    fin_cases limb <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, bColumns, temporary, rc] at definition routes ⊢
+    fin_cases limb
+    all_goals op_index at definition
+    all_goals simp [Expression.eval, Verification.environment, bColumns, temporary, rc] at definition routes ⊢
     all_goals linear_combination routes - definition
   have bound : round.val + 32 * (2 * limb.val) +
       256 * (round.val + 32 * (2 * limb.val + 1)) < p := by
@@ -260,9 +263,9 @@ theorem iota_written_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     have bound := reads ⟨i.val + 1, by omega⟩ limb
     have same : w (25 + 8 * i.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb]) =
         w (23 + 8 * i.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb]) := by
-      fin_cases i <;> fin_cases limb <;>
-        simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-          Verification.environment, selected] at equation ⊢
+      fin_cases i <;> fin_cases limb
+      all_goals op_index at equation
+      all_goals simp [Expression.eval, Verification.environment, selected] at equation ⊢
       all_goals linear_combination -equation
     rw [same]
     change (w (15 + 8 * (i.val + 1) + (#v[0, 1, 4, 5] : Vector Nat 4)[limb])).val < 65536 at bound
@@ -318,9 +321,9 @@ private theorem iota_preserved {p : Nat} [Fact p.Prime]
         w (23 + 8 * lane.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb]) := by
     have equation := Verification.assertion_of_holds h
       ⟨84 + 4 * lane.val + limb.val, by rw [constraint_count]; omega⟩
-    fin_cases lane <;> fin_cases limb <;>
-      simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, selected] at equation ⊢
+    fin_cases lane <;> fin_cases limb
+    all_goals op_index at equation
+    all_goals simp [Expression.eval, Verification.environment, selected] at equation ⊢
     all_goals linear_combination -equation
   have l0 := limbs (0 : Fin 4); have l1 := limbs (1 : Fin 4)
   have l2 := limbs (2 : Fin 4); have l3 := limbs (3 : Fin 4)
