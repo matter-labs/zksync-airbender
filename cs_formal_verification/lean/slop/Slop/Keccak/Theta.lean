@@ -1,12 +1,13 @@
 import Human.Circuits.Keccak.Theta
 import Slop.Keccak.Lookups
+import Slop.Keccak.OpIndex
 import Slop.Arithmetic.ByteAssembly
 
 namespace Airbender.Keccak.Proofs
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 1600000
+set_option maxHeartbeats 800000
 
 private theorem theta_rotations {p : Nat} [Fact p.Prime] (hp : 7 < p)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
@@ -16,8 +17,9 @@ private theorem theta_rotations {p : Nat} [Fact p.Prime] (hp : 7 < p)
   have rho : w 67 = 0 := by simpa [Variables.modeColumns] using modes (4 : Fin 7)
   intro i
   have flag := Verification.assertion_of_holds h ⟨9 + i.val, by rw [constraint_count]; omega⟩
-  fin_cases i <;> simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, rho] using flag.symm
+  fin_cases i
+  all_goals op_index at flag
+  all_goals simpa [Expression.eval, Verification.environment, rho] using flag.symm
 
 private def limbOffsets : Vector Nat 4 := #v[0, 1, 4, 5]
 
@@ -55,8 +57,9 @@ private theorem theta_limb_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
     ⟨21 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
   have c := Verification.assertion_of_holds h
     ⟨22 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
-  fin_cases operation <;> fin_cases limb <;>
-    simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+  fin_cases operation <;> fin_cases limb
+  all_goals op_index at a b c
+  all_goals simp [Expression.eval, Verification.environment,
       m0, m1, m2, theta, m4, m5, m6, r0, r1, r2, r3, r4, limbOffsets] at a b c ⊢
   all_goals exact ⟨by linear_combination a, by linear_combination b, by linear_combination c⟩
 
@@ -161,8 +164,9 @@ theorem theta_written_bounds {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     have equation := Verification.assertion_of_holds h
       ⟨124 + limb.val, by rw [constraint_count]; omega⟩
     have copy : w (57 + limbOffsets[limb]) = w (55 + limbOffsets[limb]) := by
-      fin_cases limb <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, selected, limbOffsets] at equation ⊢
+      fin_cases limb
+      all_goals op_index at equation
+      all_goals simp [Expression.eval, Verification.environment, selected, limbOffsets] at equation ⊢
       all_goals linear_combination -equation
     change (w (57 + limbOffsets[limb])).val < 65536
     rw [copy]
@@ -176,8 +180,9 @@ theorem theta_scratch_preserved {p : Nat} [Fact p.Prime]
     (theta : w 66 = 1) : writeLane w 5 = readLane w 5 := by
   have limbs (i : Fin 4) : w (55 + limbOffsets[i]) = w (57 + limbOffsets[i]) := by
     have equation := Verification.assertion_of_holds h ⟨124 + i.val, by rw [constraint_count]; omega⟩
-    fin_cases i <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, theta, limbOffsets] at equation ⊢
+    fin_cases i
+    all_goals op_index at equation
+    all_goals simp [Expression.eval, Verification.environment, theta, limbOffsets] at equation ⊢
     all_goals linear_combination equation
   have l0 := limbs (0 : Fin 4); have l1 := limbs (1 : Fin 4)
   have l2 := limbs (2 : Fin 4); have l3 := limbs (3 : Fin 4)
