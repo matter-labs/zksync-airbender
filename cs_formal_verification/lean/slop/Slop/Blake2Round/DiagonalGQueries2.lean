@@ -1,6 +1,9 @@
 import Slop.Blake2Round.DiagonalG
 import Slop.Blake2Round.Lookups
 import Slop.Blake2Round.ArtifactChecks
+import Slop.Blake2Round.OpIndex
+import Slop.Blake2Round.Eval
+import Slop.Blake2G.OpIndex
 import Slop.Blake2G.Soundness
 import Mathlib.Tactic.ReduceModChar
 
@@ -29,14 +32,18 @@ theorem diagonal_g_queries_2 {p : Nat} [Fact p.Prime]
   have member := Verification.lookup_of_holds h
     ⟨74 + 18 * (2 : Fin 4).val + i.val, by rw [lookup_count]; have size := i.isLt; simp; omega⟩
   fin_cases i
+  all_goals op_index at member ⊢
   all_goals apply padded_membership member
   all_goals ext j hj
   all_goals interval_cases j <;>
-    simp [Expression.eval, Verification.environment, diagonalGBase, columnGAssignment,
-        columnGBase, Blake2G.Proofs.assemble, Blake2G.Proofs.secondAlo,
-        Blake2G.Proofs.secondAhi, Blake2G.Proofs.secondClo, Blake2G.Proofs.secondChi,
-        Blake2G.Proofs.firstAlo, Blake2G.Proofs.firstAhi, Blake2G.Proofs.firstClo,
-        Blake2G.Proofs.firstChi, padXor]
-  all_goals ring_nf <;> reduce_mod_char <;> ring_nf <;> reduce_mod_char
+    eval_entry [diagonalGBase, columnGAssignment, columnGBase, Blake2G.Proofs.assemble,
+      Blake2G.Proofs.secondAlo, Blake2G.Proofs.secondAhi, Blake2G.Proofs.secondClo,
+      Blake2G.Proofs.secondChi, Blake2G.Proofs.firstAlo, Blake2G.Proofs.firstAhi,
+      Blake2G.Proofs.firstClo, Blake2G.Proofs.firstChi, padXor, Fin.ofNat, Fin.val_mk,
+      Nat.reduceMod, Nat.reduceLT, ↓reduceIte]
+  all_goals try ring_nf
+  all_goals try reduce_mod_char
+  all_goals try ring_nf
+  all_goals try reduce_mod_char
 
 end Airbender.Blake2Round.Proofs
