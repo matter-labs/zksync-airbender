@@ -93,7 +93,7 @@ private theorem configuration : FlatMemoryConfiguration before := by
       Tests.TraceExecution.before = .ok ()
         { Tests.TraceExecution.before with regs := Tests.TraceExecution.before.regs.insert .x1 0 } := by
     simp only [SailRV32.Functions.wX_bits, SailRV32.Functions.wX,
-      SailRV32.Functions.regval_into_reg, write_callback_pure, freeM_pure_bind]
+      SailRV32.Functions.regval_into_reg, write_callback_pure]
     exact run_bind_of_ok _ _ _ _ _ (write_register .x1 0 Tests.TraceExecution.before)
   have preserved := configuration_gpr_write Tests.TraceExecution.configuration 1 0 written
   exact configuration_register_frame
@@ -115,8 +115,7 @@ private theorem decoding (entry : ProgramEntry) (member : entry ∈ program) :
   simp only [program, List.mem_cons, List.not_mem_nil, or_false] at member
   rcases member with rfl | rfl | rfl
   all_goals dsimp only [readEntry, addEntry, hintEntry]
-  all_goals simp only [SailRV32.Functions.encdec_backwards]
-  all_goals first | rfl | (simp only [SailRV32.Functions.currentlyEnabled, SailRV32.Functions.hartSupports]; rfl)
+  all_goals with_unfolding_all rfl
 
 private theorem public_image : programImageWith NonDeterminism.decoderFields before [0, 4, 8] =
     some program := by
