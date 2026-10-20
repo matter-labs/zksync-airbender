@@ -1749,8 +1749,22 @@ fn verify_dim_reduce_layers() {
                                 panic!("U32SpaceGeneric memory tuple not supported")
                             }
                         }
-                        match rel.timestamp {
+                        match &rel.timestamp {
                             Ts::Zero => {}
+                            Ts::Affine(limbs) => {
+                                for (index, limb) in limbs.iter().enumerate() {
+                                    let mut value = limb.constant;
+                                    for (coefficient, address) in limb.linear_terms.iter() {
+                                        let mut term = claim_at(address);
+                                        term.mul_assign(coefficient);
+                                        value.add_assign(&term);
+                                    }
+                                    if index == 0 {
+                                        value.add_assign(&fu(rel.timestamp_offset));
+                                    }
+                                    result.add_assign(&mul(&lin[2 + index], &value));
+                                }
+                            }
                             Ts::Normal(ts) => {
                                 let mut ts_low = mem(ts[0]);
                                 ts_low.add_assign(&fu(rel.timestamp_offset));

@@ -67,6 +67,7 @@ impl<F: PrimeField> GKRGate<F> for CopyNode {
 
 pub struct GKRGraph<F: PrimeField> {
     pub(crate) caching_is_allowed: bool,
+    pub(crate) derived_timestamps: BTreeMap<[Variable; 2], [Expr<F>; 2]>,
     #[allow(dead_code)]
     pub(crate) mapping: BTreeMap<GKRAddress, usize>,
     #[allow(dead_code)]
@@ -91,6 +92,7 @@ impl<F: PrimeField> GKRGraph<F> {
     pub fn new(generic_lookup_setup_width: usize, caching_is_allowed: bool) -> Self {
         let mut new = Self {
             caching_is_allowed,
+            derived_timestamps: BTreeMap::new(),
             mapping: BTreeMap::new(),
             rev_mapping: BTreeMap::new(),
             base_layer_memory: BTreeMap::new(),
@@ -356,6 +358,10 @@ impl<F: PrimeField> GKRGraph<F> {
 }
 
 impl<F: PrimeField> GraphHolder<F> for GKRGraph<F> {
+    fn derived_timestamp(&self, variables: &[Variable; 2]) -> Option<&[Expr<F>; 2]> {
+        self.derived_timestamps.get(variables)
+    }
+
     fn can_use_caching(&self) -> bool {
         self.caching_is_allowed
     }
@@ -488,6 +494,10 @@ impl<F: PrimeField> GraphHolder<F> for GKRGraph<F> {
 pub struct NodeIndex(usize);
 
 pub trait GraphHolder<F: PrimeField> {
+    fn derived_timestamp(&self, _variables: &[Variable; 2]) -> Option<&[Expr<F>; 2]> {
+        None
+    }
+
     // Whether caching relations are allowed
     fn can_use_caching(&self) -> bool;
 

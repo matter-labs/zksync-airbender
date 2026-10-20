@@ -512,10 +512,11 @@ fn lookrel_display(cols: &[Dual]) -> String {
 /// Memory-tuple (gkr_memrel_compress) emitter — module-level so BOTH the cache loop
 /// and the gates loop can call it (layer-0 memory deps -> calldataload(idx)).
 fn memrel_to_calldata(
-    tuple: &SpecialMemoryContributionRelation,
+    tuple: &SpecialMemoryContributionRelation<Proth120>,
+    layer0_memory_width: usize,
     running_max_group_offsets: &mut (usize, usize, usize, usize),
 ) -> Dual {
-    let (running_max_memvar, _running_max_witvar, _running_max_setupvar, _running_max_cachevar) =
+    let (running_max_memvar, running_max_witvar, _running_max_setupvar, _running_max_cachevar) =
         running_max_group_offsets;
     let SpecialMemoryContributionRelation {
         address_space,
@@ -588,6 +589,41 @@ fn memrel_to_calldata(
                 high,
             ]
         }
+        CompiledMemoryTimestamp::Affine(limbs) => std::array::from_fn(|limb_idx| {
+            let limb = &limbs[limb_idx];
+            let mut sum = proth120_const_to_evm(&limb.constant);
+            if limb_idx == 0 && *timestamp_offset != 0 {
+                let offset = u32_lit(*timestamp_offset);
+                sum = Dual(
+                    format!("({sum} + {offset})"),
+                    yul_format!("add({sum:x}, {offset:x})"),
+                );
+            }
+            for &(coefficient, address) in limb.linear_terms.iter() {
+                let calldata_index = match address {
+                    GKRAddress::BaseLayerMemory(index) => {
+                        *running_max_memvar = index.max(*running_max_memvar);
+                        index
+                    }
+                    GKRAddress::BaseLayerWitness(index) => {
+                        *running_max_witvar = index.max(*running_max_witvar);
+                        layer0_memory_width + index
+                    }
+                    other => panic!("unsupported affine timestamp input {other:?}"),
+                };
+                let input = Dual(
+                    format!("[{calldata_index}]"),
+                    Yul::calldataload(&calldata_index),
+                );
+                let coefficient = proth120_const_to_evm(&coefficient);
+                let term = scaled(&coefficient, &input);
+                sum = Dual(
+                    format!("({sum} + {term})"),
+                    yul_format!("add({sum:x}, {term:x})"),
+                );
+            }
+            sum
+        }),
     };
     let [val_low, val_high] = match value {
         RamWordRepresentation::Zero => {
@@ -1004,7 +1040,11 @@ pub fn emit_circuit_yul_with_stats(
                 GKRCacheRelation::MemoryTuple(rel) => {
                     // cached memory-tuple = gkr_memrel_compress(address_space, addr, ts, val)
                     // from the memory-column at-point evals (calldata). Compute + mstore to slot.
-                    let memval = memrel_to_calldata(rel, &mut running_max_group_offsets);
+                    let memval = memrel_to_calldata(
+                        rel,
+                        layer0_group_widths.0,
+                        &mut running_max_group_offsets,
+                    );
                     yul_println!(
                         "
                     \t{{  // {relation_name}: {memval} = {output}
@@ -1851,7 +1891,11 @@ pub fn emit_circuit_yul_with_stats(
                 // 0
                 GKRRelation::InitialGrandProductWithoutCaches { input, output } => {
                     let [lhs, rhs] = input.each_ref().map(|contribution| {
-                        memrel_to_calldata(contribution, &mut running_max_group_offsets)
+                        memrel_to_calldata(
+                            contribution,
+                            layer0_group_widths.0,
+                            &mut running_max_group_offsets,
+                        )
                     });
                     let output =
                         gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);

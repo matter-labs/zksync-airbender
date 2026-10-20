@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream;
-use prover::field::PrimeField;
+use prover::field::{Field, PrimeField};
 use quote::quote;
 use std::collections::BTreeMap;
 
@@ -489,7 +489,7 @@ fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
     (helper, call)
 }
 
-fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
+fn generate_cache_relation_checks<MW: FieldWrapper<BaseField = F>, F: PrimeField>(
     layer: &GKRLayerDescription<F>,
     target_addrs: &[GKRAddress],
     layer_idx: usize,
@@ -512,7 +512,7 @@ fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
     // MemoryTuple caches: (cached_idx, relation). Bound below by an unrolled per-relation
     // block that reproduces `evaluate_memory_tuple_from_claims` exactly. Without this, the
     // memory-permutation grand product certifies nothing about the committed base columns
-    let mut memtuple_relations: Vec<(usize, &SpecialMemoryContributionRelation)> = Vec::new();
+    let mut memtuple_relations: Vec<(usize, &SpecialMemoryContributionRelation<F>)> = Vec::new();
 
     let find_idx = |addr: &GKRAddress| -> usize {
         target_addrs
@@ -755,9 +755,9 @@ fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
     checks
 }
 
-/// Emit a straight-line check binding a single MemoryTuple cache to the committed base columns
+/// Emit a straight-line check binding a MemoryTuple cache to committed base columns.
 fn emit_memory_tuple_check<MW: FieldWrapper>(
-    rel: &SpecialMemoryContributionRelation,
+    rel: &SpecialMemoryContributionRelation<MW::BaseField>,
     cached_idx: usize,
     layer_idx: usize,
     relation_idx: usize,
@@ -769,6 +769,10 @@ fn emit_memory_tuple_check<MW: FieldWrapper>(
     // Resolve a base-layer memory column offset to its claim index in prev_claims.
     let claim = |offset: usize| -> TokenStream {
         let idx = dep(&GKRAddress::BaseLayerMemory(offset));
+        quote! { *state.prev_claims.get_unchecked(#idx) }
+    };
+    let claim_address = |address: &GKRAddress| -> TokenStream {
+        let idx = dep(address);
         quote! { *state.prev_claims.get_unchecked(#idx) }
     };
 
@@ -934,7 +938,7 @@ fn emit_memory_tuple_check<MW: FieldWrapper>(
         }
     }
 
-    match rel.timestamp {
+    match &rel.timestamp {
         CompiledMemoryTimestamp::Zero => {}
         CompiledMemoryTimestamp::Normal(ts) => {
             let ch_low = challenge(PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX);
@@ -964,6 +968,47 @@ fn emit_memory_tuple_check<MW: FieldWrapper>(
                     #add_high;
                 }
             });
+        }
+        CompiledMemoryTimestamp::Affine(limbs) => {
+            for (limb_idx, limb) in limbs.iter().enumerate() {
+                let challenge_idx = if limb_idx == 0 {
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX
+                } else {
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX
+                };
+                let ch = challenge(challenge_idx);
+                let offset = if limb_idx == 0 {
+                    rel.timestamp_offset
+                } else {
+                    0
+                };
+                let mut constant = limb.constant;
+                constant.add_assign(&MW::BaseField::from_u32_with_reduction(offset));
+                let initial = MW::quartic_from_base(base_const(constant.as_u32_reduced()));
+                let mut limb_body = TokenStream::new();
+                for &(coefficient, address) in limb.linear_terms.iter() {
+                    let cl = claim_address(&address);
+                    let coeff = base_const(coefficient.as_u32_reduced());
+                    let scale = MW::mul_assign_by_base(quote! { term }, quote! { #coeff });
+                    let add = MW::add_assign(quote! { timestamp_limb }, quote! { term });
+                    limb_body.extend(quote! {
+                        let mut term = #cl;
+                        #scale;
+                        #add;
+                    });
+                }
+                let mul = MW::mul_assign(quote! { t_ts }, quote! { timestamp_limb });
+                let add = MW::add_assign(quote! { expected }, quote! { t_ts });
+                body.extend(quote! {
+                    {
+                        let mut timestamp_limb: #quartic_struct = #initial;
+                        #limb_body
+                        let mut t_ts: #quartic_struct = #ch;
+                        #mul;
+                        #add;
+                    }
+                });
+            }
         }
     }
 

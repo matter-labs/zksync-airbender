@@ -4,13 +4,13 @@ use cs::definitions::GKRAddress;
 use cs::gkr_compiler::SpecialMemoryContributionRelation;
 
 #[derive(Debug)]
-pub struct MaterializeMemoryTermGKRRelation {
-    pub relation: SpecialMemoryContributionRelation,
+pub struct MaterializeMemoryTermGKRRelation<F: PrimeField> {
+    pub relation: SpecialMemoryContributionRelation<F>,
     pub output: GKRAddress,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
-    for MaterializeMemoryTermGKRRelation
+    for MaterializeMemoryTermGKRRelation<F>
 {
     fn num_challenges(&self) -> usize {
         1

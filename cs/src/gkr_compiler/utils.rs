@@ -517,7 +517,7 @@ pub(crate) fn reg_boolean_into_address_space(
 pub(crate) fn mem_permutation_expr_into_gkr_relation<F: PrimeField>(
     mem: &MemoryPermutationExpression,
     graph: &dyn GraphHolder<F>,
-) -> SpecialMemoryContributionRelation {
+) -> SpecialMemoryContributionRelation<F> {
     let address_space = match mem.address_space {
         AddressSpace::Constant(c) => CompiledAddressSpaceRelationStrict::Constant(c as u8 as u32),
         AddressSpace::RegisterOrRam(is_reg) => {
@@ -579,9 +579,28 @@ pub(crate) fn mem_permutation_expr_into_gkr_relation<F: PrimeField>(
 
     let timestamp = match mem.timestamp {
         MemoryPermutationTimestamp::Zero => CompiledMemoryTimestamp::Zero,
-        MemoryPermutationTimestamp::Normal(ts) => CompiledMemoryTimestamp::Normal(
-            ts.map(|el| graph.get_address_for_variable(el).as_memory()),
-        ),
+        MemoryPermutationTimestamp::Normal(ts) => {
+            if let Some(limbs) = graph.derived_timestamp(&ts) {
+                CompiledMemoryTimestamp::Affine(limbs.each_ref().map(|limb| {
+                    let (quadratic, linear, constant) =
+                        limb.to_max_quadratic_constraint().split_max_quadratic();
+                    assert!(quadratic.is_empty());
+                    LinearRelation {
+                        linear_terms: linear
+                            .into_iter()
+                            .map(|(coefficient, variable)| {
+                                (coefficient, graph.get_address_for_variable(variable))
+                            })
+                            .collect(),
+                        constant,
+                    }
+                }))
+            } else {
+                CompiledMemoryTimestamp::Normal(
+                    ts.map(|el| graph.get_address_for_variable(el).as_memory()),
+                )
+            }
+        }
     };
 
     SpecialMemoryContributionRelation {
@@ -657,7 +676,7 @@ pub(crate) fn lookup_input_into_relation<F: PrimeField, const SINGLE_COLUMN: boo
     }
 }
 
-impl SpecialMemoryContributionRelation {
+impl<F: PrimeField> SpecialMemoryContributionRelation<F> {
     pub(crate) fn dump_inputs(&self, result: &mut BTreeSet<GKRAddress>) {
         match self.address_space {
             CompiledAddressSpaceRelationStrict::Constant(_c) => {}
@@ -693,8 +712,15 @@ impl SpecialMemoryContributionRelation {
                 }
             }
         }
-        match self.timestamp {
+        match &self.timestamp {
             CompiledMemoryTimestamp::Zero => {}
+            CompiledMemoryTimestamp::Affine(limbs) => {
+                result.extend(
+                    limbs
+                        .iter()
+                        .flat_map(|limb| limb.linear_terms.iter().map(|(_, address)| *address)),
+                );
+            }
             CompiledMemoryTimestamp::Normal(ts) => {
                 result.insert(GKRAddress::BaseLayerMemory(ts[0]));
                 result.insert(GKRAddress::BaseLayerMemory(ts[1]));

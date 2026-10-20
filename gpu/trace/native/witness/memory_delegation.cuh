@@ -116,8 +116,10 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryL
       case ConstantRegister: {
         const u32 register_index = query.address.payload.constant_register_access_address.register_index;
         read_timestamp_value = oracle.get_witness_from_placeholder_ts({DelegationRegisterReadTimestamp, register_index}, index);
-        write_timestamp_value(query.read_timestamp, read_timestamp_value, memory);
-        PRINT_TS(M, query.read_timestamp, read_timestamp_value);
+        if (query.read_timestamp[0] != 0xffffffff) {
+          write_timestamp_value(query.read_timestamp, read_timestamp_value, memory);
+          PRINT_TS(M, query.read_timestamp, read_timestamp_value);
+        }
 
         const u32 read_value_value = oracle.get_witness_from_placeholder_u32({DelegationRegisterReadValue, register_index}, index);
         write_ram_word_value(query.read_value, read_value_value, memory);
@@ -129,8 +131,10 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryL
         const u32 register_index = address.base_register_index;
         const u32 word_index = address.indirect_access_idx_for_register;
         read_timestamp_value = oracle.get_witness_from_placeholder_ts({DelegationIndirectReadTimestamp, {register_index, word_index}}, index);
-        write_timestamp_value(query.read_timestamp, read_timestamp_value, memory);
-        PRINT_TS(M, query.read_timestamp, read_timestamp_value);
+        if (query.read_timestamp[0] != 0xffffffff) {
+          write_timestamp_value(query.read_timestamp, read_timestamp_value, memory);
+          PRINT_TS(M, query.read_timestamp, read_timestamp_value);
+        }
 
         const u32 read_value_value = oracle.get_witness_from_placeholder_u32({DelegationIndirectReadValue, {register_index, word_index}}, index);
         write_ram_word_value(query.read_value, read_value_value, memory);
@@ -150,8 +154,10 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryL
       case ConstantRegister: {
         const u32 register_index = query.address.payload.constant_register_access_address.register_index;
         read_timestamp_value = oracle.get_witness_from_placeholder_ts({DelegationRegisterReadTimestamp, register_index}, index);
-        write_timestamp_value(query.read_timestamp, read_timestamp_value, memory);
-        PRINT_TS(M, query.read_timestamp, read_timestamp_value);
+        if (query.read_timestamp[0] != 0xffffffff) {
+          write_timestamp_value(query.read_timestamp, read_timestamp_value, memory);
+          PRINT_TS(M, query.read_timestamp, read_timestamp_value);
+        }
 
         const u32 read_value_value = oracle.get_witness_from_placeholder_u32({DelegationRegisterReadValue, register_index}, index);
         write_ram_word_value(query.read_value, read_value_value, memory);
@@ -167,8 +173,10 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryL
         const u32 register_index = address.base_register_index;
         const u32 word_index = address.indirect_access_idx_for_register;
         read_timestamp_value = oracle.get_witness_from_placeholder_ts({DelegationIndirectReadTimestamp, {register_index, word_index}}, index);
-        write_timestamp_value(query.read_timestamp, read_timestamp_value, memory);
-        PRINT_TS(M, query.read_timestamp, read_timestamp_value);
+        if (query.read_timestamp[0] != 0xffffffff) {
+          write_timestamp_value(query.read_timestamp, read_timestamp_value, memory);
+          PRINT_TS(M, query.read_timestamp, read_timestamp_value);
+        }
 
         const u32 read_value_value = oracle.get_witness_from_placeholder_u32({DelegationIndirectReadValue, {register_index, word_index}}, index);
         write_ram_word_value(query.read_value, read_value_value, memory);
@@ -201,9 +209,6 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryL
     PRINT_U16(W, borrow_address, intermediate_borrow);
   }
 
-  if (!COMPUTE_WITNESS)
-    return;
-
   for (u32 group_idx = 0; group_idx < MAX_RELATIVE_TIMESTAMP_GROUPS_COUNT; ++group_idx) {
     if (group_idx == aux_layout_data.relative_timestamp_groups_count)
       break;
@@ -225,8 +230,8 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryL
     const u32 borrow = invocation_timestamp.get_high() - read_timestamp_value.get_high();
     if (borrow > 1)
       __trap();
-    write_bool_value(group.borrow, borrow, witness);
-    PRINT_U16(W, group.borrow, borrow);
+    write_bool_value(group.borrow, borrow, memory);
+    PRINT_U16(M, group.borrow, borrow);
   }
 }
 

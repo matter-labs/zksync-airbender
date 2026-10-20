@@ -121,10 +121,7 @@ impl From<&CSRelativeTimestampGroup> for RelativeTimestampGroup {
             *dst = src as u32;
         }
         Self {
-            borrow: {
-                assert!(value.borrow <= u32::MAX as usize);
-                value.borrow as u32
-            },
+            borrow: u32::try_from(value.borrow).unwrap(),
             members_count: members_count as u32,
             members,
         }
@@ -242,6 +239,7 @@ impl From<&GKRAuxLayoutData> for DelegationAuxLayoutData {
 cuda_kernel_signature_arguments_and_function!(
     GenerateMemoryValues<T>,
     layout: DelegationMemoryLayout,
+    aux_layout_data: DelegationAuxLayoutData,
     trace: DelegationTraceRaw<T>,
     memory: MutPtrAndStride<BF>,
     count: u32,
@@ -263,6 +261,7 @@ macro_rules! generate_delegation_kernels {
             cuda_kernel_declaration!(
                 [<ab_generate_memory_values_ $name _kernel>](
                     layout: DelegationMemoryLayout,
+                    aux_layout_data: DelegationAuxLayoutData,
                     trace: DelegationTraceRaw<$type>,
                     memory: MutPtrAndStride<BF>,
                     count: u32,
@@ -350,7 +349,8 @@ pub(crate) fn generate_memory_values_delegation<
     let memory = memory.as_mut_ptr_and_stride();
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = GenerateMemoryValuesArguments::new(layout, trace, memory, count);
+    let aux_layout_data = (&compiled_circuit.aux_layout_data).into();
+    let args = GenerateMemoryValuesArguments::new(layout, aux_layout_data, trace, memory, count);
     GenerateMemoryValuesFunction(T::MEMORY_SIGNATURE).launch(&config, &args)
 }
 
@@ -392,4 +392,34 @@ pub fn generate_memory_and_witness_values_delegation<
         count,
     );
     GenerateMemoryAndWitnessValuesFunction(T::MEMORY_AND_WITNESS_SIGNATURE).launch(&config, &args)
+}
+
+#[cfg(test)]
+mod cpu_tests {
+    use super::*;
+
+    #[test]
+    fn relative_timestamp_placement_survives_cuda_metadata_conversion() {
+        let source = GKRAuxLayoutData {
+            shuffle_ram_timestamp_comparison_aux_vars: vec![None; 4],
+            relative_timestamp_groups: vec![
+                CSRelativeTimestampGroup {
+                    borrow: 11,
+                    members: vec![0, 1],
+                },
+                CSRelativeTimestampGroup {
+                    borrow: 12,
+                    members: vec![2, 3],
+                },
+            ],
+        };
+        let converted = DelegationAuxLayoutData::from(&source);
+        assert_eq!(converted.relative_timestamp_groups_count, 2);
+        assert_eq!(converted.relative_timestamp_groups[0].borrow, 11);
+        assert_eq!(
+            &converted.relative_timestamp_groups[1].members[..2],
+            &[2, 3]
+        );
+        assert_eq!(converted.relative_timestamp_groups[1].borrow, 12);
+    }
 }

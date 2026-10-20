@@ -102,7 +102,10 @@ pub fn classify(addr: &GKRAddress, output_layer: usize) -> AddressClass {
 
 /// Replicates `cs::gkr_compiler::SpecialMemoryContributionRelation::dependencies`,
 /// which is `pub(crate)` upstream and not callable from this crate.
-fn collect_memory_dependencies(m: &SpecialMemoryContributionRelation, reads: &mut Vec<GKRAddress>) {
+fn collect_memory_dependencies<F: PrimeField>(
+    m: &SpecialMemoryContributionRelation<F>,
+    reads: &mut Vec<GKRAddress>,
+) {
     match &m.address_space {
         CompiledAddressSpaceRelationStrict::Constant(_) => {}
         CompiledAddressSpaceRelationStrict::IsRegister(offset)
@@ -141,6 +144,11 @@ fn collect_memory_dependencies(m: &SpecialMemoryContributionRelation, reads: &mu
         CompiledMemoryTimestamp::Normal(ts) => {
             for &el in ts {
                 reads.push(GKRAddress::BaseLayerMemory(el));
+            }
+        }
+        CompiledMemoryTimestamp::Affine(limbs) => {
+            for limb in limbs {
+                reads.extend(limb.linear_terms.iter().map(|(_, address)| *address));
             }
         }
     }

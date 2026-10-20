@@ -393,7 +393,12 @@ pub(crate) unsafe fn gkr_process_shuffle_ram_accesses_in_executor_family<
             Placeholder::ShuffleRamReadTimestamp(access_idx),
             proxy.absolute_row_idx,
         );
-        proxy.write_timestamp_value_into_columns(mem_query.get_read_timestamp_columns(), read_ts);
+        proxy.write_timestamp_value_into_columns(
+            mem_query
+                .get_read_timestamp_columns()
+                .expect("ordinary RAM timestamps are committed"),
+            read_ts,
+        );
 
         match mem_query.get_read_value_columns() {
             RamWordRepresentation::Zero => {}

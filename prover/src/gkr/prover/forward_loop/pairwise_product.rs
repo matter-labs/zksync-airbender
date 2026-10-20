@@ -62,7 +62,7 @@ pub fn forward_evaluate_base_layer_pairwise_product_without_caches<
     F: PrimeField,
     E: FieldExtension<F> + Field,
 >(
-    inputs: &[SpecialMemoryContributionRelation; 2],
+    inputs: &[SpecialMemoryContributionRelation<F>; 2],
     output: GKRAddress,
     gkr_storage: &mut GKRStorage<F, E>,
     external_challenges: &GKRExternalChallenges<F, E>,
@@ -97,6 +97,18 @@ pub fn forward_evaluate_base_layer_pairwise_product_without_caches<
             sources.push(src);
         }
         let sources_ref = &sources[..];
+        let witness_sources: Vec<_> = if inputs.iter().any(|input| {
+            matches!(
+                &input.timestamp,
+                cs::gkr_compiler::CompiledMemoryTimestamp::Affine(_)
+            )
+        }) {
+            (0..compiled_circuit.witness_layout.total_width)
+                .map(|column| gkr_storage.get_base_layer(GKRAddress::BaseLayerWitness(column)))
+                .collect()
+        } else {
+            Vec::new()
+        };
         let [lhs, rhs] = inputs;
 
         apply_row_wise::<F, _>(
@@ -114,12 +126,14 @@ pub fn forward_evaluate_base_layer_pairwise_product_without_caches<
                         lhs,
                         absolute_row_idx,
                         sources_ref,
+                        &witness_sources,
                         external_challenges,
                     );
                     let b = evaluate_memory_query(
                         rhs,
                         absolute_row_idx,
                         sources_ref,
+                        &witness_sources,
                         external_challenges,
                     );
                     a.mul_assign(&b);

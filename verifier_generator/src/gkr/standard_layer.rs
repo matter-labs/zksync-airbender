@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream;
-use prover::field::PrimeField;
+use prover::field::{Field, PrimeField};
 use quote::{quote, ToTokens};
 
 use crate::field_wrapper::FieldWrapper;
@@ -68,6 +68,9 @@ pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
     let me_byte_mul = MW::mul_assign_by_base(quote! { hi }, byte_shift_field.clone());
     let me_byte_add_lo = MW::add_assign(quote! { hi }, quote! { evals.get_unchecked(op[2])[j] });
     let me_byte_ch_mul = MW::mul_assign(quote! { t }, quote! { hi });
+    let me_affine_coeff = MW::field_from_reduced_raw_repr(quote! { op[3] as u32 });
+    let me_affine_mul_coeff = MW::mul_assign_by_base(quote! { t }, me_affine_coeff);
+    let me_affine_mul_ch = MW::mul_assign(quote! { t }, quote! { challenges[op[1]] });
 
     quote! {
         #[inline(always)]
@@ -170,6 +173,7 @@ pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
         pub const ME_OP_CH_MUL_EVAL_PLUS_CONST: usize = 5;
         pub const ME_OP_CH_MUL_EVAL_PLUS_DYN: usize = 6;
         pub const ME_OP_BYTE_VALUE_PAIR: usize = 7;
+        pub const ME_OP_CH_MUL_SCALED_EVAL: usize = 8;
 
         #[inline(always)]
         #[allow(unused_variables)]
@@ -231,6 +235,12 @@ pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
                         #me_byte_add_lo;
                         let mut t = challenges[op[1]];
                         #me_byte_ch_mul;
+                        #me_ch_add;
+                    }
+                    ME_OP_CH_MUL_SCALED_EVAL => {
+                        let mut t = evals.get_unchecked(op[2])[j];
+                        #me_affine_mul_coeff;
+                        #me_affine_mul_ch;
                         #me_ch_add;
                     }
                     _ => core::hint::unreachable_unchecked(),
@@ -480,7 +490,7 @@ fn emit_max_quadratic_eval<MW: FieldWrapper<BaseField = F>, F: PrimeField>(
 }
 
 fn emit_memory_expression_eval<MW: FieldWrapper>(
-    rel: &SpecialMemoryContributionRelation,
+    rel: &SpecialMemoryContributionRelation<MW::BaseField>,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
 ) -> TokenStream {
@@ -492,6 +502,7 @@ fn emit_memory_expression_eval<MW: FieldWrapper>(
 
     let blm = |offset: usize| GKRAddress::BaseLayerMemory(offset);
     let idx = |offset: usize| addr_to_idx(&blm(offset), input_sorted_addrs);
+    let addr_idx = |address: &GKRAddress| addr_to_idx(address, input_sorted_addrs);
     let mont = |v: u32| MW::coeff_to_internal_repr(v) as usize;
 
     let mut ops: Vec<[usize; 6]> = Vec::new();
@@ -640,6 +651,33 @@ fn emit_memory_expression_eval<MW: FieldWrapper>(
                 0,
                 0,
             ]);
+        }
+        CompiledMemoryTimestamp::Affine(limbs) => {
+            for (limb_idx, limb) in limbs.iter().enumerate() {
+                let challenge_idx = if limb_idx == 0 {
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX
+                } else {
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX
+                };
+                let offset = if limb_idx == 0 {
+                    rel.timestamp_offset
+                } else {
+                    0
+                };
+                let mut constant = limb.constant;
+                constant.add_assign(&MW::BaseField::from_u32_with_reduction(offset));
+                ops.push([4, challenge_idx, mont(constant.as_u32_reduced()), 0, 0, 0]);
+                for &(coeff, address) in limb.linear_terms.iter() {
+                    ops.push([
+                        8,
+                        challenge_idx,
+                        addr_idx(&address),
+                        mont(coeff.as_u32_reduced()),
+                        0,
+                        0,
+                    ]);
+                }
+            }
         }
     }
 

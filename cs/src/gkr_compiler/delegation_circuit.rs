@@ -168,7 +168,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             &mut read_timestamp_groups,
         );
         compile_read_timestamp_group_constraints(
-            &mut structured_statements,
+            &mut graph,
             &read_timestamp_groups,
             read_timestamp_group_distances,
             delegation_circuit_state.execute,
@@ -200,6 +200,24 @@ impl<F: PrimeField> GKRCompiler<F> {
             &delegation_circuit_state,
             &layers_mapping,
         );
+
+        // Derived timestamps can depend on control-lookup outputs and borrows
+        // in the witness subtree. Place those operands before building RAM caches.
+        let timestamp_inputs: BTreeSet<_> = graph
+            .derived_timestamps
+            .values()
+            .flat_map(|limbs| limbs.iter())
+            .flat_map(|limb| limb.to_max_quadratic_constraint().stable_variable_set())
+            .collect();
+        for variable in timestamp_inputs {
+            if all_variables_to_place.contains(&variable) {
+                graph.layout_witness_subtree_multiple_variables(
+                    [variable],
+                    &mut all_variables_to_place,
+                    &layers_mapping,
+                );
+            }
+        }
 
         use crate::gkr_compiler::memory_like_grand_product::layout_initial_grand_product_accumulation;
 
@@ -441,19 +459,12 @@ impl<F: PrimeField> GKRCompiler<F> {
             let relative_timestamp_groups = read_timestamp_groups
                 .into_values()
                 .map(|group| {
-                    let read_timestamp = group.read_timestamp_places.map(|el| {
-                        let GKRAddress::BaseLayerMemory(el) = el else {
-                            unreachable!()
-                        };
-                        el
-                    });
-                    let GKRAddress::BaseLayerWitness(borrow) =
+                    let GKRAddress::BaseLayerMemory(borrow) =
                         graph.get_address_for_variable(group.borrow)
                     else {
                         unreachable!()
                     };
                     RelativeTimestampGroup {
-                        read_timestamp,
                         borrow,
                         members: group.members,
                     }
