@@ -1,6 +1,7 @@
 import Human.Circuits.Bigint.Artifact
 import Slop.Bigint.ArtifactChecks
 import Slop.Delegation.ClockFacts
+import Slop.Bigint.OpIndex
 
 namespace Airbender.Bigint.Proofs
 open Trace
@@ -41,8 +42,8 @@ theorem clock_facts {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 3)}
     fin_cases i
     all_goals have lower := Trace.Proofs.range_bound lowerLookup
     all_goals have upper := Trace.Proofs.range_bound upperLookup
-    all_goals simp [importedConstraints, importedConstraintsDelegationColumns, FlatOperation.constraints,
-        Expression.eval, Verification.environment,
+    all_goals op_index at bit lower upper
+    all_goals simp [importedConstraintsDelegationColumns, Expression.eval, Verification.environment,
         sub_eq_add_neg, Trace.timestampBase] at bit lower upper ⊢
     all_goals refine ⟨?_, ?_, ?_⟩
     all_goals first
