@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# One-command check: prepare the pinned Clean, build the spec and every proof, check that the spec does not depend
+# One-command check: fetch the pinned lean-sail, build the spec and every proof, check that the spec does not depend
 # on the proofs, run the regressions and the axiom audits (standard axioms only), check the review guides.
 set -euo pipefail
 cd "$(dirname "$0")/lean"
 fail() { echo "FAIL: $*"; exit 1; }
 
-echo "== 0. Clean (pinned; hash-guarded Lean 4.31 compatibility fixes)"
-python3 prepare_clean.py
+echo "== 0. lean-sail (pinned, fetched on demand; not committed)"
+../sail/fetch-lean-sail.sh
 
 echo "== 1. The spec (human/) imports nothing from the proofs (slop/) or the tests (test/)"
 if grep -rnE '^\s*(public\s+)?import\s+(Slop|Tests|Checks)(\.|$)' human; then fail "human/ imports slop/ or test/"; fi

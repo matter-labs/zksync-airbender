@@ -1,0 +1,63 @@
+diff --git a/Sail/ArchSem.lean b/Sail/ArchSem.lean
+index 191697c..86a5585 100644
+--- a/Sail/ArchSem.lean
++++ b/Sail/ArchSem.lean
+@@ -201,7 +201,7 @@ abbrev PreSailM (userError : Type) :=
+ abbrev PreSailME ue exception :=
+   FreeM (Except exception ((Except (Sail.Error ue) InstructionEffect) ⊕ FinChoice))
+ 
+-instance: MonadExcept ue (PreSailME ue α) where
++instance userExceptPreSailME : MonadExcept ue (PreSailME ue α) where
+   throw e := .impure (.ok (.inl (.error (.User e)))) Empty.elim
+   tryCatch eff h :=
+     let rec tryCatch eff h :=
+@@ -212,6 +212,19 @@ instance: MonadExcept ue (PreSailME ue α) where
+     tryCatch eff h
+ 
+ 
++-- Lean 4.34 compat: nested `do` blocks in `SailME` bodies may now be elaborated directly in
++-- `SailME`, where `throw Error.Exit` needs a `Sail.Error` exception instance.
++instance (priority := high) : MonadExcept (Sail.Error ue) (PreSailME ue exception) where
++  throw e := .impure (.ok (.inl (.error e))) Empty.elim
++  tryCatch eff h :=
++    let rec tryCatch eff h :=
++      match eff with
++        | .pure v => .pure v
++        | .impure (.ok (.inl (.error err))) _cont => h err
++        | .impure eff cont => .impure eff (fun v => tryCatch (cont v) h)
++    tryCatch eff h
++
++
+ inductive RegisterRef : Type → Type where
+   | Reg (r : Arch.register) : RegisterRef (Arch.register_type r)
+ export RegisterRef (Reg)
+@@ -398,7 +411,7 @@ def print_endline_effect (str : String) : PreSailM ue Unit :=
+ 
+ def sailTryCatchE (eff : PreSailME ue e α) (h : ue → PreSailME ue e α)
+     : PreSailME ue e α :=
+-  tryCatch eff h
++  userExceptPreSailME.tryCatch eff h
+ 
+ def PreSailME.run : PreSailME ue α α → PreSailM ue α
+  | .pure v => .pure v
+diff --git a/Sail/ArchSemSequential.lean b/Sail/ArchSemSequential.lean
+index e57976d..6afdb10 100644
+--- a/Sail/ArchSemSequential.lean
++++ b/Sail/ArchSemSequential.lean
+@@ -84,7 +84,7 @@ def interpretSailEffects : PreSailM ue ty → ArchSemSeqM ue ty :=
+   FreeM.liftM (fun
+     | .inl (.error err) => throw err
+     | .inl (.ok eff) => interpretInstructionEffect eff
+-    | .inr choice => if h : (0 : Nat) < choice then pure (⟨0, h⟩ : Fin choice) else throw .Unreachable)
++    | .inr (choice : Nat) => if h : (0 : Nat) < choice then pure (⟨0, h⟩ : Fin choice) else throw .Unreachable)
+ 
+ -- A function to provide a default toplevel for Sail models
+ 
+diff --git a/lean-toolchain b/lean-toolchain
+index d324cad..ba8ebf2 100644
+--- a/lean-toolchain
++++ b/lean-toolchain
+@@ -1 +1 @@
+-leanprover/lean4:v4.29.0
+\ No newline at end of file
++leanprover/lean4:v4.34.1

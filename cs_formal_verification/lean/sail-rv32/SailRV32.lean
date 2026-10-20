@@ -207,7 +207,7 @@ def to_bits {l : _} (n : Nat) : (BitVec l) :=
 /-- Type quantifiers: n : Int, l : Nat, l ≥ 0, l ≥ 0 -/
 def to_bits_checked {l : _} (n : Int) : SailM (BitVec l) := do
   let bv := (get_slice_int l n 0)
-  assert ((BitVec.toNatInt bv) == n) (HAppend.hAppend "Couldn't convert integer "
+  «assert» ((BitVec.toNatInt bv) == n) (HAppend.hAppend "Couldn't convert integer "
     (HAppend.hAppend (Int.repr n)
       (HAppend.hAppend " to " (HAppend.hAppend (Int.repr l) " bits without overflow."))))
   (pure bv)
@@ -1020,7 +1020,7 @@ def currentlyEnabled (merge_var : extension) : SailM Bool := do
   | .Ext_Zimop => (pure (hartSupports Ext_Zimop))
   | _ =>
     (do
-      assert false "Pattern match failure at /private/tmp/airbender-sail-integration/model/model/mops/Zimop/zimop_insts.sail:9.0-9.69"
+      «assert» false "Pattern match failure at /private/tmp/airbender-sail-integration/model/model/mops/Zimop/zimop_insts.sail:9.0-9.69"
       throw Error.Exit)
 termination_by (let ext := merge_var
 (currentlyEnabled_measure ext)).toNat
@@ -1322,7 +1322,7 @@ def page_based_mem_type_forwards (arg_ : (BitVec 2)) : SailM page_based_mem_type
   | 0b10 => (pure PBMT_IO)
   | _ =>
     (do
-      assert false "Pattern match failure at unknown location"
+      «assert» false "Pattern match failure at unknown location"
       throw Error.Exit)
 
 def page_based_mem_type_forwards_matches (arg_ : (BitVec 2)) : Bool :=
@@ -1804,7 +1804,7 @@ def csr_name_map_backwards (arg_ : String) : SailM (BitVec 12) := do
   | "satp" => (pure 0x180#12)
   | _ =>
     (do
-      assert false "Pattern match failure at unknown location"
+      «assert» false "Pattern match failure at unknown location"
       throw Error.Exit)
 
 def csr_name_write_callback (name : String) (value : (BitVec 32)) : SailM Unit := do
@@ -1829,7 +1829,7 @@ def encdec_reg_backwards (arg_ : (BitVec 5)) : SailM regidx := do
   then (pure (Regidx (Sail.BitVec.extractLsb r (regidx_bit_width -i 1) 0)))
   else
     (do
-      assert false "Pattern match failure at unknown location"
+      «assert» false "Pattern match failure at unknown location"
       throw Error.Exit)
 
 def encdec_reg_forwards_matches (arg_ : regidx) : Bool :=
@@ -1937,7 +1937,7 @@ def reg_name_forwards (arg_ : regidx) : SailM String := do
       | .some result => (pure result)
       | _ =>
         (do
-          assert false "Pattern match failure at unknown location"
+          «assert» false "Pattern match failure at unknown location"
           throw Error.Exit))
 
 def xreg_write_callback (reg : regidx) (value : (BitVec 32)) : SailM Unit := do
@@ -2148,7 +2148,7 @@ def architecture (priv : Privilege) : SailM Architecture := SailME.run do
   SailME.throw (RV32 : Architecture)
   (architecture_bits_backwards
     (← do
-      assert false "Pattern match failure at /private/tmp/airbender-sail-integration/model/model/core/sys_regs.sail:1293.20-1299.3"
+      «assert» false "Pattern match failure at /private/tmp/airbender-sail-integration/model/model/core/sys_regs.sail:1293.20-1299.3"
       throw Error.Exit))
 
 def Mk_Minterrupts (v : (BitVec 32)) : (BitVec 32) :=
@@ -2404,7 +2404,7 @@ def pmpMatchAddr (typ_0 : physaddr) (width : (BitVec 32)) (ent : (BitVec 8)) (pm
           addr width)))
   | .NA4 =>
     (do
-      assert (sys_pmp_grain <b 1) "NA4 cannot be selected when PMP grain G >= 1."
+      «assert» (sys_pmp_grain <b 1) "NA4 cannot be selected when PMP grain G >= 1."
       let begin := ((BitVec.toNatInt pmpaddr) *i 4)
       (pure (pmpRangeMatch begin (begin +i 4) addr width)))
   | .NAPOT =>
@@ -3158,7 +3158,7 @@ def split_access (addr : (BitVec k_n)) (width : Nat) : SailM (Int × Int) := do
   let width_align := (BitVec.countTrailingZeros (to_bits (l := (12 +i 1)) width))
   let bytes_per_access := (2 ^i (Min.min addr_align width_align))
   let num_accesses := (Int.tdiv width bytes_per_access)
-  assert (width == (num_accesses *i bytes_per_access)) "/private/tmp/airbender-sail-integration/model/model/sys/split_access_utils.sail:53.49-53.50"
+  «assert» (width == (num_accesses *i bytes_per_access)) "/private/tmp/airbender-sail-integration/model/model/sys/split_access_utils.sail:53.49-53.50"
   (pure (num_accesses, bytes_per_access))
 
 def sys_misaligned_byte_by_byte : Bool := false
@@ -3198,7 +3198,7 @@ def split_on_page_boundary (addr : (BitVec k_n)) (width : Nat) : SailM (Int × I
     (do
       let nbytes_to_boundary :=
         ((2 ^i 3) -i (BitVec.toNatInt (Sail.BitVec.extractLsb addr (3 -i 1) 0)))
-      assert (nbytes_to_boundary <b width) "/private/tmp/airbender-sail-integration/model/model/sys/split_access_utils.sail:111.37-111.38"
+      «assert» (nbytes_to_boundary <b width) "/private/tmp/airbender-sail-integration/model/model/sys/split_access_utils.sail:111.37-111.38"
       (pure (nbytes_to_boundary, (width -i nbytes_to_boundary))))
 
 /-- Type quantifiers: width : Nat, 0 < width ∧ width ≤ max_mem_access -/
@@ -3398,56 +3398,56 @@ def pmaCheck (paddr : physaddr) (width : Nat) (access : (MemoryAccessType mem_pa
     | .InstructionFetch () => (pure attributes.executable)
     | .Load .Data =>
       (do
-        assert (not res_or_con) "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:99.53-99.54"
+        «assert» (not res_or_con) "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:99.53-99.54"
         (pure attributes.readable))
     | .Load .Vector =>
       (do
-        assert (not res_or_con) "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:100.53-100.54"
+        «assert» (not res_or_con) "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:100.53-100.54"
         (pure attributes.readable))
     | .Load .PageTableEntry =>
       (do
-        assert (not res_or_con) "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:101.53-101.54"
+        «assert» (not res_or_con) "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:101.53-101.54"
         (pure attributes.supports_pte_read))
     | .LoadExecute .Data =>
       (do
-        assert (not res_or_con) "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:106.53-106.54"
+        «assert» (not res_or_con) "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:106.53-106.54"
         (pure (attributes.executable && attributes.readable)))
     | .Store .Data =>
       (do
-        assert (not res_or_con) "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:107.53-107.54"
+        «assert» (not res_or_con) "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:107.53-107.54"
         (pure attributes.writable))
     | .Store .Vector =>
       (do
-        assert (not res_or_con) "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:108.53-108.54"
+        «assert» (not res_or_con) "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:108.53-108.54"
         (pure attributes.writable))
     | .Store .PageTableEntry =>
       (do
-        assert (not res_or_con) "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:109.53-109.54"
+        «assert» (not res_or_con) "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:109.53-109.54"
         (pure attributes.supports_pte_write))
     | .LoadReserved (_, _, .Data) =>
       (do
-        assert res_or_con "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:113.55-113.56"
+        «assert» res_or_con "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:113.55-113.56"
         (pure (attributes.readable && (bne attributes.reservability RsrvNone))))
     | .StoreConditional (_, _, .Data) =>
       (do
-        assert res_or_con "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:114.55-114.56"
+        «assert» res_or_con "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:114.55-114.56"
         (pure (attributes.writable && (bne attributes.reservability RsrvNone))))
     | .Atomic (op, _, _, .Data, .Data) =>
       (do
-        assert res_or_con "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:115.55-115.56"
+        «assert» res_or_con "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:115.55-115.56"
         (pure (attributes.readable && (attributes.writable && (pma_allows_atomic_op
                 attributes.atomic_support op width)))))
     | .Load .ShadowStack =>
       (do
-        assert (not res_or_con) "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:119.53-119.54"
+        «assert» (not res_or_con) "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:119.53-119.54"
         (pure (attributes.readable && attributes.read_idempotent)))
     | .Store .ShadowStack =>
       (do
-        assert (not res_or_con) "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:120.53-120.54"
+        «assert» (not res_or_con) "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:120.53-120.54"
         (pure (attributes.writable && attributes.write_idempotent)))
     | .Atomic (.AMOSWAP, _, _, .ShadowStack, .ShadowStack) =>
       (do
-        assert res_or_con "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:121.73-121.74"
+        «assert» res_or_con "/private/tmp/airbender-sail-integration/model/model/sys/mem.sail:121.73-121.74"
         (pure (attributes.readable && (attributes.writable && (attributes.read_idempotent && (attributes.write_idempotent && (pma_allows_atomic_op
                     attributes.atomic_support AMOSWAP width)))))))
     | .CacheAccess (.CB_zero ()) => (pure (attributes.writable && attributes.supports_cbo_zero))
@@ -3559,7 +3559,7 @@ def checked_mem_read (access : (MemoryAccessType mem_payload)) (pbmt : page_base
   let (data, finished, i) ← (( do
     let loop_vars ← untilFuelM (fuel :=N) (fun (data, finished, i) => (pure finished)) (data, finished, i)
       fun (data, finished, i) => do
-        assert true "loop dummy assert"
+        «assert» true "loop dummy assert"
         let offset := i
         let paddr := (Physaddr (BitVec.addInt paddr_bits (offset *i split_width)))
         match (← (pmpCheck paddr split_width access priv)) with
@@ -3635,7 +3635,7 @@ def mem_write_ea (paddr : physaddr) (width : Nat) (priv : Privilege) (access : (
   let (finished, i) ← (( do
     let loop_vars ← untilFuelM (fuel :=N) (fun (finished, i) => (pure finished)) (finished, i)
       fun (finished, i) => do
-        assert true "loop dummy assert"
+        «assert» true "loop dummy assert"
         let offset := i
         let paddr := (Physaddr (BitVec.addInt paddr_bits (offset *i split_width)))
         match (← (pmpCheck paddr split_width access priv)) with
@@ -3676,7 +3676,7 @@ def checked_mem_write (paddr : physaddr) (width : Nat) (data : (BitVec (8 * widt
   let (finished, i, write_success) ← (( do
     let loop_vars ← untilFuelM (fuel :=N) (fun (finished, i, write_success) => (pure finished)) (finished, i, write_success)
       fun (finished, i, write_success) => do
-        assert true "loop dummy assert"
+        «assert» true "loop dummy assert"
         let offset := i
         let paddr := (Physaddr (BitVec.addInt paddr_bits (offset *i split_width)))
         match (← (pmpCheck paddr split_width access priv)) with
@@ -3790,7 +3790,7 @@ def check_PTE_permission (access : (MemoryAccessType mem_payload)) (priv : Privi
   let pte_R := (bit_to_bool (_get_PTE_Flags_R pte_flags))
   let pte_W := (bit_to_bool (_get_PTE_Flags_W pte_flags))
   let pte_X := (bit_to_bool (_get_PTE_Flags_X pte_flags))
-  assert (zopz0zJzJzK pte_W (pte_R || (not pte_X))) "/private/tmp/airbender-sail-integration/model/model/sys/vmem_pte.sail:160.39-160.40"
+  «assert» (zopz0zJzJzK pte_W (pte_R || (not pte_X))) "/private/tmp/airbender-sail-integration/model/model/sys/vmem_pte.sail:160.39-160.40"
   let priv_ok ← (( do
     match priv with
     | .User => (pure pte_U)
@@ -3816,7 +3816,7 @@ def check_PTE_permission (access : (MemoryAccessType mem_payload)) (priv : Privi
           if (((not pte_R) && (pte_W && (not pte_X))) : Bool)
           then
             SailME.throw (← do
-                assert (bool_bit_backwards (_get_MEnvcfg_SSE (← readReg menvcfg))) "/private/tmp/airbender-sail-integration/model/model/sys/vmem_pte.sail:186.33-186.34"
+                «assert» (bool_bit_backwards (_get_MEnvcfg_SSE (← readReg menvcfg))) "/private/tmp/airbender-sail-integration/model/model/sys/vmem_pte.sail:186.33-186.34"
                 let shadow_stack_ok ← (( do
                   match access with
                   | .InstructionFetch () => (pure false)
@@ -4132,7 +4132,7 @@ def hgatp_mode (_ : Unit) : SailM HGATPMode := do
     match arch with
     | .RV64 =>
       (do
-        assert (xlen ≥b 64) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:377.31-377.32"
+        «assert» (xlen ≥b 64) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:377.31-377.32"
         throw Error.Exit)
     | .RV32 =>
       (pure (0b000#3 +++ (_get_Hgatp32_Mode
@@ -4154,7 +4154,7 @@ def hgatp_mode_width_forwards (arg_ : HGATPMode) : SailM Int := do
   | .Sv57x4 => (pure 59)
   | _ =>
     (do
-      assert false "Pattern match failure at unknown location"
+      «assert» false "Pattern match failure at unknown location"
       throw Error.Exit)
 
 def get_asid (stage : TranslationStage) : SailM (BitVec (if ( 32 = 32  : Bool) then 9 else 16)) := do
@@ -4282,7 +4282,7 @@ def pt_walk_mutrec_vvv_zUservvvvv_zG_Stagev (sv_width : Nat) (vpn : (BitVec (sv_
           then 22
           else 44) +i 12))
         ((Sail.BitVec.extractLsb vpn vpn_hi vpn_lo) +++ (zeros (n := log_pte_size_bytes)))))
-  assert ((sv_width == 32) || ((sv_width == 34) || false)) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:176.41-176.42"
+  «assert» ((sv_width == 32) || ((sv_width == 34) || false)) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:176.41-176.42"
   let pte_addr_original := (Physaddr (zero_extend (m := 34) pte_addr))
   let pte_addr ← do
     match (translate_PTE_addr_mutrec_vv_zG_Stagev (zero_extend (m := 34) pte_addr)
@@ -4414,7 +4414,7 @@ def pt_walk_mutrec_vvv_zUservvvvF_zG_Stagev (sv_width : Nat) (vpn : (BitVec (sv_
           then 22
           else 44) +i 12))
         ((Sail.BitVec.extractLsb vpn vpn_hi vpn_lo) +++ (zeros (n := log_pte_size_bytes)))))
-  assert ((sv_width == 32) || ((sv_width == 34) || false)) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:176.41-176.42"
+  «assert» ((sv_width == 32) || ((sv_width == 34) || false)) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:176.41-176.42"
   let pte_addr_original := (Physaddr (zero_extend (m := 34) pte_addr))
   let pte_addr ← do
     match (translate_PTE_addr_mutrec_vv_zG_Stagev (zero_extend (m := 34) pte_addr)
@@ -4570,7 +4570,7 @@ def translate_stage_mutrec_vvv_zUser_zG_Stage (sv_width : Nat) (addr : (BitVec k
   | .Err e => (pure (Err (e, init_ext_ptw)))
   | .Ok valid_addr =>
     (do
-      assert ((true && ((sv_width == 32) || (sv_width == 34))) || false) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:542.60-542.61"
+      «assert» ((true && ((sv_width == 32) || (sv_width == 34))) || false) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:542.60-542.61"
       let vmid ← do (get_vmid G_Stage)
       let mxr ← do (get_mxr G_Stage)
       let do_sum ← do (get_sum G_Stage)
@@ -4593,7 +4593,7 @@ def translate_g_stage (gpa : (BitVec (if ( 32 = 32  : Bool) then 34 else 64))) (
   else
     (do
       let sv_width ← do (hgatp_mode_width_forwards mode)
-      assert (sv_width ≤b gpalen) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:588.27-588.28"
+      «assert» (sv_width ≤b gpalen) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:588.27-588.28"
       (translate_stage_mutrec_vvv_zUser_zG_Stage sv_width gpa access))
 
 def translate_PTE_addr (pte_addr : (BitVec (if ( 32 = 32  : Bool) then 34 else 64))) (access : (MemoryAccessType mem_payload)) (stage : TranslationStage) (ext_ptw : Unit) : SailM (Result (physaddr × page_based_mem_type × Unit) (PTW_Error × Unit)) := do
@@ -4632,7 +4632,7 @@ def pt_walk (sv_width : Nat) (vpn : (BitVec (sv_width - 12))) (access : (MemoryA
           then 22
           else 44) +i 12))
         ((Sail.BitVec.extractLsb vpn vpn_hi vpn_lo) +++ (zeros (n := log_pte_size_bytes)))))
-  assert ((sv_width == 32) || ((sv_width == 34) || (xlen == 64))) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:176.41-176.42"
+  «assert» ((sv_width == 32) || ((sv_width == 34) || (xlen == 64))) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:176.41-176.42"
   let pte_addr_original := (Physaddr (zero_extend (m := 34) pte_addr))
   let pte_addr ← (( do
     match (← (translate_PTE_addr (zero_extend (m := 34) pte_addr) (Load PageTableEntry) stage
@@ -4841,7 +4841,7 @@ def translate_stage (sv_width : Nat) (addr : (BitVec k_n)) (access : (MemoryAcce
   | .Err e => (pure (Err (e, init_ext_ptw)))
   | .Ok valid_addr =>
     (do
-      assert (((xlen == 32) && ((sv_width == 32) || (sv_width == 34))) || ((xlen == 64) && ((sv_width != 32) && (sv_width != 34)))) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:542.60-542.61"
+      «assert» (((xlen == 32) && ((sv_width == 32) || (sv_width == 34))) || ((xlen == 64) && ((sv_width != 32) && (sv_width != 34)))) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:542.60-542.61"
       let asid ← do (get_asid stage)
       let vmid ← do (get_vmid stage)
       let mxr ← do (get_mxr stage)
@@ -4871,7 +4871,7 @@ def satp_mode (priv : Privilege) : SailM SATPMode := do
         match arch with
         | .RV64 =>
           (do
-            assert (xlen ≥b 64) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:342.33-342.34"
+            «assert» (xlen ≥b 64) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:342.33-342.34"
             throw Error.Exit)
         | .RV32 =>
           (pure (0b000#3 +++ (_get_Satp32_Mode
@@ -4891,7 +4891,7 @@ def vsatp_mode (_ : Unit) : SailM SATPMode := do
     match arch with
     | .RV64 =>
       (do
-        assert (xlen ≥b 64) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:360.31-360.32"
+        «assert» (xlen ≥b 64) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:360.31-360.32"
         throw Error.Exit)
     | .RV32 =>
       (pure (0b000#3 +++ (_get_Satp32_Mode
@@ -4913,7 +4913,7 @@ def satp_mode_width_forwards (arg_ : SATPMode) : SailM Int := do
   | .Sv57 => (pure 57)
   | _ =>
     (do
-      assert false "Pattern match failure at unknown location"
+      «assert» false "Pattern match failure at unknown location"
       throw Error.Exit)
 
 def translate_vs_stage (vaddr : virtaddr) (access : (MemoryAccessType mem_payload)) (p : Privilege) : SailM (Result ((BitVec (if ( 32
@@ -4927,7 +4927,7 @@ def translate_vs_stage (vaddr : virtaddr) (access : (MemoryAccessType mem_payloa
   else
     (do
       let sv_width ← do (satp_mode_width_forwards mode)
-      assert (sv_width ≤b xlen) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:575.25-575.26"
+      «assert» (sv_width ≤b xlen) "/private/tmp/airbender-sail-integration/model/model/sys/vmem.sail:575.25-575.26"
       (translate_stage sv_width (bits_of_virtaddr vaddr) access p stage))
 
 def build_exception_context (gva : virtaddr) (gpa : (BitVec (if ( 32 = 32  : Bool) then 34 else 64))) (access : (MemoryAccessType mem_payload)) (ptw_error : PTW_Error) (stage : TranslationStage) : SailM ExceptionContext := do
@@ -5126,7 +5126,7 @@ def translate_and_read_value (vaddr : virtaddr) (width : Nat) (access : (MemoryA
 /-- Type quantifiers: k_ex442292_ : Bool, k_ex442291_ : Bool, k_ex442290_ : Bool, width : Nat, width
   ≥ 0, (is_mem_width width) -/
 def vmem_read_addr (vaddr : virtaddr) (width : Nat) (access : (MemoryAccessType mem_payload)) (access_info : AccessInfo) (aq : Bool) (rl : Bool) (res : Bool) : SailM (Result (BitVec (8 * width)) ExecutionResult) := SailME.run do
-  assert (res == (is_load_reserved access)) "/private/tmp/airbender-sail-integration/model/model/sys/vmem_utils.sail:143.40-143.41"
+  «assert» (res == (is_load_reserved access)) "/private/tmp/airbender-sail-integration/model/model/sys/vmem_utils.sail:143.40-143.41"
   let eff_priv := access_info.eff_privilege
   if ((not (is_aligned_vaddr vaddr width)) : Bool)
   then
@@ -5174,7 +5174,7 @@ def vmem_read_addr (vaddr : virtaddr) (width : Nat) (access : (MemoryAccessType 
         if (res : Bool)
         then
           (do
-            assert (width == access_width) "/private/tmp/airbender-sail-integration/model/model/sys/vmem_utils.sail:192.36-192.37"
+            «assert» (width == access_width) "/private/tmp/airbender-sail-integration/model/model/sys/vmem_utils.sail:192.36-192.37"
             (load_reservation (bits_of_physaddr paddr) width))
         else (pure ())
         (pure (Sail.BitVec.updateSubrange data ((8 *i access_width) -i 1) 0 v))) ) : SailME
@@ -5217,7 +5217,7 @@ def translate_and_write_value (vaddr : virtaddr) (width : Nat) (value : (BitVec 
 /-- Type quantifiers: k_ex442303_ : Bool, k_ex442302_ : Bool, k_ex442301_ : Bool, width : Nat, width
   ≥ 0, (is_mem_width width) -/
 def vmem_write_addr (vaddr : virtaddr) (width : Nat) (data : (BitVec (8 * width))) (access : (MemoryAccessType mem_payload)) (access_info : AccessInfo) (aq : Bool) (rl : Bool) (res : Bool) : SailM (Result Bool ExecutionResult) := SailME.run do
-  assert (res == (is_store_conditional access)) "/private/tmp/airbender-sail-integration/model/model/sys/vmem_utils.sail:245.44-245.45"
+  «assert» (res == (is_store_conditional access)) "/private/tmp/airbender-sail-integration/model/model/sys/vmem_utils.sail:245.44-245.45"
   let eff_priv := access_info.eff_privilege
   if ((not (is_aligned_vaddr vaddr width)) : Bool)
   then
@@ -5355,7 +5355,7 @@ def encdec_uop_backwards (arg_ : (BitVec 7)) : SailM uop := do
   | 0b0010111 => (pure AUIPC)
   | _ =>
     (do
-      assert false "Pattern match failure at unknown location"
+      «assert» false "Pattern match failure at unknown location"
       throw Error.Exit)
 
 def encdec_uop_backwards_matches (arg_ : (BitVec 7)) : Bool :=
@@ -5368,7 +5368,7 @@ def jump_to (target : (BitVec 32)) : SailM ExecutionResult := SailME.run do
   match (ext_control_check_pc target) with
   | .some e => SailME.throw ((Ext_ControlAddr_Check_Failure e) : ExecutionResult)
   | none => (pure ())
-  assert ((BitVec.access target 0) == 0#1) "/private/tmp/airbender-sail-integration/model/model/extensions/I/base_insts.sail:59.25-59.26"
+  «assert» ((BitVec.access target 0) == 0#1) "/private/tmp/airbender-sail-integration/model/model/extensions/I/base_insts.sail:59.25-59.26"
   if (((bit_to_bool (BitVec.access target 1)) && (not (← (currentlyEnabled Ext_Zca)))) : Bool)
   then (trap (← (exception_context (E_Fetch_Addr_Align ()) target)))
   else
@@ -5386,7 +5386,7 @@ def encdec_bop_backwards (arg_ : (BitVec 3)) : SailM bop := do
   | 0b111 => (pure BGEU)
   | _ =>
     (do
-      assert false "Pattern match failure at unknown location"
+      «assert» false "Pattern match failure at unknown location"
       throw Error.Exit)
 
 def encdec_bop_backwards_matches (arg_ : (BitVec 3)) : Bool :=
@@ -5409,7 +5409,7 @@ def encdec_iop_backwards (arg_ : (BitVec 3)) : SailM iop := do
   | 0b100 => (pure XORI)
   | _ =>
     (do
-      assert false "Pattern match failure at unknown location"
+      «assert» false "Pattern match failure at unknown location"
       throw Error.Exit)
 
 def encdec_iop_backwards_matches (arg_ : (BitVec 3)) : Bool :=
@@ -5452,7 +5452,7 @@ def encdec_mul_op_backwards (arg_ : (BitVec 3)) : SailM mul_op := do
             signed_rs2 := Unsigned })
   | _ =>
     (do
-      assert false "Pattern match failure at unknown location"
+      «assert» false "Pattern match failure at unknown location"
       throw Error.Exit)
 
 def encdec_mul_op_backwards_matches (arg_ : (BitVec 3)) : Bool :=
@@ -5470,7 +5470,7 @@ def encdec_csrop_backwards (arg_ : (BitVec 2)) : SailM csrop := do
   | 0b11 => (pure CSRRC)
   | _ =>
     (do
-      assert false "Pattern match failure at unknown location"
+      «assert» false "Pattern match failure at unknown location"
       throw Error.Exit)
 
 def encdec_csrop_backwards_matches (arg_ : (BitVec 2)) : Bool :=
@@ -9515,7 +9515,7 @@ def encdec_backwards (arg_ : (BitVec 32)) : SailM instruction := do
                                                                                                                                                                                                                                                                                             (pure result)
                                                                                                                                                                                                                                                                                           | _ =>
                                                                                                                                                                                                                                                                                             (do
-                                                                                                                                                                                                                                                                                              assert false "Pattern match failure at unknown location"
+                                                                                                                                                                                                                                                                                              «assert» false "Pattern match failure at unknown location"
                                                                                                                                                                                                                                                                                               throw Error.Exit)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
 
 def execute_UTYPE (imm : (BitVec 20)) (rd : regidx) (op : uop) : SailM ExecutionResult := do
@@ -9530,7 +9530,7 @@ def execute_UTYPE (imm : (BitVec 20)) (rd : regidx) (op : uop) : SailM Execution
 /-- Type quantifiers: width : Nat, List.elem width [1, 2, 4, 8] -/
 def execute_STORE (imm : (BitVec 12)) (rs2 : regidx) (rs1 : regidx) (width : Nat) : SailM ExecutionResult := do
   let offset : xlenbits := (sign_extend (m := 32) imm)
-  assert (width ≤b xlen_bytes) "/private/tmp/airbender-sail-integration/model/model/extensions/I/base_insts.sail:320.28-320.29"
+  «assert» (width ≤b xlen_bytes) "/private/tmp/airbender-sail-integration/model/model/extensions/I/base_insts.sail:320.28-320.29"
   let data ← do (pure (Sail.BitVec.extractLsb (← (rX_bits rs2)) ((width *i 8) -i 1) 0))
   match (← (vmem_write rs1 offset width data (Store Data) false false false)) with
   | .Ok _ => (pure RETIRE_SUCCESS)
@@ -9606,7 +9606,7 @@ def execute_MUL (rs2 : regidx) (rs1 : regidx) (rd : regidx) (mul_op : mul_op) : 
 /-- Type quantifiers: width : Nat, k_ex442350_ : Bool, List.elem width [1, 2, 4, 8] -/
 def execute_LOAD (imm : (BitVec 12)) (rs1 : regidx) (rd : regidx) (is_unsigned : Bool) (width : Nat) : SailM ExecutionResult := do
   let offset : xlenbits := (sign_extend (m := 32) imm)
-  assert (width ≤b xlen_bytes) "/private/tmp/airbender-sail-integration/model/model/extensions/I/base_insts.sail:289.28-289.29"
+  «assert» (width ≤b xlen_bytes) "/private/tmp/airbender-sail-integration/model/model/extensions/I/base_insts.sail:289.28-289.29"
   match (← (vmem_read rs1 offset width (Load Data) false false false)) with
   | .Ok data =>
     (do

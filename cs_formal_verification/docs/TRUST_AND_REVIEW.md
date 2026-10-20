@@ -75,11 +75,10 @@ when reviewing or strengthening a theorem.
 | Component | Source and review obligation |
 | --- | --- |
 | Lean kernel and standard axioms | Accepted proof-checking foundation. The [axiom audit](../lean/test/Checks/Axioms.lean) records actual dependencies. |
-| Lean / Mathlib | `v4.31.0`, pinned in `lean-toolchain` and [lakefile.toml](../lean/lakefile.toml). |
-| Clean | `1e563b9c27991b3795eb440c1ee0757edb4ce8b1`; upstream definitions in `lean/.lake/packages/Clean`. Review their applicability; Lean checks proof terms. |
-| Clean compatibility preparation | [prepare_clean.py](../lean/prepare_clean.py) guards original hashes and lists tactic-import, factory-registration and proof-reduction patches. Constraint semantics, algorithms and theorem statements are unchanged; repaired proofs are checked and audited. |
+| Lean / Mathlib | `v4.34.1`, pinned in `lean-toolchain` and [lakefile.toml](../lean/lakefile.toml). |
+| Clean | tag `v4.33.1`, `93c9d1ef45be9f687214625d7857889cf2485504` (builds unchanged on Lean `v4.34.1`); upstream definitions in `lean/.lake/packages/Clean`. Review their applicability; Lean checks proof terms. |
 | Sail model/compiler | Pinned source in `sail/sail-riscv`; exact pins, source hashes and generation details in [provenance](../lean/sail-rv32/provenance.json) and [regeneration notes](../lean/sail-rv32/README.md). |
-| Sail runtime | `lean-sail` revision `c816ea7ad03cce98d51acee252540fd4215fede8`, pinned in `lakefile.toml`. |
+| Sail runtime | `lean-sail` revision `c816ea7ad03cce98d51acee252540fd4215fede8`, fetched by [fetch-lean-sail.sh](../sail/fetch-lean-sail.sh) with the Lean 4.34 [patch](../sail/patches/lean-sail-lean4.34.1.patch). |
 | Platform support | [SailPlatform.lean](../sail/SailPlatform.lean), copied by the original backend. Experimental extensions are disabled to match the pinned emulator configuration. Runtime compatibility is proved in [Runtime.lean](../lean/slop/Slop/Sail/Runtime.lean); terminal/reservation calls remain abstract parameters. |
 | Project profile/custom reference | Unmodified [00-master.md](airbender/00-master.md) at `2331d1c511f26c17be85879fbab02ab109aefd05`, with [hash/provenance](airbender/provenance.json). Applicability to the circuit revision remains a review obligation. |
 | Base ADD/SUB artifact | `av_gkr_compiler` revision `28ffe3ff0353edd9051485c2974b28b52b495dc4`; [retained no-cache JSON](../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json), SHA-256 `084a58f08dd122160b548689383f74d4a790c782046f8a5bf43f9f287c22a620`. Other family JSON paths remain in their reviewed artifact declarations. |

@@ -18,8 +18,8 @@ does not import the proofs, runs the regressions and the axiom audits, checks th
 - `lean/test/` — regressions and fixtures (`Tests/`), the axiom audits (`Checks/`).
 - `lean/sail-rv32/` — the generated Sail RV32 slice (Lean) with its provenance; `sail/` — its generator
   (`sail/generate_sail.py`, `sail/sail_slice.ml`, `sail/SailPlatform.lean`) and the reviewed upstream Sail sources (`sail/sail-riscv/`).
-- `lean/prepare_clean.py` — hash-guarded Lean 4.31 compatibility fixes to the pinned Clean;
-  `lean/check_review.py` — review-guide and audit-coverage check.
+- `sail/fetch-lean-sail.sh` — fetches the pinned lean-sail with our Lean 4.34 patch (`sail/patches/`; no upstream
+  licence, so never committed); `lean/check_review.py` — review-guide and audit-coverage check.
 - `docs/` — [status](docs/VERIFICATION_STATUS.md), [trust and review boundaries](docs/TRUST_AND_REVIEW.md),
   [plan](docs/FORMAL_VERIFICATION_PLAN.md), and the pinned Airbender reference (`docs/airbender/00-master.md`).
 
@@ -52,11 +52,8 @@ separate fidelity boundary.
 
 ## Clean and Sail
 
-Clean is pinned at `1e563b9c27991b3795eb440c1ee0757edb4ce8b1`.
-[Preparation](lean/prepare_clean.py) checks original source hashes before applying
-Lean `v4.31.0` compatibility fixes: a tactic import, factory registration metadata,
-and explicit proof reductions. Constraint semantics, algorithms and theorem
-statements are unchanged; repaired proof terms are kernel-checked and axiom-audited.
+Lean and Mathlib are `v4.34.1`. Clean is pinned at tag `v4.33.1`
+(`93c9d1ef45be9f687214625d7857889cf2485504`); the modules used here build unchanged on Lean `v4.34.1`.
 The original Keccak permutation reference compiles unchanged; the [Theta column](lean/human/Human/Circuits/Keccak/Theta.lean) and [two-call Chi row](lean/human/Human/Circuits/Keccak/Chi.lean) claims use its `thetaXor` and `chi` directly. We use Clean's native
 `Expression`, `FlatOperation.assert`, `StaticTable`, `FlatOperation.lookup`,
 `Environment` and `ConstraintsHoldFlat`.

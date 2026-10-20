@@ -150,6 +150,10 @@ def main():
     if source.count(marker) != 1:
         raise ValueError("Expected one generated function namespace")
     functions.write_text(source.replace(marker, marker + MEMORY_PLATFORM_HEADER, 1))
+    # `assert` is a keyword since Lean 4.34: call Sail's `assert` as `«assert»`, as newer Sail compilers emit it
+    # (statement position only; string literals are untouched).
+    for path in sorted(generated.rglob("*.lean")):
+        path.write_text(re.sub(r'(?m)^(\s*(?:abbrev\s+)?)assert\b', r'\1«assert»', path.read_text()))
     manifest = {
         "model_repository": "https://github.com/riscv/sail-riscv",
         "model_revision": MODEL_REV,
@@ -181,6 +185,7 @@ def main():
             "inserted_header": MEMORY_PLATFORM_HEADER,
             "externs": ["plat_term_write", "load_reservation", "match_reservation"],
         },
+        "post_processing": "`assert` escaped as `«assert»` (a keyword since Lean 4.34)",
         "generated_sha256": {
             str(p.relative_to(generated)): digest(p)
             for p in sorted(generated.rglob("*.lean"))

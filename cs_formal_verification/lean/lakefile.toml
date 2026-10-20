@@ -2,21 +2,22 @@ name = "airbender_circuits"
 version = "0.1.0"
 defaultTargets = ["Human", "Slop", "airbender_import", "airbender_tests"]
 
+# lean-sail v6 @ c816ea7, fetched by ../sail/fetch-lean-sail.sh with sail/patches/lean-sail-*.patch applied
+# (Lean 4.34 compat); no upstream licence, so it is never committed
 [[require]]
 name = "lean-sail"
-git = "https://github.com/rems-project/lean-sail.git"
-rev = "c816ea7ad03cce98d51acee252540fd4215fede8"
+path = "sail-rv32/lean-sail"
 
 [[require]]
 name = "Clean"
 git = "https://github.com/Verified-zkEVM/clean.git"
-rev = "1e563b9c27991b3795eb440c1ee0757edb4ce8b1"
+rev = "93c9d1ef45be9f687214625d7857889cf2485504"   # tag v4.33.1 (upstream toolchain v4.33.1)
 
 # Keep Mathlib last so its pinned transitive dependencies take precedence.
 [[require]]
 name = "mathlib"
 git = "https://github.com/leanprover-community/mathlib4.git"
-rev = "v4.31.0"
+rev = "v4.34.1"
 
 [[lean_lib]]
 name = "SailRV32"
