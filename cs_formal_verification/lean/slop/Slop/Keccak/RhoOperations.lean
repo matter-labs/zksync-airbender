@@ -1,13 +1,14 @@
 import Human.Circuits.Keccak.Rho
 import Slop.Keccak.DecodeControl
 import Slop.Keccak.FixedLookups
+import Slop.Keccak.OpIndex
 import Slop.Arithmetic.LaneRotation
 
 namespace Airbender.Keccak.Proofs.Rho
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 4800000
+set_option maxHeartbeats 2400000
 
 abbrev rotations := rhoRotations
 
@@ -30,12 +31,13 @@ theorem rho_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
   have m0 := modes (0 : Fin 7); have m1 := modes (1 : Fin 7)
   have m2 := modes (2 : Fin 7); have m3 := modes (3 : Fin 7)
   have m5 := modes (5 : Fin 7); have m6 := modes (6 : Fin 7)
+  simp [Variables.modeColumns] at m0 m1 m2 m3 m5 m6
   have flags (i : Fin 5) : w (80 + i.val) = if i = column then 1 else 0 := by
     have equation := Verification.assertion_of_holds h ⟨9 + i.val, by rw [constraint_count]; omega⟩
     have equal : w (80 + i.val) = w Variables.iterationColumns[i] := by
       fin_cases i <;> simp [Variables.iterationColumns] at ⊢
-      all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, selected] at equation
+      all_goals op_index at equation
+      all_goals simp [Expression.eval, Verification.environment, selected] at equation
       all_goals linear_combination -equation
     exact equal.trans (iterations i)
   have r0 := flags (0 : Fin 5); have r1 := flags (1 : Fin 5)
@@ -50,10 +52,9 @@ theorem rho_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
   have c := Verification.assertion_of_holds h
     ⟨22 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
   fin_cases column <;> fin_cases operation <;> fin_cases limb
-  all_goals simp [Variables.modeColumns] at m0 m1 m2 m3 m5 m6
+  all_goals op_index at a c
   all_goals simp at r0 r1 r2 r3 r4
-  all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, m0, m1, m2, m3, selected, m5, m6,
+  all_goals simp [Expression.eval, Verification.environment, m0, m1, m2, m3, selected, m5, m6,
     r0, r1, r2, r3, r4, rotations, rhoRotations, limbOffset, rotationSource, rotationPrevious] at a c ⊢
   all_goals exact ⟨by linear_combination a, by linear_combination c⟩
 
