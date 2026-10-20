@@ -5,6 +5,8 @@ on:
       - main
       - stable
       - dev
+      # Seed base-branch caches that PRs targeting this branch can read.
+      - av_gkr_compiler
   pull_request:
 
 permissions: read-all
@@ -61,6 +63,8 @@ jobs:
         with:
           components: rustfmt
           rustflags: ""
+          # Formatting does not compile dependencies.
+          cache: false
       - name: Setup
         run: |
           rustup set profile minimal
