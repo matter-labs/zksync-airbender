@@ -1,5 +1,7 @@
 name = "airbender_fv"
 defaultTargets = ["Human"]
+# no `sorry` anywhere: Lean's "declaration uses `sorry`" warning (message kind `hasSorry`) is an error
+moreLeanArgs = ["-E", "hasSorry"]
 
 [[require]]
 name = "mathlib"

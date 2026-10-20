@@ -67,6 +67,10 @@ LEAN
     || { echo "FAIL: Airbender.ProgramCorrectMop"; exit 1; }
   echo "$out" | grep -q "program_correct_airbender_mop' depends on axioms: \[propext, Classical.choice, Quot.sound\]$" \
     || { echo "FAIL: unexpected axioms (Airbender.ProgramCorrectMop)"; exit 1; }
+  echo "== 5b. Trust checks (lean/human/Human/Trust.lean): statements only from human/ and the trusted libraries,"
+  echo "   human/ imports nothing else, no axiom/sorry/native evaluation, unsafe code only in the listed tactic modules"
+  (cd lean && lake env lean check/TrustCheck.lean 2>&1) | tee /dev/stderr | grep -q "trust check: OK" \
+    || { echo "FAIL: trust checks"; exit 1; }
   sail_ok=1
 else
   echo "skipped: no generated Sail model (run sail/regen.sh)"
