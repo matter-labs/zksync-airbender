@@ -19,20 +19,16 @@ git add -N lean/slop/Slop/RV/Code
 git diff --exit-code -- lean/slop/Slop/RV/Code || { echo "FAIL: generated code files are stale"; exit 1; }
 
 echo "== 3. Lean build (spec + proofs)"
-(cd lean && lake build Human Slop.RV.FinalPlain Slop.RV.FinalMop 2>&1 | grep -E "error|Build completed" )
+(cd lean && lake build Human Slop.RV.FinalPlain Slop.RV.FinalMop Slop.Deleg 2>&1 | grep -E "error|Build completed" )
 
-echo "== 4. Final theorems (plain-Rust image, field-opcode image): statements and axioms"
-out=$(cd lean && lake env lean --stdin <<'LEAN'
-import Slop.RV.FinalPlain
-import Slop.RV.FinalMop
-#check (RV.program_correct : RV.ProgramCorrect)
-#print axioms RV.program_correct
-#check (RV.program_correct_mop : RV.ProgramCorrectMop)
-#print axioms RV.program_correct_mop
-LEAN
-)
+echo "== 4. Final theorems (plain-Rust image, field-opcode image) and delegation runs: statements and axioms"
+thms=("program_correct : RV.ProgramCorrect" "program_correct_mop : RV.ProgramCorrectMop"
+  "blake_compress_run : RV.BlakeCompressRun" "blake_hash_run : RV.BlakeHashRun" "blake_g_run : RV.BlakeGRun")
+out=$(cd lean && { printf 'import Slop.RV.FinalPlain\nimport Slop.RV.FinalMop\nimport Slop.Deleg\n'
+  for t in "${thms[@]}"; do printf '#check (RV.%s : %s)\n#print axioms RV.%s\n' "${t%% *}" "${t##* }" "${t%% *}"; done
+  } | lake env lean --stdin)
 echo "$out"
-for t in "program_correct : RV.ProgramCorrect" "program_correct_mop : RV.ProgramCorrectMop"; do
+for t in "${thms[@]}"; do
   echo "$out" | grep -q "^RV.$t$" || { echo "FAIL: statement $t"; exit 1; }
   echo "$out" | grep -q "'RV.${t%% *}' depends on axioms: \[propext, Classical.choice, Quot.sound\]$" \
     || { echo "FAIL: unexpected axioms (${t%% *})"; exit 1; }

@@ -16,3 +16,4 @@ import Slop.RV.PolyEmpty
 import Slop.RV.Coeffs
 import Slop.RV.FinalPlain
 import Slop.RV.Blake.Impl
+import Slop.Deleg
