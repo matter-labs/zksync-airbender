@@ -165,7 +165,6 @@ theorem actual_jalr_retirement (rom : Table (ZMod babyBearModulus) (fields 9)) :
     norm_num [memoryWord, JumpBranchSlt.importedConstraintsMemoryPorts,
       MemoryPort.writeCode, pairCode, assignment, JumpHistory.assignment,
       JumpTimestamp.assignment, Word.toBitVec, Word.value, ZMod.val_ofNat, babyBearModulus]
-    rfl
   rw [code] at written
   change run (SailRV32.Functions.wX_bits (.Regidx 1) 4) before = .ok () after at written
   obtain ⟨actual, write, _, read⟩ := gpr_write_readback 1 4 before (by intro h; cases h)
