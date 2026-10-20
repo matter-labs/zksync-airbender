@@ -10,7 +10,7 @@ fn eval_fn_1<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_memory_place_u16(2usize);
+    let v_0 = witness_proxy.get_memory_place_u16(1usize);
     let v_1 = v_0.shr(3u32);
     let v_2 = W::U16::constant(7u16);
     let v_3 = W::U16::and(&v_1, &v_2);
@@ -28,14 +28,14 @@ fn eval_fn_2<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_memory_place(63usize);
-    let v_1 = witness_proxy.get_memory_place(2usize);
-    let v_2 = witness_proxy.get_memory_place(4usize);
-    let v_3 = witness_proxy.get_memory_place(12usize);
-    let v_4 = witness_proxy.get_memory_place(23usize);
-    let v_5 = witness_proxy.get_memory_place(34usize);
-    let v_6 = witness_proxy.get_memory_place(45usize);
-    let v_7 = witness_proxy.get_memory_place(56usize);
+    let v_0 = witness_proxy.get_memory_place(57usize);
+    let v_1 = witness_proxy.get_memory_place(1usize);
+    let v_2 = witness_proxy.get_memory_place(3usize);
+    let v_3 = witness_proxy.get_memory_place(10usize);
+    let v_4 = witness_proxy.get_memory_place(20usize);
+    let v_5 = witness_proxy.get_memory_place(30usize);
+    let v_6 = witness_proxy.get_memory_place(40usize);
+    let v_7 = witness_proxy.get_memory_place(50usize);
     let v_8 = witness_proxy.get_witness_place(0usize);
     let v_9 = W::U16::constant(66u16);
     let v_10 = witness_proxy.lookup_enforce::<9usize>(
@@ -55,10 +55,10 @@ fn eval_fn_3<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_memory_place_u16(10usize);
-    let v_1 = witness_proxy.get_memory_place_u16(11usize);
-    let v_2 = witness_proxy.get_memory_place_u16(15usize);
-    let v_3 = witness_proxy.get_memory_place_u16(16usize);
+    let v_0 = witness_proxy.get_memory_place_u16(8usize);
+    let v_1 = witness_proxy.get_memory_place_u16(9usize);
+    let v_2 = witness_proxy.get_memory_place_u16(13usize);
+    let v_3 = witness_proxy.get_memory_place_u16(14usize);
     let v_4 = v_0.shr(0u32);
     let v_5 = W::U16::constant(15u16);
     let v_6 = W::U16::and(&v_4, &v_5);
@@ -108,10 +108,10 @@ fn eval_fn_4<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_memory_place_u16(21usize);
-    let v_1 = witness_proxy.get_memory_place_u16(22usize);
-    let v_2 = witness_proxy.get_memory_place_u16(26usize);
-    let v_3 = witness_proxy.get_memory_place_u16(27usize);
+    let v_0 = witness_proxy.get_memory_place_u16(18usize);
+    let v_1 = witness_proxy.get_memory_place_u16(19usize);
+    let v_2 = witness_proxy.get_memory_place_u16(23usize);
+    let v_3 = witness_proxy.get_memory_place_u16(24usize);
     let v_4 = v_0.shr(0u32);
     let v_5 = W::U16::constant(15u16);
     let v_6 = W::U16::and(&v_4, &v_5);
@@ -161,10 +161,10 @@ fn eval_fn_5<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_memory_place_u16(32usize);
-    let v_1 = witness_proxy.get_memory_place_u16(33usize);
-    let v_2 = witness_proxy.get_memory_place_u16(37usize);
-    let v_3 = witness_proxy.get_memory_place_u16(38usize);
+    let v_0 = witness_proxy.get_memory_place_u16(28usize);
+    let v_1 = witness_proxy.get_memory_place_u16(29usize);
+    let v_2 = witness_proxy.get_memory_place_u16(33usize);
+    let v_3 = witness_proxy.get_memory_place_u16(34usize);
     let v_4 = v_0.shr(0u32);
     let v_5 = W::U16::constant(15u16);
     let v_6 = W::U16::and(&v_4, &v_5);
@@ -214,10 +214,10 @@ fn eval_fn_6<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_memory_place_u16(43usize);
-    let v_1 = witness_proxy.get_memory_place_u16(44usize);
-    let v_2 = witness_proxy.get_memory_place_u16(48usize);
-    let v_3 = witness_proxy.get_memory_place_u16(49usize);
+    let v_0 = witness_proxy.get_memory_place_u16(38usize);
+    let v_1 = witness_proxy.get_memory_place_u16(39usize);
+    let v_2 = witness_proxy.get_memory_place_u16(43usize);
+    let v_3 = witness_proxy.get_memory_place_u16(44usize);
     let v_4 = v_0.shr(0u32);
     let v_5 = W::U16::constant(15u16);
     let v_6 = W::U16::and(&v_4, &v_5);
@@ -267,10 +267,10 @@ fn eval_fn_7<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_memory_place_u16(54usize);
-    let v_1 = witness_proxy.get_memory_place_u16(55usize);
-    let v_2 = witness_proxy.get_memory_place_u16(59usize);
-    let v_3 = witness_proxy.get_memory_place_u16(60usize);
+    let v_0 = witness_proxy.get_memory_place_u16(48usize);
+    let v_1 = witness_proxy.get_memory_place_u16(49usize);
+    let v_2 = witness_proxy.get_memory_place_u16(53usize);
+    let v_3 = witness_proxy.get_memory_place_u16(54usize);
     let v_4 = v_0.shr(0u32);
     let v_5 = W::U16::constant(15u16);
     let v_6 = W::U16::and(&v_4, &v_5);
@@ -320,10 +320,10 @@ fn eval_fn_8<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_memory_place_u16(13usize);
-    let v_1 = witness_proxy.get_memory_place_u16(14usize);
-    let v_2 = witness_proxy.get_memory_place_u16(17usize);
-    let v_3 = witness_proxy.get_memory_place_u16(18usize);
+    let v_0 = witness_proxy.get_memory_place_u16(11usize);
+    let v_1 = witness_proxy.get_memory_place_u16(12usize);
+    let v_2 = witness_proxy.get_memory_place_u16(15usize);
+    let v_3 = witness_proxy.get_memory_place_u16(16usize);
     let v_4 = v_0.shr(0u32);
     let v_5 = W::U16::constant(15u16);
     let v_6 = W::U16::and(&v_4, &v_5);
@@ -373,10 +373,10 @@ fn eval_fn_9<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_memory_place_u16(24usize);
-    let v_1 = witness_proxy.get_memory_place_u16(25usize);
-    let v_2 = witness_proxy.get_memory_place_u16(28usize);
-    let v_3 = witness_proxy.get_memory_place_u16(29usize);
+    let v_0 = witness_proxy.get_memory_place_u16(21usize);
+    let v_1 = witness_proxy.get_memory_place_u16(22usize);
+    let v_2 = witness_proxy.get_memory_place_u16(25usize);
+    let v_3 = witness_proxy.get_memory_place_u16(26usize);
     let v_4 = v_0.shr(0u32);
     let v_5 = W::U16::constant(15u16);
     let v_6 = W::U16::and(&v_4, &v_5);
@@ -431,10 +431,10 @@ fn eval_fn_10<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_memory_place_u16(35usize);
-    let v_1 = witness_proxy.get_memory_place_u16(36usize);
-    let v_2 = witness_proxy.get_memory_place_u16(39usize);
-    let v_3 = witness_proxy.get_memory_place_u16(40usize);
+    let v_0 = witness_proxy.get_memory_place_u16(31usize);
+    let v_1 = witness_proxy.get_memory_place_u16(32usize);
+    let v_2 = witness_proxy.get_memory_place_u16(35usize);
+    let v_3 = witness_proxy.get_memory_place_u16(36usize);
     let v_4 = v_0.shr(0u32);
     let v_5 = W::U16::constant(15u16);
     let v_6 = W::U16::and(&v_4, &v_5);
@@ -489,10 +489,10 @@ fn eval_fn_11<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_memory_place_u16(46usize);
-    let v_1 = witness_proxy.get_memory_place_u16(47usize);
-    let v_2 = witness_proxy.get_memory_place_u16(50usize);
-    let v_3 = witness_proxy.get_memory_place_u16(51usize);
+    let v_0 = witness_proxy.get_memory_place_u16(41usize);
+    let v_1 = witness_proxy.get_memory_place_u16(42usize);
+    let v_2 = witness_proxy.get_memory_place_u16(45usize);
+    let v_3 = witness_proxy.get_memory_place_u16(46usize);
     let v_4 = v_0.shr(0u32);
     let v_5 = W::U16::constant(15u16);
     let v_6 = W::U16::and(&v_4, &v_5);
@@ -547,10 +547,10 @@ fn eval_fn_12<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_memory_place_u16(57usize);
-    let v_1 = witness_proxy.get_memory_place_u16(58usize);
-    let v_2 = witness_proxy.get_memory_place_u16(61usize);
-    let v_3 = witness_proxy.get_memory_place_u16(62usize);
+    let v_0 = witness_proxy.get_memory_place_u16(51usize);
+    let v_1 = witness_proxy.get_memory_place_u16(52usize);
+    let v_2 = witness_proxy.get_memory_place_u16(55usize);
+    let v_3 = witness_proxy.get_memory_place_u16(56usize);
     let v_4 = v_0.shr(0u32);
     let v_5 = W::U16::constant(15u16);
     let v_6 = W::U16::and(&v_4, &v_5);
@@ -770,16 +770,16 @@ fn eval_fn_16<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_memory_place(10usize);
-    let v_1 = witness_proxy.get_memory_place(13usize);
-    let v_2 = witness_proxy.get_memory_place(21usize);
-    let v_3 = witness_proxy.get_memory_place(24usize);
-    let v_4 = witness_proxy.get_memory_place(32usize);
-    let v_5 = witness_proxy.get_memory_place(35usize);
-    let v_6 = witness_proxy.get_memory_place(43usize);
-    let v_7 = witness_proxy.get_memory_place(46usize);
-    let v_8 = witness_proxy.get_memory_place(54usize);
-    let v_9 = witness_proxy.get_memory_place(57usize);
+    let v_0 = witness_proxy.get_memory_place(8usize);
+    let v_1 = witness_proxy.get_memory_place(11usize);
+    let v_2 = witness_proxy.get_memory_place(18usize);
+    let v_3 = witness_proxy.get_memory_place(21usize);
+    let v_4 = witness_proxy.get_memory_place(28usize);
+    let v_5 = witness_proxy.get_memory_place(31usize);
+    let v_6 = witness_proxy.get_memory_place(38usize);
+    let v_7 = witness_proxy.get_memory_place(41usize);
+    let v_8 = witness_proxy.get_memory_place(48usize);
+    let v_9 = witness_proxy.get_memory_place(51usize);
     let v_10 = witness_proxy.get_witness_place(1usize);
     let v_11 = witness_proxy.get_witness_place(2usize);
     let v_12 = witness_proxy.get_witness_place(3usize);
@@ -1083,16 +1083,16 @@ fn eval_fn_20<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_memory_place(11usize);
-    let v_1 = witness_proxy.get_memory_place(14usize);
-    let v_2 = witness_proxy.get_memory_place(22usize);
-    let v_3 = witness_proxy.get_memory_place(25usize);
-    let v_4 = witness_proxy.get_memory_place(33usize);
-    let v_5 = witness_proxy.get_memory_place(36usize);
-    let v_6 = witness_proxy.get_memory_place(44usize);
-    let v_7 = witness_proxy.get_memory_place(47usize);
-    let v_8 = witness_proxy.get_memory_place(55usize);
-    let v_9 = witness_proxy.get_memory_place(58usize);
+    let v_0 = witness_proxy.get_memory_place(9usize);
+    let v_1 = witness_proxy.get_memory_place(12usize);
+    let v_2 = witness_proxy.get_memory_place(19usize);
+    let v_3 = witness_proxy.get_memory_place(22usize);
+    let v_4 = witness_proxy.get_memory_place(29usize);
+    let v_5 = witness_proxy.get_memory_place(32usize);
+    let v_6 = witness_proxy.get_memory_place(39usize);
+    let v_7 = witness_proxy.get_memory_place(42usize);
+    let v_8 = witness_proxy.get_memory_place(49usize);
+    let v_9 = witness_proxy.get_memory_place(52usize);
     let v_10 = witness_proxy.get_witness_place(4usize);
     let v_11 = witness_proxy.get_witness_place(5usize);
     let v_12 = witness_proxy.get_witness_place(6usize);
@@ -1396,16 +1396,16 @@ fn eval_fn_24<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_memory_place(15usize);
-    let v_1 = witness_proxy.get_memory_place(17usize);
-    let v_2 = witness_proxy.get_memory_place(26usize);
-    let v_3 = witness_proxy.get_memory_place(28usize);
-    let v_4 = witness_proxy.get_memory_place(37usize);
-    let v_5 = witness_proxy.get_memory_place(39usize);
-    let v_6 = witness_proxy.get_memory_place(48usize);
-    let v_7 = witness_proxy.get_memory_place(50usize);
-    let v_8 = witness_proxy.get_memory_place(59usize);
-    let v_9 = witness_proxy.get_memory_place(61usize);
+    let v_0 = witness_proxy.get_memory_place(13usize);
+    let v_1 = witness_proxy.get_memory_place(15usize);
+    let v_2 = witness_proxy.get_memory_place(23usize);
+    let v_3 = witness_proxy.get_memory_place(25usize);
+    let v_4 = witness_proxy.get_memory_place(33usize);
+    let v_5 = witness_proxy.get_memory_place(35usize);
+    let v_6 = witness_proxy.get_memory_place(43usize);
+    let v_7 = witness_proxy.get_memory_place(45usize);
+    let v_8 = witness_proxy.get_memory_place(53usize);
+    let v_9 = witness_proxy.get_memory_place(55usize);
     let v_10 = witness_proxy.get_witness_place(7usize);
     let v_11 = witness_proxy.get_witness_place(8usize);
     let v_12 = witness_proxy.get_witness_place(9usize);
@@ -1709,16 +1709,16 @@ fn eval_fn_28<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_memory_place(16usize);
-    let v_1 = witness_proxy.get_memory_place(18usize);
-    let v_2 = witness_proxy.get_memory_place(27usize);
-    let v_3 = witness_proxy.get_memory_place(29usize);
-    let v_4 = witness_proxy.get_memory_place(38usize);
-    let v_5 = witness_proxy.get_memory_place(40usize);
-    let v_6 = witness_proxy.get_memory_place(49usize);
-    let v_7 = witness_proxy.get_memory_place(51usize);
-    let v_8 = witness_proxy.get_memory_place(60usize);
-    let v_9 = witness_proxy.get_memory_place(62usize);
+    let v_0 = witness_proxy.get_memory_place(14usize);
+    let v_1 = witness_proxy.get_memory_place(16usize);
+    let v_2 = witness_proxy.get_memory_place(24usize);
+    let v_3 = witness_proxy.get_memory_place(26usize);
+    let v_4 = witness_proxy.get_memory_place(34usize);
+    let v_5 = witness_proxy.get_memory_place(36usize);
+    let v_6 = witness_proxy.get_memory_place(44usize);
+    let v_7 = witness_proxy.get_memory_place(46usize);
+    let v_8 = witness_proxy.get_memory_place(54usize);
+    let v_9 = witness_proxy.get_memory_place(56usize);
     let v_10 = witness_proxy.get_witness_place(10usize);
     let v_11 = witness_proxy.get_witness_place(11usize);
     let v_12 = witness_proxy.get_witness_place(12usize);
