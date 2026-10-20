@@ -1,4 +1,6 @@
 import Slop.Blake2Round.FinalXor
+import Slop.Blake2Round.OpIndex
+import Slop.Blake2G.OpIndex
 
 set_option warningAsError true
 
@@ -19,8 +21,8 @@ theorem final_write {p : Nat} [Fact p.Prime] (limb : Fin 16) {w : Nat → ZMod p
   have equation := Verification.assertion_of_holds h
     ⟨153 + 2 * limb.val, by rw [constraint_count]; have := limb.isLt; omega⟩
   fin_cases limb
-  all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, enabled] at equation ⊢
+  all_goals op_index at equation
+  all_goals simp [Expression.eval, Verification.environment, enabled] at equation ⊢
   all_goals linear_combination -equation
 
 /-- The a/c half of finalization needs no external limb bounds: the four
