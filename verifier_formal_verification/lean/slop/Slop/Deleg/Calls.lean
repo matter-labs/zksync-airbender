@@ -75,4 +75,33 @@ theorem readWords_sub (mem : Word → BitVec 8) (a : Word) (n i m : Nat) (h : i 
   rw [BitVec.add_assoc]; congr 1
   apply BitVec.eq_of_toNat_eq; simp only [BitVec.toNat_add, BitVec.toNat_ofNat]; omega
 
+theorem calls_run : CallsRun := by
+  intro k w n
+  induction n with
+  | zero => intro s t _ _ _ _ h; exact h
+  | succ n ih =>
+    intro s t hd hpc hrom hw h
+    simp only [List.replicate_succ, calls] at h
+    obtain ⟨s1, h1, h2⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨e, he, ha⟩ := Option.bind_eq_some_iff.mp h1
+    have hstep : step s = some s1 := step_delegate s s1 w k e hpc (by omega)
+      (by simpa using hw 0 (by omega)) hd he ha
+    obtain ⟨m1, pc1, -, -⟩ := applyEffect_some ha
+    have hok : ∀ aw ∈ e.writes, writable aw.1 4 ∧ aligned aw.1 4 := by
+      unfold State.applyEffect at ha
+      split_ifs at ha with hc
+      exact fun aw haw => of_decide_eq_true (List.all_eq_true.mp hc aw haw)
+    have hrom1 : ∀ b : Word, b.toNat < ROM_END → s1.mem b = s.mem b := fun b hb => by
+      rw [m1, storeAll_mem_other s _ b fun aw haw => by
+        have := hok aw haw; simp only [writable, aligned, ROM_END, RAM_END] at this hb ⊢; omega]
+    have hpc1 : s1.pc.toNat = s.pc.toNat + 4 := by
+      rw [pc1, BitVec.toNat_add]; simp only [ROM_END] at hrom; simp; omega
+    rw [run_succ, hstep, Option.bind_some]
+    refine ih s1 t hd (by omega) (by omega) (fun i hi => ?_) h2
+    rw [read_congr s1.mem s.mem _ 4 fun j hj => hrom1 _ (by
+      simp only [BitVec.toNat_add, BitVec.toNat_ofNat, hpc1]; simp only [ROM_END] at hrom ⊢; omega)]
+    rw [← hw (i + 1) (by omega)]; congr 1
+    apply BitVec.eq_of_toNat_eq
+    simp only [BitVec.toNat_add, BitVec.toNat_ofNat, hpc1]; simp only [ROM_END] at hrom; omega
+
 end RV

@@ -54,6 +54,8 @@ input; the verifier's two-to-one Blake2s hash) — a wrong root fails the run.
   whole program `Main/Run`), link check + final proofs (`FinalPlain`, `FinalMop`). Plain-Rust arithmetic: the executor's DAG is cut at the field operations
   (`lean/gen/clusters.sh`, `lean/gen/blake.sh`; cut points found by evaluation, untrusted) and each piece is proven
   (`BBPlain`, `Blake/Lemmas`).
+- `Slop/Deleg/` — the delegation runs (`Human/DelegationRuns.lean`): Blake2s rounds and `G` by induction over the
+  calls; Keccak through a slot view of the 31 lanes, one lemma per call kind, five stages per round.
 - `Slop/Sail/` — the official Sail RISC-V model route (Airbender config, oracle evaluator, `kernel_rfl`).
 - `Slop/Equiv/` — our spec ⇔ Sail: decoder walk, symbolic Sail runner (`sail_run`), per-layer memory lemmas,
   per-instruction execute lemmas, `StepIsAirbender`, final transfer (`Final.lean`).

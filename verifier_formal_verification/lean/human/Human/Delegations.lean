@@ -247,14 +247,16 @@ def keccakCall (valid : Nat → Nat → Nat → Prop) [∀ op x r, Decidable (va
 /-- Keccak special5 (CSR `0x7cb`; table: "x11 → 256-aligned 25 lanes + 6 scratch; x10 mode, iteration, round; 7
 modes; runs of 649"). From source (`riscv_transpiler/src/vm/delegations/keccak_special5.rs`): `special5Step`,
 `special5Next`; any op < 7, `x` < 5, `r` < 32 (the circuit: one-hot op and `x`, 5-bit round; the VM accepts only
-the pieces of a run). A run of 649 from `x10 = 0` is Keccak-f[1600] on the lanes (`run_image` checks it). -/
+the pieces of a run). A run of 649 from `x10 = 0` is Keccak-f[1600] on the lanes (`KeccakSpecial5Run` in
+`DelegationRuns`). -/
 def keccakSpecial5 (x10 x11 : Word) (mem : Word → BitVec 8) : Option Effect :=
   keccakCall (fun op _ _ => op < 7) special5Step special5Next x10 x11 mem
 
 /-- Keccak-f1600 in three circuits (CSRs `0x7cd` column parity: op 0, `0x7cc` θ+ρ: op 3, `0x7ce` χ: op 5; newer
 than the ISA table). From source (`common_constants/src/delegation_types/keccak_f1600.rs`,
 `riscv_transpiler/src/vm/delegations/keccak_f1600.rs`): per round 5 parity, 5 θ+ρ (column `x`), 5 χ (row `x`) calls,
-then one parity call (`r = 24`, `x = 0`): 361 calls from `x10 = 0` are Keccak-f[1600] (`run_image` checks it). -/
+then one parity call (`r = 24`, `x = 0`): 361 calls from `x10 = 0` are Keccak-f[1600] (`KeccakF1600Run` in
+`DelegationRuns`). -/
 def f1600Step (op : Nat) (x : Fin 5) (r : Nat) (S : Vector Lane 31) : Vector Lane 31 :=
   let L := slot r x
   let a := fun k => slot (r + 1) k x

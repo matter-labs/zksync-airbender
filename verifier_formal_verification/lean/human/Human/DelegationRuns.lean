@@ -1,4 +1,4 @@
-import Human.Delegations
+import Human.RV32
 import Human.SpecMerkle
 
 /-! # Runs of delegation calls (statements only)
@@ -10,18 +10,26 @@ such call does, or that it has no next state, and nothing more is claimed. These
 * 7 Blake2s round calls: the Blake2s compression function, or in compression mode the two-to-one hash `hash2`;
 * 56 Blake2s `G` calls: 7 Blake2s rounds;
 * 649 Keccak special5 calls, and 361 calls of the three Keccak-f1600 circuits: Keccak-f[1600].
-Not covered: the 10-round schedules (80 `G` calls; `compress` is 7 rounds). bigint has no runs: one call is the whole
+`CallsRun`: a run of `calls` is what the machine's `run` does on consecutive `csrrw` words of that kind. The
+Keccak-f1600 CSRs are not decoded yet (`DelegationKind.ofCsr`), so `KeccakF1600Run` is about the modelled calls
+only. Not covered: the 10-round schedules (80 `G` calls; `compress` is 7 rounds). bigint has no runs: one call is the whole
 256-bit operation (`bigintOp`). The proofs are in `slop/Slop/Deleg/`; `verify.sh` checks that they prove exactly
-these statements (the Blake2s ones so far; the Keccak proofs are in progress). -/
+these statements. -/
 
 namespace RV
 open Spec
 
-/-- The delegation calls `ks`, one after another from `s` (as consecutive `csrrw` instructions perform them). -/
+/-- The delegation calls `ks`, one after another from `s`: each call's effect applied. -/
 def calls : List DelegationKind → State → Option State
   | [], s => some s
   | k :: ks, s => ((Delegation.effect k (s.getReg 10) (s.getReg 11) (s.getReg 12) s.mem).bind s.applyEffect).bind
       (calls ks)
+
+/-- `n` consecutive delegation instructions `w` of kind `k` in ROM at the pc run as `n` calls. -/
+def CallsRun : Prop :=
+  ∀ (k : DelegationKind) (w : Word) (n : Nat) (s t : State), decode w = some (.delegate k) →
+    s.pc.toNat % 4 = 0 → s.pc.toNat + 4 * n ≤ ROM_END → (∀ i < n, read s.mem (s.pc + BitVec.ofNat 32 (4 * i)) 4 = w) →
+    calls (.replicate n k) s = some t → run n s = some t
 
 /-- `n` bytes at `a`, `al`-aligned, in RAM. -/
 def Buffer (a : Word) (n al : Nat) : Prop := ROM_END ≤ a.toNat ∧ a.toNat % al = 0 ∧ a.toNat + n ≤ RAM_END

@@ -23,7 +23,8 @@ echo "== 3. Lean build (spec + proofs)"
 
 echo "== 4. Final theorems (plain-Rust image, field-opcode image) and delegation runs: statements and axioms"
 thms=("program_correct : RV.ProgramCorrect" "program_correct_mop : RV.ProgramCorrectMop"
-  "blake_compress_run : RV.BlakeCompressRun" "blake_hash_run : RV.BlakeHashRun" "blake_g_run : RV.BlakeGRun")
+  "blake_compress_run : RV.BlakeCompressRun" "blake_hash_run : RV.BlakeHashRun" "blake_g_run : RV.BlakeGRun"
+  "keccak_special5_run : RV.KeccakSpecial5Run" "keccak_f1600_run : RV.KeccakF1600Run" "calls_run : RV.CallsRun")
 out=$(cd lean && { printf 'import Slop.RV.FinalPlain\nimport Slop.RV.FinalMop\nimport Slop.Deleg\n'
   for t in "${thms[@]}"; do printf '#check (RV.%s : %s)\n#print axioms RV.%s\n' "${t%% *}" "${t##* }" "${t%% *}"; done
   } | lake env lean --stdin)
