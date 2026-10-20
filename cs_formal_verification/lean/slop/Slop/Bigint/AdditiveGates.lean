@@ -1,4 +1,5 @@
 import Slop.Bigint.AdditiveFields
+import Slop.Bigint.OpIndex
 
 namespace Airbender.Bigint.Additive.Proofs
 open Arithmetic
@@ -37,8 +38,9 @@ theorem native_steps {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
     by rw [constraint_count]; have := i.isLt; omega⟩
   cases operation <;> simp [Operation.index, Variables.operations] at f0 f1 f2 f3 f4 f5 f6
   all_goals fin_cases i
-  all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, f0, f1, f2, f5, f6] at gate
+  all_goals op_index at gate
+  all_goals simp only [Expression.eval, Verification.environment, f0, f1, f2, f5, f6] at gate
+  all_goals push_cast at gate
   all_goals norm_num [Variables.leftLimbs, Variables.rightLimbs, carryColumn]
   all_goals linear_combination gate
 
@@ -63,8 +65,9 @@ theorem native_results {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
     by rw [constraint_count]; have := i.isLt; omega⟩
   cases operation <;> simp [Operation.index, Variables.operations] at f0 f1 f2 f3 f4 f5 f6
   all_goals fin_cases i
-  all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, f0, f1, f2, f3, f4, f5, f6] at definition write
+  all_goals op_index at definition write
+  all_goals simp only [Expression.eval, Verification.environment, f0, f1, f2, f3, f4, f5, f6] at definition write
+  all_goals push_cast at definition write
   all_goals norm_num [Variables.writtenLimbs]
   all_goals constructor
   all_goals first | linear_combination definition | linear_combination -write
@@ -84,8 +87,9 @@ theorem returned_control {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   have low := Verification.assertion_of_holds h ⟨90, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h ⟨91, by rw [constraint_count]; decide⟩
   cases operation <;> simp [Operation.index, Variables.operations] at f0 f1 f2 f3 f4 f5 f6
-  all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, f0, f1, f2, f3, f5, f6] at low high
+  all_goals op_index at low high
+  all_goals simp only [Expression.eval, Verification.environment, f0, f1, f2, f3, f5, f6] at low high
+  all_goals push_cast at low high
   all_goals refine ⟨?_, high⟩
   all_goals linear_combination -low
 
