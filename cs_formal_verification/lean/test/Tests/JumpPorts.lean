@@ -57,7 +57,7 @@ private theorem history : ∃ after,
       MemoryPort.event, MemoryAddress.code, Cell.addressCode, MemoryPort.readCode,
       MemoryPort.writeCode, pairCode, decodeTimestamp, Timestamp.value, assignment,
       Tests.Jump.row, ZMod.val_ofNat, ZMod.val_one, babyBearModulus]
-    rfl
+    exact ⟨rfl, rfl⟩
   rw [events]
   have five : memoryWord (Nat.pair 5 0) = (5 : BitVec 32) := by
     simp [memoryWord, Nat.unpair_pair, Word.toBitVec, Word.value]
@@ -96,7 +96,6 @@ theorem aliased_register_effects : ∃ after,
     norm_num [memoryWord, JumpBranchSlt.importedConstraintsMemoryPorts,
       MemoryPort.writeCode, pairCode, assignment, Tests.Jump.row,
       ZMod.val_ofNat, babyBearModulus, Word.toBitVec, Word.value]
-    rfl
   refine ⟨after, history, ?_, ?_, readback⟩
   · have read := reads 0
     rw [source] at read
@@ -119,7 +118,6 @@ theorem wrong_old_destination_rejected :
     norm_num [memoryWord, JumpBranchSlt.importedConstraintsMemoryPorts,
       MemoryPort.readCode, pairCode, assignment, Tests.Jump.row,
       ZMod.val_ofNat, babyBearModulus, Word.toBitVec, Word.value]
-    rfl
   rw [zero] at read
   change run (SailRV32.Functions.rX_bits (.Regidx 1)) before = .ok (0 : BitVec 32) before at read
   have actual : run (SailRV32.Functions.rX_bits (.Regidx 1)) before = .ok (5 : BitVec 32) before := by
