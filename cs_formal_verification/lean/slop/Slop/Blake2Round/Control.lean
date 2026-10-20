@@ -1,4 +1,6 @@
 import Slop.Blake2Round.ArtifactChecks
+import Slop.Blake2Round.OpIndex
+import Slop.Blake2G.OpIndex
 import Human.Circuits.Blake2Round.Control
 import Slop.Constraints
 import Slop.Arithmetic.Lemmas
@@ -17,9 +19,11 @@ theorem control_bits {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 4)
   intro i
   have flag := Verification.assertion_of_holds h ⟨184 + i.val,
     by rw [constraint_count]; have size := i.isLt; omega⟩
-  fin_cases i <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, Variables.controlBits,
-    mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] at flag ⊢
+  fin_cases i <;> op_index at flag <;> simp only [Expression.eval, Int.ofNat_eq_natCast,
+    Nat.cast_one, Int.cast_one, Airbender.Verification.environment, one_mul, CharP.cast_eq_zero,
+    Int.cast_zero, zero_add, Int.reduceNegSucc, Int.cast_neg, ← sub_eq_add_neg, mul_eq_zero,
+    sub_eq_zero, Variables.controlBits, add_zero, Vector.getElem_mk, List.getElem_toArray,
+    List.getElem_cons_succ, List.getElem_cons_zero, Nat.reduceAdd, Fin.isValue, mul_zero] at flag ⊢
   all_goals exact flag
 
 /-- Read/write control arithmetic uses only imported assertions. No exclusive
@@ -65,8 +69,8 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 8192 ≤ p)
   have read := Verification.assertion_of_holds h ⟨1, by rw [constraint_count]; decide⟩
   have low := Verification.assertion_of_holds h ⟨118, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h ⟨119, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at read low high
+  op_index at read low high
+  simp [Expression.eval, Verification.environment] at read low high
   have readField : ((controls + 8 * rounds + 4096 * (w 151).val : Nat) : ZMod p) = w 136 := by
     simp only [controls, rounds, Nat.cast_add, Nat.cast_mul, ZMod.natCast_zmod_val]
     linear_combination read
