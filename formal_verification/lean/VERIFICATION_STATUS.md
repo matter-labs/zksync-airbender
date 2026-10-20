@@ -1259,11 +1259,11 @@ Rust/compiler refinement and cryptographic enforcement remain separate.
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all ninety-three concrete test modules pass.
-- Importer regressions: 400 checks pass.
-- Axiom audit: 1775 explicit roots; only propext, Classical.choice and Quot.sound.
-- All one hundred and seven public Review theorems (twenty-five circuit claims, fifty-eight trace claims and twenty-four helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 78 unchanged reused files, six native circuit artifacts, forty-nine native Rust sources plus compiled shift-offset metadata, seventeen native setup artifacts and four exporter source/manifest/lock files.
+- Library, both CLI entrypoints and all ninety-four concrete test modules pass.
+- Importer regressions: 414 checks pass.
+- Axiom audit: 1889 explicit roots; only propext, Classical.choice and Quot.sound.
+- All one hundred and eight public Review theorems (twenty-five circuit claims, fifty-eight trace claims and twenty-five helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 79 unchanged reused files, six native circuit artifacts, forty-nine native Rust sources plus compiled shift-offset metadata, eighteen native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.
@@ -1687,6 +1687,39 @@ No accepted subword row, Sail execution or native defect is claimed here. The
 remaining load/store/ROM regions, full native constraint import, public decoding,
 initialized reads and original subword instruction execution remain unfinished.
 The findings standard and historical findings/coverage archive are unchanged.
+
+## Native subword load-data table checkpoint (2026-10-20)
+
+The native v2 signed/unsigned load-data table now has a complete certificate for
+all 2,097,152 actual exported rows, with native tag 45 and compiled offset
+2,162,689. [Literal data](Airbender/Review/Helpers/Tables/NativeSubwordLoadData.lean)
+comes from the unchanged pinned native generator and shared lossless codec.
+The strict importer checks field, profile, tag, placement, extent, shape and
+canonicality; the standard native gate reproduces the JSON byte for byte.
+
+[The public helper](Airbender/Review/Helpers/Tables/SubwordLoadTheorems.lean)
+derives the canonical 21-bit key, exact signed/unsigned low and high outputs,
+and both 16-bit bounds directly from original Clean lookup membership. The key
+retains its preselected 16-bit limb, two offset bits and funct3. Odd-halfword and
+unused/invalid keys retain the native zero outputs; their isolated presence is
+not an accepted-row or architectural defect claim.
+
+[Internal assembly](Airbender/Proofs/SubwordMemory/Load.lean) proves exact tagged
+native/Clean membership. Symbolic getters and 32 control groups cover every
+stored affine/periodic block. The pinned v3 block-selection lemmas are copied
+unchanged. Four actual 256-entry templates use 64 separate 16-entry kernel
+certificates, each in a fresh bounded worker. Literal constants share data without
+changing values or codec semantics. This replaces an allocation-heavy draft;
+no memory, recursion or heartbeat limits were raised.
+
+[Nineteen kernel regression roots](Tests/SubwordLoad.lean) cover byte sign
+boundaries, signed halfword boundaries, all four offsets, unsigned outputs,
+odd-halfword and unused keys, and rejection of altered low/high values. Fourteen
+additional importer checks reject malformed native load-data artifacts.
+Full subword constraints, remaining store/ROM regions, public decoding,
+initialized native memory/history, original instruction execution and physical
+argument binding remain unfinished. The findings standard and historical
+findings/coverage archive are unchanged.
 
 ## Historical coverage and boundary notes
 

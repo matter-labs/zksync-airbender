@@ -123,3 +123,13 @@ certificates check its complete width/limb/trap semantics, including the explici
 native misaligned-load-to-x0 exception. Remaining subword regions, full circuit
 constraints, original instruction execution and physical setup/argument binding
 are separate. No dependency, codec, memory ceiling or other exporter mode changes.
+
+The subword load mode accepts --subword-load LAYOUT.json OUTPUT.json and
+materializes only the actual native load-data table. Native ID 45 and its
+compiled placement come from the unchanged generator and supplied v2 layout.
+The pinned artifact keeps all 2,097,152 tagged rows at offset 2,162,689, including
+odd-halfword and unused keys; the standard gate reproduces it byte for byte.
+Lean checks exact signed/unsigned outputs from the preselected limb/offset/funct3
+key and derives canonical bounds. Full circuit acceptance, original instruction
+execution and physical argument binding remain separate. The shared codec,
+dependencies, memory limits and other exporter modes are unchanged.

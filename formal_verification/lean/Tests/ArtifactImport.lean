@@ -664,6 +664,33 @@ private def subwordOffsetChecks : IO Unit := do
   let extra ← IO.ofExcept (replaceField json "invented" (.bool true))
   check (rejected (Setup.parseSubwordOffset extra.compress)) "reject unknown subword offset fields"
 
+private def subwordLoadChecks : IO Unit := do
+  let source ← IO.FS.readFile "artifacts/setup/subword-load-native.json"
+  let artifact ← IO.ofExcept (Setup.parseSubwordLoad source)
+  check (artifact.generic_rows == 2097152 && artifact.tables.size == 1)
+    "actual native subword load/trap extent"
+  let some region := artifact.tables[0]? | throw (IO.userError "missing subword load region")
+  let some lowColumn := region.data.columns[1]? | throw (IO.userError "missing subword load column")
+  let some highColumn := region.data.columns[2]? | throw (IO.userError "missing subword mask column")
+  let some tagColumn := region.data.columns[3]? | throw (IO.userError "missing subword tag column")
+  check (region.id == 45 && region.offset == 2162689 && region.data.columns.size == 4)
+    "actual native subword load/trap ID, placement and tagged width"
+  check (rejected ({artifact with version := 2}.validateSubwordLoad)) "reject subword load version"
+  check (rejected ({artifact with field_modulus := 2013265921}.validateSubwordLoad)) "reject v3 subword load field"
+  check (rejected ({artifact with profile := "shift_binop_scalar_regions"}.validateSubwordLoad)) "reject crossed subword load profile"
+  check (rejected ({artifact with generic_rows := 2097151}.validateSubwordLoad)) "reject subword load extent"
+  check (rejected ({artifact with tables := #[]}.validateSubwordLoad)) "reject missing subword load region"
+  check (rejected ({artifact with tables := #[region, region]}.validateSubwordLoad)) "reject duplicate subword load region"
+  check (rejected ({artifact with tables := #[{region with id := 44}]}.validateSubwordLoad)) "reject changed subword load tag"
+  check (rejected ({artifact with tables := #[{region with offset := 65537}]}.validateSubwordLoad)) "reject shifted subword load placement"
+  check (rejected ({artifact with tables := #[{region with data := {region.data with length := 2097151}}]}.validateSubwordLoad)) "reject truncated subword load region"
+  check (rejected ({artifact with tables := #[{region with data := {region.data with columns := #[]}}]}.validateSubwordLoad)) "reject missing subword load columns"
+  check (rejected ({artifact with tables := #[{region with data := {region.data with columns :=
+    #[⟨#[.affine 2097152 2147483647 0]⟩,lowColumn,highColumn,tagColumn]}}]}.validateSubwordLoad)) "reject noncanonical subword load data"
+  let json ← IO.ofExcept (Json.parse source)
+  let extra ← IO.ofExcept (replaceField json "invented" (.bool true))
+  check (rejected (Setup.parseSubwordLoad extra.compress)) "reject unknown subword load fields"
+
 def main : IO UInt32 := do
   try
     let source ← IO.FS.readFile "../../cs/add_sub_lui_auipc_mop_preprocessed_layout.json"
@@ -839,6 +866,7 @@ def main : IO UInt32 := do
     let badBlock ← IO.ofExcept (Json.parse "{\"kind\":\"affine\",\"length\":1,\"first\":0,\"step\":0,\"invented\":1}")
     check (rejected (fromJson? badBlock : Except String Setup.Block)) "reject unknown compressed block field"
     subwordOffsetChecks
+    subwordLoadChecks
     scalarChecks setupSource
     decoderChecks setupSource
     shiftDecoderChecks

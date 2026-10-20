@@ -140,3 +140,17 @@ retain every 21-bit native key and the complete offset/width/limb/trap result.
 x0-load waiver, invalid encoding and store behavior, and reject changed queries.
 This table is a foundation for full subword constraint/decoder/history/execution
 work; its isolated keys do not establish accepted circuit behavior or a defect.
+
+## Native subword load-data table
+
+[The public helper](SubwordLoadTheorems.lean) derives the exact signed/unsigned
+byte/halfword outputs and canonical bounds from original Clean membership.
+[The source-shaped model](SubwordLoad.lean) retains every native key, including
+unused and odd-halfword zero outputs. [The literal certificate](../../../Proofs/SubwordMemory/Load.lean)
+checks all 2,097,152 actual tagged rows at native ID 45 and compiled offset
+2,162,689. Small template certificates run in separate bounded workers; symbolic
+block assembly covers the complete table. [Regressions](../../../../Tests/SubwordLoad.lean)
+exercise signs, all offsets, unsigned outputs and changed-query rejection.
+The preselected limb is part of the table key. Full native constraints, limb
+selection, initialized memory, decoder and original instruction execution remain
+separate; table keys alone do not establish circuit acceptance or a defect.

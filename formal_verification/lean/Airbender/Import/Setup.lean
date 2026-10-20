@@ -458,4 +458,25 @@ def parseSubwordOffset (source : String) : Except String ControlArtifact := do
   artifact.validateSubwordOffset
   return artifact
 
+/-- Actual native v2 subword load-data region, including its compiled placement.
+    Other subword lookup regions and full circuit import remain separate. -/
+def ControlArtifact.validateSubwordLoad (artifact : ControlArtifact) : Except String Unit := do
+  unless artifact.version == 1 && artifact.field_modulus == mersenne31Modulus &&
+      artifact.profile == "subword_memory_load_data" do throw "unsupported native subword load profile"
+  unless artifact.generic_rows == 2097152 && artifact.tables.size == 1 do
+    throw "unexpected native subword load extent"
+  let some region := artifact.tables[0]? | throw "missing native subword load table"
+  unless region.id == 45 && region.offset == 2162689 do throw "unexpected native subword load region"
+  region.data.validate 2097152 4
+
+def parseSubwordLoad (source : String) : Except String ControlArtifact := do
+  let json ← Json.parse source
+  exactKeys json #["version", "field_modulus", "profile", "generic_rows", "tables"]
+  for region in (← (← json.getObjVal? "tables").getArr?) do
+    exactKeys region #["id", "offset", "data"]
+    matrixKeys (← region.getObjVal? "data")
+  let artifact : ControlArtifact ← fromJson? json
+  artifact.validateSubwordLoad
+  return artifact
+
 end Airbender.Setup

@@ -226,4 +226,35 @@ elab "import_native_subword_offset " name:ident " from " path:str : command => d
   let some region := artifact.tables[0]? | throwError "missing native subword offset table"
   emitData name region.data region.offset
 
+/-- Literal native v2 subword load-data rows. No table recipe is synthesized. -/
+elab "import_native_subword_load " name:ident " from " path:str : command => do
+  let artifact ← match parseSubwordLoad (← IO.FS.readFile path.getString) with
+    | .ok artifact => pure artifact
+    | .error error => throwError "native subword load import failed: {error}"
+  let some region := artifact.tables[0]? | throwError "missing native subword load table"
+  -- Share actual literal blocks/columns so reducing one field never rebuilds
+  -- the full matrix. Every value still comes from the validated native export.
+  let mut columns : Array (TSyntax `term) := #[]
+  for lane in [:region.data.columns.size] do
+    let some column := region.data.columns[lane]? | throwError "missing native load column"
+    let mut blocks : Array (TSyntax `term) := #[]
+    for index in [:column.blocks.size] do
+      let some block := column.blocks[index]? | throwError "missing native load block"
+      let term ← if let .periodic count stride values := block then do
+          let target := mkIdent (name.getId.appendAfter s!"Values{lane}_{index}")
+          let literal ← valuesSyntax values
+          elabCommand (← `(def $target : Array Nat := $literal))
+          let stride ← if stride ≥ 0 then `(Int.ofNat $(quote stride.toNat))
+            else `(Int.negSucc $(quote (-stride - 1).toNat))
+          `(Airbender.Setup.Block.periodic $(quote count) $stride $target)
+        else blockSyntax block
+      let target := mkIdent (name.getId.appendAfter s!"Block{lane}_{index}")
+      elabCommand (← `(def $target : Airbender.Setup.Block := $term))
+      blocks := blocks.push (← `($target))
+    let target := mkIdent (name.getId.appendAfter s!"Column{lane}")
+    elabCommand (← `(def $target : Airbender.Setup.Column := ⟨#[$[$blocks],*]⟩))
+    columns := columns.push (← `($target))
+  elabCommand (← `(def $name : Airbender.Setup.TableData 4 :=
+    ⟨$(quote region.data.length), $(quote region.offset), #v[$[$columns],*]⟩))
+
 end Airbender.Setup

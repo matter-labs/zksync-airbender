@@ -51,6 +51,12 @@ now has a complete certificate over its actual 2,097,152 native exported rows,
 including the explicit misaligned-load-to-x0 rule. This is the first subword
 fixed-table connection; full subword circuit/history/execution remains unfinished.
 
+The [subword load-data helper](Airbender/Review/Helpers/Tables/SubwordLoadTheorems.lean)
+now certifies all 2,097,152 actual native load-data rows, including signed/unsigned
+byte and halfword outputs, all offsets and retained unused keys. Its small public
+claim derives both output bounds from lookup membership. Full subword circuit,
+initialized history and original instruction execution remain unfinished.
+
 The arithmetic checkpoint includes complete initialized ADD/ADDI/SUB/LUI/AUIPC normal-path
 execution and conditional row soundness, including actual masked destination
 writes, original-opcode discarded x0 writes and aligned 32-bit PC wraparound. Native ten-column decoder placement/query order is checked;

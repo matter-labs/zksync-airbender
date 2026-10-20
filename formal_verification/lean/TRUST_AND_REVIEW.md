@@ -1928,3 +1928,36 @@ No accepted subword row, Sail execution or native defect is claimed here. The
 remaining load/store/ROM regions, full native constraint import, public decoding,
 initialized reads and original subword instruction execution remain unfinished.
 The findings standard and historical findings/coverage archive are unchanged.
+
+## Native subword load-data table checkpoint (2026-10-20)
+
+The native v2 signed/unsigned load-data table now has a complete certificate for
+all 2,097,152 actual exported rows, with native tag 45 and compiled offset
+2,162,689. [Literal data](Airbender/Review/Helpers/Tables/NativeSubwordLoadData.lean)
+comes from the unchanged pinned native generator and shared lossless codec.
+The strict importer checks field, profile, tag, placement, extent, shape and
+canonicality; the standard native gate reproduces the JSON byte for byte.
+
+[The public helper](Airbender/Review/Helpers/Tables/SubwordLoadTheorems.lean)
+derives the canonical 21-bit key, exact signed/unsigned low and high outputs,
+and both 16-bit bounds directly from original Clean lookup membership. The key
+retains its preselected 16-bit limb, two offset bits and funct3. Odd-halfword and
+unused/invalid keys retain the native zero outputs; their isolated presence is
+not an accepted-row or architectural defect claim.
+
+[Internal assembly](Airbender/Proofs/SubwordMemory/Load.lean) proves exact tagged
+native/Clean membership. Symbolic getters and 32 control groups cover every
+stored affine/periodic block. The pinned v3 block-selection lemmas are copied
+unchanged. Four actual 256-entry templates use 64 separate 16-entry kernel
+certificates, each in a fresh bounded worker. Literal constants share data without
+changing values or codec semantics. This replaces an allocation-heavy draft;
+no memory, recursion or heartbeat limits were raised.
+
+[Nineteen kernel regression roots](Tests/SubwordLoad.lean) cover byte sign
+boundaries, signed halfword boundaries, all four offsets, unsigned outputs,
+odd-halfword and unused keys, and rejection of altered low/high values. Fourteen
+additional importer checks reject malformed native load-data artifacts.
+Full subword constraints, remaining store/ROM regions, public decoding,
+initialized native memory/history, original instruction execution and physical
+argument binding remain unfinished. The findings standard and historical
+findings/coverage archive are unchanged.

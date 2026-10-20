@@ -313,6 +313,10 @@
     {
       "path": "Airbender/Proofs/Tables/LiteralSizes.lean",
       "sha256": "be19d1b4a58fbe4c038c28069b80767b77676e5d7c0090bca473ec81d827117f"
+    },
+    {
+      "path": "Airbender/Proofs/Tables/BlockRanges.lean",
+      "sha256": "062516421860a4cffdaaabb711473fc8e86455d2858b2502bcd9d4f1a552ea2d"
     }
   ],
   "circuit_artifacts": [
@@ -5145,6 +5149,504 @@
       "backport_reuse_path": "Tests/NativeBinary.lean",
       "backport_reuse_sha256": "d60b1d234f0036d770bd5bd4d7d44eef8e8c0c4a5d4e1117e5eab71c5928e422",
       "change": "Adapt complete native row and malformed membership regressions to the actual v2 offset/trap table. Retain ordinary/x0 misalignment, high limb, invalid encoding and store controls; make no accepted-row or architectural discrepancy claim."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/Load.lean",
+      "backport_reuse_revision": "5c446815859aca56d90d509384d051d55f9223e9",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/Offset.lean",
+      "backport_reuse_sha256": "04d55cbb5300436b9ebdc59e85a86b8a0f2b8e765e4ce994583f7ad106e8f964",
+      "change": "Reuse symbolic native block getters, exact all-row transport and original Clean/native tagged membership. The affine getter body is unchanged apart from public visibility; small stride wrappers and nondependent reads handle actual periodic templates. Split by 32 control groups and exact stored boundaries without full-domain enumeration or increased proof/resource ceilings."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadGeometry.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadGetters.lean",
+      "backport_reuse_revision": "5c446815859aca56d90d509384d051d55f9223e9",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/Offset.lean",
+      "backport_reuse_sha256": "04d55cbb5300436b9ebdc59e85a86b8a0f2b8e765e4ce994583f7ad106e8f964",
+      "change": "Reuse symbolic native block getters, exact all-row transport and original Clean/native tagged membership. The affine getter body is unchanged apart from public visibility; small stride wrappers and nondependent reads handle actual periodic templates. Split by 32 control groups and exact stored boundaries without full-domain enumeration or increased proof/resource ceilings."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadHigh.lean",
+      "backport_reuse_revision": "5c446815859aca56d90d509384d051d55f9223e9",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/Offset.lean",
+      "backport_reuse_sha256": "04d55cbb5300436b9ebdc59e85a86b8a0f2b8e765e4ce994583f7ad106e8f964",
+      "change": "Reuse symbolic native block getters, exact all-row transport and original Clean/native tagged membership. The affine getter body is unchanged apart from public visibility; small stride wrappers and nondependent reads handle actual periodic templates. Split by 32 control groups and exact stored boundaries without full-domain enumeration or increased proof/resource ceilings."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadHighSign.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadLow.lean",
+      "backport_reuse_revision": "5c446815859aca56d90d509384d051d55f9223e9",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/Offset.lean",
+      "backport_reuse_sha256": "04d55cbb5300436b9ebdc59e85a86b8a0f2b8e765e4ce994583f7ad106e8f964",
+      "change": "Reuse symbolic native block getters, exact all-row transport and original Clean/native tagged membership. The affine getter body is unchanged apart from public visibility; small stride wrappers and nondependent reads handle actual periodic templates. Split by 32 control groups and exact stored boundaries without full-domain enumeration or increased proof/resource ceilings."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadLowSign.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadRotatedByte.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadRotatedCarry.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/HighSignPart00.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/HighSignPart01.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/HighSignPart02.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/HighSignPart03.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/HighSignPart04.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/HighSignPart05.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/HighSignPart06.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/HighSignPart07.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/HighSignPart08.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/HighSignPart09.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/HighSignPart10.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/HighSignPart11.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/HighSignPart12.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/HighSignPart13.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/HighSignPart14.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/HighSignPart15.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/LowSignPart00.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/LowSignPart01.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/LowSignPart02.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/LowSignPart03.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/LowSignPart04.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/LowSignPart05.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/LowSignPart06.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/LowSignPart07.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/LowSignPart08.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/LowSignPart09.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/LowSignPart10.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/LowSignPart11.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/LowSignPart12.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/LowSignPart13.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/LowSignPart14.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/LowSignPart15.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedBytePart00.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedBytePart01.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedBytePart02.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedBytePart03.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedBytePart04.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedBytePart05.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedBytePart06.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedBytePart07.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedBytePart08.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedBytePart09.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedBytePart10.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedBytePart11.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedBytePart12.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedBytePart13.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedBytePart14.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedBytePart15.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedCarryPart00.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedCarryPart01.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedCarryPart02.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedCarryPart03.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedCarryPart04.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedCarryPart05.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedCarryPart06.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedCarryPart07.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedCarryPart08.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedCarryPart09.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedCarryPart10.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedCarryPart11.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedCarryPart12.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedCarryPart13.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedCarryPart14.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadTemplates/RotatedCarryPart15.lean",
+      "source_path": "Airbender/Proofs/Tables/LoadByteTemplates.lean",
+      "source_sha256": "00f9f938968d40d434574dd0b0d466abffde039eb48c2f56b9237e448b6f29a2",
+      "change": "Adapt the pinned literal-template certificate structure to the actual v2 stored blocks. Keep default proof limits: each 16-entry certificate is checked in its own bounded worker, collectors assemble all 256 entries, and structural size/shape lemmas use literal constants emitted losslessly from the native artifact. Preserve v2 sign-extension and rotated-byte/carry ordering; no v3 row coverage or original large proof options are inherited."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeSubwordLoadData.lean",
+      "backport_reuse_revision": "5c446815859aca56d90d509384d051d55f9223e9",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeSubwordOffsetData.lean",
+      "backport_reuse_sha256": "19e0ebe1a80f4cbba4f447a5de8b00dd34306bc6f174be2224f8e4bbb6d6ed11",
+      "change": "Reuse the strict native literal-data module pattern for the separate complete v2 load-data region."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/SubwordLoad.lean",
+      "backport_reuse_revision": "5c446815859aca56d90d509384d051d55f9223e9",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/SubwordOffset.lean",
+      "backport_reuse_sha256": "aafb08953062d931ecf8db61281da666941526d9f81fc1220f75ea804d9b1476",
+      "change": "Reuse original Clean static-table construction; define exact source-shaped signed/unsigned load-data semantics from the preselected limb, both offset bits and funct3, retaining unused and odd-halfword keys."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/SubwordLoadTheorems.lean",
+      "backport_reuse_revision": "5c446815859aca56d90d509384d051d55f9223e9",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/SubwordOffsetTheorems.lean",
+      "backport_reuse_sha256": "ed3cd2fd3a5862108f5b481766e5fdeb2e1e96bbd37a373f6b34a2442eb009b2",
+      "change": "Reuse short native helper claim shape; derive canonical key, exact two output limbs and their bounds from lookup membership. Full accepted-row and original Sail execution remain separate."
+    },
+    {
+      "path": "Tests/SubwordLoad.lean",
+      "backport_reuse_revision": "5c446815859aca56d90d509384d051d55f9223e9",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/SubwordOffset.lean",
+      "backport_reuse_sha256": "aafb08953062d931ecf8db61281da666941526d9f81fc1220f75ea804d9b1476",
+      "change": "Reuse original Clean static-table construction; define exact source-shaped signed/unsigned load-data semantics from the preselected limb, both offset bits and funct3, retaining unused and odd-halfword keys."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "5c446815859aca56d90d509384d051d55f9223e9",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "3d51ddeadacd5774d1bc2641f26cf1961072332ac985266652130d4de02c39d7",
+      "change": "Add strict exact field/profile/tag/placement/extent/shape validation for native table ID 45 and compiled offset 2162689; all prior import modes remain unchanged."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "5c446815859aca56d90d509384d051d55f9223e9",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "d6f9b98d7e30ca4bc2fbcee8bc18c5b23e9be77e937958bb383eb5fdb22e294e",
+      "change": "Add a lossless native load-data emitter with separate literal template, block and column constants to avoid repeated large reductions; values and block syntax come from the same strict parser and existing codec, with no synthesized row recipe."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "5c446815859aca56d90d509384d051d55f9223e9",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "62cbc7f9f8e3dd723f4f88f45fa243718692737ab2243af6b559a65785f15c28",
+      "change": "Retain existing checks and add fourteen native load-data structural, field, profile, tag, placement and canonicality acceptance/rejection checks."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "5c446815859aca56d90d509384d051d55f9223e9",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "c5d275c89f4439c07327db5fbc28e2015c53fb46febcbf46b4fca2941fdf7990",
+      "change": "Retain scoped offline locked single-job native checks; reproduce the complete native load-data JSON byte for byte and independently check its actual compiled placement."
     }
   ],
   "setup_artifacts": [
@@ -5298,6 +5800,13 @@
       "profile": "actual native v2 offset/trap table ID 44, compiled offset 65537, all 2097152 tagged rows; other subword regions and full circuit/execution remain separate",
       "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
+    },
+    {
+      "path": "artifacts/setup/subword-load-native.json",
+      "sha256": "3dada7b5a352f7b40088955f1b4d6ccad8edb352131a197e1fc0f8e63b2d199b",
+      "profile": "actual native v2 signed/unsigned subword load-data table ID 45, compiled offset 2162689, all 2097152 tagged rows; preselected limb, offset and funct3 retained, including unused keys; full accepted circuit and Sail execution remain separate",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
     }
   ],
   "native_exporter_files": [
@@ -5311,7 +5820,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "c3013df402e4fd5cf213b7892bbe2635f271a358021059f8a5f3335b20800adc"
+      "sha256": "57bd0b275442ad05fbe1c800bdeed50e1060d445c6347e334d3870545e2709bd"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",
