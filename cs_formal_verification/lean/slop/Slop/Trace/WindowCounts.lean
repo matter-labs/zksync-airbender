@@ -90,6 +90,12 @@ theorem native_suffix_count [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   let weight := fun state : PCState.State p =>
     (timeOfPair state.timestamp).value / 4 - min ((timeOfPair state.timestamp).value / 4) (lower / 4)
   let selected := fun row : Row p Kind => decide (lower ≤ (decodeTimestamp row.assignment row.columns.initialTime).value)
+  have arith : ∀ X L : ℕ, X % 4 = 0 → L % 4 = 0 →
+      (X + 4) / 4 - min ((X + 4) / 4) (L / 4) =
+        X / 4 - min (X / 4) (L / 4) + (if L ≤ X then 1 else 0) := by
+    intro X L hX hL
+    simp only [Nat.min_def]
+    split_ifs <;> omega
   have clocks := state_clock_inputs hp inverse constraints states initial aligned
   have advance : ∀ row ∈ trace.rows, weight row.finish = weight row.start + if selected row then 1 else 0 := by
     intro row member
@@ -99,9 +105,16 @@ theorem native_suffix_count [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     change (decodeTimestamp row.assignment row.columns.finalTime).value / 4 -
       min ((decodeTimestamp row.assignment row.columns.finalTime).value / 4) (lower / 4) = _
     rw [step]
-    dsimp [weight, selected, Row.start, timeOfPair, rawPair, decodeTimestamp]
-    simp only [Nat.min_def, decide_eq_true_eq]
-    split_ifs <;> omega
+    have startWeight : weight row.start = (decodeTimestamp row.assignment row.columns.initialTime).value / 4 -
+        min ((decodeTimestamp row.assignment row.columns.initialTime).value / 4) (lower / 4) := rfl
+    -- `simp` cannot rewrite `decide p = true` inside the `if`, so the selection is stated as a
+    -- plain `if` on the bound `lower ≤ …`, and the arithmetic is one lemma on naturals
+    have selection : (if selected row then 1 else 0 : ℕ) =
+        if lower ≤ (decodeTimestamp row.assignment row.columns.initialTime).value then 1 else 0 := by
+      by_cases h : lower ≤ (decodeTimestamp row.assignment row.columns.initialTime).value <;>
+        simp [selected, h]
+    rw [startWeight, selection]
+    exact arith _ _ rowAligned first
   have totals : (trace.rows.map fun row => weight row.finish).sum =
       (trace.rows.map fun row => weight row.start).sum + trace.rows.countP selected := by
     rw [List.map_congr_left advance, List.sum_map_add, sum_indicators]
