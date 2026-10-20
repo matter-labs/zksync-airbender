@@ -4994,6 +4994,78 @@
       "backport_reuse_revision": "5b74fad97a777e0e05ad4edb660f196c49987712",
       "backport_reuse_path": "Tests/ShiftRegisters.lean",
       "backport_reuse_sha256": "a6fc8c5a31a3dc94cb4aa69622e8cf0a2dd8a820b8a6e713afa9cc8397fe5d4b"
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/PC.lean",
+      "change": "Adapt the verified v2 MUL/DIV PC carry theorem to the exact native shift/binop equations: Boolean indices 6/7, gates/inverses/output equations 41..46 and high inverse column 63. The original calculation is otherwise unchanged. Native public query canonicalization and original setup alignment derive incoming PC ranges/alignment. Preserve both low carry and full aligned RV32 rollover without an outgoing range premise.",
+      "backport_reuse_revision": "8529958a2fb2f15c178caffa8eab6e14e23e75bb",
+      "backport_reuse_path": "Airbender/Proofs/MulDiv/PC.lean",
+      "backport_reuse_sha256": "c67ea64a2f373729613f08e1b7c47febfaadf92bf745f6775193fc667ac3c67a"
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/Execution.lean",
+      "change": "Adapt pinned original shift retirement mechanics and verified v2 MUL/DIV preparation/retirement assembly to the actual original shift/binop clause dispatcher. The retained original instruction supplies the clause; actual native history is transported through nextPC preparation, exact native modular successor and original retirement. No fabricated instruction, result, write or intermediate state is supplied.",
+      "backport_reuse_revision": "8529958a2fb2f15c178caffa8eab6e14e23e75bb",
+      "backport_reuse_path": "Airbender/Proofs/MulDiv/Execution.lean",
+      "backport_reuse_sha256": "c0f3634909129e21953b4910cb6ac63713ae7428390e0f6d90f8653b8c9b8755",
+      "source_path": "Airbender/Proofs/ShiftBinop/Execution.lean",
+      "source_sha256": "ebc879eb4537346724010b20f02a6d0aec5f8aed40dad345c4479f6f7687ea84"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/ShiftBinopExecution.lean",
+      "change": "Adapt the short v2 MUL/DIV local retired-step/history observables to ordinary shift/binop. Retain the original decoded instruction and its dispatcher-selected clause, actual native row states, canonical outgoing PC and original nextPC preparation/retirement. Complete fetched execution is a separate public claim.",
+      "backport_reuse_revision": "8529958a2fb2f15c178caffa8eab6e14e23e75bb",
+      "backport_reuse_path": "Airbender/Review/Helpers/Memory/MulDivExecution.lean",
+      "backport_reuse_sha256": "015a123ed8c834167452380bd807a482d6ad7d78d175e0478706effcfbd3866a"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ShiftBinop/Execution.lean",
+      "change": "Adapt initialized v2 MUL/DIV instruction-history assembly. Full native public decoding derives canonical aligned PCs, initialized matching derives source bounds and actual port histories, and native carry gates plus the checked original clauses derive every retired row step. All actual GPR states remain constructed conclusions.",
+      "backport_reuse_revision": "8529958a2fb2f15c178caffa8eab6e14e23e75bb",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/MulDiv/Execution.lean",
+      "backport_reuse_sha256": "4b5b3c0bb56d05cf89b33d24b20ab43ceeaa27472c5e473028c9e792d4ab773a"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ShiftBinop/Execution.lean",
+      "change": "Adapt the short v2 initialized local retirement claim to ordinary shift/binop with actual public code/initialization, native acceptance/full decoding and tracked-cell alignment as visible premises. No local PC/range, expected read/result or state premises are added.",
+      "backport_reuse_revision": "8529958a2fb2f15c178caffa8eab6e14e23e75bb",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/MulDiv/Execution.lean",
+      "backport_reuse_sha256": "74b9e1ebd609c38fd78371393794d6f4e3e0c05550f916fbb4e6a7b1d0399116"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ShiftBinop/Composition.lean",
+      "change": "Adapt verified v2 MUL/DIV stateful fetched composition to the six ordinary shift/binop operations and twelve original register/immediate forms. Native GPR history preserves public bytes/misa and derives original decoding in actual pre-states; exact retained original clauses perform normal steps. Native PC chaining composes arbitrary accepted finite histories, including empty traces, and yields actual terminal PC/cell reads. Raw terminal PC bounds follow from actual matching and native successors.",
+      "backport_reuse_revision": "8529958a2fb2f15c178caffa8eab6e14e23e75bb",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/MulDiv/Composition.lean",
+      "backport_reuse_sha256": "8b0280e2813ddc277ac134fc4fa8b3fc6d7751f693f619f7b659b9d8e6adb223"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ShiftBinop/FetchedExecution.lean",
+      "change": "Adapt the short v2 public fetched-execution and terminal-PC-bound claim to the selected ordinary shift/binop profile. Complete original byte fetch/stateful decoding/preparation/retirement and exact terminal matching follow from actual public initialization/code and accepted native relations. Custom CSR, subword memory, delegation, unified protocols, compiler refinement and physical cryptographic enforcement remain separate.",
+      "backport_reuse_revision": "8529958a2fb2f15c178caffa8eab6e14e23e75bb",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/MulDiv/FetchedExecution.lean",
+      "backport_reuse_sha256": "f9dbacc462c1828675e308298e285f6771e0880fed8d0171668982fd40d10321"
+    },
+    {
+      "path": "Tests/ShiftPC.lean",
+      "change": "Adapt native v2 PC regression to both low-limb carry and full RV32 rollover on complete actual shift/binop rows. All 50 native equations and 12 native lookups hold; the exact retirement successor theorem derives bounds and +4, with concrete 0xfffefffc to 0xffff0000 and 0xfffffffc to zero checks.",
+      "backport_reuse_revision": "8529958a2fb2f15c178caffa8eab6e14e23e75bb",
+      "backport_reuse_path": "Tests/MulDivPC.lean",
+      "backport_reuse_sha256": "2d66bd48c16880f2fc33b158c668283c50e59a8c462ee64ae8576ce5df7f5231"
+    },
+    {
+      "path": "Tests/ShiftExecution.lean",
+      "change": "Extend the current verified 24 original clause fixtures through actual nextPC preparation and retirement. Derive original instruction dispatch, actual native states/transfers, successor PC and preserved code/misa. All twelve original x0 forms preserve data while actually advancing PC, retaining immediate/destination aliases.",
+      "backport_reuse_revision": "8529958a2fb2f15c178caffa8eab6e14e23e75bb",
+      "backport_reuse_path": "Tests/ShiftClauses.lean",
+      "backport_reuse_sha256": "7912b55ba9ce21d587e9d64e3117c8b00691ef521792a0bd34fffb2ebe89fe19"
+    },
+    {
+      "path": "Tests/ShiftFetched.lean",
+      "change": "Adapt verified v2 MUL/DIV complete fetched regressions to all 24 ordinary shift/binop fixtures. Actual public Sail bytes and native matching construct full original executions, exact terminal PCs and x3 values for all six operations/register/immediate/x0 forms. Empty traces derive terminal bounds and actual terminal reads from public initialization alone.",
+      "backport_reuse_revision": "8529958a2fb2f15c178caffa8eab6e14e23e75bb",
+      "backport_reuse_path": "Tests/MulDivFetched.lean",
+      "backport_reuse_sha256": "ee7a79adcf27c052819dfa60bd0e30ec0a674a12de04e22cdec8a9a11cc463e7"
     }
   ],
   "setup_artifacts": [

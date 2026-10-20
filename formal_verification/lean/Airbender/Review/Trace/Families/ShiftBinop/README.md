@@ -125,3 +125,15 @@ and full public decoding. [Complete regressions](../../../../../Tests/ShiftClaus
 cover all twenty-four rows and twelve actual x0 clause stutters, plus exclusion
 of RV64-sized immediate shifts. PC retirement and fetched execution remain next;
 earlier sections retain scope.
+
+## Complete original fetched execution
+
+[The local retired-history claim](Execution.lean) now derives original nextPC
+preparation/retirement from actual native states and successor PCs. [The short fetched-execution claim](FetchedExecution.lean) composes original byte fetch,
+stateful decoding and normal steps to exact actual terminal PC/cells, including
+empty traces. [PC assembly](../../../../Proofs/ShiftBinop/PC.lean) retains native
+low carry/full RV32 wrap; [internal composition](../../../../Proofs/Trace/Families/ShiftBinop/Composition.lean)
+uses actual GPR/code/misa histories and native PC matching. [Complete fixtures](../../../../../Tests/ShiftFetched.lean)
+derive all twenty-four terminal PCs/values, and [retirement checks](../../../../../Tests/ShiftExecution.lean)
+retain twelve actual x0 PC advances. Remaining ordinary/subword-memory coverage,
+CSR/delegation and unified protocols remain separate; earlier sections retain scope.

@@ -36,9 +36,11 @@ Current execution coverage spans four circuit families:
   complete initialized fetched execution, stateful original decoding, zero divisors,
   actual x0 writes and terminal matching under the documented misa.M profile.
 
-Shift/binop now has a [complete local native import](Airbender/Review/Circuits/ShiftBinop/Artifact.lean)
-with exact witness-selected tagged lookups and checked helper table results.
-Its numerical family theorem and initialized execution remain unfinished.
+- [Ordinary SLL/SRL/SRA/XOR/OR/AND](Airbender/Review/Trace/Families/ShiftBinop/FetchedExecution.lean):
+  complete initialized original fetched execution for all twelve register/immediate
+  forms, actual x0 writes, modular RV32 PC retirement and exact terminal matching.
+  Native tagged lookup/helper results and numerical interfaces are derived.
+
 Subword memory, delegation and whole-machine
 protocol composition are still unfinished; the [plan](FORMAL_VERIFICATION_PLAN.md)
 tracks the remaining dependencies. The checkpoint details below retain their

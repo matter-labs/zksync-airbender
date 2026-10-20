@@ -524,8 +524,7 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    are reused unchanged with checked v2 metadata; stateful original decoding
    replays after actual GPR updates. Twenty-four complete fixtures derive actual
    transfers/numerical writes; all twelve x0 variants preserve the entire Sail
-   data state, including the six immediate/x0 readonly aliases. Continue with
-   PC preparation/retirement and fetched execution. Original clauses are now
+   data state, including the six immediate/x0 readonly aliases. Original clauses are now
    checked for all six ordinary operations and twelve register/immediate forms:
    actual native routing/public immediate columns derive the selected operand,
    SRAI's encoded funct7 bits provably leave its low-five-bit shift count unchanged,
@@ -535,7 +534,17 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    native matching and original public decoding. Twenty-four complete fixtures
    reach actual original clause execution; all twelve x0 variants preserve the
    whole data state. The RV32 profile continues to reject amounts 32 and 63.
-   Derive actual source reads and states from native matching/public history.
+   Original preparation/retirement and complete fetched execution are now checked
+   for this selected ordinary profile. Actual native carry gates derive outgoing
+   PC bounds and modular +4; public original setup derives incoming PC bounds and
+   alignment. Complete native rows check low carry and full RV32 wrap. Actual GPR
+   history supplies every state/read and preserves code/misa, so original stateful
+   decoding replays in each real pre-state. Native PC matching composes finite
+   original fetched steps to exact terminal PC/cells, including empty traces.
+   Twenty-four complete fixtures derive original retirement, actual terminal PCs
+   and GPR values; all twelve x0 forms advance PC while preserving data. Continue
+   with remaining ordinary/subword-memory coverage and runtime CSR setup binding
+   before delegation workers/callers and unified protocol boundaries below.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing
    any source finding or temporary premise.

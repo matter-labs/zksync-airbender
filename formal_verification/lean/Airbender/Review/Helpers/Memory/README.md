@@ -116,3 +116,14 @@ original clause execution, source bounds, selected operands and actual result
 writes from initialized native matching and public decoding. [All twenty-four regressions](../../../../Tests/ShiftClauses.lean) execute the original clauses;
 all twelve x0 variants preserve the whole data state. PC preparation/retirement
 and complete fetched execution remain separate.
+
+## Shift/binop retirement and fetched execution
+
+[Retired-step/history observables](ShiftBinopExecution.lean) retain original
+dispatch, actual native pre/post states and the exact bounded successor PC.
+[The local claim](../../Trace/Families/ShiftBinop/Execution.lean) derives original
+preparation/retirement; [complete fetched execution](../../Trace/Families/ShiftBinop/FetchedExecution.lean)
+composes actual original decoding and normal steps through native PC matching.
+[All twenty-four cases and empty traces](../../../../Tests/ShiftFetched.lean)
+derive terminal PC/cell reads, including twelve x0 PC advances. [Complete native carry fixtures](../../../../Tests/ShiftPC.lean) preserve low carry and RV32 wrap.
+Remaining subword, CSR/delegation and unified protocol claims remain separate.

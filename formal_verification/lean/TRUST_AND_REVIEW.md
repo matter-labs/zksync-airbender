@@ -1868,3 +1868,36 @@ retirement and complete fetched execution remain next. Custom CSR/worker
 protocols, physical cryptographic enforcement and general compiler refinement
 remain separate. This adds coverage, with no new defect finding; the findings
 standard and historical archive are unchanged.
+
+## Initialized original fetched shift/binop execution
+
+[The short public fetched-execution claim](Airbender/Review/Trace/Families/ShiftBinop/FetchedExecution.lean)
+now derives finite original Sail execution and actual terminal PC/cell reads for
+the selected ordinary SLL/SRL/SRA/XOR/OR/AND profile, including all twelve original
+register/immediate forms and discarded x0 variants. Actual public bytes and
+initialization, full accepted native matching/decoding and public tracked-cell
+alignment are visible premises. No expected read/result, local PC bound or
+alignment, intermediate state, decoder replay or table equivalence is supplied.
+
+[Native PC assembly](Airbender/Proofs/ShiftBinop/PC.lean) uses the actual shift
+carry gates, inverses and output equations 41..46 and Boolean indices 6/7. Original
+public query/setup construction derives the incoming canonical aligned PC;
+accepted native equations derive outgoing bounds and modular +4. [Complete row regressions](Tests/ShiftPC.lean) retain low-limb carry and full RV32 wraparound.
+[Original retirement assembly](Airbender/Proofs/ShiftBinop/Execution.lean) transports
+the actual native history through original nextPC preparation, the retained
+original clause and original retirement. [The local public claim](Airbender/Review/Trace/Families/ShiftBinop/Execution.lean)
+constructs all actual row states and retired steps; [observables](Airbender/Review/Helpers/Memory/ShiftBinopExecution.lean)
+keep original dispatch, native states and the exact successor PC visible.
+
+[Stateful fetched composition](Airbender/Proofs/Trace/Families/ShiftBinop/Composition.lean)
+uses actual native GPR history to preserve code/misa and replay original decoding
+in each actual pre-state. Native PC matching composes the original fetched normal
+steps through arbitrary accepted finite row histories, including empty traces.
+Raw terminal PC bounds follow from native/public matching. [All twenty-four retirement regressions](Tests/ShiftExecution.lean) derive actual states and all
+twelve x0 retirements; [fetched regressions](Tests/ShiftFetched.lean) derive exact
+terminal PCs and GPR values for every ordinary/register/immediate/x0 case, plus
+empty execution from actual public initialization. Remaining ordinary/subword
+memory coverage, runtime CSR setup, delegation and unified protocol/terminal
+boundaries remain separately scoped. General compiler refinement and physical
+cryptographic enforcement are unchanged boundaries. This is coverage progress;
+no new native-v2 defect is established and the findings standard is unchanged.

@@ -97,3 +97,14 @@ are derived. [Twenty-four complete fixtures](../../../../Tests/ShiftClauses.lean
 reach actual original clauses and twelve whole-data-state x0 stutters; actual
 RV32 decoding excludes shift amounts 32 and 63. PC retirement/fetched composition
 remain next.
+
+## Shift/binop complete original fetched execution
+
+[The short fetched-execution claim](../../Trace/Families/ShiftBinop/FetchedExecution.lean)
+now derives original byte fetch/stateful decoding/preparation/retirement and exact
+terminal PC/cells from actual public initialization and accepted native matching.
+[Native PC equations](../../../Proofs/ShiftBinop/PC.lean) derive bounded modular
+successors; actual GPR history supplies code/misa frames and decoder replay.
+[All twenty-four cases and empty execution](../../../../Tests/ShiftFetched.lean)
+retain exact terminal values and twelve x0 retirements. Remaining ordinary/subword,
+CSR/delegation and unified protocol coverage is still separate.

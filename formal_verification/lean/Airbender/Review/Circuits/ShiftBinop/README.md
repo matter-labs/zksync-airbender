@@ -193,3 +193,16 @@ whole numerical results and actual masked writes to retained original clauses.
 clause executions; all twelve original x0 variants preserve the whole data state.
 PC preparation/retirement and fetched execution remain next; earlier sections
 retain their checkpoint scope.
+
+## Complete initialized original fetched execution
+
+[The short public fetched claim](../../Trace/Families/ShiftBinop/FetchedExecution.lean)
+now derives original fetch/stateful decoding/preparation/retirement and exact
+terminal PC/cells for all six ordinary operations and twelve register/immediate
+forms. [Native PC gates](../../../Proofs/ShiftBinop/PC.lean) derive bounded modular
+successors from actual equations and public setup PCs; [complete row fixtures](../../../../Tests/ShiftPC.lean)
+check low carry/full wrap. [Retirement](../../../Proofs/ShiftBinop/Execution.lean)
+uses the retained original clause and actual native states. [All twenty-four fetched regressions](../../../../Tests/ShiftFetched.lean) derive exact terminal
+values, with all twelve x0 retirements and empty execution. Remaining subword,
+CSR/delegation and whole-machine protocols remain separate; earlier sections
+retain their checkpoint scope.

@@ -1,3 +1,5 @@
+import Tests.ShiftPC
+import Tests.ShiftFetched
 import Tests.ShiftClauses
 import Tests.ShiftRegisters
 import Tests.ShiftResults
@@ -1881,3 +1883,23 @@ import Tests.JumpLink
 #print axioms Tests.ShiftClauses.initialized_clauses
 #print axioms Tests.ShiftClauses.discarded_clauses
 #print axioms Tests.ShiftClauses.illegal_shift_immediates
+
+#print axioms Airbender.ShiftBinop.Proofs.native_pc_successor
+#print axioms Airbender.ShiftBinop.Proofs.query_pc_bound
+#print axioms Airbender.ShiftBinop.Proofs.decoded_pc_inputs
+#print axioms Airbender.ShiftBinop.Proofs.local_row_execution
+#print axioms Airbender.ShiftBinop.Proofs.image_instruction_history
+#print axioms Airbender.ShiftBinop.public_instruction_history
+#print axioms Airbender.ShiftBinop.Proofs.image_fetched_step
+#print axioms Airbender.ShiftBinop.Proofs.image_terminal_pc_bound
+#print axioms Airbender.ShiftBinop.Proofs.image_execution_soundness
+#print axioms Airbender.ShiftBinop.public_execution
+#print axioms Tests.ShiftPC.native_constraints
+#print axioms Tests.ShiftPC.native_successor
+#print axioms Tests.ShiftPC.wrapped_values
+#print axioms Tests.ShiftExecution.initialized_execution
+#print axioms Tests.ShiftExecution.discarded_retirement
+#print axioms Tests.ShiftFetched.initialized_execution
+#print axioms Tests.ShiftFetched.terminal_bound
+#print axioms Tests.ShiftFetched.initialized_values
+#print axioms Tests.ShiftFetched.empty_execution
