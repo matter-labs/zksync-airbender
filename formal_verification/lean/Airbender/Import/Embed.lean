@@ -4,6 +4,8 @@ import Airbender.Review.Helpers.Tables.WordROM
 import Airbender.Review.Circuits.JumpBranchSlt.Tables.Control
 import Airbender.Review.Helpers.Tables.SmallRange
 import Airbender.Review.Circuits.ShiftBinop.Tables.Native
+import Airbender.Review.Circuits.SubwordMemory.Tables.Native
+import Airbender.Review.Helpers.Tables.SubwordOffset
 import Lean
 
 open Lean Elab Command
@@ -28,7 +30,7 @@ private partial def cleanExprSyntax (e : Expr) : CommandElabM (TSyntax `term) :=
 
 /-- Import v2 compiled row equations, ranges and selected fixed queries into Clean.
     Import/generation fidelity and setup/memory arguments remain explicit boundaries. -/
-elab "import_clean " name:ident " from " path:str fixed:(" word_memory_lookups")? control:(" control_lookups")? muldiv:(" mul_div_lookups")? shift:(" shift_binop_lookups")? metadata:(" trace_metadata")? : command => do
+elab "import_clean " name:ident " from " path:str fixed:(" word_memory_lookups")? control:(" control_lookups")? muldiv:(" mul_div_lookups")? shift:(" shift_binop_lookups")? subword:(" subword_memory_lookups")? metadata:(" trace_metadata")? : command => do
   let c ← match parseCircuit (← IO.FS.readFile path.getString) with
     | .ok c => pure c
     | .error e => throwError "v2 circuit import failed: {e}"
@@ -52,16 +54,18 @@ elab "import_clean " name:ident " from " path:str fixed:(" word_memory_lookups")
     `(_root_.FlatOperation.lookup (Airbender.Verification.timestamp19 $(← cleanExprSyntax e)))
   let prime := mkIdent `p
   let rom := mkIdent `rom
-  if fixed.isSome.toNat + control.isSome.toNat + muldiv.isSome.toNat + shift.isSome.toNat > 1 then throwError "choose one native fixed-table profile"
-  unless c.witness_layout.width_3_lookups.isEmpty || fixed.isSome || control.isSome || muldiv.isSome || shift.isSome do
+  if fixed.isSome.toNat + control.isSome.toNat + muldiv.isSome.toNat + shift.isSome.toNat + subword.isSome.toNat > 1 then throwError "choose one native fixed-table profile"
+  unless c.witness_layout.width_3_lookups.isEmpty || fixed.isSome || control.isSome || muldiv.isSome || shift.isSome || subword.isSome do
     throwError "v2 fixed lookups require an explicit native target"
-  if (fixed.isSome || control.isSome || muldiv.isSome || shift.isSome) && c.witness_layout.width_3_lookups.isEmpty then
+  if (fixed.isSome || control.isSome || muldiv.isSome || shift.isSome || subword.isSome) && c.witness_layout.width_3_lookups.isEmpty then
     throwError "v2 fixed-table target has no native fixed lookups"
   for query in c.witness_layout.width_3_lookups do
     let allowed := match query.table_index with
-      | .Variable _ => shift.isSome && c.hasShiftLookups
+      | .Variable _ => (shift.isSome && c.hasShiftLookups) || (subword.isSome && c.hasSubwordLookups)
       | .Constant id => match id with
-        | .RomAddressSpaceSeparator | .RomRead => fixed.isSome
+        | .RomAddressSpaceSeparator => fixed.isSome || subword.isSome
+        | .RomRead => fixed.isSome
+        | .MemoryGetOffsetAndMaskWithTrap => subword.isSome
         | .ConditionalJmpBranchSlt | .JumpCleanupOffset => control.isSome
         | .RangeCheckSmall => muldiv.isSome
     unless allowed do throwError "native fixed tables do not match the explicit target"
@@ -73,11 +77,15 @@ elab "import_clean " name:ident " from " path:str fixed:(" word_memory_lookups")
       let selector ← match c.logicalVariable address with
         | .ok index => cleanExprSyntax (.Var index)
         | .error error => throwError "v2 dynamic selector import failed: {error}"
+      if subword.isSome then
+        return ← `(_root_.FlatOperation.lookup (Verification.NativeSubwordLookup.lookup $rom
+          #v[$(entries[0]!), $(entries[1]!), $(entries[2]!)] $selector))
       return ← `(_root_.FlatOperation.lookup (Verification.NativeShiftLookup.lookup
         #v[$(entries[0]!), $(entries[1]!), $(entries[2]!)] $selector))
     let table ← match query.table_index with
       | .Constant .RomAddressSpaceSeparator => `(Verification.romSeparatorTable (p := $prime))
       | .Constant .RomRead => `(Verification.romWordTable (p := $prime) $rom)
+      | .Constant .MemoryGetOffsetAndMaskWithTrap => `(Verification.SubwordOffset.table (p := $prime))
       | .Constant .ConditionalJmpBranchSlt => `(Verification.conditionalControlTable (p := $prime))
       | .Constant .JumpCleanupOffset => `(Verification.jumpCleanupTable (p := $prime))
       | .Constant .RangeCheckSmall => `(Verification.smallRangeTable (p := $prime))
@@ -85,7 +93,7 @@ elab "import_clean " name:ident " from " path:str fixed:(" word_memory_lookups")
     `(_root_.FlatOperation.lookup (Verification.fixed3 $table
       #v[$(entries[0]!), $(entries[1]!), $(entries[2]!)]))
   let ops := (assertions ++ lookups ++ timestamps ++ fixedLookups).toArray
-  if fixed.isSome then
+  if fixed.isSome || subword.isSome then
     elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)]
       ($rom : Verification.WordROM) : List (_root_.FlatOperation (ZMod $prime)) := [$[$ops],*]))
   else

@@ -48,6 +48,63 @@ private def scalarChecks (setupSource : String) : IO Unit := do
   check (rejected (Setup.parseScalars setupSource)) "reject program artifact as scalar export"
   check (rejected (Setup.parse scalarSource)) "reject scalar artifact as program export"
 
+private def dynamicSubwordChecks : IO Unit := do
+  let source ← IO.FS.readFile "../../cs/subword_only_load_store_preprocessed_layout.json"
+  let c ← IO.ofExcept (parseCircuit source)
+  check (c.degree_2_constraints.size == 46 && c.degree_1_constraints.size == 5)
+    "retain all fifty-one native subword equations"
+  check (c.hasSubwordLookups && !c.hasShiftLookups && c.witness_layout.width_3_lookups.size == 4 &&
+    c.witness_layout.range_check_16_lookup_expressions.size == 2 &&
+    c.witness_layout.timestamp_range_check_lookup_expressions.size == 8)
+    "retain constant and multiplexed subword queries"
+  check ((← IO.ofExcept c.setupColumns) == ⟨16777216,16,0,1,2,1,6,1048576,9502721⟩)
+    "retain complete native subword setup geometry"
+  let selectors ← IO.ofExcept ((c.witness_layout.width_3_lookups.extract 2 4).mapM fun q =>
+    match q.table_index with
+    | .Variable address => c.logicalVariable address
+    | .Constant _ => .error "unexpected constant selector")
+  check (selectors == #[55,59]) "resolve actual physical subword selectors"
+  check ((← IO.ofExcept c.traceColumns).ports.size == 3 &&
+    (← IO.ofExcept c.memoryPorts).size == 3) "retain native subword clock and memory ports"
+  check ((← IO.ofExcept c.decoderColumns) == ⟨5,6,7,8,#v[9,10],11,12⟩)
+    "retain native subword decoder fields"
+  let withQueries := fun queries => {c with witness_layout :=
+    {c.witness_layout with width_3_lookups := queries}}
+  let some q := c.witness_layout.width_3_lookups[2]?
+    | throw (IO.userError "missing native subword slot")
+  for selector in #[.WitnessSubtree 24,.WitnessSubtree 32,.WitnessSubtree 50,
+      .MemorySubtree 28,.SetupSubtree 0,.OptimizedOut 0] do
+    check (rejected ((withQueries (c.witness_layout.width_3_lookups.set! 2
+      {q with table_index := .Variable selector})).validate))
+      s!"reject unsupported subword selector {repr selector}"
+  check (rejected ((withQueries (c.witness_layout.width_3_lookups.set! 2
+    {q with table_index := .Constant .RomRead})).validate)) "reject subword byte-addressed ROM profile"
+  check (rejected ((withQueries (c.witness_layout.width_3_lookups.extract 0 3)).validate))
+    "reject missing subword slot"
+  check (rejected ((withQueries (c.witness_layout.width_3_lookups.push q)).validate))
+    "reject extra subword slot"
+  check (rejected ((withQueries (c.witness_layout.width_3_lookups.set! 2
+    {q with input_columns := q.input_columns.extract 0 2})).validate)) "reject short subword tuple"
+  check (rejected ((withQueries (c.witness_layout.width_3_lookups.set! 2
+    {q with input_columns := q.input_columns.push (.Variable (.WitnessSubtree 21))})).validate))
+    "reject wide subword tuple"
+  check (rejected ((withQueries (c.witness_layout.width_3_lookups.set! 2
+    {q with input_columns := q.input_columns.set! 0 (.Variable (.WitnessSubtree 50))})).validate))
+    "reject out-of-layout subword input"
+  let unmapped := {c.variable_mapping with entries := c.variable_mapping.entries.filter (·.1 != 55)}
+  check (rejected ({c with variable_mapping := unmapped}.validate)) "reject unmapped subword selector"
+  let aliased := {c.variable_mapping with entries := c.variable_mapping.entries.push (100,.WitnessSubtree 28)}
+  check (rejected ({c with variable_mapping := aliased}.validate)) "reject aliased subword selector"
+  for (id,offset) in #[(0,1),(23,0),(44,65536),(45,2162688),(46,4259840),
+      (54,5308416),(55,7405568),(61,9502720)] do
+    check (rejected ({c with table_offsets := c.table_offsets.set! id offset}.validate))
+      s!"reject changed subword setup offset {id}"
+  check (rejected ({c with total_tables_size := 9502720}.validate)) "reject truncated subword table union"
+  check (rejected ({c with table_offsets := c.table_offsets.extract 0 61}.validate))
+    "reject missing subword offset entry"
+  check (rejected ({c with setup_layout := {c.setup_layout with
+    preprocessed_decoder_setup_columns := ⟨5,1⟩}}.validate)) "reject overlapping subword decoder setup"
+
 private def dynamicShiftChecks : IO Unit := do
   let source ← IO.FS.readFile "../../cs/shift_binop_csrrw_preprocessed_layout.json"
   let c ← IO.ofExcept (parseCircuit source)
@@ -933,6 +990,7 @@ def main : IO UInt32 := do
     sllLowChecks
     srlHighChecks
     dynamicShiftChecks
+    dynamicSubwordChecks
     controlDecoderChecks
     decoderPaddingChecks
     controlChecks

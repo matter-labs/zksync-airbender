@@ -40,10 +40,11 @@ inductive FixedTableId where
   | ConditionalJmpBranchSlt
   | JumpCleanupOffset
   | RangeCheckSmall
+  | MemoryGetOffsetAndMaskWithTrap
   deriving Repr, DecidableEq, FromJson, ToJson
 
 /-- Native constants and physical witness selectors. Variable selectors are
-    accepted only by the concrete shift/binop profile checked in Parse. -/
+    accepted only by the concrete shift/binop or subword profile checked in Parse. -/
 inductive FixedTableIndex where
   | Constant : FixedTableId → FixedTableIndex
   | Variable : ColumnAddress → FixedTableIndex

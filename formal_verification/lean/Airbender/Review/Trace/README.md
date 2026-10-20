@@ -340,3 +340,12 @@ shared logical history definitions are unchanged.
 ## Native shift/binop decoder checkpoint
 
 [The short data certificate](Families/ShiftBinop/NativeDecoder.lean) checks actual native decoder export against independent public bytes and original Sail decoding. [The family guide](Families/ShiftBinop/README.md) records its twelve ordinary forms, original x0 variants, native immediate/mask differences and complete sentinel tail. Dynamic table import/membership and shift/binop execution are next; this certificate supplies no circuit or initialized trace claim.
+
+## Subword connection boundary
+
+[The native subword local import](../Circuits/SubwordMemory/README.md) retains
+actual state/decoder fields, all three memory ports and clocks. Both dynamic
+queries are extracted from native acceptance. Generic history machinery has not
+yet been instantiated for subword operations: public/native decoding, read/write
+bounds, byte-store composition, initialized Sail reads/retirement and complete
+family execution remain unfinished. Local import adds no subword trace coverage.

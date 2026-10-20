@@ -67,6 +67,12 @@ certifies all 2,097,152 actual native placement rows, preserving SB byte positio
 SH full limbs at all raw offsets and unused zero outputs. Subword ROM regions,
 full accepted constraints, initialized history and original execution remain open.
 
+The [native subword import](Airbender/Review/Circuits/SubwordMemory/README.md)
+retains all 51 equations, fourteen queries and actual state/port/decoder/setup
+metadata. Its short public claim extracts both evaluated dynamic queries.
+V2 has one word-indexed ROM region; v3 byte/halfword ROM regions do not apply.
+Subword operation effects, initialized history and original execution remain open.
+
 The arithmetic checkpoint includes complete initialized ADD/ADDI/SUB/LUI/AUIPC normal-path
 execution and conditional row soundness, including actual masked destination
 writes, original-opcode discarded x0 writes and aligned 32-bit PC wraparound. Native ten-column decoder placement/query order is checked;

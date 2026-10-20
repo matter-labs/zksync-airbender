@@ -87,6 +87,8 @@ import Tests.SubwordStoreClear
 
 import Tests.SubwordStorePlace
 
+import Tests.SubwordArtifact
+
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
 #print axioms Airbender.AddSub.Proofs.constraint_count
@@ -2086,3 +2088,35 @@ import Tests.SubwordStorePlace
 #print axioms Airbender.Tests.SubwordStorePlace.unused_key_zero
 #print axioms Airbender.Tests.SubwordStorePlace.wrong_placed_rejected
 #print axioms Airbender.Tests.SubwordStorePlace.wrong_unused_rejected
+
+#print axioms Airbender.SubwordMemory.Proofs.constraint_count
+#print axioms Airbender.SubwordMemory.Proofs.lookup_count
+#print axioms Airbender.SubwordMemory.Proofs.clock_columns
+#print axioms Airbender.SubwordMemory.Proofs.memory_ports
+#print axioms Airbender.SubwordMemory.Proofs.memory_clocks
+#print axioms Airbender.SubwordMemory.Proofs.decoder_columns
+#print axioms Airbender.SubwordMemory.Proofs.setup_columns
+#print axioms Airbender.SubwordMemory.Proofs.native_queries
+#print axioms Airbender.SubwordMemory.native_lookup_queries
+#print axioms Airbender.Verification.AlignedWordROMProofs.values
+#print axioms Airbender.Verification.AlignedWordROMProofs.byte_row
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.zero_region
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.separator_region
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.offset_region
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.load_region
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.rom_region
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.store_clear_region
+#print axioms Airbender.SubwordMemory.NativeLookupProofs.store_place_region
+#print axioms Tests.SubwordArtifact.equation_count
+#print axioms Tests.SubwordArtifact.lookup_count
+#print axioms Tests.SubwordArtifact.query0_retains_selector
+#print axioms Tests.SubwordArtifact.query1_retains_selector
+#print axioms Tests.SubwordArtifact.selector_is_evaluated
+#print axioms Tests.SubwordArtifact.native_tagged_width
+#print axioms Tests.SubwordArtifact.native_fixed_placements
+#print axioms Tests.SubwordArtifact.aligned_key_is_word_index
+#print axioms Tests.SubwordArtifact.ordinary_key_is_byte_address
+#print axioms Tests.SubwordArtifact.aligned_padding
+#print axioms Tests.SubwordArtifact.aligned_query_member
+#print axioms Tests.SubwordArtifact.aligned_wrong_byte_key_rejected
+#print axioms Tests.SubwordArtifact.aligned_changed_output_rejected

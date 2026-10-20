@@ -5784,6 +5784,111 @@
       "backport_reuse_path": "Airbender/Proofs/SubwordMemory/LoadGetters.lean",
       "backport_reuse_sha256": "e59ca363107607df0708934cd974a1553ae74895b037334673686e1652edba8f",
       "change": "Copy periodic_nat unchanged, preserving nondependent optional reads and the checked periodic block lemma. Reuse the existing generic affine and block-selection helpers by import."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/AlignedWordROM.lean",
+      "backport_reuse_revision": "9b31db145a946d0bde6e08409431c8f99bb6fb71",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/WordROM.lean",
+      "backport_reuse_sha256": "6ccef544884aa5b88d71fb8eb5208e269ee55f28ae19d414b76ed1d2d61e91ee",
+      "change": "Reuse the full four-MiB public ROM and native UNIMP tail. Follow the separately pinned v2 AlignedRomRead generator with word-index key and native tag 46, distinct from byte-addressed RomRead/tag 24. No v3 byte/halfword ROM region is claimed."
+    },
+    {
+      "path": "Airbender/Review/Circuits/SubwordMemory/Tables/Native.lean",
+      "backport_reuse_revision": "9b31db145a946d0bde6e08409431c8f99bb6fb71",
+      "backport_reuse_path": "Airbender/Review/Circuits/ShiftBinop/Tables/Native.lean",
+      "backport_reuse_sha256": "3790a2688b8dc999aa790c2801bcad9cec4a000fd71ec3674837365ec03a8a94",
+      "change": "Task-authored v2 assembly reuses the complete native tagged-table pattern and existing literal zero/offset/load/clear/place data. Retain all seven regions and offsets, including public separator/aligned ROM. General Rust/export/compiler/argument correspondence remains separate."
+    },
+    {
+      "path": "Airbender/Review/Circuits/SubwordMemory/Artifact.lean",
+      "backport_reuse_revision": "9b31db145a946d0bde6e08409431c8f99bb6fb71",
+      "backport_reuse_path": "Airbender/Review/Circuits/ShiftBinop/Artifact.lean",
+      "backport_reuse_sha256": "c0ac1ad9a6a3514d5e7d0a27f460405cd277f6f34c1033b99baf88cc8ffdd925",
+      "change": "Retain all 51 actual v2 subword equations, fourteen lookups and state/port/decoder/setup metadata. No result, selector bound, intermediate state or table equivalence is assumed."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/ArtifactChecks.lean",
+      "backport_reuse_revision": "9b31db145a946d0bde6e08409431c8f99bb6fb71",
+      "backport_reuse_path": "Airbender/Proofs/WordMemory/ArtifactChecks.lean",
+      "backport_reuse_sha256": "4596864f05e9d37b6021fe524ffd6054dba94403dbe79643b9a2c13e56f187ea",
+      "change": "Reuse structural count/metadata checks with the actual subword logical-variable mapping and setup extent 9502721."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/NativeQueries.lean",
+      "backport_reuse_revision": "9b31db145a946d0bde6e08409431c8f99bb6fb71",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/NativeQueries.lean",
+      "backport_reuse_sha256": "cc7a40ca680195a60c7927841a7416997cf569b5f3793fa2a3b88ce0a489972d",
+      "change": "Reuse original Clean acceptance extraction for both actual subword dynamic queries and evaluated selectors."
+    },
+    {
+      "path": "Airbender/Review/Circuits/SubwordMemory/Lookups.lean",
+      "backport_reuse_revision": "9b31db145a946d0bde6e08409431c8f99bb6fb71",
+      "backport_reuse_path": "Airbender/Review/Circuits/ShiftBinop/Lookups.lean",
+      "backport_reuse_sha256": "612ebd578aada935f5375cb9cc65a5a37b65c278d7f42da1d19943d6c5a7b08d",
+      "change": "Keep one short public query-extraction claim and internal calculations under Proofs. Routing and initialized execution remain unfinished."
+    },
+    {
+      "path": "Airbender/Proofs/Tables/AlignedWordROM.lean",
+      "backport_reuse_revision": "9b31db145a946d0bde6e08409431c8f99bb6fb71",
+      "backport_reuse_path": "Airbender/Proofs/WordMemory/Tables.lean",
+      "backport_reuse_sha256": "19dcf3c51cdb364af28a3e6068baaa1950e88928741c37152f560729048df4b9",
+      "change": "Reuse symbolic canonical-index reasoning to derive aligned ROM index/output limbs and connect both row models word values. No general Rust ROM-export refinement claim."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/NativeLookup.lean",
+      "backport_reuse_revision": "9b31db145a946d0bde6e08409431c8f99bb6fb71",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/NativeLookup.lean",
+      "backport_reuse_sha256": "8394bb79c2bbbed64750d7b4bf518b7bc24b9d08d2b8819685f10e6def0cd8e5",
+      "change": "Reuse structural inclusion for every row in all seven actual subword regions without enumerating millions of entries or raising proof/resource limits."
+    },
+    {
+      "path": "Tests/SubwordArtifact.lean",
+      "backport_reuse_revision": "9b31db145a946d0bde6e08409431c8f99bb6fb71",
+      "backport_reuse_path": "Tests/ShiftArtifact.lean",
+      "backport_reuse_sha256": "8cee08c58c8d8958f635dc8bb1916c2860cbe2418a1b18811f32d7ce03f2819f",
+      "change": "Reuse native profile/query regression structure. Cover native placements, evaluated selectors, distinct byte/word ROM keys, full UNIMP tail and altered key/output rejection with original kernel checks."
+    },
+    {
+      "path": "Airbender/Import/Schema.lean",
+      "backport_reuse_revision": "9b31db145a946d0bde6e08409431c8f99bb6fb71",
+      "backport_reuse_path": "Airbender/Import/Schema.lean",
+      "backport_reuse_sha256": "1f66679d42f10b7a76af264c915c7d6c86edca7ce5dbc8456d0d6aac883f1c40",
+      "change": "Add the native offset-table constructor and document both explicit dynamic profiles."
+    },
+    {
+      "path": "Airbender/Import/Parse.lean",
+      "backport_reuse_revision": "9b31db145a946d0bde6e08409431c8f99bb6fb71",
+      "backport_reuse_path": "Airbender/Import/Parse.lean",
+      "backport_reuse_sha256": "432c312291b0f06f89a351811ed9a3d521aa3585592391efa14521f1d968ff83",
+      "change": "Validate the exact two-constant/two-dynamic subword profile, all 62 native offsets and full setup/decoder geometry, retaining all prior profiles and obligations."
+    },
+    {
+      "path": "Airbender/Import/Embed.lean",
+      "backport_reuse_revision": "9b31db145a946d0bde6e08409431c8f99bb6fb71",
+      "backport_reuse_path": "Airbender/Import/Embed.lean",
+      "backport_reuse_sha256": "0ee87f7627d2d000b99378c66c8f34abd450460f8dd89ebef91a35577af030ad",
+      "change": "Add an exclusive subword target with native offset/separator queries, both evaluated dynamic selectors and public ROM parameter. All equations/ranges/timestamps/metadata and prior emissions are retained."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "9b31db145a946d0bde6e08409431c8f99bb6fb71",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "b58a3f36f7a1e51d0725871f5d327aa90987107f1076ce71248642c0feb03c4c",
+      "change": "Retain all prior regressions; add 31 native subword selector/mapping, arity, placement, extent and metadata checks."
+    },
+    {
+      "path": "scripts/check_all.py",
+      "backport_reuse_revision": "9b31db145a946d0bde6e08409431c8f99bb6fb71",
+      "backport_reuse_path": "scripts/check_all.py",
+      "backport_reuse_sha256": "a66c3cdce8e66aeebe41d22b310c0d5996f74b8d5dbc8a0ee4e2d0453d6dbb10",
+      "change": "Add the sixth native compiled artifact to the existing CLI gate, leaving the mandatory serial guard and all resource ceilings unchanged."
+    },
+    {
+      "path": "Airbender.lean",
+      "backport_reuse_revision": "9b31db145a946d0bde6e08409431c8f99bb6fb71",
+      "backport_reuse_path": "Airbender.lean",
+      "backport_reuse_sha256": "ec9cf96f3c14d7151b95ca552c757052d3bc010fddf7e7cf3133685b9260c04f",
+      "change": "Export the short subword native query-extraction claim through the library entrypoint."
     }
   ],
   "setup_artifacts": [

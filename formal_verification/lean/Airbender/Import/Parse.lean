@@ -50,6 +50,12 @@ def Circuit.hasShiftLookups (c : Circuit) : Bool :=
     #[.Variable (.WitnessSubtree 24), .Variable (.WitnessSubtree 28),
       .Variable (.WitnessSubtree 32), .Variable (.WitnessSubtree 36)]
 
+/-- The actual constant queries followed by two multiplexed subword slots. -/
+def Circuit.hasSubwordLookups (c : Circuit) : Bool :=
+  c.witness_layout.width_3_lookups.map (·.table_index) ==
+    #[.Constant .MemoryGetOffsetAndMaskWithTrap, .Constant .RomAddressSpaceSeparator,
+      .Variable (.WitnessSubtree 28), .Variable (.WitnessSubtree 32)]
+
 /-- Validate the selected v2 physical setup geometry, including full table
     offsets and the row reserved by get_main_domain_trace/normalization.
     This imports placement, not Rust-generated field values or LDE commitments. -/
@@ -70,9 +76,10 @@ def Circuit.setupColumns (c : Circuit) : Except String Verification.SetupColumns
   let control := ids == #[some FixedTableId.ConditionalJmpBranchSlt, some .JumpCleanupOffset]
   let small := !ids.isEmpty && ids.all (· == some FixedTableId.RangeCheckSmall)
   let shift := c.hasShiftLookups
-  unless ids.isEmpty || memory || control || small || shift do throw "unsupported native fixed lookup profile"
+  let subword := c.hasSubwordLookups
+  unless ids.isEmpty || memory || control || small || shift || subword do throw "unsupported native fixed lookup profile"
   let generic := if ids.isEmpty then 0 else 1
-  let rows := if memory then 1114113 else if control then 65664 else if small then 65536 else if shift then 10817537 else 0
+  let rows := if memory then 1114113 else if control then 65664 else if small then 65536 else if shift then 10817537 else if subword then 9502721 else 0
   unless layout.generic_lookup_setup_columns.start == 2 &&
       layout.generic_lookup_setup_columns.num_elements == generic do
     throw "unsupported native tagged setup groups"
@@ -85,6 +92,10 @@ def Circuit.setupColumns (c : Circuit) : Except String Verification.SetupColumns
   let expected := (List.range 62).toArray.map fun id =>
     if memory then
       if id == 0 then 0 else if id ≤ 23 then 1 else if id == 24 then 65537 else 1114113
+    else if subword then
+      if id == 0 then 0 else if id ≤ 23 then 1 else if id ≤ 44 then 65537
+      else if id == 45 then 2162689 else if id == 46 then 4259841
+      else if id ≤ 54 then 5308417 else if id == 55 then 7405569 else 9502721
     else if control then
       if id ≤ 17 then 0 else if id ≤ 43 then 65536 else 65664
     else if small then

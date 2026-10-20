@@ -106,7 +106,8 @@ def main():
         "../../cs/word_only_load_store_preprocessed_layout.json",
         "../../cs/jump_branch_slt_preprocessed_layout.json",
         "../../cs/mul_div_unsigned_preprocessed_layout.json",
-        "../../cs/shift_binop_csrrw_preprocessed_layout.json"], "importer-cli")
+        "../../cs/shift_binop_csrrw_preprocessed_layout.json",
+        "../../cs/subword_only_load_store_preprocessed_layout.json"], "importer-cli")
     bounded([sys.executable, "scripts/check_review.py", "--no-build"], "review-and-axioms")
     print("PASS all serial bounded verification gates", flush=True)
 

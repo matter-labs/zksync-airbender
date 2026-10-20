@@ -1259,10 +1259,10 @@ Rust/compiler refinement and cryptographic enforcement remain separate.
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all ninety-six concrete test modules pass.
-- Importer regressions: 442 checks pass.
-- Axiom audit: 1930 explicit roots; only propext, Classical.choice and Quot.sound.
-- All one hundred and ten public Review theorems (twenty-five circuit claims, fifty-eight trace claims and twenty-seven helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Library, both CLI entrypoints and all ninety-seven concrete test modules pass.
+- Importer regressions: 473 checks pass.
+- Axiom audit: 1961 explicit roots; only propext, Classical.choice and Quot.sound.
+- All one hundred and eleven public Review theorems (twenty-six circuit claims, fifty-eight trace claims and twenty-seven helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 79 unchanged reused files, six native circuit artifacts, forty-nine native Rust sources plus compiled shift-offset metadata, twenty native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
@@ -1784,6 +1784,47 @@ crossed native-region tests. Remaining subword ROM regions, full native constrai
 limb preselection, public decoding, initialized memory/history, original instruction
 execution and physical argument binding remain unfinished. No native defect is
 established; the findings standard and historical coverage archive are unchanged.
+
+## Complete native subword lookup import checkpoint (2026-10-20)
+
+[The artifact](Airbender/Review/Circuits/SubwordMemory/Artifact.lean) retains all
+51 native equations, two scalar queries, eight timestamp queries, two constant
+fixed queries and both multiplexed witness-selected queries. [Structural checks](Airbender/Proofs/SubwordMemory/ArtifactChecks.lean)
+retain actual state/decoder columns, all three memory ports and clocks, and
+complete setup geometry. The importer requires the exact selector profile, all
+62 table offsets and the 9,502,721-row tagged extent. Prior validation remains;
+the CLI gate now covers all six native compiled layouts.
+
+[The complete table](Airbender/Review/Circuits/SubwordMemory/Tables/Native.lean)
+keeps all seven native regions: zero, separator, offset/trap, load-data, aligned
+word ROM, original-RAM clearing and written-value placement. Previously checked
+literal fixed data is unchanged. [Internal structural proofs](Airbender/Proofs/SubwordMemory/NativeLookup.lean)
+include every row in each region. [The short public claim](Airbender/Review/Circuits/SubwordMemory/Lookups.lean)
+derives both actual queries and evaluated selectors from original Clean native
+acceptance, with no expected result, selector bound, intermediate state or
+table-equivalence premise.
+
+Earlier references to remaining subword ROM regions were a planning expectation.
+Actual v2 has one AlignedRomRead region, tag 46, keyed by aligned word index;
+v3's separate byte/halfword ROM regions do not apply. [The aligned model](Airbender/Review/Helpers/Tables/AlignedWordROM.lean)
+shares the full public WordROM image and native UNIMP tail. Ordinary RomRead has
+a byte-address key and tag 24. [Symbolic proofs](Airbender/Proofs/Tables/AlignedWordROM.lean)
+derive the canonical index and both limbs and connect the two row models' word
+values. General Rust/JSON/compiler/setup correspondence and physical verifier
+enforcement remain separate boundaries; this adds no general native ROM-export
+refinement claim.
+
+[Thirteen kernel regressions](Tests/SubwordArtifact.lean) cover evaluated
+selectors, native placements, distinct ROM key units, the complete UNIMP tail
+and altered key/output rejection. Explicit macro guards reject missing/crossed/
+duplicate profiles. Thirty-one new importer checks cover selectors/mappings,
+tuple widths, all region offsets, extents and overlapping decoder placement.
+
+Next are subword tag resolution, operation routing, actual limb preselection,
+numerical load/store effects, public/native decoding, initialized memory/history,
+original Sail execution and whole-machine composition. No native defect is
+established. FINDINGS and its historical archive, original Clean/Sail semantics,
+native source/exporter/codec and resource ceilings are unchanged.
 
 ## Historical coverage and boundary notes
 

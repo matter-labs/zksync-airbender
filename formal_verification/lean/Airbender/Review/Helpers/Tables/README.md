@@ -180,3 +180,12 @@ general emission fidelity remains an Import boundary.
 source high-byte removal, raw odd SH keys, SW/unused zeros and altered outputs.
 Full native preselection, accepted store constraints, history and original Sail
 execution remain separate; the isolated keys add no defect finding.
+
+## Subword native lookup connection
+
+[AlignedWordROM](AlignedWordROM.lean) shares WordROM values and UNIMP padding
+with the actual v2 word-index key and native tag 46. [Symbolic proofs](../../../Proofs/Tables/AlignedWordROM.lean)
+derive both limbs and canonical index and connect the byte-addressed row model.
+[The circuit guide](../../Circuits/SubwordMemory/README.md) describes all seven
+regions and accepted query extraction. Native export/compiler refinement,
+subword routing and initialized original instruction execution remain separate.
