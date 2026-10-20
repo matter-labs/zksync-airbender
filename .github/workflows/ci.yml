@@ -5,7 +5,6 @@ on:
       - main
       - stable
       - dev
-      # Seed base-branch caches that PRs targeting this branch can read.
       - av_gkr_compiler
   pull_request:
 

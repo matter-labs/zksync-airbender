@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      # Seed a base-branch compiler cache that PRs targeting this branch can read.
       - av_gkr_compiler
   pull_request:
 
