@@ -60,4 +60,5 @@ RUN ./dump_bin.sh --sec 100 \
     unsigned_mul_div_sec_100 mem_word_only_sec_100 mem_subword_only_sec_100 \
     inits_and_teardowns_sec_100 blake2_with_extended_control_sec_100 \
     bigint_with_extended_control_sec_100 keccak_special5_sec_100 keccak_column_parity_sec_100 \
-    keccak_theta_rho_sec_100 keccak_chi5_sec_100 blake2_g_function_sec_100
+    keccak_theta_rho_sec_100 keccak_chi5_sec_100 blake2_g_function_sec_100 \
+    blake2_with_extended_control_sec_100_pack4

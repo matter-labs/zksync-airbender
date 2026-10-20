@@ -38,6 +38,7 @@ STEMS=(
     keccak_theta_rho_sec_100
     keccak_chi5_sec_100
     blake2_g_function_sec_100
+    blake2_with_extended_control_sec_100_pack4
 )
 
 FILES=()
