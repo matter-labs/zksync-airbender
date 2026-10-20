@@ -3,3 +3,6 @@ import Slop.Blake2Round.ArtifactChecks
 
 set_option maxRecDepth 100000 in
 derive_op_index Airbender.Blake2Round.importedConstraints
+
+set_option maxRecDepth 100000 in
+derive_op_index Airbender.Blake2Round.importedConstraintsTimestampLookups

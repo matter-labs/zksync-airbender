@@ -1,6 +1,7 @@
 import Human.Circuits.Blake2Round.Artifact
 import Slop.Blake2Round.ArtifactChecks
 import Slop.Delegation.ClockFacts
+import Slop.Blake2Round.OpIndex
 
 namespace Airbender.Blake2Round.Proofs
 open Trace
@@ -32,9 +33,10 @@ theorem clock_ports_3 {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 4
     ⟨3 + 2 * i.val, by rw [timestamp_count]; omega⟩
   fin_cases i
   all_goals try (simp at lowerIndex upperIndex; done)
+  all_goals op_index at bit lowerLookup upperLookup
   all_goals have lower := Trace.Proofs.range_bound lowerLookup
   all_goals have upper := Trace.Proofs.range_bound upperLookup
-  all_goals simp [importedConstraints, importedConstraintsDelegationColumns, FlatOperation.constraints,
+  all_goals simp [importedConstraintsDelegationColumns,
       Expression.eval, Verification.environment,
       sub_eq_add_neg, Trace.timestampBase] at bit lower upper ⊢
   all_goals refine ⟨?_, ?_, ?_⟩
