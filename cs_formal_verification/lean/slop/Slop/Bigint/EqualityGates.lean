@@ -1,5 +1,6 @@
 import Human.Circuits.Bigint.Equality
 import Slop.Bigint.AdditiveFields
+import Slop.Bigint.OpIndex
 
 namespace Airbender.Bigint.Equality.Proofs
 open Arithmetic
@@ -27,8 +28,9 @@ theorem native_steps {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   have gate := Verification.assertion_of_holds h ⟨3 + i.val,
     by rw [constraint_count]; have := i.isLt; omega⟩
   fin_cases i
-  all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, f0, f1, f2, f5, f6] at gate
+  all_goals op_index at gate
+  all_goals simp only [Expression.eval, Verification.environment, f0, f1, f2, f5, f6] at gate
+  all_goals push_cast at gate
   all_goals norm_num [Variables.leftLimbs, Variables.rightLimbs, carryColumn]
   all_goals linear_combination gate
 
@@ -52,8 +54,9 @@ theorem native_results {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   have write := Verification.assertion_of_holds h ⟨67 + i.val,
     by rw [constraint_count]; have := i.isLt; omega⟩
   fin_cases i
-  all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, f0, f1, f2, f3, f4, f5, f6] at definition write
+  all_goals op_index at definition write
+  all_goals simp only [Expression.eval, Verification.environment, f0, f1, f2, f3, f4, f5, f6] at definition write
+  all_goals push_cast at definition write
   all_goals norm_num [Variables.leftLimbs, Variables.writtenLimbs]
   all_goals constructor
   all_goals first | linear_combination definition | linear_combination -write
@@ -67,8 +70,9 @@ theorem native_sum {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   have f5 := flags 5
   norm_num [Variables.operations] at f3 f5
   have gate := Verification.assertion_of_holds h ⟨83, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, f3, f5] at gate
+  op_index at gate
+  simp only [Expression.eval, Verification.environment, f3, f5] at gate
+  push_cast at gate
   norm_num [Fin.sum_univ_succ]
   linear_combination gate
 
@@ -79,16 +83,18 @@ theorem native_zero_check {p : Nat} [Fact p.Prime]
   have definition := Verification.assertion_of_holds h ⟨85, by rw [constraint_count]; decide⟩
   have zero := Verification.assertion_of_holds h ⟨86, by rw [constraint_count]; decide⟩
   have inverse := Verification.assertion_of_holds h ⟨87, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at definition zero inverse
+  op_index at definition zero inverse
+  simp only [Expression.eval, Verification.environment] at definition zero inverse
+  push_cast at definition zero inverse
   have copy : w 214 = w 212 := by linear_combination definition
   rw [copy] at zero inverse
+  simp only [one_mul] at zero
   by_cases isZero : w 210 = 0
   · simp only [isZero, ↓reduceIte]
     rw [isZero] at inverse
     linear_combination inverse
   · simp only [isZero, ↓reduceIte]
-    exact zero.resolve_left isZero
+    exact (mul_eq_zero.mp zero).resolve_left isZero
 
 theorem native_control {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}
@@ -106,8 +112,9 @@ theorem native_control {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   have masked := Verification.assertion_of_holds h ⟨89, by rw [constraint_count]; decide⟩
   have low := Verification.assertion_of_holds h ⟨90, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h ⟨91, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, f0, f1, f2, f3, f5, f6] at response masked low high
+  op_index at response masked low high
+  simp only [Expression.eval, Verification.environment, f0, f1, f2, f3, f5, f6] at response masked low high
+  push_cast at response masked low high
   refine ⟨?_, high⟩
   linear_combination -response - masked - low
 
