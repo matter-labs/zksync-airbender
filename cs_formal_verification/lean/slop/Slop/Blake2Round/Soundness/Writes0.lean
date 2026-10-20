@@ -1,4 +1,6 @@
 import Slop.Blake2Round.Soundness.Outputs
+import Slop.Blake2Round.OpIndex
+import Slop.Blake2G.OpIndex
 
 set_option warningAsError true
 
@@ -21,6 +23,7 @@ theorem extended_words_0 {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
   have high := Verification.assertion_of_holds h
     ⟨121 + 2 * i.val, by rw [constraint_count]; have size := i.isLt; omega⟩
   fin_cases i
+  all_goals op_index at low high
   all_goals try (simp at lowerIndex upperIndex; done)
   all_goals simp [Preparation.words, Mixing.extendedWrites, phaseUpdate, callUpdate,
     callConstants, Specs.BLAKE3.roundConstants, Blake2G.State.Proofs.update,
@@ -29,11 +32,51 @@ theorem extended_words_0 {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     Arithmetic.Word.mk.injEq]
   all_goals constructor
   all_goals apply congrArg ZMod.val
-  all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, Blake2G.Proofs.secondAlo, Blake2G.Proofs.secondAhi,
-    Blake2G.Proofs.secondClo, Blake2G.Proofs.secondChi, Blake2G.Proofs.firstAlo,
-    Blake2G.Proofs.firstAhi, Blake2G.Proofs.firstClo, Blake2G.Proofs.firstChi,
-    diagonalGBase, columnGAssignment, columnGBase, Blake2G.Proofs.assemble] at low high ⊢
+  all_goals simp only [
+    Blake2G.Proofs.assemble,
+    Blake2G.Proofs.firstAhi,
+    Blake2G.Proofs.firstAlo,
+    Blake2G.Proofs.firstChi,
+    Blake2G.Proofs.firstClo,
+    Blake2G.Proofs.secondAhi,
+    Blake2G.Proofs.secondAlo,
+    Blake2G.Proofs.secondChi,
+    Blake2G.Proofs.secondClo,
+    CharP.cast_eq_zero,
+    Expression.eval,
+    Fin.coe_ofNat_eq_mod,
+    Fin.isValue,
+    Fin.ofNat_eq_cast,
+    Fin.ofNat_self,
+    Fin.val_natCast,
+    Int.cast_neg,
+    Int.cast_ofNat,
+    Int.cast_one,
+    Int.cast_zero,
+    Int.ofNat_eq_natCast,
+    Int.reduceNegSucc,
+    Nat.cast_ofNat,
+    Nat.cast_one,
+    Nat.lt_add_one,
+    Nat.mod_succ,
+    Nat.one_mod,
+    Nat.reduceAdd,
+    Nat.reduceLT,
+    Nat.reduceMod,
+    Nat.reduceMul,
+    Nat.zero_mod,
+    Verification.environment,
+    add_zero,
+    columnGAssignment,
+    columnGBase,
+    diagonalGBase,
+    mul_neg,
+    mul_one,
+    mul_zero,
+    neg_mul,
+    one_mul,
+    zero_add,
+    ↓reduceIte] at low high ⊢
   all_goals solve
     | linear_combination low
     | linear_combination -low
