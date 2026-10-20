@@ -417,4 +417,24 @@ def parseSrlHigh (source : String) : Except String ControlArtifact := do
   artifact.validateSrlHigh
   return artifact
 
+/-- Actual native CSR-properties data; no CSR instruction semantics is inserted., retaining their full compiled placement. -/
+def ControlArtifact.validateShiftCsrProperties (artifact : ControlArtifact) : Except String Unit := do
+  unless artifact.version == 1 && artifact.field_modulus == mersenne31Modulus &&
+      artifact.profile == "shift_binop_compilation_csr_properties" do throw "unsupported native CSR-properties profile"
+  unless artifact.generic_rows == 4096 && artifact.tables.size == 1 do
+    throw "unexpected native CSR-properties extent"
+  let some region := artifact.tables[0]? | throw "missing native CSR-properties table"
+  unless region.id == 25 && region.offset == 196609 do throw "unexpected native CSR-properties region"
+  region.data.validate 4096 4
+
+def parseShiftCsrProperties (source : String) : Except String ControlArtifact := do
+  let json ← Json.parse source
+  exactKeys json #["version", "field_modulus", "profile", "generic_rows", "tables"]
+  for region in (← (← json.getObjVal? "tables").getArr?) do
+    exactKeys region #["id", "offset", "data"]
+    matrixKeys (← region.getObjVal? "data")
+  let artifact : ControlArtifact ← fromJson? json
+  artifact.validateShiftCsrProperties
+  return artifact
+
 end Airbender.Setup

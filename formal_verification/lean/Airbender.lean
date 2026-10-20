@@ -58,3 +58,4 @@ import Airbender.Review.Helpers.Tables.NativeSrlLow
 import Airbender.Review.Helpers.Tables.NativeSllHigh
 import Airbender.Review.Helpers.Tables.NativeSllLow
 import Airbender.Review.Helpers.Tables.NativeSrlHigh
+import Airbender.Review.Circuits.ShiftBinop.Artifact

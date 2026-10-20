@@ -1,3 +1,4 @@
+import Tests.ShiftArtifact
 import Tests.NativeSrlHigh
 import Tests.NativeSllLow
 import Tests.NativeSllHigh
@@ -1634,3 +1635,31 @@ import Tests.JumpLink
 #print axioms Tests.NativeSrlHigh.shift_sixteen
 #print axioms Tests.NativeSrlHigh.wrong_high_rejected
 #print axioms Tests.NativeSrlHigh.wrong_low_rejected
+
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.zero_region
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.xor_region
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.or_region
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.and_region
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.csr_region
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.truncate_region
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.sll_low_region
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.sll_high_region
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.srl_low_region
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.srl_high_region
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.sign_fill_region
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.range_region
+#print axioms Tests.ShiftArtifact.equation_count
+#print axioms Tests.ShiftArtifact.lookup_count
+#print axioms Tests.ShiftArtifact.setup_geometry
+#print axioms Tests.ShiftArtifact.native_trace_metadata
+#print axioms Tests.ShiftArtifact.memory_metadata
+#print axioms Tests.ShiftArtifact.decoder_metadata
+#print axioms Tests.ShiftArtifact.query0_retains_selector
+#print axioms Tests.ShiftArtifact.query1_retains_selector
+#print axioms Tests.ShiftArtifact.query2_retains_selector
+#print axioms Tests.ShiftArtifact.query3_retains_selector
+#print axioms Tests.ShiftArtifact.selector_is_evaluated
+#print axioms Tests.ShiftArtifact.native_placements
+#print axioms Tests.ShiftArtifact.actual_zero_member
+#print axioms Tests.ShiftArtifact.actual_nondeterminism_csr_member
+#print axioms Tests.ShiftArtifact.actual_final_row_member

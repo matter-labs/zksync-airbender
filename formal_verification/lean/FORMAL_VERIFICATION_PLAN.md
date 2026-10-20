@@ -466,8 +466,15 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    template certificates, five symbolic partitions and a transported 73-block
    native SRL-low suffix derive every value and both limb bounds. All four native
    logical-shift limb tables now have checked helper membership/results.
-   Continue with faithful dynamic lookup import and numerical/initialized family
-   soundness.
+   The complete shift/binop local projection now retains all fifty equations,
+   eight timestamp queries and four dynamic table selectors as fourth Clean
+   lookup fields. Twelve structural region proofs retain all 10,817,537 tagged
+   rows with original offsets, including the exact compilation fixture CSR
+   profile (nondeterminism enabled, empty delegation CSR list). Explicit-target, arity,
+   mapping, placement and crossed-profile regressions pass. Runtime CSR setup
+   binding remains separate; no custom CSR execution claim is inferred.
+   Continue with numerical and initialized shift/binop family soundness, deriving
+   operation routing and all local inputs from native acceptance/public history.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing
    any source finding or temporary premise.
@@ -477,8 +484,9 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
 Expand importer support only when a concrete circuit requires it. The two native
 word-memory and two native control fixed tables are now supported with exact
 three-column queries and explicit profiles. The unsigned mul/div paired-byte profile is also supported with exact tagged
-native data and checked odd-column zero padding. Other fixed tables, dynamic
-table selectors, unpaired byte columns and state linkage continue to fail closed.
+native data and checked odd-column zero padding. The exact four-witness shift/binop
+profile now has complete tagged import. Other fixed tables, unsupported dynamic
+selector profiles, unpaired byte columns and state linkage continue to fail closed.
 Do not copy unused v3 Review theorems into the v2 build.
 
 ## Deferred milestones

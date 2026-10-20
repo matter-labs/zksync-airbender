@@ -44,6 +44,12 @@ private def Circuit.hasBoolean (c : Circuit) (address : ColumnAddress) : Bool :=
         q.constant_term.canonical == 0
     | _, _ => false
 
+/-- The four actual dynamic selectors of the native shift/binop artifact. -/
+def Circuit.hasShiftLookups (c : Circuit) : Bool :=
+  c.witness_layout.width_3_lookups.map (·.table_index) ==
+    #[.Variable (.WitnessSubtree 24), .Variable (.WitnessSubtree 28),
+      .Variable (.WitnessSubtree 32), .Variable (.WitnessSubtree 36)]
+
 /-- Validate the selected v2 physical setup geometry, including full table
     offsets and the row reserved by get_main_domain_trace/normalization.
     This imports placement, not Rust-generated field values or LDE commitments. -/
@@ -59,13 +65,14 @@ def Circuit.setupColumns (c : Circuit) : Except String Verification.SetupColumns
       layout.timestamp_range_check_setup_column.num_elements == 1 do
     throw "unsupported native scalar setup placement"
   let ids := c.witness_layout.width_3_lookups.map fun query =>
-    match query.table_index with | .Constant id => id
-  let memory := ids == #[FixedTableId.RomAddressSpaceSeparator, .RomRead]
-  let control := ids == #[FixedTableId.ConditionalJmpBranchSlt, .JumpCleanupOffset]
-  let small := !ids.isEmpty && ids.all (· == FixedTableId.RangeCheckSmall)
-  unless ids.isEmpty || memory || control || small do throw "unsupported native fixed lookup profile"
+    match query.table_index with | .Constant id => some id | .Variable _ => none
+  let memory := ids == #[some FixedTableId.RomAddressSpaceSeparator, some .RomRead]
+  let control := ids == #[some FixedTableId.ConditionalJmpBranchSlt, some .JumpCleanupOffset]
+  let small := !ids.isEmpty && ids.all (· == some FixedTableId.RangeCheckSmall)
+  let shift := c.hasShiftLookups
+  unless ids.isEmpty || memory || control || small || shift do throw "unsupported native fixed lookup profile"
   let generic := if ids.isEmpty then 0 else 1
-  let rows := if memory then 1114113 else if control then 65664 else if small then 65536 else 0
+  let rows := if memory then 1114113 else if control then 65664 else if small then 65536 else if shift then 10817537 else 0
   unless layout.generic_lookup_setup_columns.start == 2 &&
       layout.generic_lookup_setup_columns.num_elements == generic do
     throw "unsupported native tagged setup groups"
@@ -82,6 +89,13 @@ def Circuit.setupColumns (c : Circuit) : Except String Verification.SetupColumns
       if id ≤ 17 then 0 else if id ≤ 43 then 65536 else 65664
     else if small then
       if id ≤ 8 then 0 else 65536
+    else if shift then
+      if id == 0 then 0 else if id ≤ 4 then 1 else if id ≤ 6 then 65537
+      else if id == 7 then 131073 else if id ≤ 25 then 196609
+      else if id ≤ 47 then 200705 else if id == 48 then 266241
+      else if id == 49 then 2363393 else if id == 50 then 4460545
+      else if id == 51 then 6557697 else if id == 52 then 8654849
+      else if id == 53 then 10752001 else 10817537
     else 0
   unless c.table_offsets == expected do
     throw "unsupported native fixed-table offsets"
@@ -108,7 +122,7 @@ def Circuit.validate (c : Circuit) : Except String Unit := do
   unless bytes.start + bytes.num_elements ≤ w.total_width do
     throw "8-bit column range outside witness layout"
   let byteQueries := w.width_3_lookups.filter fun q =>
-    match q.table_index with | .Constant id => id == .RangeCheckSmall
+    match q.table_index with | .Constant id => id == .RangeCheckSmall | .Variable _ => false
   unless byteQueries.size == (bytes.num_elements + 1) / 2 do
     throw "native byte columns lack their paired fixed queries"
   let isZero := fun entry => match entry with
@@ -147,6 +161,9 @@ def Circuit.validate (c : Circuit) : Except String Unit := do
       throw "native fixed lookup must have exactly three columns"
     for entry in q.input_columns do
       let _ ← c.lookupExpression entry
+    match q.table_index with
+    | .Constant _ => pure ()
+    | .Variable address => let _ ← c.logicalVariable address
   for q in w.range_check_16_lookup_expressions ++ w.timestamp_range_check_lookup_expressions do
     let _ ← c.lookupExpression q
 

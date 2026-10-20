@@ -48,6 +48,80 @@ private def scalarChecks (setupSource : String) : IO Unit := do
   check (rejected (Setup.parseScalars setupSource)) "reject program artifact as scalar export"
   check (rejected (Setup.parse scalarSource)) "reject scalar artifact as program export"
 
+private def dynamicShiftChecks : IO Unit := do
+  let source ← IO.FS.readFile "../../cs/shift_binop_csrrw_preprocessed_layout.json"
+  let c ← IO.ofExcept (parseCircuit source)
+  check (c.degree_2_constraints.size == 47 && c.degree_1_constraints.size == 3)
+    "retain all fifty native shift/binop equations"
+  check (c.hasShiftLookups && c.witness_layout.width_3_lookups.size == 4 &&
+    c.witness_layout.timestamp_range_check_lookup_expressions.size == 8)
+    "retain four dynamic shift/binop selectors and eight timestamp queries"
+  check ((← IO.ofExcept c.setupColumns) == ⟨16777216,16,0,1,2,1,6,1048576,10817537⟩)
+    "retain complete native shift/binop setup geometry"
+  let selectors ← IO.ofExcept (c.witness_layout.width_3_lookups.mapM fun q =>
+    match q.table_index with
+    | .Variable address => c.logicalVariable address
+    | .Constant _ => .error "unexpected constant selector")
+  check (selectors == #[42,46,50,54]) "resolve actual physical shift selectors to logical variables"
+  let withQueries := fun queries => {c with witness_layout :=
+    {c.witness_layout with width_3_lookups := queries}}
+  let some q := c.witness_layout.width_3_lookups[0]?
+    | throw (IO.userError "missing native dynamic lookup")
+  for selector in #[.WitnessSubtree 51, .MemorySubtree 24, .SetupSubtree 0,
+      .OptimizedOut 0, .WitnessSubtree 28] do
+    check (rejected ((withQueries (c.witness_layout.width_3_lookups.set! 0
+      {q with table_index := .Variable selector})).validate))
+      s!"reject unsupported dynamic selector {repr selector}"
+  check (rejected ((withQueries (c.witness_layout.width_3_lookups.set! 0
+    {q with table_index := .Constant .RangeCheckSmall})).validate)) "reject crossed constant/dynamic profile"
+  check (rejected ((withQueries (c.witness_layout.width_3_lookups.extract 0 3)).validate))
+    "reject missing dynamic lookup"
+  check (rejected ((withQueries (c.witness_layout.width_3_lookups.push q)).validate))
+    "reject extra dynamic lookup"
+  check (rejected ((withQueries (c.witness_layout.width_3_lookups.set! 0
+    {q with input_columns := q.input_columns.extract 0 2})).validate)) "reject short dynamic query"
+  check (rejected ((withQueries (c.witness_layout.width_3_lookups.set! 0
+    {q with input_columns := q.input_columns.push (.Variable (.WitnessSubtree 21))})).validate))
+    "reject wide dynamic query"
+  check (rejected ((withQueries (c.witness_layout.width_3_lookups.set! 0
+    {q with input_columns := q.input_columns.set! 1 (.Variable (.WitnessSubtree 51))})).validate))
+    "reject out-of-layout dynamic input"
+  let unmapped := {c.variable_mapping with entries := c.variable_mapping.entries.filter (·.1 != 42)}
+  check (rejected ({c with variable_mapping := unmapped}.validate)) "reject unmapped selector"
+  let aliased := {c.variable_mapping with entries := c.variable_mapping.entries.push (100,.WitnessSubtree 24)}
+  check (rejected ({c with variable_mapping := aliased}.validate)) "reject aliased selector mapping"
+  for (id,offset) in #[(0,1),(4,2),(25,196608),(47,200704),(53,10752000),(54,10817536)] do
+    check (rejected ({c with table_offsets := c.table_offsets.set! id offset}.validate))
+      s!"reject changed shift/binop offset {id}"
+  check (rejected ({c with total_tables_size := 10817536}.validate)) "reject truncated tagged union"
+  let raw ← IO.ofExcept (Json.parse source)
+  let wj ← IO.ofExcept (raw.getObjVal? "witness_layout")
+  let qs ← IO.ofExcept ((← IO.ofExcept (wj.getObjVal? "width_3_lookups")).getArr?)
+  let unknown ← IO.ofExcept (replaceField qs[0]! "table_index"
+    (Json.mkObj [("Expression", Json.mkObj [])]))
+  let wj ← IO.ofExcept (replaceField wj "width_3_lookups" (.arr (qs.set! 0 unknown)))
+  let raw ← IO.ofExcept (replaceField raw "witness_layout" wj)
+  check (rejected (parseCircuit raw.compress)) "reject unknown dynamic selector constructor"
+  let csrSource ← IO.FS.readFile "artifacts/setup/shift-csr-properties-native.json"
+  let csr ← IO.ofExcept (Setup.parseShiftCsrProperties csrSource)
+  check (csr.generic_rows == 4096 && csr.tables.size == 1) "actual compilation CSR-properties extent"
+  check (rejected ({csr with profile := "shift_binop_runtime_csr_properties"}.validateShiftCsrProperties))
+    "reject unbound runtime CSR profile"
+  check (rejected ({csr with tables := csr.tables.modify 0 (fun r => {r with id := 24})}.validateShiftCsrProperties))
+    "reject changed CSR-properties tag"
+  check (rejected ({csr with tables := csr.tables.modify 0 (fun r => {r with offset := 0})}.validateShiftCsrProperties))
+    "reject changed CSR-properties placement"
+  check (rejected ({csr with generic_rows := 4095}.validateShiftCsrProperties)) "reject lost CSR row"
+  check (rejected ({csr with field_modulus := 2013265921}.validateShiftCsrProperties)) "reject CSR v3 field"
+  check (rejected ({csr with tables := csr.tables.modify 0 (fun r => {r with data :=
+    {r.data with columns := r.data.columns.extract 0 3}})}.validateShiftCsrProperties)) "reject CSR tag omission"
+  check (rejected (Setup.parseBinary csrSource)) "reject CSR region as binary profile"
+  check (rejected (Setup.parseShiftCsrProperties (← IO.FS.readFile "artifacts/setup/shift-srl-high-native.json")))
+    "reject logical shift as CSR profile"
+  let cj ← IO.ofExcept (Json.parse csrSource)
+  let cj ← IO.ofExcept (replaceField cj "invented" (.bool true))
+  check (rejected (Setup.parseShiftCsrProperties cj.compress)) "reject unknown CSR export field"
+
 private def srlHighChecks : IO Unit := do
   let source ← IO.FS.readFile "artifacts/setup/shift-srl-high-native.json"
   let a ← IO.ofExcept (Setup.parseSrlHigh source)
@@ -663,7 +737,7 @@ def main : IO UInt32 := do
     check (rejected (fromJson? (Json.mkObj [("Constant", toJson "Xor")]) :
       Except String FixedTableIndex)) "reject unsupported fixed table"
     check (rejected (fromJson? (Json.mkObj [("Variable", toJson (0 : Nat))]) :
-      Except String FixedTableIndex)) "reject dynamic fixed-table selection"
+      Except String FixedTableIndex)) "reject malformed dynamic selector address"
     check ((← IO.ofExcept c.setupColumns) == ⟨16777216,12,0,1,2,0,2,1048576,0⟩)
       "native arithmetic physical setup placement"
     check ((← IO.ofExcept word.setupColumns) == ⟨16777216,16,0,1,2,1,6,1048576,1114113⟩)
@@ -746,6 +820,7 @@ def main : IO UInt32 := do
     sllHighChecks
     sllLowChecks
     srlHighChecks
+    dynamicShiftChecks
     controlDecoderChecks
     decoderPaddingChecks
     controlChecks

@@ -17,7 +17,7 @@ This is the v2 backport based on dev revision
 formalization revision 805909325; exact source identities and hashes are in
 [provenance](artifacts/provenance.json). Circuit and runtime Rust are unchanged.
 
-Current execution coverage spans three circuit families:
+Current execution coverage spans four circuit families:
 
 - [ADD/ADDI/SUB/LUI/AUIPC](Airbender/Review/Trace/Families/AddSub/Theorems.lean):
   complete initialized original Sail execution and native terminal matching.
@@ -32,10 +32,14 @@ Current execution coverage spans three circuit families:
   now derives finite original Sail execution, terminal PC/register matching and
   raw terminal PC bounds from accepted native matching and public inputs.
 
-[Unsigned mul/div native arithmetic](Airbender/Review/Circuits/MulDiv/README.md)
-now checks all four numerical results, zero divisors and actual masked x0 writes.
-Its public decoding, initialized history and original Sail execution remain open.
-Shifts/binops, subword memory, delegation and whole-machine
+- [Unsigned MUL/MULHU/DIVU/REMU](Airbender/Review/Trace/Families/MulDiv/FetchedExecution.lean):
+  complete initialized fetched execution, stateful original decoding, zero divisors,
+  actual x0 writes and terminal matching under the documented misa.M profile.
+
+Shift/binop now has a [complete local native import](Airbender/Review/Circuits/ShiftBinop/Artifact.lean)
+with exact witness-selected tagged lookups and checked helper table results.
+Its numerical family theorem and initialized execution remain unfinished.
+Subword memory, delegation and whole-machine
 protocol composition are still unfinished; the [plan](FORMAL_VERIFICATION_PLAN.md)
 tracks the remaining dependencies. The checkpoint details below retain their
 original snapshot structure.
@@ -1333,3 +1337,37 @@ established. Helper membership/results are now checked for all four native
 logical-shift limb tables. Faithful dynamic constraint import, numerical family
 soundness and initialized shift/binop execution remain unfinished; general
 Rust/compiler refinement and cryptographic enforcement remain separate.
+
+## Complete compiled shift/binop lookup projection
+
+[The native artifact](Airbender/Review/Circuits/ShiftBinop/Artifact.lean) now imports
+all 47 quadratic/three linear equations, eight timestamp queries and four dynamic
+lookups. Physical witness selectors 24/28/32/36 resolve to logical variables
+42/46/50/54 and remain evaluated fourth Clean query fields. Setup, decoder,
+clock and all three direct memory ports have checked kernel bindings.
+
+[The tagged table](Airbender/Review/Circuits/ShiftBinop/Tables/Native.lean) reads
+all twelve actual exported regions in compiled offset order, spanning 10,817,537
+rows. It retains the native zero row and every tag without inserting another
+inactive row. [Structural inclusion proofs](Airbender/Proofs/ShiftBinop/NativeLookup.lean)
+cover every row of every region. Existing binary/scalar/four-limb certificates
+supply mathematical helper results separately. Direct closed-data regression
+calculations hit Lean's allocation cap; structural row transport replaces them
+under unchanged ceilings, with no surviving owned workers after the failure.
+
+The CSR-properties region uses the exact native compilation-test generator:
+nondeterminism enabled with an empty delegation CSR list. [Its actual data](artifacts/setup/shift-csr-properties-native.json)
+retains ID 25, offset 196609 and all 4096 rows. Native source explicitly requires
+separately configured CSR contents for proving/setup; this profile does not bind
+runtime CSR setup or establish custom CSR/oracle/delegation execution semantics.
+The strict regional importer rejects an unbound runtime profile.
+
+[Kernel regressions](Tests/ShiftArtifact.lean) check all query expressions,
+selector evaluation, metadata/placements and actual zero/CSR/final native rows.
+[Importer regressions](Tests/ArtifactImport.lean) reject missing/extra/wide/short
+queries, crossed/unknown selectors, unmapped/aliased physical variables, changed
+offsets/extents and malformed/crossed CSR data. All native profiles reproduce
+byte-for-byte. This closes the concrete local import prerequisite; numerical
+shift/binop soundness and initialized original Sail execution remain unfinished.
+General Rust/JSON/compiler refinement and cryptographic argument enforcement
+remain separate. No native implementation defect is established.

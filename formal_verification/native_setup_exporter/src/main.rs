@@ -224,6 +224,24 @@ fn export_shift_scalars(layout_path: &Path) -> ControlTables {
         "shift_binop_scalar_regions")
 }
 
+fn export_shift_csr_properties(layout_path: &Path) -> ControlTables {
+    // This is the exact compilation-test profile in shift_binary_csr.rs.
+    // Proving/setup may install a different CSR table; that binding is separate.
+    let id = TableType::SpecialCSRProperties as u32;
+    let table = cs::machine::machine_configurations::create_csr_table_for_delegation::<Mersenne31Field>(
+        true, &[], id);
+    let table = cs::tables::LookupWrapper::Dimensional3(table);
+    let length = table.get_size();
+    let mut rows = Vec::with_capacity(length);
+    table.dump_into::<4>(&mut rows, Some(id));
+    assert_eq!(rows.len(), 4096);
+    let layout: serde_json::Value = serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
+    let offset = layout["table_offsets"][id as usize].as_u64().unwrap() as usize;
+    ControlTables { version: 1, field_modulus: MODULUS,
+        profile: "shift_binop_compilation_csr_properties".into(), generic_rows: length,
+        tables: vec![Region { id, offset, data: matrix(&rows) }] }
+}
+
 fn export_srl_low(layout_path: &Path) -> ControlTables {
     export_shift_regions(layout_path, &[TableType::SrlWith16BitInputLow], "shift_binop_srl_low")
 }
@@ -438,6 +456,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if args.len() == 4 && args[1] == "--srl-low" {
         let artifact = export_srl_low(Path::new(&args[2]));
+        let bytes = serde_json::to_vec_pretty(&artifact)?;
+        let recovered: ControlTables = serde_json::from_slice(&bytes)?;
+        assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);
+        std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
+        return Ok(());
+    }
+    if args.len() == 4 && args[1] == "--shift-csr-properties" {
+        let artifact = export_shift_csr_properties(Path::new(&args[2]));
         let bytes = serde_json::to_vec_pretty(&artifact)?;
         let recovered: ControlTables = serde_json::from_slice(&bytes)?;
         assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);

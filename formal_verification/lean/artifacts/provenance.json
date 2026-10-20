@@ -331,6 +331,10 @@
     {
       "path": "../../cs/mul_div_unsigned_preprocessed_layout.json",
       "sha256": "f080a0bec56466ae853d031a501bddc3b2b60389a6958f74b965a706c437a39f"
+    },
+    {
+      "path": "../../cs/shift_binop_csrrw_preprocessed_layout.json",
+      "sha256": "fdf11c47b3fc8c792a150e613f803ca4d6cc156f330eff2a1004c88e3ccd5164"
     }
   ],
   "native_sources": [
@@ -514,7 +518,15 @@
     {
       "path": "../../cs/shift_binop_csrrw_preprocessed_layout.json",
       "sha256": "fdf11c47b3fc8c792a150e613f803ca4d6cc156f330eff2a1004c88e3ccd5164",
-      "scope": "compiled offset metadata only; dynamic constraints remain unimported"
+      "scope": "complete consumed local row projection and compiled setup offsets; stage-two/CSR runtime binding and compiler refinement remain separate"
+    },
+    {
+      "path": "../../cs/src/definitions/lookup.rs",
+      "sha256": "445442e5e4756493e99eb1cdd8b1ba7ae04ce66284d7feef5045e4ea69714c6c"
+    },
+    {
+      "path": "../../cs/src/csr_properties.rs",
+      "sha256": "049a376d811ee4b97f89fa611e905f6a589b64ded6d3d331a8ab66f89914f08d"
     }
   ],
   "adaptations": [
@@ -4419,6 +4431,110 @@
       "backport_reuse_path": "../native_setup_exporter/src/main.rs",
       "backport_reuse_sha256": "cea5b0d59c0c3e2737aa8fdf89ed99cdaab39a1eb11a9343eba564e82cb606e2",
       "change": "Reuse unchanged selected-table generation/tagging, compiled-layout offsets, lossless codec and JSON roundtrip. Add the actual high-input SRL profile with scoped sequential export."
+    },
+    {
+      "path": "Airbender/Import/Schema.lean",
+      "backport_reuse_revision": "8a20f6e16a5585de9450e22bb1c1c972f58998d4",
+      "backport_reuse_path": "Airbender/Import/Schema.lean",
+      "backport_reuse_sha256": "a4d8a9b28f5922e5188418da7f4abea07a562459e9b74ae3a340d0655020e626",
+      "change": "Extend the native table-index schema with a physical Variable constructor, restricted by the concrete shift profile."
+    },
+    {
+      "path": "Airbender/Import/Parse.lean",
+      "backport_reuse_revision": "8a20f6e16a5585de9450e22bb1c1c972f58998d4",
+      "backport_reuse_path": "Airbender/Import/Parse.lean",
+      "backport_reuse_sha256": "244c36ad1d00998c7be19a5c84a4cf78e0f16e54797eaad775a5d3ddef3dec6e",
+      "change": "Retain existing unique variable/column checks; validate the exact four witness selectors, complete tagged offsets and native setup extent."
+    },
+    {
+      "path": "Airbender/Import/Embed.lean",
+      "backport_reuse_revision": "8a20f6e16a5585de9450e22bb1c1c972f58998d4",
+      "backport_reuse_path": "Airbender/Import/Embed.lean",
+      "backport_reuse_sha256": "1756706d47e9ccee73e6a3312e5e6c86b366128072af348cd596fc53155e0f8f",
+      "change": "Retain all existing profile behavior; add explicit shift target and emit every evaluated table selector as the fourth original Clean query field."
+    },
+    {
+      "path": "Airbender/Import/Main.lean",
+      "backport_reuse_revision": "8a20f6e16a5585de9450e22bb1c1c972f58998d4",
+      "backport_reuse_path": "Airbender/Import/Main.lean",
+      "backport_reuse_sha256": "ea248ff73b31423949025c6ca4fd758d4080b095b514f0787d13e2eb49c354c2",
+      "change": "Describe both fixed and variable native tagged queries accurately."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "8a20f6e16a5585de9450e22bb1c1c972f58998d4",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "b077274635b4abb5a3e716ce771dc741b8ca9da2268c7af46a8c99925caae172",
+      "change": "Reuse strict matrix/region validation for the exact compilation CSR fixture; reject unbound runtime profiles."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "8a20f6e16a5585de9450e22bb1c1c972f58998d4",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "049646fe5e9bcf8de37a85d2517e7f29dfe93dc30361e533948b007988219de6",
+      "change": "Reuse the unchanged lossless literal emitter for actual compilation CSR data; insert no table recipe or semantic result."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "8a20f6e16a5585de9450e22bb1c1c972f58998d4",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "9014612b8cad9b46aade760a131b3a47324d9bbc53e0bdc1156db8f031f1e1dc",
+      "change": "Retain all existing tests and add 35 profile, selector, mapping, extent and CSR regressions."
+    },
+    {
+      "path": "scripts/check_all.py",
+      "backport_reuse_revision": "8a20f6e16a5585de9450e22bb1c1c972f58998d4",
+      "backport_reuse_path": "scripts/check_all.py",
+      "backport_reuse_sha256": "c16fab766a3389e289ce0b27144798e8198298d61d78e857dbb5a5286c9821a6",
+      "change": "Retain all serial resource/caching controls; add the fifth actual circuit to the importer CLI gate."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "8a20f6e16a5585de9450e22bb1c1c972f58998d4",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "8e1486b81d8dcb1a5bc71bd500faf91bf01614ac6cdede016e45417e2d4fc3d2",
+      "change": "Retain every byte-identical prior export; reproduce the exact actual compilation CSR fixture and compiled offset."
+    },
+    {
+      "path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_revision": "8a20f6e16a5585de9450e22bb1c1c972f58998d4",
+      "backport_reuse_path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_sha256": "6f84c2b9eb8b59e1904de312ef0cfb1f448dcde208ce507500b41fe5b1143985",
+      "change": "Retain unchanged lossless codec, existing profiles and sequential native generation; add the exact source compilation CSR API call true/empty delegation list."
+    },
+    {
+      "path": "Airbender.lean",
+      "backport_reuse_revision": "8a20f6e16a5585de9450e22bb1c1c972f58998d4",
+      "backport_reuse_path": "Airbender.lean",
+      "backport_reuse_sha256": "df9e2f2d68393c14156581466d77429af855db2aa9aba0adfdb240fa4eddeec8",
+      "change": "Add the completed local shift/binop artifact entry point without claiming instruction soundness."
+    },
+    {
+      "path": "Airbender/Checks/Axioms.lean",
+      "backport_reuse_revision": "8a20f6e16a5585de9450e22bb1c1c972f58998d4",
+      "backport_reuse_path": "Airbender/Checks/Axioms.lean",
+      "backport_reuse_sha256": "c2ed1b7f0bb5d30dbb6279767728864158782c903e0923df68f894f8bf2507bb",
+      "change": "Audit every new structural proof and concrete metadata/selector regression."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ShiftBinop/Tables/NativeCsrData.lean",
+      "change": "Literal native compilation fixture only, generated by the pinned true/empty-list API profile."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ShiftBinop/Tables/Native.lean",
+      "change": "Compose all twelve actual exported regions in compiled offset order; original Clean membership retains all four native fields with no additional disabled row."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ShiftBinop/Artifact.lean",
+      "change": "Import the complete consumed native local row projection with explicit shift target and trace metadata; instruction/runtime CSR/argument boundaries remain separate."
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/NativeLookup.lean",
+      "change": "Prove structural inclusion of every actual stored row in every region using symbolic bounded indices; no closed imported-array evaluation or table equivalence premise."
+    },
+    {
+      "path": "Tests/ShiftArtifact.lean",
+      "change": "Check exact equation/query counts, evaluated selectors, state/port/decoder/setup bindings, all placements and actual zero/CSR/final boundary rows. The nonzero CSR fixture is the native nondeterminism CSR, not a delegation request."
     }
   ],
   "setup_artifacts": [
@@ -4558,6 +4674,13 @@
       "profile": "actual native high-input logical-right-shift table, ID 51, compiled offset 6557697, 2097152 rows; completes helper membership/results for all four native logical-shift limb tables; dynamic circuit connection remains separate",
       "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
+    },
+    {
+      "path": "artifacts/setup/shift-csr-properties-native.json",
+      "sha256": "a178b69d03632223e08d0028655445920bbee9c3dd0755c76b376f56f46fb34c",
+      "profile": "exact native compilation-test CSR properties (nondeterminism enabled, empty delegation CSR list), ID 25, offset 196609, 4096 rows; runtime CSR setup/configuration and custom execution remain separate",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
     }
   ],
   "native_exporter_files": [
@@ -4571,7 +4694,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "6f84c2b9eb8b59e1904de312ef0cfb1f448dcde208ce507500b41fe5b1143985"
+      "sha256": "fee6f12d75ee2787aba97a696cd9430a87e278e54090bcc278cc53713235c215"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",

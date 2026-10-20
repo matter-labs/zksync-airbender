@@ -74,6 +74,14 @@ def main():
         assert (region["id"],region["offset"],region["data"]["length"]) == (48,266241,2097152)
         assert layout["table_offsets"][region["id"]] == region["offset"]
         print("PASS reproducible actual native SLL-low table and compiled offset", flush=True)
+        subprocess.run([str(binary), "--shift-csr-properties", str(compiled), str(output)], check=True)
+        assert output.read_bytes() == (ROOT / "artifacts/setup/shift-csr-properties-native.json").read_bytes()
+        csr = json.loads(output.read_bytes())
+        assert csr["generic_rows"] == 4096 and len(csr["tables"]) == 1
+        region = csr["tables"][0]
+        assert (region["id"],region["offset"],region["data"]["length"]) == (25,196609,4096)
+        assert layout["table_offsets"][region["id"]] == region["offset"]
+        print("PASS reproducible actual native CSR-properties table and compiled offset", flush=True)
         subprocess.run([str(binary), "--srl-high", str(compiled), str(output)], check=True)
         assert output.read_bytes() == (ROOT / "artifacts/setup/shift-srl-high-native.json").read_bytes()
         sll = json.loads(output.read_bytes())

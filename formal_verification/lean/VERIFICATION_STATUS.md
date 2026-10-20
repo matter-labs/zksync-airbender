@@ -58,14 +58,13 @@ not completed v2 coverage.
 ## Remaining work
 
 - Generalize native export certificates to arbitrary public programs and refine the checked complete row model against Rust trace construction; connect physical initialization and expand mixed/custom programs.
-- Extend initialized execution to jump/branch/SLT and the remaining supported families; preserve each native metadata and argument boundary.
+- Extend initialized execution to shift/binop and the remaining supported families; preserve each native metadata and argument boundary. Complete standalone control and unsigned MUL/DIV execution are checked below.
 - Backport the remaining ordinary circuit families, worker operations, unified machine, full traces and initialization/teardown.
 - Retest v3 findings against v2 before carrying over counterexamples or temporary assumptions.
 - Prove the deferred import/compiler/cryptographic connections under a separately scoped claim.
 
 No whole-machine or cryptographic soundness is claimed. Completeness is defined
-but unproved. Unsupported fixed tables/dynamic selectors, byte ranges and inter-row linkage
-are rejected rather than omitted from the local importer target.
+but unproved. Unsupported fixed tables, dynamic selector profiles beyond the four native shift/binop witnesses, unpaired byte ranges and inter-row linkage are rejected by the importer.
 
 ## Initialized word-memory execution
 
@@ -1260,11 +1259,11 @@ Rust/compiler refinement and cryptographic enforcement remain separate.
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all sixty-eight concrete test modules pass.
-- Importer regressions: 351 checks pass.
-- Axiom audit: 1513 explicit roots; only propext, Classical.choice and Quot.sound.
+- Library, both CLI entrypoints and all sixty-nine concrete test modules pass.
+- Importer regressions: 386 checks pass.
+- Axiom audit: 1540 explicit roots; only propext, Classical.choice and Quot.sound.
 - All eighty-four public Review theorems (eleven circuit claims, fifty trace claims and twenty-three helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 78 unchanged reused files, four native circuit artifacts, forty-four native Rust sources plus compiled shift-offset metadata, fifteen native setup artifacts and four exporter source/manifest/lock files.
+- Source provenance: 78 unchanged reused files, five native circuit artifacts, forty-six native Rust sources plus compiled shift-offset metadata, sixteen native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.
@@ -1307,3 +1306,37 @@ Current checked checkpoint:
 - Serial bounded gates pass; parent/child timeout and memory probes confirm termination with no live owned processes.
 
 Run the [reproduction commands](README.md#reproduce) for the current checkpoint.
+
+## Complete compiled shift/binop lookup projection
+
+[The native artifact](Airbender/Review/Circuits/ShiftBinop/Artifact.lean) now imports
+all 47 quadratic/three linear equations, eight timestamp queries and four dynamic
+lookups. Physical witness selectors 24/28/32/36 resolve to logical variables
+42/46/50/54 and remain evaluated fourth Clean query fields. Setup, decoder,
+clock and all three direct memory ports have checked kernel bindings.
+
+[The tagged table](Airbender/Review/Circuits/ShiftBinop/Tables/Native.lean) reads
+all twelve actual exported regions in compiled offset order, spanning 10,817,537
+rows. It retains the native zero row and every tag without inserting another
+inactive row. [Structural inclusion proofs](Airbender/Proofs/ShiftBinop/NativeLookup.lean)
+cover every row of every region. Existing binary/scalar/four-limb certificates
+supply mathematical helper results separately. Direct closed-data regression
+calculations hit Lean's allocation cap; structural row transport replaces them
+under unchanged ceilings, with no surviving owned workers after the failure.
+
+The CSR-properties region uses the exact native compilation-test generator:
+nondeterminism enabled with an empty delegation CSR list. [Its actual data](artifacts/setup/shift-csr-properties-native.json)
+retains ID 25, offset 196609 and all 4096 rows. Native source explicitly requires
+separately configured CSR contents for proving/setup; this profile does not bind
+runtime CSR setup or establish custom CSR/oracle/delegation execution semantics.
+The strict regional importer rejects an unbound runtime profile.
+
+[Kernel regressions](Tests/ShiftArtifact.lean) check all query expressions,
+selector evaluation, metadata/placements and actual zero/CSR/final native rows.
+[Importer regressions](Tests/ArtifactImport.lean) reject missing/extra/wide/short
+queries, crossed/unknown selectors, unmapped/aliased physical variables, changed
+offsets/extents and malformed/crossed CSR data. All native profiles reproduce
+byte-for-byte. This closes the concrete local import prerequisite; numerical
+shift/binop soundness and initialized original Sail execution remain unfinished.
+General Rust/JSON/compiler refinement and cryptographic argument enforcement
+remain separate. No native implementation defect is established.

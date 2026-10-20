@@ -42,9 +42,12 @@ inductive FixedTableId where
   | RangeCheckSmall
   deriving Repr, DecidableEq, FromJson, ToJson
 
+/-- Native constants and physical witness selectors. Variable selectors are
+    accepted only by the concrete shift/binop profile checked in Parse. -/
 inductive FixedTableIndex where
   | Constant : FixedTableId → FixedTableIndex
-  deriving Repr, FromJson
+  | Variable : ColumnAddress → FixedTableIndex
+  deriving Repr, DecidableEq, FromJson
 
 structure FixedLookup where
   input_columns : Array LookupExpression

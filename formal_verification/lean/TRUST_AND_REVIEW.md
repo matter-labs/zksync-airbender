@@ -56,9 +56,11 @@ the local interface and a nonzero-operand SUB-to-x0 regression now preserve that
 
 The [schema](Airbender/Import/Schema.lean) is the consumed local-row projection of
 the v2 compiled artifact. All linear/quadratic equations and scalar/timestamp
-queries are emitted as native Clean operations. Only the two native word-memory
-fixed tables are supported, with exactly three columns. Unknown tables, dynamic selectors, malformed arities, byte ranges and
-state linkage fail closed. Native stage-two arguments,
+queries are emitted as native Clean operations. Explicit profiles retain native
+word-memory/control/paired-byte tables and the four shift/binop witness-selected
+lookups. Dynamic selectors become the fourth field of the complete actual tagged
+compilation-profile table. Unknown tables, unsupported selector profiles, malformed
+arities, unpaired byte ranges and state linkage fail closed. Native stage-two arguments,
 public boundary conditions, decoder tables and memory matching are not implied
 by this projection. Their remaining work is explicit in the status and plan.
 
@@ -1534,3 +1536,37 @@ established. Helper membership/results are now checked for all four native
 logical-shift limb tables. Faithful dynamic constraint import, numerical family
 soundness and initialized shift/binop execution remain unfinished; general
 Rust/compiler refinement and cryptographic enforcement remain separate.
+
+## Complete compiled shift/binop lookup projection
+
+[The native artifact](Airbender/Review/Circuits/ShiftBinop/Artifact.lean) now imports
+all 47 quadratic/three linear equations, eight timestamp queries and four dynamic
+lookups. Physical witness selectors 24/28/32/36 resolve to logical variables
+42/46/50/54 and remain evaluated fourth Clean query fields. Setup, decoder,
+clock and all three direct memory ports have checked kernel bindings.
+
+[The tagged table](Airbender/Review/Circuits/ShiftBinop/Tables/Native.lean) reads
+all twelve actual exported regions in compiled offset order, spanning 10,817,537
+rows. It retains the native zero row and every tag without inserting another
+inactive row. [Structural inclusion proofs](Airbender/Proofs/ShiftBinop/NativeLookup.lean)
+cover every row of every region. Existing binary/scalar/four-limb certificates
+supply mathematical helper results separately. Direct closed-data regression
+calculations hit Lean's allocation cap; structural row transport replaces them
+under unchanged ceilings, with no surviving owned workers after the failure.
+
+The CSR-properties region uses the exact native compilation-test generator:
+nondeterminism enabled with an empty delegation CSR list. [Its actual data](artifacts/setup/shift-csr-properties-native.json)
+retains ID 25, offset 196609 and all 4096 rows. Native source explicitly requires
+separately configured CSR contents for proving/setup; this profile does not bind
+runtime CSR setup or establish custom CSR/oracle/delegation execution semantics.
+The strict regional importer rejects an unbound runtime profile.
+
+[Kernel regressions](Tests/ShiftArtifact.lean) check all query expressions,
+selector evaluation, metadata/placements and actual zero/CSR/final native rows.
+[Importer regressions](Tests/ArtifactImport.lean) reject missing/extra/wide/short
+queries, crossed/unknown selectors, unmapped/aliased physical variables, changed
+offsets/extents and malformed/crossed CSR data. All native profiles reproduce
+byte-for-byte. This closes the concrete local import prerequisite; numerical
+shift/binop soundness and initialized original Sail execution remain unfinished.
+General Rust/JSON/compiler refinement and cryptographic argument enforcement
+remain separate. No native implementation defect is established.

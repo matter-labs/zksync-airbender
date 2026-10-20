@@ -42,3 +42,18 @@ are unfinished. General Rust/JSON/compiler refinement is a separate boundary.
 ## Native high-input SRL rows
 
 [Two short helper claims](../../Helpers/Tables/NativeSrlHigh.lean) connect original Clean membership to all 2,097,152 actual high-input SRL rows and derive both limb bounds and exact reconstructed RV32 shifts. [Internal assembly](../../../Proofs/Tables/SrlHigh.lean) reuses native SRL-low for the entire high column and a 73-block low suffix, retaining all 146 low blocks, ten rotated templates and five symbolic prefix certificates. [Regressions](../../../../Tests/NativeSrlHigh.lean) cover cross-shift/reset edges, shifts sixteen/31, final bits and malformed queries. All four native logical-shift limb tables now have helper membership/results; dynamic constraint import and initialized shift/binop execution remain unfinished.
+
+## Complete native dynamic lookup import
+
+[The local artifact](Artifact.lean) now retains all fifty equations, eight timestamp
+queries, the four actual witness selectors and complete native state/port/setup
+metadata. [The actual tagged table](Tables/Native.lean) spans all twelve compiled
+regions and 10,817,537 rows; [structural proofs](../../../Proofs/ShiftBinop/NativeLookup.lean)
+retain every stored row. [Regressions](../../../../Tests/ShiftArtifact.lean) check
+selector evaluation, all native metadata and explicit profile rejection.
+
+The [CSR data](Tables/NativeCsrData.lean) uses the exact compilation-test profile:
+nondeterminism enabled, empty delegation CSR list. Proving-time CSR setup binding,
+custom CSR/oracle/delegation behavior, numerical family soundness and initialized
+shift/binop Sail execution remain separate. Import fidelity is not a compiler
+refinement proof. All previous native helper claims retain their checked scope.

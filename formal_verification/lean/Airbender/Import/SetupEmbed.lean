@@ -209,4 +209,13 @@ elab "import_native_srl_high " name:ident " from " path:str : command => do
   let some region := artifact.tables[0]? | throwError "missing native SRL-high table"
   emitData name region.data region.offset
 
+
+/-- Literal native CSR-properties rows only, without operation semantics. -/
+elab "import_native_shift_csr_properties " name:ident " from " path:str : command => do
+  let artifact ← match parseShiftCsrProperties (← IO.FS.readFile path.getString) with
+    | .ok artifact => pure artifact
+    | .error error => throwError "native CSR-properties import failed: {error}"
+  let some region := artifact.tables[0]? | throwError "missing native CSR-properties table"
+  emitData name region.data region.offset
+
 end Airbender.Setup
