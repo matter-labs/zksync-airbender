@@ -716,24 +716,23 @@ consistency, batching, and recursion._
 _Then comes the Verifier PCS Schedule Section_
 
 - **Proxmity Theorems**
-  - $\delta$
+  - $\delta$ distance
+  - $\lambda$ security bits
+  - $PoW$ grinding bits
+  - $LDE = 1/\rho$
   - $\epsilon_t \le (1 - \delta)^t$ from WHIR paper
-    - In general $\epsilon_\lambda = 2^{- \lambda} \ge \epsilon_t \implies t \ge \lceil \lambda / -lg(1 - \delta) \rceil$
+    - $\epsilon_\lambda = 2^{- \lambda} \ge \epsilon_t \implies t \ge \lceil \lambda / -log_2(1 - \delta) \rceil$
   - $\epsilon_{PoW} \le 2^{- PoW}$ from S-Two paper
-    - In general $\epsilon_\lambda = 2^{- \lambda} \ge \epsilon_{PoW} \cdot \epsilon_t \implies t \ge \lceil (\lambda - PoW) / -lg(1 - \delta) \rceil \textit{ when } \lambda \ge PoW\ bits$
+    - $\epsilon_\lambda = 2^{- \lambda} \ge \epsilon_{PoW} \cdot \epsilon_t \implies t \ge \lceil (\lambda - PoW) / -log_2(1 - \delta) \rceil \textit{ when } \lambda \ge PoW\ bits$
   - Unique Decoding $\delta_{uniq} = (1 - \rho) / 2$
-    - $t_{uniq} \ge \lceil \lambda / -lg(\frac{1 + \rho}{2}) \rceil$
-    - with grinding $t_{uniq} \ge \lceil (\lambda - PoW) / -lg(\frac{1 + \rho}{2}) \rceil$
+    - $t_{uniq} \ge \lceil (\lambda - PoW) / -log_2(\frac{1 + \rho}{2}) \rceil$
   - Johnson List Decoding $\delta_{John} = 1 - \sqrt\rho$
-    - $t_{John} \ge \lceil 2 \lambda / lg(LDE) \rceil,\ LDE=1/\rho$
-    - with grinding $t_{John} \ge \lceil 2 (\lambda - PoW) / lg(LDE) \rceil,\ LDE=1/\rho$
+    - $t_{John} \ge \lceil 2 (\lambda - PoW) / log_2(LDE) \rceil$
   - Broken Capacity Conjecture $\delta_{cap} = 1 - \rho - \epsilon,\ \epsilon \gt 0$ from Proximity Gaps paper and WHIR paper
-    - $t_{cap} \ge \lceil \lambda / -lg(\rho + \epsilon) \rceil \ge \lceil \lambda / lg(LDE)\rceil \ when\ \epsilon \approx 0,\ LDE=1/\rho$
-    - with grinding $t_{cap} \ge \lceil (\lambda - PoW) / -lg(\rho + \epsilon) \rceil \ge \lceil (\lambda - PoW) / lg(LDE)\rceil \ when\ \epsilon \approx 0,\ LDE=1/\rho$
+    - $t_{cap} \ge \lceil (\lambda - PoW) / -log_2(\rho + \epsilon) \rceil \ge \lceil (\lambda - PoW) / log_2(LDE)\rceil \ when\ \epsilon \approx 0$
     - Broken by .. paper
   - Airbender 20% Pessimistic Capacity Conjecture
-    - $t_{Air} = 1.2 \cdot t_{cap} \ge \lceil 1.2 \lambda/lg(LDE) \rceil,\ LDE = 1/\rho$
-    - with grinding $t_{Air} = 1.2 \cdot t_{cap} \ge \lceil 1.2 (\lambda - PoW)/lg(LDE) \rceil,\ LDE = 1/\rho$
+    - $t_{Air} = \lceil 1.2 \cdot t_{cap} \rceil \ge \lceil 1.2 (\lambda - PoW)/log_2(LDE) \rceil$
 
 - **LDE-Ratio (STIR) Soundness Gain**
 
@@ -749,6 +748,14 @@ _Then comes the Verifier PCS Schedule Section_
 
 - **WHIR (OOD, etc) Soundness Loss**
   - mention grinding before every non-ood query round
+  - ε_comb poly batching
+  - ε_OOD list identification
+  - ε_queries query agreement (varies by round)
+  - ε_shift query batching
+  - ε_binding merkle trees
+  - ε_folding sumcheck round
+  - conditional analysis, by piling up Pr[next step repairs that invalidity] ≤ ε_step 
+    - round → fixed transcript data → invalid-state condition → failure formula → assumptions → grinding → numerical bound
 
 - **Batched (DEEP) WHIR Soundness Loss**
   - mention grinding for the batch because the number of queries is reduced
