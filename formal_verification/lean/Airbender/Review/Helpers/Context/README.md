@@ -45,3 +45,15 @@ actual Sail cell/instruction execution and terminal cell matching remain separat
 ## Unsigned MUL/DIV context
 
 [The native registry](MulDiv.lean) binds all imported constraints, state/clock columns, three register ports and decoder metadata. [Initialized history](../../Trace/Families/MulDiv/History.lean) supplies the shared Clean clock/history connection. Original instruction execution remains separate.
+
+## Shift/binop context
+
+[The native registry](ShiftBinop.lean) retains the complete imported artifact,
+three register ports, state/clock columns and decoder metadata. [Metadata checks](../../../Proofs/ShiftBinop/ClockMetadata.lean)
+keep the actual tagged setup geometry and port clocks. [Clock extraction](../../../Proofs/ShiftBinop/Timestamp.lean)
+uses both native carry equations and all eight timestamp queries. [The family instance](../../../Proofs/Trace/Families/ShiftBinop/History.lean)
+and [short public history claim](../../Trace/Families/ShiftBinop/History.lean)
+derive every local/prior clock input and latest reads from initialization and
+native matching. [Twenty-four initialized cases](../../../../Tests/ShiftHistory.lean)
+retain readonly x0 refreshes; stale aliases fail matching. Word bounds and
+original Sail cell/instruction execution remain separate.

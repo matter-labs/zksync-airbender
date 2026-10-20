@@ -4711,6 +4711,62 @@
       "backport_reuse_revision": "f9a9647382a815e358e9acf36951333b2b1d2b8e",
       "backport_reuse_path": "Tests/ShiftBinary.lean",
       "backport_reuse_sha256": "205c79f301fbf7f60c987d894d8506d5175628307b1db2ed833f7c27999bf152"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Context/ShiftBinop.lean",
+      "backport_reuse_revision": "6232cacb9373fe728e6dd9680272acd4cbb761e5",
+      "backport_reuse_path": "Airbender/Review/Helpers/Context/MulDiv.lean",
+      "backport_reuse_sha256": "acb2d462d2c68338fc26bf4c6f9408e5885473b605c27a6b245efa5cabe01ab2",
+      "change": "Adapt the checked v2 native family registry to the actual shift/binop artifact, retaining all imported constraints, decoder metadata, state/clock columns and three original memory ports. No instruction-execution or runtime CSR binding claim."
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/ClockMetadata.lean",
+      "backport_reuse_revision": "6232cacb9373fe728e6dd9680272acd4cbb761e5",
+      "backport_reuse_path": "Airbender/Proofs/MulDiv/ArtifactChecks.lean",
+      "backport_reuse_sha256": "3a08f043c58e33beaea2be1473da1423fb150eccf717dd32ae9c46584c4c17f6",
+      "change": "Adapt v2 metadata checks to the exact shift/binop setup geometry, decoder columns, actual clock columns and all three memory ports. The 10,817,537 tagged-row count and metadata agree with the existing native ShiftArtifact checks; no synthetic clock constraints are appended."
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/Timestamp.lean",
+      "backport_reuse_revision": "6232cacb9373fe728e6dd9680272acd4cbb761e5",
+      "backport_reuse_path": "Airbender/Proofs/MulDiv/Timestamp.lean",
+      "backport_reuse_sha256": "267c40fc723ac87a39237ebeabe0f0462d10d0a0ae278ddb596e698a72bc84d6",
+      "change": "Adapt the checked v2 two-equation clock proof to actual shift/binop carry/borrow columns and all eight native timestamp queries. Derive final bounds, four-tick advancement and strict port-clock order using unchanged shared clock lemmas and original Clean acceptance, without a BabyBear inverse or per-row clock conclusion premise."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ShiftBinop/History.lean",
+      "backport_reuse_revision": "6232cacb9373fe728e6dd9680272acd4cbb761e5",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/MulDiv/History.lean",
+      "backport_reuse_sha256": "befa990e61fa14bd39298b68838d27df1d857617e5e687a46e9fb5ec8b90bc4a",
+      "change": "Adapt the checked v2 family ClockLaws instance to actual shift/binop metadata and clock proofs. Shared initialized state/memory matching derives every row/prior bound and alignment; no extra local clock or schedule premise."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ShiftBinop/History.lean",
+      "backport_reuse_revision": "6232cacb9373fe728e6dd9680272acd4cbb761e5",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/MulDiv/History.lean",
+      "backport_reuse_sha256": "e8dc5e2b0051f540ef1643bcf7bb86ebf3a60f3bef906930fcf6a71c400f7fe9",
+      "change": "Adapt the short v2 initialized public-memory theorem to native shift/binop acceptance and original Sail public seed/PC reads. Derive complete Clean history and latest reads for all three ports while preserving readonly alias refreshes and actual masked writes. Word bounds and Sail cell/instruction execution remain separate."
+    },
+    {
+      "path": "Tests/ShiftHistoryRows.lean",
+      "backport_reuse_revision": "6232cacb9373fe728e6dd9680272acd4cbb761e5",
+      "backport_reuse_path": "Tests/ShiftRoutingPart4.lean",
+      "backport_reuse_sha256": "21e87bfa385fc3cef33c755298e5467a80fb82b9f25727833ecbdb67cd3448bc",
+      "change": "Adapt the complete native fixture scaffold to repair only the final prior-clock column for the six immediate/x0 alias cases. Recheck all fifty native equations and timestamp queries, transport unchanged dynamic query fields through the existing symbolic native lookup certificates and retain every other fixture column."
+    },
+    {
+      "path": "Tests/ShiftHistoryFixture.lean",
+      "backport_reuse_revision": "6232cacb9373fe728e6dd9680272acd4cbb761e5",
+      "backport_reuse_path": "Tests/MulDivInitializedFixture.lean",
+      "backport_reuse_sha256": "2d73c73e1932d06a4e19b095115c63f39cb2c8483d632f9247bc68eff5d78813",
+      "change": "Adapt the v2 complete initialized fixture to all twenty-four shift/binop register/immediate/x0 rows. Check actual native state/memory permutations, original Sail register/PC seeds and corrected x0 refresh clocks. Six stale local rows still satisfy native local constraints but fail full logical memory matching; this is an enforcement regression, not a native defect."
+    },
+    {
+      "path": "Tests/ShiftHistory.lean",
+      "backport_reuse_revision": "6232cacb9373fe728e6dd9680272acd4cbb761e5",
+      "backport_reuse_path": "Tests/MulDivInitialized.lean",
+      "backport_reuse_sha256": "8decfe41d70c5efdd2d3db59dea496558a1bf5bb7b1081ae16502c1c89bb498c",
+      "change": "Adapt v2 public-history applications to all twenty-four complete initialized native shift/binop rows. Derive latest reads, initial/prior clock inputs and four-tick advancement from public seed reads and native acceptance; retain the exact prior refresh time for every immediate/x0 alias. No word bound, expected read or original instruction-execution premise."
     }
   ],
   "setup_artifacts": [

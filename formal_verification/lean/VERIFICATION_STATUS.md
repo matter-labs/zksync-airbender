@@ -1259,10 +1259,10 @@ Rust/compiler refinement and cryptographic enforcement remain separate.
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all eighty-one concrete test modules pass.
+- Library, both CLI entrypoints and all eighty-four concrete test modules pass.
 - Importer regressions: 386 checks pass.
-- Axiom audit: 1650 explicit roots; only propext, Classical.choice and Quot.sound.
-- All ninety-eight public Review theorems (twenty-five circuit claims, fifty trace claims and twenty-three helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 1670 explicit roots; only propext, Classical.choice and Quot.sound.
+- All ninety-nine public Review theorems (twenty-five circuit claims, fifty-one trace claims and twenty-three helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 78 unchanged reused files, five native circuit artifacts, forty-six native Rust sources plus compiled shift-offset metadata, sixteen native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
@@ -1456,3 +1456,36 @@ initialized register/history transport and original Sail instruction execution.
 Runtime CSR setup, worker protocol enforcement, cryptography and general
 Rust/JSON/compiler refinement remain separate. No native defect is established;
 earlier sections retain their checkpoint scope.
+
+## Native shift/binop initialized clocks and memory history
+
+[The short public history claim](Airbender/Review/Trace/Families/ShiftBinop/History.lean)
+now derives complete Clean memory consistency and latest preceding reads for
+all three native ports from original Sail public register/PC seeds and accepted
+native state/memory matching. The [native registry](Airbender/Review/Helpers/Context/ShiftBinop.lean)
+retains the actual constraints, decoder metadata, clock columns and memory ports.
+[Metadata checks](Airbender/Proofs/ShiftBinop/ClockMetadata.lean) retain the complete
+10,817,537-row tagged setup geometry. [Clock extraction](Airbender/Proofs/ShiftBinop/Timestamp.lean)
+uses the actual two carry equations and all eight timestamp queries. The
+[shared instance](Airbender/Proofs/Trace/Families/ShiftBinop/History.lean) derives
+four-tick advancement, strict port order and all row/prior bounds and alignment
+from initialization and matching. No local clock, schedule or expected-read
+premise is added to the public claim.
+
+[Complete initialized regressions](Tests/ShiftHistoryFixture.lean) check state
+and memory permutations for all twenty-four ordinary register/immediate/x0 rows,
+with original Sail seeds for x0, x1, x2, x3 and PC. [Native local checks](Tests/ShiftHistoryRows.lean)
+correct only the last prior-clock column for six immediate/x0 aliases: the second native port
+refreshes x0 at time five, which the destination port must consume. All fifty
+native equations, eight timestamp queries and four unchanged tagged queries
+pass. All six stale alternatives satisfy local constraints but fail native
+logical memory matching. [Public applications](Tests/ShiftHistory.lean) derive
+complete history, latest reads and clock inputs without separately supplied
+bounds, alignment or ordering. This confirms the required matching behavior;
+no native implementation defect is established.
+
+Source-word bounds and canonical packed-key binding remain unfinished, as do
+actual Sail cell transfers and original shift/binop instruction/fetched execution.
+Runtime CSR setup, worker protocols, cryptography and general Rust/JSON/compiler
+refinement remain separate boundaries. Earlier sections retain their checkpoint
+scope.

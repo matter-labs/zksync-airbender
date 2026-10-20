@@ -496,9 +496,14 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    addition are derived without input-range or desired-output premises. Twelve
    complete shift fixtures retain SRAI encoded funct7, native sign-fill order,
    shift-31/x0 boundaries and malformed key/inactive/sign-fill rejection.
-   Continue with native clocks/ports and initialized bounds to identify packed
-   source limbs, then complete architectural shift results and original Sail
-   execution. Canonical source-read binding remains a history obligation.
+   Native clocks/ports and complete initialized Clean history now follow from
+   actual public Sail seeds/PC and accepted native matching. All twenty-four
+   ordinary/x0 fixtures retain actual masked writes and readonly refreshes;
+   six immediate/x0 stale-clock alternatives pass local equations but fail full
+   memory matching. Native two-carry equations and eight timestamp queries derive
+   all row/prior bounds, alignment and port order without local clock premises.
+   Continue with initialized word bounds and canonical packed-key source binding,
+   then architectural shift results, Sail cell transfers and original execution.
    Derive actual source reads and states from native matching/public history.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing

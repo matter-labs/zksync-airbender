@@ -11,9 +11,12 @@ existing sparse setup and structural compressed-tail proofs. [Regressions](../..
 check every original decode, native x0 flags, full immediate limbs, encoded SRAI,
 unsupported constructors and retained sentinel padding.
 
-Dynamic constraint/table import and exact native membership are the next
-checkpoint. Numerical soundness, initialized history, original instruction
-retirement and complete fetched execution remain unfinished for this family.
+The sections below retain successive decoder/table checkpoints. Current native
+[local import](../../../Circuits/ShiftBinop/Artifact.lean), [binary word results](../../../Circuits/ShiftBinop/Binary.lean)
+and [shift contributions](../../../Circuits/ShiftBinop/Shifts.lean) are checked.
+[Initialized history](History.lean) now derives clocks and latest reads from
+public seeds and native matching. Source-word bounds, canonical shift-key binding,
+original instruction retirement and fetched execution remain unfinished.
 The exporter uses an empty CSR allow-list; custom CSR/oracle semantics and
 general Rust/compiler/cryptographic refinement remain separate.
 
@@ -50,3 +53,18 @@ CSR fixture. [Structural proofs](../../../../Proofs/ShiftBinop/NativeLookup.lean
 all stored rows; [regressions](../../../../../Tests/ShiftArtifact.lean) check metadata
 and selector preservation. This supplies the next numerical-family prerequisite;
 initialized shift/binop history/execution and runtime CSR binding remain open.
+
+## Native initialized history
+
+[The short public claim](History.lean) derives complete Clean history and latest
+preceding reads from original Sail seed/PC reads and native state/memory matching.
+[The separate registry](../../../Helpers/Context/ShiftBinop.lean) retains actual
+clock, decoder and three-port metadata. [Native clock extraction](../../../../Proofs/ShiftBinop/Timestamp.lean)
+and [the shared instance](../../../../Proofs/Trace/Families/ShiftBinop/History.lean)
+derive all row/prior bounds, alignment, four-tick advancement and strict port
+order. [Complete initialized fixtures](../../../../../Tests/ShiftHistoryFixture.lean)
+cover all twenty-four ordinary/x0 rows. Immediate/x0 destinations consume the
+second port's readonly refresh at time five; six stale alternatives pass local
+constraints but fail actual native memory matching. [Public applications](../../../../../Tests/ShiftHistory.lean)
+need no expected read or local clock premise. Initialized word bounds, canonical
+packed-key binding and original Sail cell/instruction execution remain open.

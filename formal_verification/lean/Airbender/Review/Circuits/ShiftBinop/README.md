@@ -19,8 +19,9 @@ original public decoding; [lookup claims](Lookups.lean) connect the complete nat
 dynamic import to exact helper membership and derive all selector domains.
 [The binary result claim](Binary.lean) now proves exact selected XOR/OR/AND words
 and actual x0 writes with derived operand bounds. [The shift contribution claim](Shifts.lean)
-derives exact canonical-key contributions and selected-word assembly. Initialized
-source-key binding, whole architectural shifts, Sail execution, custom CSR/oracle
+derives exact canonical-key contributions and selected-word assembly. [Initialized history](../../Trace/Families/ShiftBinop/History.lean)
+now derives native clocks and latest reads from original public seeds and matching.
+Initialized source-word bounds and source-key binding, whole architectural shifts, Sail execution, custom CSR/oracle
 semantics and physical cryptographic enforcement remain unfinished. General
 Rust/JSON/compiler refinement is a separate boundary.
 
@@ -120,3 +121,16 @@ order, shift-31 boundaries and malformed key/inactive/missing-fill rejection.
 Canonical packed-key source binding needs initialized bounded reads before
 claiming architectural shifts; family clocks/history and original Sail execution
 remain unfinished. Earlier sections retain their checkpoint scope.
+
+## Native initialized clock and memory connection
+
+[The short trace history claim](../../Trace/Families/ShiftBinop/History.lean)
+binds the native port/clock metadata through the [family registry](../../Helpers/Context/ShiftBinop.lean).
+[Native clock proofs](../../../Proofs/ShiftBinop/Timestamp.lean) use both actual
+carry equations and all eight timestamp queries. Original Sail public seed/PC
+reads and native matching derive every local/prior clock input and complete
+Clean history. [All twenty-four initialized native cases](../../../../Tests/ShiftHistory.lean)
+retain actual destination masks and readonly x0 refreshes; all six stale
+immediate/x0 variants fail logical memory matching while passing local equations.
+Source-word bounds, packed-key binding and original Sail cell/instruction
+execution remain the next connections. Earlier sections retain their scope.

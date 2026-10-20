@@ -1,3 +1,4 @@
+import Tests.ShiftHistory
 import Tests.ShiftContributions
 import Tests.ShiftBinary
 import Tests.ShiftRouting
@@ -1781,3 +1782,24 @@ import Tests.JumpLink
 #print axioms Tests.ShiftContributions.nonzero_inactive_part_rejected
 #print axioms Tests.ShiftContributions.wrong_packed_key_rejected
 #print axioms Tests.ShiftContributions.missing_sign_fill_rejected
+
+#print axioms Airbender.ShiftBinop.Proofs.setup_columns
+#print axioms Airbender.ShiftBinop.Proofs.decoder_columns
+#print axioms Airbender.ShiftBinop.Proofs.clock_columns
+#print axioms Airbender.ShiftBinop.Proofs.memory_ports
+#print axioms Airbender.ShiftBinop.Proofs.memory_clocks
+#print axioms Airbender.ShiftBinop.Proofs.timestamp_equations
+#print axioms Airbender.ShiftBinop.Proofs.final_clock_bound
+#print axioms Airbender.ShiftBinop.Proofs.clock_advance
+#print axioms Airbender.ShiftBinop.Proofs.clock_effects
+#print axioms Airbender.ShiftBinop.public_memory_soundness
+#print axioms Tests.ShiftHistoryRows.native_constraints
+#print axioms Tests.ShiftHistoryFixture.accepted
+#print axioms Tests.ShiftHistoryFixture.public_inputs
+#print axioms Tests.ShiftHistoryFixture.stale_local_constraints
+#print axioms Tests.ShiftHistoryFixture.stale_rejected
+#print axioms Tests.ShiftHistory.public_history
+#print axioms Tests.ShiftHistory.latest
+#print axioms Tests.ShiftHistory.derived_clocks
+#print axioms Tests.ShiftHistory.native_clock_advances
+#print axioms Tests.ShiftHistory.x0_alias_clock
