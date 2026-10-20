@@ -22,7 +22,8 @@ and actual x0 writes with derived operand bounds. [The shift contribution claim]
 derives exact canonical-key contributions and selected-word assembly. [Initialized history](../../Trace/Families/ShiftBinop/History.lean)
 now derives native clocks and latest reads from original public seeds and matching.
 [Initialized word ranges](../../Trace/Families/ShiftBinop/Values.lean) and
-[canonical source keys](../../Trace/Families/ShiftBinop/Sources.lean) are now derived. Whole architectural shifts, Sail execution, custom CSR/oracle
+[canonical source keys](../../Trace/Families/ShiftBinop/Sources.lean) are now derived. [Whole numerical results](../../Trace/Families/ShiftBinop/Theorems.lean)
+are now checked. Sail execution, custom CSR/oracle
 semantics and physical cryptographic enforcement remain unfinished. General
 Rust/JSON/compiler refinement is a separate boundary.
 
@@ -149,3 +150,19 @@ non-overlap across all 32 amounts. [Regressions](../../../../Tests/ShiftValues.l
 apply both initialized claims to complete ordinary/x0 histories and all twelve
 shift cases. Whole architectural shifts and Sail cell/instruction execution remain
 separate; older sections retain their checkpoint scope.
+
+## Initialized whole numerical results
+
+[The short public trace claim](../../Trace/Families/ShiftBinop/Theorems.lean)
+now derives exact canonical selected and actual write limbs for every ordinary
+shift/binop family, including immediate and x0 forms. [References](ResultsModel.lean)
+use whole RV32 shifts and low-five-bit amounts. Separate whole-limb
+[SLL](../../../Proofs/ShiftBinop/SllLimbResult.lean),
+[SRL](../../../Proofs/ShiftBinop/SrlLimbResult.lean) and
+[SRA](../../../Proofs/ShiftBinop/SraLimbResult.lean) calculations preserve native
+piece order, all 32 amounts and both sign domains under default budgets.
+[Native result assembly](../../../Proofs/ShiftBinop/Results.lean) derives
+canonical outputs and exact decoded x0 masking; [initialized assembly](../../../Proofs/Trace/Families/ShiftBinop/Results.lean)
+derives the source bounds. [Twenty-four complete regressions](../../../../Tests/ShiftResults.lean)
+check concrete whole results and all discarded writes. Actual Sail cell/GPR and
+instruction execution remain next; older sections retain their checkpoint scope.

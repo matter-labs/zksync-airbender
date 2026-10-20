@@ -1,3 +1,4 @@
+import Tests.ShiftResults
 import Tests.ShiftValues
 import Tests.ShiftHistory
 import Tests.ShiftContributions
@@ -1830,3 +1831,19 @@ import Tests.JumpLink
 #print axioms Airbender.ShiftBinop.Proofs.shift_source_binding
 #print axioms Airbender.ShiftBinop.Proofs.image_shift_sources
 #print axioms Airbender.ShiftBinop.public_shift_sources
+
+#print axioms Airbender.ShiftBinop.Proofs.sll_limb_result
+#print axioms Airbender.ShiftBinop.Proofs.srl_limb_result
+#print axioms Airbender.ShiftBinop.Proofs.limb_word_msb
+#print axioms Airbender.ShiftBinop.Proofs.sra_positive_limb_result
+#print axioms Airbender.ShiftBinop.Proofs.sra_negative_limb_result
+#print axioms Airbender.ShiftBinop.Proofs.sra_limb_result
+#print axioms Airbender.ShiftBinop.Proofs.word_shift_amount
+#print axioms Airbender.ShiftBinop.Proofs.shift_selected_result
+#print axioms Airbender.ShiftBinop.Proofs.entry_selected_result
+#print axioms Airbender.ShiftBinop.Proofs.entry_numerical_result
+#print axioms Airbender.ShiftBinop.Proofs.initialized_results
+#print axioms Airbender.ShiftBinop.public_native_results
+#print axioms Tests.ShiftResults.public_results
+#print axioms Tests.ShiftResults.concrete_results
+#print axioms Tests.ShiftResults.concrete_outputs

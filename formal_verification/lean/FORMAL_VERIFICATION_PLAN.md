@@ -509,7 +509,14 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    and natural key lifting recovers source/amount quotient and remainder.
    All twenty-four ordinary/x0 fixtures and twelve concrete shifts pass these
    public claims without local range, source/key or desired-output premises.
-   Continue with whole architectural shift results, Sail cell/GPR transfers and
+   Whole ordinary SLL/SRL/SRA/XOR/OR/AND numerical results and canonical actual
+   selected/write limbs now follow from public decoding and initialized native
+   history, with no local source/range or desired-result premise. Separate whole
+   SLL/SRL/SRA calculations cover all 32 amounts and both sign domains; low-limb
+   truncation equals the whole selected operand's architectural low-five bits.
+   All twenty-four ordinary/x0 traces apply the short public numerical claim and
+   derive concrete results. SRA sign calculations remain split under default
+   heartbeat and fixed memory caps. Continue with Sail cell/GPR transfers and
    original instruction/fetched execution.
    Derive actual source reads and states from native matching/public history.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,

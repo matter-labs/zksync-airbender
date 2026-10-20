@@ -4846,6 +4846,59 @@
       "backport_reuse_revision": "5c0b75f3aa80a51c0b0a363b48416710e124b7fe",
       "backport_reuse_path": "Airbender/Review/Trace/Families/MulDiv/Values.lean",
       "backport_reuse_sha256": "fd4a6a20572268ba802349ce7f166a43f0f0163362079df492eed64f79c335d4"
+    },
+    {
+      "path": "Airbender/Review/Circuits/ShiftBinop/ResultsModel.lean",
+      "change": "Task-authored short numerical references for native ordinary SLL/SRL/SRA/XOR/OR/AND. Shift amounts use the architectural low five bits of the actual selected operand. Original Sail GPR, cell and instruction execution remain separate."
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/SllLimbResult.lean",
+      "change": "Adapt the existing bounded v2 SLL half-calculation pattern to whole RV32 result reconstruction. All 32 amounts preserve natural two-limb inputs and modular 32-bit output, within default heartbeat and memory settings.",
+      "backport_reuse_revision": "f6531c205ad998968809bb57ec49175f9ab6f7c0",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/SllLimbBounds.lean",
+      "backport_reuse_sha256": "499fb084d8fb3ef451c20381f8326dc9b497b9f3735ad4aa8d065e08863bd51b"
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/SrlLimbResult.lean",
+      "change": "Adapt the existing bounded v2 SRL half-calculation pattern to whole RV32 logical right-shift reconstruction. All 32 amounts preserve actual two-limb inputs, within default heartbeat and memory settings.",
+      "backport_reuse_revision": "f6531c205ad998968809bb57ec49175f9ab6f7c0",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/SrlLimbBounds.lean",
+      "backport_reuse_sha256": "7896a48c7082cc8cd8c100a3fd72083a9f09620deccbe152de19f8f3305a244e"
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/SraLimbResult.lean",
+      "change": "Adapt the existing bounded v2 SRA sign-domain calculation pattern to whole arithmetic right-shift reconstruction. Derive the actual word sign bit and split positive/negative calculations into separate declarations within default budgets; keep all 32 amounts.",
+      "backport_reuse_revision": "f6531c205ad998968809bb57ec49175f9ab6f7c0",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/SraLimbBounds.lean",
+      "backport_reuse_sha256": "fee863256d32c32a6188e2e1b80fcb62a8629286bd2b9906b8a5782bb621f0bd"
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/Results.lean",
+      "change": "Adapt v2 numerical result/x0-mask assembly to all six native ordinary families. Canonical source-key contributions reconstruct whole shifts; low-limb truncation equals architectural low-five-bit extraction. Actual selected/write limbs equal canonical result encodings. The local source range is discharged by initialized history.",
+      "backport_reuse_revision": "f6531c205ad998968809bb57ec49175f9ab6f7c0",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/BinaryResults.lean",
+      "backport_reuse_sha256": "e5bd426b654f50c3cec42d869aa6dae6f3f946db2fa524118c9e66caa05334d0"
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/ShiftBinop/Results.lean",
+      "change": "Adapt the v2 initialized MUL/DIV numerical trace assembly to shift/binop. Actual public Sail bytes/seeds/PC, complete native matching and full decoder membership derive source bounds and every whole selected/masked numerical result, without desired results or local interfaces.",
+      "backport_reuse_revision": "f6531c205ad998968809bb57ec49175f9ab6f7c0",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/MulDiv/Results.lean",
+      "backport_reuse_sha256": "c1a29f99a0d9288e294d318c4cf88009ee275f4fad97001aa7742920a504ac93"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ShiftBinop/Theorems.lean",
+      "change": "Adapt the short v2 initialized MUL/DIV public result interface to all six ordinary shift/binop families. Reference and actual limb observations remain public; calculations, range induction and assembly stay under Proofs. Original Sail execution remains separate.",
+      "backport_reuse_revision": "f6531c205ad998968809bb57ec49175f9ab6f7c0",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/MulDiv/Theorems.lean",
+      "backport_reuse_sha256": "6d93eefc07886a39ccab1daba7992ae3da412eb901928c168a4841306019440c"
+    },
+    {
+      "path": "Tests/ShiftResults.lean",
+      "change": "Adapt the existing v2 initialized shift value fixture applications to the whole numerical result claim. All 24 complete ordinary/x0 traces exercise public construction and actual matching; concrete outputs retain SRAI 1055-to-31, XORI -1, ORI -2048, ANDI 2047 and all discarded writes.",
+      "backport_reuse_revision": "f6531c205ad998968809bb57ec49175f9ab6f7c0",
+      "backport_reuse_path": "Tests/ShiftValues.lean",
+      "backport_reuse_sha256": "90db9baea93c1cd44d2e487757d3111f2097edd7a82ee21013ea1a94135560e9"
     }
   ],
   "setup_artifacts": [

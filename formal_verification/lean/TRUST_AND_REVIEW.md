@@ -1769,3 +1769,37 @@ instruction/fetched execution remain unfinished. Runtime CSR configuration,
 worker protocols, cryptographic enforcement and general compiler refinement stay
 separate. This is proof coverage, not a new defect finding; the findings bar and
 historical coverage archive are unchanged.
+
+## Initialized whole shift/binop numerical results
+
+[The short public result claim](Airbender/Review/Trace/Families/ShiftBinop/Theorems.lean)
+now derives exact canonical selected and actual destination limbs for all six
+ordinary SLL/SRL/SRA/XOR/OR/AND families, including immediate forms and discarded
+x0 writes. Actual public Sail code construction, public seed/PC reads, complete
+native matching and full decoder membership supply all premises. No source/range,
+operation-selector, desired-result or expected-write premise is supplied.
+
+[Numerical references](Airbender/Review/Circuits/ShiftBinop/ResultsModel.lean)
+retain whole RV32 operations and architectural low-five-bit shift amounts.
+Separate [SLL](Airbender/Proofs/ShiftBinop/SllLimbResult.lean),
+[SRL](Airbender/Proofs/ShiftBinop/SrlLimbResult.lean) and
+[SRA](Airbender/Proofs/ShiftBinop/SraLimbResult.lean) calculations reconstruct
+whole results from the actual native two-limb contribution order across all 32
+amounts. SRA derives the architectural sign bit; its positive and negative
+calculations use separate declarations to retain default proof budgets. No
+memory or heartbeat ceiling is raised.
+
+[Native assembly](Airbender/Proofs/ShiftBinop/Results.lean) combines canonical
+source-key lifting with accepted contributions and exact decoded x0 masking.
+It proves low-limb modulo 32 equals whole-operand low-five-bit extraction,
+retaining SRAI's encoded funct7 payload. [Initialized assembly](Airbender/Proofs/Trace/Families/ShiftBinop/Results.lean)
+supplies source bounds from the unchanged shared history induction and proves
+every selected/write limb equals its canonical numerical result encoding.
+
+[All twenty-four initialized regressions](Tests/ShiftResults.lean) apply the
+public claim and derive concrete outputs for every ordinary/x0 fixture, retaining
+negative SRA, shifts 31, SRAI 1055→31, XORI -1, ORI -2048 and ANDI 2047.
+Original Sail cell/GPR transfers, instruction clauses, PC retirement and fetched
+execution remain unfinished. Runtime CSR/worker protocols, physical cryptographic
+enforcement and general compiler refinement remain separate. This is coverage,
+not a new defect finding; the finding standard and historical archive are unchanged.

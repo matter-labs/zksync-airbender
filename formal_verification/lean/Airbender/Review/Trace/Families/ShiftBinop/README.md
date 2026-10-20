@@ -17,7 +17,8 @@ and [shift contributions](../../../Circuits/ShiftBinop/Shifts.lean) are checked.
 [Initialized history](History.lean) now derives clocks and latest reads from
 public seeds and native matching. [Word bounds](Values.lean) and
 [canonical shift-key binding](Sources.lean) are now derived from initialization.
-Whole architectural shifts, original instruction retirement and fetched execution remain unfinished.
+[Whole numerical results](Theorems.lean) are now checked. Sail cell/GPR transport,
+original instruction retirement and fetched execution remain unfinished.
 The exporter uses an empty CSR allow-list; custom CSR/oracle semantics and
 general Rust/compiler/cryptographic refinement remain separate.
 
@@ -84,3 +85,16 @@ actual native program and replay original decoding under the same misa image;
 [twenty-four initialized applications](../../../../../Tests/ShiftValues.lean)
 cover ordinary/x0 histories and all twelve concrete shifts. Whole architectural
 shifts, Sail cell/GPR transfers and original instruction execution remain next.
+
+## Initialized whole numerical results
+
+[The short public claim](Theorems.lean) derives canonical selected and actual
+write limbs for all six ordinary families from original public code, actual
+public Sail seed/PC reads, native matching and complete decoder membership.
+[Native assembly](../../../../Proofs/ShiftBinop/Results.lean) binds whole
+SLL/SRL/SRA results and architectural low-five-bit amounts to actual contribution
+keys, retaining exact x0 masks. [Initialized assembly](../../../../Proofs/Trace/Families/ShiftBinop/Results.lean)
+uses the shared derived source ranges. [All twenty-four regressions](../../../../../Tests/ShiftResults.lean)
+apply the public theorem and derive concrete outputs, including SRAI 1055→31,
+sign-extended immediates and discarded writes. Sail cell/GPR transport and
+original instruction/fetched execution remain next; earlier sections retain scope.

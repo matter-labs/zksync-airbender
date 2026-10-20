@@ -68,3 +68,12 @@ induction, deriving [all native word ranges](../../Trace/Families/ShiftBinop/Val
 derived source bounds. [All twenty-four initialized regressions](../../../../Tests/ShiftValues.lean)
 retain original code bytes, actual x0 masking and readonly refreshes. No expected
 read, key, result or local range premise is introduced.
+
+## Shift/binop whole numerical results
+
+[The initialized result claim](../../Trace/Families/ShiftBinop/Theorems.lean)
+now consumes these native histories and derived source bounds to prove whole
+SLL/SRL/SRA/XOR/OR/AND results and canonical actual masked writes. No expected
+source, result or local range premise is added. [Complete regressions](../../../../Tests/ShiftResults.lean)
+retain original public bytes and all twenty-four ordinary/x0 cases. Original
+Sail cell/GPR and instruction execution remain separate connections.
