@@ -35,7 +35,7 @@ theorem signature_is_mmio :
       .ok true configured := by
   have hart : configured.regs.get? .mhartid = some (0 : BitVec 32) := by
     simp [configured, Std.ExtDHashMap.get?_insert]
-  have host : configured.regs.get? .htif_tohost_base = some none := by simp [configured]; rfl
+  have host : configured.regs.get? .htif_tohost_base = some none := by simp [configured]
   have clint : Sail.run (SailRV32.Functions.within_clint (.Physaddr 201326592) 4) configured =
       .ok false configured := clint_excluded (address := 201326592) hart (Or.inr (by decide))
   have signature : SailRV32.Functions.within_sig (.Physaddr 201326592) 4 = pure true := rfl

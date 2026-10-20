@@ -67,6 +67,7 @@ theorem truncation_lookup {p : Nat} [Fact p.Prime] (hp : 256 < p)
   rw [values 0 (by decide) a, values 1 (by decide) b, values 2 (by decide) cb]
   exact ⟨a, b, c⟩
 
+set_option maxRecDepth 100000 in
 private theorem shift_rows (i : Fin 524545) (selected : (shiftBinopRow i)[9] = 9) :
     (∀ j : Nat, ∀ hj : j < 10, (shiftBinopRow i)[j] < 256) ∧
     (shiftBinopRow i)[0] < 4 ∧ (shiftBinopRow i)[2] < 32 ∧

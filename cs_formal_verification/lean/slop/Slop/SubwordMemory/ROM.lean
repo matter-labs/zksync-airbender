@@ -15,7 +15,7 @@ private def romData (program : Nat → BitVec 32) (byte : Bool) (i : Nat) : Nat 
   subwordLoadLimbs byte (half + 65536 * (i / (if byte then 4 else 2) % 2) +
     (if byte then 131072 * (i % 2) else 0))
 
-set_option maxRecDepth 4096 in
+set_option maxRecDepth 100000 in
 set_option maxHeartbeats 800000 in
 private theorem rom_values {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (byte : Bool)

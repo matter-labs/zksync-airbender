@@ -28,7 +28,7 @@ structure BoundaryInputs (data : Data p) (before : State) (cells : List Cell) : 
   reads : ∀ token ∈ data.initial, ∃ cell ∈ cells, cell.addressCode = token.address ∧
     cell.read before = .ok (memoryWord token.value) before
 
-def Inputs.toBoundaryInputs {data : Data p} {before : State} {cells : List Cell}
+theorem Inputs.toBoundaryInputs {data : Data p} {before : State} {cells : List Cell}
     (inputs : Inputs data before cells) : BoundaryInputs data before cells := by
   refine ⟨?_, inputs.distinct, ?_⟩
   · rw [image_addresses inputs.initialization]

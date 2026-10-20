@@ -78,7 +78,7 @@ theorem exclusive_mask [Fact p.Prime] (hp : 8192 ≤ p)
   rw [column i]
   apply ZMod.val_injective
   have prime := (Fact.out : p.Prime).one_lt
-  letI : Fact (1 < p) := ⟨prime⟩
+  let : Fact (1 < p) := ⟨prime⟩
   fin_cases round <;> fin_cases i
   all_goals norm_num only [Fin.val_mk] at natural
   all_goals norm_num only [Fin.val_mk, Nat.reduceAdd, Fin.mk.injEq, ZMod.val_one, ZMod.val_zero]

@@ -74,10 +74,10 @@ theorem little_endian_bytes :
     (wordWriteState empty 4194304 0xabcdef12).mem[4194306]? = some 0xcd ∧
     (wordWriteState empty 4194304 0xabcdef12).mem[4194307]? = some 0xab := by
   refine ⟨?_, ?_, ?_, ?_⟩
-  · convert written_word_byte empty 4194304 0xabcdef12 ⟨0, by decide⟩ using 2 <;> decide
-  · convert written_word_byte empty 4194304 0xabcdef12 ⟨1, by decide⟩ using 2 <;> decide
-  · convert written_word_byte empty 4194304 0xabcdef12 ⟨2, by decide⟩ using 2 <;> decide
-  · convert written_word_byte empty 4194304 0xabcdef12 ⟨3, by decide⟩ using 2 <;> decide
+  · convert written_word_byte empty 4194304 0xabcdef12 ⟨0, by decide⟩ using 2; decide
+  · convert written_word_byte empty 4194304 0xabcdef12 ⟨1, by decide⟩ using 2; decide
+  · convert written_word_byte empty 4194304 0xabcdef12 ⟨2, by decide⟩ using 2; decide
+  · convert written_word_byte empty 4194304 0xabcdef12 ⟨3, by decide⟩ using 2; decide
 
 private def incomplete : State :=
   { empty with mem := empty.mem.insert 4194304 0x12 |>.insert 4194305 0xef |>.insert 4194306 0xcd }
