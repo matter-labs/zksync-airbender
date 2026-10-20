@@ -1,3 +1,4 @@
+import Tests.ShiftLookups
 import Tests.ShiftArtifact
 import Tests.NativeSrlHigh
 import Tests.NativeSllLow
@@ -1663,3 +1664,54 @@ import Tests.JumpLink
 #print axioms Tests.ShiftArtifact.actual_zero_member
 #print axioms Tests.ShiftArtifact.actual_nondeterminism_csr_member
 #print axioms Tests.ShiftArtifact.actual_final_row_member
+
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.contains_iff_region
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.region_row_tag
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.region_tag_bound
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.region_tag_injective
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.accepted_selector
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.selected_membership
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.binary_membership
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.scalar_membership
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.sll_low_membership
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.sll_high_membership
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.srl_low_membership
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.srl_high_membership
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.zero_membership
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.compilation_csr_membership
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.native_queries
+#print axioms Airbender.ShiftBinop.NativeLookupProofs.native_selectors
+#print axioms Airbender.ShiftBinop.native_lookup_queries
+#print axioms Airbender.ShiftBinop.native_lookup_selectors
+#print axioms Airbender.ShiftBinop.native_lookup_selector
+#print axioms Airbender.ShiftBinop.native_lookup_binary
+#print axioms Airbender.ShiftBinop.native_lookup_scalar
+#print axioms Airbender.ShiftBinop.native_lookup_sll_low
+#print axioms Airbender.ShiftBinop.native_lookup_sll_high
+#print axioms Airbender.ShiftBinop.native_lookup_srl_low
+#print axioms Airbender.ShiftBinop.native_lookup_srl_high
+#print axioms Airbender.ShiftBinop.native_lookup_zero
+#print axioms Airbender.ShiftBinop.native_lookup_compilation_csr
+#print axioms Tests.ShiftLookups.actual_zero
+#print axioms Tests.ShiftLookups.nonzero_inactive_rejected
+#print axioms Tests.ShiftLookups.unsupported_selector_rejected
+#print axioms Tests.ShiftLookups.binary_complementary
+#print axioms Tests.ShiftLookups.binary_oversized_rejected
+#print axioms Tests.ShiftLookups.binary_wrong_result_rejected
+#print axioms Tests.ShiftLookups.binary_wrong_selector_rejected
+#print axioms Tests.ShiftLookups.canonical_field_selector
+#print axioms Tests.ShiftLookups.truncation_last
+#print axioms Tests.ShiftLookups.range_last
+#print axioms Tests.ShiftLookups.negative_shift_zero
+#print axioms Tests.ShiftLookups.sll_low_last
+#print axioms Tests.ShiftLookups.sll_high_last
+#print axioms Tests.ShiftLookups.srl_low_last
+#print axioms Tests.ShiftLookups.srl_high_last
+#print axioms Tests.ShiftLookups.bad_truncation_rejected
+#print axioms Tests.ShiftLookups.bad_padding_rejected
+#print axioms Tests.ShiftLookups.bad_sign_fill_rejected
+#print axioms Tests.ShiftLookups.sll_low_bad_result_rejected
+#print axioms Tests.ShiftLookups.sll_high_bad_result_rejected
+#print axioms Tests.ShiftLookups.srl_low_bad_result_rejected
+#print axioms Tests.ShiftLookups.srl_high_bad_result_rejected
+#print axioms Tests.ShiftLookups.crossed_sll_region_rejected

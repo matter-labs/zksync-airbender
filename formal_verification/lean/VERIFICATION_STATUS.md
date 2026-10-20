@@ -1259,10 +1259,10 @@ Rust/compiler refinement and cryptographic enforcement remain separate.
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all sixty-nine concrete test modules pass.
+- Library, both CLI entrypoints and all seventy concrete test modules pass.
 - Importer regressions: 386 checks pass.
-- Axiom audit: 1540 explicit roots; only propext, Classical.choice and Quot.sound.
-- All eighty-four public Review theorems (eleven circuit claims, fifty trace claims and twenty-three helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 1590 explicit roots; only propext, Classical.choice and Quot.sound.
+- All ninety-five public Review theorems (twenty-two circuit claims, fifty trace claims and twenty-three helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 78 unchanged reused files, five native circuit artifacts, forty-six native Rust sources plus compiled shift-offset metadata, sixteen native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
@@ -1340,3 +1340,27 @@ byte-for-byte. This closes the concrete local import prerequisite; numerical
 shift/binop soundness and initialized original Sail execution remain unfinished.
 General Rust/JSON/compiler refinement and cryptographic argument enforcement
 remain separate. No native implementation defect is established.
+
+## Accepted native shift/binop lookup resolution
+
+[The short lookup claims](Airbender/Review/Circuits/ShiftBinop/Lookups.lean)
+now extract all four actual tagged queries from original Clean constraint
+acceptance. The fourth fields are the evaluated witnesses at logical columns
+42/46/50/54. Accepted canonical selectors lie exactly in the twelve stored tags;
+[structural partition and tag uniqueness](Airbender/Proofs/ShiftBinop/NativeRegions.lean)
+exclude cross-region substitution across all 10,817,537 actual rows.
+
+[Resolution assembly](Airbender/Proofs/ShiftBinop/NativeResolution.lean) derives
+exact binary/scalar/four logical-shift helper membership from each selected tag.
+Existing helper result proofs therefore apply directly to accepted native queries,
+without a table-equivalence or desired-result premise. Tag zero requires all
+three fields to be zero; it does not disable arbitrary inputs or outputs. The
+CSR tag resolves only the recorded compilation fixture, with the runtime setup
+and custom instruction boundaries unchanged.
+
+[Combined-table regressions](Tests/ShiftLookups.lean) cover valid binary and all
+shift-table boundaries, incorrect results/selectors, unsupported tags, nonzero
+inactive data, crossed SLL regions and canonical field selector wraparound.
+These are checked lookup connections, not complete numerical circuit or
+initialized shift/binop Sail execution. Operation routing and row/state assembly
+remain the next milestone. No native implementation defect is established.

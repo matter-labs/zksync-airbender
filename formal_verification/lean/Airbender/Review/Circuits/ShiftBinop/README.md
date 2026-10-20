@@ -13,11 +13,12 @@ full 16-bit signed immediate limbs, SRAI funct7 payload and unsupported forms.
 [Strict importer regressions](../../../../Tests/ArtifactImport.lean) keep the
 native profile separate from arithmetic/control exports.
 
-This directory currently certifies decoder data only. The native compiled
-circuit still requires dynamic table-selector import and exact large-table
-membership. Its import remains rejected; circuit soundness, initialized Sail
-execution, custom CSR/oracle semantics and physical cryptographic enforcement
-are unfinished. General Rust/JSON/compiler refinement is a separate boundary.
+The sections below preserve the successive decoder/table checkpoints. The current
+[lookup claims](Lookups.lean) connect the complete native dynamic import to exact
+helper membership and derive all four selector domains from constraint acceptance.
+Numerical circuit soundness, initialized Sail execution, custom CSR/oracle
+semantics and physical cryptographic enforcement remain unfinished. General
+Rust/JSON/compiler refinement is a separate boundary.
 
 ## Native binary table prerequisite
 
@@ -57,3 +58,15 @@ nondeterminism enabled, empty delegation CSR list. Proving-time CSR setup bindin
 custom CSR/oracle/delegation behavior, numerical family soundness and initialized
 shift/binop Sail execution remain separate. Import fidelity is not a compiler
 refinement proof. All previous native helper claims retain their checked scope.
+
+## Accepted tagged-query resolution
+
+[Short public claims](Lookups.lean) extract all four actual queries and their
+canonical selectors from native Clean acceptance. [Structural partition](../../../Proofs/ShiftBinop/NativeRegions.lean)
+covers every stored region and proves tag uniqueness; [resolution](../../../Proofs/ShiftBinop/NativeResolution.lean)
+connects selected rows to the existing binary/scalar/logical-shift helper proofs.
+Tag zero requires three zero fields. [Regressions](../../../../Tests/ShiftLookups.lean)
+check valid boundaries, malformed values/tags, crossed SLL regions and field wrap.
+Runtime CSR binding, operation routing and initialized family execution remain
+separate. These files are task-authored v2 assembly over the already pinned data
+and helper interfaces; they add no source-v3 coverage claim.

@@ -1570,3 +1570,27 @@ byte-for-byte. This closes the concrete local import prerequisite; numerical
 shift/binop soundness and initialized original Sail execution remain unfinished.
 General Rust/JSON/compiler refinement and cryptographic argument enforcement
 remain separate. No native implementation defect is established.
+
+## Accepted native shift/binop lookup resolution
+
+[The short lookup claims](Airbender/Review/Circuits/ShiftBinop/Lookups.lean)
+now extract all four actual tagged queries from original Clean constraint
+acceptance. The fourth fields are the evaluated witnesses at logical columns
+42/46/50/54. Accepted canonical selectors lie exactly in the twelve stored tags;
+[structural partition and tag uniqueness](Airbender/Proofs/ShiftBinop/NativeRegions.lean)
+exclude cross-region substitution across all 10,817,537 actual rows.
+
+[Resolution assembly](Airbender/Proofs/ShiftBinop/NativeResolution.lean) derives
+exact binary/scalar/four logical-shift helper membership from each selected tag.
+Existing helper result proofs therefore apply directly to accepted native queries,
+without a table-equivalence or desired-result premise. Tag zero requires all
+three fields to be zero; it does not disable arbitrary inputs or outputs. The
+CSR tag resolves only the recorded compilation fixture, with the runtime setup
+and custom instruction boundaries unchanged.
+
+[Combined-table regressions](Tests/ShiftLookups.lean) cover valid binary and all
+shift-table boundaries, incorrect results/selectors, unsupported tags, nonzero
+inactive data, crossed SLL regions and canonical field selector wraparound.
+These are checked lookup connections, not complete numerical circuit or
+initialized shift/binop Sail execution. Operation routing and row/state assembly
+remain the next milestone. No native implementation defect is established.

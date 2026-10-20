@@ -4535,6 +4535,26 @@
     {
       "path": "Tests/ShiftArtifact.lean",
       "change": "Check exact equation/query counts, evaluated selectors, state/port/decoder/setup bindings, all placements and actual zero/CSR/final boundary rows. The nonzero CSR fixture is the native nondeterminism CSR, not a delegation request."
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/NativeRegions.lean",
+      "change": "Task-authored v2 structural partition of all twelve actual native tagged regions, exact selector classification and unique-tag resolution; reads existing pinned literal native data without a new equivalence premise."
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/NativeResolution.lean",
+      "change": "Task-authored v2 assembly from exact selected-region membership to existing binary/scalar/four logical-shift helper interfaces, literal zero row and compilation-only CSR membership."
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/NativeQueries.lean",
+      "change": "Task-authored v2 extraction of all four actual dynamic queries and exact canonical selector domains from unchanged original Clean acceptance; no input or bound premises."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ShiftBinop/Lookups.lean",
+      "change": "Short public v2 lookup claims with constraint acceptance, actual stored membership and separate compilation CSR boundary; proof assembly stays under Proofs."
+    },
+    {
+      "path": "Tests/ShiftLookups.lean",
+      "change": "Combined-table regressions reuse existing checked native helper examples and mathematical result claims; cover valid boundaries, incorrect values/selectors, inactive zero restrictions and canonical field selector wraparound."
     }
   ],
   "setup_artifacts": [

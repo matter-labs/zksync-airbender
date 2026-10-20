@@ -473,8 +473,13 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    profile (nondeterminism enabled, empty delegation CSR list). Explicit-target, arity,
    mapping, placement and crossed-profile regressions pass. Runtime CSR setup
    binding remains separate; no custom CSR execution claim is inferred.
-   Continue with numerical and initialized shift/binop family soundness, deriving
-   operation routing and all local inputs from native acceptance/public history.
+   All four actual tagged queries and their exact canonical selector domains now
+   follow from native constraint acceptance. An exhaustive partition of every
+   stored region proves unique tags and resolves native membership to the checked
+   helper results; the actual zero row permits only three zero fields. Combined
+   table regressions reject incorrect results/selectors and crossed SLL regions.
+   Continue with numerical shift/binop operation routing and initialized family
+   soundness, deriving all local inputs from native acceptance/public history.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing
    any source finding or temporary premise.
