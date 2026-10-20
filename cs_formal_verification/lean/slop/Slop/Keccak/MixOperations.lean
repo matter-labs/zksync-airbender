@@ -1,13 +1,14 @@
 import Human.Circuits.Keccak.Mix
 import Slop.Keccak.DecodeControl
 import Slop.Keccak.FixedLookups
+import Slop.Keccak.OpIndex
 import Slop.Arithmetic.ByteAssembly
 
 namespace Airbender.Keccak.Proofs.Mix
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2400000
+set_option maxHeartbeats 1200000
 
 def nativeLimbs (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 4, start + 5]
 def temporary (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 2, start + 3]
@@ -53,9 +54,9 @@ theorem mix_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
     cases second <;> simpa [Variables.modeColumns, mixMode] using m4
   have rotations (i : Fin 5) : w (80 + i.val) = 0 := by
     have equation := Verification.assertion_of_holds h ⟨9 + i.val, by rw [constraint_count]; omega⟩
-    fin_cases i <;>
-      simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, rho] using equation.symm
+    fin_cases i
+    all_goals op_index at equation
+    all_goals simpa [Expression.eval, Verification.environment, rho] using equation.symm
   have r0 := rotations (0 : Fin 5); have r1 := rotations (1 : Fin 5)
   have r2 := rotations (2 : Fin 5); have r3 := rotations (3 : Fin 5); have r4 := rotations (4 : Fin 5)
   change w 80 = 0 at r0
@@ -71,8 +72,8 @@ theorem mix_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
     ⟨22 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
   cases second <;> fin_cases operation <;> fin_cases limb <;>
     simp [Variables.modeColumns, mixMode] at m0 m1 m2 m3 m4 m5 m6
-  all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, m0, m1, m2, m3, m4, m5, m6,
+  all_goals op_index at a b c
+  all_goals simp [Expression.eval, Verification.environment, m0, m1, m2, m3, m4, m5, m6,
     r0, r1, r2, r3, r4, aColumns, bColumns, cColumns, nativeLimbs, temporary, isRotation, previous] at a b c ⊢
   all_goals first
     | exact ⟨by linear_combination a, by linear_combination c⟩
