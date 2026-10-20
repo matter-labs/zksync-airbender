@@ -1,3 +1,4 @@
+import Tests.ShiftRouting
 import Tests.ShiftLookups
 import Tests.ShiftArtifact
 import Tests.NativeSrlHigh
@@ -1715,3 +1716,32 @@ import Tests.JumpLink
 #print axioms Tests.ShiftLookups.srl_low_bad_result_rejected
 #print axioms Tests.ShiftLookups.srl_high_bad_result_rejected
 #print axioms Tests.ShiftLookups.crossed_sll_region_rejected
+
+#print axioms Airbender.ShiftBinop.constraint_count
+#print axioms Airbender.ShiftBinop.lookup_count
+#print axioms Airbender.ShiftBinop.Proofs.selector_bounds
+#print axioms Airbender.ShiftBinop.Proofs.packed_mask_bound
+#print axioms Airbender.ShiftBinop.Proofs.selected_bits
+#print axioms Airbender.ShiftBinop.Proofs.decoder_field_bounds
+#print axioms Airbender.ShiftBinop.Proofs.padding_excluded
+#print axioms Airbender.ShiftBinop.Proofs.fetched_sources
+#print axioms Airbender.ShiftBinop.Proofs.selected_routing
+#print axioms Airbender.ShiftBinop.Proofs.entry_routing
+#print axioms Airbender.ShiftBinop.Proofs.fetched_routing
+#print axioms Airbender.ShiftBinop.native_decoded_routing
+#print axioms Tests.ShiftRoutingWitness.tagged_query_contains
+#print axioms Tests.ShiftRoutingQueries.lookup_members
+#print axioms Tests.ShiftRoutingQueries.lookup_holds
+#print axioms Tests.ShiftRoutingPart0.native_constraints
+#print axioms Tests.ShiftRoutingPart1.native_constraints
+#print axioms Tests.ShiftRoutingPart2.native_constraints
+#print axioms Tests.ShiftRoutingPart3.native_constraints
+#print axioms Tests.ShiftRoutingPart4.native_constraints
+#print axioms Tests.ShiftRoutingPart5.native_constraints
+#print axioms Tests.ShiftRouting.native_constraints
+#print axioms Tests.ShiftRouting.decoder_membership
+#print axioms Tests.ShiftRouting.public_routing
+#print axioms Tests.ShiftRouting.srai_routing
+#print axioms Tests.ShiftRouting.wrong_sign_fill_tag_rejected
+#print axioms Tests.ShiftRouting.wrong_immediate_operand_rejected
+#print axioms Tests.ShiftRouting.injected_csr_bit_rejected

@@ -14,8 +14,9 @@ full 16-bit signed immediate limbs, SRAI funct7 payload and unsupported forms.
 native profile separate from arithmetic/control exports.
 
 The sections below preserve the successive decoder/table checkpoints. The current
-[lookup claims](Lookups.lean) connect the complete native dynamic import to exact
-helper membership and derive all four selector domains from constraint acceptance.
+[routing claim](Routing.lean) binds all four table tags and operand selection to
+original public decoding; [lookup claims](Lookups.lean) connect the complete native
+dynamic import to exact helper membership and derive all selector domains.
 Numerical circuit soundness, initialized Sail execution, custom CSR/oracle
 semantics and physical cryptographic enforcement remain unfinished. General
 Rust/JSON/compiler refinement is a separate boundary.
@@ -70,3 +71,17 @@ check valid boundaries, malformed values/tags, crossed SLL regions and field wra
 Runtime CSR binding, operation routing and initialized family execution remain
 separate. These files are task-authored v2 assembly over the already pinned data
 and helper interfaces; they add no source-v3 coverage claim.
+
+## Original public decoding and operation routing
+
+[The short public claim](Routing.lean) derives ordinary native routing from actual
+public-byte construction, native decoder membership and accepted constraints.
+[References and observables](RoutingModel.lean) keep the six-bit mask, distinct
+funct3 and actual four-slot order visible. [Internal assembly](../../../Proofs/ShiftBinop/Routing.lean)
+derives the table tags, register/immediate operand selection and zero ordinary
+request multiplicity. SRA routes truncation/sign-fill/SRL-low/SRL-high; SRAI keeps
+its native funct7 immediate bits. [Complete native rows](../../../../Tests/ShiftRouting.lean)
+cover all twelve forms and x0 variants, with checked original public routing and
+malformed-tag/operand/CSR-bit rejection. Numerical word results, actual Sail
+register reads, initialized family execution and delegation protocol soundness
+remain unfinished.

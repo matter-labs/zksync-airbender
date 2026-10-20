@@ -478,8 +478,14 @@ witness derives PC 8 and x2=247 with no intermediate/result premise.
    stored region proves unique tags and resolves native membership to the checked
    helper results; the actual zero row permits only three zero fields. Combined
    table regressions reject incorrect results/selectors and crossed SLL regions.
-   Continue with numerical shift/binop operation routing and initialized family
-   soundness, deriving all local inputs from native acceptance/public history.
+   Original public construction and native decoder membership now derive the
+   six operation/immediate bits, all four native lookup tags, selected operand
+   limbs and disabled ordinary delegation multiplicity. The six-bit bound rejects
+   the complete sentinel tail. Full native fixtures cover all twelve forms and
+   their x0 variants; all 96 tagged queries and public routing applications pass.
+   Continue with exact native query values and selected/written word results,
+   then native clocks/ports, initialized history and original Sail execution.
+   Derive actual source reads and states from native matching/public history.
 4. Rebind bigint/BLAKE/Keccak workers and callers. Retest control validity,
    unissued workers, ROM behavior and request participation on v2 before reusing
    any source finding or temporary premise.

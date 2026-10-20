@@ -1259,10 +1259,10 @@ Rust/compiler refinement and cryptographic enforcement remain separate.
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all seventy concrete test modules pass.
+- Library, both CLI entrypoints and all seventy-nine concrete test modules pass.
 - Importer regressions: 386 checks pass.
-- Axiom audit: 1590 explicit roots; only propext, Classical.choice and Quot.sound.
-- All ninety-five public Review theorems (twenty-two circuit claims, fifty trace claims and twenty-three helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 1618 explicit roots; only propext, Classical.choice and Quot.sound.
+- All ninety-six public Review theorems (twenty-three circuit claims, fifty trace claims and twenty-three helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 78 unchanged reused files, five native circuit artifacts, forty-six native Rust sources plus compiled shift-offset metadata, sixteen native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
@@ -1364,3 +1364,31 @@ inactive data, crossed SLL regions and canonical field selector wraparound.
 These are checked lookup connections, not complete numerical circuit or
 initialized shift/binop Sail execution. Operation routing and row/state assembly
 remain the next milestone. No native implementation defect is established.
+
+## Decoded native shift/binop operation routing
+
+[The short routing claim](Airbender/Review/Circuits/ShiftBinop/Routing.lean)
+now connects original public-byte construction and actual native decoder membership
+to all four table selectors, register/immediate operand selection and zero ordinary
+delegation-request multiplicity. [Observable references](Airbender/Review/Circuits/ShiftBinop/RoutingModel.lean)
+retain the six native bits and distinct raw funct3. SLL uses tags 47/48/49/0,
+SRL 47/50/51/0 and SRA 47/52/50/51; each binary form uses its original funct3
+in all four slots. SRAI retains the native immediate's funct7 payload.
+
+[Selector recovery](Airbender/Proofs/ShiftBinop/Selectors.lean) derives Booleanity
+and a canonical mask at most 63 from actual equations. [Original source recovery](Airbender/Proofs/ShiftBinop/Decoder.lean)
+excludes unsupported slots and the complete minus-one tail. [Routing assembly](Airbender/Proofs/ShiftBinop/Routing.lean)
+derives the observed tags and operands without supplied operation bits, table
+choices, output values or a table-equivalence premise. Logical column 37 is the
+native request multiplicity; its zero value for ordinary forms does not establish
+worker/request protocol soundness or custom CSR semantics.
+
+[Regressions](Tests/ShiftRouting.lean) check complete native constraints and all
+lookups for twelve ordinary forms and their x0 variants, then apply the public
+claim using actual original byte reads. All 96 fixture queries have native-table
+membership certificates. Six [four-row groups](Tests/ShiftRoutingPart0.lean) keep
+closed equation checks and symbolic native query transport within unchanged
+budgets. Wrong sign-fill tags, wrong immediate selection and injected CSR bits
+reject. Numerical word results, actual Sail register reads, initialized family
+history/execution and runtime CSR setup remain separate. No native defect is
+established.

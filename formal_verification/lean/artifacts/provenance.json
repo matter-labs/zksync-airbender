@@ -4555,6 +4555,96 @@
     {
       "path": "Tests/ShiftLookups.lean",
       "change": "Combined-table regressions reuse existing checked native helper examples and mathematical result claims; cover valid boundaries, incorrect values/selectors, inactive zero restrictions and canonical field selector wraparound."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ShiftBinop/RoutingModel.lean",
+      "change": "Task-authored v2 ordinary routing references and observables: six-bit operation masks, actual four-query tag order, selected operand limbs and zero native delegation multiplicity; no numerical or initialized-execution premise."
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/ArtifactChecks.lean",
+      "change": "Adapt the existing v2 mechanical count-binding pattern to fifty native shift/binop equations and twelve actual queries.",
+      "backport_reuse_revision": "04cd1f270c0e747894785164c4e7de2cf6835006",
+      "backport_reuse_path": "Airbender/Proofs/MulDiv/ArtifactChecks.lean",
+      "backport_reuse_sha256": "3a08f043c58e33beaea2be1473da1423fb150eccf717dd32ae9c46584c4c17f6"
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/Selectors.lean",
+      "change": "Adapt the existing v2 Boolean/packed-mask recovery proof to six Mersenne31 native flags and original ordinary masks, retaining original Clean acceptance and default heartbeat/memory ceilings.",
+      "backport_reuse_revision": "04cd1f270c0e747894785164c4e7de2cf6835006",
+      "backport_reuse_path": "Airbender/Proofs/AddSub/Selectors.lean",
+      "backport_reuse_sha256": "5437b1f270d37e0270426057a8c784aab46e2b4ffef55efcf4503245df747b42"
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/Decoder.lean",
+      "change": "Adapt the existing v2 stateful public-decoder assembly: original ordinary fields, six-bit mask padding exclusion and actual public byte-read/decoding sources.",
+      "backport_reuse_revision": "04cd1f270c0e747894785164c4e7de2cf6835006",
+      "backport_reuse_path": "Airbender/Proofs/MulDiv/Decoder.lean",
+      "backport_reuse_sha256": "940c0d1b6630f2a04d25e3693052cfc04b4d7193a22d755f7e6ff687ae829bca"
+    },
+    {
+      "path": "Airbender/Proofs/ShiftBinop/Routing.lean",
+      "change": "Task-authored v2 assembly of native tag, operand and ordinary delegation-multiplicity equations; derive routing from public construction and native decoder membership, with no caller selector/result premise."
+    },
+    {
+      "path": "Airbender/Review/Circuits/ShiftBinop/Routing.lean",
+      "change": "A short v2 public ordinary-routing claim; calculations and source recovery stay under Proofs, with numerical execution and delegation/cryptographic protocol enforcement separately scoped."
+    },
+    {
+      "path": "Tests/ShiftRoutingWitness.lean",
+      "change": "Adapt the v2 static-witness and concrete-query transport scaffold to all twelve native ordinary forms and x0 variants. New static data is checked against all fifty actual equations and every native lookup; no generator refinement is claimed.",
+      "backport_reuse_revision": "04cd1f270c0e747894785164c4e7de2cf6835006",
+      "backport_reuse_path": "Tests/MulDivWitness.lean",
+      "backport_reuse_sha256": "0b2690b351ca1d6817a959183e3e074eb8011ccb33d2c4401bd821825530a304"
+    },
+    {
+      "path": "Tests/ShiftRoutingQueries.lean",
+      "change": "Task-authored combined native membership certificates for all 96 fixture queries, using existing checked helper models, plus symbolic query-object transport to avoid large-data unification."
+    },
+    {
+      "path": "Tests/ShiftRoutingPart0.lean",
+      "change": "Adapt the v2 full-native-row check scaffold to a bounded four-row shift/binop group with exact native timestamp and tagged lookup semantics; no raised heartbeat or memory ceiling.",
+      "backport_reuse_revision": "04cd1f270c0e747894785164c4e7de2cf6835006",
+      "backport_reuse_path": "Tests/MulDivMul.lean",
+      "backport_reuse_sha256": "84899b5405860351f5d8c2b57bc076b8f17d70671885488da5d364e865c9f01a"
+    },
+    {
+      "path": "Tests/ShiftRoutingPart1.lean",
+      "change": "Adapt the v2 full-native-row check scaffold to a bounded four-row shift/binop group with exact native timestamp and tagged lookup semantics; no raised heartbeat or memory ceiling.",
+      "backport_reuse_revision": "04cd1f270c0e747894785164c4e7de2cf6835006",
+      "backport_reuse_path": "Tests/MulDivMul.lean",
+      "backport_reuse_sha256": "84899b5405860351f5d8c2b57bc076b8f17d70671885488da5d364e865c9f01a"
+    },
+    {
+      "path": "Tests/ShiftRoutingPart2.lean",
+      "change": "Adapt the v2 full-native-row check scaffold to a bounded four-row shift/binop group with exact native timestamp and tagged lookup semantics; no raised heartbeat or memory ceiling.",
+      "backport_reuse_revision": "04cd1f270c0e747894785164c4e7de2cf6835006",
+      "backport_reuse_path": "Tests/MulDivMul.lean",
+      "backport_reuse_sha256": "84899b5405860351f5d8c2b57bc076b8f17d70671885488da5d364e865c9f01a"
+    },
+    {
+      "path": "Tests/ShiftRoutingPart3.lean",
+      "change": "Adapt the v2 full-native-row check scaffold to a bounded four-row shift/binop group with exact native timestamp and tagged lookup semantics; no raised heartbeat or memory ceiling.",
+      "backport_reuse_revision": "04cd1f270c0e747894785164c4e7de2cf6835006",
+      "backport_reuse_path": "Tests/MulDivMul.lean",
+      "backport_reuse_sha256": "84899b5405860351f5d8c2b57bc076b8f17d70671885488da5d364e865c9f01a"
+    },
+    {
+      "path": "Tests/ShiftRoutingPart4.lean",
+      "change": "Adapt the v2 full-native-row check scaffold to a bounded four-row shift/binop group with exact native timestamp and tagged lookup semantics; no raised heartbeat or memory ceiling.",
+      "backport_reuse_revision": "04cd1f270c0e747894785164c4e7de2cf6835006",
+      "backport_reuse_path": "Tests/MulDivMul.lean",
+      "backport_reuse_sha256": "84899b5405860351f5d8c2b57bc076b8f17d70671885488da5d364e865c9f01a"
+    },
+    {
+      "path": "Tests/ShiftRoutingPart5.lean",
+      "change": "Adapt the v2 full-native-row check scaffold to a bounded four-row shift/binop group with exact native timestamp and tagged lookup semantics; no raised heartbeat or memory ceiling.",
+      "backport_reuse_revision": "04cd1f270c0e747894785164c4e7de2cf6835006",
+      "backport_reuse_path": "Tests/MulDivMul.lean",
+      "backport_reuse_sha256": "84899b5405860351f5d8c2b57bc076b8f17d70671885488da5d364e865c9f01a"
+    },
+    {
+      "path": "Tests/ShiftRouting.lean",
+      "change": "Task-authored nonvacuous public routing applications for all 24 actual public decoder forms, SRAI payload/order checks and corrupted routing/operand/CSR-bit rejections."
     }
   ],
   "setup_artifacts": [
