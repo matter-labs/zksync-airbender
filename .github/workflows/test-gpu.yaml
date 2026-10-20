@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - av_gkr_compiler
   pull_request:
 
 permissions:
@@ -26,19 +27,28 @@ jobs:
       RUST_TOOLCHAIN: nightly-2026-08-09
       RUST_MIN_STACK: 16777216
       RUSTFLAGS: "-D warnings"
+      # Preserve all supported architectures when reusing cached native objects.
+      CUDAARCHS: "80;89;90;120"
+      # Compile architecture variants concurrently to shorten long single-file builds.
+      CUDAFLAGS: "--threads=4"
+      RUSTC_WRAPPER: sccache
+      CMAKE_CUDA_COMPILER_LAUNCHER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      # Preserve cache statistics through long compiler phases.
+      SCCACHE_IDLE_TIMEOUT: "0"
     steps:
       - name: Prepare environment
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
           apt update && apt install -y cmake git libssl-dev pkg-config wget curl python3
-          echo "/usr/local/nvidia/bin:/usr/local/cuda/bin" >> $GITHUB_PATH
+          echo "/usr/local/nvidia/bin:/usr/local/cuda/bin" >> "$GITHUB_PATH"
 
       - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
 
       - name: Setup rustup
         run: |
-          wget -q -O - https://sh.rustup.rs | bash -s -- -y --default-toolchain $RUST_TOOLCHAIN --profile minimal
+          wget -q -O - https://sh.rustup.rs | bash -s -- -y --default-toolchain "$RUST_TOOLCHAIN" --profile minimal
           echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
           echo "export PATH=\"$HOME/.cargo/bin:\$PATH\"" >> "${HOME}/.bash_profile"
 
@@ -53,19 +63,47 @@ jobs:
         run: |
           nvcc --version
 
-      - name: GPU test serialization drift guard
-        run: cargo +$RUST_TOOLCHAIN test -p gpu_core --release --target x86_64-unknown-linux-gnu cpu_nextest_config_covers_all_gpu_crates
+      - name: Set up compiler cache
+        id: sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        with:
+          version: "v0.18.0"
 
-      - name: Build CLI and compile GPU tests
+      - name: Record build environment
+        shell: bash
+        run: |
+          mkdir -p build-diagnostics
+          {
+            date -u
+            rustc -Vv
+            nvcc --version
+            cmake --version
+            gcc --version
+            lscpu
+            free -h
+            for setting in /sys/fs/cgroup/cpu.max /sys/fs/cgroup/cpu.stat /sys/fs/cgroup/memory.max /proc/pressure/cpu; do
+              if [[ -f "$setting" ]]; then
+                echo "$setting"
+                cat "$setting"
+              fi
+            done
+          } | tee build-diagnostics/environment.txt
+
+      - name: GPU test serialization drift guard
+        run: cargo +"$RUST_TOOLCHAIN" test -p gpu_core --release --target x86_64-unknown-linux-gnu cpu_nextest_config_covers_all_gpu_crates
+
+      - name: Build CLI
         shell: bash
         run: |
           mkdir artifacts
           # Build for A100 (sm_80), L4 (sm_89), H100 (sm_90), and RTX PRO 6000 Blackwell (sm_120).
-          CUDAARCHS="80;89;90;120" \
-          cargo +$RUST_TOOLCHAIN build -p cli --features gpu --release --target x86_64-unknown-linux-gnu
+          cargo +"$RUST_TOOLCHAIN" build -p cli --features gpu --release --target x86_64-unknown-linux-gnu --timings
           cp target/x86_64-unknown-linux-gnu/release/cli artifacts/cli
-          CUDAARCHS="80;89;90;120" \
-          cargo +$RUST_TOOLCHAIN test -p gpu_circuit_prover --release --target x86_64-unknown-linux-gnu --no-run --message-format=json > test-build.json
+
+      - name: Compile GPU tests
+        shell: bash
+        run: |
+          cargo +"$RUST_TOOLCHAIN" test -p gpu_circuit_prover --release --target x86_64-unknown-linux-gnu --no-run --timings --message-format=json > test-build.json
           python3 - <<'PYTHON'
           import json, shutil
           with open("test-build.json") as source:
@@ -77,6 +115,32 @@ jobs:
           assert len(executables) == 1, executables
           shutil.copy2(executables[0], "artifacts/gpu_circuit_prover_tests")
           PYTHON
+
+      - name: Record compiler cache statistics
+        if: always() && steps.sccache.outcome == 'success'
+        run: |
+          mkdir -p build-diagnostics
+          sccache --show-stats --stats-format=json > build-diagnostics/sccache.json
+          sccache --show-stats
+          {
+            date -u
+            for setting in /sys/fs/cgroup/cpu.stat /sys/fs/cgroup/memory.peak /sys/fs/cgroup/memory.events /proc/pressure/cpu; do
+              if [ -r "$setting" ]; then
+                echo "$setting"
+                cat "$setting"
+              fi
+            done
+          } > build-diagnostics/resources-after.txt
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.ubuntu }}-build-diagnostics
+          path: |
+            build-diagnostics/
+            target/cargo-timings/
+          retention-days: 14
 
       - name: Upload GPU artifacts
         uses: actions/upload-artifact@v4
@@ -100,7 +164,7 @@ jobs:
     steps:
       - name: Prepare environment
         run: |
-          echo "/usr/local/nvidia/bin:/usr/local/cuda/bin" >> $GITHUB_PATH
+          echo "/usr/local/nvidia/bin:/usr/local/cuda/bin" >> "$GITHUB_PATH"
 
       - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
 
