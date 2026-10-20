@@ -1,4 +1,4 @@
-import Slop.Sail.Config
+import Slop.Sail.Airbender
 import Slop.Sail.Contract
 import Human.Spec
 import Slop.Sail.Monad

@@ -2,6 +2,7 @@ import Slop.Equiv.StepMem
 import Slop.Equiv.StepMop
 import Slop.Equiv.StepInput
 import Slop.Equiv.StepDelegate
+import Slop.RV.DecodeShape
 
 /-! `Airbender.StepIsAirbender`: one step of our spec is one step of the Airbender machine. -/
 
@@ -29,26 +30,24 @@ theorem step_sail (s t : RV.State) (σ : SailState) (h : Airbender.AgreeSail s �
   · have hi := RV.exec_keeps_input hex hr
     suffices ∃ σ', stepSail (s.input.headD 0) σ = some (σ', false) ∧ Airbender.AgreeSail t σ' by
       obtain ⟨σ', e, a⟩ := this; exact ⟨σ', false, e, a, hi⟩
-    have hd := hdec
-    unfold RV.decode at hd
-    simp only at hd
-    split at hd <;> (try simp only [RV.decodeCsr] at hd) <;> (try split_ifs at hd) <;>
-      first | cases hd | obtain ⟨_, _, rfl⟩ := Option.map_eq_some_iff.mp hd
-    all_goals first
-      | (simp [RV.Instr.readsInput] at hr; done)
-      | exact kind_lui h ha' h2 _ _ hdec hex
-      | exact kind_auipc h ha' h2 _ _ hdec hex
-      | exact kind_jal h ha' h2 _ _ hdec hex
-      | exact kind_jalr h ha' h2 _ _ _ hdec hex
-      | exact kind_branch h ha' h2 _ _ _ _ hdec hex
-      | exact kind_load h ha' h2 _ _ (by simp) _ _ _ hdec hex
-      | exact kind_store h ha' h2 _ (by simp) _ _ _ hdec hex
-      | exact kind_itype h ha' h2 _ _ _ _ (by simp) hdec hex
-      | exact kind_shift h ha' h2 _ _ _ _ (by simp) hdec hex
-      | exact kind_op h ha' h2 _ _ _ _ (by simp) hdec hex
-      | exact kind_mop h ha' h2 _ _ _ _ hdec hex
-      | exact kind_write h ha' h2 _ hdec hex
-      | exact absurd hdec (hnd _)
+    have hs := RV.decode_shape hdec
+    cases i with
+    | lui rd imm => obtain ⟨u, rfl⟩ := hs; exact kind_lui h ha' h2 _ _ hdec hex
+    | auipc rd imm => obtain ⟨u, rfl⟩ := hs; exact kind_auipc h ha' h2 _ _ hdec hex
+    | jal rd off => obtain ⟨x, rfl⟩ := hs; exact kind_jal h ha' h2 _ _ hdec hex
+    | jalr rd rs1 off => obtain ⟨x, rfl⟩ := hs; exact kind_jalr h ha' h2 _ _ _ hdec hex
+    | branch c rs1 rs2 off => obtain ⟨x, rfl⟩ := hs; exact kind_branch h ha' h2 _ _ _ _ hdec hex
+    | load n sg rd rs1 off => obtain ⟨hn, x, rfl⟩ := hs; exact kind_load h ha' h2 _ _ hn _ _ _ hdec hex
+    | store n rs2 rs1 off => obtain ⟨hn, x, rfl⟩ := hs; exact kind_store h ha' h2 _ hn _ _ _ hdec hex
+    | opImm o rd rs1 imm =>
+      rcases hs with ⟨ho, x, rfl⟩ | ⟨ho, sh, rfl⟩
+      · exact kind_itype h ha' h2 _ _ _ _ ho hdec hex
+      · exact kind_shift h ha' h2 _ _ _ _ ho hdec hex
+    | op o rd rs1 rs2 => exact kind_op h ha' h2 _ _ _ _ hs hdec hex
+    | mop o rd rs1 rs2 => exact kind_mop h ha' h2 _ _ _ _ hdec hex
+    | inputRead rd => simp [RV.Instr.readsInput] at hr
+    | inputWrite src => exact kind_write h ha' h2 _ hdec hex
+    | delegate k => exact absurd hdec (hnd _)
   · obtain ⟨rd, rfl⟩ : ∃ rd, i = .inputRead rd := by cases i <;> simp_all [RV.Instr.readsInput]
     simp only [RV.exec] at hex
     rcases hs : s.input with _ | ⟨w, rest⟩ <;> rw [hs] at hex

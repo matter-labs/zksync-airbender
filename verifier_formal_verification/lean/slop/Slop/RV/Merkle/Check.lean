@@ -1,4 +1,6 @@
 import Slop.RV.Merkle.Loop
+import Slop.RV.Merkle.Exit
+import Slop.RV.Jal
 import Slop.RV.Frame
 
 /-! `merkle_check(leaf)`, the whole function: the prologue, the root and the depth (9 input reads), the depth
@@ -217,8 +219,14 @@ theorem merkle_check_run (A : Word) (codeS : List Word) (calleesS : List (Word �
       · rw [cut_r20, c20]
       · rw [cut_r19, c19]
       · rw [cut_r18, c18])
-    exact mc_loop A codeS calleesS FS al len hS s0 F _ root path rest hal hrom hSr hcalr hcode herr hcS hcal hMal hlen
-      hF hF2 hsp0 hsp0' hsp16 hra hd path.length 0 S (by omega) (by omega) (by rw [cut_pc, pc']; bv_omega) fr'
-      (by rw [cut_r9]) (by rw [cut_r27]) (by rw [cut_mem, ← cmem, hleaf]; rfl) (by rw [cut_input]; rfl)
-
+    obtain ⟨m1, E, hE, pcE, frE, inE, nE⟩ := mc_loop A codeS calleesS FS al len hS s0 F _ root path rest hal hrom
+      hSr hcalr hcode herr hcS hcal hMal hlen hF hF2 hsp0 hsp0' hsp16 hra hd path.length 0 S (by omega) (by omega)
+      (by rw [cut_pc, pc']; bv_omega) fr' (by rw [cut_r9]) (by rw [cut_r27]) (by rw [cut_mem, ← cmem, hleaf]; rfl)
+      (by rw [cut_input]; rfl)
+    have hcE : CodeAt E A Code.merkle_check := codeAt_of_rom hcode (by
+      rw [show Code.merkle_check.length = 111 from rfl]; simp only [ROM_END]; omega) frE.rom
+    have heE : CodeAt E (A + 0x3d4#32) Code.finish_error := codeAt_of_rom herr (by
+      rw [hlE]; simp only [ROM_END]; bv_omega) frE.rom
+    obtain ⟨m2, T, hT, hfin⟩ := mc_exit s0 E A F len root rest hal hrom hcE heE pcE frE inE hF2 hsp0 hsp0' hsp16 hra
+    exact ⟨m1 + m2, T, run_trans hE hT, nE ▸ hfin⟩
 end RV

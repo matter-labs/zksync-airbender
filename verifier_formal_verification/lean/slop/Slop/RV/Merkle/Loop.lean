@@ -1,11 +1,16 @@
-import Slop.RV.Merkle.Exit
+import Slop.RV.Merkle.MFrame
+import Slop.RV.Tactic
+import Slop.RV.CopyRun
+import Slop.RV.Code.merkle_check
+import Slop.RV.FsCheck.Blocks
 import Slop.RV.Merkle.Contract
 import Slop.RV.Input
 import Slop.RV.CallW
 import Slop.RV.Frame
 
 /-! `merkle_check`, the loop (from word 46, `k ≥ 1` levels to go): read the side word and the sibling, call
-`merkle_step` (any implementation of its contract), count down; at 0, the end (`mc_exit`). By induction on `k`. -/
+`merkle_step` (any implementation of its contract), count down; at 0, the start of the end (word 68, `mc_exit`)
+with the root of the whole path in `MERKLE.state`. By induction on `k`. -/
 
 namespace RV
 open _root_.RV.Sym Spec
@@ -61,21 +66,6 @@ theorem vec8_toList {α : Type} (v : Vector α 8) : v.toList = [v[0], v[1], v[2]
   simp only [Vector.length_toList] at h1
   interval_cases i <;> simp
 
-/-- The frame facts survive steps that change neither memory nor the frame's registers. -/
-theorem MFrame.of_eq {s0 E E' : State} {F len : Nat} {root : Vector Word 8} (h : MFrame s0 F len root E)
-    (hm : E'.mem = E.mem) (hr : ∀ r : Reg, r = 2#5 ∨ r = 26#5 ∨ r = 25#5 ∨ r = 24#5 ∨ r = 23#5 ∨ r = 22#5 ∨
-      r = 21#5 ∨ r = 20#5 ∨ r = 19#5 ∨ r = 18#5 → E'.getReg r = E.getReg r) : MFrame s0 F len root E' := by
-  have hr' := hr
-  obtain ⟨a, b, c, d, e, f, g, i, j, k, v1, v8, v9, v18, v19, v20, v21, v22, v23, v24, v25, v26, v27, m, rom⟩ := h
-  have R : ∀ r : Reg, r = 2#5 ∨ r = 26#5 ∨ r = 25#5 ∨ r = 24#5 ∨ r = 23#5 ∨ r = 22#5 ∨ r = 21#5 ∨ r = 20#5 ∨
-      r = 19#5 ∨ r = 18#5 → ∀ w, E.getReg r = w → E'.getReg r = w := fun r hr w hw => (hr' r hr).trans hw
-  exact ⟨R _ (by simp) _ a, R _ (by simp) _ b, R _ (by simp) _ c, R _ (by simp) _ d, R _ (by simp) _ e,
-    R _ (by simp) _ f, R _ (by simp) _ g, R _ (by simp) _ i, R _ (by simp) _ j, R _ (by simp) _ k,
-    by rw [hm]; exact v1, by rw [hm]; exact v8, by rw [hm]; exact v9, by rw [hm]; exact v18, by rw [hm]; exact v19,
-    by rw [hm]; exact v20, by rw [hm]; exact v21, by rw [hm]; exact v22, by rw [hm]; exact v23, by rw [hm]; exact v24,
-    by rw [hm]; exact v25, by rw [hm]; exact v26, by rw [hm]; exact v27,
-    fun x hx hy => by rw [hm]; exact m x hx hy, fun x hx => by rw [hm]; exact rom x hx⟩
-
 /-- Words 46 … 54 of `merkle_check`: the side word into `a1`, the sibling into `a0, a2 … a7, t0`. -/
 def mcReads (side : Word) (sib : Vector Word 8) : List (Reg × Word) :=
   [(11#5, side), (10#5, sib[0]), (12#5, sib[1]), (13#5, sib[2]), (14#5, sib[3]), (15#5, sib[4]), (16#5, sib[5]),
@@ -87,7 +77,7 @@ theorem mc_loop (A : Word) (codeS : List Word) (calleesS : List (Word × List Wo
     (hal : A.toNat % 4 = 0) (hrom : A.toNat + 4 * 111 + 0x21c + 24 ≤ ROM_END)
     (hSr : (A + 0x1bc#32).toNat + 4 * codeS.length ≤ ROM_END)
     (hcalr : ∀ c ∈ calleesS, c.1.toNat + 4 * c.2.length ≤ ROM_END)
-    (hcode : CodeAt s0 A Code.merkle_check) (herr : CodeAt s0 (A + 0x3d4#32) Code.finish_error)
+    (hcode : CodeAt s0 A Code.merkle_check) (_herr : CodeAt s0 (A + 0x3d4#32) Code.finish_error)
     (hcS : CodeAt s0 (A + 0x1bc#32) codeS) (hcal : ∀ c ∈ calleesS, CodeAt s0 c.1 c.2)
     (hMal : MERKLE.toNat % al = 0) (hlen : len ≤ 256) (hF : 96 + FS ≤ F) (hF2 : 112 ≤ F)
     (hsp0 : ROM_END + F ≤ (s0.getReg 2#5).toNat) (hsp0' : (s0.getReg 2#5).toNat ≤ 0x1400000)
@@ -95,7 +85,8 @@ theorem mc_loop (A : Word) (codeS : List Word) (calleesS : List (Word × List Wo
     ∀ k j (L : State), 0 < k → j + k = path.length → L.pc = A + 184#32 → MFrame s0 F len root L →
       L.getReg 9#5 = MERKLE → L.getReg 27#5 = BitVec.ofNat 32 k →
       readWords L.mem MERKLE 8 = merkleRoot leaf (path.take j) → L.input = pathWords (path.drop j) ++ rest →
-      ∃ m T, run m L = some T ∧ McFinal s0 F len (merkleRoot leaf path) root rest T := by
+      ∃ m E, run m L = some E ∧ E.pc = A + 272#32 ∧ MFrame s0 F len root E ∧ E.input = rest ∧
+        readWords E.mem MERKLE 8 = merkleRoot leaf path := by
   intro k
   induction k with
   | zero => intros; omega
@@ -237,17 +228,10 @@ theorem mc_loop (A : Word) (codeS : List Word) (calleesS : List (Word × List Wo
     rv_cut with uin
     have fr' : MFrame s0 F len root S := ufr.of_eq (by rw [cut_mem]) (fun r hr => by
       rcases hr with h|h|h|h|h|h|h|h|h|h <;> subst h <;> assumption)
-    have hlE : Code.finish_error.length = 6 := by decide +kernel
-    have hcE : CodeAt S A Code.merkle_check := codeAt_of_rom hcode (by
-      rw [show Code.merkle_check.length = 111 from rfl]; simp only [ROM_END] at hrom ⊢; omega) fr'.rom
-    have heE : CodeAt S (A + 0x3d4#32) Code.finish_error := codeAt_of_rom herr (by
-      rw [hlE]; simp only [ROM_END] at hrom ⊢; bv_omega) fr'.rom
-    obtain ⟨m, T, hT, hfin⟩ := mc_exit s0 S A F len root rest hal hrom hcE heE (by rw [cut_pc, hpcU']; bv_omega) fr'
-      (by rw [cut_input, show path.drop (j + 1) = [] from List.drop_eq_nil_of_le (by omega)]; rfl)
-      hF2 hsp0 hsp0' hsp16 hra
     have hn : readWords S.mem MERKLE 8 = merkleRoot leaf path := by
       rw [cut_mem, hnode', List.take_of_length_le (by omega)]
-    exact ⟨m, T, hT, hn ▸ hfin⟩
+    exact ⟨0, S, rfl, by rw [cut_pc, hpcU']; bv_omega, fr',
+      by rw [cut_input, show path.drop (j + 1) = [] from List.drop_eq_nil_of_le (by omega)]; rfl, hn⟩
   · have hs : BitVec.ofNat 32 (k + 1) + 4294967295#32 ≠ 0#32 := by bv_omega
     rv_steps 1 with hpcU', u27, hs
     rv_cut with uin

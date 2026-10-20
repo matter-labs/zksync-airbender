@@ -55,6 +55,10 @@ input; the verifier's two-to-one Blake2s hash) — a wrong root fails the run.
   whole program `Main/Run`), link check + final proofs (`FinalPlain`, `FinalMop`). Plain-Rust arithmetic: the executor's DAG is cut at the field operations
   (`lean/gen/clusters.sh`, `lean/gen/blake.sh`; cut points found by evaluation, untrusted) and each piece is proven
   (`BBPlain`, `Blake/Lemmas`).
+- Interfaces that keep proofs local (a change re-proves only its own file): `RV/DecodeShape.lean` (what a decoded
+  instruction looks like) and `RV/DecodeCsr.lean` (the CSR table) are the only lemmas downstream proofs use about
+  the decoder besides `Equiv/Decode.lean`; `RV/Frame.lean` (a stack frame's stores as a list); `RV/Merkle/Contract.lean`
+  and `RV/Merkle/MFrame.lean` (`merkle_step`'s contract, `merkle_check`'s frame), so its parts build in parallel.
 - `Slop/Deleg/` — the delegation runs (`Human/DelegationRuns.lean`): Blake2s rounds and `G` by induction over the
   calls; Keccak through a slot view of the 31 lanes, one lemma per call kind, five stages per round.
 - `Slop/Sail/` — the official Sail RISC-V model route (Airbender config, oracle evaluator, `kernel_rfl`).

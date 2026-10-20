@@ -21,7 +21,7 @@ different) and the Blake2s round mask being one-hot (the round circuit does not 
 namespace RV
 open Spec
 
-/-- The precompiles and their CSRs (`ofCsr`: proofs use it only through `RV.ofCsr_csr`). The last three (Keccak-f1600 in three circuits, CSRs `0x7cc` … `0x7ce`) are
+/-- The precompiles and their CSRs (`ofCsr`; proofs use it only through `RV.ofCsr_csr`). The last three (Keccak-f1600 in three circuits, CSRs `0x7cc` … `0x7ce`) are
 newer than the ISA table: modelled and decoded from source (`common_constants/src/delegation_types/keccak_f1600.rs`). -/
 inductive DelegationKind | blakeRound | blakeG | bigint | keccak | keccakThetaRho | keccakParity | keccakChi5
 
