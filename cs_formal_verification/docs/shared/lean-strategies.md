@@ -10,7 +10,9 @@ proves it. The trusted base is the Lean kernel, Lean's standard axioms (`propext
 `Quot.sound`), the official Sail RISC-V model, and what `human/` states.
 
 **No `sorry`, anywhere.** Not in `human/`, not in `slop/`, not in tests or helpers, not temporarily in a commit. Work
-in progress stays uncommitted until it is proven.
+in progress stays uncommitted until it is proven. This is enforced, not just a convention: every library is built
+with `-E hasSorry`, which turns Lean's "declaration uses `sorry`" warning into an error (Lean's analogue of
+`#![forbid(unsafe_code)]`).
 
 ---
 
@@ -30,7 +32,9 @@ count.
 - **Generated files are compared to the git index.** Stage (`git add`) regenerated files before running, or the
   check fails on a stale index.
 - **The Sail model is pinned and fetched, not committed.** Changes to how Sail is configured (which extensions it
-  offers) go through its config; every behavioural difference from Sail lives in Lean (1.3 of section 3).
+  offers) go through its config; every behavioural difference from Sail lives in Lean (3.1).
+- **The trust checks run on every build of the final theorems** (3.5): statements only from `human/` and the trusted
+  libraries, `human/` imports nothing else, no escape hatches outside the listed tactic code, only standard axioms.
 
 ### 1.2 Iterating quickly
 
@@ -52,7 +56,22 @@ it; it hashes content). So:
 - The machine includes its delegation (precompile) semantics, so an edit to a delegation definition rebuilds
   everything that depends on the machine. Batch such edits.
 
-### 1.4 Working with several agents or sessions
+### 1.4 Toolchain: latest stable, upgraded deliberately
+
+Track the latest stable Lean release (not release candidates) with the Mathlib tag made for it. Lean evolves fast,
+and newer releases bring features and performance. Pin both, so every check is reproducible, and upgrade as one
+deliberate change: bump the toolchain and Mathlib together, update what depends on them (patches to pinned
+libraries, version-matched tools), fix what breaks, run `verify.sh`, commit. Never mix an upgrade with other work, so
+breakage and timing changes are attributable.
+
+### 1.5 Kernel re-check at milestones
+
+`leancheck.sh` replays every declaration of `human/` and `slop/` through a fresh kernel with `leanchecker`, which
+ships with the pinned toolchain (`--fresh` also replays Mathlib and Sail). It guards against tactics or other
+metaprograms that might add declarations without the kernel. It is slow, so it is not part of `verify.sh`: run it at
+milestones, after a series of commits and before tagging or sharing a result.
+
+### 1.6 Working with several agents or sessions
 
 - One writer per worktree at a time. Two sessions (or a forked session) on the same files overwrite each other and
   race on the build. Stop one before the other continues.
@@ -154,7 +173,29 @@ vacuous for those runs. Where the model is wider than the reference (Sail) or th
 difference explicitly. The equivalence with Sail is a check on `human/`, not a replacement for reading it: it is
 how wrong spec lines get found.
 
-### 3.4 What goes where
+### 3.4 Everything trusted is visible in `human/`
+
+A reader must be able to see, in `human/`, every assumption the final theorems rest on. One file in `human/` lists
+them: the Lean kernel and its standard axioms, each external library the spec is stated in (with where it is
+pinned), the generated artifacts and how they are checked, the standards transcribed (and the test vectors that check
+the transcription), and the sources of system-specific facts. The same file holds, as Lean data, the list of trusted
+libraries and the list of tactic modules allowed to use `unsafe`/`partial` code, so the checks read exactly what the
+reader reads.
+
+Proof-search code is not trusted: the kernel re-checks everything it produces. It may use `unsafe` evaluation or
+`partial` functions, but only in the modules that file lists.
+
+### 3.5 What the trust checks enforce
+
+- Every theorem whose statement is a `human/` definition uses only the standard axioms, and its statement mentions
+  nothing defined outside `human/` and the trusted libraries.
+- `human/` imports only itself and the trusted libraries; it never imports proofs.
+- No module of ours declares an `axiom`, uses `sorry`, or uses native evaluation (`native_decide`, `bv_decide`);
+  `unsafe`, `partial`, `implemented_by` and `extern` appear only in the listed tactic modules.
+
+Adding a library, an assumption or a tactic module is a change to that `human/` file, visible in review.
+
+### 3.6 What goes where
 
 | `human/` | `slop/` |
 |---|---|
@@ -171,9 +212,10 @@ how wrong spec lines get found.
 
 ## 4. Checklist for a change
 
-1. Put each new statement or definition in the right layer (3.4).
+1. Put each new statement or definition in the right layer (3.6).
 2. Reuse helpers; if one is missing, add it to the shared toolkit in general form (2.5).
 3. Prove general facts once and cite them (2.1); keep contracts separate from proofs (2.2).
 4. Measure the module (1.2); if it is slow, do less work before splitting (2.1, 2.3).
-5. Check that nothing you added is unused (2.6) and that every new final theorem is in `verify.sh` (1.1).
+5. Check that nothing you added is unused (2.6), that every new final theorem is in `verify.sh` (1.1), and that a new
+   library, assumption or tactic module is listed in the trust file (3.4).
 6. Stage generated files, run `./verify.sh`, commit with Conventional Commits.
