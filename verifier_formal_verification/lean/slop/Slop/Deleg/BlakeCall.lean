@@ -1,15 +1,20 @@
 import Slop.Deleg.Calls
 
-/-! The Blake2s round function (CSR `0x7c7`), 7 rounds, any mode: one call (`blakeRound_mode_call`). -/
+/-! The Blake2s round function (CSR `0x7c7`), 7 or 10 rounds, any mode: one call (`blakeRound_mode_call`). -/
 
 namespace RV
 open Spec
 set_option maxHeartbeats 400000
 set_option linter.unusedSimpArgs false
 
-/-- The control word before round `r`: 7 rounds, the node on the right (`right`), compression mode (`comp`). -/
-def bCtl (right comp : Bool) (r : Nat) : Word :=
-  (BitVec.ofNat 32 (1 + (if right then 2 else 0) + (if comp then 4 else 0)) <<< 16) ||| (1#32 <<< (r + 19))
+/-- The control word before round `r`: 7 rounds (`red`, else 10), the node on the right (`right`), compression
+mode (`comp`); the 10-bit round mask is empty after the last round. -/
+def bCtl (red right comp : Bool) (r : Nat) : Word :=
+  (BitVec.ofNat 32 ((if red then 1 else 0) + (if right then 2 else 0) + (if comp then 4 else 0)) <<< 16) |||
+    ((1#32 <<< r) &&& 0x3ff#32) <<< 19
+
+/-- The number of rounds. -/
+def nR (red : Bool) : Nat := if red then 7 else 10
 
 /-- The block the rounds mix in. -/
 def bMsg (right comp : Bool) (h : Vector Word 8) (m : Vector Word 16) : Vector Word 16 :=
@@ -29,17 +34,19 @@ def bV0 (comp : Bool) (h : Vector Word 8) (e : Vector Word 16) : Vector Word 16 
 def bH0 (comp : Bool) (h : Vector Word 8) : Vector Word 8 := if comp then Vector.ofFn configuredIV else h
 
 theorem blakeRound_mode_call (mem : Word → BitVec 8) (p q : Word) (hp : Buffer p 96 128) (hq : Buffer q 64 64)
-    (hpq : p ≠ q) (right comp : Bool) (r : Nat) (h7 : r < 7) :
+    (hpq : p ≠ q) (red right comp : Bool) (r : Nat) (h7 : r < nR red) :
     let h := readWords mem p 8
     let e := readWords mem (p + 32#32) 16
-    let v' := round (bMsg right comp h (readWords mem q 16)) (SIGMA ⟨r, by omega⟩) (if r = 0 then bV0 comp h e else e)
-    Delegation.blakeRound p q (bCtl right comp r) mem = some
-      { writes := writesAt p (if r = 6 then blakeFinal (bH0 comp h) v' else h) ++ writesAt (p + 32#32) v',
-        reg := 12, val := bCtl right comp (r + 1) } := by
+    let v' := round (bMsg right comp h (readWords mem q 16)) (SIGMA ⟨r, by unfold nR at h7; split at h7 <;> omega⟩)
+      (if r = 0 then bV0 comp h e else e)
+    Delegation.blakeRound p q (bCtl red right comp r) mem = some
+      { writes := writesAt p (if r + 1 = nR red then blakeFinal (bH0 comp h) v' else h) ++ writesAt (p + 32#32) v',
+        reg := 12, val := bCtl red right comp (r + 1) } := by
   intro h e v'
   obtain ⟨hp1, hp2, -⟩ := hp
   obtain ⟨hq1, hq2, hq3⟩ := hq
-  cases right <;> cases comp <;> interval_cases r
+  cases red <;> simp only [nR, Bool.false_eq_true, ↓reduceIte] at h7 ⊢ <;> cases right <;> cases comp <;>
+    interval_cases r
   all_goals
     simp only [Delegation.blakeRound, bCtl, hp1, hp2, hq1, hq2, hq3, ne_eq, hpq, not_false_eq_true, true_and]
     simp (config := { decide := true }) only [ite_true, ite_false]

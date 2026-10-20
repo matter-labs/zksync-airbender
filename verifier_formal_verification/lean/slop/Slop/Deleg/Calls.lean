@@ -76,16 +76,19 @@ theorem readWords_sub (mem : Word → BitVec 8) (a : Word) (n i m : Nat) (h : i 
   apply BitVec.eq_of_toNat_eq; simp only [BitVec.toNat_add, BitVec.toNat_ofNat]; omega
 
 theorem calls_run : CallsRun := by
-  intro k w n
-  induction n with
-  | zero => intro s t _ _ _ _ h; exact h
-  | succ n ih =>
-    intro s t hd hpc hrom hw h
-    simp only [List.replicate_succ, calls] at h
+  intro ks
+  induction ks with
+  | nil => intro s t _ _ _ h; exact h
+  | cons k ks ih =>
+    intro s t hpc hrom hw h
+    simp only [List.length_cons] at hrom
+    simp only [calls] at h
     obtain ⟨s1, h1, h2⟩ := Option.bind_eq_some_iff.mp h
     obtain ⟨e, he, ha⟩ := Option.bind_eq_some_iff.mp h1
-    have hstep : step s = some s1 := step_delegate s s1 w k e hpc (by omega)
-      (by simpa using hw 0 (by omega)) hd he ha
+    have hstep : step s = some s1 := step_delegate s s1 _ k e hpc (by omega) rfl
+      (by have h0 := hw 0 (by simp)
+          rw [show (BitVec.ofNat 32 (4 * 0) : Word) = 0 from rfl, show s.pc + (0 : Word) = s.pc from BitVec.add_zero _] at h0
+          exact h0) he ha
     obtain ⟨m1, pc1, -, -⟩ := applyEffect_some ha
     have hok : ∀ aw ∈ e.writes, writable aw.1 4 ∧ aligned aw.1 4 := by
       unfold State.applyEffect at ha
@@ -96,11 +99,13 @@ theorem calls_run : CallsRun := by
         have := hok aw haw; simp only [writable, aligned, ROM_END, RAM_END] at this hb ⊢; omega]
     have hpc1 : s1.pc.toNat = s.pc.toNat + 4 := by
       rw [pc1, BitVec.toNat_add]; simp only [ROM_END] at hrom; simp; omega
-    rw [run_succ, hstep, Option.bind_some]
-    refine ih s1 t hd (by omega) (by omega) (fun i hi => ?_) h2
-    rw [read_congr s1.mem s.mem _ 4 fun j hj => hrom1 _ (by
+    rw [List.length_cons, run_succ, hstep, Option.bind_some]
+    refine ih s1 t (by omega) (by omega) (fun i hi => ?_) h2
+    have hw' := hw (i + 1) (by simp; omega)
+    simp only [List.getElem_cons_succ] at hw'
+    rw [← hw', read_congr s1.mem s.mem _ 4 fun j hj => hrom1 _ (by
       simp only [BitVec.toNat_add, BitVec.toNat_ofNat, hpc1]; simp only [ROM_END] at hrom ⊢; omega)]
-    rw [← hw (i + 1) (by omega)]; congr 1
+    congr 2
     apply BitVec.eq_of_toNat_eq
     simp only [BitVec.toNat_add, BitVec.toNat_ofNat, hpc1]; simp only [ROM_END] at hrom; omega
 

@@ -22,9 +22,10 @@ input; the verifier's two-to-one Blake2s hash) — a wrong root fails the run.
   and `G` (`0x7c8`), u256 bigint (`0x7ca`), Keccak special5 (`0x7cb`) and Keccak-f1600 (`0x7cc` … `0x7ce`, not yet in
   the ISA table); `Accepted`: the decoder's run lengths. Built from `Human/Blake2s.lean` (Blake2s constants, `G`, one
   round) and `Human/Keccak.lean` (Keccak-f[1600], FIPS 202).
-- `Human/DelegationRuns.lean` — what a run of calls computes, stated with those standard definitions: 7 round calls =
-  the Blake2s compression (or `hash2` in compression mode), 56 `G` calls = 7 Blake2s rounds, 649 special5 / 361
-  f1600 calls = Keccak-f[1600]. Calls outside such a run (another layout or control word) are undefined behaviour.
+- `Human/DelegationRuns.lean` — what a run of calls computes, stated with those standard definitions: 7 (10) round
+  calls = the 7-round (RFC 7693 10-round) Blake2s compression, or `hash2` (its 10-round version) in compression mode;
+  56 (80) `G` calls = 7 (10) Blake2s rounds; 649 special5 / 361 f1600 calls = Keccak-f[1600]; delegation words in
+  ROM run as these calls. Calls outside such a run (another layout or control word) are undefined behaviour.
 - `Human/RV32.lean` — the machine: RV32IM as Airbender runs it (decoder from the encoding tables, one line of
   behaviour per instruction, memory map, the input read `csrrw rd, 0x7c0, x0` from a list of input words; anything
   else has no next state = unprovable).

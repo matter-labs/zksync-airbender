@@ -7,12 +7,11 @@ import Human.SpecMerkle
 of calls with the layout and control word the run expects (its ABI); calls used any other way (another control word,
 overlapping buffers, a run cut short or mixed with other code) are undefined behaviour: the spec still says what each
 such call does, or that it has no next state, and nothing more is claimed. These are the runs and what they compute:
-* 7 Blake2s round calls: the Blake2s compression function, or in compression mode the two-to-one hash `hash2`;
-* 56 Blake2s `G` calls: 7 Blake2s rounds;
+* 7 Blake2s round calls: the (7-round) Blake2s compression function, or in compression mode the two-to-one hash
+  `hash2`; 10 calls in the 10-round schedule: RFC 7693's compression `compressRounds 10`, in either mode;
+* 56 Blake2s `G` calls: 7 Blake2s rounds; 80 calls: 10 rounds;
 * 649 Keccak special5 calls, and 361 calls of the three Keccak-f1600 circuits: Keccak-f[1600].
-`CallsRun`: a run of `calls` is what the machine's `run` does on consecutive `csrrw` words of that kind. The
-Keccak-f1600 CSRs are not decoded yet (`DelegationKind.ofCsr`), so `KeccakF1600Run` is about the modelled calls
-only. Not covered: the 10-round schedules (80 `G` calls; `compress` is 7 rounds). bigint has no runs: one call is the whole
+`CallsRun`: `calls` is what the machine's `run` does on consecutive `csrrw` delegation words in ROM. bigint has no runs: one call is the whole
 256-bit operation (`bigintOp`). The proofs are in `slop/Slop/Deleg/`; `verify.sh` checks that they prove exactly
 these statements. -/
 
@@ -25,11 +24,11 @@ def calls : List DelegationKind → State → Option State
   | k :: ks, s => ((Delegation.effect k (s.getReg 10) (s.getReg 11) (s.getReg 12) s.mem).bind s.applyEffect).bind
       (calls ks)
 
-/-- `n` consecutive delegation instructions `w` of kind `k` in ROM at the pc run as `n` calls. -/
+/-- Delegation instructions of the kinds `ks`, in ROM from the pc, run as the calls `ks`. -/
 def CallsRun : Prop :=
-  ∀ (k : DelegationKind) (w : Word) (n : Nat) (s t : State), decode w = some (.delegate k) →
-    s.pc.toNat % 4 = 0 → s.pc.toNat + 4 * n ≤ ROM_END → (∀ i < n, read s.mem (s.pc + BitVec.ofNat 32 (4 * i)) 4 = w) →
-    calls (.replicate n k) s = some t → run n s = some t
+  ∀ (ks : List DelegationKind) (s t : State), s.pc.toNat % 4 = 0 → s.pc.toNat + 4 * ks.length ≤ ROM_END →
+    (∀ i (h : i < ks.length), decode (read s.mem (s.pc + BitVec.ofNat 32 (4 * i)) 4) = some (.delegate ks[i])) →
+    calls ks s = some t → run ks.length s = some t
 
 /-- `n` bytes at `a`, `al`-aligned, in RAM. -/
 def Buffer (a : Word) (n al : Nat) : Prop := ROM_END ≤ a.toNat ∧ a.toNat % al = 0 ∧ a.toNat + n ≤ RAM_END
@@ -62,6 +61,25 @@ def BlakeHashRun : Prop :=
       readWords s'.mem p 8 =
         if right then hash2 (readWords s.mem q 8) (readWords s.mem p 8) else hash2 (readWords s.mem p 8) (readWords s.mem q 8)
 
+/-- Blake2s compression, 10 rounds (RFC 7693): 10 round calls from `x12 = 0x80000` (10 rounds, round 0), layout as
+for 7. -/
+def BlakeCompressRun10 : Prop :=
+  ∀ (s : State) (p q t : Word) (last : Bool), Buffer p 96 128 → Buffer q 64 64 → Apart p 96 q 64 →
+    s.getReg 10 = p → s.getReg 11 = q → s.getReg 12 = 0x80000#32 →
+    (readWords s.mem (p + 32) 16)[12] = t ^^^ IV 4 →
+    (readWords s.mem (p + 32) 16)[14] = (if last then 0xFFFFFFFF#32 else 0#32) ^^^ IV 6 →
+    ∃ s', calls (.replicate 10 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 = compressRounds 10 (readWords s.mem p 8) (readWords s.mem q 16) t last
+
+/-- The two-to-one hash with 10 rounds: 10 round calls from `x12 = 0xc0000` (left) or `0xe0000` (right). -/
+def BlakeHashRun10 : Prop :=
+  ∀ (s : State) (p q : Word) (right : Bool), Buffer p 96 128 → Buffer q 64 64 → Apart p 96 q 64 →
+    s.getReg 10 = p → s.getReg 11 = q → s.getReg 12 = (if right then 0xe0000#32 else 0xc0000#32) →
+    ∃ s', calls (.replicate 10 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 = compressRounds 10 (Vector.ofFn configuredIV)
+        (if right then readWords s.mem q 8 ++ readWords s.mem p 8 else readWords s.mem p 8 ++ readWords s.mem q 8)
+        64#32 true
+
 /-- 7 Blake2s rounds: 56 `G` calls (CSR `0x7c8`) from `x12 = 0x80` on the work vector `v` at `x10 = p` with the
 block `m` at `x11 = q`; `x12` is `0x80` again. -/
 def BlakeGRun : Prop :=
@@ -70,6 +88,14 @@ def BlakeGRun : Prop :=
     ∃ s', calls (.replicate 56 .blakeG) s = some s' ∧ ChangesOnly s s' p 64 12 ∧ s'.getReg 12 = 0x80#32 ∧
       readWords s'.mem p 16 = (List.finRange 7).foldl
         (fun v r => round (readWords s.mem q 16) (SIGMA (r.castLE (by decide))) v) (readWords s.mem p 16)
+
+/-- 10 Blake2s rounds: 80 `G` calls from `x12 = 0`; `x12` is `0` again. -/
+def BlakeGRun10 : Prop :=
+  ∀ (s : State) (p q : Word), Buffer p 64 64 → Buffer q 64 64 → p ≠ q →
+    s.getReg 10 = p → s.getReg 11 = q → s.getReg 12 = 0#32 →
+    ∃ s', calls (.replicate 80 .blakeG) s = some s' ∧ ChangesOnly s s' p 64 12 ∧ s'.getReg 12 = 0#32 ∧
+      readWords s'.mem p 16 = (List.finRange 10).foldl
+        (fun v r => round (readWords s.mem q 16) (SIGMA r) v) (readWords s.mem p 16)
 
 /-- Keccak-f[1600]: 649 special5 calls (CSR `0x7cb`) from `x10 = 0` on the 25 lanes at `x11 = p` (6 scratch lanes
 after them). -/

@@ -21,8 +21,8 @@ different) and the Blake2s round mask being one-hot (the round circuit does not 
 namespace RV
 open Spec
 
-/-- The precompiles and their CSRs. The last three (Keccak-f1600 in three circuits, CSRs `0x7cc` … `0x7ce`) are
-newer than the ISA table: modelled from source but not decoded (`ofCsr`) until the table lists them. -/
+/-- The precompiles and their CSRs (`ofCsr`: proofs use it only through `RV.ofCsr_csr`). The last three (Keccak-f1600 in three circuits, CSRs `0x7cc` … `0x7ce`) are
+newer than the ISA table: modelled and decoded from source (`common_constants/src/delegation_types/keccak_f1600.rs`). -/
 inductive DelegationKind | blakeRound | blakeG | bigint | keccak | keccakThetaRho | keccakParity | keccakChi5
 
 def DelegationKind.csr : DelegationKind → BitVec 12
@@ -31,7 +31,9 @@ def DelegationKind.csr : DelegationKind → BitVec 12
 
 def DelegationKind.ofCsr (csr : BitVec 12) : Option DelegationKind :=
   if csr = 0x7c7 then some .blakeRound else if csr = 0x7c8 then some .blakeG
-  else if csr = 0x7ca then some .bigint else if csr = 0x7cb then some .keccak else none
+  else if csr = 0x7ca then some .bigint else if csr = 0x7cb then some .keccak
+  else if csr = 0x7cc then some .keccakThetaRho else if csr = 0x7cd then some .keccakParity
+  else if csr = 0x7ce then some .keccakChi5 else none
 
 /-- The `n` words at `addr`. -/
 def readWords (mem : Word → BitVec 8) (addr : Word) (n : Nat) : Vector Word n :=
@@ -299,8 +301,9 @@ def imageWords : List (BitVec 8) → List Word
   | b0 :: b1 :: b2 :: b3 :: rest => (b3 ++ b2 ++ b1 ++ b0) :: imageWords rest
   | _ => []
 
-/-- The decoder accepts the binary: every maximal run of one delegation word has an accepted length. (Keccak-f1600,
-once decoded, needs a sequence pattern instead: 24 × (5 parity, 5 θ+ρ, 5 χ) then 1 parity.) -/
+/-- The decoder accepts the binary: every maximal run of one delegation word has an accepted length. (Keccak-f1600's
+words are not constrained here: its runs are a sequence pattern, 24 × (5 parity, 5 θ+ρ, 5 χ) then 1 parity, that
+the ISA table does not list yet.) -/
 def Accepted (bytes : Array (BitVec 8)) : Prop :=
   ∀ run ∈ (imageWords bytes.toList).splitBy (· == ·), ∀ lengths ∈ run.head?.bind callRun, run.length ∈ lengths
 

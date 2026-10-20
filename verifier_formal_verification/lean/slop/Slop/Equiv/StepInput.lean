@@ -17,8 +17,8 @@ theorem decode_csr {w : BitVec 32} {i : RV.Instr} (h : RV.decode w = some i) :
     (∀ rd, i = .inputRead rd → rd ≠ 0) ∧ (∀ src, i = .inputWrite src → src ≠ 0) := by
   unfold RV.decode at h
   simp only at h
-  split at h <;> (try simp only [RV.decodeCsr, RV.DelegationKind.ofCsr] at h) <;> (try split_ifs at h) <;>
-    cases h <;> simp_all
+  split at h <;> (try simp only [RV.decodeCsr] at h) <;> (try split_ifs at h) <;>
+    first | (cases h <;> simp_all) | (obtain ⟨_, _, rfl⟩ := Option.map_eq_some_iff.mp h; simp)
 
 theorem exec_input (σ : SailState) (rd : BitVec 5) (hrd : rd ≠ 0) :
     runSail (Airbender.execute next (Airbender.toSail (.inputRead rd))) σ = .ok RETIRE_SUCCESS (xset σ rd next) := by

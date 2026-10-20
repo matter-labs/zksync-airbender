@@ -79,10 +79,10 @@ theorem decode_is_sail : Airbender.DecodeIsSail := by
   unfold RV.decode at h
   dsimp only at h
   split at h
-  all_goals (try simp only [RV.decodeCsr, RV.DelegationKind.ofCsr] at h)
+  all_goals (try simp only [RV.decodeCsr] at h)
   all_goals (try split_ifs at h)
   all_goals first | (cases h; done) | skip
-  all_goals obtain rfl := Option.some.inj h
+  all_goals first | obtain rfl := Option.some.inj h | obtain ⟨_, _, rfl⟩ := Option.map_eq_some_iff.mp h
   all_goals (try have := jalr_f3 w ‹_› hl)
   all_goals first
     | have := op_f7 w 2 ‹_› ‹_› (by decide) ‹_› hl
@@ -96,10 +96,7 @@ theorem decode_is_sail : Airbender.DecodeIsSail := by
     | exact dec_lui w σ hs (by assumption)
     | exact dec_read w σ hs (by assumption) (by assumption) (bits_src ‹_›) (bits_csr ‹_› rfl)
     | exact dec_write w σ hs (by assumption) (by assumption) (bits_rd ‹_›) (bits_csr ‹_› rfl)
-    | exact dec_delegate_blakeRound w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_csr ‹_› rfl)
-    | exact dec_delegate_blakeG w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_csr ‹_› rfl)
-    | exact dec_delegate_bigint w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_csr ‹_› rfl)
-    | exact dec_delegate_keccak w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) (bits_csr ‹_› rfl)
+    | exact dec_delegate w σ hs (by assumption) (by assumption) (bits_dsrc ‹_›) (bits_drd ‹_›) ‹_›
     | exact dec_mop_add w σ hs (by assumption) (by assumption) (by assumption)
     | exact dec_mop_sub w σ hs (by assumption) (by assumption) (by assumption)
     | exact dec_mop_mul w σ hs (by assumption) (by assumption) (by assumption)

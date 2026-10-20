@@ -32,7 +32,8 @@ theorem step_sail (s t : RV.State) (σ : SailState) (h : Airbender.AgreeSail s �
     have hd := hdec
     unfold RV.decode at hd
     simp only at hd
-    split at hd <;> (try simp only [RV.decodeCsr, RV.DelegationKind.ofCsr, apply_ite (Option.map _), Option.map_some, Option.map_none] at hd) <;> (try split_ifs at hd) <;> cases hd
+    split at hd <;> (try simp only [RV.decodeCsr] at hd) <;> (try split_ifs at hd) <;>
+      first | cases hd | obtain ⟨_, _, rfl⟩ := Option.map_eq_some_iff.mp hd
     all_goals first
       | (simp [RV.Instr.readsInput] at hr; done)
       | exact kind_lui h ha' h2 _ _ hdec hex
