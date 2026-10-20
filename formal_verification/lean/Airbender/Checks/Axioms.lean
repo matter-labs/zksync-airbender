@@ -95,6 +95,8 @@ import Tests.SubwordRouting
 
 import Tests.SubwordValues
 
+import Tests.SubwordDecoder
+
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
 #print axioms Airbender.AddSub.Proofs.constraint_count
@@ -2268,3 +2270,48 @@ import Tests.SubwordValues
 #print axioms Tests.SubwordValues.wrong_upper_offset_rejected
 #print axioms Tests.SubwordValues.wrong_native_offset_rejected
 #print axioms Tests.SubwordValues.native_trap_rejected
+
+#print axioms Airbender.SubwordMemory.Proofs.decoder_field_bounds
+#print axioms Airbender.SubwordMemory.Proofs.padding_excluded
+#print axioms Airbender.SubwordMemory.Proofs.fetched_sources
+#print axioms Airbender.SubwordMemory.Proofs.entry_fields
+#print axioms Airbender.SubwordMemory.Proofs.fetched_fields
+#print axioms Airbender.SubwordMemory.Proofs.decoded_load_writes
+#print axioms Airbender.SubwordMemory.Proofs.fetched_load_writes
+#print axioms Airbender.SubwordMemory.native_fetched_fields
+#print axioms Airbender.SubwordMemory.native_fetched_load_writes
+#print axioms Tests.SubwordDecoderFixture.lookup_members
+#print axioms Tests.SubwordDecoderPart0.accepted_0
+#print axioms Tests.SubwordDecoderPart0.accepted_1
+#print axioms Tests.SubwordDecoderPart1.accepted_2
+#print axioms Tests.SubwordDecoderPart1.accepted_3
+#print axioms Tests.SubwordDecoderPart2.accepted_4
+#print axioms Tests.SubwordDecoderPart2.accepted_5
+#print axioms Tests.SubwordDecoderPart3.accepted_6
+#print axioms Tests.SubwordDecoderPublic.fields
+#print axioms Tests.SubwordDecoderPublic.actual_bytes
+#print axioms Tests.SubwordDecoderPublic.original_decode
+#print axioms Tests.SubwordDecoderPublic.constructed
+#print axioms Tests.SubwordDecoderPublic.query
+#print axioms Tests.SubwordDecoderPublic.member
+#print axioms Tests.SubwordDecoder.native_constraints
+#print axioms Tests.SubwordDecoder.fetched
+#print axioms Tests.SubwordDecoder.loads
+#print axioms Tests.SubwordDecoder.unsigned_byte
+#print axioms Tests.SubwordDecoder.original_x0
+#print axioms Tests.SubwordDecoder.store_flags
+#print axioms Tests.SubwordDecoder.signed_immediates
+#print axioms Tests.SubwordDecoder.unsupported
+#print axioms Tests.SubwordDecoder.selected_query
+#print axioms Tests.SubwordDecoder.old_load_index_rejected
+#print axioms Tests.SubwordDecoder.old_store_flag_rejected
+#print axioms Tests.SubwordDecoder.crossed_unsigned_decoder_rejected
+#print axioms Tests.SubwordDecoder.crossed_x0_decoder_rejected
+#print axioms Tests.SubwordDecoder.crossed_store_decoder_rejected
+#print axioms Tests.SubwordDecoderOriginal.decoded_0
+#print axioms Tests.SubwordDecoderOriginal.decoded_1
+#print axioms Tests.SubwordDecoderOriginal.decoded_2
+#print axioms Tests.SubwordDecoderOriginal.decoded_3
+#print axioms Tests.SubwordDecoderOriginal.decoded_4
+#print axioms Tests.SubwordDecoderOriginal.decoded_5
+#print axioms Tests.SubwordDecoderOriginal.decoded_6

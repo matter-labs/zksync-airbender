@@ -216,3 +216,9 @@ retaining every original row and the x0 exception. Load candidate bounds and
 store contribution bounds are derived; initialized reads and whole store-write
 bounds still require history. Raw-key normalization and original Sail effects
 remain separate dependencies. Rejected mutations add no defect finding.
+
+[Decoded subword writes](../../Circuits/SubwordMemory/Decoding.lean) now combine
+these native candidate bounds with the x0 flag derived from original public
+decoding. Actual load writes are bounded without an added flag/range premise.
+Packed raw-key normalization, exported decoder fidelity and initialized old/source
+reads and whole store-write bounds remain separate unfinished connections.

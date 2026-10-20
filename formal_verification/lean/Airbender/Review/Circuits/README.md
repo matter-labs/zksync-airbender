@@ -12,3 +12,9 @@
 
 The remaining v2 families are tracked in the [plan](../../../FORMAL_VERIFICATION_PLAN.md).
 Local row soundness and whole execution are distinct milestones.
+
+[Subword public decoding](SubwordMemory/Decoding.lean) now derives original
+LB/LH/LBU/LHU/SB/SH fields and bounded actual load writes from native acceptance
+and constructed public logical setup membership. All seven full native fixtures
+and five decoder rejections pass. Exported decoder fidelity, decoded-key
+normalization, initialized history and original subword execution remain open.

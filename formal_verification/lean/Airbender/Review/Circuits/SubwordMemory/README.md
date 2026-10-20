@@ -92,3 +92,23 @@ offsets/selectors and a trap-bearing key. No desired result, read bound or
 unchecked decoder interpretation is assumed. Decoded byte/halfword key
 normalization, initialized source/old-RAM and whole-write bounds, original Sail
 execution and composition remain unfinished. No confirmed defect is added.
+
+## Original public decoding
+
+[Two public claims](Decoding.lean) derive actual native fields and decoded
+load writes/bounds from the constructed original public image, complete logical
+setup membership and native acceptance. [The interface](Decoder.lean) retains
+all six original subword forms, signed immediates and x0. Native store Booleanity
+excludes the entire unsupported/sentinel domain; no Boolean x0 or expected data
+premise is added. [Recovery calculations](../../../Proofs/SubwordMemory/Decoder.lean)
+remain internal. A source pin is separate from native exported decoder fidelity,
+which is still open. Packed-key normalization, initialized reads/whole-store
+bounds and original Sail execution remain next dependencies.
+
+[Seven complete native fixtures](../../../../Tests/SubwordDecoderFixture.lean)
+cover all six forms, actual public bytes, distinct unsigned-byte data and x0.
+[Tests](../../../../Tests/SubwordDecoder.lean) apply both claims and reject five
+wrong decoder memberships. Old local fixtures remain unchanged and accepted
+locally; their incompatible unused-index/zero-flag metadata is rejected by
+public decoding. Symbolic sparse-head membership avoids concrete-tail expansion
+and preserves every proof/resource ceiling. No confirmed defect is added.

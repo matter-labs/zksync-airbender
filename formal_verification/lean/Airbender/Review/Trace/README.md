@@ -369,3 +369,10 @@ clearing/placement write assembly. The original six full rows support all new
 claims nonvacuously. Actual decoder membership, packed-key normalization and
 initialized source/old-RAM/whole-write bounds are still required before original
 Sail transport. This checkpoint adds no initialized subword execution claim.
+
+[Subword public fields and load writes](../Circuits/SubwordMemory/Decoding.lean)
+now derive all native decoder fields and written load bounds from actual public
+byte construction, original Sail decoding, complete logical setup membership and
+native acceptance. This closes the local Boolean x0 dependency. Native exported
+decoder fidelity, raw-key normalization and initialized history still precede
+original subword instruction/trace execution and composition.

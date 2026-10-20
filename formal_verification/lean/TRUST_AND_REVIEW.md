@@ -2195,3 +2195,57 @@ custom/CSR and unified/terminal/padding/initialization boundaries remain unfinis
 General export/compiler refinement and physical verifier/cryptographic enforcement
 remain separate. FINDINGS and its historical archive, native sources/artifacts,
 original Clean/Sail, exporter/codec and resource/proof ceilings are unchanged.
+
+## Public subword decoding checkpoint (2026-10-20)
+
+[Original public decoding](Airbender/Review/Circuits/SubwordMemory/Decoder.lean)
+now projects all six supported original Sail forms: LB, LH, LBU, LHU, SB and SH.
+The actual v2 decoder source is pinned. Its one-bit store mask and raw funct3
+are retained, unused load rs2 and store rd clear, and original x0 loads remain
+present. Signed immediate limbs are preserved. The v3 projection/proof approach
+is adapted with exact provenance; its three-bit masks, x0 exclusions and native
+connections are not copied into v2 coverage.
+
+[Internal recovery](Airbender/Proofs/SubwordMemory/Decoder.lean) uses actual
+public sparse-image construction, complete logical setup membership and original
+native acceptance. Native store Booleanity excludes every unsupported slot and
+the complete sentinel tail. The selected original public instruction supplies
+all ten native query fields: PC, register indices, x0 flag, immediate, raw funct3
+and store mask. No selector meaning or Boolean x0 flag is supplied separately.
+Certified native candidate bounds plus the derived x0 flag give actual decoded
+load writes and both written-limb bounds, including discarded x0 writes.
+
+[Two short public claims](Airbender/Review/Circuits/SubwordMemory/Decoding.lean)
+expose these connections without supplying expected reads/results or a table
+equivalence. Calculations and proof assembly remain internal. This is logical
+public-image membership; correspondence to an actual native exported subword
+decoder table remains an explicit Import fidelity boundary. The source pin is
+not an exported-table certificate or general Rust/compiler refinement claim.
+
+[Seven complete native rows](Tests/SubwordDecoderFixture.lean) cover all six
+forms, lower/upper ROM and RAM cases, signed/unsigned data, original x0 loads
+and SB/SH. Existing six local fixtures remain unchanged. New rows clear their
+unused load index and correct store rd/x0 metadata; an added LBU case has its
+own native key, unsigned candidate and actual write. All 357 original equations
+and 98 lookup memberships pass. Independent original instruction bytes construct
+public one-word images with the full 1,048,576-row capacity; original decoding is
+checked separately as small pure reductions. [Applications](Tests/SubwordDecoder.lean)
+exercise both claims nonvacuously, signed immediate extremes, unsupported word
+forms and five decoder-membership rejections. Old local rows remain accepted
+locally and their incompatible decoder metadata is correctly rejected.
+
+Concrete membership expansion initially reached Lean's allocation cap. Reusing
+the existing symbolic sparse-head membership lemma avoids that expansion; query
+metadata is reduced explicitly and original decoding is split from state replay.
+No allocation, footprint, resident, recursion or proof ceiling is increased.
+Every failed owned worker is confirmed terminated before retrying.
+
+Next: certify actual native decoder exports, normalize packed subword keys over
+the decoded domain and derive source/old-RAM reads and whole store-write bounds
+from initialized history. Original subword Sail execution and composition remain
+unfinished. The sixth ordinary family, delegation/custom/CSR, unified execution,
+initialization/teardown and terminal/padding boundaries remain open. General
+Rust/compiler refinement and physical verifier/cryptographic enforcement remain
+separate. No confirmed native defect is added; FINDINGS and its historical
+archive, original Clean/Sail, native circuit/helper artifacts and source checkout
+are unchanged.

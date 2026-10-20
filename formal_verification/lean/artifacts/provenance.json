@@ -547,6 +547,10 @@
     {
       "path": "../../cs/src/machine/ops/unrolled/load_store.rs",
       "sha256": "ddd6da8c20ef850718d9c96fe4c817fb7e36e4c44e6621f325c92fc7bc39ca8d"
+    },
+    {
+      "path": "../../cs/src/machine/ops/unrolled/decoder/memory_subword_only.rs",
+      "sha256": "40519ff0ef6c0236b92ecb313332f83c19497b90d6f3d350d1a821fd81314dfa"
     }
   ],
   "adaptations": [
@@ -6076,6 +6080,95 @@
       "source_path": "Airbender/Proofs/SubwordMemory/Data.lean",
       "source_sha256": "f284444a8f4674cce1a5dc871f34f0e2100688679365b1292f06a16a41fd18ee",
       "change": "Adapt certificate-to-candidate value transport from the pinned v3 data proof approach. V2 uses its checked native tags, Mersenne31 field, canonical raw keys, actual masked writes and one aligned word ROM; decoded byte/halfword/Sail normalization remains open."
+    },
+    {
+      "path": "Airbender/Review/Circuits/SubwordMemory/Decoder.lean",
+      "backport_reuse_revision": "43f2189ed4e5821b0d3e91ac0f074be17b655c8a",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/WordMemory.lean",
+      "backport_reuse_sha256": "87d8310fc7d457268e4f32c940bd520bace5aaf624aec0ec59ef6a057184b3d1",
+      "change": "Adapt the original LOAD/STORE field projection to all six native subword forms. Use the actual v2 one-bit store mask and raw funct3, clear unused register indices and preserve original load-to-x0 instructions, unlike v3. Expose only observed fields and actual masked writes/bounds; exported decoder fidelity and history remain separate."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/Decoder.lean",
+      "backport_reuse_revision": "43f2189ed4e5821b0d3e91ac0f074be17b655c8a",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/Decoder.lean",
+      "backport_reuse_sha256": "9d639c6c7f86fbe80d14aa2176417538e08b7039baf52b35592d1cf47e7e0981",
+      "change": "Reuse generic ten-column query recovery and actual public sparse-image source transport. Derive sentinel exclusion from the native store Boolean equation, exact masks/funct3/zero/index/PC/immediate fields and bounded actual load writes from certified native candidates. No supplied Boolean zero flag, expected read/result or table equivalence."
+    },
+    {
+      "path": "Airbender/Review/Circuits/SubwordMemory/Decoding.lean",
+      "backport_reuse_revision": "43f2189ed4e5821b0d3e91ac0f074be17b655c8a",
+      "backport_reuse_path": "Airbender/Review/Circuits/ShiftBinop/Routing.lean",
+      "backport_reuse_sha256": "e65992003bfd14562ac61950de4f32f791c3747ca1a5cecdc1570537879fd3de",
+      "change": "Adapt the short public wrapper pattern to fetched original subword fields and actual masked load writes with bounds. Keep original public byte/image construction and actual native acceptance/membership as meaningful assumptions; computations stay internal."
+    },
+    {
+      "path": "Tests/SubwordDecoderFixture.lean",
+      "backport_reuse_revision": "43f2189ed4e5821b0d3e91ac0f074be17b655c8a",
+      "backport_reuse_path": "Tests/SubwordRoutingFixture.lean",
+      "backport_reuse_sha256": "6938774987ef16605d99b206d4fa191925da0f9c0061d006ca002c016a957ee8",
+      "change": "Adapt the six complete native local rows by clearing unused load rs2 and setting unused store rd/zero metadata to actual decoder values. Preserve the original fixtures unchanged; add a seventh complete LBU row with distinct raw lookup, candidate and write values. Independently encode original instruction bytes."
+    },
+    {
+      "path": "Tests/SubwordDecoderPart0.lean",
+      "backport_reuse_revision": "43f2189ed4e5821b0d3e91ac0f074be17b655c8a",
+      "backport_reuse_path": "Tests/SubwordRoutingPart0.lean",
+      "backport_reuse_sha256": "ffd595862a33e460e824e7743b86ebf3f919280d2338f9fc21456ec681a32c10",
+      "change": "Reuse partitioned complete native-equation and lookup checks for the decoder-compatible lower/upper ROM rows. Preserve all native constraints and certified dynamic queries."
+    },
+    {
+      "path": "Tests/SubwordDecoderPart1.lean",
+      "backport_reuse_revision": "43f2189ed4e5821b0d3e91ac0f074be17b655c8a",
+      "backport_reuse_path": "Tests/SubwordRoutingPart1.lean",
+      "backport_reuse_sha256": "a7c9142db61f9bbd47c1de0fc0f1f0af2bb80c4b909c28e66c62143bc482bf17",
+      "change": "Reuse partitioned complete native checks for signed RAM loads and the original x0 halfword load. Derive public zero decoding separately."
+    },
+    {
+      "path": "Tests/SubwordDecoderPart2.lean",
+      "backport_reuse_revision": "43f2189ed4e5821b0d3e91ac0f074be17b655c8a",
+      "backport_reuse_path": "Tests/SubwordRoutingPart2.lean",
+      "backport_reuse_sha256": "a10f03dbceafb157de0c7da0d4767dbaf1abf085f107047975a6da57f5dde4f3",
+      "change": "Reuse complete native checks for SB/SH with the actual unused rd=0 and zero flag=1. Keep original written/source/old-RAM data."
+    },
+    {
+      "path": "Tests/SubwordDecoderPart3.lean",
+      "backport_reuse_revision": "43f2189ed4e5821b0d3e91ac0f074be17b655c8a",
+      "backport_reuse_path": "Tests/SubwordRoutingPart0.lean",
+      "backport_reuse_sha256": "ffd595862a33e460e824e7743b86ebf3f919280d2338f9fc21456ec681a32c10",
+      "change": "Adapt the complete ROM-row checker to the added LBU case and literal unsigned byte helper result, using bounded independent native equation and lookup checks."
+    },
+    {
+      "path": "Tests/SubwordDecoderPublic.lean",
+      "backport_reuse_revision": "43f2189ed4e5821b0d3e91ac0f074be17b655c8a",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/NativeSetup.lean",
+      "backport_reuse_sha256": "71d05a92b73a1b7893ac6e9455aef94d2ef2b6b600b500b38f618f2ff75a3a53",
+      "change": "Reuse actual byte reads and stateful public slot/image construction. Split pure original Sail reductions from state interpretation; reduce native metadata explicitly and reuse the generic proved sparse-head member instead of unfolding a million-slot setup. Keep default proof/resource limits."
+    },
+    {
+      "path": "Tests/SubwordDecoder.lean",
+      "backport_reuse_revision": "43f2189ed4e5821b0d3e91ac0f074be17b655c8a",
+      "backport_reuse_path": "Tests/ShiftDecoder.lean",
+      "backport_reuse_sha256": "a07db35aab75f21892f74d12ecb5c13e27bb8a46fd07ecc31c3c00593cc19d67",
+      "change": "Adapt original byte/field/x0 and unsupported-form tests. Apply both new public claims nonvacuously to full accepted native rows, retain signed immediate extremes and reject five mismatched decoder memberships symbolically, without scanning the sentinel tail."
+    },
+    {
+      "path": "Tests/SubwordDecoderOriginal.lean",
+      "backport_reuse_revision": "43f2189ed4e5821b0d3e91ac0f074be17b655c8a",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/NativeSetup.lean",
+      "backport_reuse_sha256": "71d05a92b73a1b7893ac6e9455aef94d2ef2b6b600b500b38f618f2ff75a3a53",
+      "change": "Adapt concrete original Sail decoding checks as seven small pure reductions with default recursion and allocation limits. Do not copy the older raised recursion limit or expand the public state during decoding."
+    },
+    {
+      "path": "Airbender/Review/Circuits/SubwordMemory/Decoder.lean",
+      "source_path": "Airbender/Review/Circuits/SubwordMemory/Decoder.lean",
+      "source_sha256": "1f7d0ac077111e45bf5b704980353773c20c9297e5c60bf7d178f818aac38b1d",
+      "change": "Adapt the pinned v3 original-Sail subword projection/field proof approach, with actual v2 one-bit store mask and raw funct3. Preserve original x0 loads, ten native fields, Mersenne31 values and the complete sparse tail; do not copy v3 three-bit selectors, x0 exclusion, table model or coverage."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/Decoder.lean",
+      "source_path": "Airbender/Proofs/SubwordMemory/Decoder.lean",
+      "source_sha256": "d149b1fce1c6fb55693fb0c37336620ec3a2239881a064f73617c8502a176066",
+      "change": "Adapt the pinned v3 original-Sail subword projection/field proof approach, with actual v2 one-bit store mask and raw funct3. Preserve original x0 loads, ten native fields, Mersenne31 values and the complete sparse tail; do not copy v3 three-bit selectors, x0 exclusion, table model or coverage."
     }
   ],
   "setup_artifacts": [

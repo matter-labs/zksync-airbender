@@ -1412,3 +1412,10 @@ byte-for-byte. This closes the concrete local import prerequisite; numerical
 shift/binop soundness and initialized original Sail execution remain unfinished.
 General Rust/JSON/compiler refinement and cryptographic argument enforcement
 remain separate. No native implementation defect is established.
+
+[Public subword decoding](Airbender/Review/Circuits/SubwordMemory/Decoding.lean)
+now derives all ten native fields for original LB/LH/LBU/LHU/SB/SH and actual
+load writes/bounds, including x0. Seven full native rows and original public
+byte images support both short claims; five decoder rejections pass. Native
+exported decoder fidelity, packed-key normalization and initialized history
+remain open before original subword execution and whole-machine composition.
