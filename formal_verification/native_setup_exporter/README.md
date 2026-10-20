@@ -143,3 +143,11 @@ the byte outside the selected write position and native zero outputs for other
 funct3 keys. Written-value placement, accepted constraints, original instruction
 execution and physical argument binding remain separate. Shared codec,
 dependencies, memory limits and all other exporter modes are unchanged.
+
+The written-value placement mode accepts --subword-store-place LAYOUT.json
+OUTPUT.json and materializes the actual native table at ID 55 and compiled
+offset 7,405,569. All 2,097,152 tagged rows and raw offsets/funct3 keys are kept.
+The standard gate reproduces the pinned JSON byte for byte. Lean checks SB low-byte
+placement, SH retention of the whole limb and SW/unused zero outputs. Full native
+acceptance, original instruction execution and physical argument binding remain
+separate. Shared codec, dependencies, limits and other exporter modes are unchanged.

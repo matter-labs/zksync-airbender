@@ -1259,11 +1259,11 @@ Rust/compiler refinement and cryptographic enforcement remain separate.
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all ninety-five concrete test modules pass.
-- Importer regressions: 428 checks pass.
-- Axiom audit: 1909 explicit roots; only propext, Classical.choice and Quot.sound.
-- All one hundred and nine public Review theorems (twenty-five circuit claims, fifty-eight trace claims and twenty-six helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
-- Source provenance: 79 unchanged reused files, six native circuit artifacts, forty-nine native Rust sources plus compiled shift-offset metadata, nineteen native setup artifacts and four exporter source/manifest/lock files.
+- Library, both CLI entrypoints and all ninety-six concrete test modules pass.
+- Importer regressions: 442 checks pass.
+- Axiom audit: 1930 explicit roots; only propext, Classical.choice and Quot.sound.
+- All one hundred and ten public Review theorems (twenty-five circuit claims, fifty-eight trace claims and twenty-seven helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Source provenance: 79 unchanged reused files, six native circuit artifacts, forty-nine native Rust sources plus compiled shift-offset metadata, twenty native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
 - Public Sail x1/PC reads construct the accepted alias fixture; missing register and byte data reject construction.
@@ -1751,6 +1751,39 @@ The written-value placement table, subword ROM regions, full native constraints,
 limb preselection, public decoding, initialized memory/history, original subword
 instruction execution and physical argument binding remain unfinished. No native
 defect is established; the findings bar and historical coverage archive are unchanged.
+
+## Native subword written-value placement checkpoint (2026-10-20)
+
+The native v2 written-value placement table now has a complete certificate for
+all 2,097,152 actual exported rows, native ID 55 and compiled offset 7,405,569.
+[Literal data](Airbender/Review/Helpers/Tables/NativeSubwordStorePlaceData.lean)
+comes from the unchanged pinned generator and shared lossless codec. Strict
+import retains exact field, profile, tag, placement, extent, shape and canonical
+values; the standard native gate reproduces the JSON byte for byte.
+
+[The public helper](Airbender/Review/Helpers/Tables/SubwordStorePlaceTheorems.lean)
+derives canonical key, exact SB/SH contribution, unused zero and 16-bit output
+bound from original Clean lookup membership. SB selects the source low byte and
+places it by offset parity; SH retains the whole preselected limb at every raw
+offset. SW and unused funct3 keys retain zero outputs. The presence of odd SH
+keys in this isolated table does not establish full circuit acceptance.
+
+[Internal assembly](Airbender/Proofs/SubwordMemory/StorePlace.lean) checks all
+native affine/periodic blocks across 32 control groups, adapting the pinned v3
+placement proof and reusing the verified v2 block helpers. The nondependent
+periodic getter is copied unchanged. Affine literal arrays compare every parsed
+element against the actual first/step/length before compact emission; prior
+emitter modes remain unchanged. Sample and size lemmas are structural. General
+Rust/JSON/elaborator fidelity remains the separate Import boundary; no theorem
+assumes table equivalence, expected results or new axioms, and no limits are raised.
+
+[Fifteen kernel regression roots](Tests/SubwordStorePlace.lean) cover all offsets,
+source high-byte removal, SH full/odd raw keys, SW/unused zeros and changed-query
+rejection. Fourteen new importer checks retain malformed-artifact rejection and
+crossed native-region tests. Remaining subword ROM regions, full native constraints,
+limb preselection, public decoding, initialized memory/history, original instruction
+execution and physical argument binding remain unfinished. No native defect is
+established; the findings standard and historical coverage archive are unchanged.
 
 ## Historical coverage and boundary notes
 

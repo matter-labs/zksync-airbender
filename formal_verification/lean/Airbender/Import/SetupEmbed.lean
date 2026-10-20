@@ -266,4 +266,47 @@ elab "import_native_subword_store_clear " name:ident " from " path:str : command
   emitData name region.data region.offset
 
 
+/-- An affine array is emitted only after comparing every parsed value with the
+    actual first value and step. Existing literal constructors handle other arrays. -/
+private def affineLiteralValuesSyntax (values : Array Nat) : CommandElabM (TSyntax `term) := do
+  if let some first := values[0]? then
+    if let some second := values[1]? then
+      let step := second - first
+      if step > 1 && (values.mapIdx fun i value => value == first + step * i).all id then
+        return ← `(Array.ofFn (fun i : Fin $(quote values.size) =>
+          $(quote first) + $(quote step) * i.val))
+  valuesSyntax values
+
+/-- Literal native v2 subword written-value placement rows. No table recipe is synthesized. -/
+elab "import_native_subword_store_place " name:ident " from " path:str : command => do
+  let artifact ← match parseSubwordStorePlace (← IO.FS.readFile path.getString) with
+    | .ok artifact => pure artifact
+    | .error error => throwError "native subword store-place import failed: {error}"
+  let some region := artifact.tables[0]? | throwError "missing native subword store-place table"
+  -- Share actual literal blocks/columns so reducing one field never rebuilds
+  -- the full matrix. Every value still comes from the validated native export.
+  let mut columns : Array (TSyntax `term) := #[]
+  for lane in [:region.data.columns.size] do
+    let some column := region.data.columns[lane]? | throwError "missing native store-place column"
+    let mut blocks : Array (TSyntax `term) := #[]
+    for index in [:column.blocks.size] do
+      let some block := column.blocks[index]? | throwError "missing native store-place block"
+      let term ← if let .periodic count stride values := block then do
+          let target := mkIdent (name.getId.appendAfter s!"Values{lane}_{index}")
+          let literal ← affineLiteralValuesSyntax values
+          elabCommand (← `(def $target : Array Nat := $literal))
+          let stride ← if stride ≥ 0 then `(Int.ofNat $(quote stride.toNat))
+            else `(Int.negSucc $(quote (-stride - 1).toNat))
+          `(Airbender.Setup.Block.periodic $(quote count) $stride $target)
+        else blockSyntax block
+      let target := mkIdent (name.getId.appendAfter s!"Block{lane}_{index}")
+      elabCommand (← `(def $target : Airbender.Setup.Block := $term))
+      blocks := blocks.push (← `($target))
+    let target := mkIdent (name.getId.appendAfter s!"Column{lane}")
+    elabCommand (← `(def $target : Airbender.Setup.Column := ⟨#[$[$blocks],*]⟩))
+    columns := columns.push (← `($target))
+  elabCommand (← `(def $name : Airbender.Setup.TableData 4 :=
+    ⟨$(quote region.data.length), $(quote region.offset), #v[$[$columns],*]⟩))
+
+
 end Airbender.Setup

@@ -5712,6 +5712,78 @@
       "backport_reuse_path": "Tests/SubwordLoad.lean",
       "backport_reuse_sha256": "1f7b829c6459488fa2c3b8901459cf704905da1d2d7e3809dd9acfc669704696",
       "change": "Reuse complete native row and malformed membership regressions for all four offsets, retained/cleared byte patterns, SH/SW/unused keys and altered output rejection."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "100dbda732ce3c8fb0b5e9591186e2570bae4855",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "749743534f74836c254371fde43cf58eeed33b00f99e28cd259e5b32244ff7c2",
+      "change": "Reuse strict native validation for actual written-value placement ID 55, compiled offset 7405569 and the complete tagged 21-bit domain; all prior modes remain unchanged."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "100dbda732ce3c8fb0b5e9591186e2570bae4855",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "1152017ecb7a0f9eb32a14b84deb1f89b33fac3d3cf9098e8dcab2e803d646a8",
+      "change": "Reuse the literal emitter with separately shared actual values, blocks and columns for the new placement mode. A new affine literal constructor compares every parsed element against the actual first/step/length before emitting Array.ofFn; fallback and all prior modes are unchanged. General parsing/emission fidelity remains an explicit boundary."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "100dbda732ce3c8fb0b5e9591186e2570bae4855",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "a5f19d6b2aaf08a4537b4ca917c628e71681ee0a33a652e9ac1a93c6a0d4ab02",
+      "change": "Retain existing checks and add fourteen actual native placement field/profile/tag/placement/extent/shape/canonicality rejection checks."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "100dbda732ce3c8fb0b5e9591186e2570bae4855",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "79f558272cf5b3bc0bdae0f92d9958e5e29c1274732dc606c72b32778ec44447",
+      "change": "Retain scoped offline locked native checks and reproduce the actual placement region byte for byte, including native tag and full compiled placement."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/NativeSubwordStorePlaceData.lean",
+      "backport_reuse_revision": "100dbda732ce3c8fb0b5e9591186e2570bae4855",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NativeSubwordLoadData.lean",
+      "backport_reuse_sha256": "b5d78bcc40704130d2d83107607f97e4b3181d950a84bc711ba93f75acdfb2b9",
+      "change": "Reuse the strict native literal-data module pattern for the written-value placement region."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/SubwordStorePlace.lean",
+      "backport_reuse_revision": "100dbda732ce3c8fb0b5e9591186e2570bae4855",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/SubwordStoreClear.lean",
+      "backport_reuse_sha256": "370b7905a782c5772eef00440b0594261f01b8645b66290d570959d565880bcb",
+      "change": "Reuse original Clean static-table construction over all 21-bit keys. Define native SB placement of the low byte by parity, SH retention of the entire limb at all offsets, and native zero outputs for SW and unused funct3."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/StorePlace.lean",
+      "backport_reuse_revision": "100dbda732ce3c8fb0b5e9591186e2570bae4855",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/StoreClear.lean",
+      "backport_reuse_sha256": "fe9a2bc2d84240c35fa733828d6695871a0e0b25eaa34d239e8dd04909d8ea70",
+      "change": "Reuse symbolic block assembly and exact native/Clean row/membership transport. Adapt pinned v3 placement proof structure to all 32 native control groups and actual SH/unused rows. Structural affine-literal sample reads avoid large enumerations or increased proof/resource limits.",
+      "source_path": "Airbender/Proofs/Tables/ImportedStorePlace.lean",
+      "source_sha256": "abc3926fb1a459225836c051b4492befcebffdf835586a4f4189642c59977a8f"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Tables/SubwordStorePlaceTheorems.lean",
+      "backport_reuse_revision": "100dbda732ce3c8fb0b5e9591186e2570bae4855",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/SubwordStoreClearTheorems.lean",
+      "backport_reuse_sha256": "c2c3ad0674c8e4d4a7ca635d1ff3319de461c1a7b05a1c0910befd628cd2cc83",
+      "change": "Reuse the short public helper deriving canonical key, exact byte/halfword placement, unused zero and canonical output bound from membership. Full accepted stores and original execution remain separate."
+    },
+    {
+      "path": "Tests/SubwordStorePlace.lean",
+      "backport_reuse_revision": "100dbda732ce3c8fb0b5e9591186e2570bae4855",
+      "backport_reuse_path": "Tests/SubwordStoreClear.lean",
+      "backport_reuse_sha256": "49845a4484fdf67b6f6638777b772b438da625316ff3702ecd5aa1d4a8d695be",
+      "change": "Reuse complete native row and malformed membership regressions for all four offsets, source high-byte removal, SH raw odd keys, SW/unused outputs and altered placement/unused rejection."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/StorePlace.lean",
+      "backport_reuse_revision": "100dbda732ce3c8fb0b5e9591186e2570bae4855",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/LoadGetters.lean",
+      "backport_reuse_sha256": "e59ca363107607df0708934cd974a1553ae74895b037334673686e1652edba8f",
+      "change": "Copy periodic_nat unchanged, preserving nondependent optional reads and the checked periodic block lemma. Reuse the existing generic affine and block-selection helpers by import."
     }
   ],
   "setup_artifacts": [
@@ -5879,6 +5951,13 @@
       "profile": "actual native v2 original-RAM-limb clearing table ID 54, compiled offset 5308417, all 2097152 tagged rows; retains every offset/funct3 key and unused zero output; full native limb selection, accepted stores and execution remain separate",
       "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
+    },
+    {
+      "path": "artifacts/setup/subword-store-place-native.json",
+      "sha256": "2f6b269d1ccb43022f4a7cdb4835c05f67be29eb8f102ae88e6630bacfd9111a",
+      "profile": "actual native v2 written-value placement table ID 55, compiled offset 7405569, all 2097152 tagged rows; every offset/funct3, full SH limb and unused zero output retained; accepted full stores and original execution remain separate",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
     }
   ],
   "native_exporter_files": [
@@ -5892,7 +5971,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "913097440c05933ca06f0af84d13f54db9321cd8ec1656fe28cd6cc4344686fc"
+      "sha256": "51af6f27a9564e30be2ba316f7eb5486370efdb012d6a3ee5332b4dae5add6c9"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",

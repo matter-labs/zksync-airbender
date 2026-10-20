@@ -62,6 +62,11 @@ certifies all 2,097,152 actual native store-clear rows, including both byte mask
 all four offsets and retained unused zero outputs. Written-value placement and
 full subword native/history/original instruction execution remain unfinished.
 
+The [written-value placement helper](Airbender/Review/Helpers/Tables/SubwordStorePlaceTheorems.lean)
+certifies all 2,097,152 actual native placement rows, preserving SB byte positions,
+SH full limbs at all raw offsets and unused zero outputs. Subword ROM regions,
+full accepted constraints, initialized history and original execution remain open.
+
 The arithmetic checkpoint includes complete initialized ADD/ADDI/SUB/LUI/AUIPC normal-path
 execution and conditional row soundness, including actual masked destination
 writes, original-opcode discarded x0 writes and aligned 32-bit PC wraparound. Native ten-column decoder placement/query order is checked;

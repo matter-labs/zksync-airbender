@@ -85,6 +85,8 @@ import Tests.SubwordLoad
 
 import Tests.SubwordStoreClear
 
+import Tests.SubwordStorePlace
+
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
 #print axioms Airbender.AddSub.Proofs.constraint_count
@@ -2062,3 +2064,25 @@ import Tests.SubwordStoreClear
 #print axioms Airbender.Tests.SubwordStoreClear.unused_key_zero
 #print axioms Airbender.Tests.SubwordStoreClear.wrong_cleared_rejected
 #print axioms Airbender.Tests.SubwordStoreClear.wrong_unused_rejected
+
+#print axioms Airbender.SubwordMemory.StorePlaceProofs.store_place_output
+#print axioms Airbender.SubwordMemory.StorePlaceProofs.store_place_bounds
+#print axioms Airbender.SubwordMemory.StorePlaceProofs.native_store_place_rows
+#print axioms Airbender.SubwordMemory.StorePlaceProofs.store_place_lookup
+#print axioms Airbender.SubwordMemory.StorePlaceProofs.store_place_values
+#print axioms Airbender.Verification.SubwordStorePlace.native_values
+#print axioms Airbender.Tests.SubwordStorePlace.complete_native_rows
+#print axioms Airbender.Tests.SubwordStorePlace.zero_limb
+#print axioms Airbender.Tests.SubwordStorePlace.low_byte_placed
+#print axioms Airbender.Tests.SubwordStorePlace.high_source_byte_ignored
+#print axioms Airbender.Tests.SubwordStorePlace.all_bits_even
+#print axioms Airbender.Tests.SubwordStorePlace.all_bits_odd
+#print axioms Airbender.Tests.SubwordStorePlace.zero_low_byte_odd
+#print axioms Airbender.Tests.SubwordStorePlace.offset_two
+#print axioms Airbender.Tests.SubwordStorePlace.offset_three
+#print axioms Airbender.Tests.SubwordStorePlace.halfword_full_limb
+#print axioms Airbender.Tests.SubwordStorePlace.halfword_odd_key
+#print axioms Airbender.Tests.SubwordStorePlace.word_zero
+#print axioms Airbender.Tests.SubwordStorePlace.unused_key_zero
+#print axioms Airbender.Tests.SubwordStorePlace.wrong_placed_rejected
+#print axioms Airbender.Tests.SubwordStorePlace.wrong_unused_rejected

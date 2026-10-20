@@ -166,3 +166,17 @@ with symbolic block selection and the pinned periodic upper-byte proof.
 all offsets, SH/SW/unused keys and changed-query rejection. Written-value
 placement, actual limb selection, full accepted stores, initialized history and
 original Sail execution remain separate. This certificate adds no defect finding.
+
+## Native subword written-value placement
+
+[The public helper](SubwordStorePlaceTheorems.lean) derives exact native SB/SH
+placement, unused zero and canonical bounds. [The model](SubwordStorePlace.lean)
+retains all 21-bit keys and offsets. [Internal assembly](../../../Proofs/SubwordMemory/StorePlace.lean)
+checks all 2,097,152 literal rows at ID 55 and compiled offset 7,405,569 with
+symbolic block selection and structural literal-array reads. The affine literal
+emitter checks every actual parsed element before compact representation;
+general emission fidelity remains an Import boundary.
+[Regressions](../../../../Tests/SubwordStorePlace.lean) cover byte placement,
+source high-byte removal, raw odd SH keys, SW/unused zeros and altered outputs.
+Full native preselection, accepted store constraints, history and original Sail
+execution remain separate; the isolated keys add no defect finding.
