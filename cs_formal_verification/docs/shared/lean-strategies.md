@@ -64,12 +64,21 @@ deliberate change: bump the toolchain and Mathlib together, update what depends 
 libraries, version-matched tools), fix what breaks, run `verify.sh`, commit. Never mix an upgrade with other work, so
 breakage and timing changes are attributable.
 
-### 1.5 Kernel re-check at milestones
+**Current exception: Lean 4.34.1.** Lean 4.35 (2026-10-12) rejects the generated Sail model: its `instruction` type
+has 361 constructors that carry data, above the compiler's limit of 244 (lean4#8930, open; the check is
+unchanged in 4.36.0-rc1). We rejected generating a smaller Sail model to work around it: that changes the
+trusted model and would need its own proof that it agrees with the full one. So we stay on the latest release
+that builds the full model, 4.34.1, which includes the kernel fixes backported from 4.35. Re-check at every new
+stable release and upgrade as soon as one builds the model. When upgrading, adopt `lake check` (kernel replay
+plus an axiom check); its targets must cover every final proof module, not only `human/`. Replaying `human/`
+checks that the statements are well-formed, not that they are proven. Keep `verify.sh`'s trust checks.
 
-`leancheck.sh` replays every declaration of `human/` and `slop/` through a fresh kernel with `leanchecker`, which
-ships with the pinned toolchain (`--fresh` also replays Mathlib and Sail). It guards against tactics or other
-metaprograms that might add declarations without the kernel. It is slow, so it is not part of `verify.sh`: run it at
-milestones, after a series of commits and before tagging or sharing a result.
+### 1.5 Backup checker: rarely
+
+`backup-check.sh` replays every declaration of `human/` and `slop/` through a second, fresh kernel with `leanchecker`,
+which ships with the pinned toolchain (`--fresh` also replays Mathlib and Sail). It guards against tactics or other
+metaprograms that might add declarations without the kernel. It takes tens of minutes, so it is not part of
+`verify.sh` and not run per commit: run it only at major milestones, such as before tagging or publishing a result.
 
 ### 1.6 Working with several agents or sessions
 
