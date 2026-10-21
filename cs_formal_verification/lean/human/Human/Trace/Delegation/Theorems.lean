@@ -1,16 +1,4 @@
-import Human.Circuits.AddSub.Reference
-import Human.Circuits.Bigint.Additive
-import Human.Circuits.Bigint.Equality
-import Human.Circuits.Bigint.Multiplication
-import Human.Circuits.Blake2G.State
-import Human.Circuits.Keccak.Chi
-import Human.Circuits.Keccak.Iota
-import Human.Circuits.Keccak.Rho
-import Human.Helpers.Core.BabyBearPrime
-import Human.Helpers.Decoder.Program
-import Human.Helpers.Delegation.BoundaryMemory
 import Human.Helpers.Delegation.Operations
-import Human.Helpers.Delegation.Requests
 import Human.Trace.Delegation.Execution
 
 -- The statements proven in slop/Slop/Final/Trace/Delegation/Theorems.lean (checked by verify.sh).

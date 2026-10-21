@@ -14,7 +14,7 @@ does not import the proofs, runs the regressions and the axiom audits, checks th
   an artifact into Clean constraints (`Human/Import/`). It imports only Mathlib, Clean, the Sail model and itself
   (`./verify.sh` step 1). Its directory READMEs are the review guide.
   The final statements are `def …Claim : Prop` in `Human/**/Theorems.lean` (and `Human/Trace/Soundness.lean`),
-  imported by `Human.lean`.
+  imported by `lean/human/Human.lean`.
 - `lean/slop/` — everything else (kernel-checked, not meant to be read): supporting calculations, proof assembly and
   artifact guards (`Slop/`), and the proofs of the final statements (`Slop/Final/`, laid out like `Human/`;
   `test/Checks/Claims.lean` checks each theorem against its `…Claim` by name and type, and its axioms).

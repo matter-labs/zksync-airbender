@@ -115,6 +115,8 @@ import Tests.UnifiedDecoder
 import Tests.DelegationTimestamps
 import Tests.DelegationMemory
 import Clean.Specs.Keccak256
+import Human.Import.BabyBear
+import Human.Import.Coefficients
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -2201,3 +2203,9 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedDelegation.public_region_including_ordinary_rejected
 #print axioms Tests.UnifiedDelegation.program_empty_region_after_preparation
 #print axioms Tests.UnifiedDelegation.program_region_keeps_bigint_abi_gaps
+
+-- the importer's own facts (human/Human/Import)
+#print axioms Airbender.Artifact.signedCoefficient_mod
+#print axioms Airbender.montgomery_inverse_correct
+#print axioms Airbender.serialized_one_correct
+#print axioms Airbender.serialized_neg_one_correct

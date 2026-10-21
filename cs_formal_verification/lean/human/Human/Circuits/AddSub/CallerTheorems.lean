@@ -1,4 +1,3 @@
-import Human.Circuits.AddSub.Reference
 import Human.Helpers.Delegation.Decoder
 
 -- The statements proven in slop/Slop/Final/Circuits/AddSub/CallerTheorems.lean (checked by verify.sh).

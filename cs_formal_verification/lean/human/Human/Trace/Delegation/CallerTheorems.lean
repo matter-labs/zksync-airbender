@@ -1,23 +1,8 @@
-import Human.Circuits.AddSub.Reference
-import Human.Circuits.Bigint.Memory
-import Human.Circuits.Blake2G.Memory
-import Human.Circuits.Blake2G.Row
-import Human.Circuits.JumpBranchSlt.Model
-import Human.Circuits.Keccak.Chi
-import Human.Circuits.Keccak.Memory
-import Human.Circuits.ShiftBinop.Model
-import Human.Helpers.Context.Registries.JumpBranchSlt
-import Human.Helpers.Context.Registries.MulDiv
-import Human.Helpers.Context.Registries.ShiftBinop
-import Human.Helpers.Context.Registries.SubwordMemory
 import Human.Helpers.Core.BabyBearPrime
 import Human.Trace.Delegation.MixedMemory
 import Human.Trace.Delegation.RequestEffects
 import Human.Trace.Delegation.RequestHashWindows
 import Human.Trace.Delegation.SharedOperations
-import Human.Trace.Workers.Blake2G.BoundaryCall
-import Human.Trace.Workers.Blake2Round.BoundaryCall
-import Human.Trace.Workers.Keccak.BoundaryCall
 
 -- The statements proven in slop/Slop/Final/Trace/Delegation/CallerTheorems.lean (checked by verify.sh).
 

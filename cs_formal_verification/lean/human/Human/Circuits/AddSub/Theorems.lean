@@ -1,12 +1,5 @@
 import Human.Circuits.AddSub.Model
-import Human.Circuits.JumpBranchSlt.Model
-import Human.Circuits.ShiftBinop.Model
-import Human.Helpers.Context.Registries.JumpBranchSlt
-import Human.Helpers.Context.Registries.MulDiv
-import Human.Helpers.Context.Registries.ShiftBinop
-import Human.Helpers.Context.Registries.SubwordMemory
 import Human.Helpers.Core.BabyBearPrime
-import Human.Helpers.Memory.SailHistory
 
 -- The statements proven in slop/Slop/Final/Circuits/AddSub/Theorems.lean (checked by verify.sh).
 

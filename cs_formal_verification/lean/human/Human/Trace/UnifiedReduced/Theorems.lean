@@ -1,29 +1,11 @@
-import Human.Circuits.Blake2G.Addresses
-import Human.Circuits.Blake2G.State
-import Human.Circuits.Keccak.Chi
-import Human.Circuits.Keccak.Memory
-import Human.Circuits.UnifiedReduced.Jump
-import Human.Circuits.UnifiedReduced.Model
-import Human.Circuits.UnifiedReduced.Shift
-import Human.Circuits.UnifiedReduced.WordROM
-import Human.Helpers.Context.Registries.JumpBranchSlt
-import Human.Helpers.Context.Registries.MulDiv
-import Human.Helpers.Context.Registries.ShiftBinop
-import Human.Helpers.Context.Registries.SubwordMemory
 import Human.Helpers.Core.BabyBearPrime
 import Human.Trace.Delegation.RequestHashWindows
-import Human.Trace.Delegation.SharedOperations
 import Human.Trace.UnifiedReduced.CallerCycles
-import Human.Trace.UnifiedReduced.CustomExecution
 import Human.Trace.UnifiedReduced.Execution
-import Human.Trace.UnifiedReduced.Memory
 import Human.Trace.UnifiedReduced.MixedMemory
 import Human.Trace.UnifiedReduced.MixedWindowProjection
 import Human.Trace.UnifiedReduced.PreparedRoundWindows
 import Human.Trace.UnifiedReduced.SharedSpans
-import Human.Trace.Workers.Blake2G.BoundaryCall
-import Human.Trace.Workers.Blake2Round.BoundaryCall
-import Human.Trace.Workers.Keccak.BoundaryCall
 
 -- The statements proven in slop/Slop/Final/Trace/UnifiedReduced/Theorems.lean (checked by verify.sh).
 

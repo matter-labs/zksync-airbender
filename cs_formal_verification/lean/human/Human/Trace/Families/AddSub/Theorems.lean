@@ -1,8 +1,5 @@
-import Human.Circuits.AddSub.Reference
-import Human.Circuits.WordMemory.Model
 import Human.Helpers.Core.BabyBearPrime
 import Human.Helpers.Memory.Native
-import Human.Helpers.Memory.SailHistory
 import Human.Trace.Families.AddSub.Execution
 
 -- The statements proven in slop/Slop/Final/Trace/Families/AddSub/Theorems.lean (checked by verify.sh).

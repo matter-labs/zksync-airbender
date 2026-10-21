@@ -1,15 +1,5 @@
-import Human.Circuits.AddSub.Reference
-import Human.Circuits.Bigint.Additive
-import Human.Circuits.Bigint.Equality
-import Human.Circuits.Bigint.Multiplication
-import Human.Circuits.Blake2G.Addresses
-import Human.Circuits.Blake2G.State
-import Human.Circuits.Keccak.Chi
-import Human.Circuits.Keccak.Iota
-import Human.Helpers.Core.BabyBearPrime
 import Human.Trace.Workers.Blake2G.BoundaryCall
 import Human.Trace.Workers.Blake2G.Windows
-import Human.Trace.Workers.Blake2Round.BoundaryCall
 
 -- The statements proven in slop/Slop/Final/Trace/Workers/Blake2G/Theorems.lean (checked by verify.sh).
 

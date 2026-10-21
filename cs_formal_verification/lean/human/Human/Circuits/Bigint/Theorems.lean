@@ -1,13 +1,4 @@
-import Human.Circuits.AddSub.Reference
-import Human.Circuits.Bigint.Additive
-import Human.Circuits.Bigint.Equality
 import Human.Circuits.Bigint.Memory
-import Human.Circuits.Bigint.Multiplication
-import Human.Helpers.Decoder.Program
-import Human.Helpers.Delegation.BoundaryMemory
-import Human.Helpers.Delegation.Operations
-import Human.Helpers.Memory.Platform
-import Human.Helpers.Memory.SailHistory
 
 -- The statements proven in slop/Slop/Final/Circuits/Bigint/Theorems.lean (checked by verify.sh).
 
