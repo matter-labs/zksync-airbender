@@ -1,12 +1,13 @@
 import Slop.Keccak.Lanes
 import Slop.Keccak.MixRotation
+import Slop.Keccak.OpIndex
 import Mathlib.Tactic.IntervalCases
 
 namespace Airbender.Keccak.Proofs
 open Arithmetic Mix
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2400000
+set_option maxHeartbeats 1200000
 
 private def preservedLanes (second : Bool) : Vector (Fin 6) 3 :=
   if second then #v[0, 2, 5] else #v[1, 3, 4]
@@ -23,8 +24,10 @@ theorem mix_preserved {p : Nat} [Fact p.Prime]
     ⟨(if second then 112 else 100) + 4 * i.val + limb, by rw [constraint_count]; cases second <;> simp only [Bool.false_eq_true, ite_false, ite_true] <;> omega⟩
   cases second <;> fin_cases i <;> interval_cases limb
   all_goals simp [Variables.modeColumns, mixMode] at selected
-  all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, selected, preservedLanes, readLaneLimbs, writeLaneLimbs] at equation ⊢
+  all_goals simp only [Bool.false_eq_true, ite_false, ite_true] at equation
+  all_goals op_index at equation
+  all_goals simp [Expression.eval, Verification.environment, selected, preservedLanes,
+    readLaneLimbs, writeLaneLimbs] at equation ⊢
   all_goals linear_combination -equation
 
 theorem mix_written_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
