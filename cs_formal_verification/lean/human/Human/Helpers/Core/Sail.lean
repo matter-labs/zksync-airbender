@@ -43,10 +43,16 @@ def writeMemory {size : Nat} (address : BitVec 32) (value : BitVec (8 * size)) :
     numTag := 0 }
   .impure (.inl (.ok (.memWrite request value 0))) (fun _ => .pure ())
 
+/-- The normal-path nextPC assignment of upstream `run_hart_active`, in its four-byte `F_Base`
+    branch (sail-riscv `6136f84`, `model/postlude/step.sail`), restated verbatim: `nextPC := PC + 4`.
+    Fetch, interrupts and the compressed/landing-pad branches are not part of this step. -/
+def normalBaseNextPC : SailRV32.SailM Unit := do
+  SailRV32.writeReg .nextPC (Sail.BitVec.addInt (← SailRV32.readReg .PC) 4)
+
 /-- Successful decoded four-byte path: upstream nextPC initialization, instruction
     execution, then upstream PC retirement. Fetch/interrupt/exception handling is excluded. -/
 def normalStep (instruction : SailRV32.SailM SailRV32.ExecutionResult) : SailRV32.SailM SailRV32.ExecutionResult := do
-  SailRV32.Functions.normal_base_next_pc ()
+  normalBaseNextPC
   let result ← instruction
   SailRV32.Functions.tick_pc ()
   pure result

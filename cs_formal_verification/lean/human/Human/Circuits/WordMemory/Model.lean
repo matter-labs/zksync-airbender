@@ -29,7 +29,6 @@ structure Output where
   data : Word
   pc : Word
 
-variable [MemoryPlatform SailRV32.exception]
 
 /-- Original Sail constructor used by both public-program binding and execution. -/
 def instruction (input : Input) : SailRV32.instruction :=
@@ -49,7 +48,6 @@ def spec (input : Input) (output : Output) : Prop :=
       (Sail.writeMemory (size := 4) output.address.toBitVec output.data.toBitVec)
   else Sail.stepSpec input.before (execution input) input.rd ⟨output.data, output.pc⟩
 
-omit [MemoryPlatform SailRV32.exception] in
 /-- Canonical input/output interpretation of the imported LW/SW variables. -/
 structure WordMapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
   sourceLo : input.source.lo = (w Variables.sourceLo).val
@@ -70,7 +68,6 @@ structure WordMapping {p : Nat} (input : Input) (output : Output) (w : Nat → Z
   finalPCLo : output.pc.lo = (w Variables.finalPCLo).val
   finalPCHi : output.pc.hi = (w Variables.finalPCHi).val
 
-omit [MemoryPlatform SailRV32.exception] in
 /-- Interpret one LW/SW assignment in the shared trace. The public initial state
     and program are bound by `InterfaceAssumptions.initialization`; imported
     constraints and logical matching are checked by `circuitModel.satisfies`. -/
@@ -88,14 +85,12 @@ structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (⟨.wordMemory, w⟩ : Row p PooledFamily).decoderQuery = entry.query ∧
     entry.instruction = instruction input
 
-omit [MemoryPlatform SailRV32.exception] in
 def circuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry) :
     Verification.CircuitModel Input Output (Nat → ZMod p) where
   satisfies := fun w => Accepted trace ∧ PooledDecoded trace program ∧ (⟨.wordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := TraceMapping trace initial cells program
 
-omit [MemoryPlatform SailRV32.exception] in
 /-- Public initialization, modeled tables and the ordinary flat-memory platform.
     Operand/address bounds, decoder preprocessing and successful register/memory
     transfers are proved internally. Logical matching and table membership retain

@@ -63,12 +63,12 @@ abbrev ProgramEntry := Trace.ProgramEntry Trace.UnifiedFamily
 /-- Public bytes run the original Sail Zimop decoder before custom metadata
     is projected. This constructs the custom fetch table; its instruction
     execution/trace claim is separate from the standard Sail claim. -/
-abbrev customProgramImage := Trace.programImageRunWith customDecoderFields
+noncomputable abbrev customProgramImage := Trace.programImageRunWith customDecoderFields
 
 /-- The public program image is read from Sail memory and decoded by the
     pinned Sail decoder, including its configuration reads. Missing bytes,
     invalid encodings and unsupported operations make construction fail. -/
-abbrev programImage := Trace.programImageRunWith decoderFields
+noncomputable abbrev programImage := Trace.programImageRunWith decoderFields
 
 abbrev decoderTable {p : Nat} [Fact p.Prime] (program : List ProgramEntry) :=
   Trace.decoderTable (p := p) program .machine

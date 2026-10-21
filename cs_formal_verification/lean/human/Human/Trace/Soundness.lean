@@ -19,7 +19,7 @@ namespace Airbender.Trace
     cell values. `ROMView.token before` interprets zero ROM shadow tokens as
     public bytes. Operand/address bounds and actual reads are derived internally. -/
 def PooledNativeSoundnessClaim : Prop :=
-  ∀ [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] {trace : PooledTrace babyBearModulus} {before : Reference.RiscV.Sail.State} {cells : List Cell} {program : List PooledProgramEntry} (inputs : PooledBootInputs trace before cells program) (accepted : Accepted trace) (decoded : PooledDecoded trace program),
+  ∀ {trace : PooledTrace babyBearModulus} {before : Reference.RiscV.Sail.State} {cells : List Cell} {program : List PooledProgramEntry} (inputs : PooledBootInputs trace before cells program) (accepted : Accepted trace) (decoded : PooledDecoded trace program),
     Realizes (PooledStep program) trace before cells (ROMView.token before)
 
 /-- Integrated mixed execution for the same six families plus the pinned
@@ -35,7 +35,7 @@ def PooledNativeSoundnessClaim : Prop :=
     count. Per-row bounds, reads, decoding and execution are derived internally;
     cryptographic enforcement and import/table fidelity remain external. -/
 def NonDeterminism.Pooled.NativeSoundnessClaim : Prop :=
-  ∀ [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] {trace : PooledTrace babyBearModulus} {before : Reference.RiscV.Sail.State} {cells : List Cell} {program : List PooledProgramEntry} {stream : List (BitVec 32)} (inputs : PooledBootInputs trace before cells program NonDeterminism.Pooled.decoderFields) (accepted : Accepted trace) (decoded : PooledDecoded trace program) (ports : NonDeterminism.Pooled.StreamPorts trace stream),
+  ∀ {trace : PooledTrace babyBearModulus} {before : Reference.RiscV.Sail.State} {cells : List Cell} {program : List PooledProgramEntry} {stream : List (BitVec 32)} (inputs : PooledBootInputs trace before cells program NonDeterminism.Pooled.decoderFields) (accepted : Accepted trace) (decoded : PooledDecoded trace program) (ports : NonDeterminism.Pooled.StreamPorts trace stream),
     NonDeterminism.Pooled.Realizes stream program trace before cells (ROMView.token before)
 
 end Airbender.Trace

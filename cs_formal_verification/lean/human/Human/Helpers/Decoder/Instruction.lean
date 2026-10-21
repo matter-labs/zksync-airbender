@@ -6,7 +6,6 @@ import Human.Helpers.Memory.Values
 namespace Airbender.Trace
 open Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 /-- Dispatch original Sail memory clauses or the shared register/control dispatcher.
     Unsupported instruction constructors have no execution clause. -/

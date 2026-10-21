@@ -5,7 +5,6 @@ import Human.Helpers.Decoder.Instruction
 namespace Airbender.JumpBranchSlt
 open Trace Reference.RiscV.Sail
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 /-- Public initialization and logical protocol boundaries for this trace.
     No per-row operands, decoded instruction or expected result is supplied. -/

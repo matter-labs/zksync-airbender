@@ -33,7 +33,6 @@ structure Output where
   data : Word
   pc : Word
 
-variable [MemoryPlatform SailRV32.exception]
 
 /-- Original Sail constructor used by both public-program binding and execution. -/
 def instruction (input : Input) : SailRV32.instruction :=
@@ -55,7 +54,6 @@ def spec (input : Input) (output : Output) : Prop :=
       (Sail.writeMemory (size := 4) output.cell.toBitVec output.data.toBitVec)
   else Sail.stepSpec input.before (execution input) input.rd ⟨output.data, output.pc⟩
 
-omit [MemoryPlatform SailRV32.exception] in
 /-- Canonical imported operand, cell, register, result and PC variables.
     Native ROM shadow data and the public byte image are separate. -/
 structure WordMapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
@@ -97,14 +95,12 @@ structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (⟨.subwordMemory, w⟩ : Row p PooledFamily).decoderQuery = entry.query ∧
     entry.instruction = instruction input
 
-omit [MemoryPlatform SailRV32.exception] in
 def circuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry) :
     Verification.CircuitModel Input Output (Nat → ZMod p) where
   satisfies := fun w => Accepted trace ∧ PooledDecoded trace program ∧ (⟨.subwordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := TraceMapping trace initial cells program
 
-omit [MemoryPlatform SailRV32.exception] in
 /-- Public history/table binding and the ordinary Sail memory configuration.
     Shared history derives operand/address bounds, reads and memory transport.
     Public ROM bytes remain tied to the initial state, separately from shadow tokens. -/

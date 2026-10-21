@@ -17,12 +17,12 @@ abbrev Inputs {p : Nat} [Fact p.Prime] := ExecutionInputsWith (p := p) decoderFi
 
 /-- Read actual public bytes and run the pinned Sail decoder once for the
     combined program. Unsupported encodings and missing bytes remain failures. -/
-abbrev programImage := programImageRunWith decoderFields
+noncomputable abbrev programImage := programImageRunWith decoderFields
 
 /-- Standard rows call original Sail execution. Project MOPs call the same
     pinned custom clauses used by TRIADD/XORROT soundness. Unsupported operations
     have no clause; upstream Zimop fallback is not substituted. -/
-def clauseFor [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+def clauseFor
     (instruction : SailRV32.instruction) : Option (SailRV32.SailM SailRV32.ExecutionResult) :=
   instructionClause instruction <|> Custom.clauseFor instruction
 

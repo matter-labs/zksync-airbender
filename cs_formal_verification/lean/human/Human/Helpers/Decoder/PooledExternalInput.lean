@@ -14,7 +14,7 @@ def decoderFields (instruction : SailRV32.instruction) : Option (DecoderData Poo
 
 /-- Read public instruction bytes and invoke actual pinned Sail decoding,
     retaining the original constructor and pooled/custom metadata. -/
-abbrev programImage := programImageRunWith decoderFields
+noncomputable abbrev programImage := programImageRunWith decoderFields
 
 /-- The imported ADD/SUB external-read selector. Other pooled families never
     consume input, even when the same numeric column contains one.
@@ -54,6 +54,5 @@ def Fetched (row : Row p PooledFamily) (before : Reference.RiscV.Sail.State) : P
     entry.data.family = row.family ∧ row.decoderQuery = entry.query ∧
     row.start.word.toBitVec = entry.pc ∧ isRead row = NonDeterminism.instructionRead entry.instruction
 
-variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 end Airbender.Trace.NonDeterminism.Pooled

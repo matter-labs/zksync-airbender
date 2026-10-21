@@ -23,7 +23,7 @@ abbrev ProgramEntry := Trace.ProgramEntry Family
 
 /-- Construct caller entries by reading public bytes and running pinned Sail
     decoding. Unreadable, invalid or unsupported instructions are rejected. -/
-abbrev programImage := Trace.programImageRunWith decoderFields
+noncomputable abbrev programImage := Trace.programImageRunWith decoderFields
 
 /-- The actual ADD/SUB decoder query for a delegation caller. Its rs2 field
     is the full virtual CSR address. Other register/immediate fields are zero;
@@ -94,7 +94,7 @@ structure PCBinding (w : Nat → ZMod p) (before : Reference.RiscV.Sail.State)
   sail : ∀ state : Reference.RiscV.Sail.State,
     Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) state =
       .ok (initialPC w).toBitVec state →
-    Reference.Sail.run (do SailRV32.Functions.normal_base_next_pc (); SailRV32.Functions.tick_pc ()) state =
+    Reference.Sail.run (do Airbender.Reference.RiscV.Sail.normalBaseNextPC; SailRV32.Functions.tick_pc ()) state =
       .ok () { state with regs :=
         (state.regs.insert .nextPC (finalPC w).toBitVec).insert .PC (finalPC w).toBitVec }
 

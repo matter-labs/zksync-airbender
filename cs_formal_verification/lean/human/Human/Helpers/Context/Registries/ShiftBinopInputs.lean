@@ -5,7 +5,6 @@ import Human.Helpers.Decoder.Instruction
 namespace Airbender.ShiftBinop
 open Trace Reference.RiscV.Sail
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 /-- Public inputs and logical matching boundaries. Operand values, decoding,
     row results and terminal PC bounds are derived from the imported circuit. -/

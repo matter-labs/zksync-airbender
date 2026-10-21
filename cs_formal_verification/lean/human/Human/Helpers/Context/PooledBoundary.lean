@@ -6,7 +6,6 @@ import Human.Helpers.Memory.Native
 
 namespace Airbender.Trace
 open Reference.RiscV.Sail
-variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 /-- Public configuration and program domain shared by both six-family claims.
     `initial` is the starting Sail state, `cells` the tracked register/RAM domain,

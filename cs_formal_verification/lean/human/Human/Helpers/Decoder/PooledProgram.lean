@@ -22,7 +22,7 @@ def pooledDecoderFields (instruction : SailRV32.instruction) : Option (DecoderDa
 
 /-- Read public bytes and run pinned Sail decoding, retaining the original
     instruction and whichever admitted family's native metadata applies. -/
-abbrev pooledProgramImage := programImageRunWith pooledDecoderFields
+noncomputable abbrev pooledProgramImage := programImageRunWith pooledDecoderFields
 abbrev PooledProgramEntry := ProgramEntry PooledFamily
 
 /-- Decoder lookup membership for every participating row in the six-family

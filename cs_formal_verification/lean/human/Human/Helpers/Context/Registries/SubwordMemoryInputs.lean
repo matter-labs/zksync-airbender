@@ -6,7 +6,6 @@ import Human.Helpers.Decoder.Instruction
 namespace Airbender.SubwordMemory
 open Trace Reference.RiscV.Sail
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 /-- RAM-only normal execution. The public initialized RAM domain lies outside
     ROM and device windows. No per-row operand bound, read or result is assumed.

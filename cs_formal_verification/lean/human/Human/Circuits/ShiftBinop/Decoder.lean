@@ -39,7 +39,7 @@ def decoderFields : SailRV32.instruction → Option (Trace.DecoderData Unit)
   | _ => none
 
 abbrev ProgramEntry := Trace.ProgramEntry Unit
-abbrev programImage := Trace.programImageRunWith decoderFields
+noncomputable abbrev programImage := Trace.programImageRunWith decoderFields
 abbrev decoderTable {p : Nat} [Fact p.Prime] (program : List ProgramEntry) :=
   Trace.decoderTable (p := p) program ()
 abbrev decoderQuery {p : Nat} (w : Nat → ZMod p) :=

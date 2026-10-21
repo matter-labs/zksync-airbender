@@ -6,7 +6,6 @@ import Human.Helpers.Memory.Values
 namespace Airbender.Trace
 open Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 /-- Bind `trace`'s initial data to the public Sail state `initial` and tracked
     `cells`. `program` is constructed by reading public bytes and running Sail

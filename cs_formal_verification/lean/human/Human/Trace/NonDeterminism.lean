@@ -3,7 +3,6 @@ import Human.Helpers.Decoder.ExternalInput
 
 namespace Airbender.Trace.NonDeterminism
 variable {p : Nat} [Fact p.Prime]
-variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 /-- State is Sail's state plus the external-stream position. Fetch and decode
     use the actual public bytes; custom behavior is visible in `clause` above. -/

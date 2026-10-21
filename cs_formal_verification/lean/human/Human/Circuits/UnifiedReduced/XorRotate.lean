@@ -32,7 +32,7 @@ abbrev spec (input : Input) (output : Output) : Prop :=
 
 /-- The original Sail MOP constructor. Public decoding fixes the rotation
     and both register indices before native selectors and reads are derived. -/
-def instruction (input : Input) : SailRV32.instruction :=
+noncomputable def instruction (input : Input) : SailRV32.instruction :=
   .ZIMOP_MOP_R (BitVec.ofNat 5 (amount input.rotation), input.rs1, input.rd)
 
 /-- Bind only observable words. The second native read is old rd, since
