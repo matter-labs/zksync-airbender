@@ -13,8 +13,6 @@ def iota' (r : Nat) (B : Vector Lane 25) : Vector Lane 25 := B.set 0 (B[0] ^^^ d
 def steps (r : Nat) (l : List (Nat × Fin 5)) (S : Vector Lane 31) : Vector Lane 31 :=
   l.foldl (fun S c => special5Step c.1 c.2 r S) S
 
-theorem Rep.congr {r V W S V' W'} (h : Rep r V W S) (hV : V = V') (hW : W = W') : Rep r V' W' S := hV ▸ hW ▸ h
-
 /-- ι (delayed) and the column parities. -/
 theorem stageA (r : Nat) (hr : r < 24) (B : Vector Lane 25) (W : Fin 6 → Lane) (S : Vector Lane 31)
     (h : Rep r (fun p => B[p]) W S) :
@@ -48,26 +46,19 @@ theorem stageC (r : Nat) (hr : r < 24) (A : Vector Lane 25) (w : Lane) (S : Vect
     Rep r (fun p => (theta A)[p]) ![thetaD (parity A) 1, thetaD (parity A) 2, thetaD (parity A) 3,
       thetaD (parity A) 4, thetaD (parity A) 0, w] (steps r [(3, 0), (3, 1), (3, 2), (3, 3), (3, 4)] S) := by
   simp only [steps, List.foldl_cons, List.foldl_nil]
-  have h1 := op3_rep r hr 0 _ _ _ h
-  have h2 := op3_rep r hr 1 _ _ _ h1
-  have h3 := op3_rep r hr 2 _ _ _ h2
-  have h4 := op3_rep r hr 3 _ _ _ h3
-  have h5 := op3_rep r hr 4 _ _ _ h4
-  refine h5.congr ?_ rfl
-  funext p; fin_cases p <;> simp [Function.update_apply, setCol, theta, lane, laneX, Vector.getElem_ofFn]
+  refine (op3_rep r hr 4 _ _ _ (op3_rep r hr 3 _ _ _ (op3_rep r hr 2 _ _ _ (op3_rep r hr 1 _ _ _
+    (op3_rep r hr 0 _ _ _ h))))).congr ?_ rfl
+  funext p; rw [colPass]; simp only [theta, Fin.getElem_fin, Vector.getElem_ofFn]
+  generalize laneX p = x; fin_cases x <;> simp
 
 /-- ρ. -/
 theorem stageD (r : Nat) (hr : r < 24) (A : Vector Lane 25) (W : Fin 6 → Lane) (S : Vector Lane 31)
     (h : Rep r (fun p => A[p]) W S) :
     Rep r (fun p => (rho A)[p]) W (steps r [(4, 0), (4, 1), (4, 2), (4, 3), (4, 4)] S) := by
   simp only [steps, List.foldl_cons, List.foldl_nil]
-  have h1 := op4_rep r hr 0 _ _ _ h
-  have h2 := op4_rep r hr 1 _ _ _ h1
-  have h3 := op4_rep r hr 2 _ _ _ h2
-  have h4 := op4_rep r hr 3 _ _ _ h3
-  have h5 := op4_rep r hr 4 _ _ _ h4
-  refine h5.congr ?_ rfl
-  funext p; fin_cases p <;> simp [Function.update_apply, setCol, rho, lane, laneX, laneY, Vector.getElem_ofFn]
+  refine (op4_rep r hr 4 _ _ _ (op4_rep r hr 3 _ _ _ (op4_rep r hr 2 _ _ _ (op4_rep r hr 1 _ _ _
+    (op4_rep r hr 0 _ _ _ h))))).congr ?_ rfl
+  funext p; rw [colPass]; simp only [rho, Fin.getElem_fin, Vector.getElem_ofFn]
 
 /-- π (the slots of round `r + 1`) and χ. -/
 theorem stageE (r : Nat) (hr : r < 24) (A : Vector Lane 25) (W : Fin 6 → Lane) (S : Vector Lane 31)
@@ -75,20 +66,15 @@ theorem stageE (r : Nat) (hr : r < 24) (A : Vector Lane 25) (W : Fin 6 → Lane)
     ∃ W', Rep (r + 1) (fun p => (chi (pi A))[p]) W'
       (steps r [(5, 0), (6, 0), (5, 1), (6, 1), (5, 2), (6, 2), (5, 3), (6, 3), (5, 4), (6, 4)] S) := by
   simp only [steps, List.foldl_cons, List.foldl_nil]
-  have h1 := op5_rep r hr 0 _ _ _ h
-  have h2 := op6_rep r hr 0 _ _ _ h1
-  have h3 := op5_rep r hr 1 _ _ _ h2
-  have h4 := op6_rep r hr 1 _ _ _ h3
-  have h5 := op5_rep r hr 2 _ _ _ h4
-  have h6 := op6_rep r hr 2 _ _ _ h5
-  have h7 := op5_rep r hr 3 _ _ _ h6
-  have h8 := op6_rep r hr 3 _ _ _ h7
-  have h9 := op5_rep r hr 4 _ _ _ h8
-  have h10 := op6_rep r hr 4 _ _ _ h9
-  refine ⟨_, fun p => ?_, h10.2⟩
+  obtain ⟨_, h1⟩ := op56_rep r hr 0 _ _ _ h
+  obtain ⟨_, h2⟩ := op56_rep r hr 1 _ _ _ h1
+  obtain ⟨_, h3⟩ := op56_rep r hr 2 _ _ _ h2
+  obtain ⟨_, h4⟩ := op56_rep r hr 3 _ _ _ h3
+  obtain ⟨_, h5⟩ := op56_rep r hr 4 _ _ _ h4
+  refine ⟨_, fun p => ?_, h5.2⟩
   simp only [laneSlot_succ]
-  refine (h10.1 (piSrc p)).trans ?_
-  fin_cases p <;> simp [Function.update_apply, chi, pi, piSrc, lane, laneX, laneY, Vector.getElem_ofFn]
+  refine (h5.1 (piSrc p)).trans ?_
+  rw [rowPass]; simp only [chiRow, chi, pi, Fin.getElem_fin, Vector.getElem_ofFn, lane_laneX_laneY]
 
 theorem steps_append (r : Nat) (l l' : List (Nat × Fin 5)) (S : Vector Lane 31) :
     steps r (l ++ l') S = steps r l' (steps r l S) := List.foldl_append ..

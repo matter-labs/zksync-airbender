@@ -1,6 +1,7 @@
 import Slop.RV.Blake.Steps
 
-/-! The compression's results from the chain of `G`s (`Steps`), the counter, `v12`, `v14`. -/
+/-! The compression's results from the chain of `G`s (`Steps`), the counter, `v12`, `v14`. The results `out0` …
+`out7` are stated on the pool values; `values` reads them as `H` and `S56` with `Pool.val` kept folded. -/
 
 namespace RV.Blake
 open _root_.RV.Sym
@@ -29,57 +30,49 @@ theorem v14 (c : Ctx) (hl : V[12] = 0#32 ∨ V[12] = 1#32) :
   intro hl
   rcases hl with rfl | rfl <;> decide
 
-theorem out0 (c : Ctx) : V[1383] = (H c)[0] ^^^ (S56 c)[0] ^^^ (S56 c)[8] := by
-  show V[1383] = V[37] ^^^ V[1303] ^^^ V[1365]
+theorem out0 (c : Ctx) : V[1383] = V[37] ^^^ V[1303] ^^^ V[1365] := by
   sym_unfold [37, 1303, 1365]
   sym_generalize
   simp only [alu]
   ac_rfl
 
-theorem out1 (c : Ctx) : V[1384] = (H c)[1] ^^^ (S56 c)[1] ^^^ (S56 c)[9] := by
-  show V[1384] = V[38] ^^^ V[1324] ^^^ V[1373]
+theorem out1 (c : Ctx) : V[1384] = V[38] ^^^ V[1324] ^^^ V[1373] := by
   sym_unfold [38, 1324, 1373]
   sym_generalize
   simp only [alu]
   ac_rfl
 
-theorem out2 (c : Ctx) : V[1387] = (H c)[2] ^^^ (S56 c)[2] ^^^ (S56 c)[10] := by
-  show V[1387] = V[39] ^^^ V[1353] ^^^ V[1315]
+theorem out2 (c : Ctx) : V[1387] = V[39] ^^^ V[1353] ^^^ V[1315] := by
   sym_unfold [39, 1315, 1353]
   sym_generalize
   simp only [alu]
   ac_rfl
 
-theorem out3 (c : Ctx) : V[1388] = (H c)[3] ^^^ (S56 c)[3] ^^^ (S56 c)[11] := by
-  show V[1388] = V[40] ^^^ V[1364] ^^^ V[1331]
+theorem out3 (c : Ctx) : V[1388] = V[40] ^^^ V[1364] ^^^ V[1331] := by
   sym_unfold [40, 1331, 1364]
   sym_generalize
   simp only [alu]
   ac_rfl
 
-theorem out4 (c : Ctx) : V[1391] = (H c)[4] ^^^ (S56 c)[4] ^^^ (S56 c)[12] := by
-  show V[1391] = V[36] ^^^ V[1380] ^^^ V[1329]
+theorem out4 (c : Ctx) : V[1391] = V[36] ^^^ V[1380] ^^^ V[1329] := by
   sym_unfold [36, 1329, 1380]
   sym_generalize
   simp only [alu]
   ac_rfl
 
-theorem out5 (c : Ctx) : V[1392] = (H c)[5] ^^^ (S56 c)[5] ^^^ (S56 c)[13] := by
-  show V[1392] = V[43] ^^^ V[1325] ^^^ V[1363]
+theorem out5 (c : Ctx) : V[1392] = V[43] ^^^ V[1325] ^^^ V[1363] := by
   sym_unfold [43, 1325, 1363]
   sym_generalize
   simp only [alu]
   ac_rfl
 
-theorem out6 (c : Ctx) : V[1395] = (H c)[6] ^^^ (S56 c)[6] ^^^ (S56 c)[14] := by
-  show V[1395] = V[44] ^^^ V[1341] ^^^ V[1370]
+theorem out6 (c : Ctx) : V[1395] = V[44] ^^^ V[1341] ^^^ V[1370] := by
   sym_unfold [44, 1341, 1370]
   sym_generalize
   simp only [alu]
   ac_rfl
 
-theorem out7 (c : Ctx) : V[1396] = (H c)[7] ^^^ (S56 c)[7] ^^^ (S56 c)[15] := by
-  show V[1396] = V[45] ^^^ V[1379] ^^^ V[1313]
+theorem out7 (c : Ctx) : V[1396] = V[45] ^^^ V[1379] ^^^ V[1313] := by
   sym_unfold [45, 1313, 1379]
   sym_generalize
   simp only [alu]

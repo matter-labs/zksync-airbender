@@ -45,30 +45,24 @@ theorem par_rep (r : Nat) (x : Fin 5) (V : Fin 25 → Lane) (W : Fin 6 → Lane)
 
 theorem thetaRho_rep (r : Nat) (x : Fin 5) (V : Fin 25 → Lane) (W : Fin 6 → Lane) (S : Vector Lane 31)
     (h : Rep r V W S) :
-    Rep r (setCol V x fun y => (V (lane x y) ^^^ thetaD (fun i => W i.castSucc) x).rotateLeft (rhoOffset x y)) W
+    Rep r (colStep (fun x y v => (v ^^^ thetaD (fun i => W i.castSucc) x).rotateLeft (rhoOffset x y)) V x) W
       (f1600Step 3 x r S) := by
   obtain ⟨hl, hs⟩ := h
   have hs' : ∀ i : Fin 5, S[25 + i.val] = W i.castSucc := fun i => hs i.castSucc
   constructor
-  · intro p; fread [hl, hs', setCol]
+  · intro p; fread [hl, hs', colStep, setCol]
     clear hl hs hs'
     split_ifs <;> subst_vars <;> simp_all [lane_eq_iff]
   · intro i; fread [hl, hs, hs']
 
 theorem chi_rep (r : Nat) (x : Fin 5) (V : Fin 25 → Lane) (W : Fin 6 → Lane) (S : Vector Lane 31)
     (h : Rep r V W S) :
-    let A := fun k => V (piSrc (lane k x))
-    Rep r (Function.update (Function.update (Function.update (Function.update (Function.update V
-        (piSrc (lane 0 x)) (A 0 ^^^ (~~~A 1 &&& A 2))) (piSrc (lane 1 x)) (A 1 ^^^ (~~~A 2 &&& A 3)))
-        (piSrc (lane 2 x)) (A 2 ^^^ (~~~A 3 &&& A 4))) (piSrc (lane 3 x)) (A 3 ^^^ (~~~A 4 &&& A 0)))
-        (piSrc (lane 4 x)) (A 4 ^^^ (~~~A 0 &&& A 1)))
-      W (f1600Step 5 x r S) := by
-  intro A
+    Rep r (rowStep (fun _ => chiRow) V x) W (f1600Step 5 x r S) := by
   obtain ⟨hl, hs⟩ := h
   constructor
-  · intro p; fread [hl, Fin.reduceAdd]
+  · intro p; fread [hl, rowStep, setRow, chiRow, Fin.reduceAdd]
     clear hl hs
-    split_ifs <;> subst_vars <;> simp_all [A, piSrc_lane_eq]
+    split_ifs <;> subst_vars <;> simp_all [piSrc_lane_eq]
   · intro i; fread [hl, hs]
 
 def fsteps (r : Nat) (l : List (Nat × Fin 5)) (S : Vector Lane 31) : Vector Lane 31 :=
@@ -103,28 +97,22 @@ theorem fstageT (r : Nat) (A : Vector Lane 25) (w : Lane) (S : Vector Lane 31)
     Rep r (fun p => (rho (theta A))[p]) ![parity A 0, parity A 1, parity A 2, parity A 3, parity A 4, w]
       (fsteps r [(3, 0), (3, 1), (3, 2), (3, 3), (3, 4)] S) := by
   simp only [fsteps, List.foldl_cons, List.foldl_nil]
-  have h1 := thetaRho_rep r 0 _ _ _ h
-  have h2 := thetaRho_rep r 1 _ _ _ h1
-  have h3 := thetaRho_rep r 2 _ _ _ h2
-  have h4 := thetaRho_rep r 3 _ _ _ h3
-  have h5 := thetaRho_rep r 4 _ _ _ h4
-  refine h5.congr ?_ rfl
-  funext p; fin_cases p <;> simp [Function.update_apply, setCol, rho, theta, thetaD, lane, laneX, laneY,
-    Vector.getElem_ofFn]
+  refine (thetaRho_rep r 4 _ _ _ (thetaRho_rep r 3 _ _ _ (thetaRho_rep r 2 _ _ _ (thetaRho_rep r 1 _ _ _
+    (thetaRho_rep r 0 _ _ _ h))))).congr ?_ rfl
+  have hp : (fun i : Fin 5 => (![parity A 0, parity A 1, parity A 2, parity A 3, parity A 4, w] : Fin 6 → Lane)
+      i.castSucc) = parity A := by
+    funext i; fin_cases i <;> rfl
+  funext p; rw [colPass, hp]; simp only [rho, theta, Fin.getElem_fin, Vector.getElem_ofFn]
 
 theorem fstageX (r : Nat) (A : Vector Lane 25) (W : Fin 6 → Lane) (S : Vector Lane 31)
     (h : Rep r (fun p => A[p]) W S) :
     Rep (r + 1) (fun p => (chi (pi A))[p]) W (fsteps r [(5, 0), (5, 1), (5, 2), (5, 3), (5, 4)] S) := by
   simp only [fsteps, List.foldl_cons, List.foldl_nil]
-  have h1 := chi_rep r 0 _ _ _ h
-  have h2 := chi_rep r 1 _ _ _ h1
-  have h3 := chi_rep r 2 _ _ _ h2
-  have h4 := chi_rep r 3 _ _ _ h3
-  have h5 := chi_rep r 4 _ _ _ h4
+  have h5 := chi_rep r 4 _ _ _ (chi_rep r 3 _ _ _ (chi_rep r 2 _ _ _ (chi_rep r 1 _ _ _ (chi_rep r 0 _ _ _ h))))
   refine ⟨fun p => ?_, h5.2⟩
   simp only [laneSlot_succ]
   refine (h5.1 (piSrc p)).trans ?_
-  fin_cases p <;> simp [Function.update_apply, chi, pi, piSrc, lane, laneX, laneY, Vector.getElem_ofFn]
+  rw [rowPass]; simp only [chiRow, chi, pi, Fin.getElem_fin, Vector.getElem_ofFn, lane_laneX_laneY]
 
 /-- Round `r`'s 15 calls take the lanes (before the delayed ι) to the next round's, in the next round's slots. -/
 theorem f1600_round (r : Nat) (B : Vector Lane 25) (W : Fin 6 → Lane) (S : Vector Lane 31)
