@@ -7,8 +7,7 @@ counter at `+192`, 128-aligned) and `blake2s_compress` by the round-function del
 
 namespace RV
 open Spec
-set_option maxHeartbeats 0
-set_option maxRecDepth 100000
+set_option maxHeartbeats 400000
 
 /-- From word 9 (the halves' pointers `L`, `R` in `a1`, `a2`): the block, the tail call, the return to `s`'s `ra`
 with the hash of the halves at `a0`. -/
@@ -97,73 +96,34 @@ theorem merkle_step_mop_impl (A : Word)
     (hAbr : (A + 284#32 + 0xFFFFF7D8#32).toNat + 4 * Code.blake2s_compress_mop.length ≤ ROM_END) :
     ImplementsAtW A Code.merkle_step_mop [(A + 284#32 + 0xFFFFF7D8#32, Code.blake2s_compress_mop)] 16 (merklePre 128 196) 196
       merklePost := by
-  intro s hentry hcal hcall hpre
-  have hbl := hcal _ List.mem_cons_self
-  have hcall' := hcall
-  unfold ReturnsW
-  rw [Call, hentry] at hcall
-  obtain ⟨ha4, hspa, hR, hs4, hs1, hs2, hsd⟩ := hpre
-  simp only [RAM_END] at hR hs2
-  rv_start Code.merkle_step_mop hcall
-  simp only [Nat.reduceAdd, Nat.reduceMul] at hrom
+  intro s hentry hcal ⟨hcode, hal, hrom, hra, hsp, hlo, hhi⟩ ⟨ha4, hspa, hR, hs4, hs1, hs2, hsd⟩
+  rw [hentry] at hcode hal hrom
+  replace hra : (s.getReg 1#5).toNat % 4 = 0 := hra
+  replace hsp : (s.getReg 2#5).toNat % 16 = 0 := hsp
+  replace hlo : ROM_END + 16 ≤ (s.getReg 2#5).toNat := hlo
+  replace hhi : (s.getReg 2#5).toNat ≤ RAM_END := hhi
+  have hL : Code.merkle_step_mop.length = 72 := rfl
+  simp only [ROM_END, RAM_END] at hR hs2 hlo hhi
+  obtain ⟨m1, S, hrun, hpc, h2, h10, h11, h12, hra', hs0', hcs', hmem, srom⟩ := merkle_side Code.merkle_step_mop
+    (by decide +kernel) (by rw [hL]; omega) s A hentry hal hrom hcode (by simp only [ROM_END]; omega)
+    (by simp only [RAM_END]; omega) (by omega)
+  have hcS := codeAt_of_rom hcode hrom srom
+  have hbS := codeAt_of_rom (hcal _ List.mem_cons_self) hAbr srom
+  have hrom9 : A.toNat + 4 * 72 ≤ ROM_END := by rw [← hL]; exact hrom
   by_cases hr : s.getReg 11#5 = 0
-  · rv_steps 4 with hentry
-    apply run_of_step
-    rv_step_simp with hentry
-    rv_steps 1
-    rv_cut
-    have srom : ∀ b : Word, b.toNat < ROM_END → S.mem b = s.mem b := fun b hb => by
-      simp only [ROM_END] at hb
-      rw [cut_mem]
-      repeat rw [write_outside (h := Or.inl (by bv_omega)) (ha := by bv_omega)]
-    have hmem : ∀ a : Word, a.toNat + 8 < (s.getReg 2#5).toNat ∨ (s.getReg 2#5).toNat ≤ a.toNat →
-        S.mem a = s.mem a := fun a ha => by
-      rw [cut_mem]
-      repeat rw [write_outside (h := by bv_omega) (ha := by bv_omega)]
-    have hra' : read S.mem (S.getReg 2#5 + 12#32) 4 = s.getReg 1#5 := by
-      rw [cut_mem, cut_r2, read_write_disjoint (h := by bv_omega) (ha := by bv_omega) (hc := by bv_omega),
-        show s.getReg 2#5 + 4294967280#32 + 12#32 = s.getReg 2#5 + 4294967292#32 by bv_omega, read_write_same4]
-    have hs0' : read S.mem (S.getReg 2#5 + 8#32) 4 = s.getReg 8#5 := by
-      rw [cut_mem, cut_r2, show s.getReg 2#5 + 4294967280#32 + 8#32 = s.getReg 2#5 + 4294967288#32 by bv_omega,
-        read_write_same4]
-    have hcs' : ∀ r : Reg, calleeSaved r → r ≠ 2#5 → r ≠ 8#5 → S.getReg r = s.getReg r := fun r hr h2 h8 => by
-      rcases calleeSaved_cases r hr with h|h|h|h|h|h|h|h|h|h|h|h|h <;> subst h <;>
-        first | exact absurd rfl h2 | exact absurd rfl h8 | assumption
-    obtain ⟨m, t, hrun, hpct, hpost, hcst, hfrt⟩ := merkle_from9_mop A s S (s.getReg 10#5) (s.getReg 12#5) hpc
-      (by simp only [ROM_END]; omega) hAbr (codeAt_of_rom hcode (by rw [show Code.merkle_step_mop.length = 72 from rfl]; simp only [ROM_END]; omega) srom)
-      (codeAt_of_rom hbl hAbr srom) cut_pc cut_r2 cut_r10 cut_r11 cut_r12 hra' hs0' hcs' hmem hra hsp
-      (by simp only [ROM_END]; omega) ha4 hspa (by simp only [RAM_END]; omega) (by omega) hspa
-      (by simp only [RAM_END]; omega) hs4 hs1 (by simp only [RAM_END]; omega) (by omega)
-    exact ⟨m, t, hrun, hpct, by simp only [merklePost, hr, ne_eq, not_true_eq_false, ite_false]; exact hpost,
-      hcst, hfrt⟩
-  · rv_steps 4 with hentry
-    apply run_of_step
-    rv_step_simp with hentry
-    rv_steps 3 with hentry
-    rv_cut
-    have srom : ∀ b : Word, b.toNat < ROM_END → S.mem b = s.mem b := fun b hb => by
-      simp only [ROM_END] at hb
-      rw [cut_mem]
-      repeat rw [write_outside (h := Or.inl (by bv_omega)) (ha := by bv_omega)]
-    have hmem : ∀ a : Word, a.toNat + 8 < (s.getReg 2#5).toNat ∨ (s.getReg 2#5).toNat ≤ a.toNat →
-        S.mem a = s.mem a := fun a ha => by
-      rw [cut_mem]
-      repeat rw [write_outside (h := by bv_omega) (ha := by bv_omega)]
-    have hra' : read S.mem (S.getReg 2#5 + 12#32) 4 = s.getReg 1#5 := by
-      rw [cut_mem, cut_r2, read_write_disjoint (h := by bv_omega) (ha := by bv_omega) (hc := by bv_omega),
-        show s.getReg 2#5 + 4294967280#32 + 12#32 = s.getReg 2#5 + 4294967292#32 by bv_omega, read_write_same4]
-    have hs0' : read S.mem (S.getReg 2#5 + 8#32) 4 = s.getReg 8#5 := by
-      rw [cut_mem, cut_r2, show s.getReg 2#5 + 4294967280#32 + 8#32 = s.getReg 2#5 + 4294967288#32 by bv_omega,
-        read_write_same4]
-    have hcs' : ∀ r : Reg, calleeSaved r → r ≠ 2#5 → r ≠ 8#5 → S.getReg r = s.getReg r := fun r hr h2 h8 => by
-      rcases calleeSaved_cases r hr with h|h|h|h|h|h|h|h|h|h|h|h|h <;> subst h <;>
-        first | exact absurd rfl h2 | exact absurd rfl h8 | assumption
-    obtain ⟨m, t, hrun, hpct, hpost, hcst, hfrt⟩ := merkle_from9_mop A s S (s.getReg 12#5) (s.getReg 10#5) hpc
-      (by simp only [ROM_END]; omega) hAbr (codeAt_of_rom hcode (by rw [show Code.merkle_step_mop.length = 72 from rfl]; simp only [ROM_END]; omega) srom)
-      (codeAt_of_rom hbl hAbr srom) cut_pc cut_r2 cut_r10 cut_r11 cut_r12 hra' hs0' hcs' hmem hra hsp
-      (by simp only [ROM_END]; omega) ha4 hspa (by simp only [RAM_END]; omega) hs4 hs1
-      (by simp only [RAM_END]; omega) (by omega) hspa (by simp only [RAM_END]; omega) (by omega)
-    exact ⟨m, t, hrun, hpct, by simp only [merklePost, hr, ne_eq, not_false_eq_true, ite_true]; exact hpost,
-      hcst, hfrt⟩
+  · simp only [hr, ↓reduceIte] at h11 h12
+    obtain ⟨m, t, hrun', hpct, hpost, hcst, hfrt⟩ := merkle_from9_mop A s S (s.getReg 10#5) (s.getReg 12#5) hal
+      hrom9 hAbr hcS hbS hpc h2 h10 h11 h12 hra' hs0' hcs' hmem hra hsp (by simp only [ROM_END]; omega) ha4 hspa
+      (by simp only [RAM_END]; omega) (by omega) hspa (by simp only [RAM_END]; omega) hs4 hs1
+      (by simp only [RAM_END]; omega) (by omega)
+    exact ⟨m1 + m, t, run_trans hrun hrun', hpct, by
+      simp only [merklePost, hr, ne_eq, not_true_eq_false, ite_false]; exact hpost, hcst, hfrt⟩
+  · simp only [hr, ↓reduceIte] at h11 h12
+    obtain ⟨m, t, hrun', hpct, hpost, hcst, hfrt⟩ := merkle_from9_mop A s S (s.getReg 12#5) (s.getReg 10#5) hal
+      hrom9 hAbr hcS hbS hpc h2 h10 h11 h12 hra' hs0' hcs' hmem hra hsp (by simp only [ROM_END]; omega) ha4 hspa
+      (by simp only [RAM_END]; omega) hs4 hs1 (by simp only [RAM_END]; omega) (by omega) hspa
+      (by simp only [RAM_END]; omega) (by omega)
+    exact ⟨m1 + m, t, run_trans hrun hrun', hpct, by
+      simp only [merklePost, hr, ne_eq, not_false_eq_true, ite_true]; exact hpost, hcst, hfrt⟩
 
 end RV

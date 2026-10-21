@@ -73,6 +73,21 @@ theorem run_branch_t {S T : State} {A : Word} {code : List Word} (hc : CodeAt S 
   rw [run_succ, step_at hc hal hrom hT i _ hw hpc, hd, Option.bind_some,
     exec_branch_t _ _ _ _ _ h (by rw [e]; bv_omega), e]; rfl
 
+/-- `lui rd, hi` at word `i`. -/
+theorem run_lui {S T : State} {A : Word} {code : List Word} (hc : CodeAt S A code) (hal : A.toNat % 4 = 0)
+    (hrom : A.toNat + 4 * code.length ≤ ROM_END) (hT : ∀ b : Word, b.toNat < ROM_END → T.mem b = S.mem b)
+    (i : Nat) (w : Word) (hw : code[i]? = some w) (hpc : T.pc = A + BitVec.ofNat 32 (4 * i))
+    (rd : Reg) (hi : Word) (hd : decode w = some (.lui rd hi)) : run 1 T = some (T.setReg rd hi).nextInstr := by
+  rw [run_succ, step_at hc hal hrom hT i w hw hpc, hd, Option.bind_some, exec_lui]; rfl
+
+/-- `addi rd, rs, lo` at word `i`. -/
+theorem run_addi {S T : State} {A : Word} {code : List Word} (hc : CodeAt S A code) (hal : A.toNat % 4 = 0)
+    (hrom : A.toNat + 4 * code.length ≤ ROM_END) (hT : ∀ b : Word, b.toNat < ROM_END → T.mem b = S.mem b)
+    (i : Nat) (w : Word) (hw : code[i]? = some w) (hpc : T.pc = A + BitVec.ofNat 32 (4 * i))
+    (rd rs : Reg) (lo : Word) (hd : decode w = some (.opImm .add rd rs lo)) :
+    run 1 T = some (T.setReg rd (T.getReg rs + lo)).nextInstr := by
+  rw [run_succ, step_at hc hal hrom hT i w hw hpc, hd, Option.bind_some, exec_opImm]; rfl
+
 /-- A jump-and-link `jal rd, off` at word `i`, to `tgt` (`rd = x0`: a plain jump). -/
 theorem run_jal {S T : State} {A : Word} {code : List Word} (hc : CodeAt S A code) (hal : A.toNat % 4 = 0)
     (hrom : A.toNat + 4 * code.length ≤ ROM_END) (hT : ∀ b : Word, b.toNat < ROM_END → T.mem b = S.mem b)

@@ -120,7 +120,6 @@ theorem poly_loop (A T : Word) (C : List Word) (hA : 256 ≤ A.toNat) (hAr : A.t
     have hLp : Code.poly_eval.length = 31 := rfl
     have hCb : C.length ≤ 268435456 := by omega
     have hspv : (S.getReg 2#5).toNat = sp0.toNat - 32 := by rw [h2]; bv_omega
-    rv_code_facts_range hcode Code.poly_eval 18 20
     -- words 15–17: `addi x18`, `addi x11`, `jal mul_mod`: one block, then the call
     have hL2 : ((Code.poly_eval.drop 15).take 2).length = 2 := rfl
     have hcA : CodeAt S (A + 60#32) ((Code.poly_eval.drop 15).take 2) := by
@@ -189,35 +188,61 @@ theorem poly_loop (A T : Word) (C : List Word) (hA : 256 ≤ A.toNat) (hAr : A.t
       rw [hcs1 18#5 (by rv_callee_saved), hr18, h18]; bv_omega
     have h19' : S1.getReg 19#5 = T + BitVec.ofNat 32 (4 * j) := by
       rw [hcs1 19#5 (by rv_callee_saved), hr19, h19, Nat.add_sub_cancel]
-    -- word 18 (`lw x11, 0(x19)`) and word 19 (`jal add_mod`)
-    rv_steps 2 with hpc1', h2', h9', h19', h18', read_of_frame hmemS1, table_read hcoef
-    apply run_call add_mod_impl
-    · rv_call_ok hadd Code.add_mod with h2'
+    -- word 18 (`lw x11, 0(x19)`): the coefficient `C[j]`; word 19 (`jal add_mod`)
+    have hromP : A.toNat + 4 * Code.poly_eval.length ≤ ROM_END := by rw [hLp]; simp only [ROM_END]; omega
+    have hrS1 : ∀ b : Word, b.toNat < ROM_END → S1.mem b = S.mem b := fun b hb =>
+      hmemS1 b (Or.inl (by simp only [ROM_END] at hb; omega))
+    have hcj : read S1.mem (T + BitVec.ofNat 32 (4 * j)) 4 = C[j] := by
+      rw [read_of_frame hmemS1 _ 4 (by refine ⟨?_, ?_⟩ <;> bv_omega)]; exact hcoef j (by omega)
+    have hTj : (T + BitVec.ofNat 32 (4 * j)).toNat = T.toNat + 4 * j := by bv_omega
+    have hL1 : run 1 S1 = some (S1.setReg 11#5 C[j]).nextInstr := by
+      rw [run_succ, step_at hcode hA4 hromP hrS1 18 0x0009a583#32 (by decide +kernel) hpc1', decode_poly_eval_0009a583,
+        Option.bind_some, exec_load S1 4 true 11#5 19#5 0#32 (by decide) (by simp only [aligned, h19', BitVec.add_zero, hTj]; omega)
+          (by simp only [readable, h19', BitVec.add_zero, hTj, RAM_END]; omega), h19', BitVec.add_zero, hcj]
+      simp only [↓reduceIte, sext_word]; rfl
+    have hJ := run_jal hcode hA4 hromP (T := (S1.setReg 11#5 C[j]).nextInstr) (fun b hb => hrS1 b hb) 19
+      0xf45ff0ef#32 (by decide +kernel) (by rw [next_pc, set_pc, hpc1']; bv_omega) 1#5 0xffffff44#32
+      decode_poly_eval_f45ff0ef (A + 4294967184#32) (by bv_omega) (by bv_omega)
+    obtain ⟨J, hJd⟩ : ∃ J, J = (((S1.setReg 11#5 C[j]).nextInstr.setPC (A + 4294967184#32)).setReg 1#5
+        (A + BitVec.ofNat 32 (4 * 19 + 4))) := ⟨_, rfl⟩
+    rw [← hJd] at hJ
+    have hJr : ∀ i : Reg, ¬ i = 0#5 → i ≠ 1#5 → i ≠ 11#5 → J.getReg i = S1.getReg i := fun i h0 h1 h11 => by
+      rw [hJd, jal_getReg _ _ _ _ h1, next_r, r_set_miss _ _ _ _ h0 h11]
+    have hJm : J.mem = S1.mem := by rw [hJd, jal_mem, next_mem, set_mem]
+    have hJ2 : J.getReg 2#5 = sp0 + 4294967264#32 := (hJr 2#5 (by decide) (by decide) (by decide)).trans h2'
+    have hJsp : (J.getReg 2).toNat = sp0.toNat - 32 := by rw [show J.getReg 2 = J.getReg 2#5 from rfl, hJ2]; bv_omega
+    have hcallJ : Call J Code.add_mod 16 := by
+      unfold Call
+      show CodeAt J J.pc Code.add_mod ∧ J.pc.toNat % 4 = 0 ∧ J.pc.toNat + 4 * Code.add_mod.length ≤ ROM_END ∧
+        (J.getReg 1#5).toNat % 4 = 0 ∧ (J.getReg 2#5).toNat % 16 = 0 ∧ ROM_END + 16 ≤ (J.getReg 2#5).toNat ∧
+        (J.getReg 2#5).toNat ≤ RAM_END
+      rw [hJd, jal_pc, jal_getReg1, ← hJd, hJ2]
+      refine ⟨codeAt_of_rom hadd (by rw [show Code.add_mod.length = 13 from rfl]; simp only [ROM_END]; bv_omega)
+        (fun b hb => by rw [hJm]; exact hrS1 b hb), by bv_omega, ?_, by bv_omega, by bv_omega, ?_, ?_⟩
+      · rw [show Code.add_mod.length = 13 from rfl]; simp only [ROM_END]; bv_omega
+      · simp only [ROM_END]; bv_omega
+      · simp only [RAM_END]; bv_omega
+    refine run_of_run S1 J 2 _ (run_trans hL1 hJ) (run_call add_mod_impl J _ hcallJ ?_)
     intro S2 hpc2 hpost2 hcs2 hmem2
-    simp only [addModPost] at hpost2
-    rv_regs at hpost2
+    have hJ10 : J.getReg 10 = S1.getReg 10 := hJr 10#5 (by decide) (by decide) (by decide)
+    have hJ11 : J.getReg 11 = C[j] := by rw [hJd, jal_getReg _ _ _ _ (by decide), next_r]; exact r_set_hit _ _ _ (by decide)
+    simp only [addModPost, hJ10, hJ11] at hpost2
     obtain ⟨h2a, h2b⟩ := hpost2 h1a (hC j (by omega))
-    have hpc2' : S2.pc = A + 80#32 := by rw [hpc2]; rv_regs
-    have hsp1 : (S1.getReg 2#5).toNat = sp0.toNat - 32 := by rw [h2']; bv_omega
-    have hsp1' : (S1.getReg 2).toNat = sp0.toNat - 32 := hsp1
+    have hpc2' : S2.pc = A + 80#32 := by rw [hpc2, show J.getReg 1 = J.getReg 1#5 from rfl, hJd, jal_getReg1]
     have hslot0 : ∀ a : Word, a.toNat + 16 < sp0.toNat - 32 ∨ sp0.toNat - 32 ≤ a.toNat → S2.mem a = S.mem a := by
       intro a ha
-      rw [hmem2 a (by rv_regs; omega)]
-      simp only [rv_state]
+      rw [hmem2 a (by rw [hJsp]; omega), hJm]
       exact hmemS1 a (by omega)
-    have h2S2 : S2.getReg 2#5 = sp0 + 4294967264#32 := by
-      rw [hcs2 2#5 (by rv_callee_saved)]; rv_regs; rw [h2']
+    have h2S2 : S2.getReg 2#5 = sp0 + 4294967264#32 := by rw [hcs2 2#5 (by rv_callee_saved), hJ2]
     have h9S2 : S2.getReg 9#5 = x := by
-      rw [hcs2 9#5 (by rv_callee_saved)]; rv_regs; rw [h9']
+      rw [hcs2 9#5 (by rv_callee_saved), hJr 9#5 (by decide) (by decide) (by decide), h9']
     have h18S2 : S2.getReg 18#5 = BitVec.ofNat 32 j := by
-      rw [hcs2 18#5 (by rv_callee_saved)]; rv_regs; rw [h18']
+      rw [hcs2 18#5 (by rv_callee_saved), hJr 18#5 (by decide) (by decide) (by decide), h18']
     have h19S2 : S2.getReg 19#5 = T + BitVec.ofNat 32 (4 * j) := by
-      rw [hcs2 19#5 (by rv_callee_saved)]; rv_regs; rw [h19']
+      rw [hcs2 19#5 (by rv_callee_saved), hJr 19#5 (by decide) (by decide) (by decide), h19']
     have hS2r : ∀ i : Reg, 20 ≤ i.toNat → i.toNat ≤ 27 → S2.getReg i = S.getReg i := fun i h1 h2 => by
-      have hne1 : i ≠ 1#5 := fun h => by subst h; exact absurd h1 (by decide)
-      have hne11 : i ≠ 11#5 := fun h => by subst h; exact absurd h1 (by decide)
-      have hne0 : ¬ i = 0#5 := fun h => by subst h; exact absurd h1 (by decide)
-      rw [hcs2 i (by unfold calleeSaved; bv_omega), jal_getReg _ _ _ _ hne1, next_r, r_set_miss _ _ _ _ hne0 hne11]
+      rw [hcs2 i (by unfold calleeSaved; bv_omega), hJr i (fun h => by subst h; exact absurd h1 (by decide))
+        (fun h => by subst h; exact absurd h1 (by decide)) (fun h => by subst h; exact absurd h1 (by decide))]
       exact (hcs1 i (by unfold calleeSaved; bv_omega)).trans (hr20 i h1 h2)
     have hROM2 : ∀ b : Word, b.toNat < ROM_END → S2.mem b = S.mem b := fun b hb =>
       hslot0 b (Or.inl (by simp only [ROM_END] at hb; omega))
@@ -242,32 +267,34 @@ theorem poly_loop (A T : Word) (C : List Word) (hA : 256 ≤ A.toNat) (hAr : A.t
     have r10 : S3.getReg 10#5 = S2.getReg 10#5 := hrel3.reg_same PL2.instrs PL2.run 10#5 (by decide +kernel)
     have hS3r : ∀ i : Reg, 20 ≤ i.toNat → i.toNat ≤ 27 → S3.getReg i = S.getReg i := fun i h1 h2 =>
       (RV.Block.regs_same_range PL2.instrs PL2.run hrel3 20 27 (by decide +kernel) i h1 h2).trans (hS2r i h1 h2)
-    have hslot : ∀ b : Word, sp0.toNat - 32 ≤ b.toNat → b.toNat + 4 ≤ 2 ^ 32 → read S3.mem b 4 = read S.mem b 4 :=
-      fun b hb hb2 => read_congr S3.mem S.mem b 4 (fun j' _ => by
-        rw [hmem3, hslot0 (b + BitVec.ofNat 32 j') (Or.inr (by bv_omega))])
+    -- a saved register's slot (`sp0 - 20 … sp0 - 4`), as before the iteration
+    have hslot : ∀ k : Word, 4294967276 ≤ k.toNat → read S3.mem (sp0 + k) 4 = read S.mem (sp0 + k) 4 :=
+      fun k hk => read_congr S3.mem S.mem _ 4 (fun j' _ => by
+        rw [hmem3, hslot0 _ (Or.inr (by bv_omega))])
     rw [r0, holds_ne0, r18] at hr3
+    -- the saved registers and the code, the same in both cases
+    have hrom3 : ∀ b : Word, b.toNat < ROM_END → S3.mem b = S.mem b := fun b hb => by rw [hmem3, hROM2 b hb]
+    have hcode3 : CodeAt S3 A Code.poly_eval :=
+      codeAt_of_rom hcode2 (by simp only [ROM_END]; rw [hLp]; omega) fun b _ => hmem3 b
+    have hx1 : read S3.mem (sp0 + 4294967292#32) 4 = ra0 := by
+      rw [hslot _ (by decide)]; exact hm1
+    have hx8 : read S3.mem (sp0 + 4294967288#32) 4 = v8 := by
+      rw [hslot _ (by decide)]; exact hm2
+    have hx9 : read S3.mem (sp0 + 4294967284#32) 4 = v9 := by
+      rw [hslot _ (by decide)]; exact hm3
+    have hx18 : read S3.mem (sp0 + 4294967280#32) 4 = v18 := by
+      rw [hslot _ (by decide)]; exact hm4
+    have hx19 : read S3.mem (sp0 + 4294967276#32) 4 = v19 := by
+      rw [hslot _ (by decide)]; exact hm5
     rcases Nat.eq_zero_or_pos j with hj0 | hj0
     · -- the last iteration: `bne` falls through to the epilogue
       subst hj0
       rw [show (!decide (BitVec.ofNat 32 0 = 0#32)) = false from rfl] at hr3
       simp only [Bool.false_eq_true, ↓reduceIte] at hr3
       have hpcN : S3.nextInstr.pc = A + 88#32 := by rw [next_pc, hpc3]; bv_omega
-      have hcodeN : CodeAt S3.nextInstr A Code.poly_eval :=
-        codeAt_of_rom hcode2 (by simp only [ROM_END]; rw [hLp]; omega) (fun b hb => by
-          rw [next_mem, hmem3, hROM2 b hb])
       have h2N : S3.nextInstr.getReg 2#5 = sp0 + 4294967264#32 := by rw [next_r, r2]
-      have hx1 : read S3.nextInstr.mem (sp0 + 4294967292#32) 4 = ra0 := by
-        rw [next_mem, hslot (sp0 + 4294967292#32) (by bv_omega) (by bv_omega)]; exact hm1
-      have hx8 : read S3.nextInstr.mem (sp0 + 4294967288#32) 4 = v8 := by
-        rw [next_mem, hslot (sp0 + 4294967288#32) (by bv_omega) (by bv_omega)]; exact hm2
-      have hx9 : read S3.nextInstr.mem (sp0 + 4294967284#32) 4 = v9 := by
-        rw [next_mem, hslot (sp0 + 4294967284#32) (by bv_omega) (by bv_omega)]; exact hm3
-      have hx18 : read S3.nextInstr.mem (sp0 + 4294967280#32) 4 = v18 := by
-        rw [next_mem, hslot (sp0 + 4294967280#32) (by bv_omega) (by bv_omega)]; exact hm4
-      have hx19 : read S3.nextInstr.mem (sp0 + 4294967276#32) 4 = v19 := by
-        rw [next_mem, hslot (sp0 + 4294967276#32) (by bv_omega) (by bv_omega)]; exact hm5
       obtain ⟨m, S', hrunE, hpcE, hx2E, hx8E, hx9E, hx18E, hx19E, hmemE, hx10E, hregE⟩ :=
-        poly_epi A S3.nextInstr sp0 ra0 v8 v9 v18 v19 hA4 hAr hcodeN hpcN h2N hsp hlo hhi hra hx1 hx8 hx9 hx18 hx19
+        poly_epi A S3.nextInstr sp0 ra0 v8 v9 v18 v19 hA4 hAr hcode3 hpcN h2N hsp hlo hhi hra hx1 hx8 hx9 hx18 hx19
       have hx10 : S'.getReg 10#5 = S2.getReg 10#5 := hx10E.trans (by rw [next_r, r10])
       refine ⟨2 + m, S', run_trans hr3 hrunE, hpcE, ?_, ?_, hx2E, hx8E, hx9E, hx18E, hx19E, ?_, ?_⟩
       · rw [hx10]; exact h2a
@@ -292,17 +319,9 @@ theorem poly_loop (A T : Word) (C : List Word) (hA : 256 ≤ A.toNat) (hAr : A.t
           (by rw [jump_r, r2]) (by rw [jump_r, r9]) (by rw [jump_r, r18])
           (by rw [jump_r, r19]; bv_omega) (by rw [jump_r, r10]) h2a
           (by rw [polyW_drop C x.toNat j (by omega)]; exact horner_step _ _ _ _ _ _ h2b h1b hacc2) hx
-          (by rw [jump_mem, hslot (sp0 + 4294967292#32) (by bv_omega) (by bv_omega)]; exact hm1)
-          (by rw [jump_mem, hslot (sp0 + 4294967288#32) (by bv_omega) (by bv_omega)]; exact hm2)
-          (by rw [jump_mem, hslot (sp0 + 4294967284#32) (by bv_omega) (by bv_omega)]; exact hm3)
-          (by rw [jump_mem, hslot (sp0 + 4294967280#32) (by bv_omega) (by bv_omega)]; exact hm4)
-          (by rw [jump_mem, hslot (sp0 + 4294967276#32) (by bv_omega) (by bv_omega)]; exact hm5)
-          (codeAt_of_rom hcode2 (by simp only [ROM_END]; rw [hLp]; omega)
-            (fun b hb => by rw [jump_mem, hmem3, hROM2 b hb]))
-          (codeAt_of_rom hmul (by rw [show Code.mul_mod.length = 15 from rfl]; simp only [ROM_END]; bv_omega)
-            (fun b hb => by rw [jump_mem, hmem3, hROM2 b hb]))
-          (codeAt_of_rom hadd (by rw [show Code.add_mod.length = 13 from rfl]; simp only [ROM_END]; bv_omega)
-            (fun b hb => by rw [jump_mem, hmem3, hROM2 b hb]))
+          hx1 hx8 hx9 hx18 hx19 hcode3
+          (codeAt_of_rom hmul (by rw [show Code.mul_mod.length = 15 from rfl]; simp only [ROM_END]; bv_omega) hrom3)
+          (codeAt_of_rom hadd (by rw [show Code.add_mod.length = 13 from rfl]; simp only [ROM_END]; bv_omega) hrom3)
           (codeAt_of_mem_range hcoef (by omega) (fun a h1 h2 => by rw [jump_mem, hmem3, hslot0 a (by omega)]))
           hsp hlo hhi hra hA4 hTs
       refine ⟨2 + n, s', run_trans hr3 hrun, hp, hA10, hB10, hx2s, hx8s, hx9s, hx18s, hx19s,
