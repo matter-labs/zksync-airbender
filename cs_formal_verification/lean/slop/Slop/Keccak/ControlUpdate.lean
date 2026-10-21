@@ -1,5 +1,6 @@
 import Human.Circuits.Keccak.ControlUpdate
 import Slop.Keccak.Controls
+import Slop.Keccak.OpIndex
 import Slop.Arithmetic.OneHot
 
 namespace Airbender.Keccak.Proofs
@@ -7,7 +8,7 @@ open Arithmetic
 open scoped BigOperators
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 1600000
+set_option maxHeartbeats 800000
 
 private theorem selected_update {p : Nat} [Fact p.Prime] (hp : 4096 ≤ p)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
@@ -28,7 +29,8 @@ private theorem selected_update {p : Nat} [Fact p.Prime] (hp : 4096 ≤ p)
   have i3 := iterations 3; have i4 := iterations 4
   have input := Verification.assertion_of_holds h ⟨3, by rw [constraint_count]; decide⟩
   have output := Verification.assertion_of_holds h ⟨8, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment] at input output
+  op_index at input output
+  simp [Expression.eval, Verification.environment] at input output
   have fields : w 3 = (s.packed : ZMod p) ∧ w 5 = (s.nextPacked : ZMod p) := by
     fin_cases mode <;> fin_cases iteration
     all_goals simp [Variables.modeColumns] at m0 m1 m2 m3 m4 m5 m6
@@ -70,8 +72,8 @@ theorem control_update_checks {p : Nat} [Fact p.Prime] (hp : 4096 ≤ p)
     simp [Variables.modeColumns] at m0 m1 m2 m3 m4 m5 m6
     have input := Verification.assertion_of_holds h ⟨3, by rw [constraint_count]; decide⟩
     have output := Verification.assertion_of_holds h ⟨8, by rw [constraint_count]; decide⟩
-    simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
-      m0, m1, m2, m3, m4, m5, m6] at input output
+    op_index at input output
+    simp [Expression.eval, Verification.environment, m0, m1, m2, m3, m4, m5, m6] at input output
     linear_combination input - output
   · intro active
     rw [active] at counts
