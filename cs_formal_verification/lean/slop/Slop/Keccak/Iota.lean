@@ -8,7 +8,7 @@ namespace Airbender.Keccak.Proofs
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 1200000
+set_option maxHeartbeats 600000
 
 private def nativeLimbs (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 4, start + 5]
 private def temporary (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 2, start + 3]
@@ -75,10 +75,11 @@ private theorem iota_bytes {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   have query := byte_lookup_checks hp h ⟨8 * operation.val + byte.val, by omega⟩
   have tags := selected_tags (by omega) h active (0 : Fin 7) selected
     ⟨8 * operation.val + byte.val, by omega⟩
-  fin_cases operation <;> fin_cases byte <;>
-    simp [operationTags, byteTag, byteQuery, importedConstraints,
-      FlatOperation.lookups, Expression.eval, Verification.environment,
-      ByteOperationFacts] at tags query ⊢
+  fin_cases operation <;> fin_cases byte
+  all_goals simp only [byteTag, byteQuery] at tags query
+  all_goals op_index at tags query
+  all_goals simp [operationTags, Expression.eval, Verification.environment,
+    ByteOperationFacts] at tags query ⊢
   all_goals
     split at query
     · rename_i zero
