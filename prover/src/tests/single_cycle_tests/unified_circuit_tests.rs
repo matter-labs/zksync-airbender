@@ -10,18 +10,34 @@ mod test {
 
     use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 
-    fn read_binary(path: &std::path::Path) -> (Vec<u8>, Vec<u32>) {
-        use std::io::Read;
-        let mut file = std::fs::File::open(path).expect("must open provided file");
-        let mut buffer = vec![];
-        file.read_to_end(&mut buffer).expect("must read the file");
-        assert_eq!(buffer.len() % core::mem::size_of::<u32>(), 0);
-        let mut binary = Vec::with_capacity(buffer.len() / core::mem::size_of::<u32>());
-        for el in buffer.as_chunks::<4>().0 {
-            binary.push(u32::from_le_bytes(*el));
-        }
+    /// Keep the replayed cycles and their bytecode together: the large-field proof
+    /// generator writes a different program to `unified_proth120_witness.bin`.
+    fn basic_fibonacci_witness() -> (Vec<UnifiedOpcodeTracingDataWithTimestamp>, Vec<u32>) {
+        use crate::tests::gkr::orchestration::common::{run_vm_and_capture, ProgramConfig};
+        use crate::tests::gkr::orchestration::unified::replay_unified_cycles;
+        use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
+        use riscv_transpiler::vm::{Counters, DelegationsAndUnifiedCounters};
 
-        (buffer, binary)
+        let config = ProgramConfig {
+            binary_path: "../examples/basic_fibonacci/app.bin".to_owned(),
+            text_section_path: "../examples/basic_fibonacci/app.text".to_owned(),
+            non_determinism_reads: vec![],
+            cycles_bound: 1 << 20,
+            ram_bound_bytes: 1 << 30,
+        };
+        let worker = worker::Worker::new_with_num_threads(2);
+        let vm = run_vm_and_capture::<DelegationsAndUnifiedCounters, ReducedMachineDecoderConfig>(
+            &config, &worker,
+        );
+        let num_calls = vm
+            .counters
+            .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
+        assert!(
+            num_calls > 10,
+            "single-cycle replay must exercise rows after startup"
+        );
+        let witness = replay_unified_cycles(&vm, num_calls);
+        (witness, vm.binary)
     }
 
     fn test_unified_circuit_circuit<F: PrimeField>(
@@ -140,12 +156,7 @@ mod test {
 
     #[test]
     fn test_unified_witness_self_generates_write_values() {
-        use crate::tests::gkr::bincode_deserialize_from_file;
-        use std::path::Path;
-
-        let witness: Vec<UnifiedOpcodeTracingDataWithTimestamp> =
-            bincode_deserialize_from_file("unified_proth120_witness.bin");
-        let (_, binary) = read_binary(Path::new("../examples/basic_fibonacci/app.bin"));
+        let (witness, binary) = basic_fibonacci_witness();
 
         for (i, wit) in witness.into_iter().enumerate().skip(10) {
             println!("cycle {}", i);
@@ -177,13 +188,8 @@ mod test {
 
     #[test]
     fn test_unified_proth120_on_external_witness() {
-        use crate::tests::gkr::bincode_deserialize_from_file;
-        use std::path::Path;
-
-        let witness: Vec<UnifiedOpcodeTracingDataWithTimestamp> =
-            bincode_deserialize_from_file("unified_proth120_witness.bin");
+        let (witness, binary) = basic_fibonacci_witness();
         println!("{} inputs in total", witness.len());
-        let (_, binary) = read_binary(Path::new("../examples/basic_fibonacci/app.bin"));
 
         for (i, wit) in witness.into_iter().enumerate().skip(10) {
             let pc = wit.initial_pc();
@@ -663,14 +669,10 @@ mod two_field_mop_tests {
         );
         write_field(
             cs,
-            "shared F1/F2 intermediate reg[0]",
+            "shared scratch var[17]",
             F::from_u32_unchecked(z & 0xFFFF),
         );
-        write_field(
-            cs,
-            "shared F1/F2 intermediate reg[1]",
-            F::from_u32_unchecked(z >> 16),
-        );
+        write_field(cs, "shared scratch var[18]", F::from_u32_unchecked(z >> 16));
         write_field(cs, "shared scratch bool[1]", F::from_u32_unchecked(ic));
         write_field(
             cs,
@@ -1016,5 +1018,143 @@ mod two_field_mop_tests {
                 "tri-add rd must equal wrapping rs1+rs2+rd_old for rs1={rs1} rs2={rs2} rd_old={rd_old}"
             );
         }
+    }
+}
+/// The PC-bump carry boundary: an ADD at PC 0xFFFC, whose pc + 4 carries into the high
+/// limb. Single-variable forgeries attribute each rejection: the carry is read only by
+/// the two PC-bump constraints (and its Booleanity), and on an ADD row `final_pc[1]` only
+/// by the PC-bump high constraint (the Family-2 PC relations are gated off).
+#[cfg(test)]
+mod pc_carry_boundary_tests {
+    use super::*;
+    use cs::gkr_circuits::unified_reduced_machine::{
+        unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr,
+        unified_reduced_machine_table_addition_fn, UnifiedReducedMachineDecoder,
+    };
+    use cs::witness_placer::WitnessPlacer;
+    use field::baby_bear::base::BabyBearField;
+    use field::Proth120;
+    use riscv_transpiler::ir::ReducedMachineDecoderConfig;
+
+    const PC: u32 = 0xFFFC;
+    const NOP: u32 = 0x0000_0013;
+    /// `add x12, x10, x11`.
+    const ADD_X12_X10_X11: u32 = (11 << 20) | (10 << 15) | (12 << 7) | 0x33;
+
+    fn with_boundary_cs<F: PrimeField, R>(
+        f: impl FnOnce(&mut BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>) -> R,
+    ) -> R {
+        let mut binary = vec![NOP; PC as usize / 4 + 1];
+        binary[PC as usize / 4] = ADD_X12_X10_X11;
+        let mut t = process_binary_into_separate_tables_ext::<
+            F,
+            ReducedMachineDecoderConfig,
+            false,
+            Global,
+        >(
+            &binary,
+            &[Box::new(UnifiedReducedMachineDecoder)],
+            1 << 20,
+            &[NON_DETERMINISM_CSR as u16],
+        );
+        let decoder_data = t
+            .remove(&circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
+            .expect("decoder data");
+        let (rs1, rs2) = (7u32, 9u32);
+        let opcode_data = UnifiedOpcodeTracingDataWithTimestamp::NonMem(
+            NonMemoryOpcodeTracingDataWithTimestamp {
+                opcode_data: NonMemoryOpcodeTracingData {
+                    initial_pc: PC,
+                    rs1_value: rs1,
+                    rs2_value: rs2,
+                    rd_old_value: 0,
+                    rd_value: rs1 + rs2,
+                    new_pc: PC + 4,
+                    delegation_type: 0,
+                },
+                rs1_read_timestamp: TimestampData::from_scalar(0),
+                rs2_read_timestamp: TimestampData::from_scalar(0),
+                rd_read_timestamp: TimestampData::from_scalar(0),
+                cycle_timestamp: TimestampData::from_scalar(4),
+            },
+        );
+        let oracle = UnifiedRiscvCircuitOracle {
+            inner: &[opcode_data],
+            decoder_table: &decoder_data,
+        };
+        let oracle: UnifiedRiscvCircuitOracle<'static> = unsafe { core::mem::transmute(oracle) };
+        let mut cs = BasicAssembly::<F, CSDebugWitnessEvaluator<F>, false>::new_with_oracle_and_preprocessed_decoder(
+            oracle,
+            decoder_data
+                .iter()
+                .map(|el| el.unwrap_or_default())
+                .collect::<Vec<_>>(),
+        );
+        unified_reduced_machine_table_addition_fn::<F, _>(&mut cs);
+        for (table_type, table) in
+            cs::gkr_circuits::mem_word_only::create_mem_word_only_special_tables::<
+                F,
+                { common_constants::ROM_SECOND_WORD_BITS },
+            >(&binary)
+        {
+            cs.add_table_with_content(table_type, table);
+        }
+        unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr::<F, _>(&mut cs);
+        f(&mut cs)
+    }
+
+    fn var<F: PrimeField>(
+        cs: &BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>,
+        name: &str,
+    ) -> cs::definitions::Variable {
+        cs.variable_names
+            .iter()
+            .find_map(|(v, n)| (n == name).then_some(*v))
+            .unwrap_or_else(|| panic!("missing variable {name}"))
+    }
+
+    fn read<F: PrimeField>(
+        cs: &BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>,
+        name: &str,
+    ) -> u32 {
+        cs.get_value(var(cs, name))
+            .unwrap_or_else(|| panic!("{name} unresolved"))
+            .as_u32_reduced()
+    }
+
+    fn write<F: PrimeField>(
+        cs: &mut BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>,
+        name: &str,
+        value: u32,
+    ) {
+        let v = var(cs, name);
+        cs.witness_placer
+            .as_mut()
+            .unwrap()
+            .assign_field(v, &F::from_u32_unchecked(value));
+    }
+
+    fn check<F: PrimeField>() {
+        with_boundary_cs::<F, _>(|cs| {
+            assert!(cs.is_satisfied(), "honest boundary ADD");
+            assert_eq!(read(cs, "unified pc-bump carry"), 1);
+            assert_eq!((read(cs, "final_pc[0]"), read(cs, "final_pc[1]")), (0, 1));
+        });
+        // The carry dropped: both PC-bump constraints break.
+        with_boundary_cs::<F, _>(|cs| {
+            write(cs, "unified pc-bump carry", 0);
+            assert!(!cs.is_satisfied(), "carry = 0 accepted");
+        });
+        // The high limb not bumped: only the PC-bump high constraint reads it.
+        with_boundary_cs::<F, _>(|cs| {
+            write(cs, "final_pc[1]", 0);
+            assert!(!cs.is_satisfied(), "unchanged high limb accepted");
+        });
+    }
+
+    #[test]
+    fn pc_bump_carry_boundary_rejects_forgeries() {
+        check::<BabyBearField>();
+        check::<Proth120>();
     }
 }

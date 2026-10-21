@@ -1,11 +1,11 @@
 use super::*;
 use crate::types::Boolean;
 
-const JAL_BIT: usize = 0;
-const JALR_BIT: usize = 1;
-const SLT_BIT: usize = 2;
-const BRANCH_BIT: usize = 3;
-const RD_IS_ZERO_BIT: usize = 4;
+pub(crate) const JAL_BIT: usize = 0;
+pub(crate) const JALR_BIT: usize = 1;
+pub(crate) const SLT_BIT: usize = 2;
+pub(crate) const BRANCH_BIT: usize = 3;
+pub(crate) const RD_IS_ZERO_BIT: usize = 4;
 
 const IGNORE_JUMP_TABLE_FUNCT3: u8 = 0b000;
 const SLT_FUNCT3: u8 = 0b010;

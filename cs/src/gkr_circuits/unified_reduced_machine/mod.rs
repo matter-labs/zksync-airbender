@@ -16,4 +16,6 @@ pub use self::circuit::{
     UNIFIED_F1_NUM_FLAGS, UNIFIED_F3_NUM_FLAGS, UNIFIED_FAMILY_4_NUM_FLAGS,
     UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
 };
-pub use self::decoder::{UnifiedReducedMachineDecoder, UnifiedReducedMachineFamilyCircuitMask};
+pub use self::decoder::{
+    UnifiedReducedMachineDecoder, UnifiedReducedMachineFamilyCircuitMask, UNIFIED_RD_IS_ZERO_BIT,
+};

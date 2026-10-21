@@ -16,7 +16,7 @@ use crate::gkr_circuits::mem_word_only::{
 use crate::oracle::Placeholder;
 use crate::structured_expr::Expr;
 use crate::tables::TableDriver;
-use crate::types::{Boolean, Register, LIMB_WIDTH};
+use crate::types::{Boolean, Num, Register, LIMB_WIDTH};
 use crate::witness_placer::*;
 use field::PrimeField;
 
@@ -97,6 +97,24 @@ pub(super) const F4_SCRATCH_VARS: usize = 2; // ram_addr[0], ram_addr[1]
 const UNIFIED_SCRATCH_VAR_COUNT: usize = const_max(
     const_max(F1_SCRATCH_VARS, F2_SCRATCH_VARS),
     const_max(F3_SCRATCH_VARS, F4_SCRATCH_VARS),
+);
+
+pub(super) const F3_RS1_BYTE_SPLIT_SLOTS: [usize; 2] = [17, 18];
+pub(super) const F3_RS2_BYTE_SPLIT_SLOTS: [usize; 2] = [19, 20];
+
+/// The shared F1/F2/F4 register (F1 modular-op canonicity witness, F2 saved
+/// PC / comparison result, F4 `top_14`) lives in Family 3's rs1 byte-split slots and the F2
+/// PC temporary in a Family-3 shift-output slot; F1, F2 and F4 use none of them. Family 3's
+/// values there are bytes, so the slots' unconditional RC-16 holds on every row. The register
+/// avoids the shift-output slots: Family 2's RegIsZero peek reads it, and Family 3's
+/// shift outputs depend on slot 0, which that peek writes, so the witness scheduler would
+/// wait on itself.
+const SHARED_REGISTER_SLOTS: [usize; 2] = F3_RS1_BYTE_SPLIT_SLOTS;
+const F2_PC_TMP_SLOT: usize = 7;
+const _: () = assert!(
+    F2_PC_TMP_SLOT >= const_max(const_max(F1_SCRATCH_VARS, F2_SCRATCH_VARS), F4_SCRATCH_VARS)
+        && SHARED_REGISTER_SLOTS[0] > F2_PC_TMP_SLOT
+        && SHARED_REGISTER_SLOTS[1] < UNIFIED_SCRATCH_VAR_COUNT
 );
 
 pub(super) const UNIFIED_LOOKUP_WIDTH: usize = 8;
@@ -355,7 +373,16 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, MopF: PrimeField, CS: Circ
     });
     let scratch_vars: [Variable; UNIFIED_SCRATCH_VAR_COUNT] =
         core::array::from_fn(|i| cs.add_named_variable(&format!("shared scratch var[{i}]")));
-    let shared_intermediate_reg = Register::new_named(cs, "shared F1/F2 intermediate reg");
+    for slot in SHARED_REGISTER_SLOTS {
+        cs.require_invariant(
+            scratch_vars[slot],
+            Invariant::RangeChecked {
+                width: LIMB_WIDTH as u32,
+            },
+        );
+    }
+    let shared_intermediate_reg =
+        Register(SHARED_REGISTER_SLOTS.map(|slot| Num::Var(scratch_vars[slot])));
 
     // Each family body adds constraints gated by its own flag bits. Family-internal
     // flags within each family are mutually exclusive (decoder lookup binds to family
@@ -387,6 +414,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, MopF: PrimeField, CS: Circ
         shared_intermediate_reg,
         core::array::from_fn::<_, F2_SCRATCH_BOOLS, _>(|i| scratch_bools[i]),
         core::array::from_fn::<_, F2_SCRATCH_VARS, _>(|i| scratch_vars[i]),
+        scratch_vars[F2_PC_TMP_SLOT],
     );
     let f3_lookups = apply_unified_binary_shifts_inner(
         cs,
@@ -419,15 +447,41 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, MopF: PrimeField, CS: Circ
     // Family 2 (jump_branch_slt) owns its own gated PC logic for jal/jalr/branch/slt.
     // We add `pc_next = pc + 4` constraints that fire only when (cycle executes) AND
     // (no Family-2 sub-opcode is active). Padding rows have execute=0 → trivially satisfied.
-    apply_unified_pc_bump(
-        cs,
-        pc_in,
-        pc_out,
-        execute,
-        unified_mask.jump_branch_slt_bits(),
-    );
+    apply_unified_pc_bump(cs, pc_in, pc_out, execute, &unified_mask);
 
     apply_unified_family_dispatch_one_hot(cs, execute, &unified_mask);
+}
+
+/// Σ of all 18 dispatch bits (every family bit except Family 2's RD_IS_ZERO).
+pub(super) fn dispatch_sum<F: PrimeField>(
+    unified_mask: &UnifiedReducedMachineFamilyCircuitMask,
+) -> Expr<F> {
+    let non_f2_sum = Expr::sum(
+        unified_mask
+            .add_sub_lui_auipc_mop_bits()
+            .into_iter()
+            .chain(unified_mask.binary_shifts_bits())
+            .chain([unified_mask.is_lw(), unified_mask.is_sw()])
+            .map(Expr::from)
+            .collect(),
+    );
+    let family_2_bits = unified_mask.jump_branch_slt_bits();
+    Expr::sum(
+        std::iter::once(non_f2_sum)
+            .chain(family_2_bits[..4].iter().map(|&b| Expr::from(b)))
+            .collect(),
+    )
+}
+
+/// PC-bump gate: `execute − Σ` Family 2 sub-opcode bits (JAL, JALR, SLT, BRANCH; not
+/// RD_IS_ZERO). On admitted rows it is 1 on executing non-Family-2 rows and 0 on Family 2
+/// rows and padding.
+pub(super) fn pc_bump_gate<F: PrimeField>(
+    execute: Variable,
+    unified_mask: &UnifiedReducedMachineFamilyCircuitMask,
+) -> Expr<F> {
+    let family_2_bits = unified_mask.jump_branch_slt_bits();
+    Expr::var(execute) - Expr::sum(family_2_bits[..4].iter().map(|&b| Expr::from(b)).collect())
 }
 
 /// Adds the `pc_next = pc + 4` constraint, gated on `execute AND no Family-2 sub-opcode bit set`.
@@ -445,7 +499,7 @@ fn apply_unified_pc_bump<F: PrimeField, CS: Circuit<F>>(
     pc_in: [crate::definitions::Variable; REGISTER_SIZE],
     pc_out: [crate::definitions::Variable; REGISTER_SIZE],
     execute: crate::definitions::Variable,
-    family_2_bits: [Boolean; JUMP_SLT_BRANCH_FAMILY_NUM_BITS],
+    unified_mask: &UnifiedReducedMachineFamilyCircuitMask,
 ) {
     // Unconditional 16-bit range checks on pc_out limbs. Family 2's standalone
     // PC path does not enforce this, so the unified body owns it (and Family 2's
@@ -479,50 +533,7 @@ fn apply_unified_pc_bump<F: PrimeField, CS: Circuit<F>>(
         cs.set_values(value_fn);
     }
 
-    // Helper Boolean: gate = execute * (1 - sum(family_2 sub-opcode bits)).
-    // Mutual exclusion of family_2_bits[0..4] (JAL/JALR/SLT/BRANCH) is enforced
-    // by (a) the decoder lookup binding the bitmask atomically to a unique entry
-    // per opcode, and (b) the setup constraint below — if two sub-opcode bits
-    // were 1, the sum would be 2, forcing pc_bump_gate = -1, which fails the
-    // Booleanity check on pc_bump_gate.
-    // Bit 4 (RD_IS_ZERO_BIT) is set IN ADDITION to a sub-opcode bit by the
-    // decoder to indicate "no real rd write": for JAL/JALR this fires when
-    // rd == x0; for BRANCH it is unconditional (BRANCH has no rd field — those
-    // encoding bits hold funct3). So it must not enter the sub-opcode-mutual-
-    // exclusion sum.
-    // Wrapping in `execute` makes padding rows (execute=0) trivially satisfy
-    // the PC-bump constraints; keeping the helper as a single Boolean keeps the
-    // top-level constraint at degree 2.
-    let pc_bump_gate = cs.add_named_boolean_variable("unified pc-bump gate");
-    {
-        let execute_var = execute;
-        let f2_vars: [Variable; 4] = std::array::from_fn(|i| {
-            family_2_bits[i]
-                .get_variable()
-                .expect("Boolean::Is expected")
-        });
-        let pc_bump_gate_var = pc_bump_gate.expect_variable();
-        let value_fn = move |placer: &mut CS::WitnessPlacer| {
-            let execute_m = placer.get_boolean(execute_var);
-            let any_f2 = f2_vars
-                .iter()
-                .map(|v| placer.get_boolean(*v))
-                .reduce(|a, b| a.or(&b))
-                .unwrap();
-            let gate_m = execute_m.and(&any_f2.negate());
-            placer.assign_mask(pc_bump_gate_var, &gate_m);
-        };
-        cs.set_values(value_fn);
-    }
-    // Setup constraint: pc_bump_gate = execute - sum(execute * family_2_subop_bits)
-    //   ⇒ pc_bump_gate - execute + sum(execute * family_2_subop_bits) = 0  (deg 2)
-    {
-        let mut setup = Expr::from(pc_bump_gate) - Expr::var(execute);
-        for &b in family_2_bits[..4].iter() {
-            setup = setup + Expr::var(execute) * Expr::from(b);
-        }
-        cs.add_constraint_expr(setup);
-    }
+    let pc_bump_gate = pc_bump_gate(execute, unified_mask);
 
     let pc_step: Expr<F> =
         Expr::constant(F::from_u32_with_reduction(common_constants::PC_STEP as u32));
@@ -530,19 +541,19 @@ fn apply_unified_pc_bump<F: PrimeField, CS: Circuit<F>>(
 
     // pc_bump_gate * (pc_in[0] + 4 - pc_out[0] - 2^16 * pc_inc_carry) = 0  (deg 2)
     cs.add_constraint_expr(
-        Expr::from(pc_bump_gate)
+        pc_bump_gate.clone()
             * (Expr::var(pc_in[0]) + pc_step
                 - Expr::var(pc_out[0])
                 - shift16 * Expr::from(pc_inc_carry)),
     );
     // pc_bump_gate * (pc_inc_carry + pc_in[1] - pc_out[1]) = 0  (deg 2)
     cs.add_constraint_expr(
-        Expr::from(pc_bump_gate)
-            * (Expr::from(pc_inc_carry) + Expr::var(pc_in[1]) - Expr::var(pc_out[1])),
+        pc_bump_gate * (Expr::from(pc_inc_carry) + Expr::var(pc_in[1]) - Expr::var(pc_out[1])),
     );
 }
 
-/// pin that at most one family fires per executing cycle.
+/// pin that exactly one family fires per executing cycle: the linear tie
+/// `execute = Σ dispatch bits`.
 fn apply_unified_family_dispatch_one_hot<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     execute: crate::definitions::Variable,
@@ -554,51 +565,9 @@ fn apply_unified_family_dispatch_one_hot<F: PrimeField, CS: Circuit<F>>(
     let is_lw = unified_mask.is_lw();
     let is_sw = unified_mask.is_sw();
 
-    let is_any_family_active = cs.add_named_boolean_variable("unified family-dispatch one-hot");
-
-    // Witness: is_any_family_active = execute AND (any of the family-dispatch bits)
-    {
-        let f1_vars: [Variable; UNIFIED_F1_NUM_FLAGS] =
-            std::array::from_fn(|i| family_1_bits[i].expect_variable());
-        let f2_vars: [Variable; 4] = std::array::from_fn(|i| family_2_bits[i].expect_variable());
-        let f3_vars: [Variable; UNIFIED_F3_NUM_FLAGS] =
-            std::array::from_fn(|i| family_3_bits[i].expect_variable());
-        let is_lw_var = is_lw.expect_variable();
-        let is_sw_var = is_sw.expect_variable();
-        let target = is_any_family_active.expect_variable();
-        let value_fn = move |placer: &mut CS::WitnessPlacer| {
-            let execute_m = placer.get_boolean(execute);
-            let any_bit = f1_vars
-                .iter()
-                .chain(f2_vars.iter())
-                .chain(f3_vars.iter())
-                .chain(std::iter::once(&is_lw_var))
-                .chain(std::iter::once(&is_sw_var))
-                .map(|v| placer.get_boolean(*v))
-                .reduce(|a, b| a.or(&b))
-                .unwrap();
-            let result = execute_m.and(&any_bit);
-            placer.assign_mask(target, &result);
-        };
-        cs.set_values(value_fn);
-    }
-
-    // Setup constraint (deg 2):
-    //   is_any_family_active - execute * (sum of dispatch bits) = 0
-    // sum = family_1_bits[..] + family_2_bits[..4] + family_3_bits[..] + is_lw + is_sw
-    let mut setup = Expr::from(is_any_family_active);
-    for &b in family_1_bits.iter() {
-        setup = setup - Expr::var(execute) * Expr::from(b);
-    }
-    for &b in family_2_bits[..4].iter() {
-        setup = setup - Expr::var(execute) * Expr::from(b);
-    }
-    for &b in family_3_bits.iter() {
-        setup = setup - Expr::var(execute) * Expr::from(b);
-    }
-    setup = setup - Expr::var(execute) * Expr::from(is_lw);
-    setup = setup - Expr::var(execute) * Expr::from(is_sw);
-    cs.add_constraint_expr(setup);
+    cs.add_constraint_expr_allow_explicit_linear_prevent_optimizations_expr(
+        Expr::var(execute) - dispatch_sum(unified_mask),
+    );
 
     // Padding-row zeroing: on execute=0 rows, the decoder lookup is gated by
     // `execute` and so doesn't bind the bitmask — without this constraint a
@@ -607,7 +576,7 @@ fn apply_unified_family_dispatch_one_hot<F: PrimeField, CS: Circuit<F>>(
     // execute=0. Booleanity of each bit plus the constraint
     //   (1 - execute) * (sum of all family bits) = 0
     // forces the sum to 0 in the field, which forces each bit to 0 (since each
-    // is in {0,1}). One degree-2 constraint covers all 17 bits.
+    // is in {0,1}). One degree-2 constraint covers all 19 bits.
     let mut padding_zero_sum: Expr<F> = Expr::zero();
     for &b in family_1_bits.iter() {
         padding_zero_sum = padding_zero_sum + Expr::from(b);
@@ -696,6 +665,190 @@ mod test {
     use super::*;
     use crate::definitions::OutputType;
     use crate::utils::serialize_to_file;
+
+    fn eval<F: PrimeField>(
+        constraint: &crate::constraint::Constraint<F>,
+        values: &std::collections::HashMap<Variable, F>,
+    ) -> F {
+        let mut result = F::ZERO;
+        for term in constraint.terms.iter() {
+            match term {
+                Term::Constant(c) => {
+                    result.add_assign(c);
+                }
+                Term::Expression {
+                    coeff,
+                    inner,
+                    degree,
+                } => {
+                    let mut t = *coeff;
+                    for v in &inner[..*degree] {
+                        t.mul_assign(&values[v]);
+                    }
+                    result.add_assign(&t);
+                }
+            }
+        }
+        result
+    }
+
+    /// On every admitted row (an executing row whose mask passes the check the decoder table
+    /// build enforces, or a padding row, whose flags are zero): JAL/JALR write rd unless
+    /// rd = x0, SLT writes rd unless rd = x0, a Family 2 row with rd = x0 writes zero, the PC
+    /// advances by 4 exactly on executing non-Family-2 rows, and an executing row has exactly
+    /// one dispatch bit.
+    #[test]
+    fn gates_match_their_flag_semantics_on_admitted_rows() {
+        use super::super::decoder::unified_decoder_mask_violation;
+        use super::super::jump_branch_slt::f2_rd_write_gates;
+        use crate::gkr_circuits::jump_branch_slt_family::{
+            BRANCH_BIT, JALR_BIT, JAL_BIT, RD_IS_ZERO_BIT, SLT_BIT,
+        };
+        use ::field::baby_bear::base::BabyBearField;
+        use ::field::proth120::Proth120;
+
+        fn check<F: PrimeField>() {
+            let execute = Variable(0);
+            let bits: [Variable; UNIFIED_REDUCED_MACHINE_NUM_FLAGS] =
+                core::array::from_fn(|i| Variable(i as u64 + 1));
+            let mask =
+                UnifiedReducedMachineFamilyCircuitMask::from_full_mask(bits.map(Boolean::Is));
+            let f2 = mask.jump_branch_slt();
+            let [jal_or_jalr_writes_rd, slt_writes_rd, rd_is_x0] = f2_rd_write_gates(
+                f2.perform_jal(),
+                f2.perform_jalr(),
+                f2.perform_slt(),
+                f2.perform_branch(),
+                f2.rd_is_zero(),
+            );
+            let gates = [
+                jal_or_jalr_writes_rd,
+                slt_writes_rd,
+                rd_is_x0,
+                pc_bump_gate(execute, &mask),
+                Expr::var(execute) - dispatch_sum(&mask),
+            ]
+            .map(|e| e.to_max_quadratic_constraint());
+
+            let executing: Vec<u32> = (0..1u32 << UNIFIED_REDUCED_MACHINE_NUM_FLAGS)
+                .filter(|&m| unified_decoder_mask_violation(m).is_none())
+                .collect();
+            assert_eq!(executing.len(), 20);
+            for (is_executing, m) in executing.into_iter().map(|m| (true, m)).chain([(false, 0)]) {
+                let mut values: std::collections::HashMap<_, _> = bits
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| (*v, F::from_u32_unchecked(m >> i & 1)))
+                    .collect();
+                values.insert(execute, F::from_u32_unchecked(is_executing as u32));
+                let f2_flag = |b: usize| m >> (FAMILY_2_FLAG_OFFSET + b) & 1 == 1;
+                let [jal, jalr, slt, branch, rd_is_zero] =
+                    [JAL_BIT, JALR_BIT, SLT_BIT, BRANCH_BIT, RD_IS_ZERO_BIT].map(f2_flag);
+                let family_2 = jal || jalr || slt || branch;
+                let semantics = [
+                    (jal || jalr) && !rd_is_zero,
+                    slt && !rd_is_zero,
+                    family_2 && rd_is_zero,
+                    is_executing && !family_2,
+                    false,
+                ];
+                for (i, (gate, expected)) in gates.iter().zip(semantics).enumerate() {
+                    assert_eq!(
+                        eval(gate, &values),
+                        if expected { F::ONE } else { F::ZERO },
+                        "gate {i}, execute {is_executing}, mask {m:#b}"
+                    );
+                }
+            }
+        }
+        check::<BabyBearField>();
+        check::<Proth120>();
+    }
+
+    /// The committed layouts and witness graphs of both fields: each scratch slot that holds
+    /// another family's u16 limb (the shared register and the Family 2 PC temporary) has
+    /// exactly one bare RC-16 lookup and no u8 or bool writer. The generated witness function
+    /// reads a masked-off target back at the writer's own width, so a narrow writer would
+    /// truncate the limb.
+    #[test]
+    fn aliased_scratch_slots_are_range_checked_and_written_at_least_u16() {
+        use crate::gkr_compiler::GKRCircuitArtifact;
+        use crate::witness_placer::graph_description::{Expression, RawExpression};
+        use ::field::baby_bear::base::BabyBearField;
+        use ::field::proth120::Proth120;
+
+        fn read_json<T: serde::de::DeserializeOwned>(path: &str) -> T {
+            let file = std::fs::File::open(path).unwrap_or_else(|e| panic!("{path}: {e}"));
+            serde_json::from_reader(std::io::BufReader::new(file)).unwrap()
+        }
+
+        fn check<F: PrimeField + serde::de::DeserializeOwned>(layout: &str, ssa: &str) {
+            let artifact: GKRCircuitArtifact<F> = read_json(layout);
+            let ssa: Vec<Vec<RawExpression<F>>> = read_json(ssa);
+            let slot_var = |slot: usize| {
+                let name = format!("shared scratch var[{slot}]");
+                let vars: Vec<Variable> = artifact
+                    .variable_names
+                    .iter()
+                    .filter(|(_, n)| **n == name)
+                    .map(|(v, _)| *v)
+                    .collect();
+                assert_eq!(vars.len(), 1, "{layout}: {name}");
+                vars[0]
+            };
+            let writer_types = |slot: usize| -> Vec<&'static str> {
+                let var = slot_var(slot);
+                ssa.iter()
+                    .flatten()
+                    .filter_map(|e| match e {
+                        RawExpression::WriteVariable {
+                            into_variable,
+                            source_subexpr,
+                            ..
+                        } if *into_variable == var => Some(match source_subexpr {
+                            Expression::Bool(_) => "bool",
+                            Expression::Field(_) => "field",
+                            Expression::U8(_) => "u8",
+                            Expression::U16(_) => "u16",
+                            Expression::U32(_) => "u32",
+                        }),
+                        _ => None,
+                    })
+                    .collect()
+            };
+            for slot in SHARED_REGISTER_SLOTS.into_iter().chain([F2_PC_TMP_SLOT]) {
+                let addr = artifact.placement_data[&slot_var(slot)];
+                let range_checks = artifact
+                    .range_check_16_lookup_expressions
+                    .iter()
+                    .filter(|l| {
+                        l.input.is_trivial_single_input() && l.input.linear_terms[0].1 == addr
+                    })
+                    .count();
+                assert_eq!(range_checks, 1, "{layout} slot {slot}: RC-16 lookups");
+                let types = writer_types(slot);
+                assert!(types.len() >= 2, "{layout} slot {slot}: writers {types:?}");
+                assert!(
+                    types.iter().all(|t| !matches!(*t, "u8" | "bool")),
+                    "{layout} slot {slot}: writers {types:?}"
+                );
+            }
+            let byte_slot = F3_RS2_BYTE_SPLIT_SLOTS[0];
+            assert!(
+                writer_types(byte_slot).contains(&"u8"),
+                "{layout}: slot {byte_slot}'s byte writer not seen"
+            );
+        }
+
+        check::<BabyBearField>(
+            "compiled_circuits/unified_reduced_machine_layout_gkr.json",
+            "compiled_circuits/unified_reduced_machine_ssa_gkr.json",
+        );
+        check::<Proth120>(
+            "compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+            "compiled_circuits/unified_reduced_machine_ssa_gkr_proth120.json",
+        );
+    }
 
     #[test]
     fn unified_rs2_sign_lookup_reads_slt_sign_source_scratch() {

@@ -121,182 +121,6 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(62usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(62usize)[j],
-                    );
-                }
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(62usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(61usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(61usize)[j],
-                    );
-                }
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(61usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(60usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(60usize)[j],
-                    );
-                }
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(60usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(59usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(59usize)[j],
-                    );
-                }
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(59usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(58usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(58usize)[j],
-                    );
-                }
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(58usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(57usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(57usize)[j],
-                    );
-                }
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(57usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(56usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(56usize)[j],
-                    );
-                }
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(56usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(55usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(55usize)[j],
-                    );
-                }
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(55usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
                     let mut inner = evals.get_unchecked(54usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
@@ -327,6 +151,72 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 field_ops::sub_assign(&mut val, &evals.get_unchecked(53usize)[j]);
+                val
+            };
+            {
+                let mut h = val;
+                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
+                acc[j] = h;
+            }
+        }
+    }
+    {
+        for j in 0..1 {
+            let val = {
+                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                {
+                    let mut inner = evals.get_unchecked(52usize)[j];
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(52usize)[j],
+                    );
+                }
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(52usize)[j]);
+                val
+            };
+            {
+                let mut h = val;
+                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
+                acc[j] = h;
+            }
+        }
+    }
+    {
+        for j in 0..1 {
+            let val = {
+                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                {
+                    let mut inner = evals.get_unchecked(51usize)[j];
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(51usize)[j],
+                    );
+                }
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(51usize)[j]);
+                val
+            };
+            {
+                let mut h = val;
+                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
+                acc[j] = h;
+            }
+        }
+    }
+    {
+        for j in 0..1 {
+            let val = {
+                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                {
+                    let mut inner = evals.get_unchecked(50usize)[j];
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(50usize)[j],
+                    );
+                }
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(50usize)[j]);
                 val
             };
             {
@@ -451,14 +341,14 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(77usize)[j];
+                    let mut inner = evals.get_unchecked(69usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(77usize)[j],
+                        &evals.get_unchecked(69usize)[j],
                     );
                 }
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(77usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(69usize)[j]);
                 val
             };
             {
@@ -473,14 +363,14 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(72usize)[j];
+                    let mut inner = evals.get_unchecked(64usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(72usize)[j],
+                        &evals.get_unchecked(64usize)[j],
                     );
                 }
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(72usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(64usize)[j]);
                 val
             };
             {
@@ -871,16 +761,16 @@ unsafe fn layer_0_final_step_accumulator(
                     BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(2013233153u32));
                 field_ops::add_assign_product_with_base(
                     &mut val,
-                    &evals.get_unchecked(85usize)[j],
+                    &evals.get_unchecked(77usize)[j],
                     &BabyBearField::from_reduced_raw_repr(2013257729u32),
                 );
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(86usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(78usize)[j]);
                 field_ops::add_assign_product_with_base(
                     &mut val,
-                    &evals.get_unchecked(89usize)[j],
+                    &evals.get_unchecked(81usize)[j],
                     &BabyBearField::from_reduced_raw_repr(8192u32),
                 );
-                field_ops::add_assign(&mut val, &evals.get_unchecked(90usize)[j]);
+                field_ops::add_assign(&mut val, &evals.get_unchecked(82usize)[j]);
                 val
             };
             {
@@ -896,24 +786,24 @@ unsafe fn layer_0_final_step_accumulator(
                 let mut val =
                     BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(1509916673u32));
                 {
-                    let mut inner = evals.get_unchecked(85usize)[j];
+                    let mut inner = evals.get_unchecked(77usize)[j];
                     field_ops::mul_assign_by_base(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1981808641u32),
                     );
                     field_ops::add_assign_product_with_base(
                         &mut inner,
-                        &evals.get_unchecked(89usize)[j],
+                        &evals.get_unchecked(81usize)[j],
                         &BabyBearField::from_reduced_raw_repr(62914560u32),
                     );
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(85usize)[j],
+                        &evals.get_unchecked(77usize)[j],
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(89usize)[j];
+                    let mut inner = evals.get_unchecked(81usize)[j];
                     field_ops::mul_assign_by_base(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1981808641u32),
@@ -921,17 +811,17 @@ unsafe fn layer_0_final_step_accumulator(
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(89usize)[j],
+                        &evals.get_unchecked(81usize)[j],
                     );
                 }
                 field_ops::add_assign_product_with_base(
                     &mut val,
-                    &evals.get_unchecked(85usize)[j],
+                    &evals.get_unchecked(77usize)[j],
                     &BabyBearField::from_reduced_raw_repr(1761599489u32),
                 );
                 field_ops::add_assign_product_with_base(
                     &mut val,
-                    &evals.get_unchecked(89usize)[j],
+                    &evals.get_unchecked(81usize)[j],
                     &BabyBearField::from_reduced_raw_repr(251666432u32),
                 );
                 val
@@ -948,7 +838,7 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
@@ -957,7 +847,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
@@ -966,7 +856,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
@@ -975,7 +865,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
@@ -984,7 +874,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
@@ -993,7 +883,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
@@ -1002,7 +892,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
@@ -1011,7 +901,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
@@ -1020,7 +910,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
@@ -1029,7 +919,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
@@ -1038,7 +928,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
@@ -1047,7 +937,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
@@ -1056,7 +946,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
@@ -1065,7 +955,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
@@ -1074,7 +964,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
@@ -1083,7 +973,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
@@ -1092,7 +982,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
@@ -1101,21 +991,21 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(72usize)[j],
+                        &evals.get_unchecked(64usize)[j],
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(77usize)[j],
+                        &evals.get_unchecked(69usize)[j],
                     );
                 }
                 field_ops::add_assign(&mut val, &evals.get_unchecked(5usize)[j]);
@@ -1135,8 +1025,40 @@ unsafe fn layer_0_final_step_accumulator(
                 field_ops::add_assign(&mut val, &evals.get_unchecked(19usize)[j]);
                 field_ops::add_assign(&mut val, &evals.get_unchecked(20usize)[j]);
                 field_ops::add_assign(&mut val, &evals.get_unchecked(21usize)[j]);
-                field_ops::add_assign(&mut val, &evals.get_unchecked(72usize)[j]);
-                field_ops::add_assign(&mut val, &evals.get_unchecked(77usize)[j]);
+                field_ops::add_assign(&mut val, &evals.get_unchecked(64usize)[j]);
+                field_ops::add_assign(&mut val, &evals.get_unchecked(69usize)[j]);
+                val
+            };
+            {
+                let mut h = val;
+                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
+                acc[j] = h;
+            }
+        }
+    }
+    {
+        for j in 0..1 {
+            let val = {
+                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(5usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(6usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(7usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(8usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(9usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(10usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(11usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(12usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(13usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(14usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(15usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(16usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(17usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(18usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(20usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(21usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(64usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(69usize)[j]);
+                field_ops::add_assign(&mut val, &evals.get_unchecked(74usize)[j]);
                 val
             };
             {
@@ -1151,98 +1073,10 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(51usize)[j];
                     field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(5usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(82usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(6usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(82usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(7usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(82usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(8usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(82usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(9usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(82usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(10usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(82usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(11usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(82usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(12usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(82usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(13usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(82usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(14usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(82usize)[j];
-                    field_ops::negate(&mut inner);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(76usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -1250,8 +1084,10 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(51usize)[j];
                     field_ops::negate(&mut inner);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(76usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -1259,8 +1095,10 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(51usize)[j];
                     field_ops::negate(&mut inner);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(76usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -1268,8 +1106,10 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(51usize)[j];
                     field_ops::negate(&mut inner);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(76usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -1277,70 +1117,20 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
-                    field_ops::negate(&mut inner);
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(20usize)[j],
+                        &evals.get_unchecked(51usize)[j],
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
-                    field_ops::negate(&mut inner);
+                    let mut inner = evals.get_unchecked(76usize)[j];
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(21usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(82usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(72usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(82usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(77usize)[j],
-                    );
-                }
-                field_ops::add_assign(&mut val, &evals.get_unchecked(59usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(58usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(57usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(84usize)[j];
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(88usize)[j]);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(58usize)[j],
+                        &evals.get_unchecked(74usize)[j],
                     );
                 }
                 val
@@ -1357,7 +1147,63 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(58usize)[j];
+                    let mut inner = evals.get_unchecked(51usize)[j];
+                    field_ops::mul_assign_by_base(
+                        &mut inner,
+                        &BabyBearField::from_reduced_raw_repr(268295646u32),
+                    );
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(75usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(79usize)[j]);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(15usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(51usize)[j];
+                    field_ops::mul_assign_by_base(
+                        &mut inner,
+                        &BabyBearField::from_reduced_raw_repr(268295646u32),
+                    );
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(75usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(79usize)[j]);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(16usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(51usize)[j];
+                    field_ops::mul_assign_by_base(
+                        &mut inner,
+                        &BabyBearField::from_reduced_raw_repr(268295646u32),
+                    );
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(75usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(79usize)[j]);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(17usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(51usize)[j];
+                    field_ops::mul_assign_by_base(
+                        &mut inner,
+                        &BabyBearField::from_reduced_raw_repr(268295646u32),
+                    );
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(75usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(79usize)[j]);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(18usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::mul_assign_by_base(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
@@ -1365,21 +1211,41 @@ unsafe fn layer_0_final_step_accumulator(
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(57usize)[j],
+                        &evals.get_unchecked(51usize)[j],
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(83usize)[j];
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(87usize)[j]);
+                    let mut inner = evals.get_unchecked(75usize)[j];
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(79usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(58usize)[j],
+                        &evals.get_unchecked(74usize)[j],
                     );
                 }
                 field_ops::add_assign_product_with_base(
                     &mut val,
-                    &evals.get_unchecked(58usize)[j],
+                    &evals.get_unchecked(15usize)[j],
+                    &BabyBearField::from_reduced_raw_repr(939524105u32),
+                );
+                field_ops::add_assign_product_with_base(
+                    &mut val,
+                    &evals.get_unchecked(16usize)[j],
+                    &BabyBearField::from_reduced_raw_repr(939524105u32),
+                );
+                field_ops::add_assign_product_with_base(
+                    &mut val,
+                    &evals.get_unchecked(17usize)[j],
+                    &BabyBearField::from_reduced_raw_repr(939524105u32),
+                );
+                field_ops::add_assign_product_with_base(
+                    &mut val,
+                    &evals.get_unchecked(18usize)[j],
+                    &BabyBearField::from_reduced_raw_repr(939524105u32),
+                );
+                field_ops::add_assign_product_with_base(
+                    &mut val,
+                    &evals.get_unchecked(74usize)[j],
                     &BabyBearField::from_reduced_raw_repr(1073741816u32),
                 );
                 val
@@ -1396,55 +1262,8 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(15usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(82usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(16usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(82usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(17usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(82usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(18usize)[j],
-                    );
-                }
-                field_ops::add_assign(&mut val, &evals.get_unchecked(58usize)[j]);
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(82usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(72usize)[j];
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(77usize)[j]);
+                    let mut inner = evals.get_unchecked(64usize)[j];
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(69usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -1452,8 +1271,8 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(72usize)[j];
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(77usize)[j]);
+                    let mut inner = evals.get_unchecked(64usize)[j];
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(69usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -1474,7 +1293,7 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(77usize)[j];
+                    let mut inner = evals.get_unchecked(69usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -1482,7 +1301,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(77usize)[j];
+                    let mut inner = evals.get_unchecked(69usize)[j];
                     field_ops::mul_assign_by_base(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(536870908u32),
@@ -1494,7 +1313,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(77usize)[j];
+                    let mut inner = evals.get_unchecked(69usize)[j];
                     field_ops::mul_assign_by_base(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1073741816u32),
@@ -1502,16 +1321,16 @@ unsafe fn layer_0_final_step_accumulator(
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(48usize)[j],
+                        &evals.get_unchecked(44usize)[j],
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(78usize)[j];
+                    let mut inner = evals.get_unchecked(70usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(77usize)[j],
+                        &evals.get_unchecked(69usize)[j],
                     );
                 }
                 val
@@ -1528,7 +1347,7 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(72usize)[j];
+                    let mut inner = evals.get_unchecked(64usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -1536,7 +1355,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(72usize)[j];
+                    let mut inner = evals.get_unchecked(64usize)[j];
                     field_ops::mul_assign_by_base(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(536870908u32),
@@ -1548,7 +1367,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(72usize)[j];
+                    let mut inner = evals.get_unchecked(64usize)[j];
                     field_ops::mul_assign_by_base(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1073741816u32),
@@ -1556,16 +1375,438 @@ unsafe fn layer_0_final_step_accumulator(
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(48usize)[j],
+                        &evals.get_unchecked(44usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(65usize)[j];
+                    field_ops::negate(&mut inner);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(64usize)[j],
+                    );
+                }
+                val
+            };
+            {
+                let mut h = val;
+                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
+                acc[j] = h;
+            }
+        }
+    }
+    {
+        for j in 0..1 {
+            let val = {
+                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                {
+                    let mut inner = evals.get_unchecked(63usize)[j];
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(73usize)[j]);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(50usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(64usize)[j];
+                    field_ops::negate(&mut inner);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(69usize)[j]);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(63usize)[j],
                     );
                 }
                 {
                     let mut inner = evals.get_unchecked(73usize)[j];
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(64usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(73usize)[j];
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(69usize)[j],
+                    );
+                }
+                val
+            };
+            {
+                let mut h = val;
+                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
+                acc[j] = h;
+            }
+        }
+    }
+    {
+        for j in 0..1 {
+            let val = {
+                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                {
+                    let mut inner = evals.get_unchecked(62usize)[j];
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(50usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(64usize)[j];
+                    field_ops::negate(&mut inner);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(69usize)[j]);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(62usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(72usize)[j];
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(64usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(72usize)[j];
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(69usize)[j],
+                    );
+                }
+                val
+            };
+            {
+                let mut h = val;
+                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
+                acc[j] = h;
+            }
+        }
+    }
+    {
+        for j in 0..1 {
+            let val = {
+                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                {
+                    let mut inner = evals.get_unchecked(64usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(72usize)[j],
+                        &evals.get_unchecked(24usize)[j],
+                    );
+                }
+                field_ops::add_assign(&mut val, &evals.get_unchecked(50usize)[j]);
+                val
+            };
+            {
+                let mut h = val;
+                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
+                acc[j] = h;
+            }
+        }
+    }
+    {
+        for j in 0..1 {
+            let val = {
+                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                {
+                    let mut inner = evals.get_unchecked(69usize)[j];
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(24usize)[j],
+                    );
+                }
+                val
+            };
+            {
+                let mut h = val;
+                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
+                acc[j] = h;
+            }
+        }
+    }
+    {
+        for j in 0..1 {
+            let val = {
+                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                {
+                    let mut inner = evals.get_unchecked(69usize)[j];
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(24usize)[j],
+                    );
+                }
+                val
+            };
+            {
+                let mut h = val;
+                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
+                acc[j] = h;
+            }
+        }
+    }
+    {
+        for j in 0..1 {
+            let val = {
+                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                {
+                    let mut inner = evals.get_unchecked(69usize)[j];
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(28usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(71usize)[j];
+                    field_ops::negate(&mut inner);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(69usize)[j],
+                    );
+                }
+                val
+            };
+            {
+                let mut h = val;
+                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
+                acc[j] = h;
+            }
+        }
+    }
+    {
+        for j in 0..1 {
+            let val = {
+                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                {
+                    let mut inner = evals.get_unchecked(64usize)[j];
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(28usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(66usize)[j];
+                    field_ops::negate(&mut inner);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(64usize)[j],
+                    );
+                }
+                val
+            };
+            {
+                let mut h = val;
+                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
+                acc[j] = h;
+            }
+        }
+    }
+    {
+        for j in 0..1 {
+            let val = {
+                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                {
+                    let mut inner = evals.get_unchecked(69usize)[j];
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(27usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(70usize)[j];
+                    field_ops::negate(&mut inner);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(69usize)[j],
+                    );
+                }
+                val
+            };
+            {
+                let mut h = val;
+                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
+                acc[j] = h;
+            }
+        }
+    }
+    {
+        for j in 0..1 {
+            let val = {
+                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                {
+                    let mut inner = evals.get_unchecked(64usize)[j];
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(27usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(65usize)[j];
+                    field_ops::negate(&mut inner);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(64usize)[j],
+                    );
+                }
+                val
+            };
+            {
+                let mut h = val;
+                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
+                acc[j] = h;
+            }
+        }
+    }
+    {
+        for j in 0..1 {
+            let val = {
+                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                {
+                    let mut inner = evals.get_unchecked(64usize)[j];
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(69usize)[j]);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(3usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(64usize)[j];
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(69usize)[j]);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(22usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(
+                        &mut inner,
+                        &BabyBearField::from_reduced_raw_repr(1744970275u32),
+                    );
+                    field_ops::add_assign_product_with_base(
+                        &mut inner,
+                        &evals.get_unchecked(69usize)[j],
+                        &BabyBearField::from_reduced_raw_repr(1744970275u32),
+                    );
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(23usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(64usize)[j];
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(69usize)[j]);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(59usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(66usize)[j];
+                    field_ops::negate(&mut inner);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(64usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(71usize)[j];
+                    field_ops::negate(&mut inner);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(69usize)[j],
+                    );
+                }
+                val
+            };
+            {
+                let mut h = val;
+                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
+                acc[j] = h;
+            }
+        }
+    }
+    {
+        for j in 0..1 {
+            let val = {
+                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
+                {
+                    let mut inner = evals.get_unchecked(64usize)[j];
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(69usize)[j]);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(2usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(
+                        &mut inner,
+                        &BabyBearField::from_reduced_raw_repr(1744970275u32),
+                    );
+                    field_ops::add_assign_product_with_base(
+                        &mut inner,
+                        &evals.get_unchecked(69usize)[j],
+                        &BabyBearField::from_reduced_raw_repr(1744970275u32),
+                    );
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(22usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(64usize)[j];
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(69usize)[j]);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(58usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(65usize)[j];
+                    field_ops::negate(&mut inner);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(64usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(70usize)[j];
+                    field_ops::negate(&mut inner);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(69usize)[j],
                     );
                 }
                 val
@@ -1583,39 +1824,14 @@ unsafe fn layer_0_final_step_accumulator(
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
                     let mut inner = evals.get_unchecked(71usize)[j];
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(81usize)[j]);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(56usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(72usize)[j];
                     field_ops::negate(&mut inner);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(77usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(71usize)[j],
+                        &evals.get_unchecked(69usize)[j],
                     );
                 }
-                {
-                    let mut inner = evals.get_unchecked(81usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(72usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(81usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(77usize)[j],
-                    );
-                }
+                field_ops::add_assign(&mut val, &evals.get_unchecked(71usize)[j]);
                 val
             };
             {
@@ -1630,404 +1846,7 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(70usize)[j];
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(56usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(72usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(77usize)[j]);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(70usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(80usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(72usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(80usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(77usize)[j],
-                    );
-                }
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(72usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(24usize)[j],
-                    );
-                }
-                field_ops::add_assign(&mut val, &evals.get_unchecked(56usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(77usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(24usize)[j],
-                    );
-                }
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(77usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(24usize)[j],
-                    );
-                }
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(77usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(28usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(79usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(77usize)[j],
-                    );
-                }
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(72usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(28usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(74usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(72usize)[j],
-                    );
-                }
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(77usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(27usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(78usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(77usize)[j],
-                    );
-                }
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(72usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(27usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(73usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(72usize)[j],
-                    );
-                }
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(72usize)[j];
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(77usize)[j]);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(3usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(72usize)[j];
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(77usize)[j]);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(22usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(72usize)[j];
-                    field_ops::mul_assign_by_base(
-                        &mut inner,
-                        &BabyBearField::from_reduced_raw_repr(1744970275u32),
-                    );
-                    field_ops::add_assign_product_with_base(
-                        &mut inner,
-                        &evals.get_unchecked(77usize)[j],
-                        &BabyBearField::from_reduced_raw_repr(1744970275u32),
-                    );
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(23usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(72usize)[j];
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(77usize)[j]);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(67usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(74usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(72usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(79usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(77usize)[j],
-                    );
-                }
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(72usize)[j];
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(77usize)[j]);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(2usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(72usize)[j];
-                    field_ops::mul_assign_by_base(
-                        &mut inner,
-                        &BabyBearField::from_reduced_raw_repr(1744970275u32),
-                    );
-                    field_ops::add_assign_product_with_base(
-                        &mut inner,
-                        &evals.get_unchecked(77usize)[j],
-                        &BabyBearField::from_reduced_raw_repr(1744970275u32),
-                    );
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(22usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(72usize)[j];
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(77usize)[j]);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(66usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(73usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(72usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(78usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(77usize)[j],
-                    );
-                }
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(79usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(77usize)[j],
-                    );
-                }
-                field_ops::add_assign(&mut val, &evals.get_unchecked(79usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(77usize)[j];
+                    let mut inner = evals.get_unchecked(69usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2035,16 +1854,16 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(78usize)[j];
+                    let mut inner = evals.get_unchecked(70usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(77usize)[j],
+                        &evals.get_unchecked(69usize)[j],
                     );
                 }
                 field_ops::sub_assign(&mut val, &evals.get_unchecked(1usize)[j]);
-                field_ops::add_assign(&mut val, &evals.get_unchecked(78usize)[j]);
+                field_ops::add_assign(&mut val, &evals.get_unchecked(70usize)[j]);
                 val
             };
             {
@@ -2059,15 +1878,15 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(74usize)[j];
+                    let mut inner = evals.get_unchecked(66usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(72usize)[j],
+                        &evals.get_unchecked(64usize)[j],
                     );
                 }
-                field_ops::add_assign(&mut val, &evals.get_unchecked(74usize)[j]);
+                field_ops::add_assign(&mut val, &evals.get_unchecked(66usize)[j]);
                 val
             };
             {
@@ -2082,7 +1901,7 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(72usize)[j];
+                    let mut inner = evals.get_unchecked(64usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2090,16 +1909,16 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(73usize)[j];
+                    let mut inner = evals.get_unchecked(65usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(72usize)[j],
+                        &evals.get_unchecked(64usize)[j],
                     );
                 }
                 field_ops::sub_assign(&mut val, &evals.get_unchecked(0usize)[j]);
-                field_ops::add_assign(&mut val, &evals.get_unchecked(73usize)[j]);
+                field_ops::add_assign(&mut val, &evals.get_unchecked(65usize)[j]);
                 val
             };
             {
@@ -2138,7 +1957,7 @@ unsafe fn layer_0_final_step_accumulator(
                         &evals.get_unchecked(43usize)[j],
                         &BabyBearField::from_reduced_raw_repr(268434910u32),
                     );
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(81usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(73usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2170,7 +1989,7 @@ unsafe fn layer_0_final_step_accumulator(
                         &BabyBearField::from_reduced_raw_repr(268434910u32),
                     );
                     field_ops::add_assign(&mut inner, &evals.get_unchecked(43usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(81usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(73usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2215,7 +2034,7 @@ unsafe fn layer_0_final_step_accumulator(
                         &evals.get_unchecked(41usize)[j],
                         &BabyBearField::from_reduced_raw_repr(268434910u32),
                     );
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2247,7 +2066,7 @@ unsafe fn layer_0_final_step_accumulator(
                         &evals.get_unchecked(42usize)[j],
                         &BabyBearField::from_reduced_raw_repr(268434910u32),
                     );
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2268,11 +2087,11 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(81usize)[j];
+                    let mut inner = evals.get_unchecked(73usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(55usize)[j],
+                        &evals.get_unchecked(19usize)[j],
                     );
                 }
                 val
@@ -2289,11 +2108,11 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(80usize)[j];
+                    let mut inner = evals.get_unchecked(72usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(55usize)[j],
+                        &evals.get_unchecked(19usize)[j],
                     );
                 }
                 val
@@ -2310,11 +2129,11 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(81usize)[j];
+                    let mut inner = evals.get_unchecked(73usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(54usize)[j],
+                        &evals.get_unchecked(17usize)[j],
                     );
                 }
                 val
@@ -2331,85 +2150,8 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(53usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(49usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(81usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(53usize)[j],
-                    );
-                }
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(54usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(29usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(53usize)[j];
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(48usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(80usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(53usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(80usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(54usize)[j],
-                    );
-                }
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
-                {
-                    let mut inner = evals.get_unchecked(19usize)[j];
-                    field_ops::negate(&mut inner);
+                    let mut inner = evals.get_unchecked(45usize)[j];
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(73usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2417,8 +2159,8 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(19usize)[j];
-                    field_ops::negate(&mut inner);
+                    let mut inner = evals.get_unchecked(45usize)[j];
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(73usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2426,24 +2168,24 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(19usize)[j];
-                    field_ops::negate(&mut inner);
-                    field_ops::add_assign_product(
-                        &mut val,
-                        &inner,
-                        &evals.get_unchecked(17usize)[j],
-                    );
-                }
-                {
-                    let mut inner = evals.get_unchecked(19usize)[j];
-                    field_ops::negate(&mut inner);
+                    let mut inner = evals.get_unchecked(45usize)[j];
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(73usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
                         &evals.get_unchecked(18usize)[j],
                     );
                 }
-                field_ops::add_assign(&mut val, &evals.get_unchecked(55usize)[j]);
+                {
+                    let mut inner = evals.get_unchecked(45usize)[j];
+                    field_ops::negate(&mut inner);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(73usize)[j]);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(19usize)[j],
+                    );
+                }
                 val
             };
             {
@@ -2458,47 +2200,51 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(19usize)[j];
+                    let mut inner = evals.get_unchecked(44usize)[j];
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(15usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(44usize)[j];
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
+                    field_ops::add_assign_product(
+                        &mut val,
+                        &inner,
+                        &evals.get_unchecked(16usize)[j],
+                    );
+                }
+                {
+                    let mut inner = evals.get_unchecked(29usize)[j];
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
                         &evals.get_unchecked(17usize)[j],
                     );
                 }
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(17usize)[j]);
-                field_ops::add_assign(&mut val, &evals.get_unchecked(54usize)[j]);
-                val
-            };
-            {
-                let mut h = val;
-                field_ops::add_assign_product(&mut h, &acc[j], &batch_base);
-                acc[j] = h;
-            }
-        }
-    }
-    {
-        for j in 0..1 {
-            let val = {
-                let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(19usize)[j];
+                    let mut inner = evals.get_unchecked(44usize)[j];
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(15usize)[j],
+                        &evals.get_unchecked(18usize)[j],
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(19usize)[j];
+                    let mut inner = evals.get_unchecked(44usize)[j];
+                    field_ops::negate(&mut inner);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(16usize)[j],
+                        &evals.get_unchecked(19usize)[j],
                     );
                 }
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(15usize)[j]);
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(16usize)[j]);
-                field_ops::add_assign(&mut val, &evals.get_unchecked(53usize)[j]);
                 val
             };
             {
@@ -2529,7 +2275,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(52usize)[j];
+                    let mut inner = evals.get_unchecked(49usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2552,7 +2298,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut inner = evals.get_unchecked(15usize)[j];
                     field_ops::add_assign(&mut inner, &evals.get_unchecked(16usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(52usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(49usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2566,8 +2312,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &evals.get_unchecked(25usize)[j],
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(84usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(88usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(76usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2581,8 +2327,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &evals.get_unchecked(25usize)[j],
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(67usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(88usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(59usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2596,8 +2342,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &evals.get_unchecked(25usize)[j],
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(84usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(88usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(76usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2611,8 +2357,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &evals.get_unchecked(25usize)[j],
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(84usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(88usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(76usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2635,7 +2381,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut inner = evals.get_unchecked(15usize)[j];
                     field_ops::add_assign(&mut inner, &evals.get_unchecked(16usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(52usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(49usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2648,8 +2394,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(51usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(83usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(34usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(75usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2662,8 +2408,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(51usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(66usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(34usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(58usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2676,8 +2422,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(51usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(83usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(34usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(75usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2690,8 +2436,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(51usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(83usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(34usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(75usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2710,7 +2456,7 @@ unsafe fn layer_0_final_step_accumulator(
                 );
                 field_ops::add_assign_product_with_base(
                     &mut val,
-                    &evals.get_unchecked(52usize)[j],
+                    &evals.get_unchecked(49usize)[j],
                     &BabyBearField::from_reduced_raw_repr(939524105u32),
                 );
                 val
@@ -2734,7 +2480,7 @@ unsafe fn layer_0_final_step_accumulator(
                         &evals.get_unchecked(18usize)[j],
                     );
                 }
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(52usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(49usize)[j]);
                 val
             };
             {
@@ -2759,7 +2505,7 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut inner = evals.get_unchecked(30usize)[j];
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(71usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(63usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2768,7 +2514,7 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut inner = evals.get_unchecked(30usize)[j];
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(71usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(63usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2777,7 +2523,7 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut inner = evals.get_unchecked(30usize)[j];
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(71usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(63usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2786,7 +2532,7 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut inner = evals.get_unchecked(30usize)[j];
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(71usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(63usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2821,8 +2567,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &evals.get_unchecked(23usize)[j],
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(49usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(84usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(45usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(76usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2836,8 +2582,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &evals.get_unchecked(23usize)[j],
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(49usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(84usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(45usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(76usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2851,9 +2597,9 @@ unsafe fn layer_0_final_step_accumulator(
                         &evals.get_unchecked(23usize)[j],
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(49usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(67usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(71usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(45usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(59usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(63usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2867,9 +2613,9 @@ unsafe fn layer_0_final_step_accumulator(
                         &evals.get_unchecked(23usize)[j],
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(49usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(67usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(71usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(45usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(59usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(63usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2903,8 +2649,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(48usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(83usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(44usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(75usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2917,8 +2663,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(48usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(83usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(44usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(75usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2931,9 +2677,9 @@ unsafe fn layer_0_final_step_accumulator(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(48usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(66usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(70usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(44usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(58usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(62usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2946,9 +2692,9 @@ unsafe fn layer_0_final_step_accumulator(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(48usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(66usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(70usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(44usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(58usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(62usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -2979,7 +2725,7 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(81usize)[j];
+                    let mut inner = evals.get_unchecked(73usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3000,7 +2746,7 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(80usize)[j];
+                    let mut inner = evals.get_unchecked(72usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3021,7 +2767,7 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(69usize)[j];
+                    let mut inner = evals.get_unchecked(61usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3042,7 +2788,7 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(68usize)[j];
+                    let mut inner = evals.get_unchecked(60usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3063,7 +2809,7 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(71usize)[j];
+                    let mut inner = evals.get_unchecked(63usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3084,7 +2830,7 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(70usize)[j];
+                    let mut inner = evals.get_unchecked(62usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3120,9 +2866,9 @@ unsafe fn layer_0_final_step_accumulator(
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
                     field_ops::add_assign(&mut inner, &evals.get_unchecked(23usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(67usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(71usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(81usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(59usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(63usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(73usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3136,9 +2882,9 @@ unsafe fn layer_0_final_step_accumulator(
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
                     field_ops::add_assign(&mut inner, &evals.get_unchecked(23usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(67usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(71usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(81usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(59usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(63usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(73usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3152,8 +2898,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
                     field_ops::add_assign(&mut inner, &evals.get_unchecked(23usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(81usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(84usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(73usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(76usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3167,8 +2913,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
                     field_ops::add_assign(&mut inner, &evals.get_unchecked(23usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(49usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(81usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(45usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(73usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3182,8 +2928,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
                     field_ops::add_assign(&mut inner, &evals.get_unchecked(23usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(49usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(81usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(45usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(73usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3197,8 +2943,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
                     field_ops::add_assign(&mut inner, &evals.get_unchecked(23usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(49usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(81usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(45usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(73usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3212,8 +2958,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
                     field_ops::add_assign(&mut inner, &evals.get_unchecked(23usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(49usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(81usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(45usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(73usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3233,10 +2979,10 @@ unsafe fn layer_0_final_step_accumulator(
                         &evals.get_unchecked(25usize)[j],
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(67usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(71usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(76usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(81usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(59usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(63usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(68usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(73usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3291,9 +3037,9 @@ unsafe fn layer_0_final_step_accumulator(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(66usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(70usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(58usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(62usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3306,9 +3052,9 @@ unsafe fn layer_0_final_step_accumulator(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(66usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(70usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(58usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(62usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3321,8 +3067,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(83usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(75usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3335,8 +3081,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(48usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(44usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3349,8 +3095,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(48usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(44usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3363,8 +3109,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(48usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(44usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3377,8 +3123,8 @@ unsafe fn layer_0_final_step_accumulator(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(48usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(44usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3396,10 +3142,10 @@ unsafe fn layer_0_final_step_accumulator(
                         &evals.get_unchecked(24usize)[j],
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(66usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(70usize)[j]);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(75usize)[j]);
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(58usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(62usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(67usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -3477,23 +3223,23 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(66usize)[j];
+                    let mut inner = evals.get_unchecked(58usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product_with_base(
                         &mut inner,
-                        &evals.get_unchecked(67usize)[j],
+                        &evals.get_unchecked(59usize)[j],
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(70usize)[j]);
+                    field_ops::sub_assign(&mut inner, &evals.get_unchecked(62usize)[j]);
                     field_ops::add_assign_product_with_base(
                         &mut inner,
-                        &evals.get_unchecked(71usize)[j],
+                        &evals.get_unchecked(63usize)[j],
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
                     field_ops::add_assign_product_with_base(
                         &mut inner,
-                        &evals.get_unchecked(81usize)[j],
+                        &evals.get_unchecked(73usize)[j],
                         &BabyBearField::from_reduced_raw_repr(268295646u32),
                     );
                     field_ops::add_assign_product(
@@ -3503,23 +3249,23 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(66usize)[j];
+                    let mut inner = evals.get_unchecked(58usize)[j];
                     field_ops::negate(&mut inner);
                     field_ops::add_assign_product_with_base(
                         &mut inner,
-                        &evals.get_unchecked(67usize)[j],
+                        &evals.get_unchecked(59usize)[j],
                         &BabyBearField::from_reduced_raw_repr(1744970275u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(70usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(62usize)[j]);
                     field_ops::add_assign_product_with_base(
                         &mut inner,
-                        &evals.get_unchecked(71usize)[j],
+                        &evals.get_unchecked(63usize)[j],
                         &BabyBearField::from_reduced_raw_repr(268295646u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
                     field_ops::add_assign_product_with_base(
                         &mut inner,
-                        &evals.get_unchecked(81usize)[j],
+                        &evals.get_unchecked(73usize)[j],
                         &BabyBearField::from_reduced_raw_repr(268295646u32),
                     );
                     field_ops::add_assign_product(
@@ -3529,12 +3275,12 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(50usize)[j];
+                    let mut inner = evals.get_unchecked(48usize)[j];
                     field_ops::negate(&mut inner);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
                     field_ops::add_assign_product_with_base(
                         &mut inner,
-                        &evals.get_unchecked(81usize)[j],
+                        &evals.get_unchecked(73usize)[j],
                         &BabyBearField::from_reduced_raw_repr(268295646u32),
                     );
                     field_ops::add_assign_product(
@@ -3544,12 +3290,12 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(50usize)[j];
+                    let mut inner = evals.get_unchecked(48usize)[j];
                     field_ops::negate(&mut inner);
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(80usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(72usize)[j]);
                     field_ops::add_assign_product_with_base(
                         &mut inner,
-                        &evals.get_unchecked(81usize)[j],
+                        &evals.get_unchecked(73usize)[j],
                         &BabyBearField::from_reduced_raw_repr(268295646u32),
                     );
                     field_ops::add_assign_product(
@@ -3572,10 +3318,10 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(75usize)[j];
+                    let mut inner = evals.get_unchecked(67usize)[j];
                     field_ops::add_assign_product_with_base(
                         &mut inner,
-                        &evals.get_unchecked(76usize)[j],
+                        &evals.get_unchecked(68usize)[j],
                         &BabyBearField::from_reduced_raw_repr(268295646u32),
                     );
                     field_ops::add_assign_product(
@@ -3585,36 +3331,36 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(70usize)[j];
+                    let mut inner = evals.get_unchecked(62usize)[j];
                     field_ops::mul_assign_by_base(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1u32),
                     );
                     field_ops::add_assign_product_with_base(
                         &mut inner,
-                        &evals.get_unchecked(71usize)[j],
+                        &evals.get_unchecked(63usize)[j],
                         &BabyBearField::from_reduced_raw_repr(65536u32),
                     );
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(66usize)[j],
+                        &evals.get_unchecked(58usize)[j],
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(70usize)[j];
+                    let mut inner = evals.get_unchecked(62usize)[j];
                     field_ops::mul_assign_by_base(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(65536u32),
                     );
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(71usize)[j]);
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(63usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(67usize)[j],
+                        &evals.get_unchecked(59usize)[j],
                     );
                 }
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(50usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(48usize)[j]);
                 val
             };
             {
@@ -3629,14 +3375,14 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(82usize)[j];
+                    let mut inner = evals.get_unchecked(74usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(82usize)[j],
+                        &evals.get_unchecked(74usize)[j],
                     );
                 }
-                field_ops::sub_assign(&mut val, &evals.get_unchecked(82usize)[j]);
+                field_ops::sub_assign(&mut val, &evals.get_unchecked(74usize)[j]);
                 val
             };
             {
@@ -3650,49 +3396,49 @@ unsafe fn layer_0_final_step_accumulator(
         const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 13usize] = [
             (
                 SimpleGateType::LookupWithSetup,
-                [48usize, 63usize, 99usize, 0usize],
+                [44usize, 55usize, 91usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [49usize, 80usize, 0usize, 0usize],
+                [45usize, 72usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [81usize, 84usize, 0usize, 0usize],
+                [73usize, 76usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [51usize, 73usize, 0usize, 0usize],
+                [34usize, 65usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [74usize, 78usize, 0usize, 0usize],
+                [66usize, 70usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [79usize, 87usize, 0usize, 0usize],
+                [71usize, 79usize, 0usize, 0usize],
             ),
-            (SimpleGateType::Copy, [88usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [80usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupWithSetup,
-                [89usize, 64usize, 100usize, 0usize],
+                [81usize, 56usize, 92usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [90usize, 111usize, 0usize, 0usize],
+                [82usize, 103usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [112usize, 113usize, 0usize, 0usize],
+                [104usize, 105usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [114usize, 115usize, 0usize, 0usize],
+                [106usize, 107usize, 0usize, 0usize],
             ),
-            (SimpleGateType::Copy, [116usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [108usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupInitialWithCachedDenominators,
-                [82usize, 117usize, 65usize, 118usize],
+                [74usize, 109usize, 57usize, 110usize],
             ),
         ];
         let mut _sg = 13usize;
@@ -4024,7 +3770,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(87usize)[j];
+                    let mut inner = evals.get_unchecked(79usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -4032,7 +3778,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(87usize)[j];
+                    let mut inner = evals.get_unchecked(79usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -4040,7 +3786,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(87usize)[j];
+                    let mut inner = evals.get_unchecked(79usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -4048,7 +3794,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(87usize)[j];
+                    let mut inner = evals.get_unchecked(79usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -4124,7 +3870,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                     field_ops::add_assign_product_with_base(
                         &mut inner,
-                        &evals.get_unchecked(67usize)[j],
+                        &evals.get_unchecked(59usize)[j],
                         &BabyBearField::from_reduced_raw_repr(16777216u32),
                     );
                     field_ops::add_assign_product(
@@ -4142,7 +3888,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                     field_ops::add_assign_product_with_base(
                         &mut inner,
-                        &evals.get_unchecked(71usize)[j],
+                        &evals.get_unchecked(63usize)[j],
                         &BabyBearField::from_reduced_raw_repr(16777216u32),
                     );
                     field_ops::add_assign_product(
@@ -4165,7 +3911,7 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(51usize)[j];
+                    let mut inner = evals.get_unchecked(34usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -4173,7 +3919,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(51usize)[j];
+                    let mut inner = evals.get_unchecked(34usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -4181,7 +3927,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(51usize)[j];
+                    let mut inner = evals.get_unchecked(34usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -4189,7 +3935,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(51usize)[j];
+                    let mut inner = evals.get_unchecked(34usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -4204,7 +3950,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                     field_ops::add_assign_product_with_base(
                         &mut inner,
-                        &evals.get_unchecked(67usize)[j],
+                        &evals.get_unchecked(59usize)[j],
                         &BabyBearField::from_reduced_raw_repr(16777216u32),
                     );
                     field_ops::add_assign_product(
@@ -4910,7 +4656,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                     field_ops::add_assign_product_with_base(
                         &mut inner,
-                        &evals.get_unchecked(66usize)[j],
+                        &evals.get_unchecked(58usize)[j],
                         &BabyBearField::from_reduced_raw_repr(16777216u32),
                     );
                     field_ops::add_assign_product(
@@ -4927,7 +4673,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                     field_ops::add_assign_product_with_base(
                         &mut inner,
-                        &evals.get_unchecked(70usize)[j],
+                        &evals.get_unchecked(62usize)[j],
                         &BabyBearField::from_reduced_raw_repr(16777216u32),
                     );
                     field_ops::add_assign_product(
@@ -4989,7 +4735,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                     field_ops::add_assign_product_with_base(
                         &mut inner,
-                        &evals.get_unchecked(66usize)[j],
+                        &evals.get_unchecked(58usize)[j],
                         &BabyBearField::from_reduced_raw_repr(16777216u32),
                     );
                     field_ops::add_assign_product(
@@ -5294,7 +5040,7 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(67usize)[j];
+                    let mut inner = evals.get_unchecked(59usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -5302,7 +5048,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(67usize)[j];
+                    let mut inner = evals.get_unchecked(59usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -5310,7 +5056,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(67usize)[j];
+                    let mut inner = evals.get_unchecked(59usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -5318,7 +5064,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(67usize)[j];
+                    let mut inner = evals.get_unchecked(59usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -5401,11 +5147,11 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(56usize)[j];
+                    let mut inner = evals.get_unchecked(50usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(81usize)[j],
+                        &evals.get_unchecked(73usize)[j],
                     );
                 }
                 val
@@ -5461,7 +5207,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                     field_ops::add_assign_product_with_base(
                         &mut inner,
-                        &evals.get_unchecked(70usize)[j],
+                        &evals.get_unchecked(62usize)[j],
                         &BabyBearField::from_reduced_raw_repr(16777216u32),
                     );
                     field_ops::add_assign_product(
@@ -5479,11 +5225,11 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(56usize)[j];
+                    let mut inner = evals.get_unchecked(50usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(80usize)[j],
+                        &evals.get_unchecked(72usize)[j],
                     );
                 }
                 val
@@ -5508,8 +5254,8 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(48usize)[j];
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(49usize)[j]);
+                    let mut inner = evals.get_unchecked(44usize)[j];
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(45usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -5517,8 +5263,8 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(48usize)[j];
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(49usize)[j]);
+                    let mut inner = evals.get_unchecked(44usize)[j];
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(45usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -5526,8 +5272,8 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(48usize)[j];
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(49usize)[j]);
+                    let mut inner = evals.get_unchecked(44usize)[j];
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(45usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -5535,8 +5281,8 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(48usize)[j];
-                    field_ops::add_assign(&mut inner, &evals.get_unchecked(49usize)[j]);
+                    let mut inner = evals.get_unchecked(44usize)[j];
+                    field_ops::add_assign(&mut inner, &evals.get_unchecked(45usize)[j]);
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -5552,7 +5298,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(56usize)[j];
+                    let mut inner = evals.get_unchecked(50usize)[j];
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
@@ -5560,7 +5306,7 @@ unsafe fn layer_0_final_step_accumulator(
                     );
                 }
                 {
-                    let mut inner = evals.get_unchecked(56usize)[j];
+                    let mut inner = evals.get_unchecked(50usize)[j];
                     field_ops::mul_assign_by_base(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(268295646u32),
@@ -5585,7 +5331,7 @@ unsafe fn layer_0_final_step_accumulator(
             let val = {
                 let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(0u32));
                 {
-                    let mut inner = evals.get_unchecked(56usize)[j];
+                    let mut inner = evals.get_unchecked(50usize)[j];
                     field_ops::mul_assign_by_base(
                         &mut inner,
                         &BabyBearField::from_reduced_raw_repr(1073741752u32),
@@ -5593,7 +5339,7 @@ unsafe fn layer_0_final_step_accumulator(
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(82usize)[j],
+                        &evals.get_unchecked(74usize)[j],
                     );
                 }
                 field_ops::add_assign(&mut val, &evals.get_unchecked(15usize)[j]);
@@ -5633,7 +5379,7 @@ unsafe fn layer_0_final_step_accumulator(
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(72usize)[j],
+                        &evals.get_unchecked(64usize)[j],
                     );
                 }
                 {
@@ -5646,17 +5392,17 @@ unsafe fn layer_0_final_step_accumulator(
                     field_ops::add_assign_product(
                         &mut val,
                         &inner,
-                        &evals.get_unchecked(77usize)[j],
+                        &evals.get_unchecked(69usize)[j],
                     );
                 }
                 field_ops::add_assign_product_with_base(
                     &mut val,
-                    &evals.get_unchecked(72usize)[j],
+                    &evals.get_unchecked(64usize)[j],
                     &BabyBearField::from_reduced_raw_repr(939524233u32),
                 );
                 field_ops::add_assign_product_with_base(
                     &mut val,
-                    &evals.get_unchecked(77usize)[j],
+                    &evals.get_unchecked(69usize)[j],
                     &BabyBearField::from_reduced_raw_repr(939524233u32),
                 );
                 val
@@ -5676,13 +5422,13 @@ unsafe fn layer_0_final_step_accumulator(
                 field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    let base = evals.get_unchecked(101usize)[j];
+                    let base = evals.get_unchecked(93usize)[j];
                     field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[1usize];
-                    let mut addr_hi = evals.get_unchecked(102usize)[j];
+                    let mut addr_hi = evals.get_unchecked(94usize)[j];
                     let set_bits = inits_and_teardowns_top_bits[0usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_with_reduction(set_bits);
@@ -5693,25 +5439,25 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut t = linearization_challenges[2usize];
-                    let base = evals.get_unchecked(93usize)[j];
+                    let base = evals.get_unchecked(85usize)[j];
                     field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[3usize];
-                    let base = evals.get_unchecked(94usize)[j];
+                    let base = evals.get_unchecked(86usize)[j];
                     field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[4usize];
-                    let base = evals.get_unchecked(91usize)[j];
+                    let base = evals.get_unchecked(83usize)[j];
                     field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[5usize];
-                    let base = evals.get_unchecked(92usize)[j];
+                    let base = evals.get_unchecked(84usize)[j];
                     field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
@@ -5723,13 +5469,13 @@ unsafe fn layer_0_final_step_accumulator(
                 field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    let base = evals.get_unchecked(101usize)[j];
+                    let base = evals.get_unchecked(93usize)[j];
                     field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[1usize];
-                    let mut addr_hi = evals.get_unchecked(102usize)[j];
+                    let mut addr_hi = evals.get_unchecked(94usize)[j];
                     let set_bits = inits_and_teardowns_top_bits[1usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_with_reduction(set_bits);
@@ -5740,25 +5486,25 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut t = linearization_challenges[2usize];
-                    let base = evals.get_unchecked(97usize)[j];
+                    let base = evals.get_unchecked(89usize)[j];
                     field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[3usize];
-                    let base = evals.get_unchecked(98usize)[j];
+                    let base = evals.get_unchecked(90usize)[j];
                     field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[4usize];
-                    let base = evals.get_unchecked(95usize)[j];
+                    let base = evals.get_unchecked(87usize)[j];
                     field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[5usize];
-                    let base = evals.get_unchecked(96usize)[j];
+                    let base = evals.get_unchecked(88usize)[j];
                     field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
@@ -5781,13 +5527,13 @@ unsafe fn layer_0_final_step_accumulator(
                 field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    let base = evals.get_unchecked(101usize)[j];
+                    let base = evals.get_unchecked(93usize)[j];
                     field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[1usize];
-                    let mut addr_hi = evals.get_unchecked(102usize)[j];
+                    let mut addr_hi = evals.get_unchecked(94usize)[j];
                     let set_bits = inits_and_teardowns_top_bits[0usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_with_reduction(set_bits);
@@ -5804,13 +5550,13 @@ unsafe fn layer_0_final_step_accumulator(
                 field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    let base = evals.get_unchecked(101usize)[j];
+                    let base = evals.get_unchecked(93usize)[j];
                     field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[1usize];
-                    let mut addr_hi = evals.get_unchecked(102usize)[j];
+                    let mut addr_hi = evals.get_unchecked(94usize)[j];
                     let set_bits = inits_and_teardowns_top_bits[1usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_with_reduction(set_bits);
@@ -5832,22 +5578,13 @@ unsafe fn layer_0_final_step_accumulator(
     }
     {
         const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 5usize] = [
-            (SimpleGateType::Copy, [82usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [74usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [95usize, 96usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [97usize, 98usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [99usize, 100usize, 0usize, 0usize]),
             (
                 SimpleGateType::Product,
-                [103usize, 104usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::Product,
-                [105usize, 106usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::Product,
-                [107usize, 108usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::Product,
-                [109usize, 110usize, 0usize, 0usize],
+                [101usize, 102usize, 0usize, 0usize],
             ),
         ];
         let mut _sg = 5usize;
@@ -7028,8 +6765,8 @@ fn check_virtual_setup_range_check_16bits<E: ErrorCreator>(
             field_ops::mul_assign(&mut result, &t);
             k += 1;
         }
-        if result != *state.prev_claims.get_unchecked(114usize) {
-            return Err(E::gkr_virtual_setup_eval_mismatch(114usize));
+        if result != *state.prev_claims.get_unchecked(106usize) {
+            return Err(E::gkr_virtual_setup_eval_mismatch(106usize));
         }
     }
     Ok(())
@@ -7061,8 +6798,8 @@ fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
             field_ops::mul_assign(&mut result, &t);
             k += 1;
         }
-        if result != *state.prev_claims.get_unchecked(115usize) {
-            return Err(E::gkr_virtual_setup_eval_mismatch(115usize));
+        if result != *state.prev_claims.get_unchecked(107usize) {
+            return Err(E::gkr_virtual_setup_eval_mismatch(107usize));
         }
     }
     Ok(())
@@ -7107,11 +6844,11 @@ fn check_virtual_setup_inits_and_teardowns<E: ErrorCreator>(
                 k += 1;
             }
         }
-        if low_eval != *state.prev_claims.get_unchecked(116usize) {
-            return Err(E::gkr_virtual_setup_eval_mismatch(116usize));
+        if low_eval != *state.prev_claims.get_unchecked(108usize) {
+            return Err(E::gkr_virtual_setup_eval_mismatch(108usize));
         }
-        if high_eval != *state.prev_claims.get_unchecked(117usize) {
-            return Err(E::gkr_virtual_setup_eval_mismatch(117usize));
+        if high_eval != *state.prev_claims.get_unchecked(109usize) {
+            return Err(E::gkr_virtual_setup_eval_mismatch(109usize));
         }
     }
     Ok(())
@@ -8917,7 +8654,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 23usize;
-            const NUM_AT_POINT_EVALS: usize = 119usize;
+            const NUM_AT_POINT_EVALS: usize = 111usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -8967,7 +8704,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
             state.prev_claims.clear();
             {
-                const LAYOUT_KIND: [usize; 134usize] = [
+                const LAYOUT_KIND: [usize; 126usize] = [
                     1usize, 1usize, 0usize, 0usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
@@ -8977,33 +8714,31 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
-                    0usize, 0usize, 0usize, 0usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
-                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
-                    0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                 ];
-                const LAYOUT_POS: [usize; 134usize] = [
-                    0usize, 1usize, 66usize, 67usize, 2usize, 68usize, 69usize, 70usize, 71usize,
-                    72usize, 73usize, 74usize, 3usize, 4usize, 75usize, 76usize, 77usize, 78usize,
+                const LAYOUT_POS: [usize; 126usize] = [
+                    0usize, 1usize, 58usize, 59usize, 2usize, 60usize, 61usize, 62usize, 63usize,
+                    64usize, 65usize, 66usize, 3usize, 4usize, 67usize, 68usize, 69usize, 70usize,
+                    71usize, 72usize, 73usize, 74usize, 75usize, 76usize, 77usize, 78usize,
                     79usize, 80usize, 81usize, 82usize, 83usize, 84usize, 85usize, 86usize,
-                    87usize, 88usize, 89usize, 90usize, 91usize, 92usize, 93usize, 94usize,
-                    95usize, 96usize, 97usize, 98usize, 0usize, 1usize, 2usize, 3usize, 4usize,
+                    87usize, 88usize, 89usize, 90usize, 0usize, 1usize, 2usize, 3usize, 4usize,
                     5usize, 6usize, 7usize, 8usize, 9usize, 10usize, 11usize, 12usize, 13usize,
                     14usize, 15usize, 16usize, 17usize, 18usize, 19usize, 20usize, 21usize,
                     22usize, 23usize, 24usize, 25usize, 26usize, 27usize, 28usize, 29usize,
                     30usize, 31usize, 32usize, 33usize, 34usize, 35usize, 36usize, 37usize,
                     38usize, 39usize, 40usize, 41usize, 42usize, 43usize, 44usize, 45usize,
                     46usize, 47usize, 48usize, 49usize, 50usize, 51usize, 52usize, 53usize,
-                    54usize, 55usize, 56usize, 57usize, 58usize, 59usize, 60usize, 61usize,
-                    62usize, 63usize, 64usize, 65usize, 5usize, 6usize, 7usize, 8usize, 9usize,
-                    10usize, 11usize, 12usize, 13usize, 14usize, 99usize, 100usize, 101usize,
+                    54usize, 55usize, 56usize, 57usize, 5usize, 6usize, 7usize, 8usize, 9usize,
+                    10usize, 11usize, 12usize, 13usize, 14usize, 91usize, 92usize, 93usize,
+                    94usize, 95usize, 96usize, 97usize, 98usize, 99usize, 100usize, 101usize,
                     102usize, 103usize, 104usize, 105usize, 106usize, 107usize, 108usize, 109usize,
-                    110usize, 111usize, 112usize, 113usize, 114usize, 115usize, 116usize, 117usize,
-                    118usize,
+                    110usize,
                 ];
                 let mut i = 0usize;
-                while i < 134usize {
+                while i < 126usize {
                     let kind = unsafe { *LAYOUT_KIND.get_unchecked(i) };
                     let pos = unsafe { *LAYOUT_POS.get_unchecked(i) };
                     let claim: BabyBearExt4 = if kind == 0usize {
@@ -9017,32 +8752,32 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             {
                 const SC_DESCS: [(usize, u32, usize, usize); 6usize] = [
-                    (126usize, 0u32, 0usize, 3usize),
-                    (127usize, 133099247u32, 3usize, 3usize),
-                    (128usize, 1744830467u32, 6usize, 3usize),
-                    (129usize, 133099247u32, 9usize, 3usize),
-                    (130usize, 1476395013u32, 12usize, 3usize),
-                    (131usize, 133099247u32, 15usize, 3usize),
+                    (118usize, 0u32, 0usize, 3usize),
+                    (119usize, 133099247u32, 3usize, 3usize),
+                    (120usize, 1744830467u32, 6usize, 3usize),
+                    (121usize, 133099247u32, 9usize, 3usize),
+                    (122usize, 1476395013u32, 12usize, 3usize),
+                    (123usize, 133099247u32, 15usize, 3usize),
                 ];
                 const SC_TERMS: [(u32, usize); 18usize] = [
                     (1744830467u32, 24usize),
                     (268435454u32, 0usize),
-                    (133099247u32, 98usize),
+                    (133099247u32, 90usize),
                     (1744830467u32, 25usize),
                     (268435454u32, 1usize),
-                    (1744830467u32, 98usize),
+                    (1744830467u32, 90usize),
                     (1744830467u32, 24usize),
                     (268435454u32, 5usize),
-                    (133099247u32, 99usize),
+                    (133099247u32, 91usize),
                     (1744830467u32, 25usize),
                     (268435454u32, 6usize),
-                    (1744830467u32, 99usize),
+                    (1744830467u32, 91usize),
                     (1744830467u32, 24usize),
                     (268435454u32, 12usize),
-                    (133099247u32, 100usize),
+                    (133099247u32, 92usize),
                     (1744830467u32, 25usize),
                     (268435454u32, 13usize),
-                    (1744830467u32, 100usize),
+                    (1744830467u32, 92usize),
                 ];
                 let mut _sc = 0;
                 while _sc < 6usize {
@@ -9068,7 +8803,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                const VL_DESCS: [(usize, usize, usize); 1usize] = [(132usize, 0usize, 10usize)];
+                const VL_DESCS: [(usize, usize, usize); 1usize] = [(124usize, 0usize, 10usize)];
                 const VL_COLS: [(u32, usize, usize); 10usize] = [
                     (0u32, 0usize, 1usize),
                     (0u32, 1usize, 1usize),
@@ -9146,10 +8881,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                const VS_DESCS: [(usize, usize, usize); 1usize] = [(133usize, 0usize, 10usize)];
+                const VS_DESCS: [(usize, usize, usize); 1usize] = [(125usize, 0usize, 10usize)];
                 const VS_DEPS: [usize; 10usize] = [
-                    104usize, 105usize, 106usize, 107usize, 108usize, 109usize, 110usize, 111usize,
-                    112usize, 113usize,
+                    96usize, 97usize, 98usize, 99usize, 100usize, 101usize, 102usize, 103usize,
+                    104usize, 105usize,
                 ];
                 let mut _vs = 0;
                 while _vs < 1usize {
@@ -9214,7 +8949,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(118usize);
+                let cached = *state.prev_claims.get_unchecked(110usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 1usize));
                 }
@@ -9270,7 +9005,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(119usize);
+                let cached = *state.prev_claims.get_unchecked(111usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 2usize));
                 }
@@ -9317,7 +9052,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(120usize);
+                let cached = *state.prev_claims.get_unchecked(112usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 3usize));
                 }
@@ -9373,7 +9108,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(121usize);
+                let cached = *state.prev_claims.get_unchecked(113usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 4usize));
                 }
@@ -9429,7 +9164,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(122usize);
+                let cached = *state.prev_claims.get_unchecked(114usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 5usize));
                 }
@@ -9478,7 +9213,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(123usize);
+                let cached = *state.prev_claims.get_unchecked(115usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 6usize));
                 }
@@ -9534,7 +9269,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(124usize);
+                let cached = *state.prev_claims.get_unchecked(116usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 7usize));
                 }
@@ -9583,7 +9318,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(125usize);
+                let cached = *state.prev_claims.get_unchecked(117usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 8usize));
                 }

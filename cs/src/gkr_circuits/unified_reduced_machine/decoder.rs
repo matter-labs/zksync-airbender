@@ -4,7 +4,7 @@ use crate::gkr_circuits::add_sub_family::{
 };
 use crate::gkr_circuits::binary_shifts_family::{ShiftBinaryDecoder, ShiftBinaryFamilyCircuitMask};
 use crate::gkr_circuits::jump_branch_slt_family::{
-    JumpSltBranchDecoder, JumpSltBranchFamilyCircuitMask,
+    JumpSltBranchDecoder, JumpSltBranchFamilyCircuitMask, BRANCH_BIT, RD_IS_ZERO_BIT, SLT_BIT,
 };
 use crate::gkr_circuits::mem_word_only::WordOnlyMemoryFamilyDecoder;
 use crate::types::Boolean;
@@ -24,6 +24,35 @@ use crate::tables::TableType;
 /// The Family-4 standalone decoder produces `opcode_family_bits = 0` for LW and
 /// `= 1` for SW (bit 0 = is_store).
 const F4_STANDALONE_IS_STORE_BIT: usize = 0;
+
+/// Unified position of the Family-2 auxiliary RD_IS_ZERO flag; every other flag is a
+/// dispatch bit.
+pub const UNIFIED_RD_IS_ZERO_BIT: usize = F2_OFFSET + RD_IS_ZERO_BIT;
+
+/// The first decoder-mask fact a unified decoder entry violates, or `None`. The unified
+/// circuit's linear dispatch tie, PC-bump gate and affine F2 rd-write gates take their flag
+/// semantics on executing rows whose mask passes this.
+pub(super) fn unified_decoder_mask_violation(bits: u32) -> Option<&'static str> {
+    if bits >> UNIFIED_REDUCED_MACHINE_NUM_FLAGS != 0 {
+        return Some("flag bits beyond the unified bitmask");
+    }
+    let rd_is_zero = bits & (1 << UNIFIED_RD_IS_ZERO_BIT) != 0;
+    let dispatch = bits & !(1 << UNIFIED_RD_IS_ZERO_BIT);
+    if dispatch.count_ones() != 1 {
+        return Some("not exactly one dispatch bit");
+    }
+    let f2_sub_opcodes = ((1u32 << RD_IS_ZERO_BIT) - 1) << F2_OFFSET;
+    if rd_is_zero && dispatch & f2_sub_opcodes == 0 {
+        return Some("RD_IS_ZERO without a Family-2 sub-opcode");
+    }
+    if dispatch == 1 << (F2_OFFSET + BRANCH_BIT) && !rd_is_zero {
+        return Some("BRANCH without RD_IS_ZERO");
+    }
+    if dispatch == 1 << (F2_OFFSET + SLT_BIT) && rd_is_zero {
+        return Some("SLT/SLTU with RD_IS_ZERO");
+    }
+    None
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct UnifiedReducedMachineDecoder;
@@ -111,131 +140,145 @@ impl OpcodeFamilyDecoder for UnifiedReducedMachineDecoder {
     ///
     /// # Panics
     /// Panics if a `ZimopIXorRot` carries a rotation amount outside the 4 Blake2 values
-    /// {16,12,8,7} — only those have a corresponding `XorRotate{r}` lookup table. Panicking
-    /// (rather than `Err`) is deliberate: the caller treats `Err` as "not my family" and skips
-    /// the instruction, which would silently drop an illegal opcode.
+    /// {16,12,8,7} — only those have a corresponding `XorRotate{r}` lookup table — or if a
+    /// decoded mask violates [`unified_decoder_mask_violation`]. Panicking (rather than
+    /// `Err`) is deliberate: the caller treats `Err` as "not my family" and skips the
+    /// instruction, which would silently drop an illegal opcode.
     fn define_decoder_subspace(
         &self,
         preprocessed_opcode: Instruction,
     ) -> Result<ExecutorFamilyDecoderData, ()> {
-        // `ZimopTriAdd` (rd += rs1 + rs2) is a UNIFIED-ONLY add_sub-family opcode: the
-        // standalone `AddSubLuiAuipcMopDecoder` returns `Err` for it, so decode it here.
-        // Addressing mirrors fmamod (rd is read as the third addend); the flag lands on
-        // the unified-only F1 tri-add bit. funct3 is lifted to Some(0) like every opcode.
-        if preprocessed_opcode.name == InstructionName::ZimopTriAdd {
-            assert_ne!(preprocessed_opcode.rd, 0);
-            assert_eq!(preprocessed_opcode.imm, 0);
-            return Ok(ExecutorFamilyDecoderData {
-                imm: 0,
-                rs1_index: preprocessed_opcode.rs1,
-                rs2_index: preprocessed_opcode.rs2 as u16,
-                rd_index: preprocessed_opcode.rd,
-                funct3: Some(0),
-                funct7: None,
-                opcode_family_bits: 1u32 << FAMILY_1_TRI_ADD_BIT,
-            });
-        }
-
-        // `ZimopIXorRot` (rd = (rs1 ^ rd_old) >>> rot) is a UNIFIED-ONLY shift/binop-family opcode;
-        // the standalone `ShiftBinaryDecoder` returns `Err`. `preprocess_bytecode` sets rs2 := rd,
-        // so rd's old value flows through the rs2 read port (sub-slot +1) and the circuit reuses
-        // the rs2 byte decomposition. The opcode rides the ORDINARY binary-op dispatch bit — its
-        // only difference from a plain binop is the table id: the rotation amount (only the 4
-        // Blake2 values {16,12,8,7}) maps to the per-rotation XorRotate{r} table id carried in
-        // `funct3` (table_id = funct3, like the Wide{Xor,Or,And} remap below). `imm` is zeroed
-        // (the rotation lives in funct3), so the binop path's `rs2_byte + imm` inputs and its
-        // imm sign-extension lookup both see zeros on these rows.
-        if preprocessed_opcode.name == InstructionName::ZimopIXorRot {
-            assert_ne!(preprocessed_opcode.rd, 0);
-            assert_eq!(preprocessed_opcode.rs2, preprocessed_opcode.rd);
-            let rotation_table_id = match preprocessed_opcode.imm {
-                16 => TableType::XorRotate16,
-                12 => TableType::XorRotate12,
-                8 => TableType::XorRotate8,
-                7 => TableType::XorRotate7,
-                other => panic!(
-                    "unsupported xor-rotate rotation amount {other} (only Blake2 {{16,12,8,7}})"
-                ),
-            } as u32;
-            // table_id is carried in the u8 funct3 column; guard against future TableType drift
-            // pushing the XorRotate discriminants past 255.
-            assert!(
-                rotation_table_id <= u8::MAX as u32,
-                "XorRotate table id {rotation_table_id} does not fit in the funct3 u8 column"
-            );
-            return Ok(ExecutorFamilyDecoderData {
-                imm: 0,
-                rs1_index: preprocessed_opcode.rs1,
-                rs2_index: preprocessed_opcode.rs2 as u16,
-                rd_index: preprocessed_opcode.rd,
-                funct3: Some(rotation_table_id as u8),
-                funct7: None,
-                opcode_family_bits: 1u32 << FAMILY_3_BINARY_OP_BIT,
-            });
-        }
-
-        let mut decoded: ExecutorFamilyDecoderData;
-
-        // Try Family 1.
-        if let Ok(d) = AddSubLuiAuipcMopDecoder.define_decoder_subspace(preprocessed_opcode) {
-            decoded = d;
-            decoded.opcode_family_bits <<= F1_OFFSET;
-        }
-        // Try Family 2.
-        else if let Ok(d) = JumpSltBranchDecoder.define_decoder_subspace(preprocessed_opcode) {
-            decoded = d;
-            decoded.opcode_family_bits <<= F2_OFFSET;
-        }
-        // Try Family 3.
-        else if let Ok(d) = ShiftBinaryDecoder.define_decoder_subspace(preprocessed_opcode) {
-            decoded = d;
-            decoded.opcode_family_bits <<= F3_OFFSET;
-            if decoded.opcode_family_bits == 1u32 << FAMILY_3_BINARY_OP_BIT {
-                let wide_id = match decoded.funct3 {
-                    Some(f) if f as u32 == XOR_TABLE_ID => TableType::WideXor,
-                    Some(f) if f as u32 == OR_TABLE_ID => TableType::WideOr,
-                    Some(f) if f as u32 == AND_TABLE_ID => TableType::WideAnd,
-                    other => panic!("binary-op row with unexpected funct3 {other:?}"),
-                } as u32;
-                assert!(
-                    wide_id <= u8::MAX as u32,
-                    "wide binop table id {wide_id} does not fit in the funct3 u8 column"
-                );
-                decoded.funct3 = Some(wide_id as u8);
-            }
-        }
-        // Try Family 4 — needs the 1-bit → 2-bit one-hot conversion.
-        else if let Ok(d) =
-            WordOnlyMemoryFamilyDecoder.define_decoder_subspace(preprocessed_opcode)
-        {
-            decoded = d;
-            // Sanity-check the standalone encoding to catch upstream drift.
-            assert!(
-                decoded.opcode_family_bits == 0 || decoded.opcode_family_bits == 1,
-                "WordOnlyMemoryFamilyDecoder.opcode_family_bits expected 0 (Lw) or 1 (Sw), got {}",
-                decoded.opcode_family_bits
-            );
-            let is_store = (decoded.opcode_family_bits >> F4_STANDALONE_IS_STORE_BIT) & 1;
-            // One-hot in the unified bitmask:
-            //   Lw → bit F4_LW_BIT
-            //   Sw → bit F4_SW_BIT
-            decoded.opcode_family_bits = if is_store == 1 {
-                1u32 << F4_SW_BIT
-            } else {
-                1u32 << F4_LW_BIT
-            };
-        } else {
-            return Err(());
-        }
-
-        // Post-process: unified circuit's uniform funct3 column needs a defined
-        // value for every opcode. Families that don't use funct3 report None;
-        // lift to Some(0) here
-        if decoded.funct3.is_none() {
-            decoded.funct3 = Some(0);
-        }
+        let decoded = decode_unified(preprocessed_opcode)?;
+        assert_unified_decoder_mask(&decoded, preprocessed_opcode);
         Ok(decoded)
     }
+}
+
+fn assert_unified_decoder_mask(decoded: &ExecutorFamilyDecoderData, opcode: Instruction) {
+    if let Some(violation) = unified_decoder_mask_violation(decoded.opcode_family_bits) {
+        panic!(
+            "unified decoder mask {:#b} for {opcode:?}: {violation}",
+            decoded.opcode_family_bits
+        );
+    }
+}
+
+fn decode_unified(preprocessed_opcode: Instruction) -> Result<ExecutorFamilyDecoderData, ()> {
+    // `ZimopTriAdd` (rd += rs1 + rs2) is a UNIFIED-ONLY add_sub-family opcode: the
+    // standalone `AddSubLuiAuipcMopDecoder` returns `Err` for it, so decode it here.
+    // Addressing mirrors fmamod (rd is read as the third addend); the flag lands on
+    // the unified-only F1 tri-add bit. funct3 is lifted to Some(0) like every opcode.
+    if preprocessed_opcode.name == InstructionName::ZimopTriAdd {
+        assert_ne!(preprocessed_opcode.rd, 0);
+        assert_eq!(preprocessed_opcode.imm, 0);
+        return Ok(ExecutorFamilyDecoderData {
+            imm: 0,
+            rs1_index: preprocessed_opcode.rs1,
+            rs2_index: preprocessed_opcode.rs2 as u16,
+            rd_index: preprocessed_opcode.rd,
+            funct3: Some(0),
+            funct7: None,
+            opcode_family_bits: 1u32 << FAMILY_1_TRI_ADD_BIT,
+        });
+    }
+
+    // `ZimopIXorRot` (rd = (rs1 ^ rd_old) >>> rot) is a UNIFIED-ONLY shift/binop-family opcode;
+    // the standalone `ShiftBinaryDecoder` returns `Err`. `preprocess_bytecode` sets rs2 := rd,
+    // so rd's old value flows through the rs2 read port (sub-slot +1) and the circuit reuses
+    // the rs2 byte decomposition. The opcode rides the ORDINARY binary-op dispatch bit — its
+    // only difference from a plain binop is the table id: the rotation amount (only the 4
+    // Blake2 values {16,12,8,7}) maps to the per-rotation XorRotate{r} table id carried in
+    // `funct3` (table_id = funct3, like the Wide{Xor,Or,And} remap below). `imm` is zeroed
+    // (the rotation lives in funct3), so the binop path's `rs2_byte + imm` inputs and its
+    // imm sign-extension lookup both see zeros on these rows.
+    if preprocessed_opcode.name == InstructionName::ZimopIXorRot {
+        assert_ne!(preprocessed_opcode.rd, 0);
+        assert_eq!(preprocessed_opcode.rs2, preprocessed_opcode.rd);
+        let rotation_table_id = match preprocessed_opcode.imm {
+            16 => TableType::XorRotate16,
+            12 => TableType::XorRotate12,
+            8 => TableType::XorRotate8,
+            7 => TableType::XorRotate7,
+            other => {
+                panic!("unsupported xor-rotate rotation amount {other} (only Blake2 {{16,12,8,7}})")
+            }
+        } as u32;
+        // table_id is carried in the u8 funct3 column; guard against future TableType drift
+        // pushing the XorRotate discriminants past 255.
+        assert!(
+            rotation_table_id <= u8::MAX as u32,
+            "XorRotate table id {rotation_table_id} does not fit in the funct3 u8 column"
+        );
+        return Ok(ExecutorFamilyDecoderData {
+            imm: 0,
+            rs1_index: preprocessed_opcode.rs1,
+            rs2_index: preprocessed_opcode.rs2 as u16,
+            rd_index: preprocessed_opcode.rd,
+            funct3: Some(rotation_table_id as u8),
+            funct7: None,
+            opcode_family_bits: 1u32 << FAMILY_3_BINARY_OP_BIT,
+        });
+    }
+
+    let mut decoded: ExecutorFamilyDecoderData;
+
+    // Try Family 1.
+    if let Ok(d) = AddSubLuiAuipcMopDecoder.define_decoder_subspace(preprocessed_opcode) {
+        decoded = d;
+        decoded.opcode_family_bits <<= F1_OFFSET;
+    }
+    // Try Family 2.
+    else if let Ok(d) = JumpSltBranchDecoder.define_decoder_subspace(preprocessed_opcode) {
+        decoded = d;
+        decoded.opcode_family_bits <<= F2_OFFSET;
+    }
+    // Try Family 3.
+    else if let Ok(d) = ShiftBinaryDecoder.define_decoder_subspace(preprocessed_opcode) {
+        decoded = d;
+        decoded.opcode_family_bits <<= F3_OFFSET;
+        if decoded.opcode_family_bits == 1u32 << FAMILY_3_BINARY_OP_BIT {
+            let wide_id = match decoded.funct3 {
+                Some(f) if f as u32 == XOR_TABLE_ID => TableType::WideXor,
+                Some(f) if f as u32 == OR_TABLE_ID => TableType::WideOr,
+                Some(f) if f as u32 == AND_TABLE_ID => TableType::WideAnd,
+                other => panic!("binary-op row with unexpected funct3 {other:?}"),
+            } as u32;
+            assert!(
+                wide_id <= u8::MAX as u32,
+                "wide binop table id {wide_id} does not fit in the funct3 u8 column"
+            );
+            decoded.funct3 = Some(wide_id as u8);
+        }
+    }
+    // Try Family 4 — needs the 1-bit → 2-bit one-hot conversion.
+    else if let Ok(d) = WordOnlyMemoryFamilyDecoder.define_decoder_subspace(preprocessed_opcode) {
+        decoded = d;
+        // Sanity-check the standalone encoding to catch upstream drift.
+        assert!(
+            decoded.opcode_family_bits == 0 || decoded.opcode_family_bits == 1,
+            "WordOnlyMemoryFamilyDecoder.opcode_family_bits expected 0 (Lw) or 1 (Sw), got {}",
+            decoded.opcode_family_bits
+        );
+        let is_store = (decoded.opcode_family_bits >> F4_STANDALONE_IS_STORE_BIT) & 1;
+        // One-hot in the unified bitmask:
+        //   Lw → bit F4_LW_BIT
+        //   Sw → bit F4_SW_BIT
+        decoded.opcode_family_bits = if is_store == 1 {
+            1u32 << F4_SW_BIT
+        } else {
+            1u32 << F4_LW_BIT
+        };
+    } else {
+        return Err(());
+    }
+
+    // Post-process: unified circuit's uniform funct3 column needs a defined
+    // value for every opcode. Families that don't use funct3 report None;
+    // lift to Some(0) here
+    if decoded.funct3.is_none() {
+        decoded.funct3 = Some(0);
+    }
+    Ok(decoded)
 }
 
 #[cfg(test)]
@@ -516,5 +559,21 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "SLT/SLTU with RD_IS_ZERO")]
+    fn invalid_decoded_mask_panics() {
+        use riscv_transpiler::ir::simple_instruction_set::{Instruction, InstructionName};
+        let decoded = ExecutorFamilyDecoderData {
+            imm: 0,
+            rs1_index: 1,
+            rs2_index: 2,
+            rd_index: 3,
+            funct3: Some(0),
+            funct7: None,
+            opcode_family_bits: (1 << (F2_OFFSET + SLT_BIT)) | (1 << UNIFIED_RD_IS_ZERO_BIT),
+        };
+        assert_unified_decoder_mask(&decoded, Instruction::new(InstructionName::Slt, 1, 2, 3, 0));
     }
 }

@@ -76,8 +76,8 @@ contract GkrWhirVerifierFixture {
     uint256 constant __TEMPLATE_GKR_ABS_BYTES            = 32 + 10 * 16 * 16;
     uint256 constant __TEMPLATE_GKR_PERM_PROD_BYTES      = 32 * 4;
     uint256 constant __TEMPLATE_GKR_CIRCUIT_CLAIMS_BYTES = 32 * 74;
-    uint256 constant __TEMPLATE_GKR_GATEVAL_BYTES        = 32 * 129;
-    uint256 constant __TEMPLATE_GKR_QTABLE_BYTES         = 32 * 104;
+    uint256 constant __TEMPLATE_GKR_GATEVAL_BYTES        = 32 * 120;
+    uint256 constant __TEMPLATE_GKR_QTABLE_BYTES         = 32 * 105;
 
     // ── Transcript preimage: registers ‖ final_pc/ts ‖ inits/teardowns top_bits ‖ setup_cap ‖
     //    memory_cap (LE u32 words). The register prefix is the RISC-V machine state (fixed);
@@ -96,9 +96,9 @@ contract GkrWhirVerifierFixture {
     // the program: the prover's preimage values must EQUAL these (checked in transcript_init),
     // and the layer-0 inits/teardowns gates use the constants. One uint8 per teardown set.
     uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_0 = 0;
-    uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_1 = 1;
+    uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_1 = 4;
     uint256 constant __TEMPLATE_EXTERNAL_POW_BITS = 20; // external-challenge PoW difficulty
-    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC = 2303948; // program's terminal PC — binds the verified statement to this program
+    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC = 3568; // program's terminal PC — binds the verified statement to this program
 
     // ── GKR entry + dimension reduction (generated from the circuit / config) ─────────────────
     uint256 constant __TEMPLATE_GKR_NUM_OUTPUTS        = 5 * 2; // GKR output polys (global_output_map lines)
@@ -117,9 +117,9 @@ contract GkrWhirVerifierFixture {
     // packing coords: NUM_MEMWIT -> MERGED_MW claims, NUM_SETUP -> 1 claim.
     uint256 constant __TEMPLATE_WHIR_PACK_LOG2      = 4;
     uint256 constant __TEMPLATE_WHIR_PACK           = 1 << 4; // 2^PACK_LOG2
-    uint256 constant __TEMPLATE_WHIR_NUM_MEMWIT     = 38 + 66; // memory_layout + witness_layout total widths
+    uint256 constant __TEMPLATE_WHIR_NUM_MEMWIT     = 38 + 58; // memory_layout + witness_layout total widths
     uint256 constant __TEMPLATE_WHIR_NUM_SETUP      = 10; // generic_lookup_tables_width
-    uint256 constant __TEMPLATE_WHIR_MERGED_MW      = (104 + 16 - 1) >> 4; // ceil(NUM_MEMWIT / PACK)
+    uint256 constant __TEMPLATE_WHIR_MERGED_MW      = (96 + 16 - 1) >> 4; // ceil(NUM_MEMWIT / PACK)
     uint256 constant __TEMPLATE_WHIR_BASE_Z_COORDS  = 22; // layer-0 folding point length (= trace_log2)
     // The WHIR half's own constants (schedule + memory map) are spliced in here:
     uint256 constant W_HALF = 0x3800000000000000000000000000001;  // 2^-1 = (P+1)/2
@@ -139,7 +139,7 @@ contract GkrWhirVerifierFixture {
     uint256 constant __TEMPLATE_WHIR_GEN_INV = 0x0290A0CB0CAD8AC9DAFCDC73EBD1A223;
     uint256 constant __TEMPLATE_WHIR_NUM_ROUNDS   = 6;
     uint256 constant __TEMPLATE_WHIR_NZ           = 22 + 4;  // WHIR eval-point coords = trace_log2 + pack_log2
-    uint256 constant __TEMPLATE_WHIR_GCOUNT       = ((104 + 16 - 1) >> 4) + ((10 + 16 - 1) >> 4) + 1;  // gamma-batched base columns + 1
+    uint256 constant __TEMPLATE_WHIR_GCOUNT       = ((96 + 16 - 1) >> 4) + ((10 + 16 - 1) >> 4) + 1;  // gamma-batched base columns + 1
     uint256 constant __TEMPLATE_WHIR_RFIN         = 26 - (2 + 4 + 4 + 4 + 4 + 4);  // final-poly log2 = message_log2 - sum(folds)
     uint256 constant __TEMPLATE_WHIR_SETUP_MERGED = (10 + 16 - 1) >> 4;  // merged setup base columns
     // Merkle cap: each commitment is a cap of 2^CAP_LOG2 hashes, so a Merkle path is CAP_LOG2
@@ -148,37 +148,37 @@ contract GkrWhirVerifierFixture {
 
     // ── Memory map (generated: contiguous regions above the GKR heap, each sized from the
     //    schedule — see WhirGenConfig::memory_regions for every region's size formula) ────────
-    uint256 constant __TEMPLATE_WHIR_SEED_PTR     = 17504;  // seed + in-place absorb scratch
-    uint256 constant __TEMPLATE_WHIR_Z_PTR        = 17792;  // z: nz coords
-    uint256 constant __TEMPLATE_WHIR_POW_PTR      = 18624;  // (scalar, running eq, coefficient) x numpow
-    uint256 constant __TEMPLATE_WHIR_ACC_PREF_PTR = 23712;
-    uint256 constant __TEMPLATE_WHIR_GAMMA_PTR    = 23744;  // gcount gamma powers
-    uint256 constant __TEMPLATE_WHIR_FOLD_CH_PTR  = 24032;  // max_fold challenges
-    uint256 constant __TEMPLATE_WHIR_HPO_PTR      = 24160;  // 2^(max_fold-1) high-power offsets
-    uint256 constant __TEMPLATE_WHIR_FBUF_PTR     = 24416;  // 2^max_fold folding buffer
-    uint256 constant __TEMPLATE_WHIR_LEAF_PTR     = 24928;  // leaf hashing scratch
-    uint256 constant __TEMPLATE_WHIR_REG_CD       = 25440;  // calldata cursor
-    uint256 constant __TEMPLATE_WHIR_REG_CLAIM    = 25472;
-    uint256 constant __TEMPLATE_WHIR_REG_NUMPOW   = 25504;
-    uint256 constant __TEMPLATE_WHIR_REG_ZIOFF    = 25536;
-    uint256 constant __TEMPLATE_WHIR_REG_CC       = 25568;
-    uint256 constant __TEMPLATE_WHIR_REG_CURDELIN = 25600;
+    uint256 constant __TEMPLATE_WHIR_SEED_PTR     = 17248;  // seed + in-place absorb scratch
+    uint256 constant __TEMPLATE_WHIR_Z_PTR        = 17536;  // z: nz coords
+    uint256 constant __TEMPLATE_WHIR_POW_PTR      = 18368;  // (scalar, running eq, coefficient) x numpow
+    uint256 constant __TEMPLATE_WHIR_ACC_PREF_PTR = 23456;
+    uint256 constant __TEMPLATE_WHIR_GAMMA_PTR    = 23488;  // gcount gamma powers
+    uint256 constant __TEMPLATE_WHIR_FOLD_CH_PTR  = 23744;  // max_fold challenges
+    uint256 constant __TEMPLATE_WHIR_HPO_PTR      = 23872;  // 2^(max_fold-1) high-power offsets
+    uint256 constant __TEMPLATE_WHIR_FBUF_PTR     = 24128;  // 2^max_fold folding buffer
+    uint256 constant __TEMPLATE_WHIR_LEAF_PTR     = 24640;  // leaf hashing scratch
+    uint256 constant __TEMPLATE_WHIR_REG_CD       = 25088;  // calldata cursor
+    uint256 constant __TEMPLATE_WHIR_REG_CLAIM    = 25120;
+    uint256 constant __TEMPLATE_WHIR_REG_NUMPOW   = 25152;
+    uint256 constant __TEMPLATE_WHIR_REG_ZIOFF    = 25184;
+    uint256 constant __TEMPLATE_WHIR_REG_CC       = 25216;
+    uint256 constant __TEMPLATE_WHIR_REG_CURDELIN = 25248;
     // GKR→WHIR handoff: the WHIR batching challenge, written by the GKR half's emit_gkr_mark.
-    uint256 constant __TEMPLATE_WHIR_HANDOFF_BATCHING_PTR = 25632;
+    uint256 constant __TEMPLATE_WHIR_HANDOFF_BATCHING_PTR = 25280;
     // cap regions (CAP*32 bytes each)
-    uint256 constant __TEMPLATE_WHIR_BCAP0_PTR    = 25664;  // witness base-oracle cap
-    uint256 constant __TEMPLATE_WHIR_BCAP1_PTR    = 25920;  // setup base-oracle cap
-    uint256 constant __TEMPLATE_WHIR_QCAP_PTR     = 26176;  // current query cap (rounds >= 1)
-    uint256 constant __TEMPLATE_WHIR_NCAP_PTR     = 26432;  // just-read intermediate cap
+    uint256 constant __TEMPLATE_WHIR_BCAP0_PTR    = 25312;  // witness base-oracle cap
+    uint256 constant __TEMPLATE_WHIR_BCAP1_PTR    = 25568;  // setup base-oracle cap
+    uint256 constant __TEMPLATE_WHIR_QCAP_PTR     = 25824;  // current query cap (rounds >= 1)
+    uint256 constant __TEMPLATE_WHIR_NCAP_PTR     = 26080;  // just-read intermediate cap
     // Per-round query drawing (matches prover `draw_query_bits`/`BitSource`):
     //   QIDX_BUF holds the drawn query indices (max_q words);
     //   DRAW_BUF holds the little-endian u32 words squeezed from the seed (one per slot).
-    uint256 constant __TEMPLATE_WHIR_QIDX_BUF_PTR = 26688;
-    uint256 constant __TEMPLATE_WHIR_DRAW_BUF_PTR = 27232;
+    uint256 constant __TEMPLATE_WHIR_QIDX_BUF_PTR = 26336;
+    uint256 constant __TEMPLATE_WHIR_DRAW_BUF_PTR = 26880;
     // do_final scratch: the plain-text tail is 2^RFIN monomials (MONO), then the tail absorb +
     // halving-fold scratch (FEVAL, 32 + 2^RFIN words).
-    uint256 constant __TEMPLATE_WHIR_MONO_PTR     = 28000;
-    uint256 constant __TEMPLATE_WHIR_FEVAL_PTR    = 28512;
+    uint256 constant __TEMPLATE_WHIR_MONO_PTR     = 27648;
+    uint256 constant __TEMPLATE_WHIR_FEVAL_PTR    = 28160;
 
     fallback(bytes calldata) external returns (bytes memory) {
         // The verified statement, read out of the MARK region once the assembly block has
@@ -1132,184 +1132,185 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             // loop below has one fixed stride; small negative coefficients store their magnitude and
             // are negated in-loop.
             // seed gateval[gate_slot] with each relation's nonzero constant term
-            mstore(add(GKR_GATEVAL_PTR(), mul(32, 34)), 0x380000000000000000000000000)
-            mstore(add(GKR_GATEVAL_PTR(), mul(32, 35)), 0x37ffe4000000000000000000000)
-            mstore(add(GKR_GATEVAL_PTR(), mul(32, 86)), 0x7800000100000000)
+            mstore(add(GKR_GATEVAL_PTR(), mul(32, 29)), 0x380000000000000000000000000)
+            mstore(add(GKR_GATEVAL_PTR(), mul(32, 30)), 0x37ffe4000000000000000000000)
+            mstore(add(GKR_GATEVAL_PTR(), mul(32, 77)), 0x7800000100000000)
             // packed term records, written 32 bytes at a time
-            mstore(add(GKR_QTABLE_PTR(), 0), 0x221d01242b01242c01242d01242e01242f012430012431012432012433012434)
-            mstore(add(GKR_QTABLE_PTR(), 32), 0x01243501243601243701243801243901243a01243b0124090124100125610127)
-            mstore(add(GKR_QTABLE_PTR(), 64), 0x60042860012e5e01371201381101390b013a0a01425d01435c01445b01473704)
-            mstore(add(GKR_QTABLE_PTR(), 96), 0x4738044b35044b3604532e01532f01533001533101542e01542f015430015431)
-            mstore(add(GKR_QTABLE_PTR(), 128), 0x015f3a03603502603602603702603802603a09683a0269353369363369373369)
-            mstore(add(GKR_QTABLE_PTR(), 160), 0x3833693a09713a01723505723605723705723805723a097b35057b36057b3705)
-            mstore(add(GKR_QTABLE_PTR(), 192), 0x7b38057b3a097f35017f36017f37017f38017f3a087f3b03522e7800522f7800)
-            mstore(add(GKR_QTABLE_PTR(), 224), 0x52307800523178002218000000e0000000000000000000000000221c06ffff20)
-            mstore(add(GKR_QTABLE_PTR(), 256), 0x0000000000000000000000012318000000dfff2000000000000000000000231c)
-            mstore(add(GKR_QTABLE_PTR(), 288), 0x06ffff2000e000000000000000000001552f0000000000000000000000016800)
-            mstore(add(GKR_QTABLE_PTR(), 320), 0x0003565806ffffffffffffffffffffff00000001006401016301026201036101)
-            mstore(add(GKR_QTABLE_PTR(), 352), 0x046001055f01065e01075d01085c01095b010a40010b3f010c3e010d3d010e3c)
-            mstore(add(GKR_QTABLE_PTR(), 384), 0x010f1001100901113b01123a0113390114380115370116360117350118340119)
-            mstore(add(GKR_QTABLE_PTR(), 416), 0x33011a32011b31011c30011d2f011e2e011f2d01202c01212b01221901281501)
-            mstore(add(GKR_QTABLE_PTR(), 448), 0x3827013a2601433701443501443601475a04485a015715018009408010400064)
-            mstore(add(GKR_QTABLE_PTR(), 480), 0x640101636301026262010361610104606001055f5f01065e5e01075d5d01085c)
-            mstore(add(GKR_QTABLE_PTR(), 512), 0x5c01095b5b010a4040010b3f3f010c3e3e010d3d3d010e3c3c010f1010011009)
-            mstore(add(GKR_QTABLE_PTR(), 544), 0x0901113b3b01123a3a0113393901143838011537370116363601173535011834)
-            mstore(add(GKR_QTABLE_PTR(), 576), 0x3401193333011a3232011b3131011c3030011d2f2f011e2e2e011f2d2d01202c)
-            mstore(add(GKR_QTABLE_PTR(), 608), 0x2c01212b2b01265f600126601701276016012835150128361501283715012838)
-            mstore(add(GKR_QTABLE_PTR(), 640), 0x1501293f0901293f100129400901294010012a3f10012a4010022a5610042b3f)
-            mstore(add(GKR_QTABLE_PTR(), 672), 0x09012b4009022b5609042c5e08012c0914012c1014012d5e07012d0913012d10)
-            mstore(add(GKR_QTABLE_PTR(), 704), 0x13012f3e1001303e100131421001324209013341100134410901352909013529)
-            mstore(add(GKR_QTABLE_PTR(), 736), 0x1001353c0901353c100135030901350310013628090136281001360209013602)
-            mstore(add(GKR_QTABLE_PTR(), 768), 0x1001382710013a2609013b3a44013b3a48013b3a4c013b3a50013b3b44013b3b)
-            mstore(add(GKR_QTABLE_PTR(), 800), 0x47013b3b4a013b3b51013c3a42013c3a46013c3a4a013c3a4e013c3b42013c3b)
-            mstore(add(GKR_QTABLE_PTR(), 832), 0x49013c3b4c013c3b4f013d5d14013e5d13013f5c140140575b0141435c014156)
-            mstore(add(GKR_QTABLE_PTR(), 864), 0x5b01433739014435390144363901453540014536400145405a01462935014629)
-            mstore(add(GKR_QTABLE_PTR(), 896), 0x360146295a0146353e014635170146363e014636030146373e01463717014638)
-            mstore(add(GKR_QTABLE_PTR(), 928), 0x3e0146381701472835014728360147285a014735160147360201473716014738)
-            mstore(add(GKR_QTABLE_PTR(), 960), 0x160148384301493544014936440149374401493844014a2937014a353c014a35)
-            mstore(add(GKR_QTABLE_PTR(), 992), 0x17014a363c014a3617014a373c014a3757014a3708014a383c014a3857014a38)
-            mstore(add(GKR_QTABLE_PTR(), 1024), 0x08014b2837014b3516014b3616014b3756014b3707014b3856014b3807014c32)
-            mstore(add(GKR_QTABLE_PTR(), 1056), 0x14014d3213014e3206014f320501503208015132070152292b0152292d01522b)
-            mstore(add(GKR_QTABLE_PTR(), 1088), 0x3d01522b0301522b0801522c3d01522c0801522c1401522d3d01522d1701522e)
-            mstore(add(GKR_QTABLE_PTR(), 1120), 0x3d01522e5701522f3d01522f570152303d015230570152313d01523157015234)
-            mstore(add(GKR_QTABLE_PTR(), 1152), 0x3d0152343e01523403015234080152340f0153282b0153282d01532b0201532b)
-            mstore(add(GKR_QTABLE_PTR(), 1184), 0x0701532c0701532c1301532d1601532e5601532f560153305601533156015334)
-            mstore(add(GKR_QTABLE_PTR(), 1216), 0x02015334070153340e01552e0201552e0701552f020155301301553113015602)
-            mstore(add(GKR_QTABLE_PTR(), 1248), 0x070157151501583a5101593a50015a3a4f015a3b51015b3a4e015b3b50015c2a)
-            mstore(add(GKR_QTABLE_PTR(), 1280), 0x3a015c3b4f015d283a015d351a015d361a015d371a015d381a015d3a41015d3b)
-            mstore(add(GKR_QTABLE_PTR(), 1312), 0x4e015e3540015e3640015e3740015e3840015e3b41015f3559015f3659015f37)
-            mstore(add(GKR_QTABLE_PTR(), 1344), 0x59015f385901602a3b01613a4d01623a4c01633a4b01633b4d01643a4a01643b)
-            mstore(add(GKR_QTABLE_PTR(), 1376), 0x4c01652a3a01653b4b0166283a01663a4101663b4a0167354301673643016737)
-            mstore(add(GKR_QTABLE_PTR(), 1408), 0x430167384301673a5301673b4101673b5501682a3510682a3610682a3710682a)
-            mstore(add(GKR_QTABLE_PTR(), 1440), 0x381068353d0468354108683542026835450168363d0468364108683642026836)
-            mstore(add(GKR_QTABLE_PTR(), 1472), 0x450168373d0468374108683742026837450168383d0468384108683842026838)
-            mstore(add(GKR_QTABLE_PTR(), 1504), 0x4501683b5301692a3b016a3a49016b3a48016c3a47016c3b49016d3a46016d3b)
-            mstore(add(GKR_QTABLE_PTR(), 1536), 0x48016e2a3a016e3b47016f283a016f3a41016f3b460170293b01703545017036)
-            mstore(add(GKR_QTABLE_PTR(), 1568), 0x4501703745017038450171354401713644017137440171384401722a3b01733a)
-            mstore(add(GKR_QTABLE_PTR(), 1600), 0x4501743a4401753a4301753b4501763a4201763b4401772a3a01773b43017828)
-            mstore(add(GKR_QTABLE_PTR(), 1632), 0x3a01783a4101783b420179283b0179354201793642017937420179384201793a)
-            mstore(add(GKR_QTABLE_PTR(), 1664), 0x5201793b54017a3503017a3603017a3703017a3803017a3b52017b2a3b017c3a)
-            mstore(add(GKR_QTABLE_PTR(), 1696), 0x41017c145e017d3541017d3641017d3741017d3841017d3b41017d135e017e29)
-            mstore(add(GKR_QTABLE_PTR(), 1728), 0x3b017e3556017e3557017e3656017e3657017e3756017e3757017e3856017e38)
-            mstore(add(GKR_QTABLE_PTR(), 1760), 0x57017e3a54017e415e017f155e2280094201801042013b3a4501003b3a490100)
-            mstore(add(GKR_QTABLE_PTR(), 1792), 0x3b3a4d01003b3a5101003b3b4501003b3b4801003b3b4b01003b3b4e01003c3a)
-            mstore(add(GKR_QTABLE_PTR(), 1824), 0x4301003c3a4701003c3a4b01003c3a4f01003c3b4301003c3b4601003c3b4d01)
-            mstore(add(GKR_QTABLE_PTR(), 1856), 0x003c3b500100552e0300010000552e0800010000552f03000100005530140001)
-            mstore(add(GKR_QTABLE_PTR(), 1888), 0x00005531140001000056020800010000560307000100007e425e000100008009)
-            mstore(add(GKR_QTABLE_PTR(), 1920), 0x3e0001000080103e0001000023181806ffffffffe40000000000000000000123)
-            mstore(add(GKR_QTABLE_PTR(), 1952), 0x181c00000000003800000000000000000000231c1c06ffffffffe40000000000)
-            mstore(add(GKR_QTABLE_PTR(), 1984), 0x0000000001552e4006fffffffffffffffffffffe1ffffffd552f4006ffffffff)
-            mstore(add(GKR_QTABLE_PTR(), 2016), 0xfffffffffffffe1ffffffd56303e06ffffffffffffff87ffffff000000015630)
-            mstore(add(GKR_QTABLE_PTR(), 2048), 0x3f06ffffffffffffff0ffffffe0000000156304006fffffffffffffe1ffffffc)
-            mstore(add(GKR_QTABLE_PTR(), 2080), 0x0000000156304206ffffffffffffffffff87ffffff000156313e06ffffffffff)
-            mstore(add(GKR_QTABLE_PTR(), 2112), 0xffff87ffffff0000000156313f06ffffffffffffff0ffffffe00000001563140)
-            mstore(add(GKR_QTABLE_PTR(), 2144), 0x06fffffffffffffe1ffffffc0000000156314206ffffffffffffffffff87ffff)
-            mstore(add(GKR_QTABLE_PTR(), 2176), 0xff000156310e0000000000000000000000010000000056310f00000000000000)
-            mstore(add(GKR_QTABLE_PTR(), 2208), 0x000001000000000000560308000000000000000000000001000000005e3a5300)
-            mstore(add(GKR_QTABLE_PTR(), 2240), 0x0700000000000000000000000000005e3a0306f9000000000000000000000000)
-            mstore(add(GKR_QTABLE_PTR(), 2272), 0x00015e3b55000700000000000000000000000000005e3b0806f9000000000000)
-            mstore(add(GKR_QTABLE_PTR(), 2304), 0x00000000000000015f3b53000700000000000000000000000000005f3b0306f9)
-            mstore(add(GKR_QTABLE_PTR(), 2336), 0x0000000000000000000000000001703a52000700000000000000000000000000)
-            mstore(add(GKR_QTABLE_PTR(), 2368), 0x00703a0206f90000000000000000000000000001703b54000700000000000000)
-            mstore(add(GKR_QTABLE_PTR(), 2400), 0x00000000000000703b0706f90000000000000000000000000001713b52000700)
-            mstore(add(GKR_QTABLE_PTR(), 2432), 0x00000000000000000000000000713b0206f90000000000000000000000000001)
-            mstore(add(GKR_QTABLE_PTR(), 2464), 0x7d3a54000700000000000000000000000000007d3a0706f90000000000000000)
-            mstore(add(GKR_QTABLE_PTR(), 2496), 0x000000000001242b1501242c1501242d1501242e1501242f1501243015012431)
-            mstore(add(GKR_QTABLE_PTR(), 2528), 0x1501243215012433150124341501243515012436150124371501243815012439)
-            mstore(add(GKR_QTABLE_PTR(), 2560), 0x1501243a1501243b15012409150124101501252b1501252c1501252d1501252e)
-            mstore(add(GKR_QTABLE_PTR(), 2592), 0x1501252f15012530150125311501253215012533150125341501253515012536)
-            mstore(add(GKR_QTABLE_PTR(), 2624), 0x15012537150125381501253a1501253b1501250915012510150126601b012760)
-            mstore(add(GKR_QTABLE_PTR(), 2656), 0x1a012a1011012b090a012c5e14012c0809012c0810012d5e13012d0709012d07)
-            mstore(add(GKR_QTABLE_PTR(), 2688), 0x10012e3e09013110120132090b013310110134090a0135090b01351012013609)
-            mstore(add(GKR_QTABLE_PTR(), 2720), 0x0a0136101101371012013810110139090b013a090a013b3a14013b3b14013c3a)
-            mstore(add(GKR_QTABLE_PTR(), 2752), 0x13013c3b1301405b1401415b1301415c13014235390142363901423739014238)
-            mstore(add(GKR_QTABLE_PTR(), 2784), 0x390146351b0146361b0146371b0146381b014735590147365901473759014738)
-            mstore(add(GKR_QTABLE_PTR(), 2816), 0x590149293701493508014936080149370801493808014a3557014a3657014a37)
-            mstore(add(GKR_QTABLE_PTR(), 2848), 0x03014a3803014b3556014b3656014b3702014b380201522b1401522c0301522d)
-            mstore(add(GKR_QTABLE_PTR(), 2880), 0x1401522e1401522f1401523014015231140152341401532b1301532c0201532d)
-            mstore(add(GKR_QTABLE_PTR(), 2912), 0x1301532e1301532f1301533013015331130153341301542e3c01542f3c015430)
-            mstore(add(GKR_QTABLE_PTR(), 2944), 0x3c0154313c01552e1301552f0701552f13015530580155315801275f60000100)
-            mstore(add(GKR_QTABLE_PTR(), 2976), 0x00353d0900010000353d1000010000363c0900010000363c100001000046353f)
-            mstore(add(GKR_QTABLE_PTR(), 3008), 0x0001000046363f0001000046373f0001000046383f0001000047353e00010000)
-            mstore(add(GKR_QTABLE_PTR(), 3040), 0x47363e0001000047373e0001000047383e000100004a353d000100004a363d00)
-            mstore(add(GKR_QTABLE_PTR(), 3072), 0x0100004a373d000100004a383d000100004b353c000100004b363c000100004b)
-            mstore(add(GKR_QTABLE_PTR(), 3104), 0x373c000100004b383c00010000522b3c00010000522c3c00010000522d3c0001)
-            mstore(add(GKR_QTABLE_PTR(), 3136), 0x0000522e3c00010000522f3c0001000052303c0001000052313c000100005234)
-            mstore(add(GKR_QTABLE_PTR(), 3168), 0x3c0001000052343f00010000532b3d00010000532c3d00010000532d3d000100)
-            mstore(add(GKR_QTABLE_PTR(), 3200), 0x00532e3d00010000532f3d0001000053303d0001000053313d0001000053343d)
-            mstore(add(GKR_QTABLE_PTR(), 3232), 0x0001000053343e00010000552e3e78000001552e3ff0000002552e1400010000)
-            mstore(add(GKR_QTABLE_PTR(), 3264), 0x552f3e78000001552f3ff0000002552f0800010000552f140001000056304178)
-            mstore(add(GKR_QTABLE_PTR(), 3296), 0x0000015631417800000100000000000000000000000000000000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 0), 0x1d1d011f2b011f2c011f2d011f2e011f2f011f30011f31011f32011f33011f34)
+            mstore(add(GKR_QTABLE_PTR(), 32), 0x011f35011f36011f37011f38011f39011f3a011f3b011f09011f100120150122)
+            mstore(add(GKR_QTABLE_PTR(), 64), 0x1504285801311201321101330b01340a013e37043e38044235044236044a2e01)
+            mstore(add(GKR_QTABLE_PTR(), 96), 0x4a2f014a30014a31014b2e014b2f014b30014b3101563a035735025736025737)
+            mstore(add(GKR_QTABLE_PTR(), 128), 0x02573802573a095f3a02603533603633603733603833603a09683a0169350569)
+            mstore(add(GKR_QTABLE_PTR(), 160), 0x3605693705693805693a09723505723605723705723805723a09763501763601)
+            mstore(add(GKR_QTABLE_PTR(), 192), 0x763701763801763a08763b03492e7800492f780049307800493178001d180000)
+            mstore(add(GKR_QTABLE_PTR(), 224), 0x00e00000000000000000000000001d1c06ffff20000000000000000000000001)
+            mstore(add(GKR_QTABLE_PTR(), 256), 0x1e18000000dfff20000000000000000000001e1c06ffff2000e0000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 288), 0x000000014c2f000000000000000000000001680000034d5606ffffffffffffff)
+            mstore(add(GKR_QTABLE_PTR(), 320), 0xffffffff00000001005c01015b01025a01035901045801054001063f01073e01)
+            mstore(add(GKR_QTABLE_PTR(), 352), 0x083d01093c010a10010b09010c3b010d3a010e39010f38011037011136011235)
+            mstore(add(GKR_QTABLE_PTR(), 384), 0x01133401143301153201163101173001182f01192e011a2d011b2c011c2b011d)
+            mstore(add(GKR_QTABLE_PTR(), 416), 0x1901202b01202c01202d01202e01202f01203001203101203201203301203401)
+            mstore(add(GKR_QTABLE_PTR(), 448), 0x203501203601203701203801203a01203b012009012010012235042236042237)
+            mstore(add(GKR_QTABLE_PTR(), 480), 0x042238043227013426013e57043f57014e1501770940771040005c5c01015b5b)
+            mstore(add(GKR_QTABLE_PTR(), 512), 0x01025a5a01035959010458580105404001063f3f01073e3e01083d3d01093c3c)
+            mstore(add(GKR_QTABLE_PTR(), 544), 0x010a1010010b0909010c3b3b010d3a3a010e3939010f38380110373701113636)
+            mstore(add(GKR_QTABLE_PTR(), 576), 0x01123535011334340114333301153232011631310117303001182f2f01192e2e)
+            mstore(add(GKR_QTABLE_PTR(), 608), 0x011a2d2d011b2c2c011c2b2b0121351b0121361b0121371b0121381b01215915)
+            mstore(add(GKR_QTABLE_PTR(), 640), 0x012115170122351a0122361a0122371a0122381a0122151601233f0901233f10)
+            mstore(add(GKR_QTABLE_PTR(), 672), 0x012340090123401001243f10012440100224521004253f090125400902255209)
+            mstore(add(GKR_QTABLE_PTR(), 704), 0x04265808012609140126101401275807012709130127101301293e10012a3e10)
+            mstore(add(GKR_QTABLE_PTR(), 736), 0x012b4210012c4209012d4110012e4109012f2909012f2910012f3c09012f3c10)
+            mstore(add(GKR_QTABLE_PTR(), 768), 0x012f0309012f0310013028090130281001300209013002100132271001342609)
+            mstore(add(GKR_QTABLE_PTR(), 800), 0x01353a4401353a4801353a4c01353a5001353b4401353b4701353b4a01353b51)
+            mstore(add(GKR_QTABLE_PTR(), 832), 0x01363a4201363a4601363a4a01363a4e01363b4201363b4901363b4c01363b4f)
+            mstore(add(GKR_QTABLE_PTR(), 864), 0x013739140138391301393714013a3553013a3653013a3853013a3914013b3552)
+            mstore(add(GKR_QTABLE_PTR(), 896), 0x013b3652013b3743013b3852013b3913013c3540013c3640013c4057013d2935)
+            mstore(add(GKR_QTABLE_PTR(), 928), 0x013d2936013d2957013d353e013d3517013d363e013d3603013d373e013d3717)
+            mstore(add(GKR_QTABLE_PTR(), 960), 0x013d383e013d3817013e2835013e2836013e2857013e3516013e3602013e3716)
+            mstore(add(GKR_QTABLE_PTR(), 992), 0x013e3816013f384301403544014036440140374401403844014129370141353c)
+            mstore(add(GKR_QTABLE_PTR(), 1024), 0x014135170141363c014136170141373c01413753014137080141383c01413853)
+            mstore(add(GKR_QTABLE_PTR(), 1056), 0x0141380801422837014235160142361601423752014237070142385201423807)
+            mstore(add(GKR_QTABLE_PTR(), 1088), 0x0143321401443213014532060146320501473208014832070149292b0149292d)
+            mstore(add(GKR_QTABLE_PTR(), 1120), 0x01492b3d01492b0301492b0801492c3d01492c0801492c1401492d3d01492d17)
+            mstore(add(GKR_QTABLE_PTR(), 1152), 0x01492e3d01492e5301492f3d01492f530149303d014930530149313d01493153)
+            mstore(add(GKR_QTABLE_PTR(), 1184), 0x0149343d0149343e01493403014934080149340f014a282b014a282d014a2b02)
+            mstore(add(GKR_QTABLE_PTR(), 1216), 0x014a2b07014a2c07014a2c13014a2d16014a2e52014a2f52014a3052014a3152)
+            mstore(add(GKR_QTABLE_PTR(), 1248), 0x014a3402014a3407014a340e014c2e02014c2e07014c2f02014c3013014c3113)
+            mstore(add(GKR_QTABLE_PTR(), 1280), 0x014d0207014e1515014f3a5101503a5001513a4f01513b5101523a4e01523b50)
+            mstore(add(GKR_QTABLE_PTR(), 1312), 0x01532a3a01533b4f0154283a0154351a0154361a0154371a0154381a01543a41)
+            mstore(add(GKR_QTABLE_PTR(), 1344), 0x01543b4e0155354001553640015537400155384001553b410156354801563648)
+            mstore(add(GKR_QTABLE_PTR(), 1376), 0x015637480156384801572a3b01583a4d01593a4c015a3a4b015a3b4d015b3a4a)
+            mstore(add(GKR_QTABLE_PTR(), 1408), 0x015b3b4c015c2a3a015c3b4b015d283a015d3a41015d3b4a015e3543015e3643)
+            mstore(add(GKR_QTABLE_PTR(), 1440), 0x015e3743015e3843015e3a53015e3b41015e3b55015f2a35105f2a36105f2a37)
+            mstore(add(GKR_QTABLE_PTR(), 1472), 0x105f2a38105f353d045f3541085f3542025f3545015f363d045f3641085f3642)
+            mstore(add(GKR_QTABLE_PTR(), 1504), 0x025f3645015f373d045f3741085f3742025f3745015f383d045f3841085f3842)
+            mstore(add(GKR_QTABLE_PTR(), 1536), 0x025f3845015f3b5301602a3b01613a4901623a4801633a4701633b4901643a46)
+            mstore(add(GKR_QTABLE_PTR(), 1568), 0x01643b4801652a3a01653b470166283a01663a4101663b460167293b01673545)
+            mstore(add(GKR_QTABLE_PTR(), 1600), 0x0167364501673745016738450168354401683644016837440168384401692a3b)
+            mstore(add(GKR_QTABLE_PTR(), 1632), 0x016a3a45016b3a44016c3a43016c3b45016d3a42016d3b44016e2a3a016e3b43)
+            mstore(add(GKR_QTABLE_PTR(), 1664), 0x016f283a016f3a41016f3b420170283b01703542017036420170374201703842)
+            mstore(add(GKR_QTABLE_PTR(), 1696), 0x01703a5201703b540171350301713603017137030171380301713b5201722a3b)
+            mstore(add(GKR_QTABLE_PTR(), 1728), 0x01733a41017314580174354101743641017437410174384101743b4101741358)
+            mstore(add(GKR_QTABLE_PTR(), 1760), 0x0175293b01753552017535530175365201753653017537520175375301753852)
+            mstore(add(GKR_QTABLE_PTR(), 1792), 0x0175385301753a540175415801761558227709420177104201353a450100353a)
+            mstore(add(GKR_QTABLE_PTR(), 1824), 0x490100353a4d0100353a510100353b450100353b480100353b4b0100353b4e01)
+            mstore(add(GKR_QTABLE_PTR(), 1856), 0x00363a430100363a470100363a4b0100363a4f0100363b430100363b46010036)
+            mstore(add(GKR_QTABLE_PTR(), 1888), 0x3b4d0100363b5001002235590001000022365900010000223759000100002238)
+            mstore(add(GKR_QTABLE_PTR(), 1920), 0x59000100004c2e03000100004c2e08000100004c2f03000100004c3014000100)
+            mstore(add(GKR_QTABLE_PTR(), 1952), 0x004c3114000100004d0208000100004d0307000100007542580001000077093e)
+            mstore(add(GKR_QTABLE_PTR(), 1984), 0x0001000077103e000100001e181806ffffffffe4000000000000000000011e18)
+            mstore(add(GKR_QTABLE_PTR(), 2016), 0x1c000000000038000000000000000000001e1c1c06ffffffffe4000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2048), 0x000000014c2e4006fffffffffffffffffffffe1ffffffd4c2f4006ffffffffff)
+            mstore(add(GKR_QTABLE_PTR(), 2080), 0xfffffffffffe1ffffffd4d303e06ffffffffffffff87ffffff000000014d303f)
+            mstore(add(GKR_QTABLE_PTR(), 2112), 0x06ffffffffffffff0ffffffe000000014d304006fffffffffffffe1ffffffc00)
+            mstore(add(GKR_QTABLE_PTR(), 2144), 0x0000014d304206ffffffffffffffffff87ffffff00014d313e06ffffffffffff)
+            mstore(add(GKR_QTABLE_PTR(), 2176), 0xff87ffffff000000014d313f06ffffffffffffff0ffffffe000000014d314006)
+            mstore(add(GKR_QTABLE_PTR(), 2208), 0xfffffffffffffe1ffffffc000000014d314206ffffffffffffffffff87ffffff)
+            mstore(add(GKR_QTABLE_PTR(), 2240), 0x00014d310e000000000000000000000001000000004d310f0000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2272), 0x00010000000000004d030800000000000000000000000100000000553a530007)
+            mstore(add(GKR_QTABLE_PTR(), 2304), 0x0000000000000000000000000000553a0306f900000000000000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2336), 0x01553b5500070000000000000000000000000000553b0806f900000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2368), 0x00000000000001563b5300070000000000000000000000000000563b0306f900)
+            mstore(add(GKR_QTABLE_PTR(), 2400), 0x00000000000000000000000001673a5200070000000000000000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2432), 0x673a0206f90000000000000000000000000001673b5400070000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2464), 0x000000000000673b0706f90000000000000000000000000001683b5200070000)
+            mstore(add(GKR_QTABLE_PTR(), 2496), 0x000000000000000000000000683b0206f9000000000000000000000000000174)
+            mstore(add(GKR_QTABLE_PTR(), 2528), 0x3a5400070000000000000000000000000000743a0706f9000000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2560), 0x00000000011f2b15011f2c15011f2d15011f2e15011f2f15011f3015011f3115)
+            mstore(add(GKR_QTABLE_PTR(), 2592), 0x011f3215011f3315011f3415011f3515011f3615011f3715011f3815011f3915)
+            mstore(add(GKR_QTABLE_PTR(), 2624), 0x011f3a15011f3b15011f0915011f101501213559012135170121365901213617)
+            mstore(add(GKR_QTABLE_PTR(), 2656), 0x012137590121371701213859012138170121151b012235160122361601223716)
+            mstore(add(GKR_QTABLE_PTR(), 2688), 0x012238160122151a012410110125090a01265814012608090126081001275813)
+            mstore(add(GKR_QTABLE_PTR(), 2720), 0x012707090127071001283e09012b1012012c090b012d1011012e090a012f090b)
+            mstore(add(GKR_QTABLE_PTR(), 2752), 0x012f10120130090a0130101101311012013210110133090b0134090a01353a14)
+            mstore(add(GKR_QTABLE_PTR(), 2784), 0x01353b1401363a1301363b13013a3514013a3614013a3814013a3953013b3513)
+            mstore(add(GKR_QTABLE_PTR(), 2816), 0x013b3613013b3713013b3813013b3952013d351b013d361b013d371b013d381b)
+            mstore(add(GKR_QTABLE_PTR(), 2848), 0x013e3548013e3648013e3748013e384801402937014035080140360801403708)
+            mstore(add(GKR_QTABLE_PTR(), 2880), 0x0140380801413553014136530141370301413803014235520142365201423702)
+            mstore(add(GKR_QTABLE_PTR(), 2912), 0x0142380201492b1401492c0301492d1401492e1401492f140149301401493114)
+            mstore(add(GKR_QTABLE_PTR(), 2944), 0x01493414014a2b13014a2c02014a2d13014a2e13014a2f13014a3013014a3113)
+            mstore(add(GKR_QTABLE_PTR(), 2976), 0x014a3413014b2e3c014b2f3c014b303c014b313c014c2e13014c2f07014c2f13)
+            mstore(add(GKR_QTABLE_PTR(), 3008), 0x014c3056014c315601225915000100002f3d09000100002f3d1000010000303c)
+            mstore(add(GKR_QTABLE_PTR(), 3040), 0x0900010000303c10000100003d353f000100003d363f000100003d373f000100)
+            mstore(add(GKR_QTABLE_PTR(), 3072), 0x003d383f000100003e353e000100003e363e000100003e373e000100003e383e)
+            mstore(add(GKR_QTABLE_PTR(), 3104), 0x0001000041353d0001000041363d0001000041373d0001000041383d00010000)
+            mstore(add(GKR_QTABLE_PTR(), 3136), 0x42353c0001000042363c0001000042373c0001000042383c00010000492b3c00)
+            mstore(add(GKR_QTABLE_PTR(), 3168), 0x010000492c3c00010000492d3c00010000492e3c00010000492f3c0001000049)
+            mstore(add(GKR_QTABLE_PTR(), 3200), 0x303c0001000049313c0001000049343c0001000049343f000100004a2b3d0001)
+            mstore(add(GKR_QTABLE_PTR(), 3232), 0x00004a2c3d000100004a2d3d000100004a2e3d000100004a2f3d000100004a30)
+            mstore(add(GKR_QTABLE_PTR(), 3264), 0x3d000100004a313d000100004a343d000100004a343e000100004c2e3e780000)
+            mstore(add(GKR_QTABLE_PTR(), 3296), 0x014c2e3ff00000024c2e14000100004c2f3e780000014c2f3ff00000024c2f08)
+            mstore(add(GKR_QTABLE_PTR(), 3328), 0x000100004c2f14000100004d3041780000014d31417800000100000000000000)
             // accumulate every term into gateval[gate_slot], one loop per bucket
             {
             let modulus := P
             let col_base := mload(CIRCUIT_PTR) // calldata base of the column at-point evals
             let gateval := GKR_GATEVAL_PTR()
-            // linear    terms, coeff  1B positive  (72 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 0) let rec_end := add(rec_ptr, 216)
+            // linear    terms, coeff  1B positive  (68 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 0) let rec_end := add(rec_ptr, 204)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 3) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(232, rec), 0xff), shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
             } }
             // linear    terms, coeff  2B positive  (4 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 216) let rec_end := add(rec_ptr, 16)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 204) let rec_end := add(rec_ptr, 16)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 4) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(224, rec), 0xffff), shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
             } }
             // linear    terms, coeff 16B canonical (6 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 232) let rec_end := add(rec_ptr, 108)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 220) let rec_end := add(rec_ptr, 108)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 18) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(112, rec), MASK), shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
             } }
-            // linear    terms, coeff  1B negative  (46 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 340) let rec_end := add(rec_ptr, 138)
+            // linear    terms, coeff  1B negative  (59 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 328) let rec_end := add(rec_ptr, 177)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 3) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(sub(modulus, and(shr(232, rec), 0xff)), shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
             } }
-            // quadratic terms, coeff  1B positive  (326 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 478) let rec_end := add(rec_ptr, 1304)
+            // quadratic terms, coeff  1B positive  (328 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 505) let rec_end := add(rec_ptr, 1312)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 4) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(224, rec), 0xff), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
             // quadratic terms, coeff  2B positive  (16 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 1782) let rec_end := add(rec_ptr, 80)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 1817) let rec_end := add(rec_ptr, 80)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 5) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(216, rec), 0xffff), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
-            // quadratic terms, coeff  4B positive  (10 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 1862) let rec_end := add(rec_ptr, 70)
+            // quadratic terms, coeff  4B positive  (14 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 1897) let rec_end := add(rec_ptr, 98)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 7) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(200, rec), 0xffffffff), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
             // quadratic terms, coeff 16B canonical (30 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 1932) let rec_end := add(rec_ptr, 570)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 1995) let rec_end := add(rec_ptr, 570)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 19) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(104, rec), MASK), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
-            // quadratic terms, coeff  1B negative  (117 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 2502) let rec_end := add(rec_ptr, 468)
+            // quadratic terms, coeff  1B negative  (113 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 2565) let rec_end := add(rec_ptr, 452)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 4) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(sub(modulus, and(shr(224, rec), 0xff)), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
             // quadratic terms, coeff  4B negative  (48 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 2970) let rec_end := add(rec_ptr, 336)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 3017) let rec_end := add(rec_ptr, 336)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 7) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
@@ -1329,16 +1330,15 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             acc := scl0_g9(alpha, acc)
             acc := scl0_g10(alpha, acc)
             acc := scl0_g11(alpha, acc)
-            acc := scl0_g12(alpha, acc)
     let rhs_scaled := mulmod(acc, eq_scale, mload(P_PTR))
     // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
     // after stack-heavy values are dead
     if mod(add(claim, sub(mload(P_PTR), rhs_scaled)), mload(P_PTR)) { revert(0, 0) }
 
     
-            // canonicity guard for the base-layer claims_batch absorb: 114 at-point evals from
+            // canonicity guard for the base-layer claims_batch absorb: 106 at-point evals from
             // calldata; require each < P so the absorbed transcript bytes are canonical
-                for { let wk := 0 } lt(wk, 114) { wk := add(wk, 1) } {
+                for { let wk := 0 } lt(wk, 106) { wk := add(wk, 1) } {
                     if iszero(lt(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))), mload(P_PTR))) { revert(0, 0) }
                 }
     // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
@@ -1349,8 +1349,8 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             let bp := add(GKR_ABS_PTR(), 32)
             // absorb final_step ++ extras contiguously, then draw (soundness: batching depends on
             // the extra cache-dependency evals). ONE keccak of [seed || final_step || extras].
-            calldatacopy(bp, add(base, mul(16, 38)), mul(16, 66))
-            bp := add(bp, mul(16, 66))
+            calldatacopy(bp, add(base, mul(16, 38)), mul(16, 58))
+            bp := add(bp, mul(16, 58))
             calldatacopy(bp, add(base, mul(16, 2)), mul(16, 2))
             bp := add(bp, mul(16, 2))
             calldatacopy(bp, add(base, mul(16, 5)), mul(16, 7))
@@ -1403,14 +1403,14 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             bp := add(bp, mul(16, 1))
             calldatacopy(bp, add(base, mul(16, 12)), mul(16, 2))
             bp := add(bp, mul(16, 2))
-            calldatacopy(bp, add(base, mul(16, 104)), mul(16, 10))
+            calldatacopy(bp, add(base, mul(16, 96)), mul(16, 10))
             bp := add(bp, mul(16, 10))
             let s := keccak256(GKR_ABS_PTR(), sub(bp, GKR_ABS_PTR()))
             mstore(SEED_PTR(), s)
             s := keccak256(SEED_PTR(), 32)
             mstore(SEED_PTR(), s)
             next_alpha := mod(shr(128, s), mload(P_PTR))
-            next_ptr := add(ptr, mul(16, 114))
+            next_ptr := add(ptr, mul(16, 106))
             next_claim := 0
             }
 }
@@ -1448,36 +1448,36 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(gkr_memrel_compress_low(2, 0, 0), gkr_memrel_compress_high(add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 29)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 26)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 27))))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 7)), mod(gate, mload(P_PTR)))
     }
-    {  // SingleColumnLookup: 0 + -1[24] + 1[0] + 2^19[98] = Cache(8)
-        let gate := add(0, add(add(mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 0))))), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 98)))), mload(P_PTR))))
+    {  // SingleColumnLookup: 0 + -1[24] + 1[0] + 2^19[90] = Cache(8)
+        let gate := add(0, add(add(mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 0))))), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 90)))), mload(P_PTR))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 8)), mod(gate, mload(P_PTR)))
     }
-    {  // SingleColumnLookup: 2^19 + -1[25] + 1[1] + -1[98] = Cache(9)
-        let gate := add(524288, add(add(mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 1))))), mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 98)))), mload(P_PTR))))
+    {  // SingleColumnLookup: 2^19 + -1[25] + 1[1] + -1[90] = Cache(9)
+        let gate := add(524288, add(add(mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 1))))), mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 90)))), mload(P_PTR))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 9)), mod(gate, mload(P_PTR)))
     }
-    {  // SingleColumnLookup: -1 + -1[24] + 1[5] + 2^19[99] = Cache(10)
-        let gate := add(sub(mload(P_PTR), 1), add(add(mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 5))))), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 99)))), mload(P_PTR))))
+    {  // SingleColumnLookup: -1 + -1[24] + 1[5] + 2^19[91] = Cache(10)
+        let gate := add(sub(mload(P_PTR), 1), add(add(mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 5))))), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 91)))), mload(P_PTR))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 10)), mod(gate, mload(P_PTR)))
     }
-    {  // SingleColumnLookup: 2^19 + -1[25] + 1[6] + -1[99] = Cache(11)
-        let gate := add(524288, add(add(mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 6))))), mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 99)))), mload(P_PTR))))
+    {  // SingleColumnLookup: 2^19 + -1[25] + 1[6] + -1[91] = Cache(11)
+        let gate := add(524288, add(add(mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 6))))), mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 91)))), mload(P_PTR))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 11)), mod(gate, mload(P_PTR)))
     }
-    {  // SingleColumnLookup: -2 + -1[24] + 1[12] + 2^19[100] = Cache(12)
-        let gate := add(sub(mload(P_PTR), 2), add(add(mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 12))))), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 100)))), mload(P_PTR))))
+    {  // SingleColumnLookup: -2 + -1[24] + 1[12] + 2^19[92] = Cache(12)
+        let gate := add(sub(mload(P_PTR), 2), add(add(mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 12))))), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 92)))), mload(P_PTR))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 12)), mod(gate, mload(P_PTR)))
     }
-    {  // SingleColumnLookup: 2^19 + -1[25] + 1[13] + -1[100] = Cache(13)
-        let gate := add(524288, add(add(mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 13))))), mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 100)))), mload(P_PTR))))
+    {  // SingleColumnLookup: 2^19 + -1[25] + 1[13] + -1[92] = Cache(13)
+        let gate := add(524288, add(add(mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 13))))), mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 92)))), mload(P_PTR))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 13)), mod(gate, mload(P_PTR)))
     }
     {  // VectorizedLookup: (0 + 1[22]) + (0 + 1[23]) + (0 + 1[4]) + (0 + 1[38]) + (0 + 1[39]) + (0 + 1[40]) + (0 + 1[41]) + (0 + 1[42]) + (0 + 1[43] + 2[44] + 2^2[45] + 2^3[46] + 2^4[47] + 2^5[48] + 2^6[49] + 2^7[50] + 2^8[51] + 2^9[52] + 2^10[53] + 2^11[54] + 2^12[55] + 2^13[56] + 2^14[57] + 2^15[58] + 2^16[59] + 2^17[9] + 2^18[16]) + (46 + 0) = Cache(14)
         let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, add(46, 0)), add(0, add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44)))), mload(P_PTR))), mulmod(4, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), mload(P_PTR))), mulmod(8, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), mload(P_PTR))), mulmod(16, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), mload(P_PTR))), mulmod(32, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), mload(P_PTR))), mulmod(64, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), mload(P_PTR))), mulmod(128, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), mload(P_PTR))), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 51)))), mload(P_PTR))), mulmod(512, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 52)))), mload(P_PTR))), mulmod(1024, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mload(P_PTR))), mulmod(2048, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mload(P_PTR))), mulmod(4096, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mload(P_PTR))), mulmod(8192, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mload(P_PTR))), mulmod(16384, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), mload(P_PTR))), mulmod(32768, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mload(P_PTR))), mulmod(65536, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), mload(P_PTR))), mulmod(131072, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mload(P_PTR))), mulmod(262144, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mload(P_PTR))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 42)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 41)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 40)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 39)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 38)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 4)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 23)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 22))))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 14)), mod(gate, mload(P_PTR)))
     }
-    {  // VectorizedLookupSetup: β⁰[104] + β¹[105] + β²[106] + β³[107] + β⁴[108] + β⁵[109] + β⁶[110] + β⁷[111] + β⁸[112] + β⁹[113] = Cache(15)
-        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 113))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 112))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 111))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 110))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 109))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 108))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 107))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 106))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 105))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 104)))))
+    {  // VectorizedLookupSetup: β⁰[96] + β¹[97] + β²[98] + β³[99] + β⁴[100] + β⁵[101] + β⁶[102] + β⁷[103] + β⁸[104] + β⁹[105] = Cache(15)
+        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 105))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 104))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 103))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 102))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 101))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 100))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 99))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 98))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 97))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 96)))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 15)), mod(gate, mload(P_PTR)))
     }
     {  // RangeCheck16Bits: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8])(1 - r[7])(1 - r[6])(1 - r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = Cache(16)
@@ -1541,24 +1541,17 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             }
             function scl0_g6(alpha, a) -> acc { acc := a
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
-            for { let s := 72 } lt(s, 84) { s := add(s, 1) } {
+            for { let s := 72 } lt(s, 79) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
             } }
 
-            }
-            function scl0_g7(alpha, a) -> acc { acc := a
-            { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
-            for { let s := 84 } lt(s, 88) { s := add(s, 1) } {
-                acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
-            } }
-
-    {  // LookupWithCachedDensAndSetup: (([21])·((Cache(15))+δ) − ([103])·((Cache(14))+δ)) / (((Cache(14))+δ)((Cache(15))+δ)) = 72/73
+    {  // LookupWithCachedDensAndSetup: (([21])·((Cache(15))+δ) − ([95])·((Cache(14))+δ)) / (((Cache(14))+δ)((Cache(15))+δ)) = 72/73
         let bg := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 14))))
         let dg := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 15))))
         let den_out := mulmod(bg, dg, mload(P_PTR))
         let gate := den_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), dg, mload(P_PTR)), sub(mul(2, mload(P_PTR)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 103)))), bg, mload(P_PTR))))
+        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), dg, mload(P_PTR)), sub(mul(2, mload(P_PTR)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 95)))), bg, mload(P_PTR))))
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
@@ -1596,11 +1589,13 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // LookupFromMaterializedBaseInputWithSetup: 1/(δ + [28]) - [102]/(δ + Cache(17)) = 63/64
+            }
+            function scl0_g7(alpha, a) -> acc { acc := a
+    {  // LookupFromMaterializedBaseInputWithSetup: 1/(δ + [28]) - [94]/(δ + Cache(17)) = 63/64
         let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 17)))), mload(P_PTR))
         let gate := den_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 17)))), sub(mload(P_PTR), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 102)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28))))), mload(P_PTR))))
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 17)))), sub(mload(P_PTR), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 94)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28))))), mload(P_PTR))))
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
@@ -1618,8 +1613,6 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-            }
-            function scl0_g8(alpha, a) -> acc { acc := a
     {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[11]) + 1/(δ+[17]) = 58/59
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 11)))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 17)))))
@@ -1630,8 +1623,8 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[89]) + 1/(δ+[10]) = 56/57
-        let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 89)))))
+    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[72]) + 1/(δ+[10]) = 56/57
+        let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 72)))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 10)))))
         let den_out := mulmod(den1, den2, mload(P_PTR))
         let gate := den_out
@@ -1660,8 +1653,8 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[87]) + 1/(δ+[19]) = 50/51
-        let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87)))))
+    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[83]) + 1/(δ+[19]) = 50/51
+        let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 83)))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))))
         let den_out := mulmod(den1, den2, mload(P_PTR))
         let gate := den_out
@@ -1670,16 +1663,23 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // LookupFromMaterializedBaseInputWithSetup: 1/(δ + [86]) - [101]/(δ + Cache(16)) = 48/49
-        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 16)))), mload(P_PTR))
+    {  // LookupFromMaterializedBaseInputWithSetup: 1/(δ + [82]) - [93]/(δ + Cache(16)) = 48/49
+        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 82))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 16)))), mload(P_PTR))
         let gate := den_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 16)))), sub(mload(P_PTR), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 101)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86))))), mload(P_PTR))))
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 16)))), sub(mload(P_PTR), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 93)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 82))))), mload(P_PTR))))
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
-            for { let s := 88 } lt(s, 94) { s := add(s, 1) } {
+            for { let s := 79 } lt(s, 82) { s := add(s, 1) } {
+                acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
+            } }
+
+            }
+            function scl0_g8(alpha, a) -> acc { acc := a
+            { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
+            for { let s := 82 } lt(s, 94) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
             } }
 
@@ -1700,7 +1700,7 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             }
             function scl0_g11(alpha, a) -> acc { acc := a
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
-            for { let s := 118 } lt(s, 129) { s := add(s, 1) } {
+            for { let s := 118 } lt(s, 120) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
             } }
 
@@ -1711,8 +1711,6 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := mulmod(lhs, rhs, mload(P_PTR))
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-            }
-            function scl0_g12(alpha, a) -> acc { acc := a
     {  // InitsOrTeardownsInitialPair: (γ + 1 + αCache(18) + α²(Cache(19) + (topbits[0]<<8)) + 0) * (γ + 1 + αCache(18) + α²(Cache(19) + (topbits[1]<<8)) + 0) = 5
         let shared := add(add(mload(add(MEMORY_CHALLS_PTR(), mul(32, 6))), 1), mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 0))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 18))), mload(P_PTR)))
         let lhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 19))), shl(8, __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_0)), mload(P_PTR)), 0)) // for memrel we collect
@@ -1744,15 +1742,6 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             function sccl0(alpha) -> claim {
             let src := GKR_CIRCUIT_CLAIMS_PTR()
             claim := 0
-            claim := mulmod(claim, alpha, mload(P_PTR))
-            claim := mulmod(claim, alpha, mload(P_PTR))
-            claim := mulmod(claim, alpha, mload(P_PTR))
-            claim := mulmod(claim, alpha, mload(P_PTR))
-            claim := mulmod(claim, alpha, mload(P_PTR))
-            claim := mulmod(claim, alpha, mload(P_PTR))
-            claim := mulmod(claim, alpha, mload(P_PTR))
-            claim := mulmod(claim, alpha, mload(P_PTR))
-            claim := mulmod(claim, alpha, mload(P_PTR))
             claim := mulmod(claim, alpha, mload(P_PTR))
             claim := mulmod(claim, alpha, mload(P_PTR))
             claim := mulmod(claim, alpha, mload(P_PTR))
@@ -2783,30 +2772,30 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
 //     4960 ..   7552  ABS (32 + 10 * 16 * 16 = 2592 B)
 //     7552 ..   7680  PERM_PROD (32 * 4 = 128 B)
 //     7680 ..  10048  CIRCUIT_CLAIMS (32 * 74 = 2368 B)
-//    10048 ..  14176  GATEVAL (32 * 129 = 4128 B)
-//    14176 ..  17504  QTABLE (32 * 104 = 3328 B)
-//    17504 ..  17792  SEED_PTR (32 + (1 << 3) * 32 = 288 B)
-//    17792 ..  18624  Z_PTR (26 * 32 = 832 B)
-//    18624 ..  23712  POW_PTR (53 * 96 = 5088 B)
-//    23712 ..  23744  ACC_PREF_PTR (32 = 32 B)
-//    23744 ..  24032  GAMMA_PTR (9 * 32 = 288 B)
-//    24032 ..  24160  FOLD_CH_PTR (4 * 32 = 128 B)
-//    24160 ..  24416  HPO_PTR ((1 << 3) * 32 = 256 B)
-//    24416 ..  24928  FBUF_PTR ((1 << 4) * 32 = 512 B)
-//    24928 ..  25440  LEAF_PTR (16 * 32 = 512 B)
-//    25440 ..  25472  REG_CD (32 = 32 B)
-//    25472 ..  25504  REG_CLAIM (32 = 32 B)
-//    25504 ..  25536  REG_NUMPOW (32 = 32 B)
-//    25536 ..  25568  REG_ZIOFF (32 = 32 B)
-//    25568 ..  25600  REG_CC (32 = 32 B)
-//    25600 ..  25632  REG_CURDELIN (32 = 32 B)
-//    25632 ..  25664  HANDOFF_BATCHING_PTR (32 = 32 B)
-//    25664 ..  25920  BCAP0_PTR ((1 << 3) * 32 = 256 B)
-//    25920 ..  26176  BCAP1_PTR ((1 << 3) * 32 = 256 B)
-//    26176 ..  26432  QCAP_PTR ((1 << 3) * 32 = 256 B)
-//    26432 ..  26688  NCAP_PTR ((1 << 3) * 32 = 256 B)
-//    26688 ..  27232  QIDX_BUF_PTR (17 * 32 = 544 B)
-//    27232 ..  28000  DRAW_BUF_PTR (24 * 32 = 768 B)
-//    28000 ..  28512  MONO_PTR ((1 << 4) * 32 = 512 B)
-//    28512 ..  29056  FEVAL_PTR (32 + (1 << 4) * 32 = 544 B)
-//   heap end: 29056
+//    10048 ..  13888  GATEVAL (32 * 120 = 3840 B)
+//    13888 ..  17248  QTABLE (32 * 105 = 3360 B)
+//    17248 ..  17536  SEED_PTR (32 + (1 << 3) * 32 = 288 B)
+//    17536 ..  18368  Z_PTR (26 * 32 = 832 B)
+//    18368 ..  23456  POW_PTR (53 * 96 = 5088 B)
+//    23456 ..  23488  ACC_PREF_PTR (32 = 32 B)
+//    23488 ..  23744  GAMMA_PTR (8 * 32 = 256 B)
+//    23744 ..  23872  FOLD_CH_PTR (4 * 32 = 128 B)
+//    23872 ..  24128  HPO_PTR ((1 << 3) * 32 = 256 B)
+//    24128 ..  24640  FBUF_PTR ((1 << 4) * 32 = 512 B)
+//    24640 ..  25088  LEAF_PTR (14 * 32 = 448 B)
+//    25088 ..  25120  REG_CD (32 = 32 B)
+//    25120 ..  25152  REG_CLAIM (32 = 32 B)
+//    25152 ..  25184  REG_NUMPOW (32 = 32 B)
+//    25184 ..  25216  REG_ZIOFF (32 = 32 B)
+//    25216 ..  25248  REG_CC (32 = 32 B)
+//    25248 ..  25280  REG_CURDELIN (32 = 32 B)
+//    25280 ..  25312  HANDOFF_BATCHING_PTR (32 = 32 B)
+//    25312 ..  25568  BCAP0_PTR ((1 << 3) * 32 = 256 B)
+//    25568 ..  25824  BCAP1_PTR ((1 << 3) * 32 = 256 B)
+//    25824 ..  26080  QCAP_PTR ((1 << 3) * 32 = 256 B)
+//    26080 ..  26336  NCAP_PTR ((1 << 3) * 32 = 256 B)
+//    26336 ..  26880  QIDX_BUF_PTR (17 * 32 = 544 B)
+//    26880 ..  27648  DRAW_BUF_PTR (24 * 32 = 768 B)
+//    27648 ..  28160  MONO_PTR ((1 << 4) * 32 = 512 B)
+//    28160 ..  28704  FEVAL_PTR (32 + (1 << 4) * 32 = 544 B)
+//   heap end: 28704
