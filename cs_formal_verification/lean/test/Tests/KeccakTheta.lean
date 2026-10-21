@@ -45,6 +45,7 @@ private theorem bytesHold (i : Fin 40) :
     dsimp [Keccak.Proofs.byteEntry, Keccak.Proofs.byteQuery, Keccak.importedConstraints,
       FlatOperation.lookups]
   all_goals norm_num [Expression.eval, Verification.environment, row, Keccak.setupRow, Keccak.byteRow]
+  all_goals decide +kernel
 
 private theorem controllerHolds :
     ((FlatOperation.lookups (Keccak.importedConstraints setup)).get
@@ -64,8 +65,7 @@ private theorem controllerHolds :
   dsimp [Keccak.importedConstraints, FlatOperation.lookups]
   apply Vector.ext
   intro j hj
-  interval_cases j <;> norm_num [Vector.getElem_mk, List.getElem_toArray,
-    List.getElem_cons_zero, List.getElem_cons_succ, Expression.eval, Verification.environment, row]
+  interval_cases j <;> decide +kernel +revert
 
 theorem satisfies : FlatOperation.ConstraintsHoldFlat (Verification.environment row)
     (Keccak.importedConstraints setup) := by
