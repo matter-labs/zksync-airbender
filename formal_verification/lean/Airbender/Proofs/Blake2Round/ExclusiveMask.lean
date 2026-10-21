@@ -13,7 +13,7 @@ private def packedBits {p : Nat} (w : Nat → ZMod p) : Nat := (w 139).val + 2 *
     512 * (w 148).val + 1024 * (w 149).val + 2048 * (w 150).val + 4096 * (w 151).val
 
 private theorem control_encoding [Fact p.Prime] (hp : 8192 ≤ p)
-    {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p}
+    {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     packedBits w = (w Variables.controlReadHi).val := by
   have bits (i : Fin 13) : (w Variables.controlBits[i]).val ≤ 1 :=
@@ -45,7 +45,7 @@ private theorem control_encoding [Fact p.Prime] (hp : 8192 ≤ p)
   rw [← field, ZMod.val_natCast_of_lt bound]
 
 theorem exclusive_mask [Fact p.Prime] (hp : 8192 ≤ p)
-    {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p}
+    {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (flags : Fin 8) (round : Fin 10)
     (read : (w Variables.controlReadHi).val = flags.val + 8 * 2 ^ round.val) :
@@ -86,7 +86,7 @@ theorem exclusive_mask [Fact p.Prime] (hp : 8192 ≤ p)
   all_goals omega
 
 theorem control_flags [Fact p.Prime] (hp : 8192 ≤ p)
-    {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p}
+    {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (flags : Fin 8) (round : Fin 10)
     (read : (w Variables.controlReadHi).val = flags.val + 8 * 2 ^ round.val) :
@@ -108,7 +108,7 @@ theorem control_flags [Fact p.Prime] (hp : 8192 ≤ p)
     The high control limb may encode no round or several rounds; neither case is
     silently restricted to the supported ABI. -/
 theorem exclusive_mask_iff [Fact p.Prime] (hp : 8192 ≤ p)
-    {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p}
+    {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (round : Fin 10) :
     Memory.RoundMask w round ↔

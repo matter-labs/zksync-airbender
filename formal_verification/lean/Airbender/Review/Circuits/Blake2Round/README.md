@@ -33,6 +33,10 @@ describe controller flags, round selection and imported lookup contents.
 The [fixed rows](Tables/XorData.lean) come from this circuit's own artifact;
 [kernel proofs](../../../Proofs/Blake2Round/ImportedXor.lean) check their connection
 to the shared XOR semantics and native fields.
+The [native layout adapter](../../../Proofs/Blake2Round/NativeLayout.lean) reads
+both G phases into a [shared arithmetic frame](../../../Proofs/Blake2G/Frame.lean).
+Chunk and rotation proofs use lookup evidence alone; native carry, input and
+writeback projections stay in the adapter modules.
 [Addresses](Addresses.lean) and [Memory](Memory.lean) connect native indirect ports
 to initialized worker history.
 

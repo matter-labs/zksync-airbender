@@ -123,12 +123,6 @@ pub fn make_setup_for_non_mem_circuit<
         &circuit,
     );
 
-    let mut witness_gen_data = Vec::new_in(A::default());
-    for el in decoder_table_data.iter() {
-        let t = el.as_ref().copied().unwrap_or(Default::default());
-        witness_gen_data.push(t);
-    }
-
     let witness_eval_fn = witness_eval_fn.map(|el| UnrolledCircuitWitnessEvalFn::NonMemory {
         witness_fn: el,
         decoder_table: decoder_table_data.to_vec_in(A::default()),
@@ -166,12 +160,6 @@ pub fn make_setup_for_with_mem_circuit<
         1 << C::DOMAIN_SIZE_LOG2,
         &circuit,
     );
-
-    let mut witness_gen_data = Vec::new_in(A::default());
-    for el in decoder_table_data.iter() {
-        let t = el.as_ref().copied().unwrap_or(Default::default());
-        witness_gen_data.push(t);
-    }
 
     let witness_eval_fn = witness_eval_fn.map(|el| UnrolledCircuitWitnessEvalFn::Memory {
         witness_fn: el,

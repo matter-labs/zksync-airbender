@@ -6,7 +6,7 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
 theorem timestamp_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 40 := rfl
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 41 := rfl
 
 theorem delegation_columns : importedConstraintsDelegationColumns =
     (⟨0, #v[1, 2], (Vector.ofFn (fun i : Fin 19 =>

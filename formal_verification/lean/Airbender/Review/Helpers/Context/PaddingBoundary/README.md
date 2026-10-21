@@ -33,8 +33,9 @@ and the actual constraints, rather than assumed to preserve execution.
 [Unified machine/worker binding](../../UnifiedReduced/PaddingBoundary.lean)
 separately closes architectural GPR/RAM and full-width virtual CSR requests,
 using the same native machine and worker selectors. All four worker layouts are
-covered. Invocation clock zero is not a padding selector: execute-one unissued
-workers retain their actual effects. Both invalid bigint controls remain admitted.
+covered. Invocation clock zero is not a padding selector: raw execute-one
+workers survive filtering. Current native BabyBear timestamp constraints
+separately reject active zero-clock workers. Both invalid bigint controls remain admitted.
 The [whole-execution entries](../../../Trace/Padding.lean) reuse restricted Sail,
 six-family native boot/ROM, unified standard/TRIADD/XORROT execution and the
 existing mixed caller observation certificate. Public configuration, domains,
@@ -68,6 +69,7 @@ identity factors from active zero values. A colliding encoding example explicitl
 shows why scalar product equality is not tuple matching.
 [Dependent trace](../../../../../Tests/TraceExecution.lean) inserts two such rows
 into the actual initialized two-ADD execution and proves the same terminal Sail
-observations. The [unissued G](../../../../../Tests/DelegationZeroInvocation.lean)
-and [invalid bigint controls](../../../../../Tests/UnifiedDelegation.lean) inhabit
-the new logical boundary without new participation/control assumptions.
+observations. The [historical unissued G](../../../../../Tests/DelegationZeroInvocation.lean)
+survives raw filtering but fails current native acceptance. The
+[invalid bigint controls](../../../../../Tests/UnifiedDelegation.lean) remain
+admitted without a new control assumption.

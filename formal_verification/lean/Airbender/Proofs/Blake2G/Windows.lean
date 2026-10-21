@@ -34,7 +34,8 @@ theorem window_binding [Fact p.Prime] (hp : 8388608 ≤ p)
     · simpa only [priorData, Delegation.MemoryData.steps, native_prefix_steps] using prefixFacts.matching
   have prefixMemory : Delegation.MemoryInputs priorData before cells :=
     ⟨inputs.memory.initialization, inputs.memory.distinct,
-      fun row member => inputs.memory.clockRoom row (List.mem_of_mem_filter member)⟩
+      fun row member => inputs.memory.clockRoom row (List.mem_of_mem_filter member),
+      fun row member => inputs.memory.invocationHigh row (List.mem_of_mem_filter member)⟩
   have nonempty : data.windowRows lower upper ≠ [] := by
     intro empty
     have count := inputs.calls

@@ -23,5 +23,9 @@ structure BoundaryMemoryInputs (data : MemoryData p) (before : State) (cells : L
   /-- Invocation timestamps leave room for each imported offset-two write. -/
   clockRoom : ∀ row ∈ data.rows,
     (decodeTimestamp row.assignment row.columns.invocation).lo + 2 < timestampBase
+  /-- Derived from caller/request matching at native cuts; no local high-limb
+      range query remains in the current worker compiler. -/
+  invocationHigh : ∀ row ∈ data.rows,
+    (decodeTimestamp row.assignment row.columns.invocation).hi < timestampBase
 
 end Airbender.Delegation

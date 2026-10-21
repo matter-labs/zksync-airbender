@@ -19,7 +19,8 @@ def native_window_boundary_inputs {data : MemoryData p} {before atStart : State}
       (transferData ⟨data.setup, windowRows data lower upper, start, finish⟩) atStart cells) :
     BoundaryMemoryInputs ⟨data.setup, windowRows data lower upper, start, finish⟩ atStart cells :=
   ⟨boundary_image boundary, boundary.distinct, boundary.clocks,
-    fun row member => inputs.clockRoom row (List.mem_of_mem_filter member)⟩
+    fun row member => inputs.clockRoom row (List.mem_of_mem_filter member),
+    fun row member => inputs.invocationHigh row (List.mem_of_mem_filter member)⟩
 
 def native_window_boundary_inputs_at_boundary {data : MemoryData p} {before atStart : State}
     {cells : List Cell} (inputs : BoundaryInputs data before cells) {lower upper : Nat}
@@ -28,7 +29,8 @@ def native_window_boundary_inputs_at_boundary {data : MemoryData p} {before atSt
       (transferData ⟨data.setup, windowRows data lower upper, start, finish⟩) atStart cells) :
     BoundaryMemoryInputs ⟨data.setup, windowRows data lower upper, start, finish⟩ atStart cells :=
   ⟨boundary_image boundary, boundary.distinct, boundary.clocks,
-    fun row member => inputs.clockRoom row (List.mem_of_mem_filter member)⟩
+    fun row member => inputs.clockRoom row (List.mem_of_mem_filter member),
+    fun row member => inputs.invocationHigh row (List.mem_of_mem_filter member)⟩
 
 theorem row_write_time (row : Row p) {port : MemoryPort} (member : port ∈ row.ports) :
     (timeOfPair (row.writeToken port).time).value = rowWriteTime row := by

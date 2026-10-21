@@ -78,6 +78,15 @@ Rust/parser fidelity and cryptographic enforcement are not inferred.
 
 ## Checked scope boundaries
 
+Current native BabyBear acceptance includes #490's active-invocation timestamp
+query. [Native exclusion](Airbender/Proofs/Delegation/NativeInvocation.lean) and
+[caller accounting](Airbender/Proofs/ExternalBoundary/NativeRequests.lean) derive
+complete worker participation. Lower-level generic zero-clock classifications
+below retain their mathematical scope; accepted prefix examples from the
+[pre-rebase snapshot](https://github.com/matter-labs/zksync-airbender/blob/010c3cbb3c237b6e125277162dd1011c2f212333/formal_verification/lean/Tests/DelegationZeroInvocation.lean)
+are historical. The current fixture proves native rejection while preserving
+its raw arithmetic, matching and padding behavior.
+
 Keep proof coverage and finding status separate. The
 [reviewed-case register](FINDINGS.md#linear-and-open-pr-review--15-october-2026)
 distinguishes temporary assumptions for open defects from intended external
@@ -94,7 +103,7 @@ when reviewing or strengthening a theorem.
 | Inactive padding | [Inactive ADD/SUB row](Tests/InactiveRow.lean): execute zero admits PC 0→4 and result 123. The [external contribution-mask boundary](Airbender/Review/Helpers/Context/PaddingBoundary/README.md) now derives active acceptance/execution by erasing identity factors from exact whole-layout masked state/memory/request matching. Raw padding values need not stutter. Rust/GKR/cryptographic enforcement and artifact correspondence remain external; this is no demonstrated padding bug. |
 | Jump termination | [Noncanonical JAL endpoint](Tests/JumpSailHistory.lean): imported constraints, decoding and native matching admit a field-aliased terminal PC that disagrees with Sail. The [canonical verifier-boundary contract](Airbender/Review/Helpers/Context/VerifierBoundary/README.md) now replaces the direct range premise at public jump/pooled entries. Accepted state matching and typed u32 contribution closure derive full raw terminal equality and bounds. F01 is resolved under that external logical binding; the malformed witness remains valid locally and is excluded by the new contract. Cryptographic enforcement, PC-space projection and Rust/artifact correspondence remain external. |
 | Discarded LW | [Sparse-memory load](Tests/DiscardedLoad.lean): an accepted native NOP can fail original Sail's LW-to-x0 access. The unchanged-Sail claim retains `NoDiscardedLoads`; the named Airbender profile uses the pinned PC-only NOP rule. |
-| Unissued workers | [Zero-clock G worker](Tests/DelegationZeroInvocation.lean): an active worker matches no caller and changes actual x12 from 0 to 1. Issued-worker uniqueness does not exclude this prefix effect. The temporary occurrence-ledger contract leaves F03 / AIH-339 open. |
+| Unissued workers | [Historical zero-clock G worker](Tests/DelegationZeroInvocation.lean): its raw arithmetic, token cancellation and padding retention remain checked; current native BabyBear timestamp constraints reject it. [Native accounting](Airbender/Proofs/ExternalBoundary/NativeRequests.lean) derives the occurrence ledger from accepted constraints and initialized caller binding, without a positive-invocation premise. |
 | Bigint controls | [Issued unified calls](Tests/UnifiedDelegation.lean): x12 = 0 admits no opcode; x12 = 65537 admits ADD with a nonzero high limb. Current caller-cycle observations hold, while the pinned reference rejects these control words. The temporary valid-command contract now supports [complete bigint reference retirement](Airbender/Review/Trace/UnifiedReduced/BigintCalls.lean); F02 implementation enforcement remains open, and both controls fail that full reference. |
 | Worker ROM | [COPY with ROM pointers](Tests/DelegationROMBoundary.lean): zero native shadows and exactly matched worker values can differ from public ROM bytes. Replacing shadow tokens with public bytes breaks matching. A temporary RAM-port contract restricts conditional transport and leaves F04 open. |
 
@@ -180,9 +189,10 @@ reference and concrete setup. Its generalized controllers and invalid/inactive
 rows retain their scope. [G XOR rows](Airbender/Review/Circuits/Blake2G/Tables/XorData.lean)
 and [round XOR rows](Airbender/Review/Circuits/Blake2Round/Tables/XorData.lean) also
 come from their own native artifacts. [G proofs](Airbender/Proofs/Blake2G/ImportedXor.lean)
-and [round proofs](Airbender/Proofs/Blake2Round/ImportedXor.lean) check all 344,384
-fixed rows per circuit, including padding/tags and native field casts; existing
-lookup consumers use those data with the original generic field scopes.
+and [round proofs](Airbender/Proofs/Blake2Round/ImportedXor.lean) check the
+current artifacts' 344,384 G rows and 606,208 extended-round rows, including
+carry/packed native regions, padding/tags and field casts. Existing lookup
+consumers use those data with their original generic field scopes.
 [Keccak fixed rows](Airbender/Review/Circuits/Keccak/Tables/FixedData.lean) also import
 all five native regions. [Kernel proofs](Airbender/Proofs/Keccak/ImportedFixed.lean)
 recover XOR/Iota/Chi and both rotation pieces, including every key, padding and tag,
@@ -197,8 +207,9 @@ Rust refinement and cryptographic query/table authentication remain separate bou
 permutations. Decoder membership and caller/request matching are likewise logical
 conditions. [Caller request windows](Airbender/Review/Trace/Delegation/RequestHashWindows.lean)
 reuse these checks at aligned instruction cuts after clock two. Exact worker/caller
-multiplicity, slots and full CSR families are derived; zero-clock worker effects
-stay in the actual prefix. Standalone hash-window claims retain explicit worker-only
+multiplicity, slots and full CSR families are derived. Generic window
+decompositions retain all prefix effects; current native BabyBear acceptance
+separately excludes active zero-clock workers. Standalone hash-window claims retain explicit worker-only
 matching and protocol ABI. [Joint instruction windows](Airbender/Review/Helpers/UnifiedReduced/Windows.lean)
 now derive actual shared cut states and canonical boundary tokens from architectural
 matching. Machine ports include native offset zero; Clean event clocks add one.
@@ -218,7 +229,7 @@ The public instruction registry, worker-free final preparation cycle, selected-s
 family, call count and four-tick duration remain explicit. Bigint, G and Keccak
 workers outside that span stay in joint matching; extended-round workers require
 separate mask transport. No bigint opcode-validity condition is added. Earlier worker effects,
-including zero-clock effects, stay in the actual prefix. Worker boundaries, controls
+stay in the actual prefix. The old zero-clock prefix example is historical. Worker boundaries, controls
 and caller regions are derived from shared matching, with no supplied worker masks.
 [Prepared hash chains](Airbender/Review/Trace/UnifiedReduced/PreparedHashWindows.lean)
 now bind two complete G/Keccak references to one continuous architectural-memory
@@ -271,12 +282,12 @@ selected region; global coverage is supplied separately for whole-pool transport
 In this public sequential/controller profile, full worker coverage is equivalent to the absence
 of zero-clock extended-round workers. This is an exposed conclusion, without a
 new nonzero-invocation premise. Full coverage remains explicit before global mask
-transport; unissued G effects and the other accepted gaps remain retained.
+transport at these generic entries; native BabyBear exclusion supplies the
+zero-clock boundary in the full mixed entry.
 Empty prepared cuts retain the actual clock-six LUI token; wrong flags/family,
 oversized/reversed/unaligned cuts and two
-round bits are rejected. The stronger public context still admits the unissued
-G-prefix effect. General protocol validity, invalid-call ABI
-and whole caller retirement remain open. Both invalid bigint controls still satisfy
+round bits are rejected. General protocol validity and invalid-call ABI remain
+separate; full caller retirement is checked under the profiles below. Both invalid bigint controls still satisfy
 the program-derived request/schedule claim.
 
 The modular variant uses `WrappedProgramCallerRegion`: public ordinary exclusion
@@ -295,12 +306,13 @@ then locates the actual caller occurrence, including repeated addresses, and
 full-width request matching derives round-worker membership exactly for live
 invocations. The modular issued-mask theorem reuses public LUI preparation and raw
 regional matching, without full worker coverage. Full coverage is equivalent to
-absence of zero-clock extended-round workers; unissued-round masks/exclusion still
-need a separate binding. Public CSR bytes, native endpoints, modeled setup and
+absence of zero-clock extended-round workers. This generic implication uses
+current native BabyBear exclusion at the full mixed entry. Public CSR bytes, native endpoints, modeled setup and
 logical matching remain explicit. A public code-policy fixture with a 2^32-tick
 recurrence rejects covering only either occurrence; it makes no accepted-trace
 claim. COPY and the real comparison-wrap fixture retain their native behavior,
-both bigint controls remain admitted, and the unissued G-prefix effect survives.
+both bigint controls remain admitted. The historical unissued G-prefix is
+rejected by the current native timestamp constraint.
 [Unissued worker binding](Airbender/Review/Trace/UnifiedReduced/UnissuedWorkers.lean)
 now derives the original public seed token for every read of a zero-clock worker,
 including its actual value, canonical word and raw zero timestamp. Every worker
@@ -314,8 +326,8 @@ limb then characterizes every exclusive extended-round mask exactly as
 directions for the existing field bound, independently of XOR-table contents.
 A zero public x12 seed implies no exclusive mask for such a worker; this is a
 conditional classification, without an accepted unissued-round witness or an
-exclusion/inertness claim. The actual unissued G worker still reads zero, writes
-one and affects the prefix before the later reset.
+exclusion/inertness claim for generic fields. Current native BabyBear
+acceptance excludes the historical G prefix.
 
 `WorkerInvocationUniqueness` now extends the earlier live-only scheduling fact
 to every native worker occurrence. All four imported layouts transfer fixed GPR
@@ -325,12 +337,10 @@ invocation clocks across the whole worker pool. The public tracked domain must
 have distinct physical cells; no round mask, opcode validity, operation effect,
 nonzero invocation or global hash coverage is supplied. Consequently the actual
 zero-clock sublist has length at most one. This counts list occurrences and also
-rejects two identical rows. Native constraints, participation and virtual request
-matching alone still admit two copies of the zero-clock G worker; architectural
-matching against the distinct public seed rejects that pool. The existing single
-G worker attains the bound and retains its state change, and both invalid bigint
-controls retain full invocation uniqueness. This bounds surplus without proving
-its exclusion, inertness or a supported mask.
+rejects two identical rows. Current native BabyBear constraints separately exclude active zero clocks,
+so no single or duplicate active-zero pool is accepted. The historical raw
+worker and its request cancellation remain checked alongside current rejection.
+Both invalid bigint controls retain full invocation uniqueness.
 
 The [all-worker execution entry](Airbender/Review/Trace/UnifiedReduced/Theorems.lean)
 uses that full uniqueness to derive actual pre/post-states for every worker in
@@ -343,18 +353,15 @@ observations assume only public initialization, distinct aligned cells and nativ
 matching, without operation masks, valid bigint controls or positive invocations.
 The closed BabyBear result reuses existing history realization and retains its
 explicit modeled setup/tables and extended-round masks. This does not execute
-unsupported round controls or establish a full CSR ABI. The G-prefix regression
-now observes actual x12 = 0→1→0 at the initial, prefix-finish and final states in
-one history, and live COPY plus both invalid bigint controls instantiate the new
-result. Every native machine row now also has actual cycle states in this
-same history: strict memory order and alignment derive its positive clock. The
-new caller-cycle entry reuses this native bound for current fetch, matched worker
+unsupported round controls or establish a full CSR ABI. Live COPY and both invalid bigint controls instantiate this result. The
+historical G-prefix execution belongs to the pre-#490 snapshot; current native
+BabyBear acceptance rejects that witness. Every native machine row also has
+actual cycle states in the same history: strict memory order and alignment
+derive its positive clock. The caller-cycle entry reuses this bound for fetch,
 observations and PC retirement, without a separately supplied positive initial
-clock. The earlier entry remains available. An empty-machine logical fixture has
-public endpoint clock zero and an unissued G prefix that still changes x12 from
-zero to one; native boot remains at four. Both invalid bigint controls and LW/SW
-caller fixtures inhabit the new entry. Full CSR ABI, exclusion/inertness and whole
-caller retirement remain open.
+clock. Both invalid bigint controls and LW/SW fixtures inhabit that entry.
+Full mixed execution adds complete reference calls under the command and public
+protocol/RAM profiles described below.
 
 The [PC-relative preparation entry](Airbender/Review/Trace/UnifiedReduced/PCRelativePreparation.lean)
 computes a control with original public AUIPC decoding. Modular public
@@ -384,15 +391,13 @@ scope, public initialization/domain/setup/tables and logical matching remain
 explicit. The preparation fixtures check G's 128 and Keccak's wrapped zero reset,
 actual reads and clock-six tokens; wrong placement and incomplete windows are
 rejected. These are preparation/guard fixtures, with complete-reference claims
-remaining arbitrary-witness theorems under the stated ABI. The literal source
-still admits the actual unissued G-prefix effect. All demonstrated ABI gaps stay
-exposed. The new public modular-region entry derives caller rows, exact native
+remaining arbitrary-witness theorems under the stated ABI. The bigint and
+ROM-shadow ABI gaps stay exposed. The new public modular-region entry derives caller rows, exact native
 request slots, worker family and count before applying that same composition.
 It supports either source and arbitrary nonempty ordered lists, retaining public
 mode/code/duration and the global nonround boundary. Native AUIPC preparation
 witnesses derive empty-region counts; incomplete durations, cuts past the native
-terminal and regions containing ordinary preparation code are rejected. The
-literal public-region entry still retains the unissued G worker in its prefix.
+terminal and regions containing ordinary preparation code are rejected. The public-region entry retains every accepted earlier worker effect.
 The [source-aware round regions](Airbender/Review/Trace/UnifiedReduced/ComputedRoundRegions.lean)
 now derive actual round-zero tokens from either preparation source and exclusive
 regional masks from raw initialized matching. Public modular controller code,
@@ -405,12 +410,11 @@ AUIPC fixture at PC 524288 derives x12 = 65537→524288 and the clock-six token;
 it inhabits an empty controller region and its global context. Wrong public flags,
 invalid cuts and two simultaneous round bits are rejected under the stated ABI.
 These are preparation/empty-region fixtures; nonempty region masks are general
-accepted-witness theorems. The unissued G-prefix remains admitted in the new
-global context. Source-aware public modular round-CSR occurrence coverage now
+accepted-witness theorems. Source-aware public modular round-CSR occurrence coverage now
 derives precisely live regional membership and all issued masks. Every aligned
 occurrence is covered, retaining repeated RV32 addresses. Full round coverage is
-equivalent to absence of zero-clock round workers; it does not follow from public
-CSR coverage alone. The new complete entry admits G, extended-BLAKE and Keccak
+equivalent to absence of zero-clock round workers. CSR coverage alone does
+not supply that absence; current native BabyBear timestamp constraints do. The new complete entry admits G, extended-BLAKE and Keccak
 reference lists with literal/AUIPC preparation in one continuously initialized
 history. Public modular caller/controller regions derive shape, and the existing
 composition retains every gap and actual cut state. Full round-worker coverage
@@ -419,7 +423,8 @@ proofs. The native preparation/empty-region fixtures inhabit the new public
 context and reject incomplete reference counts/durations and cuts past the native
 terminal. Complete references/lists remain general accepted-witness theorems;
 these fixtures do not construct complete native reference windows. Broader
-operand-dependent preparation, jumps/branches and whole CSR retirement remain open.
+operand-dependent preparation and jumps/branches remain outside the frozen
+preparation scope; whole CSR retirement is checked under the profiles below.
 
 The separate [register-dependent ADDI entry](Airbender/Review/Trace/UnifiedReduced/RegisterPreparation.lean)
 derives the actual final row from public modular code and native clocks. One
@@ -431,8 +436,7 @@ No operand read, bound, selector, intermediate state or prepared value is suppli
 Only the final cycle is worker-free; earlier issued/unissued effects remain.
 Public domain/setup/tables and the existing round-mask boundary stay explicit.
 Native fixtures check 65537→65665 and 65537→65536, retain clock six and reject a
-wrong immediate/fabricated source. The unissued G-prefix fixture derives actual
-states 0→1→1 despite public initial x12 zero. Legacy literal/AUIPC signatures
+wrong immediate/fabricated source. The old unissued-prefix fixture is historical. Legacy literal/AUIPC signatures
 remain and share arithmetic/output-token helpers. The
 [consecutive literal→ADDI source](Airbender/Review/Helpers/UnifiedReduced/RegisterPreparation.lean)
 now binds a protocol entry constant through public instructions. Strict native
@@ -446,10 +450,10 @@ including public modular shape and raw regional masks, with the same coverage,
 domain/setup/table and logical-matching boundaries. Native fixtures derive
 65537→127→128 and 65537→129→128 with aliases, signed −1 and clock ten. Wrong
 immediates/public constants, fabricated operands and incomplete references are
-rejected. A native G-prefix fixture retains its actual unissued effect before
-literal zero and ADDI 128. Complete reference claims remain general accepted-
+rejected. Complete reference claims remain general accepted-
 witness theorems; the fixtures cover preparation/empty-region guards. Nonconsecutive
-dataflow, broader operations and complete Sail retirement remain open.
+dataflow and the admitted broader operations are described below; additional
+variants remain outside the frozen scope.
 
 
 The [finite public register-chain entry](Airbender/Review/Helpers/UnifiedReduced/RegisterChains.lean)
@@ -466,11 +470,10 @@ worker-free; all earlier effects remain. Native reversed-row three-instruction
 fixtures compute x12 = 127/129, then x10 = 128, then x12 = 128, retaining canonical
 clock fourteen. Actual prefix/cycle reads and matching retain the intermediate
 register values; wrong immediates/constants, fabricated middle reads and
-incomplete references are rejected. AUIPC fixtures inhabit the root case, and
-the native unissued G-prefix fixture remains admitted with its actual update.
+incomplete references are rejected. AUIPC fixtures inhabit the root case.
 These are preparation/guard fixtures; complete references remain general
-accepted-witness theorems. Other gap instructions, broader operations and full
-Sail retirement remain open.
+accepted-witness theorems. Admitted gap instructions and full mixed
+retirement are described below; further variants are outside the frozen scope.
 
 
 The [public register-dataflow entry](Airbender/Review/Helpers/UnifiedReduced/RegisterDataflow.lean)
@@ -633,18 +636,20 @@ retains public configuration/register initialization, readonly code, tracked-RAM
 data and the unchanged-Sail discarded-load restriction. Reads, bounds, decoding
 and schedules remain derived. The statement explicitly does not conclude a
 successful full custom-CSR reference sequence. Both invalid bigint controls
-instantiate the shared certificate; the zero-clock G retains its prefix effect.
+instantiate the shared certificate. The historical zero-clock G is now
+rejected by current native BabyBear timestamp constraints.
 No positive initial-clock premise or valid-control assumption is added to that
 older certificate. The stronger
 [full mixed execution theorem](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean)
 now proves a genuine complete reference chain under the explicitly temporary
-F02 bigint-command and F03 occurrence-ledger contracts. The existing public
+F02 bigint-command contract. Native BabyBear timestamp constraints and
+initialized caller accounting derive the occurrence ledger internally. The existing public
 prepared-protocol profile derives full hash ABI and schedules; initialized history
 derives every operand, pointer and exact full-state write/frame. Original Sail
 PC retirement links ordinary and caller steps from the actual public initial
 state to terminal PC/cells. Public initial PC, configuration, modeled tables,
 logical matching, readonly code and tracked-RAM domain stay explicit; nextPC is
-not assumed prepared. This closes conditional integration, while F02/F03/F04
+not assumed prepared. This closes conditional integration, while F02/F04
 enforcement remains open. Padding has its separate authorized contribution boundary.
 Native columns retain full address/time/value limbs, including readonly
 clock refreshes. Bounds, latest-write reads and Clean online-consistent histories
@@ -665,8 +670,8 @@ combines this partition with the existing complete G, extended-BLAKE and Keccak
 references at the same continuous-history states. Mode, public cuts/duration,
 code coverage, modeled tables, logical matching and the existing global round-mask
 scope remain explicit. This does not infer protocol shape from general acceptance.
-Uncovered hash workers are exactly zero-clock residuals; the native unissued G
-still changes actual x12 from zero to one. An issued G worker is covered at its
+The generic partition classifies uncovered hash workers as zero-clock
+residuals. Current native BabyBear constraints exclude active residuals. An issued G worker is covered at its
 actual clock-five invocation, while its one-call interval cannot satisfy the
 56-call reference scope. Missing windows, wrong families, repeated-address omissions
 and overlap are rejected. All four COPY/carry/invalid-bigint preparation fixtures

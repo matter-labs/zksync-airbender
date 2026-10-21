@@ -30,8 +30,8 @@ theorem physical_state_step [Fact p.Prime] (hp : 8388608 ≤ p)
     (history : SailHistory cells events before after)
     (permutation : events.Perm ((Delegation.Row.mk .blakeG w).memorySteps.map transferEvent))
     (aligned : ∀ cell ∈ cells, cell.Aligned)
-    (tracked : ∀ block : Bool, ∀ word : Fin 16,
-      Cell.ram ((if block then state else message) + BitVec.ofNat 32 (4 * word.val)) ∈ cells)
+    (tracked : ∀ «block» : Bool, ∀ word : Fin 16,
+      Cell.ram ((if «block» then state else message) + BitVec.ofNat 32 (4 * word.val)) ∈ cells)
     (readable : ∀ cell ∈ cells, ∃ value, cell.read before = .ok value before) :
     let controller : Control.Input := ⟨⟨(w Variables.controlReadLo).val, controlBound⟩, true⟩
     Blake2G.State.spec (physicalInput controller before state message) (physicalWords after state) ∧
@@ -56,11 +56,11 @@ theorem physical_state_step [Fact p.Prime] (hp : 8388608 ≤ p)
       have enforced := Control.Proofs.soundness (by omega) controller controlOutput w ⟨core, controlMapping⟩
       have equal := congrArg (fun value : Control.Output => value.stateOffsets[index]) enforced
       fin_cases index <;> simpa [input, physicalInput, stateLanes, controlOutput] using equal
-  have frame (block : Bool) (word : Fin 16)
-      (untouched : block = true → ∀ lane : Fin 4,
+  have frame («block» : Bool) (word : Fin 16)
+      (untouched : «block» = true → ∀ lane : Fin 4,
         (Control.step controller).stateOffsets[lane] ≠ word.val) :=
     native_block_frame controller addresses stateAligned messageAligned distinct history permutation
-      aligned tracked readable block word untouched
+      aligned tracked readable «block» word untouched
   have interfaces : Blake2G.State.InterfaceAssumptions input output w := by
     refine ⟨active, controlBound, ?_, ?_⟩
     · constructor

@@ -8,7 +8,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 12000000
 
-theorem clock_facts {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 4)}
+theorem clock_facts {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 6)}
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (clockConstraints setup)) :
     Delegation.Proofs.ClockFacts importedConstraintsDelegationColumns w := by
@@ -16,12 +16,7 @@ theorem clock_facts {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 4)}
     (List.sublist_append_left (importedConstraints setup) importedConstraintsTimestampLookups)
   have timestamps := Verification.holds_of_sublist h
     (List.sublist_append_right (importedConstraints setup) importedConstraintsTimestampLookups)
-  have low := Trace.Proofs.range_bound (Verification.lookup_of_holds timestamps
-    ⟨0, by rw [timestamp_count]; decide⟩)
-  have high := Trace.Proofs.range_bound (Verification.lookup_of_holds timestamps
-    ⟨1, by rw [timestamp_count]; decide⟩)
-  simp [Expression.eval, Verification.environment] at low high
-  refine ⟨⟨low, high⟩, ?_, ?_⟩
+  refine ⟨?_, ?_⟩
   · intro port member
     rw [delegation_columns] at member
     simp only [Vector.toArray_ofFn, Array.mem_ofFn] at member
@@ -33,11 +28,11 @@ theorem clock_facts {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 4)}
     simp only [Vector.toArray_ofFn, Array.mem_ofFn] at member
     obtain ⟨i, rfl⟩ := member
     have bit := Verification.assertion_of_holds core
-      ⟨309 + i.val, by rw [constraint_count]; omega⟩
+      ⟨177 + i.val, by rw [constraint_count]; omega⟩
     have lowerLookup := Verification.lookup_of_holds timestamps
-      ⟨2 + 2 * i.val, by rw [timestamp_count]; omega⟩
+      ⟨1 + 2 * i.val, by rw [timestamp_count]; omega⟩
     have upperLookup := Verification.lookup_of_holds timestamps
-      ⟨3 + 2 * i.val, by rw [timestamp_count]; omega⟩
+      ⟨2 + 2 * i.val, by rw [timestamp_count]; omega⟩
     fin_cases i
     all_goals have lower := Trace.Proofs.range_bound lowerLookup
     all_goals have upper := Trace.Proofs.range_bound upperLookup

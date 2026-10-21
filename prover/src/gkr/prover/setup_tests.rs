@@ -25,6 +25,9 @@ fn artifact(cached: bool, tagged: bool, trace_len: usize) -> GKRCircuitArtifact<
     circuit.total_tables_size = circuit.offset_for_decoder_table + 4;
     circuit.tables_ids_in_generic_lookups = tagged;
     circuit.generic_lookup_tables_width += usize::from(tagged);
+    // The current compiler carries the committed tail explicitly. Tagged
+    // tables use their discriminator; decoder-only tables use all-minus-one.
+    circuit.generic_lookup_padding = if tagged { None } else { Some(F::MINUS_ONE) };
     circuit
 }
 
@@ -82,10 +85,10 @@ fn check_decoder_padding(cached: bool, tagged: bool, supports_pc_zero: bool) {
                 F::from_u32_unchecked(TableType::Decoder as u32)
             );
         } else {
-            assert_eq!(setup.hypercube_evals[0][row], F::MINUS_ONE);
-            assert!(setup.hypercube_evals[1..]
+            assert!(setup
+                .hypercube_evals
                 .iter()
-                .all(|column| column[row].is_zero()));
+                .all(|column| column[row] == F::MINUS_ONE));
         }
     }
     // A default all-zero query has no real decoded operation flag, even when
@@ -108,7 +111,7 @@ fn check_decoder_padding(cached: bool, tagged: bool, supports_pc_zero: bool) {
         .count();
     assert_eq!(decoder_zero_query_matches, 0);
 
-    let worker = Worker::new_with_num_threads(2);
+    let worker = Worker::new_with_num_threads(1);
     let pool = GenericAllocationPool::<F, E>::new();
     let alpha = E::from_array_of_base([
         F::from_u32_unchecked(3),
@@ -150,7 +153,13 @@ fn check_decoder_padding(cached: bool, tagged: bool, supports_pc_zero: bool) {
         }
     );
     if !tagged {
-        assert_eq!(preprocessed[trace_len - 1], E::from_base(F::MINUS_ONE));
+        let mut expected_tail = E::ZERO;
+        for power in &powers {
+            let mut term = *power;
+            term.mul_assign_by_base(&F::MINUS_ONE);
+            expected_tail.add_assign(&term);
+        }
+        assert_eq!(preprocessed[trace_len - 1], expected_tail);
     }
 
     let selected = [offset + usize::from(!supports_pc_zero), offset + 3];
@@ -239,6 +248,7 @@ fn check_decoder_padding(cached: bool, tagged: bool, supports_pc_zero: bool) {
         alpha,
         gamma,
         inactive_fill,
+        compressed[trace_len - 1],
         offset as u32,
         &pool,
         &worker,
@@ -307,6 +317,17 @@ fn setup_json_roundtrip_preserves_materialized_columns_and_program() {
         Global,
     >(&binary, binary.len(), &family, &[]);
     let setup = GKRSetup::construct(&driver, &decoder, trace_len, &circuit);
+    // Independently retain the previous padded-row assembly as the reference
+    // for direct stored-row materialization, including every zero/tag column.
+    for (row, expected) in driver
+        .dump_tables(circuit.generic_lookup_tables_width)
+        .iter()
+        .enumerate()
+    {
+        for (column, value) in expected.iter().enumerate() {
+            assert_eq!(setup.hypercube_evals[column][row], *value);
+        }
+    }
     let artifact = setup
         .artifact(&circuit, &driver, Some(SetupProgram::new(&binary, &binary)))
         .unwrap();

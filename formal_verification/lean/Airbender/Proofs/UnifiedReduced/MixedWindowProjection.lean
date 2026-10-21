@@ -123,7 +123,8 @@ theorem mixed_worker_window_at_states [Fact p.Prime]
   refine ⟨⟨?_, selectedMatching⟩,
     ⟨startProjected.1, inputs.distinct.sublist (List.filter_sublist.map Cell.addressCode),
       fun token member => (startProjected.2 token member).2,
-      fun row member => (requests.clocks row (List.mem_of_mem_filter member)).2⟩,
+      fun row member => (requests.clocks row (List.mem_of_mem_filter member)).2,
+      fun row member => (requests.clocks row (List.mem_of_mem_filter member)).1.2⟩,
     finishProjected, ⟨⟨workerEvents, workerPerm, history_worker_cells spanHistory⟩, ?_⟩⟩
   · intro row member
     exact accepted.workerConstraints row (List.mem_of_mem_filter member)

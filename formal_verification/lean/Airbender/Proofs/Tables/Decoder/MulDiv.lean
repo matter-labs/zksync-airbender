@@ -13,7 +13,7 @@ private theorem prefix_checked : fixedTags mulDivSetup.prefixTags.blocks.toList 
   decide +kernel
 
 private def paddingValues : Vector Nat mulDivSetup.width :=
-  Vector.ofFn fun _ => 0
+  Vector.ofFn fun lane => (mulDivSetup.padding.columns[lane].get? 0).getD 0
 
 private theorem padding_checked (lane : Fin mulDivSetup.width) :
     constantTail paddingValues[lane] 0 mulDivSetup.padding.columns[lane].blocks.toList = true := by

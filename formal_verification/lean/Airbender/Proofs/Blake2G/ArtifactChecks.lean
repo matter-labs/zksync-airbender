@@ -11,7 +11,7 @@ theorem indirect_port_layout : importedConstraintsIndirectPorts = #v[
     Verification.IndirectPort.mk 11 1 #v[31, 32] 4 (some 12) 0 #v[35, 36] none] := rfl
 
 theorem timestamp_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 20 := rfl
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 21 := rfl
 
 theorem delegation_columns : importedConstraintsDelegationColumns =
     (⟨0, #v[1, 2], (Vector.ofFn (fun i : Fin 9 =>
@@ -66,18 +66,18 @@ theorem variable_roles :
     importedConstraintsVariableNames.lookup 34 = some "input read from x11 indirect access 0 read[1]" ∧
     importedConstraintsVariableNames.lookup 35 = some "input read from x11 indirect access 1 read[0]" ∧
     importedConstraintsVariableNames.lookup 36 = some "input read from x11 indirect access 1 read[1]" ∧
-    importedConstraintsVariableNames.lookup 37 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::33" ∧
-    importedConstraintsVariableNames.lookup 38 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::33" ∧
-    importedConstraintsVariableNames.lookup 39 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::35" ∧
-    importedConstraintsVariableNames.lookup 40 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::35" ∧
-    importedConstraintsVariableNames.lookup 49 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::204" ∧
-    importedConstraintsVariableNames.lookup 50 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::206" ∧
-    importedConstraintsVariableNames.lookup 65 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::434" ∧
-    importedConstraintsVariableNames.lookup 66 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::434" ∧
-    importedConstraintsVariableNames.lookup 67 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::436" ∧
-    importedConstraintsVariableNames.lookup 68 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::436" ∧
-    importedConstraintsVariableNames.lookup 75 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::552" ∧
-    importedConstraintsVariableNames.lookup 76 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::554" ∧
+    importedConstraintsVariableNames.lookup 37 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::33" ∧
+    importedConstraintsVariableNames.lookup 38 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::33" ∧
+    importedConstraintsVariableNames.lookup 39 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::35" ∧
+    importedConstraintsVariableNames.lookup 40 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::35" ∧
+    importedConstraintsVariableNames.lookup 49 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::204" ∧
+    importedConstraintsVariableNames.lookup 50 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::206" ∧
+    importedConstraintsVariableNames.lookup 65 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::434" ∧
+    importedConstraintsVariableNames.lookup 66 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::434" ∧
+    importedConstraintsVariableNames.lookup 67 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::436" ∧
+    importedConstraintsVariableNames.lookup 68 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::436" ∧
+    importedConstraintsVariableNames.lookup 75 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::552" ∧
+    importedConstraintsVariableNames.lookup 76 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::554" ∧
     importedConstraintsVariableNames.lookup 85 = some "indirect access query 0, register access intermediate timestamp borrow" ∧
     importedConstraintsVariableNames.lookup 88 = some "indirect access query 0, indirect access 0 intermediate timestamp borrow" ∧
     importedConstraintsVariableNames.lookup 91 = some "indirect access query 0, indirect access 1 intermediate timestamp borrow" ∧

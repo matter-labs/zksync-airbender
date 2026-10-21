@@ -1,27 +1,20 @@
-import Airbender.Proofs.Blake2Round.FinalXor
+import Airbender.Review.Circuits.Blake2Round.Finalization
+import Airbender.Proofs.Blake2Round.NativeFinalQueries
 
 set_option warningAsError true
 
 namespace Airbender.Blake2Round.Proofs
-
 open Arithmetic Blake2G.Proofs
-
 set_option maxRecDepth 16384
 set_option maxHeartbeats 4000000
 
-/-- The selected final-output mux exposes the actual seven/nine- or eight/eight-
-    bit assembly. All sixteen state-write equations are checked. -/
+/-- Active finalization exposes the native seven/nine- or eight/eight-bit assembly. -/
 theorem final_write {p : Nat} [Fact p.Prime] (limb : Fin 16) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) (enabled : w 152 = 1) :
-    w (7 + 4 * (limb.val / 2) + limb.val % 2) =
-      w (633 + 7 * limb.val) + (if limb.val < 8 then 128 else 256) * w (634 + 7 * limb.val) := by
-  have equation := Verification.assertion_of_holds h
-    ⟨153 + 2 * limb.val, by rw [constraint_count]; have := limb.isLt; omega⟩
-  fin_cases limb
-  all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, enabled] at equation ⊢
-  all_goals linear_combination -equation
+    NativeFinalLayout.stateWrite w limb = NativeFinalLayout.temporary w limb 4 +
+      (if limb.val < 8 then 128 else 256) * NativeFinalLayout.temporary w limb 5 :=
+  native_final_active_write limb h enabled
 
 /-- The a/c half of finalization needs no external limb bounds: the four
     imported queries bound and identify each of its three XOR inputs. -/
@@ -43,77 +36,16 @@ theorem ac_limb_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (recover _ _) (recover _ _) (zChunks := rfl)
   have write := final_write (limb.castLE (by omega)) h enabled
   have activeWrite : w (7 + 4 * (limb.val / 2) + limb.val % 2) =
-      w (633 + 7 * limb.val) + 128 * w (634 + 7 * limb.val) := by
-    simpa only [Fin.val_castLE, if_pos limb.isLt] using write
+      acTemp w limb 4 + 128 * acTemp w limb 5 := by
+    simpa [NativeFinalLayout.stateWrite, NativeFinalLayout.temporary, acTemp, limb.isLt] using write
   have second := xor_limb_chunks hp (width := 7) (remaining := 9) (by decide) q2 q3
     (xChunks := rfl) (recover _ _) activeWrite
   refine ⟨first.1, second.2.1, first.2.1, second.2.2.1, ?_⟩
   rw [second.2.2.2, first.2.2.2]
   ac_rfl
 
--- Actual b/d chunk columns, after the diagonal-lane permutation.
-def bdLowB : Vector Nat 8 := #v[625, 627, 493, 495, 537, 539, 581, 583]
-def bdHighB : Vector Nat 8 := #v[626, 624, 494, 492, 538, 536, 582, 580]
-def bdLowD : Vector Nat 8 := #v[529, 531, 573, 575, 617, 619, 485, 487]
-def bdHighD : Vector Nat 8 := #v[530, 528, 574, 572, 618, 616, 486, 484]
-
-def bdInitial {p : Nat} (w : Nat → ZMod p) (limb : Fin 8) : ZMod p :=
-  w (170 + 4 * (limb.val / 2) + 2 * (limb.val % 2))
-def bdB {p : Nat} (w : Nat → ZMod p) (limb : Fin 8) : ZMod p :=
-  w (55 + 4 * (limb.val / 2) + limb.val % 2)
-def bdD {p : Nat} (w : Nat → ZMod p) (limb : Fin 8) : ZMod p :=
-  w (87 + 4 * (limb.val / 2) + limb.val % 2)
-
-set_option maxHeartbeats 12000000 in
-/-- The b/d half changes chunk width between its two XORs. The imported split
-    equation, not the witness generator, supplies that change of decomposition. -/
-theorem bd_queries {p : Nat} [Fact p.Prime] (hp : 512 ≤ p) (limb : Fin 8)
-    {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints setupTable)) :
-    chunkXor 9 (w bdLowB[limb]) (w (684 + 7 * limb.val)) (w (685 + 7 * limb.val)) ∧
-    chunkXor 7 (w bdHighB[limb])
-      ((-3932160 : ZMod p) * (bdInitial w limb - w (684 + 7 * limb.val)))
-      (w (686 + 7 * limb.val)) ∧
-    chunkXor 8 (w bdLowD[limb]) (w (687 + 7 * limb.val)) (w (689 + 7 * limb.val)) ∧
-    chunkXor 8 (w bdHighD[limb]) (2 * w (686 + 7 * limb.val) + w (688 + 7 * limb.val))
-      (w (690 + 7 * limb.val)) ∧
-    bdB w limb = w bdLowB[limb] + 512 * w bdHighB[limb] ∧
-    bdD w limb = w bdLowD[limb] + 256 * w bdHighD[limb] ∧
-    w (685 + 7 * limb.val) = w (687 + 7 * limb.val) + 256 * w (688 + 7 * limb.val) := by
-  let index : Fin 16 := ⟨8 + limb.val, by have := limb.isLt; omega⟩
-  have tag (stage : Fin 4) : finalColumn w index stage 3 =
-      ((if stage.val = 0 then 20 else if stage.val = 1 then 19 else 4 : Nat) : ZMod p) := by
-    fin_cases limb <;> fin_cases stage <;> simp [index, finalColumn, finalQuery,
-      importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment]
-  have q0 := final_query hp index 0 4 h (tag 0)
-  have q1 := final_query hp index 1 3 h (tag 1)
-  have q2 := final_query hp index 2 0 h (tag 2)
-  have q3 := final_query hp index 3 0 h (tag 3)
-  have initialHigh : finalColumn w index 1 1 =
-      (-3932160 : ZMod p) * (bdInitial w limb - w (684 + 7 * limb.val)) := by
-    fin_cases limb
-    all_goals simp [index, finalColumn, finalQuery, importedConstraints, FlatOperation.lookups,
-      Expression.eval, Verification.environment, bdInitial]
-    all_goals ring
-  rw [initialHigh] at q1
-  have bWrite := Verification.assertion_of_holds h
-    ⟨128 + 2 * (limb.val / 2) + limb.val % 2, by rw [constraint_count]; have := limb.isLt; omega⟩
-  have dWrite := Verification.assertion_of_holds h
-    ⟨144 + 2 * (limb.val / 2) + limb.val % 2, by rw [constraint_count]; have := limb.isLt; omega⟩
-  have split := Verification.assertion_of_holds h
-    ⟨168 + 2 * limb.val, by rw [constraint_count]; have := limb.isLt; omega⟩
-  fin_cases limb
-  all_goals simp [index, finalColumn, finalQuery, importedConstraints, FlatOperation.lookups,
-    FlatOperation.constraints, Expression.eval, Verification.environment,
-    bdInitial, bdB, bdD, bdLowB, bdHighB, bdLowD, bdHighD] at q0 q1 q2 q3 bWrite dWrite split ⊢
-  all_goals refine ⟨q0, q1, q2, ?_, ?_, ?_, ?_⟩
-  all_goals first
-    | simpa [add_comm] using q3
-    | linear_combination -bWrite
-    | linear_combination -dWrite
-    | linear_combination split
-
+/-- Both XOR decompositions come from native queries. The width change is
+    an algebraic regrouping of the optimized expression. -/
 theorem bd_limb_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1) (limb : Fin 8)
     {w : Nat → ZMod p}
@@ -124,25 +56,26 @@ theorem bd_limb_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (w (23 + 4 * (limb.val / 2) + limb.val % 2)).val < 65536 ∧
     (w (23 + 4 * (limb.val / 2) + limb.val % 2)).val =
       (bdInitial w limb).val ^^^ (bdB w limb).val ^^^ (bdD w limb).val := by
-  obtain ⟨q0, q1, q2, q3, bChunks, dChunks, split⟩ := bd_queries (by omega) limb h
-  have inverse : 512 * (-3932160 : ZMod p) = 1 := by linear_combination compatible
-  have recover (x low : ZMod p) : x = low + 512 * ((-3932160 : ZMod p) * (x - low)) := by
-    linear_combination -(x - low) * inverse
+  obtain ⟨q0, q1, q2, q3⟩ := bd_queries compatible limb h
+  have inverse9 : 512 * (-3932160 : ZMod p) = 1 := by linear_combination compatible
+  have inverse8 : 256 * (-7864320 : ZMod p) = 1 := by linear_combination compatible
+  have recover9 (x low : ZMod p) : x = low + 512 * ((-3932160 : ZMod p) * (x - low)) := by
+    linear_combination -(x - low) * inverse9
+  have bChunks : bdB w limb = bdLowB w limb + 512 * bdHighB w limb := recover9 _ _
+  have dChunks : bdD w limb = bdLowD w limb + 256 * bdHighD w limb := by
+    dsimp [bdHighD]
+    linear_combination -(bdD w limb - bdLowD w limb) * inverse8
   have first := xor_limb_chunks hp (width := 9) (remaining := 7) (by decide) q0 q1
-    bChunks (recover _ _) (zChunks := rfl)
+    bChunks (recover9 _ _) (zChunks := rfl)
   norm_num only [Nat.reducePow, Nat.cast_ofNat] at first
-  have regroup : w (685 + 7 * limb.val) + 512 * w (686 + 7 * limb.val) =
-      w (687 + 7 * limb.val) + 256 * (2 * w (686 + 7 * limb.val) + w (688 + 7 * limb.val)) := by
-    linear_combination split
-  have write := final_write ⟨8 + limb.val, by have := limb.isLt; omega⟩ h enabled
+  have regroup : bdTemp w limb 1 + 512 * bdTemp w limb 2 =
+      (bdTemp w limb 1 - 256 * bdTemp w limb 3) +
+        256 * (2 * bdTemp w limb 2 + bdTemp w limb 3) := by ring
+  have write := final_write (bdIndex limb) h enabled
   have activeWrite : w (23 + 4 * (limb.val / 2) + limb.val % 2) =
-      w (689 + 7 * limb.val) + 256 * w (690 + 7 * limb.val) := by
-    have large : ¬ 8 + limb.val < 8 := by omega
-    have index : 7 + 4 * ((8 + limb.val) / 2) + (8 + limb.val) % 2 =
-        23 + 4 * (limb.val / 2) + limb.val % 2 := by omega
-    have lowIndex : 633 + 7 * (8 + limb.val) = 689 + 7 * limb.val := by omega
-    have highIndex : 634 + 7 * (8 + limb.val) = 690 + 7 * limb.val := by omega
-    simpa only [Fin.val_mk, if_neg large, index, lowIndex, highIndex] using write
+      bdTemp w limb 4 + 256 * bdTemp w limb 5 := by
+    fin_cases limb
+    all_goals simpa [NativeFinalLayout.stateWrite, NativeFinalLayout.temporary, bdTemp, bdIndex] using write
   have second := xor_limb_chunks hp (width := 8) (remaining := 8) (by decide) q2 q3
     dChunks regroup activeWrite
   refine ⟨first.2.1, first.1, second.1, second.2.2.1, ?_⟩
@@ -163,13 +96,55 @@ theorem final_limb_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
       (w (154 + 4 * (limb.val / 2) + 2 * (limb.val % 2))).val ^^^
       (w (39 + 4 * (limb.val / 2) + limb.val % 2)).val ^^^
       (w (71 + 4 * (limb.val / 2) + limb.val % 2)).val := by
-  by_cases small : limb.val < 8
-  · exact ac_limb_xor hp compatible ⟨limb.val, small⟩ h enabled
-  · have other : limb.val - 8 < 8 := by have := limb.isLt; omega
-    have result := bd_limb_xor hp compatible ⟨limb.val - 8, other⟩ h enabled
-    have lane : limb.val / 2 = 4 + (limb.val - 8) / 2 := by omega
-    have parity : limb.val % 2 = (limb.val - 8) % 2 := by omega
-    simpa [bdInitial, bdB, bdD, lane, parity, Nat.mul_add, ← Nat.add_assoc] using result
+  fin_cases limb
+  · simpa [acInitial, acA, acC, bdInitial, bdB, bdD, bdIndex,
+      NativeFinalLayout.initial, NativeFinalLayout.firstInput, NativeFinalLayout.secondInput]
+      using ac_limb_xor hp compatible 0 h enabled
+  · simpa [acInitial, acA, acC, bdInitial, bdB, bdD, bdIndex,
+      NativeFinalLayout.initial, NativeFinalLayout.firstInput, NativeFinalLayout.secondInput]
+      using ac_limb_xor hp compatible 1 h enabled
+  · simpa [acInitial, acA, acC, bdInitial, bdB, bdD, bdIndex,
+      NativeFinalLayout.initial, NativeFinalLayout.firstInput, NativeFinalLayout.secondInput]
+      using ac_limb_xor hp compatible 2 h enabled
+  · simpa [acInitial, acA, acC, bdInitial, bdB, bdD, bdIndex,
+      NativeFinalLayout.initial, NativeFinalLayout.firstInput, NativeFinalLayout.secondInput]
+      using ac_limb_xor hp compatible 3 h enabled
+  · simpa [acInitial, acA, acC, bdInitial, bdB, bdD, bdIndex,
+      NativeFinalLayout.initial, NativeFinalLayout.firstInput, NativeFinalLayout.secondInput]
+      using ac_limb_xor hp compatible 4 h enabled
+  · simpa [acInitial, acA, acC, bdInitial, bdB, bdD, bdIndex,
+      NativeFinalLayout.initial, NativeFinalLayout.firstInput, NativeFinalLayout.secondInput]
+      using ac_limb_xor hp compatible 5 h enabled
+  · simpa [acInitial, acA, acC, bdInitial, bdB, bdD, bdIndex,
+      NativeFinalLayout.initial, NativeFinalLayout.firstInput, NativeFinalLayout.secondInput]
+      using ac_limb_xor hp compatible 6 h enabled
+  · simpa [acInitial, acA, acC, bdInitial, bdB, bdD, bdIndex,
+      NativeFinalLayout.initial, NativeFinalLayout.firstInput, NativeFinalLayout.secondInput]
+      using ac_limb_xor hp compatible 7 h enabled
+  · simpa [acInitial, acA, acC, bdInitial, bdB, bdD, bdIndex,
+      NativeFinalLayout.initial, NativeFinalLayout.firstInput, NativeFinalLayout.secondInput]
+      using bd_limb_xor hp compatible 0 h enabled
+  · simpa [acInitial, acA, acC, bdInitial, bdB, bdD, bdIndex,
+      NativeFinalLayout.initial, NativeFinalLayout.firstInput, NativeFinalLayout.secondInput]
+      using bd_limb_xor hp compatible 1 h enabled
+  · simpa [acInitial, acA, acC, bdInitial, bdB, bdD, bdIndex,
+      NativeFinalLayout.initial, NativeFinalLayout.firstInput, NativeFinalLayout.secondInput]
+      using bd_limb_xor hp compatible 2 h enabled
+  · simpa [acInitial, acA, acC, bdInitial, bdB, bdD, bdIndex,
+      NativeFinalLayout.initial, NativeFinalLayout.firstInput, NativeFinalLayout.secondInput]
+      using bd_limb_xor hp compatible 3 h enabled
+  · simpa [acInitial, acA, acC, bdInitial, bdB, bdD, bdIndex,
+      NativeFinalLayout.initial, NativeFinalLayout.firstInput, NativeFinalLayout.secondInput]
+      using bd_limb_xor hp compatible 4 h enabled
+  · simpa [acInitial, acA, acC, bdInitial, bdB, bdD, bdIndex,
+      NativeFinalLayout.initial, NativeFinalLayout.firstInput, NativeFinalLayout.secondInput]
+      using bd_limb_xor hp compatible 5 h enabled
+  · simpa [acInitial, acA, acC, bdInitial, bdB, bdD, bdIndex,
+      NativeFinalLayout.initial, NativeFinalLayout.firstInput, NativeFinalLayout.secondInput]
+      using bd_limb_xor hp compatible 6 h enabled
+  · simpa [acInitial, acA, acC, bdInitial, bdB, bdD, bdIndex,
+      NativeFinalLayout.initial, NativeFinalLayout.firstInput, NativeFinalLayout.secondInput]
+      using bd_limb_xor hp compatible 7 h enabled
 
 /-- Word assembly uses the same XOR chunk law as the native lookup proofs. -/
 theorem xor_three_words {initial a c output : Word}

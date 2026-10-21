@@ -35,7 +35,7 @@ private theorem worker_constraints : FlatOperation.ConstraintsHoldFlat
   apply Verification.holds_append
   · simpa [workers, modeledSetup, Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat,
       Verification.environment, Expression.eval, Lookup.Contains, Table.toRaw, fromElements,
-      Verification.range16, assignment, Tests.BigintMemory.row] using Tests.BigintMemory.core
+      timestampLookup, Verification.range16, assignment, Tests.BigintMemory.row] using Tests.BigintMemory.core
   · simp [Bigint.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
     repeat' apply And.intro
     all_goals apply Trace.Proofs.range_contains
