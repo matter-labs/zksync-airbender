@@ -365,7 +365,6 @@ pub(crate) unsafe fn gkr_evaluate_indirect_memory_accesses<
                 invocation_ts,
                 row,
             );
-            proxy.write_boolean_value_into_columns::<false>(group.borrow, borrow == 1);
         }
     }
 

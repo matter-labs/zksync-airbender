@@ -102,18 +102,17 @@ use.
 
 ## 3. What is shared and what is constrained
 
-For each group the compiler allocates one read-timestamp pair in the memory subtree and one
-boolean borrow `b` in the witness (`grouped_read_timestamp` in
-`cs/src/gkr_compiler/delegation_mem_accesses.rs`). Every member access of the group puts that
-same committed pair into its read tuple; its address, read value and write value are its own,
-and both of its tuples are in the argument. A grouped access has the same tuples, in the same
-format and with the same write timestamp, as an ungrouped one; the difference is that `N`
-accesses of one row point at the same two committed columns instead of `N` distinct pairs.
+For each group the compiler allocates one read-timestamp pair in the memory subtree
+(`grouped_read_timestamp` in `cs/src/gkr_compiler/delegation_mem_accesses.rs`). Every member
+access of the group puts that same committed pair into its read tuple; its address, read value
+and write value are its own, and both of its tuples are in the argument. A grouped access has
+the same tuples, in the same format and with the same write timestamp, as an ungrouped one; the
+difference is that `N` accesses of one row point at the same two committed columns instead of
+`N` distinct pairs.
 
-In place of the per-access comparison, the group satisfies three constraints
-(`compile_read_timestamp_group_constraints`), with `R = 2^19`, `e` the execute flag,
-`(I_lo, I_hi)` the invocation timestamp and `k` the registered distance expression, which the
-control lookups fix to `4Δ` on active rows and `0` on padding:
+In place of the per-access comparison, the group satisfies three relations, with `R = 2^19`, `e`
+the execute flag, `(I_lo, I_hi)` the invocation timestamp and `k` the registered distance
+expression, which the control lookups fix to `4Δ` on active rows and `0` on padding:
 
 ```text
 r_lo = I_lo + 2e − k + R·b      (R1)
@@ -121,26 +120,37 @@ r_hi = I_hi − b                 (R2)
 b (b − 1) = 0                   (R3)
 ```
 
+Substituting R2's `b = I_hi − r_hi` into R1 and R3 removes the borrow column and enforces
+
+```text
+r_lo − I_lo − 2e + k − R·(I_hi − r_hi) = 0          (R1, degree 1)
+(I_hi − r_hi)(I_hi − r_hi − 1) = 0                  (R3, degree 2)
+```
+
+on every row. These hold exactly when R1 to R3 hold with `b = I_hi − r_hi`,
+for active and padding rows alike. Below, `b` means `I_hi − r_hi`.
+
 These equations hold in the base field. They do not separately range-check the read limbs or
-select their normalized representation: `(r_lo + R, r_hi − 1, 1 − b)` satisfies them whenever
-`(r_lo, r_hi, b)` does. The memory argument matches both committed limbs to an actual producer's
-pair, and for that normalized pair the witness sets `b = I_hi − r_hi`, which on active rows is 1
-exactly when `I_lo + 2 < k`. The all-zero padding assignment satisfies R1 to R3.
+select their normalized representation: with `b = 0`, `(r_lo + R, r_hi − 1)` satisfies them
+whenever `(r_lo, r_hi)` does, and with `b = 1`, `(r_lo − R, r_hi + 1)` does; both flip `b`. The
+memory argument matches both committed limbs to an actual producer's pair, and for that
+normalized pair `b = I_hi − r_hi` is 1 on active rows exactly when `I_lo + 2 < k`. The all-zero
+padding assignment satisfies R1 to R3.
 
 ## 4. Where the savings come from
 
 An ungrouped access costs two memory columns, one borrow and two timestamp-comparison lookups. A
-group costs two memory columns and one borrow, and no timestamp-comparison lookup.
+group costs two memory columns, no witness column and no timestamp-comparison lookup.
 
 | ungrouped → grouped | Theta/rho | Chi5 |
 |---|---:|---:|
 | Accesses | 16 | 12 |
 | Shared timestamps (groups) | 4 | 6 |
 | Memory columns for read timestamps | 32 → 8 | 24 → 12 |
-| Witness borrows | 16 → 4 | 12 → 6 |
+| Witness borrows | 16 → 0 | 12 → 0 |
 | Extra witness column (`y`) | 0 | 1 |
 | Timestamp range-check lookups per row | 33 → 1 | 25 → 1 |
-| Total committed columns | 240 → 204 | 213 → 196 |
+| Total committed columns | 239 → 199 | 212 → 189 |
 
 The 24 memory columns that grouping saves in theta/rho are exactly: x10 and x11 sharing one pair
 instead of two (2 columns), the ten state-lane words sharing one pair instead of ten (18
@@ -189,14 +199,14 @@ with the main machine's committed limbs.
 | Where | What |
 |---|---|
 | `cs/src/cs/circuit.rs`, `circuit_trait.rs`, `circuit_impl.rs` | `read_timestamp_group: Option<u8>` on register and indirect access requests; `set_read_timestamp_group_distance(group, expr)` |
-| `cs/src/gkr_compiler/delegation_mem_accesses.rs` | one memory-subtree pair and one boolean per group, reused by every member; R1 and R2; registered and used group ids must match |
-| `cs/src/gkr_compiler/layout.rs`, `cs/src/definitions/gkr/ram_access.rs` | `relative_timestamp_groups` (pair, borrow, member indices) and the per-access `Option<RamAuxComparisonSet>`; `None` means the access has no per-access comparison |
+| `cs/src/gkr_compiler/delegation_mem_accesses.rs` | one memory-subtree pair per group, reused by every member; R1 and R3 with `b = I_hi − r_hi`; registered and used group ids must match |
+| `cs/src/gkr_compiler/layout.rs`, `cs/src/definitions/gkr/ram_access.rs` | `relative_timestamp_groups` (pair, member indices) and the per-access `Option<RamAuxComparisonSet>`; `None` means the access has no per-access comparison |
 | `cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs` | `grouped_control_register`, `grouped_state_lanes`, the registers group and its distance |
 | `keccak_theta_rho/mod.rs`, `keccak_chi5/mod.rs` | the groups above and their distance expressions |
 | `common_constants/src/delegation_types/keccak_f1600.rs` | the distance constants, the chi5 slot order, and a test that derives every distance from the 361-call schedule |
-| `prover/src/gkr/witness_gen/delegation_circuits/memory.rs` | CPU witness: checks that all members recorded the same timestamp, then `b = I_hi − r_hi` |
+| `prover/src/gkr/witness_gen/delegation_circuits/memory.rs` | CPU witness: checks that all members recorded the same timestamp and that `I_hi − r_hi` is 0 or 1 |
 | `gpu/trace/src/witness/memory_delegation.rs`, `native/witness/memory_delegation.cuh` | the same on GPU; fixed-size group ABI |
 | `cs/src/gkr_compiler/aux_layout_test.rs` | every member's tuple references its group's committed pair, every read-timestamp column lies in the memory subtree, every memory-tuple cache relation depends on memory-subtree columns only, every ungrouped access has its comparison |
-| `prover/src/tests/gkr/relative_timestamps.rs` | R1 to R3 on compiled layouts, limb-boundary borrows, the alternative limb representation, padding, and retimed, skipped and interleaved sequences |
+| `prover/src/tests/gkr/relative_timestamps.rs` | R1 and R3 on compiled layouts, limb-boundary borrows, a forged high limb that only R3 rejects, the alternative limb representation, padding, and retimed, skipped and interleaved sequences |
 
 A circuit that requests no groups gets the per-access comparison for every access.

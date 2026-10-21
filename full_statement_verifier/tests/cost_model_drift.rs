@@ -25,8 +25,8 @@ const EXPECTED: &[(&str, u64)] = &[
     ("keccak_special5", 1290262),
     ("blake2_g_function", 873065),
     ("keccak_column_parity", 1004556),
-    ("keccak_theta_rho", 1122217),
-    ("keccak_chi5", 1060737),
+    ("keccak_theta_rho", 1111894),
+    ("keccak_chi5", 1046954),
 ];
 
 fn repo_root() -> String {

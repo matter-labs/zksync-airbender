@@ -101,7 +101,6 @@ impl From<&GKRMemoryLayout> for DelegationMemoryLayout {
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
 struct RelativeTimestampGroup {
-    borrow: u32,
     members_count: u32,
     members: [u32; MAX_DELEGATION_RELATIVE_TIMESTAMP_GROUP_MEMBERS_COUNT],
 }
@@ -121,10 +120,6 @@ impl From<&CSRelativeTimestampGroup> for RelativeTimestampGroup {
             *dst = src as u32;
         }
         Self {
-            borrow: {
-                assert!(value.borrow <= u32::MAX as usize);
-                value.borrow as u32
-            },
             members_count: members_count as u32,
             members,
         }
@@ -173,13 +168,12 @@ const _: () = {
     use core::mem::{offset_of, size_of};
     assert!(size_of::<OptionalRamAuxComparisonSet>() == 8);
     assert!(offset_of!(OptionalRamAuxComparisonSet, intermediate_borrow) == 4);
-    assert!(size_of::<RelativeTimestampGroup>() == 72);
-    assert!(offset_of!(RelativeTimestampGroup, borrow) == 0);
-    assert!(offset_of!(RelativeTimestampGroup, members_count) == 4);
-    assert!(offset_of!(RelativeTimestampGroup, members) == 8);
+    assert!(size_of::<RelativeTimestampGroup>() == 68);
+    assert!(offset_of!(RelativeTimestampGroup, members_count) == 0);
+    assert!(offset_of!(RelativeTimestampGroup, members) == 4);
     assert!(offset_of!(DelegationAuxLayoutData, relative_timestamp_groups_count) == 512);
     assert!(offset_of!(DelegationAuxLayoutData, relative_timestamp_groups) == 516);
-    assert!(size_of::<DelegationAuxLayoutData>() == 1092);
+    assert!(size_of::<DelegationAuxLayoutData>() == 1060);
 };
 
 impl Default for DelegationAuxLayoutData {
