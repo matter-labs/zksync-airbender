@@ -54,11 +54,13 @@ private theorem rom_values {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     | (change (44 : Nat) = 44 at natural
        refine ⟨i.val - 655361, by omega, ?_, ?_, ?_⟩
        all_goals simp_all only [romKey, romData, Bool.false_eq_true, ite_false, Nat.div_one, Vector.getElem_map]
-       all_goals rfl)
+       all_goals simp only [subwordDataRow_key, subwordDataRow_low, subwordDataRow_high, add_zero,
+         if_true, if_false, ite_true, ite_false, Nat.div_one])
     | (change (45 : Nat) = 45 at natural
        refine ⟨i.val - 4849665, by omega, ?_, ?_, ?_⟩
        all_goals simp_all only [romKey, romData, ite_true, Vector.getElem_map]
-       all_goals rfl)
+       all_goals simp only [subwordDataRow_key, subwordDataRow_low, subwordDataRow_high, add_zero,
+         if_true, if_false, ite_true, ite_false, Nat.div_one])
 
 /-- Every modeled ROM row returns canonical result limbs, independently of
     address/key reconstruction. This supplies native history's write bounds. -/

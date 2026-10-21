@@ -8,11 +8,11 @@ open Airbender.Arithmetic
 -- Keep symbolic offsets opaque during reduction; omega handles their arithmetic.
 attribute [local irreducible] Nat.sub
 
-private theorem subwordDataRow_key (key lo hi tag : Nat) :
+theorem subwordDataRow_key (key lo hi tag : Nat) :
     (subwordDataRow key lo hi tag)[0] = key := rfl
-private theorem subwordDataRow_low (key lo hi tag : Nat) :
+theorem subwordDataRow_low (key lo hi tag : Nat) :
     (subwordDataRow key lo hi tag)[1] = lo := rfl
-private theorem subwordDataRow_high (key lo hi tag : Nat) :
+theorem subwordDataRow_high (key lo hi tag : Nat) :
     (subwordDataRow key lo hi tag)[2] = hi := rfl
 
 set_option maxRecDepth 4096 in
