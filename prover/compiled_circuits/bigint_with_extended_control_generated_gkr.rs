@@ -11845,28 +11845,6 @@ fn eval_fn_171<
     let v_3 = W::Mask::and(&v_1, &v_2);
     witness_proxy.set_witness_place_boolean(137usize, v_3);
 }
-#[allow(unused_variables, clippy::let_unit_value)]
-#[inline(always)]
-fn eval_fn_172<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_witness_place_boolean(5usize);
-    let v_1 = witness_proxy.get_witness_place_boolean(137usize);
-    let v_2 = W::Mask::and(&v_0, &v_1);
-    witness_proxy.set_witness_place_boolean(138usize, v_2);
-}
 #[allow(dead_code)]
 pub fn evaluate_witness_fn<
     'a,
@@ -12030,5 +12008,4 @@ pub fn evaluate_witness_fn<
     eval_fn_169(witness_proxy);
     eval_fn_170(witness_proxy);
     eval_fn_171(witness_proxy);
-    eval_fn_172(witness_proxy);
 }

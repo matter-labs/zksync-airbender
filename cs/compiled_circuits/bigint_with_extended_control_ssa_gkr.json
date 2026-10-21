@@ -66285,41 +66285,6 @@
   ],
   [
     {
-      "Bool": {
-        "Place": 64
-      }
-    },
-    {
-      "Bool": {
-        "Place": 215
-      }
-    },
-    {
-      "Bool": {
-        "And": {
-          "lhs": {
-            "SubExpression": 0
-          },
-          "rhs": {
-            "SubExpression": 1
-          }
-        }
-      }
-    },
-    {
-      "WriteVariable": {
-        "into_variable": 216,
-        "source_subexpr": {
-          "Bool": {
-            "SubExpression": 2
-          }
-        },
-        "condition_subexpr_idx": null
-      }
-    }
-  ],
-  [
-    {
       "Field": {
         "Place": 59
       }
@@ -66361,7 +66326,7 @@
     },
     {
       "Field": {
-        "Place": 216
+        "Place": 215
       }
     },
     {
