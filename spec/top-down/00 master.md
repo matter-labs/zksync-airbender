@@ -2,40 +2,31 @@
 
 ![System claim and its premises](diagrams/00-system-claim_style-digitakt-pixel-console.svg)
 
-> State what the complete system proves, show how that claim decomposes across
-> chunks, explain one chunk, then descend into GKR/WHIR, recursion, and
-> soundness.
-
-This document describes the important properties of Airbender from the outside of
-the system inward. Standard constructions may be referenced without restating their
-usual details. Airbender-specific behavior, production deviations, interfaces, and
-security-critical details should be stated explicitly.
-
-## 1. The Airbender Machine at a bird's eye view
+## 1. The Airbender Machine
 
 ### What Airbender proves
 
 _State the end-to-end claim in terms of an accepted program execution and its
 observable result._
-
-- **AirBender** is a cryptographic proof system capable of proving the execution of any program compatible with its supported RISC-V RV32IM subset, selected Zicsr CSRRW-based machine-interface operations (external nondeterminism-oracle access and the internal precompile-delegation bus), and Airbender-defined Zimop operations, up to ... cycles of runtime.
-
-- **Program binaries** must be pre-processed during the offline phase of AirBender, before any proving takes place, allowing us to setup our decoding tables. Afterwards, a bytecode simulator executes the program to generate witness data pertaining to all "machine state" memory accesses, which are committed to setup our cross-chunk "global memory argument". From just the memory traces which we are able to generate all the witness data that will be used by the prover and circuits.
-
-- **Execution cycles** are represented as unordered entries in the witness traces,  grouped according to the portion of the isa they belong to, and split into multiple 2^... sized chunks. An "execute" flag present in the witness data determines whether the cycle is part of the execution or just padding for the chunk. There are also witness traces ("virtual cycles") not directly related to the isa: they are used for initialisation and finalisation of the global memory argument, or fulfillment of precompile execution requests made by actual riscv cycles.
-
-- **Chunks** are converted by the prover into standalone proofs by applying their respective circuit constraints (frontend) to a 100-bit compliant implementation of GKR and WHIR (backend). Each chunk proof outputs a local memory argument fingerprint, which can be collected by the verifier to construct the global memory argument fingerprint, and machine state, across all chunks.
-
-- **Order** of execution is not relevant to the prover, as both the chunks and the witness traces contained therein are processed in arbitrary order. Sound progression of program execution can be inferred from the semantics enforced by the setup decoder, global memory argument, and the circuit constraints. The consistency of this "timed progression argument" will be explained later.
-
-### Program and execution boundary
-
 _Describe the program representation, how the proved program is identified, and
 which part of that program may be executed._
 
-- **Program Execution** is the timed sequential execution of riscv operations (cycles) found in the program binary. At any point in time, Riscv instructions are loaded from the binary address stored in the program counter (PC) and then executed.
+- **AirBender** is a cryptographic proof system capable of proving the execution of any program compatible with its supported RISC-V RV32IM subset, selected Zicsr CSRRW-based machine-interface operations (external nondeterminism-oracle access and the internal precompile-delegation bus), and Airbender-defined Zimop operations, up to nearly 2^36 cycles of runtime (2 cycles are reserved for machine operations).
 
-### Architectural state
+- **Program Execution** is the timed sequential execution of RISCV operations (cycles) found in the program binary. At any point in time, RISCV instructions are loaded from the binary address stored in the program counter (PC) and then executed.
+
+- **Program binaries** must be pre-processed during the offline phase of AirBender, before any proving takes place, allowing us to setup our decoding tables. Afterwards, a bytecode simulator executes the program to generate witness data pertaining to all "machine state" memory accesses, which are committed to setup our cross-chunk "global memory argument". From just the memory traces which we are able to generate all the witness data that will be used by the prover and circuits.
+
+- **Execution cycles** are represented as unordered entries in the witness traces,  grouped according to the portion of the ISA they belong to, and split into multiple 2^20-to-2^24 sized chunks. An "execute" flag present in the witness data determines whether the cycle is part of the execution or just padding for the chunk. There are also witness traces ("virtual cycles") not directly related to the ISA: they are used for initialisation and finalisation of the global memory argument, or fulfillment of precompile execution requests made by actual RISCV cycles.
+
+- **Chunks** are converted by the prover into standalone proofs by applying their respective circuit constraints (frontend) to an implementation of GKR and WHIR (backend) targeting 100-bits of security. Each chunk proof outputs a local memory argument fingerprint, which can be collected by the verifier to construct the global memory argument fingerprint, and machine state, across all chunks.
+
+- **Order** of execution is not relevant to the prover, as both the chunks and the witness traces contained therein are processed in arbitrary order. Sound progression of program execution can be inferred from the semantics enforced by the setup decoder, global memory argument, and the circuit constraints. The consistency of this "timed progression argument" will be explained later.
+
+
+
+
+### Architectural state - TODO MOVE THIS
 
 _Describe the program counter, timestamp, registers, ROM, RAM, and any additional
 machine-visible state._
@@ -70,14 +61,14 @@ machine-visible state._
 
 - **Timestamps** are 38-bit values used by the memory argument to enforce consistency of memory updates over time. Initialisation of the argument's memory locations is at a fixed time of 0, and initialisation of the program counter state is at a fixed time of 4, preventing conflicting reads and writes between machine initialisation and execution. Time is always monotonically increased by 4 during each cycle for any non-delegation memory access, allowing for up to 4 unique memory accesses to the same address during any execution cycle. Accesses to provably distinct memory cells may share a timestamp, including accesses performed by delegated precompile fulfillments rather than literal machine cycles. The combination of timed program counter accesses and program counter updates constrained by circuits guarantees the uniqueness of each cycle and the absence of missing or illicit cycles (to be explained in detail later).
 
-### Initial state
+### Initial state - MOVE
 
 _Describe the initial program counter, timestamp, registers, ROM contents, RAM
 contents, and any verifier-supplied initial values._
 
 - **Verifier Initialisation** enforces initialisation of the 32 base registers and program counter by injecting those tuples into the accumulators collected from the proof outputs. The memory initialisation constraints enforced by the circuits skip over such memory address spaces, to avoid insecure duplicates and allow for leaner circuits.
 
-### Supported instruction set and custom operations
+### RISCV32 ISA and Proving Modes
 
 _Reference standard RISC-V behavior and enumerate only the supported subset,
 Airbender extensions, precompile carriers, and material divergences._
@@ -89,7 +80,7 @@ Airbender extensions, precompile carriers, and material divergences._
   | LUI rd, imm20 | RISC-V |
   | AUIPC rd, imm20 | RISC-V |
   | JAL rd, offset | RISC-V |
-  | JALR rd, rs1, imm12 | RISC-V; all funct3 values are also accepted. |
+  | JALR rd, rs1, imm12 | RISC-V |
   | BEQ rs1, rs2, offset | RISC-V |
   | BNE rs1, rs2, offset | RISC-V |
   | BLT rs1, rs2, offset | RISC-V |
@@ -98,11 +89,11 @@ Airbender extensions, precompile carriers, and material divergences._
   | BGEU rs1, rs2, offset | RISC-V |
   | ADD rd, rs1, rs2 | RISC-V |
   | SUB rd, rs1, rs2 | RISC-V |
-  | SLT rd, rs1, rs2 | RISC-V; all funct7 values except 0000001 (MULHSU) are also accepted. |
-  | SLTU rd, rs1, rs2 | RISC-V; all funct7 values except 0000001 (MULHU) are also accepted. |
-  | XOR rd, rs1, rs2 | RISC-V; all funct7 values except 0000001 (DIV) are also accepted. |
-  | OR rd, rs1, rs2 | RISC-V; all funct7 values except 0000001 (REM) are also accepted. |
-  | AND rd, rs1, rs2 | RISC-V; all funct7 values except 0000001 (REMU) are also accepted. |
+  | SLT rd, rs1, rs2 | RISC-V |
+  | SLTU rd, rs1, rs2 | RISC-V |
+  | XOR rd, rs1, rs2 | RISC-V |
+  | OR rd, rs1, rs2 | RISC-V |
+  | AND rd, rs1, rs2 | RISC-V |
   | ADDI rd, rs1, imm12 | RISC-V |
   | SLTI rd, rs1, imm12 | RISC-V |
   | SLTIU rd, rs1, imm12 | RISC-V |
@@ -138,17 +129,14 @@ Airbender extensions, precompile carriers, and material divergences._
   | MOP.R.7 rd, rs1 | Airbender XORROT7: rd ← (rs1 XOR rd_old) ror 7 |
   | CSRRW rd, 0x7C0, x0 | Airbender nondeterminism read‡: rd ← arbitrary prover-supplied 32-bit witness value |
   | CSRRW x0, 0x7C0, rs1 | Airbender nondeterminism write‡: no-op; during witness generation, the simulator passes the current value of source register rs1 to application-defined logic as an unproven hint |
-  | CSRRW x0, 0x7C7, x0 | Airbender BLAKE2s round delegation request: when fulfilled, 128-byte-aligned x10 points to the input/output state h[0..7] followed by the work state v[0..15]; 64-byte-aligned x11 points to the message block m[0..15]; x12 selects the round, 7- or 10-round schedule, and mode. Direct-block mode compresses m into h using the counter and final-block values in v. Two-to-one mode compresses h ∥ m[0..7], or the reverse order, into h; 10-round mode gives BLAKE2s-256 of the concatenation, while 7-round mode is Airbender's BLAKE3-inspired reduced variant. Each instruction performs one round; a complete run updates h and v in place. (Airbender Decoder preprocessing accepts this instruction only in exact runs of 7 or 10 consecutive copies.) |
-  | CSRRW x0, 0x7C8, x0 | Airbender BLAKE2s G-function delegation request: when fulfilled, 64-byte-aligned x10 points to v[0..15], the sixteen-word local work vector persisted by Airbender, while 64-byte-aligned x11 points to m[0..15], the sixteen-word message-block vector. x12 selects either the standard 10-round schedule or Airbender's first-7-round variant and the current G-function index. Each instruction performs one G function; a complete run updates v in place. (Airbender Decoder preprocessing accepts this instruction only in exact runs of 56 or 80 consecutive copies.) |
-  | CSRRW x0, 0x7CA, x0 | Airbender controlled 256-bit arithmetic delegation request: when fulfilled, x10 and x11 point to 32-byte-aligned little-endian 256-bit RAM operands a and b, while x12 selects ADD (a + b + κ), SUB (a − b − κ), SUB_NEGATE (b − a − κ), MUL_LOW (the low 256 bits of a × b), MUL_HIGH (the high 256 bits), EQ (preserves a and tests a = b), or MEMCOPY (b + κ), where κ is x12's carry/borrow input bit. The 256-bit result, reduced modulo 2²⁵⁶ when applicable, overwrites a at x10; x12 returns carry for ADD and MEMCOPY, borrow for SUB and SUB_NEGATE, overflow for MUL_LOW, equality for EQ, and 0 for MUL_HIGH. |
-  | CSRRW x0, 0x7CB, x0 | Airbender Keccak-f[1600] delegation request: when fulfilled, x11 points to a 256-byte-aligned RAM region containing twenty-five little-endian 64-bit state lanes followed by six scratch lanes, while x10 holds the mode, iteration, and round control. Its seven modes decompose each round into a deferred ι/column-parity step, two D-mixing steps, a θ column update, a ρ rotation with implicit π indexing, and two χ half-row steps. Each instruction performs one such micro-operation, updates the selected lanes, and advances x10. A complete run performs the standard 24-round Keccak-f[1600] permutation in place. (Airbender Decoder preprocessing accepts this instruction only in exact runs of 649 consecutive copies.) |
+  | CSRRW x0, 0x7C7, x0 | Airbender BLAKE2s round precompile-delegation request‡: when fulfilled, x10 points to the 128-byte-aligned input/output state h[0..7] followed by the work state v[0..15]; x11 points to the 64-byte-aligned message block m[0..15]; x12 selects the round, 7- or 10-round schedule, and mode. Direct-block mode compresses m into h using the counter and final-block values in v. Two-to-one mode compresses either h ‖ m[0..7] or m[0..7] ‖ h, into h; 10-round mode gives BLAKE2s-256 of the concatenation, while 7-round mode is Airbender's BLAKE3-inspired reduced-round variant. Each instruction performs one round; a complete run updates h and v in place. (Airbender Decoder preprocessing accepts this instruction only in exact runs of 7 or 10 consecutive copies.) |
+  | CSRRW x0, 0x7C8, x0 | Airbender BLAKE2s G-function precompile-delegation request‡: when fulfilled, x10 points to 64-byte-aligned v[0..15], the sixteen-word local work vector persisted by Airbender, while x11 points to 64-byte-aligned m[0..15], the sixteen-word message-block vector. x12 selects either the standard 10-round schedule or Airbender's first-7-round variant and the current G-function index. Each instruction performs one G function; a complete run updates v in place. (Airbender Decoder preprocessing accepts this instruction only in exact runs of 56 or 80 consecutive copies.) |
+  | CSRRW x0, 0x7CA, x0 | Airbender controlled 256-bit arithmetic precompile-delegation request‡: when fulfilled, x10 and x11 point to 32-byte-aligned little-endian 256-bit RAM operands a and b, while x12 selects ADD ((a + b + κ) mod 2²⁵⁶), SUB ((a − b − κ) mod 2²⁵⁶), SUB_NEGATE ((b − a − κ) mod 2²⁵⁶), MUL_LOW (the low 256 bits of a × b), MUL_HIGH (the high 256 bits), EQ (preserves a and tests a = b), or MEMCOPY ((b + κ) mod 2²⁵⁶), where κ is x12's carry/borrow input bit. The 256-bit result overwrites a at the address in x10; x12 is overwritten with a 0/1 result: carry for ADD and MEMCOPY, borrow for SUB and SUB_NEGATE, overflow for MUL_LOW, equality for EQ, and 0 for MUL_HIGH. |
+  | CSRRW x0, 0x7CB, x0 | Airbender Keccak-f[1600] precompile-delegation request‡: when fulfilled, x11 points to a 256-byte-aligned RAM region containing twenty-five little-endian 64-bit state lanes followed by six scratch lanes, while x10 holds the mode, iteration, and round control. Its seven modes decompose each round into a deferred ι/column-parity step, two D-mixing steps, a θ column update, a ρ rotation with implicit π indexing, and two χ half-row steps. Each instruction performs one such micro-operation, updates the selected lanes, and advances x10. A complete run performs the standard 24-round Keccak-f[1600] permutation in place. (Airbender Decoder preprocessing accepts this instruction only in exact runs of 649 consecutive copies.) |
 
-    *† RISC-V instructions retain their standard pc update unless stated otherwise. Custom instructions advance pc by 4 unless stated otherwise. In instruction syntax, rd, rs1, and rs2 are 5-bit register indices. In definitions, rs1 and rs2 denote the corresponding 32-bit register values, rd denotes the destination register, and rd_old denotes its preceding 32-bit value. For modular MOPs, p = 0x78000001 = 2³¹ − 2²⁷ + 1 is the BabyBear modulus, R = 2³² is the Montgomery radix, and R⁻¹ is its inverse modulo p.*
+    *† RISC-V instructions retain their standard pc update unless stated otherwise. Custom instructions advance pc by 4 (mod 2³²) unless stated otherwise. In instruction syntax, rd, rs1, and rs2 are 5-bit register indices. In definitions, rs1 and rs2 denote the corresponding 32-bit register values, rd denotes the destination register, and rd_old denotes its preceding 32-bit value. For modular MOPs, p = 0x78000001 = 2³¹ − 2²⁷ + 1 is the BabyBear modulus, R = 2³² is the Montgomery radix, and R⁻¹ is its inverse modulo p.*
 
-    *‡ During witness generation, nondeterminism writes provide unproven request metadata and arguments to application-defined logic, which prepares values consumed by subsequent nondeterminism reads. Writes only control witness construction; reads inject the responses into proved register state. The proven program must validate the injected data through its own computation.*
-
-  - in the delegation arguments there is no "fake/shadow-ROM" range check. accessing that is UB!
-  - pc + 4 (mod 2^32)
+    *‡ During witness generation, nondeterminism writes provide unproven request metadata and arguments to application-defined logic, which prepares values consumed by subsequent nondeterminism reads. Writes only control witness construction; reads inject the responses into proved register state. The proven program must validate the injected data through its own computation. Delegations are defined for the documented control parameters and call sequences. Operands are not expected to access the shadow memory corresponding to the ROM address range, as delegation circuits do not enforce this exclusion. Uses outside these conditions have undefined behaviour.*
 
 - The **Circuit Families** of the Machine encode all of the constraints that are applied to the witness data by the Sumcheck-based proof system. Circuits not only simulate execution of individual instruction cycles, but also cover special operations which are not directly associated with a specific cycle such as initialisation and finalisation of the global memory argument, or fulfillment of special "precompile instruction" delegations.
 
@@ -644,7 +632,7 @@ machine-and-chunk architecture._
 
 - <mark><strong>Recursive Layer Outputs</strong> are sixteen words returned by a full-statement verifier program: eight application-result words and eight recursion-chain words. The next layer proves that program's execution, including verification of the supplied inner proof. Acceptance binds the execution to the intended verifier program and its successful termination point. The base layer initializes the chain; continuation layers authenticate and propagate the inner result and chain.</mark>
 
-- <mark><strong>Recursion History</strong> uses the configured hash variant to derive an end-parameter digest E from the final PC, padded to sixteen words, followed by the ordered setup commitments. The base chain is H(0^8 ∥ E). A continuation authenticates a supplied preimage against the incoming chain hash, preserving that hash when the latest E equals the current end-parameter digest, or updating it to H(previous_hash ∥ E) otherwise. Terminal acceptance checks the chain against the intended application and verifier sequence. Consecutive repetitions are compressed, so the chain does not count recursion depth.</mark>
+- <mark><strong>Recursion History</strong> uses the configured hash variant to derive an end-parameter digest E from the final PC, padded to sixteen words, followed by the ordered setup commitments. The base chain is H(0^8 ‖ E). A continuation authenticates a supplied preimage against the incoming chain hash, preserving that hash when the latest E equals the current end-parameter digest, or updating it to H(previous_hash ‖ E) otherwise. Terminal acceptance checks the chain against the intended application and verifier sequence. Consecutive repetitions are compressed, so the chain does not count recursion depth.</mark>
 
 ### Base proof and unrolled continuation
 

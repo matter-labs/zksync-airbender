@@ -1,90 +1,97 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="370" viewBox="0 0 1080 370" role="img" aria-labelledby="title desc"><title id="title">Shared state connects the chunks</title><desc id="desc">Unordered chunk rows contribute read and write events. Matching the shared events by address and time connects them into an execution ordered by the program counter. Exact constraints are explained in Section 3.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="281" viewBox="0 77 1080 281" role="img" aria-labelledby="title desc"><title id="title">PC links connect rows across chunks into a logical execution</title><desc id="desc">Each chunk contains multiple trace rows. A row reads its current program counter and writes its next program counter. Matching the written PC record, including its timestamp, to another row's read links execution across chunks. RAM and register records are also linked by the global memory argument. The state chain depicts logical execution order.</desc>
 <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#69716c"/></marker></defs>
-<rect width="1080" height="370" rx="8" fill="#f3f0e7"/>
+<rect y="77" width="1080" height="281" rx="8" fill="#f3f0e7"/>
 <g font-family="Menlo, Consolas, monospace">
-<text x="28" y="31" font-size="12" fill="#69716c" text-anchor="start" font-weight="700">03 / CROSS-CHUNK CONSISTENCY</text>
-<text x="28" y="64" font-size="24" fill="#262b2b" text-anchor="start" font-weight="700">Different tracks. One connected run.</text>
-<text x="1052" y="31" font-size="12" fill="#69716c" text-anchor="end" font-weight="400">SHARED MEMORY</text>
-<circle cx="1049" cy="59" r="3" fill="#e97539"/>
-<circle cx="1037" cy="59" r="3" fill="#bdc1b6"/>
-<circle cx="1025" cy="59" r="3" fill="#bdc1b6"/>
-<circle cx="1013" cy="59" r="3" fill="#bdc1b6"/>
 <rect x="28" y="105" width="252" height="225" rx="3" fill="#fffdf6" stroke="#bdc1b6" stroke-width="1.5"/>
 <rect x="28" y="105" width="252" height="30" rx="3" fill="#262b2b" stroke="#262b2b" stroke-width="1.5"/>
 <text x="41" y="126" font-size="13" fill="#fffdf6" text-anchor="start" font-weight="700">CHUNKS</text>
 <rect x="354" y="105" width="350" height="225" rx="3" fill="#fffdf6" stroke="#bdc1b6" stroke-width="1.5"/>
 <rect x="354" y="105" width="350" height="30" rx="3" fill="#262b2b" stroke="#262b2b" stroke-width="1.5"/>
-<text x="367" y="126" font-size="13" fill="#fffdf6" text-anchor="start" font-weight="700">READ / WRITE EVENTS</text>
+<text x="367" y="126" font-size="13" fill="#fffdf6" text-anchor="start" font-weight="700">PC LINKS</text>
 <rect x="778" y="105" width="274" height="225" rx="3" fill="#fffdf6" stroke="#bdc1b6" stroke-width="1.5"/>
 <rect x="778" y="105" width="274" height="30" rx="3" fill="#262b2b" stroke="#262b2b" stroke-width="1.5"/>
-<text x="791" y="126" font-size="13" fill="#fffdf6" text-anchor="start" font-weight="700">EXECUTION</text>
-<rect x="47" y="155" width="214" height="31" rx="3" fill="#f3f0e7" stroke="#bdc1b6" stroke-width="1.5"/>
-<text x="59" y="176" font-size="14" fill="#262b2b" text-anchor="start" font-weight="700">B</text>
-<rect x="92" y="165" width="14" height="10" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
-<rect x="114" y="165" width="14" height="10" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
-<rect x="136" y="165" width="14" height="10" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
-<rect x="158" y="165" width="14" height="10" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
-<rect x="180" y="165" width="14" height="10" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
-<rect x="202" y="165" width="14" height="10" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
-<rect x="224" y="165" width="14" height="10" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
-<rect x="47" y="197" width="214" height="31" rx="3" fill="#f3f0e7" stroke="#bdc1b6" stroke-width="1.5"/>
-<text x="59" y="218" font-size="14" fill="#262b2b" text-anchor="start" font-weight="700">A</text>
-<rect x="92" y="207" width="14" height="10" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
-<rect x="114" y="207" width="14" height="10" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
-<rect x="136" y="207" width="14" height="10" rx="0" fill="#e97539" stroke="#e97539" stroke-width="1.5"/>
-<rect x="158" y="207" width="14" height="10" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
-<rect x="180" y="207" width="14" height="10" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
-<rect x="202" y="207" width="14" height="10" rx="0" fill="#e97539" stroke="#e97539" stroke-width="1.5"/>
-<rect x="224" y="207" width="14" height="10" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
-<rect x="47" y="239" width="214" height="31" rx="3" fill="#f3f0e7" stroke="#bdc1b6" stroke-width="1.5"/>
-<text x="59" y="260" font-size="14" fill="#262b2b" text-anchor="start" font-weight="700">C</text>
-<rect x="92" y="249" width="14" height="10" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
-<rect x="114" y="249" width="14" height="10" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
-<rect x="136" y="249" width="14" height="10" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
-<rect x="158" y="249" width="14" height="10" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
-<rect x="180" y="249" width="14" height="10" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
-<rect x="202" y="249" width="14" height="10" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
-<rect x="224" y="249" width="14" height="10" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
-<text x="154" y="311" font-size="13" fill="#69716c" text-anchor="middle" font-weight="400">any row order</text>
+<text x="791" y="126" font-size="13" fill="#fffdf6" text-anchor="start" font-weight="700">LOGICAL EXECUTION</text>
+<rect x="47" y="148" width="214" height="43" rx="3" fill="#f3f0e7" stroke="#bdc1b6" stroke-width="1.5"/>
+<text x="59" y="174" font-size="12" fill="#262b2b" text-anchor="start" font-weight="700">CHUNK B</text>
+<rect x="163" y="156" width="12" height="6" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
+<rect x="181" y="156" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="199" y="156" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="217" y="156" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="235" y="156" width="12" height="6" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
+<rect x="163" y="166" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="181" y="166" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="199" y="166" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="217" y="166" width="12" height="6" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
+<rect x="235" y="166" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="163" y="176" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="181" y="176" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="199" y="176" width="12" height="6" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
+<rect x="217" y="176" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="235" y="176" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="47" y="199" width="214" height="43" rx="3" fill="#f3f0e7" stroke="#bdc1b6" stroke-width="1.5"/>
+<text x="59" y="225" font-size="12" fill="#262b2b" text-anchor="start" font-weight="700">CHUNK A</text>
+<rect x="163" y="207" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="181" y="207" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="199" y="207" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="217" y="207" width="12" height="6" rx="0" fill="#e97539" stroke="#e97539" stroke-width="1.5"/>
+<rect x="235" y="207" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="163" y="217" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="181" y="217" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="199" y="217" width="12" height="6" rx="0" fill="#e97539" stroke="#e97539" stroke-width="1.5"/>
+<rect x="217" y="217" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="235" y="217" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="163" y="227" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="181" y="227" width="12" height="6" rx="0" fill="#e97539" stroke="#e97539" stroke-width="1.5"/>
+<rect x="199" y="227" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="217" y="227" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="235" y="227" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="47" y="250" width="214" height="43" rx="3" fill="#f3f0e7" stroke="#bdc1b6" stroke-width="1.5"/>
+<text x="59" y="276" font-size="12" fill="#262b2b" text-anchor="start" font-weight="700">CHUNK C</text>
+<rect x="163" y="258" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="181" y="258" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="199" y="258" width="12" height="6" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
+<rect x="217" y="258" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="235" y="258" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="163" y="268" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="181" y="268" width="12" height="6" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
+<rect x="199" y="268" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="217" y="268" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="235" y="268" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="163" y="278" width="12" height="6" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
+<rect x="181" y="278" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="199" y="278" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="217" y="278" width="12" height="6" rx="0" fill="#bdc1b6" stroke="#bdc1b6" stroke-width="1.5"/>
+<rect x="235" y="278" width="12" height="6" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
+<text x="154" y="313" font-size="12" fill="#69716c" text-anchor="middle" font-weight="400">rows within each chunk</text>
 <path d="M288 215 L342 215" fill="none" stroke="#69716c" stroke-width="2" marker-end="url(#arrow)"/>
-<text x="375" y="164" font-size="12" fill="#69716c" text-anchor="start" font-weight="400">READ</text>
-<text x="375" y="240" font-size="12" fill="#69716c" text-anchor="start" font-weight="400">WRITE</text>
-<rect x="441" y="149" width="29" height="25" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
-<rect x="441" y="224" width="29" height="25" rx="0" fill="#e97539" stroke="#e97539" stroke-width="1.5"/>
-<text x="455" y="167" font-size="12" fill="#fffdf6" text-anchor="middle" font-weight="400">0</text>
-<text x="455" y="242" font-size="12" fill="#fffdf6" text-anchor="middle" font-weight="400">0</text>
-<path d="M455 176 V222" fill="none" stroke="#bdc1b6" stroke-width="2"/>
-<rect x="489" y="149" width="29" height="25" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
-<rect x="489" y="224" width="29" height="25" rx="0" fill="#e97539" stroke="#e97539" stroke-width="1.5"/>
-<text x="503" y="167" font-size="12" fill="#fffdf6" text-anchor="middle" font-weight="400">1</text>
-<text x="503" y="242" font-size="12" fill="#fffdf6" text-anchor="middle" font-weight="400">1</text>
-<path d="M503 176 V222" fill="none" stroke="#bdc1b6" stroke-width="2"/>
-<rect x="537" y="149" width="29" height="25" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
-<rect x="537" y="224" width="29" height="25" rx="0" fill="#e97539" stroke="#e97539" stroke-width="1.5"/>
-<text x="551" y="167" font-size="12" fill="#fffdf6" text-anchor="middle" font-weight="400">2</text>
-<text x="551" y="242" font-size="12" fill="#fffdf6" text-anchor="middle" font-weight="400">2</text>
-<path d="M551 176 V222" fill="none" stroke="#bdc1b6" stroke-width="2"/>
-<rect x="585" y="149" width="29" height="25" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
-<rect x="585" y="224" width="29" height="25" rx="0" fill="#e97539" stroke="#e97539" stroke-width="1.5"/>
-<text x="599" y="167" font-size="12" fill="#fffdf6" text-anchor="middle" font-weight="400">3</text>
-<text x="599" y="242" font-size="12" fill="#fffdf6" text-anchor="middle" font-weight="400">3</text>
-<path d="M599 176 V222" fill="none" stroke="#bdc1b6" stroke-width="2"/>
-<rect x="633" y="149" width="29" height="25" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
-<rect x="633" y="224" width="29" height="25" rx="0" fill="#e97539" stroke="#e97539" stroke-width="1.5"/>
-<text x="647" y="167" font-size="12" fill="#fffdf6" text-anchor="middle" font-weight="400">4</text>
-<text x="647" y="242" font-size="12" fill="#fffdf6" text-anchor="middle" font-weight="400">4</text>
-<path d="M647 176 V222" fill="none" stroke="#bdc1b6" stroke-width="2"/>
-<text x="529" y="288" font-size="14" fill="#262b2b" text-anchor="middle" font-weight="400">match address + time</text>
-<text x="529" y="311" font-size="13" fill="#69716c" text-anchor="middle" font-weight="400">follow the PC</text>
+<text x="529" y="155" font-size="12" fill="#69716c" text-anchor="middle" font-weight="400">write → next read</text>
+<rect x="375" y="169" width="308" height="39" rx="3" fill="#f3f0e7" stroke="#bdc1b6" stroke-width="1.5"/>
+<text x="385" y="194" font-size="11" fill="#262b2b" text-anchor="start" font-weight="700">A / row</text>
+<rect x="455" y="177" width="86" height="23" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
+<text x="498" y="193" font-size="12" fill="#fffdf6" text-anchor="middle" font-weight="400">PC in</text>
+<path d="M549 188 L580 188" fill="none" stroke="#69716c" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="588" y="177" width="86" height="23" rx="0" fill="#e97539" stroke="#e97539" stroke-width="1.5"/>
+<text x="631" y="193" font-size="12" fill="#fffdf6" text-anchor="middle" font-weight="400">PC out</text>
+<rect x="375" y="236" width="308" height="39" rx="3" fill="#f3f0e7" stroke="#bdc1b6" stroke-width="1.5"/>
+<text x="385" y="261" font-size="11" fill="#262b2b" text-anchor="start" font-weight="700">C / row</text>
+<rect x="455" y="244" width="86" height="23" rx="0" fill="#34847b" stroke="#34847b" stroke-width="1.5"/>
+<text x="498" y="260" font-size="12" fill="#fffdf6" text-anchor="middle" font-weight="400">PC in</text>
+<path d="M549 255 L580 255" fill="none" stroke="#69716c" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="588" y="244" width="86" height="23" rx="0" fill="#e97539" stroke="#e97539" stroke-width="1.5"/>
+<text x="631" y="260" font-size="12" fill="#fffdf6" text-anchor="middle" font-weight="400">PC out</text>
+<path d="M631 208 V222 H498 V234" fill="none" stroke="#69716c" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="529" y="293" font-size="13" fill="#262b2b" text-anchor="middle" font-weight="400">same PC + time</text>
+<text x="529" y="313" font-size="12" fill="#69716c" text-anchor="middle" font-weight="400">+ RAM / register links</text>
 <path d="M712 215 L766 215" fill="none" stroke="#69716c" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="829" y="174" font-size="11" fill="#69716c" text-anchor="middle" font-weight="400">initial</text>
 <rect x="802" y="188" width="54" height="52" rx="3" fill="#f3f0e7" stroke="#bdc1b6" stroke-width="1.5"/>
 <text x="829" y="221" font-size="23" fill="#262b2b" text-anchor="middle" font-weight="700">S₀</text>
-<path d="M860 214 L880 214" fill="none" stroke="#69716c" stroke-width="2" marker-end="url(#arrow)"/>
 <rect x="884" y="188" width="54" height="52" rx="3" fill="#f3f0e7" stroke="#bdc1b6" stroke-width="1.5"/>
 <text x="911" y="221" font-size="23" fill="#262b2b" text-anchor="middle" font-weight="700">S₁</text>
-<path d="M942 214 L962 214" fill="none" stroke="#69716c" stroke-width="2" marker-end="url(#arrow)"/>
 <rect x="966" y="188" width="54" height="52" rx="3" fill="#f3f0e7" stroke="#bdc1b6" stroke-width="1.5"/>
 <text x="993" y="221" font-size="23" fill="#262b2b" text-anchor="middle" font-weight="700">S₂</text>
+<path d="M860 214 L880 214" fill="none" stroke="#69716c" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+<path d="M942 214 L962 214" fill="none" stroke="#69716c" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
 <text x="915" y="288" font-size="14" fill="#262b2b" text-anchor="middle" font-weight="400">… → final state</text>
-<text x="915" y="311" font-size="13" fill="#69716c" text-anchor="middle" font-weight="400">in execution order</text>
+<text x="915" y="311" font-size="13" fill="#69716c" text-anchor="middle" font-weight="400">linked by the PC</text>
 </g></svg>

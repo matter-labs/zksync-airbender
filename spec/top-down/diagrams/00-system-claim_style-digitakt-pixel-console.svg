@@ -1,14 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="324" viewBox="0 0 1080 324" role="img" aria-labelledby="title desc"><title id="title">Airbender: a top-down reading map</title><desc id="desc">Six connected console modules follow the description: the machine, its chunks, shared state, inside one chunk, the proof, and soundness. Arrows indicate reading order and progressively opening the system, not soundness implications.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1064" height="247" viewBox="0 73 1064 247" role="img" aria-labelledby="title desc"><title id="title">Airbender: a top-down reading map</title><desc id="desc">Six connected console modules follow the description: the machine, its chunks, shared state, inside one chunk, the proof, and soundness. Arrows indicate reading order and progressively opening the system, not soundness implications.</desc>
 <defs><marker id="arrow1" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#526b46"/></marker><marker id="arrow2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#75617f"/></marker><marker id="arrow3" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#347d99"/></marker><marker id="arrow4" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#46669d"/></marker><marker id="arrow5" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#a26432"/></marker><marker id="arrow6" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#ab4c46"/></marker></defs>
-<rect width="1080" height="324" rx="8" fill="#f3f0e7"/>
+<rect y="73" width="1064" height="247" rx="8" fill="#f3f0e7"/>
 <g font-family="Menlo, Consolas, monospace">
-<text x="28" y="31" font-size="12" fill="#69716c" text-anchor="start" font-weight="700">AIRBENDER / READING MAP</text>
-<text x="28" y="64" font-size="24" fill="#262b2b" text-anchor="start" font-weight="700">Start with the run. Open the boxes.</text>
-<text x="1052" y="31" font-size="12" fill="#69716c" text-anchor="end" font-weight="400">1 — 6</text>
-<circle cx="1049" cy="59" r="3" fill="#526b46"/>
-<circle cx="1037" cy="59" r="3" fill="#bdc1b6"/>
-<circle cx="1025" cy="59" r="3" fill="#bdc1b6"/>
-<circle cx="1013" cy="59" r="3" fill="#bdc1b6"/>
 <rect x="28" y="101" width="148" height="191" rx="3" fill="#fffdf6" stroke="#bdc1b6" stroke-width="1.5"/>
 <rect x="28" y="101" width="148" height="29" rx="3" fill="#526b46" stroke="#526b46" stroke-width="1.5"/>
 <text x="38" y="121" font-size="12" fill="#fffdf6" text-anchor="start" font-weight="700">1 / MACHINE</text>
