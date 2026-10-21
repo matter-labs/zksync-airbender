@@ -720,13 +720,16 @@ retain the existing regression roots with no handwritten project diagnostics.
 The current native artifacts and proof adapters pass the library, both executables,
 all 137 concrete test modules, importer regressions and review/source checks.
 All 13 setup artifacts, 85 native source hashes and 11 retained circuit identities
-are checked. The full audit has 3,830 roots (149 axiom-free), with no added axioms:
+are checked. The full audit has 3,850 roots (149 axiom-free), with no added axioms:
 all 3,606 still-applicable prior roots remain, 3,605 reports are identical and one
 uses fewer axioms. The 53 old accepted-zero execution roots were explicitly
 retired because #490 makes those statements false; the exact raw witness,
 arithmetic, cancellation, filtering and valid issued execution remain checked,
 with current native rejection replacing obsolete acceptance. All 166 public
 Review theorem roots remain audited.
+The diagonal-query refactor adds 20 checked row/binding roots; all 3,830
+post-rebase audit reports remain identical, and the original query theorem's
+statement and assumptions are unchanged.
 
 The native JSON round-trip check also retains strict equality with the actual
 Rust circuit object. A small [wire-format serializer](Airbender/Import/NativeJson.lean)
