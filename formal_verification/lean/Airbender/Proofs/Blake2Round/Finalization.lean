@@ -23,16 +23,13 @@ theorem nonfinal_reference {p : Nat} {input : Finalization.Input} {output : Fina
 /-- The actual selector equation agrees with the final-round rule for all
     twenty round/mode combinations under the exclusive caller mask. -/
 theorem finalization_flag {p : Nat} [Fact p.Prime]
-    {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p}
+    {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p}
     {input : Finalization.Input} {output : Finalization.Output}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (mapping : Finalization.WordMapping input output w)
     (roundMask : ∀ i : Fin 10, w Variables.roundBits[i] = if i = input.round then 1 else 0) :
     w 152 = if Finalization.isFinal input then 1 else 0 := by
-  have flag := Verification.assertion_of_holds h ⟨2, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at flag
-  have equation : w 152 = w 148 * w 139 + w 151 := by linear_combination -flag
+  have equation := native_final_flag h
   have mask6 := roundMask 6
   have mask9 := roundMask 9
   have reduced := mapping.reduced
@@ -42,7 +39,7 @@ theorem finalization_flag {p : Nat} [Fact p.Prime]
   cases mode <;> fin_cases round <;> norm_num [Finalization.isFinal, Fin.ext_iff]
 
 theorem nonfinal_flag {p : Nat} [Fact p.Prime]
-    {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p}
+    {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p}
     {input : Finalization.Input} {output : Finalization.Output}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (mapping : Finalization.WordMapping input output w)
@@ -54,21 +51,17 @@ theorem nonfinal_flag {p : Nat} [Fact p.Prime]
 /-- Every chaining-state limb is preserved by its actual write equation when
     final XOR is disabled. No range or XOR-table assumptions are needed. -/
 theorem chaining_preserved {p : Nat} [Fact p.Prime]
-    {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p}
+    {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (disabled : w 152 = 0) :
     Preparation.words w Finalization.stateWrites = Preparation.words w Variables.stateReads := by
   have limbs (i : Fin 8) : w (7 + 4 * i.val) = w (5 + 4 * i.val) ∧
       w (8 + 4 * i.val) = w (6 + 4 * i.val) := by
-    have low := Verification.assertion_of_holds h
-      ⟨153 + 4 * i.val, by rw [constraint_count]; have size := i.isLt; omega⟩
-    have high := Verification.assertion_of_holds h
-      ⟨155 + 4 * i.val, by rw [constraint_count]; have size := i.isLt; omega⟩
+    have low := native_final_mux h ⟨2 * i.val, by have := i.isLt; omega⟩
+    have high := native_final_mux h ⟨2 * i.val + 1, by have := i.isLt; omega⟩
+    rw [disabled] at low high
     fin_cases i
-    all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, disabled] at low high
-    all_goals constructor
-    all_goals solve | linear_combination -low | linear_combination -high
+    all_goals simpa [NativeFinalLayout.stateWrite, NativeFinalLayout.stateRead] using And.intro low high
   apply Vector.ext
   intro i hi
   have equal := limbs ⟨i, hi⟩

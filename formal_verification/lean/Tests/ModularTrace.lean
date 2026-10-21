@@ -7,6 +7,7 @@ open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 open Trace.Proofs _root_.Sail.ArchSem
 open Airbender.AddSub
 set_option warningAsError true
+set_option Elab.async false
 set_option backward.isDefEq.respectTransparency false
 set_option maxRecDepth 32768
 set_option maxHeartbeats 6000000

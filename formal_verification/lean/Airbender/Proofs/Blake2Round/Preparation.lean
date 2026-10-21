@@ -78,7 +78,7 @@ private theorem read_bounds {p n : Nat} [Fact p.Prime] (w : Nat → ZMod p)
   exact ⟨ZMod.val_lt _, ZMod.val_lt _⟩
 
 theorem chaining {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p} (compression : Bool)
+    {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p} (compression : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 141 = if compression then 1 else 0) :
     words w Variables.chainingInputs =
@@ -113,7 +113,7 @@ private def extendedExpected {p : Nat} (w : Nat → ZMod p) (first compression :
    expanded constraint arrays in one tactic state. -/
 macro "round_extended_word " name:ident index:num low:num high:num : command =>
   `(private theorem $name {p : Nat} [Fact p.Prime]
-      {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p} (first compression : Bool)
+      {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p} (first compression : Bool)
       (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
       (firstFlag : w 142 = if first then 1 else 0)
       (compressionFlag : w 141 = if compression then 1 else 0) :
@@ -157,7 +157,7 @@ round_extended_word extended_word15 15 46 47
 
 set_option maxHeartbeats 4000000 in
 theorem extended {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p} (first compression : Bool)
+    {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p} (first compression : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (firstFlag : w 142 = if first then 1 else 0)
     (compressionFlag : w 141 = if compression then 1 else 0) :
@@ -198,11 +198,11 @@ theorem extended {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
 
 set_option maxHeartbeats 4000000 in
 theorem message {p : Nat} [Fact p.Prime]
-    {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p} (compression right : Bool)
+    {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p} (compression right : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (compressionFlag : w 141 = if compression then 1 else 0)
     (rightFlag : w 140 = if right then 1 else 0) :
-    words w Variables.preparedMessage = if !compression then words w Variables.messageReads
+    messageWords w = if !compression then words w Variables.messageReads
       else if right then (words w Variables.messageReads).take 8 ++ words w Variables.stateReads
       else words w Variables.stateReads ++ (words w Variables.messageReads).take 8 := by
   have rightMode := Verification.assertion_of_holds h ⟨52, by rw [constraint_count]; decide⟩
@@ -215,31 +215,18 @@ theorem message {p : Nat} [Fact p.Prime]
   have leftValue : w 203 = (if compression then 1 else 0) * (1 - if right then 1 else 0) := by
     rw [← compressionFlag, ← rightFlag]
     linear_combination -leftMode
-  apply words_eq
-  · intro i
-    cases compression <;> cases right
-    all_goals simp only [Bool.false_eq_true, Bool.not_false, Bool.not_true, ↓reduceIte]
-    all_goals simp only [Fin.getElem_fin, get_path_left, get_path_right]
-    all_goals fin_cases i <;> norm_num [words, Variables.messageReads, Variables.stateReads]
-    all_goals exact ⟨ZMod.val_lt _, ZMod.val_lt _⟩
-  intro i
-  have lo := Verification.assertion_of_holds h ⟨54 + 2 * i.val,
-    by rw [constraint_count]; have := i.isLt; omega⟩
-  have high := Verification.assertion_of_holds h ⟨55 + 2 * i.val,
-    by rw [constraint_count]; have := i.isLt; omega⟩
-  clear h rightMode leftMode
-  fin_cases i <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at lo high
+  apply Vector.ext
+  intro i hi
+  interval_cases i
   all_goals cases compression <;> cases right
   all_goals simp only [Bool.false_eq_true, Bool.not_false, Bool.not_true, ↓reduceIte]
-  all_goals simp only [Fin.getElem_fin, get_path_left, get_path_right]
-  all_goals simp [compressionFlag, rightValue, leftValue, words,
-    Variables.preparedMessage, Variables.messageReads, Variables.stateReads] at lo high ⊢
-  all_goals constructor
-  all_goals first | linear_combination -lo | linear_combination -high
+  all_goals try simp only [get_path_left, get_path_right]
+  all_goals simp [messageWords, messageLimb, rightValue, leftValue, words,
+    Variables.messageReads, Variables.stateReads]
+
 
 theorem soundness {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (setup : Table (ZMod p) (fields 4)) :
+    (setup : Table (ZMod p) (fields 6)) :
     Properties.Soundness (circuitModel setup).relation spec := by
   intro input output w ⟨h, mapping⟩
   have chain := chaining hp input.compression h mapping.compression

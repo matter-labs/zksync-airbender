@@ -18,7 +18,7 @@ inductive Family where
 structure Setup (p : Nat) where
   bigint : Table (ZMod p) (fields 3)
   blakeG : Table (ZMod p) (fields 9)
-  blakeRound : Table (ZMod p) (fields 4)
+  blakeRound : Table (ZMod p) (fields 6)
   keccak : Table (ZMod p) (fields 8)
 
 /-- One actual delegation assignment and its family. No reads, ranges or
@@ -89,6 +89,10 @@ structure MemoryInputs (data : MemoryData p) (before : Reference.RiscV.Sail.Stat
   distinct : (cells.map Cell.addressCode).Nodup
   clockRoom : ∀ row ∈ data.rows,
     (decodeTimestamp row.assignment row.columns.invocation).lo + 2 < timestampBase
+  /-- The current compiler delegates this bound to caller/request matching.
+      Whole-machine proofs derive it from the initialized caller clocks. -/
+  invocationHigh : ∀ row ∈ data.rows,
+    (decodeTimestamp row.assignment row.columns.invocation).hi < timestampBase
 
 /-- Native access order and complete per-address paths. Every path starts at
     a public seed, ends at a declared terminal token and contains exactly that

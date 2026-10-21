@@ -63,7 +63,7 @@ pub fn build_unrolled_setup_with_cache_mode(
             .iter()
             .map(DelegationCircuitType::get_delegation_type_id)
             .collect();
-    let preprocessing = match machine_type {
+    let mut preprocessing = match machine_type {
         MachineType::Full | MachineType::FullUnsigned => {
             process_binary_into_separate_tables_ext::<BF, FullUnsignedMachineDecoderConfig, true, Global>(
                 text_section,
@@ -82,9 +82,11 @@ pub fn build_unrolled_setup_with_cache_mode(
         }
     };
     let table_data = preprocessing
-        .get(&family_idx)
-        .expect("missing decoder data for circuit family")
-        .clone();
+        .remove(&family_idx)
+        .expect("missing decoder data for circuit family");
+    // Setup materializes full native columns. Release the unused decoder
+    // families first instead of retaining them alongside a cloned selection.
+    drop(preprocessing);
 
     let setup = match circuit_type {
         UnrolledCircuitType::Memory(UnrolledMemoryCircuitType::LoadStoreWordOnly) => {

@@ -3,6 +3,8 @@ import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.Constraints
 import Airbender.Proofs.Arithmetic.Chunks
 import Airbender.Proofs.Blake2G.Lookups
+import Airbender.Proofs.BabyBear
+import Airbender.Proofs.Trace.Timestamps
 import Mathlib.Tactic.FinCases
 import Mathlib.Tactic.LinearCombination
 
@@ -35,10 +37,15 @@ theorem control_high_zero {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fiel
   simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment] using And.intro read write
 
-private theorem aligned_of_scaled_bound {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+private theorem aligned_of_scaled_bound {p : Nat} [Fact p.Prime] (_hp : 4194304 ≤ p)
     {x : ZMod p} (inverse : 64 * (-31457280 : ZMod p) = 1)
-    (bound : ((-31457280 : ZMod p) * x).val < 65536) : x.val % 64 = 0 := by
-  have value := Arithmetic.value_of_scaled_range hp (by decide) inverse bound
+    (bound : ((-31457280 : ZMod p) * x).val < Trace.timestampBase) : x.val % 64 = 0 := by
+  have characteristic : (babyBearModulus : ZMod p) = 0 := by
+    unfold babyBearModulus
+    linear_combination -inverse
+  have field := babyBear_eq_of_natCast_zero characteristic
+  have value := Arithmetic.value_of_scaled_range
+    (by rw [field]; decide : 64 * Trace.timestampBase ≤ p) (by decide) inverse bound
   rw [value]
   simp
 
@@ -50,10 +57,10 @@ theorem pointer_alignment {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     (w Variables.statePointerLo).val % 64 = 0 ∧
       (w Variables.messagePointerLo).val % 64 = 0 := by
-  have state := Verification.range16_bound (Verification.lookup_of_holds h ⟨0, by rw [lookup_count]; decide⟩)
-  have message := Verification.range16_bound (Verification.lookup_of_holds h ⟨1, by rw [lookup_count]; decide⟩)
+  have state := Trace.Proofs.range_bound (Verification.lookup_of_holds h ⟨0, by rw [lookup_count]; decide⟩)
+  have message := Trace.Proofs.range_bound (Verification.lookup_of_holds h ⟨1, by rw [lookup_count]; decide⟩)
   simp [Expression.eval,
-    Verification.environment, Arithmetic.limbBase] at state message
+    Verification.environment] at state message
   exact ⟨aligned_of_scaled_bound hp inverse (by simpa only [neg_mul] using state),
     aligned_of_scaled_bound hp inverse (by simpa only [neg_mul] using message)⟩
 

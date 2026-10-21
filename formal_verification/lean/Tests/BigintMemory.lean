@@ -8,7 +8,7 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 4000000
 
 def row (column : Nat) : ZMod babyBearModulus :=
-  if column = 1 then 4
+  if column = 1 then 5
   else if column = 4 || column = 38 then 64
   else if column = 37 then 32
   else if column = 55 then 128
@@ -46,6 +46,7 @@ theorem core : FlatOperation.ConstraintsHoldFlat (Verification.environment row)
   repeat' apply And.intro
   all_goals solve
     | (apply Verification.range16_contains; decide)
+    | (apply Trace.Proofs.range_contains; decide)
     | (refine ⟨⟨0, by decide⟩, ?_⟩; simp only [referenceRow]; decide)
     | (refine ⟨⟨262144, by decide⟩, ?_⟩; simp only [referenceRow]; decide)
     | (refine ⟨⟨1310720, by decide⟩, ?_⟩; simp only [referenceRow]; decide)
@@ -118,6 +119,10 @@ theorem inputs : Bigint.Memory.Inputs data before cells := by
   · constructor
     · exact initialized
     · decide +kernel
+    · intro current member
+      simp only [data, List.mem_singleton] at member
+      subst current
+      decide
     · intro current member
       simp only [data, List.mem_singleton] at member
       subst current

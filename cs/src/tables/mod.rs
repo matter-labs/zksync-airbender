@@ -90,6 +90,9 @@ impl<F: PrimeField> Clone for IndexLookupFn<F> {
 
 pub const TABLE_TYPES_UPPER_BOUNDS: usize = TOTAL_NUM_OF_TABLES;
 
+pub type LazyLookupMap<K, V> =
+    LazyLock<HashMap<K, V>, Box<dyn FnOnce() -> HashMap<K, V> + Send + Sync>>;
+
 #[derive(Clone)]
 pub struct LookupTable<F: PrimeField> {
     pub name: String,
@@ -98,9 +101,9 @@ pub struct LookupTable<F: PrimeField> {
     // NOTE: for small fields and not too large N hashmaps are the most efficient here
 
     // to lookup value from key
-    pub lookup_data: Arc<HashMap<LookupKey<F>, LookupValue<F>>>,
+    pub lookup_data: Arc<LazyLookupMap<LookupKey<F>, LookupValue<F>>>,
     // to lookup table index from full row
-    pub content_data: Arc<HashMap<ArrayVec<F, MAX_TABLE_WIDTH>, usize>>,
+    pub content_data: Arc<LazyLookupMap<ArrayVec<F, MAX_TABLE_WIDTH>, usize>>,
     // for setup - plain content of the table
     pub data: Arc<Vec<ArrayVec<F, MAX_TABLE_WIDTH>>>,
     pub quick_value_lookup_fn: ValueLookupFn<F>,
@@ -195,7 +198,7 @@ impl<F: PrimeField> LookupTable<F> {
 
     #[inline]
     pub fn table_size(&self) -> usize {
-        self.content_data.len()
+        self.data.len()
     }
 
     pub(crate) fn create_table_from_key_and_pure_generation_fn<
@@ -240,6 +243,7 @@ impl<F: PrimeField> LookupTable<F> {
                 .collect_into_vec(&mut content);
         }
 
+        let content = Arc::new(content);
         let (lookup_data, content_data) =
             Self::compute_default_lookup_impls(&content, num_key_columns, num_value_columns);
 
@@ -253,7 +257,7 @@ impl<F: PrimeField> LookupTable<F> {
             name,
             lookup_data: Arc::new(lookup_data),
             content_data: Arc::new(content_data),
-            data: Arc::new(content),
+            data: content,
             quick_value_lookup_fn: ValueLookupFn::ReuseGenerationFn(table_gen_func),
             quick_index_lookup_fn: index_gen_fn,
             num_key_columns,
@@ -311,6 +315,7 @@ impl<F: PrimeField> LookupTable<F> {
                 .collect_into_vec(&mut content);
         }
 
+        let content = Arc::new(content);
         let (lookup_data, content_data) =
             Self::compute_default_lookup_impls(&content, num_key_columns, num_value_columns);
 
@@ -324,7 +329,7 @@ impl<F: PrimeField> LookupTable<F> {
             name,
             lookup_data: Arc::new(lookup_data),
             content_data: Arc::new(content_data),
-            data: Arc::new(content),
+            data: content,
             quick_value_lookup_fn: ValueLookupFn::Closure(Arc::new(table_gen_closure)),
             quick_index_lookup_fn: index_gen_fn,
             num_key_columns,
@@ -334,22 +339,31 @@ impl<F: PrimeField> LookupTable<F> {
     }
 
     fn compute_default_lookup_impls(
-        data: &Vec<ArrayVec<F, MAX_TABLE_WIDTH>>,
+        data: &Arc<Vec<ArrayVec<F, MAX_TABLE_WIDTH>>>,
         num_key_columns: usize,
         num_value_columns: usize,
     ) -> (
-        HashMap<LookupKey<F>, LookupValue<F>>,
-        HashMap<ArrayVec<F, MAX_TABLE_WIDTH>, usize>,
+        LazyLookupMap<LookupKey<F>, LookupValue<F>>,
+        LazyLookupMap<ArrayVec<F, MAX_TABLE_WIDTH>, usize>,
     ) {
-        let lookup_data: HashMap<LookupKey<F>, LookupValue<F>> =
-            Self::compute_lookup_data(data, num_key_columns, num_value_columns);
-        let content_data: HashMap<_, _> = data
-            .par_iter()
-            .enumerate()
-            .map(|(idx, el)| (el.clone(), idx))
-            .collect();
-
-        (lookup_data, content_data)
+        // Preserve the eager uniqueness check using borrowed keys. Setup only
+        // needs stored rows; generated lookup functions do not use either map.
+        let keys: HashSet<&[F]> = data.iter().map(|row| &row[..num_key_columns]).collect();
+        assert_eq!(keys.len(), data.len(), "table keys must be unique");
+        let value_rows = Arc::clone(data);
+        let content_rows = Arc::clone(data);
+        (
+            LazyLock::new(Box::new(move || {
+                Self::compute_lookup_data(&value_rows, num_key_columns, num_value_columns)
+            })),
+            LazyLock::new(Box::new(move || {
+                content_rows
+                    .iter()
+                    .enumerate()
+                    .map(|(index, row)| (row.clone(), index))
+                    .collect()
+            })),
+        )
     }
 
     /// Splits data elements into key, value.
@@ -362,7 +376,7 @@ impl<F: PrimeField> LookupTable<F> {
     ) -> HashMap<LookupKey<F>, LookupValue<F>> {
         assert!(num_key_columns + num_value_columns < MAX_TABLE_WIDTH);
         let result: HashMap<_, _> = data
-            .par_iter()
+            .iter()
             .map(|row| {
                 let key = LookupKey::from_keys(&row[..num_key_columns]);
                 let value = LookupValue::from_keys(&row[num_key_columns..]);
@@ -1427,3 +1441,40 @@ impl<F: PrimeField> Default for TableDriver<F> {
 //         dbg!(vec_time.elapsed());
 //     }
 // }
+
+#[cfg(test)]
+mod lazy_lookup_tests {
+    use super::*;
+    use field::baby_bear::base::BabyBearField;
+
+    #[test]
+    fn generated_lookups_and_lazy_maps_match_every_stored_row() {
+        let table = create_conditional_op_resolution_table_unified::<BabyBearField>(0);
+        assert!(LazyLock::get(&table.lookup_data).is_none());
+        assert!(LazyLock::get(&table.content_data).is_none());
+        assert_eq!(table.table_size(), table.data.len());
+        for (index, row) in table.data.iter().enumerate() {
+            assert_eq!(table.lookup_value::<1>(&row[..1])[0], row[1]);
+            assert_eq!(table.lookup_row(row), index);
+        }
+        assert!(LazyLock::get(&table.lookup_data).is_none());
+        assert!(LazyLock::get(&table.content_data).is_none());
+        assert_eq!(table.lookup_data.len(), table.data.len());
+        assert_eq!(table.content_data.len(), table.data.len());
+        for (index, row) in table.data.iter().enumerate() {
+            assert_eq!(table.content_data.get(row), Some(&index));
+            let values = table
+                .lookup_data
+                .get(&LookupKey::from_keys(&row[..1]))
+                .unwrap();
+            assert_eq!(&values.0[..], &row[1..]);
+        }
+        let mut fallback = table.clone();
+        fallback.quick_value_lookup_fn = ValueLookupFn::None;
+        fallback.quick_index_lookup_fn = IndexLookupFn::None;
+        for (index, row) in fallback.data.iter().enumerate() {
+            assert_eq!(fallback.lookup_value::<1>(&row[..1])[0], row[1]);
+            assert_eq!(fallback.lookup_row(row), index);
+        }
+    }
+}

@@ -29,7 +29,7 @@ theorem inactiveSatisfies :
   · simp only [Keccak.importedConstraints, FlatOperation.lookups,
       List.forall_mem_cons]
     constructor
-    · apply Verification.range16_contains
+    · apply Trace.Proofs.range_contains
       decide
     · simp [Lookup.Contains, permissiveSetup, Table.toRaw]
 

@@ -90,7 +90,8 @@ theorem worker_projection_inputs [Fact p.Prime] {data : RequestTrace p}
     (requests : RequestBinding data before) :
     MemoryInputs data.workerProjection before (workerCells cells) := by
   refine ⟨image_restriction inputs.initialization
-    (fun address => address != (Cell.register 0).addressCode), ?_, requests.clockRoom⟩
+    (fun address => address != (Cell.register 0).addressCode), ?_, requests.clockRoom,
+    fun row member => (requests.clocks row member).2⟩
   exact inputs.distinct.sublist (List.filter_sublist.map Cell.addressCode)
 
 end Airbender.Delegation.Caller.Proofs

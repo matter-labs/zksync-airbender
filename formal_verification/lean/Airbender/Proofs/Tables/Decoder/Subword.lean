@@ -13,7 +13,7 @@ private theorem prefix_checked : fixedTags subwordSetup.prefixTags.blocks.toList
   decide +kernel
 
 private def paddingValues : Vector Nat subwordSetup.width :=
-  Vector.ofFn fun _ => 0
+  Vector.ofFn fun lane => (subwordSetup.padding.columns[lane].get? 0).getD 0
 
 private theorem padding_checked (lane : Fin subwordSetup.width) :
     constantTail paddingValues[lane] 0 subwordSetup.padding.columns[lane].blocks.toList = true := by

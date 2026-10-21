@@ -17,16 +17,16 @@ theorem native_block_frame {p : Nat} {w : Nat → ZMod p}
     (history : SailHistory cells events before after)
     (permutation : events.Perm ((Delegation.Row.mk .blakeG w).memorySteps.map transferEvent))
     (aligned : ∀ cell ∈ cells, cell.Aligned)
-    (tracked : ∀ block : Bool, ∀ word : Fin 16,
-      Cell.ram ((if block then state else message) + BitVec.ofNat 32 (4 * word.val)) ∈ cells)
+    (tracked : ∀ «block» : Bool, ∀ word : Fin 16,
+      Cell.ram ((if «block» then state else message) + BitVec.ofNat 32 (4 * word.val)) ∈ cells)
     (readable : ∀ cell ∈ cells, ∃ value, cell.read before = .ok value before)
-    (block : Bool) (word : Fin 16)
-    (untouched : block = true → ∀ lane : Fin 4,
+    («block» : Bool) (word : Fin 16)
+    (untouched : «block» = true → ∀ lane : Fin 4,
       (Control.step controller).stateOffsets[lane] ≠ word.val) :
-    ramEncoding after ((if block then state else message) + BitVec.ofNat 32 (4 * word.val)) =
-      ramEncoding before ((if block then state else message) + BitVec.ofNat 32 (4 * word.val)) := by
-  let target := Cell.ram ((if block then state else message) + BitVec.ofNat 32 (4 * word.val))
-  have member : target ∈ cells := tracked block word
+    ramEncoding after ((if «block» then state else message) + BitVec.ofNat 32 (4 * word.val)) =
+      ramEncoding before ((if «block» then state else message) + BitVec.ofNat 32 (4 * word.val)) := by
+  let target := Cell.ram ((if «block» then state else message) + BitVec.ofNat 32 (4 * word.val))
+  have member : target ∈ cells := tracked «block» word
   obtain ⟨value, read⟩ := readable target member
   have stateAbsent (lane : Fin 4) :
       (MemoryAddress.indirect importedConstraintsIndirectPorts[lane.val]).code w ≠ target.addressCode := by
@@ -39,12 +39,12 @@ theorem native_block_frame {p : Nat} {w : Nat → ZMod p}
       state + BitVec.ofNat 32 (4 * (Control.step controller).stateOffsets[lane]) := by
       fin_cases lane <;> simp [Addresses.expected, Word.ofBitVec_roundtrip]
     rw [expected] at actual
-    change ((if block then state else message) + BitVec.ofNat 32 (4 * word.val)) =
+    change ((if «block» then state else message) + BitVec.ofNat 32 (4 * word.val)) =
       importedConstraintsIndirectPorts[lane.val].address w at address
     rw [actual] at address
     let selected : Fin 16 := ⟨(Control.step controller).stateOffsets[lane],
       Control.Proofs.state_offsets_bounded controller lane⟩
-    cases block with
+    cases «block» with
     | false =>
       exact aligned_block_words_distinct state message stateAligned messageAligned distinct selected word address.symm
     | true =>

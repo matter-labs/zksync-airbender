@@ -1572,10 +1572,8 @@ theorem copy_then_ram_full_execution [Sail.ArchSem.MemoryPlatform SailRV32.excep
       (memoryData store).machine (memoryBefore store) cells := by
   have effects := UnifiedReduced.Caller.Proofs.mixed_memory_effects (memoryAccepted store) (memoryInputs store)
   obtain ⟨events, finalState, permutation, order, history, _, _, terminal⟩ := effects.execution
-  have ledger : ExternalBoundary.Requests.Binding (memoryData store) := by
-    cases store
-    all_goals change [UnifiedReduced.Caller.request sharedAssignment].Perm [Delegation.Requests.fulfillment worker]
-    all_goals decide +kernel
+  have ledger := ExternalBoundary.Requests.Proofs.native_binding
+    (memoryAccepted store).toRequestChecks effects.requests
   have scopes : ∀ window ∈ ([] : List UnifiedReduced.Caller.HashWindow),
       UnifiedReduced.Caller.ComputedProtocolWindowInputs (memoryData store) [memoryEntry store] window := by simp
   have aligned : ∀ window ∈ ([] : List UnifiedReduced.Caller.HashWindow),

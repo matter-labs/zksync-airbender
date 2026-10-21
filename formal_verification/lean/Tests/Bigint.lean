@@ -51,6 +51,7 @@ theorem zeroAddSatisfies :
   all_goals solve
     | decide
     | (apply Verification.range16_contains; decide)
+    | (apply Trace.Proofs.range_contains; decide)
     | (refine ⟨⟨0, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
     | (refine ⟨⟨262144, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
     | (refine ⟨⟨1310720, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
@@ -133,6 +134,7 @@ theorem equalSatisfies :
   all_goals solve
     | decide
     | (apply Verification.range16_contains; decide)
+    | (apply Trace.Proofs.range_contains; decide)
     | (refine ⟨⟨0, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
     | (refine ⟨⟨262144, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization])
     | (refine ⟨⟨1310720, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization])

@@ -84,7 +84,8 @@ theorem joint_entry_control [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       (cell := .register 12) (by rfl)
     have prefixMemory : Delegation.MemoryInputs (data.prefixProjection lower start) before (Delegation.Caller.workerCells cells) :=
       ⟨initialized.initialization, initialized.distinct,
-        fun row member => (requests.clocks row (List.mem_of_mem_filter member)).2⟩
+        (fun row member => (requests.clocks row (List.mem_of_mem_filter member)).2),
+        fun row member => (requests.clocks row (List.mem_of_mem_filter member)).1.2⟩
     have pool : Blake2G.Proofs.ControlPoolInputs (data.prefixProjection lower start) before (Delegation.Caller.workerCells cells) reduced := by
       refine ⟨prefixMemory.toBoundaryInputs, inputs.tables, ?_, ?_, tracked, inputs.controlStart⟩
       · intro row member

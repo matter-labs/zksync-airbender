@@ -1,3 +1,162 @@
+import Airbender.Proofs.Arithmetic.FieldSliceNormalization
+import Airbender.Proofs.Arithmetic.FieldSlices
+import Airbender.Proofs.BabyBear
+import Airbender.Proofs.Bigint.Addresses
+import Airbender.Proofs.Bigint.Timestamp
+import Airbender.Proofs.Blake2G
+import Airbender.Proofs.Blake2G.Fragment
+import Airbender.Proofs.Blake2G.Frame
+import Airbender.Proofs.Blake2G.FrameCarries
+import Airbender.Proofs.Blake2G.FrameMapping
+import Airbender.Proofs.Blake2G.FrameNormalization
+import Airbender.Proofs.Blake2G.Lookups
+import Airbender.Proofs.Blake2G.Mixing
+import Airbender.Proofs.Blake2G.QueryCarries
+import Airbender.Proofs.Blake2G.SecondHalf
+import Airbender.Proofs.Blake2G.Timestamp
+import Airbender.Proofs.Blake2G.Windows
+import Airbender.Proofs.Blake2Round.Addresses
+import Airbender.Proofs.Blake2Round.Carry7OutputCertificate
+import Airbender.Proofs.Blake2Round.Carry8OutputCertificate
+import Airbender.Proofs.Blake2Round.Carry8OutputPart0
+import Airbender.Proofs.Blake2Round.Carry8OutputPart1
+import Airbender.Proofs.Blake2Round.Carry8OutputPart10
+import Airbender.Proofs.Blake2Round.Carry8OutputPart11
+import Airbender.Proofs.Blake2Round.Carry8OutputPart12
+import Airbender.Proofs.Blake2Round.Carry8OutputPart13
+import Airbender.Proofs.Blake2Round.Carry8OutputPart14
+import Airbender.Proofs.Blake2Round.Carry8OutputPart15
+import Airbender.Proofs.Blake2Round.Carry8OutputPart16
+import Airbender.Proofs.Blake2Round.Carry8OutputPart17
+import Airbender.Proofs.Blake2Round.Carry8OutputPart18
+import Airbender.Proofs.Blake2Round.Carry8OutputPart19
+import Airbender.Proofs.Blake2Round.Carry8OutputPart2
+import Airbender.Proofs.Blake2Round.Carry8OutputPart20
+import Airbender.Proofs.Blake2Round.Carry8OutputPart21
+import Airbender.Proofs.Blake2Round.Carry8OutputPart22
+import Airbender.Proofs.Blake2Round.Carry8OutputPart23
+import Airbender.Proofs.Blake2Round.Carry8OutputPart24
+import Airbender.Proofs.Blake2Round.Carry8OutputPart25
+import Airbender.Proofs.Blake2Round.Carry8OutputPart26
+import Airbender.Proofs.Blake2Round.Carry8OutputPart27
+import Airbender.Proofs.Blake2Round.Carry8OutputPart28
+import Airbender.Proofs.Blake2Round.Carry8OutputPart29
+import Airbender.Proofs.Blake2Round.Carry8OutputPart3
+import Airbender.Proofs.Blake2Round.Carry8OutputPart30
+import Airbender.Proofs.Blake2Round.Carry8OutputPart31
+import Airbender.Proofs.Blake2Round.Carry8OutputPart4
+import Airbender.Proofs.Blake2Round.Carry8OutputPart5
+import Airbender.Proofs.Blake2Round.Carry8OutputPart6
+import Airbender.Proofs.Blake2Round.Carry8OutputPart7
+import Airbender.Proofs.Blake2Round.Carry8OutputPart8
+import Airbender.Proofs.Blake2Round.Carry8OutputPart9
+import Airbender.Proofs.Blake2Round.CombinedOutputCertificate
+import Airbender.Proofs.Blake2Round.Control
+import Airbender.Proofs.Blake2Round.Diagonal
+import Airbender.Proofs.Blake2Round.ExclusiveMask
+import Airbender.Proofs.Blake2Round.FinalWriteback
+import Airbender.Proofs.Blake2Round.FinalXor
+import Airbender.Proofs.Blake2Round.Finalization
+import Airbender.Proofs.Blake2Round.GQueryTable
+import Airbender.Proofs.Blake2Round.ImportedXor
+import Airbender.Proofs.Blake2Round.ImportedXorProjection
+import Airbender.Proofs.Blake2Round.Lookups
+import Airbender.Proofs.Blake2Round.Mixing
+import Airbender.Proofs.Blake2Round.NativeCarryXorFirstKeys
+import Airbender.Proofs.Blake2Round.NativeCarryXorRows
+import Airbender.Proofs.Blake2Round.NativeCarryXorSecondKeys
+import Airbender.Proofs.Blake2Round.NativeCarryXorValues
+import Airbender.Proofs.Blake2Round.NativeColumnFacts
+import Airbender.Proofs.Blake2Round.NativeColumnFlags
+import Airbender.Proofs.Blake2Round.NativeColumnQueries0
+import Airbender.Proofs.Blake2Round.NativeColumnQueries1
+import Airbender.Proofs.Blake2Round.NativeColumnQueries2
+import Airbender.Proofs.Blake2Round.NativeColumnQueries3
+import Airbender.Proofs.Blake2Round.NativeCombinedKeyData
+import Airbender.Proofs.Blake2Round.NativeCombinedKeyShapes
+import Airbender.Proofs.Blake2Round.NativeCombinedSecondKeyPart0
+import Airbender.Proofs.Blake2Round.NativeCombinedSecondKeyPart1
+import Airbender.Proofs.Blake2Round.NativeCombinedSecondKeyPart2
+import Airbender.Proofs.Blake2Round.NativeCombinedSecondKeyPart3
+import Airbender.Proofs.Blake2Round.NativeCombinedSecondKeyPart4
+import Airbender.Proofs.Blake2Round.NativeCombinedSecondKeyPart5
+import Airbender.Proofs.Blake2Round.NativeCombinedSecondKeyPart6
+import Airbender.Proofs.Blake2Round.NativeCombinedSecondKeyPart7
+import Airbender.Proofs.Blake2Round.NativeCombinedTemplateValues
+import Airbender.Proofs.Blake2Round.NativeCombinedThirdKeyCertificate
+import Airbender.Proofs.Blake2Round.NativeCombinedTransfer
+import Airbender.Proofs.Blake2Round.NativeCombinedXorKeys
+import Airbender.Proofs.Blake2Round.NativeCombinedXorRows
+import Airbender.Proofs.Blake2Round.NativeDiagonalFacts
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries0
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries0Part0
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries0Part1
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries0Part2
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries0Part3
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries0Part4
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries0Part5
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries1
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries1Part0
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries1Part1
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries1Part2
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries1Part3
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries1Part4
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries1Part5
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries2
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries2Part0
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries2Part1
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries2Part2
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries2Part3
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries2Part4
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries2Part5
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries3
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries3Part0
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries3Part1
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries3Part2
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries3Part3
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries3Part4
+import Airbender.Proofs.Blake2Round.NativeDiagonalQueries3Part5
+import Airbender.Proofs.Blake2Round.NativeFinalACQueries0
+import Airbender.Proofs.Blake2Round.NativeFinalACQueries1
+import Airbender.Proofs.Blake2Round.NativeFinalBDQueries0
+import Airbender.Proofs.Blake2Round.NativeFinalBDQueries1
+import Airbender.Proofs.Blake2Round.NativeFinalGates
+import Airbender.Proofs.Blake2Round.NativeFinalQueries
+import Airbender.Proofs.Blake2Round.NativeFinalQueryBase
+import Airbender.Proofs.Blake2Round.NativeMembership
+import Airbender.Proofs.Blake2Round.NativeMixingMappings
+import Airbender.Proofs.Blake2Round.NativePlainXorKeys
+import Airbender.Proofs.Blake2Round.NativePlainXorRows
+import Airbender.Proofs.Blake2Round.NativeWriteback
+import Airbender.Proofs.Blake2Round.NativeWritebackPart0
+import Airbender.Proofs.Blake2Round.NativeWritebackPart1
+import Airbender.Proofs.Blake2Round.NativeWritebackPart2
+import Airbender.Proofs.Blake2Round.NativeWritebackPart3
+import Airbender.Proofs.Blake2Round.NativeXorCast
+import Airbender.Proofs.Blake2Round.NativeXorKeyHelpers
+import Airbender.Proofs.Blake2Round.NativeXorPadding
+import Airbender.Proofs.Blake2Round.NativeXorRowReads
+import Airbender.Proofs.Blake2Round.NativeXorTransfer
+import Airbender.Proofs.Blake2Round.PhaseProjection
+import Airbender.Proofs.Blake2Round.Preparation
+import Airbender.Proofs.Blake2Round.Row
+import Airbender.Proofs.Blake2Round.Schedule
+import Airbender.Proofs.Blake2Round.Soundness
+import Airbender.Proofs.Blake2Round.Timestamp
+import Airbender.Proofs.Delegation.BoundaryInputs
+import Airbender.Proofs.Delegation.Memory
+import Airbender.Proofs.Delegation.NativeInvocation
+import Airbender.Proofs.Delegation.NativeSegments
+import Airbender.Proofs.Delegation.RequestEffects
+import Airbender.Proofs.Delegation.RequestTrace
+import Airbender.Proofs.Delegation.WorkerProjection
+import Airbender.Proofs.ExternalBoundary.NativeRequests
+import Airbender.Proofs.ExternalBoundary.Requests
+import Airbender.Proofs.Keccak.Controls
+import Airbender.Proofs.Keccak.Timestamp
+import Airbender.Proofs.UnifiedReduced.FullExecution
+import Airbender.Proofs.UnifiedReduced.MixedWindowProjection
+import Airbender.Proofs.UnifiedReduced.WorkerProjection
 import Airbender.Proofs.Initialization.Boundary
 import Airbender.Proofs.Initialization.Geometry
 import Airbender.Proofs.Initialization.Native
@@ -1622,7 +1781,6 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationZeroInvocation.active_zero_invocation
 #print axioms Tests.DelegationZeroInvocation.no_caller_virtual_matching
 #print axioms Tests.DelegationZeroInvocation.native_soundness
-#print axioms Tests.DelegationZeroInvocation.native_operation_execution
 #print axioms Airbender.Blake2G.Proofs.word_port_address
 #print axioms Airbender.Blake2G.Proofs.native_addresses
 #print axioms Airbender.Blake2G.Proofs.native_word_observations
@@ -1856,8 +2014,6 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Delegation.Caller.Proofs.shared_word_bounds
 #print axioms Airbender.Delegation.Caller.Proofs.shared_operation_effects
 
-#print axioms Tests.DelegationZeroInvocation.shared_unissued_worker_accepted
-#print axioms Tests.DelegationZeroInvocation.shared_unissued_control_update
 
 #print axioms Airbender.Trace.Proofs.image_restriction
 #print axioms Airbender.Delegation.Caller.Proofs.worker_projection_accepted
@@ -1954,8 +2110,6 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationMixedMemory.actual_terminal_control
 #print axioms Tests.DelegationMixedMemory.fabricated_read_locally_satisfies
 #print axioms Tests.DelegationMixedMemory.fabricated_read_breaks_joint_matching
-#print axioms Tests.DelegationZeroInvocation.mixed_unissued_worker_accepted
-#print axioms Tests.DelegationZeroInvocation.mixed_unissued_control_update
 
 #print axioms Airbender.Trace.Proofs.state_path_checks
 #print axioms Airbender.Trace.Proofs.state_clocks_unique
@@ -1972,7 +2126,6 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Delegation.Caller.worker_schedule_soundness
 #print axioms Tests.DelegationMixedMemory.issued_worker_schedule
 #print axioms Tests.DelegationMixedMemory.copy_call_native_slot
-#print axioms Tests.DelegationZeroInvocation.zero_worker_has_no_scheduled_caller
 
 #print axioms Airbender.UnifiedReduced.Caller.programImage
 #print axioms Airbender.UnifiedReduced.Caller.decoderTable
@@ -2319,7 +2472,6 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationRequestTrace.native_request_window_family
 #print axioms Tests.DelegationRequestTrace.native_request_outside_cuts
 #print axioms Tests.DelegationRequestTrace.unaligned_request_cut_rejected
-#print axioms Tests.DelegationZeroInvocation.zero_worker_retained_before_request_window
 #print axioms Tests.UnifiedDelegation.issued_copy_window
 #print axioms Tests.UnifiedDelegation.issued_copy_window_count
 #print axioms Airbender.Delegation.Proofs.transfer_boundary_image
@@ -2441,7 +2593,6 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.native_chain_reaches_both_controls
 #print axioms Tests.ControlPreparation.empty_chain_gap_keeps_same_state
 #print axioms Tests.ControlPreparation.fabricated_chain_gap_state_rejected
-#print axioms Tests.DelegationZeroInvocation.chain_retains_unissued_prefix_effect
 #print axioms Tests.ControlPreparation.keccak_control_is_reset
 #print axioms Tests.ControlPreparation.keccak_initial_control_is_different
 #print axioms Tests.ControlPreparation.incomplete_prepared_g_span_rejected
@@ -2482,11 +2633,6 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.prepared_round_cycles_soundness
 #print axioms Tests.UnifiedDelegation.copy_then_ram_caller_cycles
 #print axioms Tests.UnifiedDelegation.issued_bigint_abi_gap_caller_cycles
-#print axioms Tests.DelegationZeroInvocation.unified_unissued_worker_caller_cycles
-#print axioms Tests.DelegationZeroInvocation.unified_unissued_control_update
-#print axioms Tests.DelegationZeroInvocation.control_preparation_after_unissued_worker
-#print axioms Tests.DelegationZeroInvocation.preparation_reads_unissued_control_update
-#print axioms Tests.DelegationZeroInvocation.fabricated_preparation_read_rejected
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_worker_family
 
 #print axioms Airbender.JumpBranchSlt.trace_soundness
@@ -2521,7 +2667,6 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.native_sequence_reaches_successive_controls
 #print axioms Tests.ControlPreparation.empty_native_sequence_retains_initialized_prefix
 #print axioms Tests.ControlPreparation.overlapping_or_unaligned_sequences_rejected
-#print axioms Tests.DelegationZeroInvocation.sequence_retains_unissued_prefix_effect
 
 #print axioms Airbender.UnifiedReduced.Caller.RoundRegion
 #print axioms Airbender.UnifiedReduced.Caller.RoundRegionInputs
@@ -2537,7 +2682,6 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.round_region_seed_retains_preparation_timestamp
 #print axioms Tests.ControlPreparation.round_region_wrong_flags_rejected
 #print axioms Tests.ControlPreparation.prepared_round_region_two_bits_rejected
-#print axioms Tests.DelegationZeroInvocation.prepared_regions_retain_unissued_prefix_effect
 
 #print axioms Airbender.UnifiedReduced.Caller.ArithmeticInstruction
 #print axioms Airbender.UnifiedReduced.Caller.ArithmeticProgram
@@ -2591,7 +2735,6 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedComparison.wrapped_program_empty_region_at_pc_zero
 #print axioms Tests.UnifiedComparison.wrapped_program_region_excludes_reset_at_zero
 #print axioms Tests.ControlPreparation.wrapped_program_round_region_retains_empty_prepared_cut
-#print axioms Tests.DelegationZeroInvocation.wrapped_program_regions_admit_unissued_worker
 #print axioms Tests.UnifiedComparison.comparison_wrap_and_reset_accepted
 #print axioms Tests.UnifiedComparison.wrapped_native_addresses_derived
 #print axioms Tests.UnifiedComparison.wrapped_preparation_derives_reset_control
@@ -2630,7 +2773,6 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.program_round_bad_cuts_rejected
 #print axioms Tests.ControlPreparation.program_round_region_two_bits_rejected
 #print axioms Tests.UnifiedDelegation.program_round_region_wrong_family_rejected
-#print axioms Tests.DelegationZeroInvocation.program_regions_admit_unissued_worker
 
 #print axioms Airbender.UnifiedReduced.Caller.ProgramRoundCallerCoverage
 #print axioms Airbender.UnifiedReduced.Caller.RoundWorkerCoverage
@@ -2641,7 +2783,6 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.program_round_global_coverage_boundary_soundness
 #print axioms Tests.ControlPreparation.public_round_empty_cut_has_exact_coverage
 #print axioms Tests.UnifiedDelegation.public_round_csr_requires_a_covering_region
-#print axioms Tests.DelegationZeroInvocation.public_round_coverage_retains_unissued_g
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.program_round_live_masks
 #print axioms Airbender.UnifiedReduced.Caller.program_round_live_masks_soundness
 #print axioms Tests.ControlPreparation.public_round_live_masks_reject_two_bits
@@ -2657,7 +2798,6 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedComparison.wrapped_native_clock_interval_derived
 #print axioms Tests.UnifiedDelegation.wrapped_public_round_csr_requires_a_covering_occurrence
 #print axioms Tests.UnifiedDelegation.wrapped_round_csr_recurrence_requires_both_occurrences
-#print axioms Tests.DelegationZeroInvocation.wrapped_public_round_coverage_retains_unissued_g
 #print axioms Tests.ControlPreparation.wrapped_public_round_empty_cut_has_exact_coverage
 #print axioms Tests.ControlPreparation.wrapped_public_round_live_masks_reject_two_bits
 
@@ -2669,9 +2809,6 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.unissued_round_initial_control
 #print axioms Airbender.UnifiedReduced.Caller.unissued_worker_reads_soundness
 #print axioms Airbender.UnifiedReduced.Caller.unissued_round_control_soundness
-#print axioms Tests.DelegationZeroInvocation.unified_unissued_reads_public_initialization
-#print axioms Tests.DelegationZeroInvocation.prepared_unissued_reads_public_initialization
-#print axioms Tests.DelegationZeroInvocation.prepared_unissued_write_floor
 #print axioms Tests.Blake2Round.zero_control_has_no_exclusive_mask
 #print axioms Tests.Blake2Round.multibit_control_has_no_exclusive_mask
 #print axioms Tests.ControlPreparation.unissued_round_zero_seed_has_no_mask
@@ -2679,11 +2816,6 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.WorkerInvocationUniqueness
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.worker_invocation_uniqueness
 #print axioms Airbender.UnifiedReduced.Caller.worker_invocation_uniqueness_soundness
-#print axioms Tests.DelegationZeroInvocation.unified_worker_invocations_include_zero
-#print axioms Tests.DelegationZeroInvocation.prepared_worker_invocations_include_zero
-#print axioms Tests.DelegationZeroInvocation.unissued_worker_bound_is_sharp
-#print axioms Tests.DelegationZeroInvocation.duplicate_unissued_request_checks
-#print axioms Tests.DelegationZeroInvocation.duplicate_unissued_workers_rejected
 #print axioms Tests.UnifiedDelegation.copy_worker_invocation_uniqueness
 #print axioms Tests.UnifiedDelegation.invalid_bigint_worker_invocation_uniqueness
 
@@ -2694,20 +2826,12 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.all_worker_execution
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_worker_execution_effects
 #print axioms Airbender.UnifiedReduced.Caller.all_worker_execution_soundness
-#print axioms Tests.DelegationZeroInvocation.unified_all_worker_execution
-#print axioms Tests.DelegationZeroInvocation.prepared_all_worker_execution
-#print axioms Tests.DelegationZeroInvocation.prepared_unissued_clock_group
-#print axioms Tests.DelegationZeroInvocation.prepared_unissued_prefix_states
 #print axioms Tests.UnifiedDelegation.copy_all_worker_execution
 #print axioms Tests.UnifiedDelegation.invalid_bigint_all_worker_execution
 
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.native_cycle_execution
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.native_caller_cycles
 #print axioms Airbender.UnifiedReduced.Caller.native_caller_cycles_soundness
-#print axioms Tests.DelegationZeroInvocation.zero_initial_clock_unissued_accepted
-#print axioms Tests.DelegationZeroInvocation.zero_initial_clock_caller_cycles
-#print axioms Tests.DelegationZeroInvocation.zero_initial_clock_unissued_prefix
-#print axioms Tests.DelegationZeroInvocation.prepared_native_cycle_states
 #print axioms Tests.UnifiedDelegation.invalid_bigint_native_caller_cycles
 #print axioms Tests.UnifiedDelegation.memory_native_caller_cycles
 
@@ -2766,9 +2890,6 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.auipc_public_region_including_preparation_rejected
 #print axioms Tests.ControlPreparation.auipc_public_incomplete_hash_span_rejected
 #print axioms Tests.ControlPreparation.auipc_public_hash_span_past_terminal_rejected
-#print axioms Tests.DelegationZeroInvocation.computed_public_region_retains_unissued_worker
-#print axioms Tests.DelegationZeroInvocation.computed_hash_source_retains_unissued_worker
-#print axioms Tests.DelegationZeroInvocation.computed_hash_preparation_retains_unissued_effect
 
 #print axioms Airbender.UnifiedReduced.Caller.ComputedRoundRegionInputs
 #print axioms Airbender.UnifiedReduced.Caller.WrappedProgramComputedRoundRegionInputs
@@ -2789,7 +2910,6 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.auipc_round_public_bad_cuts_rejected
 #print axioms Tests.ControlPreparation.auipc_round_global_memory
 #print axioms Tests.ControlPreparation.computed_round_region_two_bits_rejected
-#print axioms Tests.DelegationZeroInvocation.computed_protocol_retains_unissued_g
 
 #print axioms Airbender.UnifiedReduced.Caller.ComputedProtocolWindowInputs
 #print axioms Airbender.UnifiedReduced.Caller.WrappedProgramComputedPreparedProtocolInputs
@@ -2812,7 +2932,6 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.auipc_round_incomplete_protocol_reference_rejected
 #print axioms Tests.ControlPreparation.auipc_round_public_incomplete_protocol_reference_rejected
 #print axioms Tests.ControlPreparation.auipc_round_public_protocol_reference_past_terminal_rejected
-#print axioms Tests.DelegationZeroInvocation.computed_public_protocol_retains_unissued_g
 
 #print axioms Airbender.UnifiedReduced.Caller.registerImmediateValue
 #print axioms Airbender.UnifiedReduced.Caller.RegisterImmediatePreparation
@@ -2828,8 +2947,6 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.register_addi_actual_states
 #print axioms Tests.ControlPreparation.register_addi_wrong_immediate_rejected
 #print axioms Tests.ControlPreparation.register_addi_fabricated_source_rejected
-#print axioms Tests.DelegationZeroInvocation.register_preparation_retains_unissued_effect
-#print axioms Tests.DelegationZeroInvocation.register_preparation_uses_actual_unissued_operand
 
 #print axioms Airbender.UnifiedReduced.Caller.LiteralAddiPreparation
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.register_immediate_preparation_entry
@@ -2846,8 +2963,6 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.literal_addi_incomplete_reference_rejected
 #print axioms Tests.ControlPreparation.literal_addi_wrong_immediate_rejected
 #print axioms Tests.ControlPreparation.literal_addi_fabricated_source_rejected
-#print axioms Tests.DelegationZeroInvocation.literal_addi_protocol_retains_unissued_g
-#print axioms Tests.DelegationZeroInvocation.literal_addi_retains_actual_unissued_prefix
 
 #print axioms Airbender.UnifiedReduced.Caller.PublicRegisterPreparation
 #print axioms Airbender.UnifiedReduced.Caller.RegisterChainPreparedBoundaryExecution
@@ -2869,8 +2984,6 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.public_register_chain_wrong_immediate_rejected
 #print axioms Tests.ControlPreparation.public_register_chain_fabricated_middle_rejected
 #print axioms Tests.ControlPreparation.auipc_public_register_chain_preparation
-#print axioms Tests.DelegationZeroInvocation.register_chain_protocol_retains_unissued_g
-#print axioms Tests.DelegationZeroInvocation.register_chain_retains_actual_unissued_prefix
 
 #print axioms Airbender.UnifiedReduced.Caller.PublicRegisterDataflow
 #print axioms Airbender.UnifiedReduced.Caller.RegisterDataflowBoundaryExecution
@@ -2895,8 +3008,6 @@ import Clean.Specs.Keccak256
 #print axioms Tests.ControlPreparation.public_dataflow_incomplete_reference_rejected
 #print axioms Tests.ControlPreparation.public_dataflow_fabricated_fresh_source_rejected
 #print axioms Tests.ControlPreparation.public_dataflow_fabricated_fresh_source_native
-#print axioms Tests.DelegationZeroInvocation.register_dataflow_protocol_retains_unissued_g
-#print axioms Tests.DelegationZeroInvocation.register_dataflow_retains_actual_unissued_prefix
 
 #print axioms Airbender.UnifiedReduced.Caller.ArithmeticRegisterWrite
 #print axioms Airbender.UnifiedReduced.Caller.ArithmeticFramePreparation
@@ -3043,9 +3154,6 @@ import Clean.Specs.Keccak256
 
 #print axioms Airbender.UnifiedReduced.Caller.hash_segmentation_soundness
 #print axioms Airbender.UnifiedReduced.Caller.segmented_hash_sequence_soundness
-#print axioms Tests.DelegationZeroInvocation.unified_unissued_hash_partition
-#print axioms Tests.DelegationZeroInvocation.unified_hash_partition_retains_unissued_effect
-#print axioms Tests.DelegationZeroInvocation.unified_hash_partition_is_not_all_workers
 #print axioms Tests.DelegationZeroInvocation.issued_hash_worker_covered
 #print axioms Tests.DelegationZeroInvocation.issued_hash_missing_window_rejected
 #print axioms Tests.DelegationZeroInvocation.issued_hash_partial_protocol_rejected
@@ -3079,7 +3187,6 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_cycle_effects_at
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_cycle_effects
 #print axioms Airbender.UnifiedReduced.Caller.mixed_cycle_soundness
-#print axioms Tests.DelegationZeroInvocation.unissued_hash_mixed_cycles
 #print axioms Tests.UnifiedDelegation.copy_then_ram_mixed_cycles
 #print axioms Tests.UnifiedDelegation.invalid_bigint_mixed_cycles
 #print axioms Airbender.UnifiedReduced.Caller.RetirementProfile
@@ -3148,7 +3255,6 @@ import Clean.Specs.Keccak256
 #print axioms Tests.PaddingBoundary.nonboolean_selector_rejected
 #print axioms Tests.PaddingBoundary.inactive_cannot_justify_terminal_change
 #print axioms Tests.TraceExecution.padded_dependent_trace
-#print axioms Tests.DelegationZeroInvocation.unissued_worker_padding_boundary
 #print axioms Tests.DelegationZeroInvocation.unissued_worker_survives_padding
 #print axioms Tests.UnifiedDelegation.invalid_bigint_padding_boundary
 #print axioms Airbender.Trace.padded_sail_soundness
@@ -4284,3 +4390,228 @@ import Clean.Specs.Keccak256
 #print axioms Tests.Initialization.standalone_noncanonical_accepted
 #print axioms Tests.Initialization.unified_noncanonical_accepted
 #print axioms Tests.Initialization.unit_accepted
+
+#print axioms Airbender.Arithmetic.carryLow_as_value
+#print axioms Airbender.Arithmetic.carry_flags
+#print axioms Airbender.Arithmetic.carry_recompose
+#print axioms Airbender.Arithmetic.combinedLow_as_value
+#print axioms Airbender.Arithmetic.combined_recompose
+#print axioms Airbender.Blake2G.Proofs.Frame.Certificate.holds
+#print axioms Airbender.Blake2G.Proofs.Frame.Certificate.soundness
+#print axioms Airbender.Blake2G.Proofs.Frame.assignment_eq_normalized
+#print axioms Airbender.Blake2G.Proofs.Frame.flags_from_queries
+#print axioms Airbender.Blake2G.Proofs.Frame.flags_of_bounds
+#print axioms Airbender.Blake2G.Proofs.Frame.mapping
+#print axioms Airbender.Blake2G.Proofs.boolean_of_value_le_one
+#print axioms Airbender.Blake2G.Proofs.data_lookups_of_queries
+#print axioms Airbender.Blake2G.Proofs.first_byte_splits_of_queries
+#print axioms Airbender.Blake2G.Proofs.first_middle_splits_of_queries
+#print axioms Airbender.Blake2G.Proofs.first_rotation12_of_queries
+#print axioms Airbender.Blake2G.Proofs.first_rotation_of_queries
+#print axioms Airbender.Blake2G.Proofs.query_holds_of_holds
+#print axioms Airbender.Blake2G.Proofs.second_byte_splits_of_queries
+#print axioms Airbender.Blake2G.Proofs.second_c_carries_of_queries
+#print axioms Airbender.Blake2G.Proofs.second_c_splits_of_queries
+#print axioms Airbender.Blake2G.Proofs.second_rotation7_of_queries
+#print axioms Airbender.Blake2G.Proofs.second_rotation_of_queries
+#print axioms Airbender.Blake2G.Proofs.two_input_carry_bound
+#print axioms Airbender.Blake2G.constraint_count
+#print axioms Airbender.Blake2G.lookup_count
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent0
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent1
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent10
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent11
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent12
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent13
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent14
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent15
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent16
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent17
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent18
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent19
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent2
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent20
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent21
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent22
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent23
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent24
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent25
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent26
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent27
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent28
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent29
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent3
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent30
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent31
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent4
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent5
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent6
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent7
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent8
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.extent9
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part0
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part1
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part10
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part11
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part12
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part13
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part14
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part15
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part16
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part17
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part18
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part19
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part2
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part20
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part21
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part22
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part23
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part24
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part25
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part26
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part27
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part28
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part29
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part3
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part30
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part31
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part4
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part5
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part6
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part7
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part8
+#print axioms Airbender.Blake2Round.Proofs.Carry8Certificate.output_part9
+#print axioms Airbender.Blake2Round.Proofs.CombinedKeyData.second_size
+#print axioms Airbender.Blake2Round.Proofs.CombinedKeyData.third_size
+#print axioms Airbender.Blake2Round.Proofs.NativeXorKeyHelpers.affine_constant_get
+#print axioms Airbender.Blake2Round.Proofs.NativeXorKeyHelpers.dense_affine_get
+#print axioms Airbender.Blake2Round.Proofs.NativeXorKeyHelpers.dense_range_get
+#print axioms Airbender.Blake2Round.Proofs.NativeXorKeyHelpers.periodic_constant_get
+#print axioms Airbender.Blake2Round.Proofs.NativeXorKeyHelpers.periodic_cyclic_get
+#print axioms Airbender.Blake2Round.Proofs.NativeXorKeyHelpers.periodic_range_get
+#print axioms Airbender.Blake2Round.Proofs.any_region
+#print axioms Airbender.Blake2Round.Proofs.carry7_output_checks
+#print axioms Airbender.Blake2Round.Proofs.carry8_output_checks
+#print axioms Airbender.Blake2Round.Proofs.carry_first_get
+#print axioms Airbender.Blake2Round.Proofs.carry_membership
+#print axioms Airbender.Blake2Round.Proofs.carry_padding_get
+#print axioms Airbender.Blake2Round.Proofs.carry_region_reference
+#print axioms Airbender.Blake2Round.Proofs.carry_second_get
+#print axioms Airbender.Blake2Round.Proofs.carry_value_bound
+#print axioms Airbender.Blake2Round.Proofs.carry_value_get
+#print axioms Airbender.Blake2Round.Proofs.combined_high_membership
+#print axioms Airbender.Blake2Round.Proofs.combined_key0_shape
+#print axioms Airbender.Blake2Round.Proofs.combined_key1_shape
+#print axioms Airbender.Blake2Round.Proofs.combined_key2_shape
+#print axioms Airbender.Blake2Round.Proofs.combined_key3_shape
+#print axioms Airbender.Blake2Round.Proofs.combined_keys_get
+#print axioms Airbender.Blake2Round.Proofs.combined_low_membership
+#print axioms Airbender.Blake2Round.Proofs.combined_output_checks
+#print axioms Airbender.Blake2Round.Proofs.combined_output_slices
+#print axioms Airbender.Blake2Round.Proofs.combined_region_reference
+#print axioms Airbender.Blake2Round.Proofs.combined_second_optional
+#print axioms Airbender.Blake2Round.Proofs.combined_third_optional
+#print axioms Airbender.Blake2Round.Proofs.combined_third_template
+#print axioms Airbender.Blake2Round.Proofs.g_xor_membership
+#print axioms Airbender.Blake2Round.Proofs.g_xor_row
+#print axioms Airbender.Blake2Round.Proofs.native_ac_queries_0
+#print axioms Airbender.Blake2Round.Proofs.native_ac_queries_1
+#print axioms Airbender.Blake2Round.Proofs.native_ac_queries_2
+#print axioms Airbender.Blake2Round.Proofs.native_ac_queries_3
+#print axioms Airbender.Blake2Round.Proofs.native_ac_queries_4
+#print axioms Airbender.Blake2Round.Proofs.native_ac_queries_5
+#print axioms Airbender.Blake2Round.Proofs.native_ac_queries_6
+#print axioms Airbender.Blake2Round.Proofs.native_ac_queries_7
+#print axioms Airbender.Blake2Round.Proofs.native_bd_queries_0
+#print axioms Airbender.Blake2Round.Proofs.native_bd_queries_1
+#print axioms Airbender.Blake2Round.Proofs.native_bd_queries_2
+#print axioms Airbender.Blake2Round.Proofs.native_bd_queries_3
+#print axioms Airbender.Blake2Round.Proofs.native_bd_queries_4
+#print axioms Airbender.Blake2Round.Proofs.native_bd_queries_5
+#print axioms Airbender.Blake2Round.Proofs.native_bd_queries_6
+#print axioms Airbender.Blake2Round.Proofs.native_bd_queries_7
+#print axioms Airbender.Blake2Round.Proofs.native_column_carries
+#print axioms Airbender.Blake2Round.Proofs.native_column_flags
+#print axioms Airbender.Blake2Round.Proofs.native_column_flags_complete
+#print axioms Airbender.Blake2Round.Proofs.native_column_frame_input
+#print axioms Airbender.Blake2Round.Proofs.native_column_mapping
+#print axioms Airbender.Blake2Round.Proofs.native_column_queries_0
+#print axioms Airbender.Blake2Round.Proofs.native_column_queries_1
+#print axioms Airbender.Blake2Round.Proofs.native_column_queries_2
+#print axioms Airbender.Blake2Round.Proofs.native_column_queries_3
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_addition_carries
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_first_c_flags
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_flags_complete
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_frame_input
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_last_c_bounds
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_mapping
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_0
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_0_part_0
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_0_part_1
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_0_part_2
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_0_part_3
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_0_part_4
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_0_part_5
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_1
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_1_part_0
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_1_part_1
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_1_part_2
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_1_part_3
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_1_part_4
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_1_part_5
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_2
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_2_part_0
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_2_part_1
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_2_part_2
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_2_part_3
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_2_part_4
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_2_part_5
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_3
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_3_part_0
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_3_part_1
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_3_part_2
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_3_part_3
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_3_part_4
+#print axioms Airbender.Blake2Round.Proofs.native_diagonal_queries_3_part_5
+#print axioms Airbender.Blake2Round.Proofs.native_final_active_write
+#print axioms Airbender.Blake2Round.Proofs.native_final_flag
+#print axioms Airbender.Blake2Round.Proofs.native_final_mux
+#print axioms Airbender.Blake2Round.Proofs.native_tag_get
+#print axioms Airbender.Blake2Round.Proofs.native_writeback_part_0
+#print axioms Airbender.Blake2Round.Proofs.native_writeback_part_1
+#print axioms Airbender.Blake2Round.Proofs.native_writeback_part_2
+#print axioms Airbender.Blake2Round.Proofs.native_writeback_part_3
+#print axioms Airbender.Blake2Round.Proofs.phase_update_initial_irrelevant
+#print axioms Airbender.Blake2Round.Proofs.plain_membership
+#print axioms Airbender.Blake2Round.Proofs.plain_padding_get
+#print axioms Airbender.Blake2Round.Proofs.plain_region_reference
+#print axioms Airbender.Blake2Round.Proofs.plain_second_get
+#print axioms Airbender.Blake2Round.Proofs.plain_xor_region_projection
+#print axioms Airbender.Blake2Round.Proofs.region_tag
+#print axioms Airbender.Blake2Round.Proofs.row_from_entries
+#print axioms Airbender.Blake2Round.Proofs.second_template_0
+#print axioms Airbender.Blake2Round.Proofs.second_template_1
+#print axioms Airbender.Blake2Round.Proofs.second_template_2
+#print axioms Airbender.Blake2Round.Proofs.second_template_3
+#print axioms Airbender.Blake2Round.Proofs.second_template_4
+#print axioms Airbender.Blake2Round.Proofs.second_template_5
+#print axioms Airbender.Blake2Round.Proofs.second_template_6
+#print axioms Airbender.Blake2Round.Proofs.second_template_7
+#print axioms Airbender.Blake2Round.Proofs.selected_region
+#print axioms Airbender.Blake2Round.Proofs.xorRegionRow_read
+#print axioms Airbender.Delegation.Proofs.BoundaryInputs.invocation
+#print axioms Airbender.Delegation.Proofs.active_invocation_live
+#print axioms Airbender.Delegation.Proofs.clock_member
+#print axioms Airbender.Delegation.Proofs.memory_soundness
+#print axioms Airbender.ExternalBoundary.Requests.Proofs.native_binding
+#print axioms Airbender.babyBear_eq_of_natCast_zero
+#print axioms Tests.BigintAbi.abiRowsSatisfy
+#print axioms Tests.BigintMemory.accepted
+#print axioms Tests.BigintMemory.core
+#print axioms Tests.BigintMemory.initialized
+#print axioms Tests.BigintMemory.inputs
+#print axioms Tests.DelegationMemory.inputs
+#print axioms Tests.DelegationZeroInvocation.active_zero_invocation_rejected
+#print axioms Tests.DelegationZeroInvocation.historical_core_accepted
+#print axioms Tests.DelegationZeroInvocation.historical_memory_tokens_match
+#print axioms Tests.DelegationZeroInvocation.unissued_worker_rejected

@@ -1,54 +1,69 @@
 import Airbender.Review.Circuits.Blake2Round.Tables.Setup
-import Airbender.Proofs.Blake2G.ImportedXor
+import Airbender.Proofs.Blake2Round.NativeXorRows
 
-namespace Airbender.Blake2Round.Proofs
+namespace Airbender.Blake2Round
+
+/- Mathematical characterizations only; Review contents come from imported data. -/
+def plainXorRow (base tag n : Nat) : Vector Nat 6 :=
+  let a := n / base
+  let b := n % base
+  #v[a, b, a ^^^ b, 0, 0, tag]
+
+def carryXorRow (base tag n : Nat) : Vector Nat 6 :=
+  let a := n / base % base
+  let b := n % base
+  #v[a, b, n / (base * base), a ^^^ b, 0, tag]
+
+def combinedXorRow (n : Nat) : Vector Nat 6 :=
+  #v[n / 1024, n / 128 % 8, n / 8 % 16, n % 8,
+    (n / 1024 ^^^ n / 8 % 16) + 16 * (n / 128 % 8 ^^^ n % 8), 57]
+
+def referenceSetupRow (index : Fin 606208) : Vector Nat 6 :=
+  let n := index.val
+  if n < xor8DataRegion.offset + xor8DataRegion.length then plainXorRow 256 4 n
+  else if n < xor7DataRegion.offset + xor7DataRegion.length then
+    plainXorRow 128 19 (n - xor7DataRegion.offset)
+  else if n < xor9DataRegion.offset + xor9DataRegion.length then
+    plainXorRow 512 20 (n - xor9DataRegion.offset)
+  else if n < xor8CarryDataRegion.offset + xor8CarryDataRegion.length then
+    carryXorRow 256 55 (n - xor8CarryDataRegion.offset)
+  else if n < xor7CarryDataRegion.offset + xor7CarryDataRegion.length then
+    carryXorRow 128 56 (n - xor7CarryDataRegion.offset)
+  else combinedXorRow (n - xor4x3DataRegion.offset)
+
+namespace Proofs
 open Airbender.Setup
 set_option warningAsError true
+set_option Elab.async false
 set_option maxRecDepth 131072
 set_option maxHeartbeats 4000000
 
-/-- The round artifact's own four columns equal the corresponding G columns.
-    This is structural equality of independently imported native data. -/
-theorem xor_region_projection (kind : Fin 5) (n : Nat) :
-    xorRegionRow kind n =
-      let row := Blake2G.xorRegionRow kind n
-      #v[row[0], row[1], row[2], row[8]] := by
-  fin_cases kind <;> apply Vector.ext
-  all_goals intro j hj
-  all_goals interval_cases j
-  all_goals simp only [xorRegionRow, Blake2G.xorRegionRow, Vector.getElem_map,
-    Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ]
-  all_goals rfl
-
-/-- Recover the shared mathematical XOR characterization from this circuit's
-    actual setup artifact, without assuming a cross-artifact equivalence. -/
-theorem setup_row_characterization (index : Fin 344384) :
-    setupRow index =
-      let row := Blake2G.referenceSetupRow (fun _ => Vector.replicate 7 0)
-        ⟨index.val, by have bound := index.isLt; omega⟩
-      #v[row[0], row[1], row[2], row[8]] := by
+/-- All physical imported rows have the checked native mathematical meaning. -/
+theorem setup_row_characterization (index : Fin 606208) :
+    setupRow index = referenceSetupRow index := by
   have bound := index.isLt
-  unfold setupRow Blake2G.referenceSetupRow
-  dsimp only [xor8DataRegion, xor3DataRegion, xor4DataRegion, xor7DataRegion, xor9DataRegion]
+  unfold setupRow referenceSetupRow
+  dsimp only [xor8DataRegion, xor7DataRegion, xor9DataRegion,
+    xor8CarryDataRegion, xor7CarryDataRegion, xor4x3DataRegion]
   split_ifs
   all_goals first
-    | { rw [xor_region_projection, Blake2G.Proofs.xor_region_reference _ _ (by
-          change _ < 65536; omega)]; rfl }
-    | { rw [xor_region_projection, Blake2G.Proofs.xor_region_reference _ _ (by
-          change _ < 64; omega)]; rfl }
-    | { rw [xor_region_projection, Blake2G.Proofs.xor_region_reference _ _ (by
-          change _ < 256; omega)]; rfl }
-    | { rw [xor_region_projection, Blake2G.Proofs.xor_region_reference _ _ (by
-          change _ < 16384; omega)]; rfl }
-    | { rw [xor_region_projection, Blake2G.Proofs.xor_region_reference _ _ (by
-          change _ < 262144; omega)]; rfl }
+    | exact plain_region_reference 0 _ (by change _ < 65536; omega)
+    | exact plain_region_reference 1 _ (by change _ < 16384; omega)
+    | exact plain_region_reference 2 _ (by change _ < 262144; omega)
+    | exact carry_region_reference 0 _ (by change _ < 196608; omega)
+    | exact carry_region_reference 1 _ (by change _ < 49152; omega)
+    | exact combined_region_reference _ (by omega)
 
-theorem xor_region_native_cast (kind : Fin 5) (index : Fin (xorData kind).length) :
-    (xorRegionRow kind index.val).map (fun n : Nat => (n : ZMod babyBearModulus)) =
-      ((xorData kind).row index).map (fun n : Int => (n : ZMod babyBearModulus)) := by
-  have offset : (xorData kind).offset = 0 := by fin_cases kind <;> rfl
-  apply Vector.ext
-  intro j hj
-  simp [xorRegionRow, TableData.row, offset, signedValue_cast]
+/-- Ordinary native XOR regions agree with the existing G table schema. -/
+theorem xor_region_projection (kind : Fin 3) (n : Nat)
+    (hn : n < (xorData ⟨kind.val, by omega⟩).length) :
+    xorRegionRow ⟨kind.val, by omega⟩ n =
+      let row := Blake2G.xorRegionRow (#v[(0 : Fin 5), 3, 4][kind]) n
+      #v[row[0], row[1], row[2], 0, 0, row[8]] := by
+  have bound : n < (Blake2G.xorData (#v[(0 : Fin 5), 3, 4][kind])).length := by
+    fin_cases kind <;> exact hn
+  rw [plain_region_reference kind n hn, Blake2G.Proofs.xor_region_reference _ _ bound]
+  fin_cases kind <;> rfl
 
-end Airbender.Blake2Round.Proofs
+end Proofs
+end Airbender.Blake2Round

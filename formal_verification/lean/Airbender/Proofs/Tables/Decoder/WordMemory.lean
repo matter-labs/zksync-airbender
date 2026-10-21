@@ -13,7 +13,7 @@ private theorem prefix_checked : fixedTags wordMemorySetup.prefixTags.blocks.toL
   decide +kernel
 
 private def paddingValues : Vector Nat wordMemorySetup.width :=
-  Vector.ofFn fun _ => 0
+  Vector.ofFn fun lane => (wordMemorySetup.padding.columns[lane].get? 0).getD 0
 
 private theorem padding_checked (lane : Fin wordMemorySetup.width) :
     constantTail paddingValues[lane] 0 wordMemorySetup.padding.columns[lane].blocks.toList = true := by

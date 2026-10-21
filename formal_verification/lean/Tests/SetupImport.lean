@@ -4,6 +4,7 @@ import Airbender.Review.Circuits.WordMemory.Tables.ZeroData
 import Airbender.Review.Circuits.WordMemory.Tables.ROMData
 import Airbender.Review.Helpers.Tables.SubwordROMData
 import Airbender.Import.SetupEmbed
+import Airbender.Import.NativeJson
 import Airbender.Review.Circuits.Keccak.Tables.FixedData
 import Airbender.Review.Circuits.Keccak.Tables.RotationData
 import Airbender.Review.Circuits.Bigint.Tables.Setup
@@ -203,8 +204,9 @@ def run : IO Unit := do
   let .ok roundSetup := Setup.parse roundSource
     | throw (IO.userError "extended BLAKE setup artifact failed import")
   checkRegions "extended BLAKE" roundSource roundSetup Blake2Round.xorData Blake2Round.xorRegion
-    #v[Blake2Round.xor8DataSourceBytes, Blake2Round.xor3DataSourceBytes,
-      Blake2Round.xor4DataSourceBytes, Blake2Round.xor7DataSourceBytes, Blake2Round.xor9DataSourceBytes]
+    #v[Blake2Round.xor8DataSourceBytes, Blake2Round.xor7DataSourceBytes,
+      Blake2Round.xor9DataSourceBytes, Blake2Round.xor8CarryDataSourceBytes,
+      Blake2Round.xor7CarryDataSourceBytes, Blake2Round.xor4x3DataSourceBytes]
   let keccakSource ← IO.FS.readFile "artifacts/setup/keccak.json"
   let .ok keccakSetup := Setup.parse keccakSource
     | throw (IO.userError "Keccak setup artifact failed import")
@@ -285,6 +287,18 @@ def run : IO Unit := do
       | throw (IO.userError s!"native setup artifact failed import: {setupPath}")
     let .ok retained := Json.parse (← IO.FS.readFile circuitPath)
       | throw (IO.userError s!"retained circuit artifact failed import: {circuitPath}")
-    check (toJson setup.circuit == retained) s!"{setupPath}: embedded circuit equals retained no-cache artifact"
+    check (setup.circuit.toNativeJson == retained)
+      s!"{setupPath}: embedded circuit equals retained no-cache artifact"
+    for value in [0, 2013265920] do
+      let .ok padding := fromJson? (α := Coefficient) (toJson value)
+        | throw (IO.userError "padding coefficient failed import")
+      let present := {setup.circuit with generic_lookup_padding := some padding}
+      check ((present.toNativeJson.getObjVal? "generic_lookup_padding").toOption == some (toJson value))
+        s!"native circuit serialization retains present padding {value}"
+    let absent := {setup.circuit with generic_lookup_padding := none}
+    check (rejected (absent.toNativeJson.getObjVal? "generic_lookup_padding"))
+      "native circuit serialization omits absent padding"
+    check ((absent.toNativeJson.getObjVal? "_marker").toOption == some Json.null)
+      "native circuit serialization retains other explicit null fields"
 
 end Tests.SetupImport

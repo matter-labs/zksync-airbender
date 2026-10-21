@@ -1,6 +1,6 @@
 import Airbender.Import.BabyBear
 
-/- Native mirror of the v3 Rust serde schema at commit 28ffe3ff0353edd9051485c2974b28b52b495dc4.
+/- Native mirror of the v3 Rust serde schema at commit 4518846625730fabc4cd83744d4bd983a5e42b97.
    Coefficients are fixed to BabyBear Montgomery encoding. No fields are opaque JSON. -/
 namespace Airbender
 open Lean
@@ -356,6 +356,9 @@ structure GKRCircuitArtifact where
   generic_lookup_tables_width : Nat
   decode_table_columns_mask : (Array Bool)
   tables_ids_in_generic_lookups : Bool
+  /-- Serialized field value used in every physical setup-tail column;
+      absence retains the native zero-padding meaning. -/
+  generic_lookup_padding : Option Coefficient := none
   degree_2_constraints : (Array Degree2Constraint)
   degree_1_constraints : (Array Degree1Constraint)
   structured_statements : (Array StructuredStatement)

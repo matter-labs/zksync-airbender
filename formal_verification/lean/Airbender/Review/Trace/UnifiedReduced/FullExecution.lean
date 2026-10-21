@@ -9,8 +9,9 @@ open Trace Reference.RiscV.Sail Reference.Sail
     and retires its PC in this same chain. Existing preparation/coverage derives
     hash ABI and round masks; initialized matching derives actual reads and writes.
 
-    F02's temporary bigint command binding and F03's occurrence ledger remain
-    explicit. The existing tracked-RAM/code/configuration and public protocol
+    F02's temporary bigint command binding remains explicit. Native timestamp
+    queries and caller accounting derive complete worker participation.
+    The existing tracked-RAM/code/configuration and public protocol
     profiles remain in scope; their enforcement findings are not circuit fixes. -/
 theorem full_execution_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
@@ -20,11 +21,11 @@ theorem full_execution_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.ex
     (inputs : WrappedProgramComputedPreparedProtocolInputs data initial ca oa cells program regions)
     (profile : RetirementProfile data program initial cells)
     (pc : run (SailRV32.Functions.get_arch_pc ()) initial = .ok data.machine.initial.word.toBitVec initial)
-    (commands : BigintCommands data) (ledger : ExternalBoundary.Requests.Binding data)
+    (commands : BigintCommands data)
     (scopes : ∀ window ∈ windows, WrappedProgramComputedProtocolWindowInputs data program window)
     (ordered : WindowsOrdered cut (windows.map HashWindow.interval))
     (coverage : ProgramHashCallerCoverage data windows) :
     Realizes (FullStep program data.program) data.machine initial cells :=
-  Proofs.full_execution accepted inputs profile pc commands ledger scopes ordered coverage
+  Proofs.full_execution accepted inputs profile pc commands scopes ordered coverage
 
 end Airbender.UnifiedReduced.Caller

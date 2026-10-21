@@ -63,7 +63,9 @@ theorem worker_projection_inputs [Fact p.Prime] {data : RequestTrace p}
     (image : initialImage before cells = some data.machine.initialMemory)
     (distinct : (cells.map Cell.addressCode).Nodup) (requests : RequestBinding data before) :
     Delegation.MemoryInputs data.workerProjection before (Delegation.Caller.workerCells cells) := by
-  refine ⟨image_restriction image (fun address => address != (Cell.register 0).addressCode), ?_, fun row member => (requests.clocks row member).2⟩
+  refine ⟨image_restriction image (fun address => address != (Cell.register 0).addressCode), ?_,
+    fun row member => (requests.clocks row member).2,
+    fun row member => (requests.clocks row member).1.2⟩
   exact distinct.sublist (List.filter_sublist.map Cell.addressCode)
 
 end Airbender.UnifiedReduced.Caller.Proofs

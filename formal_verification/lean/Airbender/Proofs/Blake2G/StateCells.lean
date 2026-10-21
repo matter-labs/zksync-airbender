@@ -12,18 +12,18 @@ set_option maxHeartbeats 2000000
 abbrev scheduledController (reduced : Bool) (i : Nat) (_bound : i < callCount reduced) : Control.Input :=
   controllerAt reduced i
 
-private theorem first_round_coverage (reduced block : Bool) (word : Fin 16) :
+private theorem first_round_coverage (reduced «block» : Bool) (word : Fin 16) :
     ∃ call : Fin 8, ∃ port : Fin 6,
-      if block then port.val < 4 ∧
+      if «block» then port.val < 4 ∧
         (Control.step (scheduledController reduced call.val (by have := call.isLt; cases reduced <;> simp only [callCount, Bool.false_eq_true, ↓reduceIte] <;> omega))).stateOffsets[Fin.ofNat 4 port.val] = word.val
       else 4 ≤ port.val ∧
         (Control.step (scheduledController reduced call.val (by have := call.isLt; cases reduced <;> simp only [callCount, Bool.false_eq_true, ↓reduceIte] <;> omega))).messageOffsets[Fin.ofNat 2 (port.val - 4)] = word.val := by
-  have finite : ∀ reduced block : Bool, ∀ word : Fin 16, ∃ call : Fin 8, ∃ port : Fin 6,
-      if block then port.val < 4 ∧
+  have finite : ∀ reduced «block» : Bool, ∀ word : Fin 16, ∃ call : Fin 8, ∃ port : Fin 6,
+      if «block» then port.val < 4 ∧
         (Control.step (scheduledController reduced call.val (by have := call.isLt; cases reduced <;> simp only [callCount, Bool.false_eq_true, ↓reduceIte] <;> omega))).stateOffsets[Fin.ofNat 4 port.val] = word.val
       else 4 ≤ port.val ∧
         (Control.step (scheduledController reduced call.val (by have := call.isLt; cases reduced <;> simp only [callCount, Bool.false_eq_true, ↓reduceIte] <;> omega))).messageOffsets[Fin.ofNat 2 (port.val - 4)] = word.val := by decide +kernel
-  exact finite reduced block word
+  exact finite reduced «block» word
 
 theorem call_block_cells [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
@@ -32,8 +32,8 @@ theorem call_block_cells [Fact p.Prime] (hp : 8388608 ≤ p)
     ∃ statePointer messagePointer : BitVec 32,
       (Cell.register 10).read initial = .ok statePointer initial ∧
       (Cell.register 11).read initial = .ok messagePointer initial ∧
-      ∀ block : Bool, ∀ word : Fin 16,
-        Cell.ram ((if block then statePointer else messagePointer) + BitVec.ofNat 32 (4 * word.val)) ∈ cells := by
+      ∀ «block» : Bool, ∀ word : Fin 16,
+        Cell.ram ((if «block» then statePointer else messagePointer) + BitVec.ofNat 32 (4 * word.val)) ∈ cells := by
   have clockBound : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
   obtain ⟨statePointer, messagePointer, stateRead, messageRead, pointers, _, _⟩ :=
     call_pointers clockBound accepted inputs
@@ -43,8 +43,8 @@ theorem call_block_cells [Fact p.Prime] (hp : 8388608 ≤ p)
     all_goals intro row member other; have := inputs.family row member; simp_all
   have bounds := operation_word_bounds_at_boundary hp inverse accepted operation
   refine ⟨statePointer, messagePointer, stateRead, messageRead, ?_⟩
-  intro block word
-  obtain ⟨call, index, coverage⟩ := first_round_coverage reduced block word
+  intro «block» word
+  obtain ⟨call, index, coverage⟩ := first_round_coverage reduced «block» word
   have callBound : call.val < callCount reduced := by have := call.isLt; cases reduced <;> simp only [callCount, Bool.false_eq_true, ↓reduceIte] <;> omega
   have rowBound : call.val < ordered.length := by rw [permutation.length_eq, inputs.calls]; exact callBound
   let row := ordered[call.val]'rowBound
@@ -81,7 +81,7 @@ theorem call_block_cells [Fact p.Prime] (hp : 8388608 ≤ p)
     exact Array.getElem_mem (wordIndex index).isLt
   have tracked := initialized_indirect_cell_at_boundary clockBound accepted inputs.memory member present (word_port_address index)
   rw [address] at tracked
-  cases block
+  cases «block»
   · simp only [Bool.false_eq_true, ↓reduceIte] at coverage ⊢
     obtain ⟨selected, offset⟩ := coverage
     fin_cases index

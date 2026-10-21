@@ -11,7 +11,7 @@ import_clean importedConstraints from "../../cs/compiled_circuits/blake2_with_ex
 
 /-- Native invocation ranges and every timestamp comparison, in addition to
     the family's retained equations and modeled table queries. -/
-def clockConstraints {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 4)) :
+def clockConstraints {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 6)) :
     List (FlatOperation (ZMod p)) :=
   importedConstraints setup ++ importedConstraintsTimestampLookups
 
@@ -33,9 +33,8 @@ def preparedState : Vector (Nat × Nat) 16 :=
     (171, 173), (175, 177), (179, 181), (183, 185),
     (186, 187), (188, 189), (190, 191), (192, 193),
     (198, 199), (194, 195), (200, 201), (196, 197)]
-def preparedMessage : Vector (Nat × Nat) 16 := Vector.ofFn fun i => (204 + 2 * i.val, 205 + 2 * i.val)
 abbrev roundBits := #v[142, 143, 144, 145, 146, 147, 148, 149, 150, 151]
-def scheduledMessage : Vector (Nat × Nat) 16 := Vector.ofFn fun i => (236 + 2 * i.val, 237 + 2 * i.val)
+def scheduledMessage : Vector (Nat × Nat) 16 := Vector.ofFn fun i => (224 + 2 * i.val, 225 + 2 * i.val)
 end Variables
 
 end Airbender.Blake2Round

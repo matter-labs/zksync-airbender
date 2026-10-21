@@ -10,12 +10,12 @@ open Arithmetic
 set_option maxRecDepth 4096
 set_option maxHeartbeats 1000000
 
-theorem control_bits {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 4)}
+theorem control_bits {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 6)}
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     ∀ i : Fin 13, w Variables.controlBits[i] = 0 ∨ w Variables.controlBits[i] = 1 := by
   intro i
-  have flag := Verification.assertion_of_holds h ⟨184 + i.val,
+  have flag := Verification.assertion_of_holds h ⟨124 + i.val,
     by rw [constraint_count]; have size := i.isLt; omega⟩
   fin_cases i <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment, Variables.controlBits,
@@ -25,7 +25,7 @@ theorem control_bits {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 4)
 /-- Read/write control arithmetic uses only imported assertions. No exclusive
     round-mask, pointer, memory or XOR-table premise is needed. -/
 theorem soundness {p : Nat} [Fact p.Prime] (hp : 8192 ≤ p)
-    (setup : Table (ZMod p) (fields 4)) :
+    (setup : Table (ZMod p) (fields 6)) :
     Properties.Soundness (circuitModel setup).relation spec := by
   intro input output w ⟨h, mapping⟩
   have bits (i : Fin 13) : (w Variables.controlBits[i]).val ≤ 1 :=
@@ -63,8 +63,8 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 8192 ≤ p)
   have controlsBound : controls < 8 := by dsimp [controls]; omega
   have roundsBound : rounds < 512 := by dsimp [rounds]; omega
   have read := Verification.assertion_of_holds h ⟨1, by rw [constraint_count]; decide⟩
-  have low := Verification.assertion_of_holds h ⟨118, by rw [constraint_count]; decide⟩
-  have high := Verification.assertion_of_holds h ⟨119, by rw [constraint_count]; decide⟩
+  have low := Verification.assertion_of_holds h ⟨106, by rw [constraint_count]; decide⟩
+  have high := Verification.assertion_of_holds h ⟨107, by rw [constraint_count]; decide⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment] at read low high
   have readField : ((controls + 8 * rounds + 4096 * (w 151).val : Nat) : ZMod p) = w 136 := by

@@ -63,18 +63,77 @@ private def byteIndex (rho : Bool) (column : Fin 5) (i : Fin 40) : Nat :=
 private theorem byteIndexBound (rho : Bool) (column : Fin 5) (i : Fin 40) :
     byteIndex rho column i < 1249281 := by
   cases rho <;> fin_cases column <;> fin_cases i <;> decide
-private theorem byteValues (rho : Bool) (column : Fin 5) (i : Fin 40) :
-    (Keccak.Proofs.byteEntry setup i).map (Expression.eval (Verification.environment (row rho column))) =
-      (Keccak.setupRow control ⟨byteIndex rho column i, byteIndexBound rho column i⟩).map
+private theorem byteValues0 (rho : Bool) (i : Fin 40) :
+    (Keccak.Proofs.byteEntry setup i).map (Expression.eval (Verification.environment (row rho 0))) =
+      (Keccak.setupRow control ⟨byteIndex rho 0 i, byteIndexBound rho 0 i⟩).map
         (fun (n : Nat) => (n : ZMod babyBearModulus)) := by
   simp only [Keccak.Proofs.setup_row_characterization]
-  cases rho <;> fin_cases column <;> fin_cases i <;>
+  cases rho <;> fin_cases i <;>
     dsimp [Keccak.Proofs.byteEntry, Keccak.Proofs.byteQuery, Keccak.importedConstraints, FlatOperation.lookups]
   all_goals
     apply Vector.ext
     intro j hj
     change j < 8 at hj
     interval_cases j <;> simp only [Vector.getElem_map, Vector.getElem_cast] <;> decide +kernel +revert
+private theorem byteValues1 (rho : Bool) (i : Fin 40) :
+    (Keccak.Proofs.byteEntry setup i).map (Expression.eval (Verification.environment (row rho 1))) =
+      (Keccak.setupRow control ⟨byteIndex rho 1 i, byteIndexBound rho 1 i⟩).map
+        (fun (n : Nat) => (n : ZMod babyBearModulus)) := by
+  simp only [Keccak.Proofs.setup_row_characterization]
+  cases rho <;> fin_cases i <;>
+    dsimp [Keccak.Proofs.byteEntry, Keccak.Proofs.byteQuery, Keccak.importedConstraints, FlatOperation.lookups]
+  all_goals
+    apply Vector.ext
+    intro j hj
+    change j < 8 at hj
+    interval_cases j <;> simp only [Vector.getElem_map, Vector.getElem_cast] <;> decide +kernel +revert
+private theorem byteValues2 (rho : Bool) (i : Fin 40) :
+    (Keccak.Proofs.byteEntry setup i).map (Expression.eval (Verification.environment (row rho 2))) =
+      (Keccak.setupRow control ⟨byteIndex rho 2 i, byteIndexBound rho 2 i⟩).map
+        (fun (n : Nat) => (n : ZMod babyBearModulus)) := by
+  simp only [Keccak.Proofs.setup_row_characterization]
+  cases rho <;> fin_cases i <;>
+    dsimp [Keccak.Proofs.byteEntry, Keccak.Proofs.byteQuery, Keccak.importedConstraints, FlatOperation.lookups]
+  all_goals
+    apply Vector.ext
+    intro j hj
+    change j < 8 at hj
+    interval_cases j <;> simp only [Vector.getElem_map, Vector.getElem_cast] <;> decide +kernel +revert
+private theorem byteValues3 (rho : Bool) (i : Fin 40) :
+    (Keccak.Proofs.byteEntry setup i).map (Expression.eval (Verification.environment (row rho 3))) =
+      (Keccak.setupRow control ⟨byteIndex rho 3 i, byteIndexBound rho 3 i⟩).map
+        (fun (n : Nat) => (n : ZMod babyBearModulus)) := by
+  simp only [Keccak.Proofs.setup_row_characterization]
+  cases rho <;> fin_cases i <;>
+    dsimp [Keccak.Proofs.byteEntry, Keccak.Proofs.byteQuery, Keccak.importedConstraints, FlatOperation.lookups]
+  all_goals
+    apply Vector.ext
+    intro j hj
+    change j < 8 at hj
+    interval_cases j <;> simp only [Vector.getElem_map, Vector.getElem_cast] <;> decide +kernel +revert
+private theorem byteValues4 (rho : Bool) (i : Fin 40) :
+    (Keccak.Proofs.byteEntry setup i).map (Expression.eval (Verification.environment (row rho 4))) =
+      (Keccak.setupRow control ⟨byteIndex rho 4 i, byteIndexBound rho 4 i⟩).map
+        (fun (n : Nat) => (n : ZMod babyBearModulus)) := by
+  simp only [Keccak.Proofs.setup_row_characterization]
+  cases rho <;> fin_cases i <;>
+    dsimp [Keccak.Proofs.byteEntry, Keccak.Proofs.byteQuery, Keccak.importedConstraints, FlatOperation.lookups]
+  all_goals
+    apply Vector.ext
+    intro j hj
+    change j < 8 at hj
+    interval_cases j <;> simp only [Vector.getElem_map, Vector.getElem_cast] <;> decide +kernel +revert
+private theorem byteValues (rho : Bool) (column : Fin 5) (i : Fin 40) :
+    (Keccak.Proofs.byteEntry setup i).map (Expression.eval (Verification.environment (row rho column))) =
+      (Keccak.setupRow control ⟨byteIndex rho column i, byteIndexBound rho column i⟩).map
+        (fun (n : Nat) => (n : ZMod babyBearModulus)) := by
+  fin_cases column
+  · exact byteValues0 rho i
+  · exact byteValues1 rho i
+  · exact byteValues2 rho i
+  · exact byteValues3 rho i
+  · exact byteValues4 rho i
+
 private theorem bytesHold (rho : Bool) (column : Fin 5) (i : Fin 40) :
     (Keccak.Proofs.byteQuery setup i).Contains (Verification.environment (row rho column)) := by
   rw [Keccak.Proofs.byte_query_shape]
@@ -106,7 +165,7 @@ theorem satisfies (rho : Bool) (column : Fin 5) :
     have bound : i < 42 := by simpa only [Keccak.lookup_count] using hi
     by_cases range : i = 0
     · subst i
-      apply Verification.range16_contains
+      apply Trace.Proofs.range_contains
       cases rho <;> fin_cases column <;> decide
     by_cases controller : i = 1
     · subst i

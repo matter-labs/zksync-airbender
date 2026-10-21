@@ -5,8 +5,16 @@ selected custom instruction retirement, caller-cycle observations, and complete
 reference effects on selected native-clock windows. The claims share actual
 history-derived states. Shared cycle composition now covers every native row in
 one history and PC/clock path. [Full mixed execution](FullExecution.lean) now
-connects complete custom-CSR reference transitions under explicit temporary
-F02/F03 contracts; unrestricted acceptance still has the recorded findings.
+connects complete custom-CSR reference transitions under the temporary F02
+command contract and existing public profiles. Current native BabyBear
+timestamp constraints and initialized caller accounting derive participation;
+unrestricted bigint-control and worker-ROM acceptance still have recorded findings.
+
+Lower-level generic coverage/uniqueness lemmas retain their conditional
+zero-clock cases. The [historical raw witness](../../../../Tests/DelegationZeroInvocation.lean)
+retains its arithmetic, token cancellation and padding behavior, but is rejected
+by current native BabyBear acceptance. Old accepted-prefix regressions are
+[retained at the pre-rebase snapshot](https://github.com/matter-labs/zksync-airbender/blob/010c3cbb3c237b6e125277162dd1011c2f212333/formal_verification/lean/Tests/DelegationZeroInvocation.lean).
 
 ## Checked results
 
@@ -16,7 +24,7 @@ F02/F03 contracts; unrestricted acceptance still has the recorded findings.
 | Standard instructions plus TRIADD/XORROT retire together; delegation callers are outside the registry. | [`Mixed.execution_soundness`](Theorems.lean) |
 | Standard/TRIADD/XORROT plus ADDMOD/SUBMOD/MULMOD/FMAMOD share native initialized execution in BabyBear, including discarded writes and aliased old destinations; external masked padding is supported. | [`Modular.execution_soundness` and `Modular.padded_execution_soundness`](ModularExecution.lean) |
 | Every ordinary retirement, caller observation and worker uses one actual history and complete raw PC/clock path, with terminal cells in the final retired-PC view. Full custom-CSR execution remains separate. | [`Caller.mixed_cycle_soundness`](Theorems.lean) |
-| Ordinary/TRIADD/XORROT and complete bigint/G/extended-round/Keccak callers execute from the actual public state to terminal PC/cells under existing protocol profiles and temporary F02/F03 contracts. | [`Caller.full_execution_soundness`](FullExecution.lean) |
+| Ordinary/TRIADD/XORROT and complete bigint/G/extended-round/Keccak callers execute from the actual public state to terminal PC/cells under existing protocol profiles and the temporary F02 command contract, with participation derived from native constraints. | [`Caller.full_execution_soundness`](FullExecution.lean) |
 | Machine and worker reads/writes, bounds and references share one actual initialized history. | [`Caller.mixed_memory_soundness`](Theorems.lean) |
 | Exact caller regions, counts and slots follow from state/request matching and public cuts/duration. | [`Caller.window_schedule_soundness` and `Caller.request_window_soundness`](Theorems.lean) |
 | Public sequential code identifies caller regions; native matching derives selected worker family, counts and slots. | [`Caller.program_window_schedule_soundness`](Theorems.lean) |
@@ -98,11 +106,11 @@ observations, so a full custom-CSR ABI remains separate.
 actual public fetch and original PC retirement. [FullExecution](FullExecution.lean)
 derives a complete `Realizes` chain from the existing prepared protocol regions
 and hash-CSR occurrence coverage. Hash schedules and initialized matching derive
-the full ABI; the explicit occurrence ledger derives participation. Public
-initial PC is bound to the native initial endpoint, with no initial nextPC
-condition. The COPY→LW/SW fixture tests nextPC 123. F02's command contract and
-F03's ledger remain temporary conditions linked to open implementation findings;
-the tracked-RAM domain retains F04's existing limitation.
+the full ABI. Imported timestamp queries exclude active zero clocks; initialized
+caller accounting then derives the occurrence ledger and complete participation.
+Public initial PC is bound to the native initial endpoint, with no initial nextPC
+condition. The COPY→LW/SW fixture tests nextPC 123. F02's command contract remains
+temporary; the tracked-RAM domain retains F04's existing limitation.
 
 [Native mixed ROM](NativeMixedROM.lean) now transports the complete accepted
 ordinary/caller/worker memory pool from native ROM shadows to public bytes.
@@ -138,9 +146,10 @@ connects two prepared controls through one intervening native window.
 and complete prefix/span/gap transfers. The second span starts from the first
 span's actual finish after executing the gap. [Prepared hash chains](PreparedHashWindows.lean)
 bind both complete references to those same states; neither gap effects nor clocks
-are reset. Empty and nonempty gaps, fabricated gap states, and an unissued prefix
-effect are checked in [native chain regressions](../../../../Tests/ControlPreparation.lean)
-and [the zero-clock regression](../../../../Tests/DelegationZeroInvocation.lean).
+are reset. Empty and nonempty gaps and fabricated gap states are checked in
+[native chain regressions](../../../../Tests/ControlPreparation.lean). The
+[historical zero-clock regression](../../../../Tests/DelegationZeroInvocation.lean)
+now preserves the raw witness and proves current native rejection.
 These are memory/reference claims; instruction retirement remains separate.
 The [arithmetic-prefix regression](../../../../Tests/ControlPreparation.lean)
 derives actual ADD→ADDI-reset states 65537→131074→0 in that same continuous history,
@@ -229,11 +238,11 @@ Native AUIPC preparation at PC 524288 derives x12 = 65537→524288 and the canon
 clock-six token. The empty regional/global context is inhabited; wrong public
 flags, invalid cuts and simultaneous round bits are rejected under the ABI.
 These concrete fixtures cover preparation/empty regions; nonempty masks are
-arbitrary accepted-witness theorems. The unissued G-prefix effect remains
-admitted in the source-aware global context. Public modular round-CSR occurrence
+arbitrary accepted-witness theorems. Public modular round-CSR occurrence
 coverage now derives precisely live regional membership and every issued mask
 for any admitted source, including repeated RV32 addresses. Full coverage is equivalent
-to absence of zero-clock round workers; it does not follow from CSR coverage alone.
+to absence of zero-clock round workers. CSR coverage alone does not supply
+this absence; current native BabyBear constraints do.
 [`ComputedProtocolWindowInputs`](ComputedRoundRegions.lean) connects any admitted source
 to complete G, extended-BLAKE and Keccak reference lists in one history. Its
 selected family/count/duration remain explicit.
@@ -263,8 +272,8 @@ connects the actual source read to the actual cut read, including aliases. Only
 the final cycle is worker-free; earlier effects remain. No desired read, bound,
 selector, intermediate state or result is an input. Native fixtures check actual
 65537→65665 and 65537→65536, clock six, a wrong immediate and a fabricated source.
-An unissued G-prefix fixture retains actual 0→1→1 states, distinguishing the
-operand from its public initial value. Literal/AUIPC contracts remain and share
+The former unissued-prefix fixture is historical; current native acceptance
+rejects it. Literal/AUIPC contracts remain and share
 arithmetic/output-token helpers. This is memory preparation.
 
 The third `HashControlPreparation` source uses
@@ -282,11 +291,11 @@ and Keccak windows/lists, including public modular shape and raw regional masks.
 Coverage/domain/setup/tables and logical matching remain explicit. Native
 reversed-row fixtures derive 65537→127→128 and 65537→129→128 with aliases,
 signed −1 and canonical clock ten; wrong immediates/constants, fabricated operands
-and incomplete references are rejected. An accepted unissued G prefix remains in
-one initialized history before literal zero and ADDI 128. The fixtures cover
-preparation and empty-region guards; full reference/list claims remain general
-accepted-witness theorems. Other gap instructions, broader operations and
-full Sail retirement remain open.
+and incomplete references are rejected. The former unissued-prefix example is
+historical. The fixtures cover preparation and empty-region guards; full
+reference/list claims remain general accepted-witness theorems. Admitted gap
+instructions and full mixed retirement are described below; further variants
+remain outside the frozen scope.
 
 
 [`PublicRegisterPreparation`](../../Helpers/UnifiedReduced/RegisterChains.lean)
@@ -402,9 +411,8 @@ PC injectivity or no-wrap assumptions. The corresponding
 [`WrappedProgramPreparedProtocolInputs`](PreparedRoundWindows.lean) derives local
 controller shape before reusing the existing raw-mask and reference proofs.
 Public cuts, preparation, reference duration and global extended-round worker
-coverage remain explicit. The need to justify supported masks or exclude unissued
-round workers remains;
-unissued G effects and both bigint-control gaps remain admitted. The original
+coverage remain explicit at these generic entries. Current native BabyBear
+constraints exclude active unissued workers; both bigint-control gaps remain admitted. The original
 linear entries and their global issued-round coverage/mask results remain available.
 
 [`WindowSequence.Realizes`](MixedWindows.lean) extends this connection to an
@@ -432,7 +440,8 @@ entry point; it does not derive unrestricted protocol validity from acceptance.
 complete span's preparation, family, count and duration. The sequence theorem binds
 all three complete references to their actual segment states without resetting
 clocks. Completion alone is still not a controller restart. The regional seed,
-wrong-flag/two-bit and retained-unissued-effect regressions are linked above.
+wrong-flag/two-bit regressions are linked above; the historical unissued
+fixture now checks native rejection.
 
 [`ProgramProtocolWindowInputs`](PreparedRoundWindows.lean) replaces those selected
 worker family/count premises with a public
@@ -454,8 +463,8 @@ Empty regions retain actual clock-six preparation tokens; wrong flags/family,
 oversized/reversed/unaligned cuts and simultaneous round bits are rejected in
 [preparation regressions](../../../../Tests/ControlPreparation.lean) and
 [unified regressions](../../../../Tests/UnifiedDelegation.lean).
-The stronger context retains the actual unissued G-prefix effect in
-[zero-clock regressions](../../../../Tests/DelegationZeroInvocation.lean).
+The [zero-clock regression](../../../../Tests/DelegationZeroInvocation.lean)
+retains the historical raw witness and proves current native rejection.
 Public preparation/mode/duration and aligned ordered cuts remain explicit;
 global controller coverage and unrestricted protocol validity remain open. COPY→ADDI and both
 invalid bigint control fixtures check the schedule connection; wrong CSR family
@@ -476,10 +485,10 @@ whole-pool coverage.
 The coverage equivalence assumes neither whole-pool worker coverage nor nonzero
 invocations. Full coverage
 is consequently equivalent to absence of zero-clock extended-round workers in this
-public sequential/controller profile; their general exclusion or mask behavior
-still needs a binding before global transport. Public-code regressions require a
+public sequential/controller profile. The current native BabyBear timestamp
+query supplies exclusion for the full mixed entry. Public-code regressions require a
 nonempty covering interval for a decoded round CSR and preserve empty LUI-prepared
-cuts. The actual unissued G worker and its prefix update remain admitted.
+cuts. The historical unissued G worker is rejected by current native acceptance.
 
 [`WrappedProgramRoundCallerCoverage`](PreparedRoundWindows.lean) extends coverage
 to the aligned sequential/comparison registry. It covers every aligned clock
@@ -502,47 +511,23 @@ This needs no operation mask or extra initial-clock floor. The actual initial
 x12 high limb equals flags below eight plus `8 * 2^round` exactly when the native
 bits form that exclusive round mask. Zero and multibit controls remain outside
 the ABI. The zero-seed no-mask regression is conditional; it makes no accepted
-unissued-round existence or exclusion claim. The actual G fixture still reads
-zero, writes one and affects the prefix before a later ADDI reset. These native
-read proofs do not execute an unsupported hash reference or make a worker inert.
+unissued-round existence or exclusion claim. Current native acceptance excludes active zero-clock workers; the older
+raw G prefix is retained only as historical evidence.
 
-[`WorkerInvocationUniqueness`](UnissuedWorkers.lean) now projects the shared native
-x10 access from the existing initialized-memory key-uniqueness theorem. Every
-family writes this fixed register at invocation plus two, so all numeric and raw
-invocation clocks are distinct, including zero. The unissued sublist has at most
-one occurrence. The public physical-cell domain remains distinct; supported
-operation masks and opcode validity are not assumptions. Two identical zero-clock
-G rows still satisfy native/request checks, but architectural acceptance rejects
-the duplicate pool. The existing single G worker attains the bound and keeps its
-actual prefix effect. Live COPY and both invalid bigint controls instantiate this
-stronger result. General worker exclusion, inertness and unsupported-round mask
-behavior remain separate from this multiplicity bound.
+[`WorkerInvocationUniqueness`](UnissuedWorkers.lean) projects each family's
+mandatory x10 access from initialized-memory key uniqueness and derives distinct
+numeric/raw invocation clocks. Its generic at-most-one zero-clock conclusion
+remains valid; the current native BabyBear timestamp query strengthens this to
+no active zero-clock occurrences. Neither result assumes positive invocation.
 
-[`MixedWorkerExecution` and `UnissuedPrefixExecution`](UnissuedWorkers.lean) now
-derive all workers' actual call states within one architectural history, including
-the possible zero-clock worker. Full invocation uniqueness isolates its native
-ports at transfer clock three. Strict memory order and alignment put machine rows
-at clock four or later; all other workers are later as well. Its actual pre-state
-is therefore the original public state, with no earlier transfers. The same
-history retains every later transfer and reaches the shared terminal cells.
-Every machine row also has derived cycle states in that same history, using its
-native positive clock rather than an extra positive initial-clock premise. The
-raw grouping and observation proof needs only public initialization, distinct
-aligned cells and accepted native matching, without operation masks or a positive
-invocation premise. The closed BabyBear entry reuses existing realization inputs,
-including modeled setup/tables and the explicit extended-round masks; it does not
-claim execution of unsupported round controls. The G→ADDI regression derives
-actual x12 = 0→1→0 at these call/prefix/final states, and live COPY plus both invalid
-bigint controls retain all-worker execution. A separate empty-machine fixture
-has public endpoint clock zero while its unissued G worker still changes x12
-from zero to one; this is a logical boundary fixture, with native boot still at
-clock four. The new caller entry admits it, both invalid bigint controls and the
-LW/SW caller fixtures. Caller retirement, full control ABI and worker
-exclusion/inertness remain separate.
+[`MixedWorkerExecution` and `UnissuedPrefixExecution`](UnissuedWorkers.lean)
+retain their generic conditional state descriptions. Live COPY and both invalid
+bigint controls instantiate the all-worker execution certificate. Current
+native participation plus caller accounting now supplies every worker with a
+caller; bigint command validity and worker ROM enforcement remain separate.
 
-Keep surplus zero-clock prefix effects, worker ROM-shadow transport,
-broader preparation/protocol binding, full mixed caller retirement and inactive padding as separate
-outstanding obligations. [Status](../../../../VERIFICATION_STATUS.md) records the scope.
+[Status](../../../../VERIFICATION_STATUS.md) records the current complete claims
+and remaining implementation boundaries.
 
 [Issued hash segmentation](Segmentation.lean)
 closes coverage for the existing unified public prepared-protocol profile.
@@ -556,8 +541,8 @@ combines this partition with the existing complete G, extended-BLAKE and Keccak
 references at the same continuous-history states. Mode, public cuts/duration,
 code coverage, modeled tables, logical matching and the existing global round-mask
 scope remain explicit. This does not infer protocol shape from general acceptance.
-Uncovered hash workers are exactly zero-clock residuals; the native unissued G
-still changes actual x12 from zero to one. An issued G worker is covered at its
+The generic partition classifies uncovered hash workers as zero-clock
+residuals. Current native BabyBear constraints exclude active residuals. An issued G worker is covered at its
 actual clock-five invocation, while its one-call interval cannot satisfy the
 56-call reference scope. Missing windows, wrong families, repeated-address omissions
 and overlap are rejected. All four COPY/carry/invalid-bigint preparation fixtures
@@ -577,18 +562,18 @@ history reaches the terminal cells; its final retired view uses that path's
 terminal PC. This conclusion is not a sequence of successful full custom-CSR
 reference steps. The public theorem does not claim native worker ROM transport.
 
-The native COPY→LW/SW fixtures instantiate the shared certificate; both invalid
-bigint controls also instantiate it. The unissued G fixture retains its real
-prefix execution. These cases show exactly why observation composition does not
-supply the missing full-call semantics. Further instruction/preparation variants
-are outside the frozen scope. Stronger execution requires justified invalid-call,
-worker participation and ROM bindings; inactive padding is conditionally erased
-under the separately authorized external contribution boundary. The hourly continuation ends at these external blockers.
+The native COPY→LW/SW fixtures and both invalid bigint controls instantiate
+the shared certificate. The invalid controls show why observation composition
+does not supply full-call validity. Further instruction/preparation variants
+are outside the frozen scope. Stronger execution uses the command and public RAM/protocol bindings above;
+native timestamp queries now derive worker participation; inactive padding is conditionally erased
+under the separately authorized external contribution boundary. See the current [finding register](../../../../FINDINGS.md) for implementation and external boundaries.
 
 The [external padding boundary](../../Helpers/Context/PaddingBoundary/README.md)
 now projects whole masked machine/worker layouts into these same execution
 contracts through [padded entries](../Padding.lean). Selection uses native execute
-flags, preserving active zero-clock workers and invalid bigint controls. Exact
+flags. Raw active zero-clock rows survive filtering but fail the current native
+timestamp constraints; invalid bigint controls remain admitted. Exact
 masked state/memory/request matching and Rust/GKR correspondence stay explicit;
 this does not strengthen the full custom-CSR or worker-ROM claims.
 
@@ -603,18 +588,18 @@ The temporary [F02 command contract](../../Helpers/Context/ExternalBoundary/Bigi
 remains explicit. This is a conditional proof integration, not implemented control
 validation: native controls 0/65537 still pass the old checks and fail the full
 reference. The COPY→LW/SW regressions use the full reference call and ordinary
-Sail retirement in the same history. Hash-call retirement and complete mixed
-reference sequencing remain the unfinished part of that integration task.
+Sail retirement in the same history. [Full mixed execution](FullExecution.lean)
+now composes all four families' complete calls and original caller retirement.
 
 The [G worker reference bridge](../Workers/Blake2G/ReferenceCalls.lean) now supplies
 complete full-state reference micro-call sequences for the existing public G
 spans. It derives controls and the pointer ABI before proving every Sail write
-and frame. Connecting these full calls to mixed caller PC retirement is still
-part of the same unfinished custom-CSR integration; the older complete work-vector
-reference claims remain closed.
+and frame. These complete calls now compose with mixed caller PC retirement
+through [FullCalls](FullCalls.lean) and [FullExecution](FullExecution.lean).
 
 The [extended-round worker bridge](../Workers/Blake2Round/ReferenceCalls.lean)
 likewise provides complete full-state reference micro-call sequences under the
 existing prepared protocol. Full controller/mode/round agreement and the pointer
-ABI are derived. Keccak's full-state bridge and mixed hash caller PC retirement
-remain part of the same custom-CSR integration task.
+ABI are derived. The [Keccak bridge](../Workers/Keccak/ReferenceCalls.lean)
+supplies the same full-state connection. All three hash families participate in
+the checked full mixed execution chain.

@@ -82,7 +82,9 @@ Conditional [native mixed-ROM composition](Airbender/Review/Trace/UnifiedReduced
 is checked: public boot inputs and the explicit F04 RAM-port contract give one
 physical ordinary/caller/worker memory history and terminal public cells.
 [Full mixed custom-call retirement](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean)
-is also checked under the explicit F02/F03 and existing public protocol profiles.
+uses the explicit F02 command and existing public protocol profiles. Current
+native BabyBear timestamp constraints and initialized caller accounting derive
+participation; no external F03 ledger is required.
 Initialization/teardown local verification is checked: imported standalone and
 inline GKR gates compute the exact existing RAM boundary-token products.
 [Execution adapters](Airbender/Review/Trace/Initialization.lean) derive the native
@@ -107,8 +109,9 @@ prepared-protocol profile: public CSR occurrence coverage derives a disjoint,
 exact partition of every issued hash worker/request across complete references
 in one initialized history. Public mode, cuts, duration and code coverage remain
 explicit inputs; acceptance alone does not force every execution into a complete
-hash protocol. Zero-clock hash workers remain explicit residuals with their actual
-prefix effects. See [the coverage result](Airbender/Review/Trace/UnifiedReduced/Segmentation.lean).
+hash protocol. Lower-level coverage lemmas retain an explicit zero-clock
+residual classification; current native BabyBear acceptance excludes active
+instances through the imported timestamp query. See [the coverage result](Airbender/Review/Trace/UnifiedReduced/Segmentation.lean).
 Conditional whole-execution composition is closed below; remaining enforcement
 boundaries do not create additional preparation variants.
 
@@ -121,8 +124,8 @@ boundaries do not create additional preparation variants.
    tracked-RAM domain and unchanged-Sail load profile stay explicit.
    `Caller.mixed_cycle_soundness` deliberately concludes an observational
    certificate, not successful full custom-CSR execution. Accepted bigint
-   controls 0 and 65537 still violate the pinned ABI; unissued workers still have
-   real prefix effects. [Complete bigint retirement](Airbender/Review/Trace/UnifiedReduced/BigintCalls.lean)
+   controls 0 and 65537 still violate the pinned ABI. The historical unissued
+   worker retains raw arithmetic and token cancellation, but fails current native acceptance. [Complete bigint retirement](Airbender/Review/Trace/UnifiedReduced/BigintCalls.lean)
    is now connected under the explicit temporary F02 contract, including actual
    operands, full state/frame and original PC advance. The existing complete
    G, extended-round and Keccak spans now supply full-state reference micro-call sequences
@@ -131,18 +134,19 @@ boundaries do not create additional preparation variants.
    now connects each actual fetched caller and original PC retirement into one
    `Realizes` chain with ordinary/TRIADD/XORROT steps. It starts at the original
    public initial state and reaches native terminal PC/cells. The existing
-   prepared-protocol profile derives full hash ABI and masks; F03's occurrence
-   ledger derives total participation. Public initial PC is explicit, with no
+   prepared-protocol profile derives full hash ABI and masks; the occurrence
+   ledger is derived from native constraints and initialized caller accounting,
+   giving total participation. Public initial PC is explicit, with no
    initial nextPC requirement. No read, result or desired-execution premise was added.
-   General acceptance still needs actual control/participation enforcement.
+   General acceptance still needs actual bigint control enforcement.
    Another preparation variant cannot close it.
 3. **Native worker ROM — conditional composition checked, enforcement open.**
    Public boot initialization, ordinary ROM interpretation, unchanged RAM-worker
    transfers and shared logical matching now compose. The F04 RAM-port contract
    remains explicit; arbitrary native acceptance still admits the ROM-shadow COPY
-   discrepancy. Its implementation finding is not closed. Control/participation
-   Full custom-call integration now establishes actual complete reference
-   transitions under the named control/participation contracts. Their use does
+   discrepancy. Its implementation finding is not closed. Full custom-call
+   integration establishes actual complete reference transitions under the
+   remaining command contract and public protocol profiles. Their use does
    not resolve implementation enforcement findings.
 4. **Remaining global boundaries.** F01 terminal-PC normalization is resolved in
    the logical model under explicit canonical total-verifier boundary closure.
@@ -155,8 +159,9 @@ boundaries do not create additional preparation variants.
    cryptographic enforcement of that logical binding remain external. Full fetch faults, interrupts and
    exceptional execution belong to the separately scoped deferred path.
 
-Preserve the demonstrated terminal-PC, zero-clock worker, bigint-control,
-ROM-shadow and discarded-load cases. Issued bigint calls with public x12 = 0 or
+Preserve terminal-PC, bigint-control, ROM-shadow and discarded-load cases.
+Retain the exact historical zero-clock worker and demonstrate rejection when an
+implementation fix changes its acceptance relation. Issued bigint calls with public x12 = 0 or
 65537 and the supported COPY ROM-shadow mismatch are checked model-level gaps,
 not whole-system or cryptographic exploit claims. Temporary named control,
 participation or RAM-port contracts may support conditional lemmas, but do not

@@ -42,6 +42,7 @@ theorem abiCore (highControl : Bool) : FlatOperation.ConstraintsHoldFlat
   all_goals repeat' apply And.intro
   all_goals solve
     | (apply Verification.range16_contains; decide +kernel)
+    | (apply Trace.Proofs.range_contains; decide +kernel)
     | (refine ⟨⟨0, by decide +kernel⟩, ?_⟩; simp only [bigintReferenceRow]; decide +kernel)
     | (refine ⟨⟨262144, by decide +kernel⟩, ?_⟩; simp only [bigintReferenceRow]; decide +kernel)
     | (refine ⟨⟨1310720, by decide +kernel⟩, ?_⟩; simp only [bigintReferenceRow]; decide +kernel)
@@ -59,7 +60,7 @@ theorem frameWorkerCore : FlatOperation.ConstraintsHoldFlat
   simp only [Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat] at established ⊢
   simp only [bigint_lookup_relation] at established ⊢
   simpa [Verification.environment, Expression.eval, Lookup.Contains, Table.toRaw, fromElements,
-    Verification.range16, frameWorkerAssignment, Tests.BigintMemory.row] using established
+    timestampLookup, Verification.range16, frameWorkerAssignment, Tests.BigintMemory.row] using established
 
 def returnCarryAssignment (column : Nat) : ZMod babyBearModulus :=
   if column = 1 then 5
@@ -77,6 +78,7 @@ theorem returnCarryCore : FlatOperation.ConstraintsHoldFlat
   all_goals repeat' apply And.intro
   all_goals solve
     | (apply Verification.range16_contains; decide +kernel)
+    | (apply Trace.Proofs.range_contains; decide +kernel)
     | (refine ⟨⟨0, by decide⟩, ?_⟩; simp only [bigintReferenceRow]; decide +kernel)
     | (refine ⟨⟨262144, by decide⟩, ?_⟩; simp only [bigintReferenceRow]; decide +kernel)
     | (refine ⟨⟨1310720, by decide⟩, ?_⟩; simp only [bigintReferenceRow]; decide +kernel)

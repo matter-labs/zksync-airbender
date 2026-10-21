@@ -26,6 +26,7 @@ theorem abiRowsSatisfy (withOpcode : Bool) (high : Nat) :
   all_goals solve
     | decide
     | (apply Verification.range16_contains; norm_num [Expression.eval, Verification.environment, row, Verification.range16, fromElements, Arithmetic.limbBase])
+    | (apply Trace.Proofs.range_contains; norm_num [Expression.eval, Verification.environment, row, Trace.timestampBase])
     | (refine ⟨⟨0, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization, row, Verification.environment, Expression.eval])
     | (refine ⟨⟨262144, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization, row, Verification.environment, Expression.eval])
     | (refine ⟨⟨1310720, by decide⟩, ?_⟩; norm_num [setup, Bigint.setupTable, Bigint.Proofs.setup_row_characterization, row, Verification.environment, Expression.eval])

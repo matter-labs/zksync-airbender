@@ -23,7 +23,7 @@ theorem completion_does_not_restart (flags : Fin 8) :
   fin_cases flags <;> decide
 
 theorem another_round_rejected [Fact p.Prime] (hp : 8192 ≤ p)
-    {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p} {flags : Fin 8} {round other : Fin 10}
+    {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p} {flags : Fin 8} {round other : Fin 10}
     (control : (w Blake2Round.Variables.controlReadHi).val = flags.val + 8 * 2 ^ round.val)
     (different : other ≠ round) (wrong : w Blake2Round.Variables.roundBits[other] = 1) :
     ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment w)
@@ -34,7 +34,7 @@ theorem another_round_rejected [Fact p.Prime] (hp : 8192 ≤ p)
   exact one_ne_zero mask
 
 theorem changed_request_flags_rejected [Fact p.Prime] (hp : 8192 ≤ p)
-    {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p} {flags : Fin 8} {round : Fin 10}
+    {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p} {flags : Fin 8} {round : Fin 10}
     (control : (w Blake2Round.Variables.controlReadHi).val = flags.val + 8 * 2 ^ round.val)
     (wrong : (w 139).val ≠ flags.val % 2 ∨ (w 140).val ≠ flags.val / 2 % 2 ∨
       (w 141).val ≠ flags.val / 4) :

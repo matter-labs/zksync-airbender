@@ -1,5 +1,6 @@
 import Airbender.Review.Helpers.Context.ExternalBoundary.Requests
 import Airbender.Proofs.UnifiedReduced.RequestTrace
+import Airbender.Proofs.ExternalBoundary.NativeRequests
 
 namespace Airbender.ExternalBoundary.Requests.Proofs
 open Trace Arithmetic UnifiedReduced.Caller

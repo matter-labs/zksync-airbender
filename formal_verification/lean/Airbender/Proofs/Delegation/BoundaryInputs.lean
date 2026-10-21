@@ -14,6 +14,14 @@ structure BoundaryInputs (data : MemoryData p) (before : State) (cells : List Ce
     extends Transfer.NativeInputs (transferData data) before cells where
   clockRoom : ∀ row ∈ data.rows,
     (decodeTimestamp row.assignment row.columns.invocation).lo + 2 < timestampBase
+  invocationHigh : ∀ row ∈ data.rows,
+    (decodeTimestamp row.assignment row.columns.invocation).hi < timestampBase
+
+theorem BoundaryInputs.invocation {data : MemoryData p} {before : State} {cells : List Cell}
+    (inputs : BoundaryInputs data before cells) {row : Row p} (member : row ∈ data.rows) :
+    (decodeTimestamp row.assignment row.columns.invocation).Bounded := by
+  have room := inputs.clockRoom row member
+  exact ⟨by omega, inputs.invocationHigh row member⟩
 
 structure BoundaryOperationInputs [Fact p.Prime] (data : MemoryData p) (before : State)
     (cells : List Cell) (control : Fin 4096 → Vector Nat 6) : Prop where
@@ -60,7 +68,7 @@ open Trace
 def MemoryInputs.toBoundaryInputs {data : MemoryData p} {before : Reference.RiscV.Sail.State}
     {cells : List Cell} (inputs : MemoryInputs data before cells) : Proofs.BoundaryInputs data before cells :=
   ⟨(⟨inputs.initialization, inputs.distinct⟩ : Trace.Proofs.Transfer.Inputs _ _ _).toNativeInputs,
-    inputs.clockRoom⟩
+    inputs.clockRoom, inputs.invocationHigh⟩
 
 def OperationInputs.toBoundaryInputs [Fact p.Prime] {data : MemoryData p}
     {before : Reference.RiscV.Sail.State} {cells : List Cell} {control : Fin 4096 → Vector Nat 6}
@@ -70,7 +78,8 @@ def OperationInputs.toBoundaryInputs [Fact p.Prime] {data : MemoryData p}
 def BoundaryMemoryInputs.toBoundaryInputs {data : MemoryData p}
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (inputs : BoundaryMemoryInputs data before cells) : Proofs.BoundaryInputs data before cells := by
-  refine ⟨⟨⟨inputs.image.addresses, inputs.distinct, ?_⟩, ?_, inputs.clocks⟩, inputs.clockRoom⟩
+  refine ⟨⟨⟨inputs.image.addresses, inputs.distinct, ?_⟩, ?_, inputs.clocks⟩,
+    inputs.clockRoom, inputs.invocationHigh⟩
   · intro token member
     obtain ⟨cell, present, value, code, read, word⟩ := inputs.image.values token member
     refine ⟨cell, present, code, ?_⟩

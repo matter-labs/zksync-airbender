@@ -80,6 +80,7 @@ private theorem clocks : FlatOperation.ConstraintsHoldFlat (Verification.environ
     all_goals norm_num [Keccak.importedConstraintsTimestampLookups, FlatOperation.lookups,
       Expression.eval, Verification.environment, row, Tests.KeccakTheta.row,
       Trace.timestampBase, ZMod.val_ofNat, ZMod.val_natCast, babyBearModulus]
+    all_goals decide +kernel
 
 private def setup : Delegation.Setup babyBearModulus :=
   ⟨{ name := "unused", Contains _ _ := False },
@@ -182,6 +183,10 @@ theorem inputs : Delegation.MemoryInputs data before cells := by
   constructor
   · exact initialized
   · decide
+  · intro actual member
+    simp only [data, List.mem_singleton] at member
+    subst actual
+    decide
   · intro actual member
     simp only [data, List.mem_singleton] at member
     subst actual
@@ -339,7 +344,7 @@ theorem shared_operation_memory : Delegation.MemorySoundness sharedData ∧
       exact Verification.holds_append core clocks
     · exact List.perm_append_comm
   · constructor
-    · exact ⟨inputs.initialization, inputs.distinct, inputs.clockRoom⟩
+    · exact ⟨inputs.initialization, inputs.distinct, inputs.clockRoom, inputs.invocationHigh⟩
     · rfl
     · intro actual member family
       simp only [sharedData, data, List.mem_singleton] at member
@@ -419,7 +424,7 @@ theorem native_boundary_image_retains_clocks : ∃ (start finish : List (MemoryT
       (Delegation.Proofs.transferData ⟨data.setup, [], start, finish⟩) atCut cells :=
     ⟨⟨addresses, inputs.distinct, reads⟩, fun token member => (clocks token member).2, bounded⟩
   refine ⟨start, finish, atCut, boundary,
-    ⟨Delegation.Proofs.boundary_image cutInputs, inputs.distinct, bounded, by simp⟩, ?_⟩
+    ⟨Delegation.Proofs.boundary_image cutInputs, inputs.distinct, bounded, by simp, by simp⟩, ?_⟩
   intro fresh
   have member : native.writeToken Keccak.importedConstraintsMemoryPorts[0] ∈ data.terminal := by
     apply List.mem_map.mpr

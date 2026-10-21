@@ -37,6 +37,17 @@ def Circuit.lookupExpression (c : Circuit) (relation : LinearRelation) : Except 
       pure (.Product #[.Constant coeff, .Var (← c.logicalVariable address)] : Expr)
     pure (.Sum (#[.Constant relation.constant] ++ terms))
 
+/-- The native table registry may append unused IDs. Retain every checked
+    prefix offset and require each added region to be empty, before the decoder. -/
+private def Circuit.checkTableOffsets (c : Circuit) (expected : Array Nat)
+    (family : String) : Except String Unit := do
+  unless expected.size ≤ c.table_offsets.size do
+    throw s!"{family} table offsets are incomplete"
+  for id in [:c.table_offsets.size] do
+    let offset := (expected[id]?).getD c.offset_for_decoder_table
+    unless (c.table_offsets[id]?.map (·.val)) == some offset do
+      throw s!"unexpected {family} table offset"
+
 /-- Import indirect word ports, preserving optional variable offsets, order, scale and
     read/write direction. The caller guards the expected family profile. -/
 def Circuit.indirectPorts (c : Circuit) : Except String (Array Verification.IndirectPort) := do
@@ -82,7 +93,8 @@ def Circuit.timestampExpressions (c : Circuit) : Except String (Array Expr) :=
     unless query.lookup_set_index == index do throw "timestamp lookup set order mismatch"
     c.lookupExpression query.input
 
-private def Circuit.timestampPorts (c : Circuit) (expectedOffset : Nat → Nat) :
+private def Circuit.timestampPorts (c : Circuit) (expectedOffset : Nat → Nat)
+    (nonComparisonCount : Nat := 2) :
     Except String (Array Trace.TimestampPort) := do
   let column := fun n => do
     unless n < c.memory_layout.total_width do throw "trace column outside memory layout"
@@ -92,7 +104,7 @@ private def Circuit.timestampPorts (c : Circuit) (expectedOffset : Nat → Nat) 
   let queries := c.memory_layout.ram_access_sets
   let borrows := c.aux_layout_data.shuffle_ram_timestamp_comparison_aux_vars
   unless queries.size == borrows.size do throw "timestamp comparison count differs from memory ports"
-  unless c.timestamp_range_check_lookup_expressions.size == 2 + 2 * queries.size do
+  unless c.timestamp_range_check_lookup_expressions.size == nonComparisonCount + 2 * queries.size do
     throw "timestamp query count differs from state and memory ports"
   let mut ports := #[]
   for i in [:queries.size] do
@@ -127,9 +139,16 @@ def Circuit.delegationColumns (c : Circuit) : Except String Delegation.ClockColu
   let column := fun n => do
     unless n < c.memory_layout.total_width do throw "delegation clock outside memory layout"
     c.logicalVariable (.BaseLayerMemory n)
+  -- The selected native workers range (invocation-low - execute) / 4,
+  -- then the memory comparisons and each indirect base's alignment. They
+  -- no longer range the two invocation limbs independently.
+  let mut alignedRegisters : Array Nat := #[]
+  for port in ← c.indirectPorts do
+    if !alignedRegisters.contains port.register then
+      alignedRegisters := alignedRegisters.push port.register
   pure ⟨← column state.execute,
     #v[← column state.invocation_timestamp.values[0]!, ← column state.invocation_timestamp.values[1]!],
-    ← c.timestampPorts (fun _ => 2)⟩
+    ← c.timestampPorts (fun _ => 2) (1 + alignedRegisters.size)⟩
 
 /-- Native decoder fields use memory columns for rs1 and either memory or
     witness columns for the immediate/funct3 group, as recorded by Rust. -/
@@ -326,10 +345,7 @@ def Circuit.unifiedReducedQueries (c : Circuit) : Except String (Array (Array Ex
     590081, 590081, 590081, 590081, 590081, 1638657, 1638657, 1638657, 1638657, 1638657,
     1638657, 1638657, 1638657, 1638657, 1638657, 1638657, 1638657, 1638657, 1704193, 1769729,
     1835265, 1900801, 1900929, 1966465, 2032001]
-  unless c.table_offsets.size == offsets.size do throw "unified reduced table offsets are incomplete"
-  for id in [:offsets.size] do
-    unless (c.table_offsets[id]?.map (·.val)) == offsets[id]? do
-      throw "unexpected unified reduced table offset"
+  c.checkTableOffsets offsets "unified reduced"
   unless c.num_generic_lookups == 6 && c.generic_lookups.size == 5 do
     throw "unified reduced requires five pooled-query sets plus the decoder set"
   c.generic_lookups.mapIdxM fun index query => do
@@ -354,10 +370,7 @@ def Circuit.blakeGQueries (c : Circuit) : Except String (Array (Array Expr)) := 
     344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896,
     344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896,
     344896, 344896, 344896, 344896, 344896]
-  unless c.table_offsets.size == offsets.size do throw "BLAKE2 G table offsets are incomplete"
-  for id in [:offsets.size] do
-    unless (c.table_offsets[id]?.map (·.val)) == offsets[id]? do
-      throw "unexpected BLAKE2 G table offset"
+  c.checkTableOffsets offsets "BLAKE2 G"
   let tags := #[28, 4, 4, 4, 4, 17, 20, 18, 17, 20, 18, 4, 4, 4, 4, 19, 20, 19, 20]
   unless c.num_generic_lookups == tags.size && c.generic_lookups.size == tags.size do
     throw "BLAKE2 G requires one control query and eighteen XOR queries"
@@ -374,31 +387,35 @@ def Circuit.blakeGQueries (c : Circuit) : Except String (Array (Array Expr)) := 
           throw "BLAKE2 G XOR lookup padding must be zero"
     query.columns.mapM c.lookupExpression
 
-/-- The extended-control round has eight G invocations and final XOR queries.
-    Its setup is exactly the five XOR regions, with three data columns and a tag. -/
+/-- The current extended-control round uses carry-aware and split-XOR tables.
+    Keep all six physical columns and the exact eight-call/finalization schedule. -/
 def Circuit.blakeRoundQueries (c : Circuit) : Except String (Array (Array Expr)) := do
-  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == 4 do
-    throw "BLAKE2 round lookups require four columns and explicit table IDs"
-  unless !c.has_decoder_lookup && c.offset_for_decoder_table == 344384 &&
-      c.total_tables_size == 344384 do throw "unexpected BLAKE2 round setup boundary"
-  let offsets := #[0, 0, 0, 0, 0, 65536, 65536, 65536, 65536, 65536,
-    65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65600, 65856, 82240] ++
-    Array.replicate 34 344384
-  unless c.table_offsets.size == offsets.size do throw "BLAKE2 round table offsets are incomplete"
-  for id in [:offsets.size] do
-    unless (c.table_offsets[id]?.map (·.val)) == offsets[id]? do
-      throw "unexpected BLAKE2 round table offset"
-  let gTags := [4, 4, 4, 4, 17, 20, 18, 17, 20, 18, 4, 4, 4, 4, 19, 20, 19, 20]
-  let tags := ((List.replicate 8 gTags).flatten ++
-    (List.replicate 16 [19, 20]).flatten ++ (List.replicate 8 [20, 19, 4, 4]).flatten).toArray
+  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == 6 do
+    throw "BLAKE2 round lookups require six columns and explicit table IDs"
+  unless !c.has_decoder_lookup && c.offset_for_decoder_table == 606208 &&
+      c.total_tables_size == 606208 do throw "unexpected BLAKE2 round setup boundary"
+  let offsets := Array.replicate 5 0 ++ Array.replicate 15 65536 ++ #[81920] ++
+    Array.replicate 35 344064 ++ #[540672, 589824]
+  c.checkTableOffsets offsets "BLAKE2 round"
+  let columnTags := [55, 4, 55, 4, 20, 20, 57, 57, 4, 4, 55, 55, 20, 20, 19, 19]
+  let diagonalTags := [55, 4, 55, 4, 20, 20, 57, 57, 4, 4, 55, 55, 20, 20, 56, 56]
+  let tags := ((List.replicate 4 columnTags).flatten ++
+    (List.replicate 4 diagonalTags).flatten ++ (List.replicate 16 [19, 20]).flatten ++
+    (List.replicate 8 [20, 19, 4, 4]).flatten).toArray
   unless c.num_generic_lookups == tags.size && c.generic_lookups.size == tags.size do
-    throw "BLAKE2 round requires 208 XOR queries"
+    throw "BLAKE2 round requires 192 native queries"
   c.generic_lookups.mapIdxM fun index query => do
-    unless query.columns.size == 4 && query.lookup_set_index == index do
+    unless query.columns.size == 6 && query.lookup_set_index == index do
       throw "unsupported BLAKE2 round query width or set"
-    let some tag := query.columns[3]? | throw "BLAKE2 round query is missing its table ID"
+    let some tag := query.columns[5]? | throw "BLAKE2 round query is missing its table ID"
     unless tag.linear_terms.isEmpty && some tag.constant.canonical.val == tags[index]? do
       throw "unexpected BLAKE2 round table ID"
+    let tagId := tag.constant.canonical.val
+    let dataWidth := if tagId == 57 then 5 else if tagId == 55 || tagId == 56 then 4 else 3
+    for column in [dataWidth:5] do
+      let some padding := query.columns[column]? | throw "BLAKE2 round query is missing padding"
+      unless padding.linear_terms.isEmpty && padding.constant.canonical.val == 0 do
+        throw "BLAKE2 round unused query columns must be zero"
     query.columns.mapM c.lookupExpression
 
 /-- Six-index control query followed by forty variable-tag byte operations.
@@ -410,10 +427,7 @@ def Circuit.keccakQueries (c : Circuit) : Except String (Array (Array Expr)) := 
       c.total_tables_size == 1249281 do throw "unexpected Keccak setup boundary"
   let offsets := #[0] ++ Array.replicate 4 1 ++ Array.replicate 33 65537 ++
     #[69633, 135169, 200705] ++ Array.replicate 14 1249281
-  unless c.table_offsets.size == offsets.size do throw "Keccak table offsets are incomplete"
-  for id in [:offsets.size] do
-    unless (c.table_offsets[id]?.map (·.val)) == offsets[id]? do
-      throw "unexpected Keccak table offset"
+  c.checkTableOffsets offsets "Keccak"
   unless c.num_generic_lookups == 41 && c.generic_lookups.size == 41 do
     throw "Keccak requires one control query and forty byte queries"
   c.generic_lookups.mapIdxM fun index query => do

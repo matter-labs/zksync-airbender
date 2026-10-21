@@ -13,7 +13,7 @@ private theorem prefix_checked : fixedTags jumpBranchSetup.prefixTags.blocks.toL
   decide +kernel
 
 private def paddingValues : Vector Nat jumpBranchSetup.width :=
-  Vector.ofFn fun _ => 0
+  Vector.ofFn fun lane => (jumpBranchSetup.padding.columns[lane].get? 0).getD 0
 
 private theorem padding_checked (lane : Fin jumpBranchSetup.width) :
     constantTail paddingValues[lane] 0 jumpBranchSetup.padding.columns[lane].blocks.toList = true := by

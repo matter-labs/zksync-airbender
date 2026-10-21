@@ -4,6 +4,9 @@ import Airbender.Proofs.MemoryPorts
 import Airbender.Proofs.Constraints
 import Airbender.Proofs.Lookups
 import Airbender.Proofs.Arithmetic.Chunks
+import Airbender.Proofs.BabyBear
+import Airbender.Proofs.Trace.Timestamps
+import Mathlib.Tactic.LinearCombination
 
 namespace Airbender.Bigint.Addresses.Proofs
 open Arithmetic
@@ -11,19 +14,24 @@ set_option warningAsError true
 set_option maxHeartbeats 800000
 set_option maxRecDepth 16384
 
-theorem pointer_alignment {p : Nat} [Fact p.Prime] (hp : 2097152 ≤ p)
+theorem pointer_alignment {p : Nat} [Fact p.Prime] (_hp : 2097152 ≤ p)
     (inverse : 32 * (-62914560 : ZMod p) = 1) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :
     (w 3).val % 32 = 0 ∧ (w 37).val % 32 = 0 := by
-  have left := Verification.range16_bound
+  have characteristic : (babyBearModulus : ZMod p) = 0 := by
+    unfold babyBearModulus
+    linear_combination -inverse
+  have field := babyBear_eq_of_natCast_zero characteristic
+  have capacity : 32 * Trace.timestampBase ≤ p := by rw [field]; decide
+  have left := Trace.Proofs.range_bound
     (Verification.lookup_of_holds h ⟨32, by rw [lookup_count]; decide⟩)
-  have right := Verification.range16_bound
+  have right := Trace.Proofs.range_bound
     (Verification.lookup_of_holds h ⟨33, by rw [lookup_count]; decide⟩)
-  simp [Expression.eval, Verification.environment, limbBase] at left right
-  have lv := value_of_scaled_range hp (by decide) inverse
+  simp [Expression.eval, Verification.environment, ] at left right
+  have lv := value_of_scaled_range capacity (by decide) inverse
     (by simpa only [neg_mul] using left)
-  have rv := value_of_scaled_range hp (by decide) inverse
+  have rv := value_of_scaled_range capacity (by decide) inverse
     (by simpa only [neg_mul] using right)
   constructor <;> first | (rw [lv]; simp) | (rw [rv]; simp)
 

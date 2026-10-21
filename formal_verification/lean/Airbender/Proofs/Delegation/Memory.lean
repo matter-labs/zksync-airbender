@@ -55,26 +55,28 @@ theorem port_offset (row : Row p) {port : MemoryPort} (member : port ∈ row.por
   exact (Array.mem_replicate.mp mapped).2
 
 theorem clock_room_of_invocation_slots [Fact p.Prime]
-    {data : MemoryData p} (accepted : MemoryAccepted data)
+    {data : MemoryData p} (_accepted : MemoryAccepted data)
+    (invocations : ∀ row ∈ data.rows,
+      (decodeTimestamp row.assignment row.columns.invocation).Bounded)
     (slots : ∀ row ∈ data.rows,
       (decodeTimestamp row.assignment row.columns.invocation).lo % 4 = 1) :
     ∀ row ∈ data.rows,
       (decodeTimestamp row.assignment row.columns.invocation).lo + 2 < timestampBase := by
   intro row member
-  have bound := (row_facts data.setup row (accepted.constraints row member)).invocation.1
+  have bound := (invocations row member).1
   have slot := slots row member
   dsimp [timestampBase] at bound ⊢
   omega
 
 theorem writes_bounded [Fact p.Prime] (hp : timestampBase < p)
-    {data : MemoryData p} (accepted : MemoryAccepted data)
+    {data : MemoryData p} (_accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {row : Row p} (member : row ∈ data.rows) {port : MemoryPort} (present : port ∈ row.ports) :
     (timeOfPair (row.writeToken port).time).Bounded ∧
       (timeOfPair (row.writeToken port).time).value =
         (decodeTimestamp row.assignment row.columns.invocation).value + port.clock.offset := by
-  have facts := row_facts data.setup row (accepted.constraints row member)
-  apply Trace.Proofs.write_time_of_room hp (base := rawPair row.assignment row.columns.invocation) facts.invocation
+  apply Trace.Proofs.write_time_of_room hp (base := rawPair row.assignment row.columns.invocation)
+    (inputs.invocation member)
   rw [port_offset row present]
   exact inputs.clockRoom row member
 
@@ -117,7 +119,7 @@ theorem memory_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have room : (decodeTimestamp row.assignment row.columns.invocation).lo + port.clock.offset < timestampBase := by
     rw [port_offset row inArray]
     exact inputs.clockRoom row rowMember
-  have less := Trace.Proofs.native_port_order_of_room hp facts.invocation previous
+  have less := Trace.Proofs.native_port_order_of_room hp (inputs.invocation rowMember) previous
     (facts.offsets port.clock (clock_member row inArray)) room
     native.1 (by simpa [decodeTimestamp, timeOfPair, readToken, rawPair] using native.2.1)
     (by simpa [decodeTimestamp, timeOfPair, readToken, rawPair] using native.2.2)

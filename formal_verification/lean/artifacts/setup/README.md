@@ -108,4 +108,5 @@ region/decoder value with JSON, independently of the structural kernel
 certificates. Affine slice validation checks equal starts and strides over the
 whole overlap; all other values are compared individually. The imported-data
 semantic proofs do not establish Rust refinement, cryptographic authentication,
-F02/F03/F04 enforcement or AIH-336's accelerated/full-proof validation.
+F02/F04 enforcement or AIH-336's accelerated/full-proof validation. F03's
+current native exclusion is checked separately from table-content semantics.

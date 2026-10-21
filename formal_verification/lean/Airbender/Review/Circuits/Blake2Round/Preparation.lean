@@ -47,6 +47,20 @@ def spec (input : Input) (output : Output) : Prop := output = step input
 def words {p : Nat} (w : Nat → ZMod p) {n : Nat} (columns : Vector (Nat × Nat) n) : Vector Word n :=
   columns.map fun pair => ⟨(w pair.1).val, (w pair.2).val⟩
 
+/-- Message selection is now an expression in the native memory and mode
+    columns. The wider circuit commits the round/mode products instead of
+    allocating a second copy of these sixteen words. -/
+def messageLimb {p : Nat} (w : Nat → ZMod p) (word limb : Nat) : ZMod p :=
+  if word < 8 then
+    (1 - w 203) * w (103 + 2 * word + limb) + w 203 * w (5 + 4 * word + limb)
+  else
+    (1 - w 203 - w 202) * w (103 + 2 * word + limb) +
+      w 202 * w (5 + 4 * (word - 8) + limb) +
+      w 203 * w (103 + 2 * (word - 8) + limb)
+
+def messageWords {p : Nat} (w : Nat → ZMod p) : Vector Word 16 :=
+  Vector.ofFn fun i => ⟨(messageLimb w i.val 0).val, (messageLimb w i.val 1).val⟩
+
 structure Mapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
   firstRound : w 142 = if input.firstRound then 1 else 0
   compression : w 141 = if input.compression then 1 else 0
@@ -56,10 +70,10 @@ structure Mapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod 
   message : input.message = words w Variables.messageReads
   chainingOutput : output.chaining = words w Variables.chainingInputs
   extendedOutput : output.extended = words w Variables.preparedState
-  messageOutput : output.message = words w Variables.preparedMessage
+  messageOutput : output.message = messageWords w
 
 -- No round-mask exclusivity or memory-transport assumption is needed for preparation.
-def circuitModel {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 4)) :
+def circuitModel {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 6)) :
     Verification.CircuitModel Input Output (Nat → ZMod p) where
   satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w)
     (importedConstraints setup)
