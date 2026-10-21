@@ -1,3 +1,5 @@
+import Airbender.Proofs.Blake2G.FrameQueryShapes
+import Airbender.Proofs.Blake2Round.NativeDiagonalHead0
 import Airbender.Proofs.Arithmetic.FieldSliceNormalization
 import Airbender.Proofs.Arithmetic.FieldSlices
 import Airbender.Proofs.BabyBear
@@ -4615,3 +4617,24 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationZeroInvocation.historical_core_accepted
 #print axioms Tests.DelegationZeroInvocation.historical_memory_tokens_match
 #print axioms Tests.DelegationZeroInvocation.unissued_worker_rejected
+
+#print axioms Airbender.Blake2G.Proofs.FrameQueryShapes.lookup0_eq_mk
+#print axioms Airbender.Blake2G.Proofs.FrameQueryShapes.lookup1_eq_mk
+#print axioms Airbender.Blake2G.Proofs.FrameQueryShapes.lookup2_eq_mk
+#print axioms Airbender.Blake2G.Proofs.FrameQueryShapes.row0
+#print axioms Airbender.Blake2G.Proofs.FrameQueryShapes.row1
+#print axioms Airbender.Blake2G.Proofs.FrameQueryShapes.row2
+#print axioms Airbender.Blake2Round.Proofs.NativeDiagonalHead0.a_input_sum
+#print axioms Airbender.Blake2Round.Proofs.NativeDiagonalHead0.columns0
+#print axioms Airbender.Blake2Round.Proofs.NativeDiagonalHead0.columns1
+#print axioms Airbender.Blake2Round.Proofs.NativeDiagonalHead0.columns2
+#print axioms Airbender.Blake2Round.Proofs.NativeDiagonalHead0.d_byte0
+#print axioms Airbender.Blake2Round.Proofs.NativeDiagonalHead0.d_byte1
+#print axioms Airbender.Blake2Round.Proofs.NativeDiagonalHead0.d_input
+#print axioms Airbender.Blake2Round.Proofs.NativeDiagonalHead0.native_diagonal_head0_queries
+#print axioms Airbender.Blake2Round.Proofs.NativeDiagonalHead0.source0_eval
+#print axioms Airbender.Blake2Round.Proofs.NativeDiagonalHead0.source0_lookup
+#print axioms Airbender.Blake2Round.Proofs.NativeDiagonalHead0.source1_eval
+#print axioms Airbender.Blake2Round.Proofs.NativeDiagonalHead0.source1_lookup
+#print axioms Airbender.Blake2Round.Proofs.NativeDiagonalHead0.source2_eval
+#print axioms Airbender.Blake2Round.Proofs.NativeDiagonalHead0.source2_lookup

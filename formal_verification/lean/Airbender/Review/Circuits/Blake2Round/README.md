@@ -35,6 +35,10 @@ The [fixed rows](Tables/XorData.lean) come from this circuit's own artifact;
 to the shared XOR semantics and native fields.
 The [native layout adapter](../../../Proofs/Blake2Round/NativeLayout.lean) reads
 both G phases into a [shared arithmetic frame](../../../Proofs/Blake2G/Frame.lean).
+The first three call-0 diagonal queries reuse
+[abstract row identities](../../../Proofs/Blake2G/FrameQueryShapes.lean) through a
+[checked native binding](../../../Proofs/Blake2Round/NativeDiagonalHead0.lean),
+preserving the original query theorem and its hypotheses.
 Chunk and rotation proofs use lookup evidence alone; native carry, input and
 writeback projections stay in the adapter modules.
 [Addresses](Addresses.lean) and [Memory](Memory.lean) connect native indirect ports
