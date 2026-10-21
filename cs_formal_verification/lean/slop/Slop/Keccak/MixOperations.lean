@@ -8,7 +8,7 @@ namespace Airbender.Keccak.Proofs.Mix
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 1200000
+set_option maxHeartbeats 600000
 
 def nativeLimbs (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 4, start + 5]
 def temporary (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 2, start + 3]
@@ -96,10 +96,11 @@ theorem mix_xor_bytes {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   have tags := selected_tags (by omega) h active (mixMode second) selected
     ⟨8 * operation.val + byte.val, by omega⟩
   cases second <;> fin_cases operation <;> simp [isRotation] at xor
-  all_goals fin_cases byte <;>
-    simp [mixMode, operationTags, byteTag, byteQuery, importedConstraints,
-      FlatOperation.lookups, Expression.eval, Verification.environment,
-      ByteOperationFacts] at tags query ⊢
+  all_goals fin_cases byte
+  all_goals simp only [byteTag, byteQuery] at tags query
+  all_goals op_index at tags query
+  all_goals simp [mixMode, operationTags, Expression.eval, Verification.environment,
+    ByteOperationFacts] at tags query ⊢
   all_goals
     split at query
     · rename_i zero
