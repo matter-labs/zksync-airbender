@@ -4,9 +4,10 @@ import Human.RV32
 /-! # Airbender = the official Sail RISC-V model, with the changes listed here
 
 The Sail model is riscv/sail-riscv, turned into Lean by `sail/regen.sh` (pins: `sail/PINS.md`) with
-`sail/config/airbender-base.json`: the stock RV32 config with every extension except M and Zicsr switched off,
-and no timer or interrupt devices. Everything Airbender does differently from that model is in this file,
-marked `-- Airbender:`, following Airbender's ISA table (zksync-airbender `spec/top-down/00 master.md`,
+`sail/config/airbender-base.json`: the stock RV32 config without timer or interrupt devices and with the few
+extensions off that change how base RV32I behaves (`sail/README.md`). The other extensions stay on, but Airbender's
+decoder (`RV.decode`, below) rejects their instructions. Everything Airbender does differently from that model is in
+this file, marked `-- Airbender:`, following Airbender's ISA table (zksync-airbender `spec/top-down/00 master.md`,
 "Supported instruction set"). Airbender's instruction formats are our own table `RV.decode`; their effect is
 Sail's `execute`. The machine adds one thing Sail does not have: the program's input (Airbender's non-determinism
 source, CSR `0x7c0`): the words not yet read (a list; a read with none left has no next state).
