@@ -1,11 +1,14 @@
 import Human.Circuits.Blake2Round.Finalization
 import Slop.Blake2Round.ArtifactChecks
 import Slop.Blake2Round.Lookups
+import Slop.Blake2Round.OpIndex
 import Slop.Blake2G.Soundness
 import Slop.Arithmetic.FieldChunks
 import Mathlib.Tactic.ReduceModChar
 
 set_option warningAsError true
+-- one call's goals may not use every lemma of the shared simp set
+set_option linter.unusedSimpArgs false
 
 namespace Airbender.Blake2Round.Proofs
 
@@ -94,8 +97,12 @@ theorem ac_queries {p : Nat} [Fact p.Prime]
   unfold babyBearModulus at *
   have tag (stage : Fin 4) : finalColumn w (limb.castLE (by omega)) stage 3 =
       (if stage.val % 2 = 0 then 19 else 20 : ZMod 2013265921) := by
-    fin_cases limb <;> fin_cases stage <;> simp [finalColumn, finalQuery,
-      importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment]
+    fin_cases limb
+    all_goals fin_cases stage
+    all_goals simp only [finalColumn, finalQuery, Fin.val_castLE, Fin.isValue, Fin.val_zero, Fin.val_one, Fin.val_two, Fin.val_mk,
+      Fin.coe_ofNat_eq_mod, Nat.reduceMod]
+    all_goals op_index
+    all_goals simp [Expression.eval, Verification.environment]
   have q0 := final_query (by decide) (limb.castLE (by omega)) 0 3 h (tag 0)
   have q1 := final_query (by decide) (limb.castLE (by omega)) 1 4 h (tag 1)
   have q2 := final_query (by decide) (limb.castLE (by omega)) 2 3 h (tag 2)
@@ -109,28 +116,42 @@ theorem ac_queries {p : Nat} [Fact p.Prime]
   have cHigh : finalColumn w (limb.castLE (by omega)) 1 1 =
       (-15728640 : ZMod 2013265921) * (acC w limb - w acLowC[limb]) := by
     fin_cases limb
-    all_goals simp [finalColumn, finalQuery, importedConstraints, FlatOperation.lookups,
-      FlatOperation.constraints, Expression.eval, Verification.environment, acC, acLowC] at cWrite ⊢
+    all_goals simp only [finalColumn, finalQuery, Fin.val_castLE, Fin.isValue, Fin.val_zero, Fin.val_one, Fin.val_two, Fin.val_mk,
+      Fin.coe_ofNat_eq_mod, Nat.reduceMod] at ⊢
+    all_goals try simp only [Nat.reduceDiv, Nat.reduceMod, Nat.reduceMul, Nat.reduceAdd, Fin.val_mk, Fin.isValue,
+      Fin.coe_ofNat_eq_mod] at cWrite
+    all_goals op_index at cWrite ⊢
+    all_goals simp [Expression.eval, Verification.environment, acC, acLowC] at cWrite ⊢
     all_goals linear_combination (norm := ring_nf) (-15728640 : ZMod 2013265921) * cWrite
     all_goals reduce_mod_char
   have aHigh : finalColumn w (limb.castLE (by omega)) 3 1 =
       (-15728640 : ZMod 2013265921) * (acA w limb - w (631 + 7 * limb.val)) := by
     fin_cases limb
-    all_goals simp [finalColumn, finalQuery, importedConstraints, FlatOperation.lookups,
-      FlatOperation.constraints, Expression.eval, Verification.environment, acA] at aWrite split ⊢
+    all_goals simp only [finalColumn, finalQuery, Fin.val_castLE, Fin.isValue, Fin.val_zero, Fin.val_one, Fin.val_two, Fin.val_mk,
+      Fin.coe_ofNat_eq_mod, Nat.reduceMod] at ⊢
+    all_goals try simp only [Nat.reduceDiv, Nat.reduceMod, Nat.reduceMul, Nat.reduceAdd, Fin.val_mk, Fin.isValue,
+      Fin.coe_ofNat_eq_mod] at aWrite split
+    all_goals op_index at aWrite split ⊢
+    all_goals simp [Expression.eval, Verification.environment, acA] at aWrite split ⊢
     all_goals linear_combination (norm := ring_nf) (-15728640 : ZMod 2013265921) * (aWrite - split)
     all_goals reduce_mod_char
   have initialHigh : finalColumn w (limb.castLE (by omega)) 1 0 =
       (-15728640 : ZMod 2013265921) * (acInitial w limb - w (628 + 7 * limb.val)) := by
     fin_cases limb
-    all_goals simp [finalColumn, finalQuery, importedConstraints, FlatOperation.lookups,
-      Expression.eval, Verification.environment, acInitial]
+    all_goals simp only [finalColumn, finalQuery, Fin.val_castLE, Fin.isValue, Fin.val_zero, Fin.val_one, Fin.val_two, Fin.val_mk,
+      Fin.coe_ofNat_eq_mod, Nat.reduceMod] at ⊢
+    all_goals op_index at ⊢
+    all_goals simp [Expression.eval, Verification.environment, acInitial]
     all_goals ring
   rw [initialHigh, cHigh] at q1
   rw [aHigh] at q3
   fin_cases limb
-  all_goals simp [finalColumn, finalQuery, importedConstraints, FlatOperation.lookups,
-    Expression.eval, Verification.environment, acInitial, acC, acA, acLowC] at q0 q1 q2 q3 ⊢
+  all_goals simp only [finalColumn, finalQuery, Fin.val_castLE, Fin.isValue, Fin.val_zero, Fin.val_one, Fin.val_two, Fin.val_mk,
+      Fin.coe_ofNat_eq_mod, Nat.reduceMod] at q0 q1 q2 q3 ⊢
+  all_goals try simp only [Nat.reduceDiv, Nat.reduceMod, Nat.reduceMul, Nat.reduceAdd, Fin.val_mk, Fin.isValue,
+      Fin.coe_ofNat_eq_mod] at q0 q1 q2 q3 ⊢
+  all_goals op_index at q0 q1 q2 q3 ⊢
+  all_goals simp [Expression.eval, Verification.environment, acInitial, acC, acA, acLowC] at q0 q1 q2 q3 ⊢
   all_goals exact ⟨q0, q1, q2, q3⟩
 
 end Airbender.Blake2Round.Proofs
