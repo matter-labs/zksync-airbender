@@ -160,7 +160,7 @@ pub static CENSUS_TABLES: &[(FsvProgram, BlakeMode, CensusTable)] = &[
                 ),
                 (
                     CircuitId::Delegation(1996),
-                    [697716, 67931, 35356, 0, 308829, 0, 61194, 0, 0, 0],
+                    [698168, 67765, 35341, 0, 302917, 0, 61194, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1997),
@@ -168,7 +168,7 @@ pub static CENSUS_TABLES: &[(FsvProgram, BlakeMode, CensusTable)] = &[
                 ),
                 (
                     CircuitId::Delegation(1998),
-                    [653072, 64396, 34052, 0, 295700, 0, 60816, 0, 0, 0],
+                    [653822, 64498, 34033, 0, 290264, 0, 60816, 0, 0, 0],
                 ),
             ],
         },
