@@ -41,7 +41,6 @@ theorem diagonal_g_queries_1 {p : Nat} [Fact p.Prime]
       Blake2G.Proofs.secondChi, Blake2G.Proofs.firstAlo, Blake2G.Proofs.firstAhi,
       Blake2G.Proofs.firstClo, Blake2G.Proofs.firstChi, padXor, Fin.ofNat, Fin.val_mk,
       Nat.reduceMod, Nat.reduceLT, ↓reduceIte]
-  all_goals try ring_nf
   all_goals try reduce_mod_char
   all_goals try ring_nf
   all_goals try reduce_mod_char
