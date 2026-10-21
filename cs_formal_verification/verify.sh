@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# One-command check: fetch the pinned lean-sail, build the spec and every proof, check that the spec does not depend
-# on the proofs, run the regressions and the axiom audits (standard axioms only), check the review guides.
+# One-command check: fetch the pinned lean-sail, require the generated Sail model, build the spec and every proof,
+# check that the spec does not depend on the proofs, run the regressions and the axiom audits (standard axioms only), check the review guides.
 set -euo pipefail
 cd "$(dirname "$0")/lean"
 fail() { echo "FAIL: $*"; exit 1; }
 
-echo "== 0. lean-sail (pinned, fetched on demand; not committed)"
+echo "== 0. The Sail model: lean-sail (pinned, fetched on demand; not committed), then the generated model"
 ../sail/fetch-lean-sail.sh
+[[ -f sail-rv32/SailRV32.lean && -d sail-rv32/SailRV32 ]] ||
+  fail "the generated Sail model is absent: run sail/regen.sh (needs the pinned Sail compiler; see sail/PINS.md)"
 
 echo "== 1. The spec (human/) imports nothing from the proofs (slop/) or the tests (test/)"
 if grep -rnE '^\s*(public\s+)?import\s+(Slop|Tests|Checks)(\.|$)' human; then fail "human/ imports slop/ or test/"; fi

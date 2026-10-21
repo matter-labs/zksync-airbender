@@ -1,0 +1,36 @@
+diff --git a/model/core/counters.sail b/model/core/counters.sail
+index 00a84fc..c031172 100644
+--- a/model/core/counters.sail
++++ b/model/core/counters.sail
+@@ -209,6 +209,7 @@ function write_mhpmcounter(index : hpmidx, value : bits(64)) -> unit =
+   }
+ 
+ val event_csr_write_callback = pure {cpp: "event_csr_write_callback"} : (hpmidx, bits(64), bits(64)) -> unit
++function event_csr_write_callback(_) = ()
+ 
+ function write_mhpmevent(index : hpmidx, value : bits(64)) -> unit =
+   if sys_writable_hpm_counters[index] == 0b1 then {
+diff --git a/model/core/events.sail b/model/core/events.sail
+index c25e0bf..beff2e6 100644
+--- a/model/core/events.sail
++++ b/model/core/events.sail
+@@ -26,6 +26,7 @@ mapping event_name : Event <-> string = {
+ function name_of_event(event : Event) -> string = event_name(event)
+ 
+ val event_callback = impure {cpp: "event_callback", c: "event_callback"} : (Event, Privilege) -> unit
++function event_callback(_, _) = ()
+ 
+ function generate_event(event : Event) -> unit =
+   event_callback(event, cur_privilege)
+diff --git a/model/postlude/validate_config.sail b/model/postlude/validate_config.sail
+index fdcb0c2..a1d059b 100644
+--- a/model/postlude/validate_config.sail
++++ b/model/postlude/validate_config.sail
+@@ -1083,6 +1083,7 @@ private function check_version_constraints() -> bool = {
+ // Checks for selector-value validity are done in C++ for efficiency
+ // since Sail does not have a `set` type.
+ val validate_event_selectors = pure {cpp:"validate_event_selectors"} : unit -> bool
++function validate_event_selectors() = true
+ 
+ private function check_platform_constraints() -> bool =
+   validate_event_selectors()

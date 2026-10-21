@@ -2,3 +2,8 @@ lean/.lake/
 __pycache__/
 # lean-sail has no licence upstream: never commit it; sail/fetch-lean-sail.sh fetches the pinned commit
 lean/sail-rv32/lean-sail/
+# the generated full Sail model (sail/regen.sh) and its build; regenerated, never committed
+lean/sail-rv32/SailRV32/
+lean/sail-rv32/SailRV32.lean
+lean/sail-rv32/.lake/
+build/

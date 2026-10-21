@@ -77,9 +77,9 @@ when reviewing or strengthening a theorem.
 | Lean kernel and standard axioms | Accepted proof-checking foundation. The [axiom audit](../lean/test/Checks/Axioms.lean) records actual dependencies. |
 | Lean / Mathlib | `v4.34.1`, pinned in `lean-toolchain` and [lakefile.toml](../lean/lakefile.toml). |
 | Clean | tag `v4.33.1`, `93c9d1ef45be9f687214625d7857889cf2485504` (builds unchanged on Lean `v4.34.1`); upstream definitions in `lean/.lake/packages/Clean`. Review their applicability; Lean checks proof terms. |
-| Sail model/compiler | Pinned source in `sail/sail-riscv`; exact pins, source hashes and generation details in [provenance](../lean/sail-rv32/provenance.json) and [regeneration notes](../lean/sail-rv32/README.md). |
+| Sail model/compiler | The official sail-riscv model `6136f84` (tag `2026-10-12-6136f84`) compiled by Sail `2ba3212` (0.20.3) with the [airbender-base config](../sail/config/airbender-base.json); pins and their rationale in [PINS.md](../sail/PINS.md), generation in [regen.sh](../sail/regen.sh). The generated model is not committed. |
 | Sail runtime | `lean-sail` revision `c816ea7ad03cce98d51acee252540fd4215fede8`, fetched by [fetch-lean-sail.sh](../sail/fetch-lean-sail.sh) with the Lean 4.34 [patch](../sail/patches/lean-sail-lean4.34.1.patch). |
-| Platform support | [SailPlatform.lean](../sail/SailPlatform.lean), copied by the original backend. Experimental extensions are disabled to match the pinned emulator configuration. Runtime compatibility is proved in [Runtime.lean](../lean/slop/Slop/Sail/Runtime.lean); terminal/reservation calls remain abstract parameters. |
+| Platform support | The full model implements the platform hooks concretely; three upstream hooks without a Lean body get trivial bodies in [sail-riscv-lean-missing-externs.patch](../sail/patches/sail-riscv-lean-missing-externs.patch). Experimental extensions and CLINT/interrupt devices are off in [airbender-base.json](../sail/config/airbender-base.json). |
 | Project profile/custom reference | Unmodified [00-master.md](airbender/00-master.md) at `2331d1c511f26c17be85879fbab02ab109aefd05`, with [hash/provenance](airbender/provenance.json). Applicability to the circuit revision remains a review obligation. |
 | Base ADD/SUB artifact | `av_gkr_compiler` revision `28ffe3ff0353edd9051485c2974b28b52b495dc4`; [retained no-cache JSON](../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json), SHA-256 `084a58f08dd122160b548689383f74d4a790c782046f8a5bf43f9f287c22a620`. Other family JSON paths remain in their reviewed artifact declarations. |
 
@@ -101,15 +101,11 @@ witness extension and cached-layout equivalence are unproved. Generic prime-fiel
 claims retain their stated minimum moduli and inverse compatibility; they do not
 establish import of the native Proth120 artifact with its own coefficients.
 
-Sail standard instructions call original generated clauses, with no replacement
-arithmetic specification. Review [generate_sail.py](../sail/generate_sail.py),
-[sail_slice.ml](../sail/sail_slice.ml) and the recorded provenance. The generator
-extracts the unique normal `F_Base` nextPC assignment verbatim from pinned
-`run_hart_active` into `extracted_base_pc.sail`, then compiles it with Sail.
-Hashes identify inputs and outputs; extraction, compilation and pruning fidelity
-are not proved. The selected successful four-byte path does not include the full
-fetch driver, interrupts or exceptional branches. `MemoryPlatform` externals are
-abstract conditions, without supplied implementations or project axioms.
+Sail standard instructions call the original generated clauses of the full model,
+with no replacement arithmetic specification. Review [regen.sh](../sail/regen.sh),
+[PINS.md](../sail/PINS.md) and the configuration copy. Generation fidelity (Sail
+compiler to Lean) is trusted, not proved; the model is the official sail-riscv source
+compiled without pruning.
 
 Public decoder constructors use actual Sail byte reads and original decoding.
 The restricted pure and M-extension interpreter constructors preserve their

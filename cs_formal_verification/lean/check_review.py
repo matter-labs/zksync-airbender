@@ -30,7 +30,7 @@ def claim_modules():
             for path in sorted((ROOT / src / sub).rglob("*.lean"))]
 # File names, source-only Rust/Sail names, and prose are not emitted Lean declarations.
 SOURCE_NAMES = {
-    "Model.lean", "extracted_base_pc.sail", "lakefile.toml", "av_gkr_compiler",
+    "Model.lean", "lakefile.toml", "av_gkr_compiler",
     "inits_or_teardowns_as_flattened_relation", "mask_read_for_witness",
     "run_hart_active", "F_Base", "FormalCircuit", "sorry",
 }
