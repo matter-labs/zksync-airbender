@@ -66,7 +66,6 @@ theorem wrongFinalChunkRejected (w : Nat → ZMod babyBearModulus) :
   simp [Blake2Round.importedConstraints, FlatOperation.lookups, Expression.eval,
     Verification.environment] at xor
   norm_num [left, right, wrong, ZMod.val_ofNat, babyBearModulus] at xor
-  exact (by decide : ¬ (7 : Nat) = 3 ^^^ 5) xor
 
 theorem wrongFinalFlagRejected (w : Nat → ZMod babyBearModulus)
     (mask : ∀ i : Fin 10, w Blake2Round.Variables.roundBits[i] = if i = 9 then 1 else 0)
@@ -172,7 +171,6 @@ theorem wrongFirstXorRejected (w : Nat → ZMod babyBearModulus) :
   simp [Blake2Round.importedConstraints, FlatOperation.lookups, Expression.eval,
     Verification.environment] at xor
   norm_num [left, right, wrong, ZMod.val_ofNat, babyBearModulus] at xor
-  exact (by decide : (7 : Nat) ≠ 3 ^^^ 5) xor
 
 open Blake2Round.Preparation in
 /-- The first normal round must take lane zero from the chaining state,
