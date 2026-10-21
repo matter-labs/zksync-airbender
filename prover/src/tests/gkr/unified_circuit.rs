@@ -15,13 +15,14 @@ fn run_unified_test(level: SecurityLevel) {
 
     // Blake variant selection. Both variants run the same `multi_family_smoke`
     // program shape but with a different Blake delegation CSR baked in. Default
-    // is `g_function` to match the cascading default of `gkr_test.sh --blake`.
+    // to compression so the exported fixture is supported by the FSV registry.
+    // `gkr_test.sh --blake` can still select the G-function variant explicitly.
     let blake_variant = std::env::var("GKR_BLAKE").ok();
     let config = match blake_variant.as_deref() {
-        Some("compression") | Some("blake2_with_compression") => {
-            ProgramConfig::multi_family_smoke_blake_compression()
+        Some("g_function") | Some("blake2_g_function") => {
+            ProgramConfig::multi_family_smoke_blake_g_function()
         }
-        _ => ProgramConfig::multi_family_smoke_blake_g_function(),
+        _ => ProgramConfig::multi_family_smoke_blake_compression(),
     };
 
     let delegation_eval_fns = DelegationEvalFns {
@@ -62,7 +63,11 @@ fn run_unified_test(level: SecurityLevel) {
             "unified grand-product accumulator should be ONE"
         );
 
-        write_fsv_unified_fixture(&output, proof_suffix);
+        if delegation_call_counts.blake_g_function == 0 {
+            write_fsv_unified_fixture(&output, proof_suffix);
+        } else {
+            println!("Blake G-function proof generated; the FSV registry does not support exporting its fixture");
+        }
     }
 }
 
