@@ -54,8 +54,11 @@ theorem rho_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
   fin_cases column <;> fin_cases operation <;> fin_cases limb
   all_goals op_index at a c
   all_goals simp at r0 r1 r2 r3 r4
-  all_goals simp [Expression.eval, Verification.environment, m0, m1, m2, m3, selected, m5, m6,
-    r0, r1, r2, r3, r4, rotations, rhoRotations, limbOffset, rotationSource, rotationPrevious] at a c ⊢
+  all_goals simp only [Expression.eval, Verification.environment, m0, m1, m2, m3, m5, m6,
+    r0, r1, r2, r3, r4, selected, Nat.cast_zero, Nat.cast_one, Nat.cast_ofNat, Nat.cast_add,
+    Int.ofNat_eq_natCast, Int.cast_ofNat, Int.cast_one, Int.cast_zero, Int.cast_negSucc,
+    mul_one, one_mul, mul_zero, zero_mul, add_zero, zero_add] at a c
+  all_goals simp [rotations, rhoRotations, limbOffset, rotationSource, rotationPrevious] at ⊢
   all_goals exact ⟨by linear_combination a, by linear_combination c⟩
 
 theorem rho_rotation_parts {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
