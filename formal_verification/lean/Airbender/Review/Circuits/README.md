@@ -31,3 +31,11 @@ history and newest reads from public Sail initialization and native matching.
 Readonly shadows/alias refreshes and actual masked writes remain. Native clock
 carry/rejection and eight initialized fixtures pass. Original subword execution,
 canonical word/key bounds and architectural ROM projection remain separate.
+
+[Initialized subword payload bounds](../Trace/Families/SubwordMemory/Values.lean)
+now derive all native read/write/terminal ranges from actual initialization,
+matching and public original decoding. Exact packed fields and disjoint native
+byte contributions bound merged stores. Eight complete traces use one public
+state for instruction and seed bytes, including shadows, x0 and aliases.
+Architectural address/ROM/byte effects and original subword execution remain
+separate next dependencies.

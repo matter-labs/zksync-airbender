@@ -1434,3 +1434,11 @@ ROM shadows, x0, SB/SH writes and source/destination alias refreshes; stale alia
 matching, nonboolean clock carry and high overflow reject. Full native low-clock
 carry is checked. Word/key bounds, architectural ROM projection and original
 subword instruction execution remain separate next dependencies.
+
+[Initialized native subword payload bounds](Airbender/Review/Trace/Families/SubwordMemory/Values.lean)
+now derive all read/write/terminal ranges from one actual public state supplying
+initialization and full original sparse decoding, with native matching. Exact
+packed fields and disjoint byte contributions bound merged SB/SH writes without
+assuming bounded results. Eight full traces retain actual code/shadow bytes,
+x0 and alias refreshes. Address/width/sign/ROM bindings and original subword
+instruction execution remain next work.

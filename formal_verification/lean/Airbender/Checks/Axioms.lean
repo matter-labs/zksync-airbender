@@ -102,6 +102,9 @@ import Tests.SubwordNativeDecoder
 import Tests.SubwordHistory
 import Tests.SubwordClock
 
+import Tests.SubwordWordBounds
+import Tests.SubwordPackedBounds
+
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
 #print axioms Airbender.AddSub.Proofs.constraint_count
@@ -2371,3 +2374,37 @@ import Tests.SubwordClock
 #print axioms Tests.SubwordClock.native_port_order
 #print axioms Tests.SubwordClock.nonboolean_carry_rejected
 #print axioms Tests.SubwordClock.overflowing_high_rejected
+
+#print axioms Airbender.SubwordMemory.Proofs.packed_parts
+#print axioms Airbender.SubwordMemory.Proofs.native_data_key
+#print axioms Airbender.SubwordMemory.Proofs.selected_limb_bound
+#print axioms Airbender.SubwordMemory.Proofs.store_sum_bound
+#print axioms Airbender.SubwordMemory.Proofs.store_merged_bound
+#print axioms Airbender.SubwordMemory.Proofs.store_written_bounds
+#print axioms Airbender.SubwordMemory.Proofs.row_decoder_query
+#print axioms Airbender.SubwordMemory.Proofs.entry_written_bounds
+#print axioms Airbender.SubwordMemory.Proofs.row_write_rule
+#print axioms Airbender.SubwordMemory.Proofs.decoded_write_rules
+#print axioms Airbender.SubwordMemory.Proofs.image_value_bounds
+#print axioms Airbender.SubwordMemory.public_value_bounds
+#print axioms Tests.SubwordBoundsRows.native_constraints
+#print axioms Tests.SubwordBoundsFixture.accepted
+#print axioms Tests.SubwordBoundsFixture.public_inputs
+#print axioms Tests.SubwordWordBounds.fields
+#print axioms Tests.SubwordWordBounds.actual_bytes
+#print axioms Tests.SubwordWordBounds.original_decode
+#print axioms Tests.SubwordWordBounds.constructed
+#print axioms Tests.SubwordWordBounds.query
+#print axioms Tests.SubwordWordBounds.member
+#print axioms Tests.SubwordWordBounds.decoded
+#print axioms Tests.SubwordWordBounds.public_bounds
+#print axioms Tests.SubwordWordBounds.actual_shadow_instruction
+#print axioms Tests.SubwordPackedBounds.full_key_boundary
+#print axioms Tests.SubwordPackedBounds.byte_merge_boundaries
+#print axioms Tests.SubwordPackedBounds.halfword_and_unused_keys
+#print axioms Tests.SubwordPackedBounds.separate_bounds_insufficient
+#print axioms Tests.SubwordPackedBounds.field_wrap_requires_metadata
+#print axioms Tests.SubwordBoundsWitness.unchanged_constraints
+#print axioms Tests.SubwordBoundsPart0.constraints_0
+#print axioms Tests.SubwordBoundsPart6.constraints_6
+#print axioms Tests.SubwordBoundsPart7.constraints_7

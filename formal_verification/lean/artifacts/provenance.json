@@ -6302,6 +6302,109 @@
       "backport_reuse_path": "Tests/SubwordDecoderPart0.lean",
       "backport_reuse_sha256": "eec02b9b4cc0cab4adde80e940c7aa526a7be20cb15745899ea2db78a3f3a55d",
       "change": "Reuse full actual native equation/lookup checks at low clock 524284 with carry one. Derive final clock 0/1, value 524288 and strict port ordering from the new native timestamp connection. Reject nonboolean carry and high-limb overflow under unchanged default/resource limits."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/PackedKeys.lean",
+      "backport_reuse_revision": "6b210432f0b45e41110507896a48c983715b92de",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/OffsetValues.lean",
+      "backport_reuse_sha256": "360bfaba4cae3c0284379ab35fa26344dfdb4d39509d7442ab3ee863003958df",
+      "change": "Adapt native field-to-natural lifting to the exact 16-bit limb/two-bit offset/three-bit raw funct3 key. Prove component extraction and no field wrap from derived ranges, and bound the actual selected old limb using native Boolean upper control. No key-equivalence premise."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/StoreBounds.lean",
+      "backport_reuse_revision": "6b210432f0b45e41110507896a48c983715b92de",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/Values.lean",
+      "backport_reuse_sha256": "77eb3c525b6c2ffe5ad00aaf2429ea380a2f3f31e5d605c81ffb01e0ea70a17d",
+      "change": "Use the existing exact literal native clear/place relations and actual store-write mux. Prove disjoint SB contributions, SH replacement and unused raw rows bound their sum, then preserve both full written limbs from source/old reads. Native offset/size/upper controls and key normalization are derived."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Decoder/SubwordMemory.lean",
+      "backport_reuse_revision": "6b210432f0b45e41110507896a48c983715b92de",
+      "backport_reuse_path": "Airbender/Review/Helpers/Decoder/ShiftBinop.lean",
+      "backport_reuse_sha256": "60575530c1f9f6fd7fa78a6733c53a3cfadf3c946f16fa014312f1c02649888b",
+      "change": "Reuse unchanged full sparse/padded decoder membership at the actual native row query, selecting the separate native subword registry and original subword operation projection."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/SubwordMemory/Values.lean",
+      "backport_reuse_revision": "6b210432f0b45e41110507896a48c983715b92de",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/ShiftBinop/Values.lean",
+      "backport_reuse_sha256": "b1b101b54def6b8efd98aff7b4f836243f2d094a3d15e6e48a79042c4ea02336",
+      "change": "Reuse actual public source recovery and shared initialized value induction. Derive raw funct3 and x0 masking from original decoding, preserve readonly words, and use both source and old read dependencies for merged stores. Derive every read/write/terminal payload bound without per-row read/clock/range or desired-result premises."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/SubwordMemory/Values.lean",
+      "backport_reuse_revision": "6b210432f0b45e41110507896a48c983715b92de",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ShiftBinop/Values.lean",
+      "backport_reuse_sha256": "3be9bafdcb3e79b4ecb51728cf6be8cd77121a18c8c02463fd8dd1862a27b6de",
+      "change": "Reuse one short public word-bound wrapper with a single original public state supplying both initialization and sparse decoding. Keep original Sail instruction execution and architectural data-ROM projection separate."
+    },
+    {
+      "path": "Tests/SubwordBoundsRows.lean",
+      "backport_reuse_revision": "6b210432f0b45e41110507896a48c983715b92de",
+      "backport_reuse_path": "Tests/SubwordHistoryRows.lean",
+      "backport_reuse_sha256": "eeb44cc0e40896da35f96dd77db35f47ab1ee7fa67da3485881048f14cf051f0",
+      "change": "Reuse finite complete-native-row certificate assembly. Transport unchanged rows through one generic assignment identity before finite specialization; split three changed shadow/code-byte certificates to preserve existing allocation ceilings. All prior native fixtures remain unchanged."
+    },
+    {
+      "path": "Tests/SubwordBoundsFixture.lean",
+      "backport_reuse_revision": "6b210432f0b45e41110507896a48c983715b92de",
+      "backport_reuse_path": "Tests/SubwordHistoryFixture.lean",
+      "backport_reuse_sha256": "1cfdb5a19a8218936cc3565a0073495a3157c4fec9b0048c39122e12a2005a0b",
+      "change": "Reuse initialized accepted traces and independent actual Sail GPR/data-byte seed reads. Insert original instruction bytes into the same public state; when a shadow overlaps PC zero, read the actual instruction word. Preserve unique alias seeds, readonly refresh time four, x0 and actual SB/SH writes. Architectural data-ROM binding remains separate."
+    },
+    {
+      "path": "Tests/SubwordWordBounds.lean",
+      "backport_reuse_revision": "6b210432f0b45e41110507896a48c983715b92de",
+      "backport_reuse_path": "Tests/SubwordDecoderPublic.lean",
+      "backport_reuse_sha256": "155072147b3f7d880af9e8bd049e33bc181cb4229e106092c91303de0d500afc",
+      "change": "Reuse actual byte reads, pinned original decoder reductions, complete sparse construction and symbolic head membership. Check all read/write/terminal bounds on eight complete native initialized traces in that same actual public state, including a retained rs1=rd alias. Keep original tables/candidates and earlier fixtures unchanged."
+    },
+    {
+      "path": "Tests/SubwordPackedBounds.lean",
+      "backport_reuse_revision": "6b210432f0b45e41110507896a48c983715b92de",
+      "backport_reuse_path": "Tests/SubwordValues.lean",
+      "backport_reuse_sha256": "5f7bdb08102a570f9e6e2eaed5b5b08245f5edde46c2208b2de54eb39a3ff4ea",
+      "change": "Reuse kernel boundary-regression style for exact native helper definitions. Check the maximal 21-bit key, byte and halfword/unused contributions, failure of independent contribution bounds to bound a sum, and the Mersenne31 raw-field alias excluded by derived original decoder ranges. These are enforcement/representation regressions, not new defects."
+    },
+    {
+      "path": "Tests/SubwordBoundsWitness.lean",
+      "backport_reuse_revision": "6b210432f0b45e41110507896a48c983715b92de",
+      "backport_reuse_path": "Tests/SubwordHistoryRows.lean",
+      "backport_reuse_sha256": "eeb44cc0e40896da35f96dd77db35f47ab1ee7fa67da3485881048f14cf051f0",
+      "change": "Reuse native assignments and alter only shadow low/high and selected-shadow columns for LB/LBU/alias at address zero, matching independently encoded original instructions. All 51 native equations and dynamic queries remain. Use a generic unchanged-row transport lemma to avoid large closed relation conversions."
+    },
+    {
+      "path": "Tests/SubwordBoundsPart0.lean",
+      "backport_reuse_revision": "6b210432f0b45e41110507896a48c983715b92de",
+      "backport_reuse_path": "Tests/SubwordDecoderPart0.lean",
+      "backport_reuse_sha256": "eec02b9b4cc0cab4adde80e940c7aa526a7be20cb15745899ea2db78a3f3a55d",
+      "change": "Reuse complete native assertion and actual lookup checks for the original LB row with instruction bytes in its shadow. Use its exact native fixed key and unchanged dynamic queries, in a separate bounded proof module."
+    },
+    {
+      "path": "Tests/SubwordBoundsPart6.lean",
+      "backport_reuse_revision": "6b210432f0b45e41110507896a48c983715b92de",
+      "backport_reuse_path": "Tests/SubwordDecoderPart3.lean",
+      "backport_reuse_sha256": "30c5df91d7f6f29e8071bb23e5c3544ed25d37352b6f9c53a4c0ae315941ae59",
+      "change": "Reuse the full native LBU checker with actual public instruction shadow bytes, raw funct3 four, native offset key 786432 and unchanged native helper outputs, in a separate bounded proof module."
+    },
+    {
+      "path": "Tests/SubwordBoundsPart7.lean",
+      "backport_reuse_revision": "6b210432f0b45e41110507896a48c983715b92de",
+      "backport_reuse_path": "Tests/SubwordHistoryRows.lean",
+      "backport_reuse_sha256": "eeb44cc0e40896da35f96dd77db35f47ab1ee7fa67da3485881048f14cf051f0",
+      "change": "Reuse the complete alias LB checker with rs1=rd=1, actual public instruction shadow bytes and previous destination time four. Preserve all equations and queries; keep the certificate separate from finite history assembly."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/StoreBounds.lean",
+      "source_path": "Airbender/Proofs/SubwordMemory/Stores.lean",
+      "source_sha256": "45849c2a38f4c71838adad5c7f48330cc528ab325687a1241d971f3a38f4cd44",
+      "change": "Adapt the pinned v3 disjoint store-byte bound and two-read initialized value-preservation argument to actual v2 native raw funct3/offset keys, literal helpers, mixed ports and masked writes. Retain original x0, Mersenne31 arithmetic, native clock rollover and actual original public decoding. Reuse shared value induction unchanged; no v3 table identity, column mapping, source-field inverse, caller-supplied clock/seed bounds or table-equivalence premise is imported."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/SubwordMemory/Values.lean",
+      "source_path": "Airbender/Proofs/SubwordMemory/Values.lean",
+      "source_sha256": "d56dc8496e1fcd78a7339e8f3a2d33290e66a616bd0c8ead82d68615fb387047",
+      "change": "Adapt the pinned v3 disjoint store-byte bound and two-read initialized value-preservation argument to actual v2 native raw funct3/offset keys, literal helpers, mixed ports and masked writes. Retain original x0, Mersenne31 arithmetic, native clock rollover and actual original public decoding. Reuse shared value induction unchanged; no v3 table identity, column mapping, source-field inverse, caller-supplied clock/seed bounds or table-equivalence premise is imported."
     }
   ],
   "setup_artifacts": [

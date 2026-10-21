@@ -2342,3 +2342,59 @@ General Rust/JSON/compiler refinement and physical verifier/cryptographic
 enforcement remain separate. No confirmed defect is added; FINDINGS and its
 historical archive are unchanged. Original Clean/Sail, native sources/artifacts,
 exporter, earlier fixtures and the original checkout are preserved.
+
+## Initialized native subword word bounds checkpoint (2026-10-21)
+
+[Exact packed-key calculations](Airbender/Proofs/SubwordMemory/PackedKeys.lean)
+now recover the native 16-bit limb, two-bit offset and three-bit raw funct3
+without Mersenne31 wrap. Native offset/upper controls, canonical reads and
+original public metadata supply the ranges. [Store preservation](Airbender/Proofs/SubwordMemory/StoreBounds.lean)
+uses the already certified literal native clear/place relations and actual
+write muxes. SB's complementary bytes bound their sum; SH replaces the selected
+limb and unused raw rows contribute zero. The opposite old limb and native
+full-word mux branch are retained. Separate contribution bounds alone are not
+used to justify a bounded sum.
+
+[The initialized assembly](Airbender/Proofs/Trace/Families/SubwordMemory/Values.lean)
+derives original raw funct3 and x0 masking from actual public decoding. Readonly
+ports preserve their read words. The last store write uses both the earlier
+source read and its old destination/RAM read. The unchanged shared time induction
+then derives every native read, write and terminal payload range from actual
+public Sail seeds and native matching. [One short public claim](Airbender/Review/Trace/Families/SubwordMemory/Values.lean)
+uses the same actual public state for initialization and full sparse decoder
+construction. No per-row bound, clock, expected read, result, intermediate state
+or table-equivalence premise is introduced.
+
+[Eight complete initialized decoded traces](Tests/SubwordWordBounds.lean)
+exercise all six forms, RAM/ROM-shadow loads, actual SB/SH writes, x0 and an
+rs1=rd alias consuming the source refresh at clock four. Independent actual
+instruction bytes and register/data bytes now share one public Sail state.
+Three new row copies change only shadow read/selection columns when the shadow
+overlaps instruction address zero; earlier fixtures remain unchanged. Every
+native equation and lookup is checked. This joins decoding and logical memory
+initialization; architectural data-ROM lookup contents remain a separate binding.
+
+[Boundary regressions](Tests/SubwordPackedBounds.lean) retain the largest native
+key, maximal byte merges, halfword/unused rows and the insufficiency of separate
+contribution bounds. A Mersenne31 packed-field alias explains why raw funct3
+ranges matter; the integrated claim derives those ranges from actual original
+public decoding. These regressions do not establish a confirmed defect.
+
+Draft combined fixture/closed-relation assembly checks hit Lean's allocation
+cap and terminated with no surviving owned workers. Three native certificates
+are now split, and one generic assignment-transport lemma precedes finite
+specialization. The final checks preserve all default/resource ceilings; no
+memory increase, semantic restriction, truncated table or expected-result
+assumption was introduced. The disjoint-merge and two-read history arguments
+adapt the pinned v3 source with accurate provenance; shared Clean/Sail/value
+semantics and native v2 sources/artifacts/exporter are unchanged.
+
+Next work binds bounded source/old-RAM words and native effective addresses,
+size/sign/offset selectors and load/store packed fields to original Sail byte/
+halfword effects, then prepares/retires and composes full subword execution.
+Architectural instruction/data-ROM projection remains explicit. Delegation/
+custom/CSR, unified execution, initialization/teardown and terminal/padding
+boundaries remain unfinished. General Rust/JSON/compiler refinement and physical
+verifier/cryptographic enforcement remain separate. FINDINGS and its historical
+archive are unchanged; no confirmed defect is added. The original checkout is
+preserved and no push/publication is authorized.

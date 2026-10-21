@@ -140,3 +140,18 @@ carry and malformed clock rejection pass under unchanged resource ceilings.
 This is logical cell history. Source/old-RAM bounds, whole store-write bounds,
 packed-key binding, instruction/data-ROM projection and original subword
 execution remain separate; the earlier table/decoder claims are unchanged.
+
+## Initialized native payload ranges
+
+[The short value claim](../../Trace/Families/SubwordMemory/Values.lean) derives
+every native read, write and terminal word bound from actual Sail seed reads,
+native matching and full public original decoding in the same state.
+[Packed fields](../../../Proofs/SubwordMemory/PackedKeys.lean) and
+[disjoint store contributions](../../../Proofs/SubwordMemory/StoreBounds.lean)
+preserve the native selected/other old limbs and actual SB/SH writes. Raw funct3,
+x0 masking and offset/size/upper controls are derived; no bounded result or
+packed-key equivalence is supplied. [Eight regressions](../../../../Tests/SubwordWordBounds.lean)
+join original code bytes to initialization, including overlapping shadow bytes,
+x0 and a source/destination alias. Boundary checks cover maximum keys/merges and
+the raw-field range dependency. Effective addresses, width/sign/offset and
+architectural ROM projection still need connection to original Sail execution.

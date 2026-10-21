@@ -392,3 +392,12 @@ actual SB/SH writes, x0 and a source/destination readonly-refresh alias. Stale
 alias matching rejects, and full native clock carry plus malformed clock
 rejections pass. Canonical reads/store bounds, packed-key binding, architectural
 ROM projection and original subword instruction execution remain next work.
+
+[Initialized native subword value bounds](Families/SubwordMemory/Values.lean)
+derive every actual read/write/terminal payload range from public original
+initialization and decoding in the same Sail state, with native matching.
+Native packed-key normalization and disjoint byte clearing/placement preserve
+merged SB/SH writes using both source and old reads. Eight full fixtures include
+actual overlapping instruction/shadow bytes, x0 and readonly alias refreshes.
+Address/width/sign/ROM bindings and original subword execution remain next work;
+no expected read, result or intermediate state is supplied.

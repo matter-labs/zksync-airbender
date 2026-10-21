@@ -29,3 +29,15 @@ derives current/prior clock inputs and complete original Clean consistency from
 actual Sail seeds and native matching. No shared semantic definitions or original
 Sail clauses change. Canonical values/key binding and instruction execution remain
 separate subword obligations.
+
+## Subword initialized value preservation
+
+[Full native decoder membership](Decoder/SubwordMemory.lean) now feeds the
+[initialized payload-bound claim](../Trace/Families/SubwordMemory/Values.lean).
+The unchanged shared value induction uses native local preservation from both
+source and old-destination/RAM reads. Exact raw-key components and disjoint byte
+contributions derive whole store-write bounds; actual original decoding derives
+funct3/x0 ranges. [Same-state regressions](../../../Tests/SubwordWordBounds.lean)
+retain actual public code/seed bytes. Shared Clean/Sail definitions, tables and
+logical history semantics are unchanged; original instruction execution remains
+separate.
