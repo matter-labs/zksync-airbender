@@ -317,7 +317,6 @@ theorem partial_request_changes_control :
       Blake2G.importedConstraintsMemoryPorts, MemoryPort.writeCode, WordColumns.code,
       pairCode, row, Arithmetic.Word.value, Arithmetic.Word.toBitVec, Arithmetic.limbBase,
       ZMod.val_one, ZMod.val_ofNat, ZMod.val_natCast, babyBearModulus]
-    rfl
   exact ⟨events, after, permutation, history, by simpa only [value] using read⟩
 
 theorem complete_request_controls_repeat :
