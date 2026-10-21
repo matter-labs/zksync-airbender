@@ -5,8 +5,10 @@ import Slop.OpIndexAttr
 per lookup, `(FlatOperation.constraints (C args)).get ⟨k, h⟩ = e_k`, proven once by `rfl`. Proofs cite them
 instead of unfolding the whole operation list at every use (lean-strategies §2.1).
 
-`derive_op_index C` adds `C.constraint_k` and `C.lookup_k` to the `op_index` simp set; the tactic
-`op_index at h ⊢` normalizes literal indices and rewrites with them. -/
+`derive_op_index C` adds `C.constraint_k` and `C.lookup_k` to the `op_index` simp set, and for each
+lookup also `C.lookup_k_array : ((lookups C).get ⟨k, _⟩).entry.toArray = (L_k).entry.toArray`. simp cannot
+rewrite the query under `.entry` (its type depends on the table), so the array lemma matches the whole
+`.entry.toArray` term instead. The tactic `op_index at h ⊢` normalizes literal indices and rewrites with them. -/
 
 open Lean Meta Elab Command
 
@@ -37,6 +39,11 @@ private partial def evalElems (e : Expr) : MetaM (Array Expr) := do
   else
     throwError "cannot evaluate the operation list: {e.getAppFn}"
 
+private def addSimpTheorem' (declName : Name) (levelNames : List Name) (type value : Expr) : MetaM Unit := do
+  addDecl <| .thmDecl { name := declName, levelParams := levelNames, type, value }
+  let some ext ← getSimpExtension? `op_index | throwError "missing simp attribute op_index"
+  addSimpTheorem ext declName (post := true) (inv := false) .global (eval_prio default)
+
 /-- `∀ args (h : k < (sel (C args)).length), (sel (C args)).get ⟨k, h⟩ = rhs`, by `rfl`. -/
 private def addIndexLemma (declName : Name) (levelNames : List Name) (xs : Array Expr) (constAt : Expr)
     (selector : Name) (k : Nat) (rhs : Expr) : MetaM Unit := do
@@ -46,9 +53,22 @@ private def addIndexLemma (declName : Name) (levelNames : List Name) (xs : Array
     let get ← mkAppM ``List.get #[list, ← mkAppM ``Fin.mk #[mkNatLit k, h]]
     let type ← mkForallFVars (xs.push h) (← mkEq get rhs)
     let value ← mkLambdaFVars (xs.push h) (← mkEqRefl get)
-    addDecl <| .thmDecl { name := declName, levelParams := levelNames, type, value }
-    let some ext ← getSimpExtension? `op_index | throwError "missing simp attribute op_index"
-    addSimpTheorem ext declName (post := true) (inv := false) .global (eval_prio default)
+    addSimpTheorem' declName levelNames type value
+
+/-- `∀ args (h : k < (lookups (C args)).length), ((lookups (C args)).get ⟨k, h⟩).entry.toArray =
+    (L_k).entry.toArray`, by `rfl`. The whole `.entry.toArray` term is the left side, so simp rewrites it
+    even though it cannot rewrite the lookup inside `.entry`. -/
+private def addLookupArrayLemma (declName : Name) (levelNames : List Name) (xs : Array Expr) (constAt : Expr)
+    (k : Nat) (rhs : Expr) : MetaM Unit := do
+  let list ← mkAppM ``FlatOperation.lookups #[constAt]
+  let bound ← mkAppM ``LT.lt #[mkNatLit k, ← mkAppM ``List.length #[list]]
+  withLocalDeclD `h bound fun h => do
+    let get ← mkAppM ``List.get #[list, ← mkAppM ``Fin.mk #[mkNatLit k, h]]
+    let lhs ← mkAppM ``Vector.toArray #[← mkAppM ``Lookup.entry #[get]]
+    let rhsArr ← mkAppM ``Vector.toArray #[← mkAppM ``Lookup.entry #[rhs]]
+    let type ← mkForallFVars (xs.push h) (← mkEq lhs rhsArr)
+    let value ← mkLambdaFVars (xs.push h) (← mkEqRefl lhs)
+    addSimpTheorem' declName levelNames type value
 
 elab "derive_op_index " id:ident : command => do
   let name ← liftCoreM <| realizeGlobalConstNoOverloadWithInfo id
@@ -65,6 +85,7 @@ elab "derive_op_index " id:ident : command => do
         c := c + 1
       else if let some e := opArg? op ``FlatOperation.lookup then
         addIndexLemma (name ++ Name.mkSimple s!"lookup_{l}") info.levelParams xs constAt ``FlatOperation.lookups l e
+        addLookupArrayLemma (name ++ Name.mkSimple s!"lookup_{l}_array") info.levelParams xs constAt l e
         l := l + 1
     return (c, l)
   logInfo m!"{name}: {constraints} constraint and {lookups} lookup lemmas"
