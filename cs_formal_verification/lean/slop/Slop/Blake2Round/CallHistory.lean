@@ -4,7 +4,7 @@ namespace Airbender.Blake2Round.Proofs
 open Trace Arithmetic Reference.RiscV.Sail
 set_option warningAsError true
 
-def BoundaryCallInputs.toControlPoolInputs [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem BoundaryCallInputs.toControlPoolInputs [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
     (inputs : BoundaryCallInputs data initial cells flags) (accepted : Delegation.MemoryAccepted data) :
     ControlPoolInputs data initial cells flags := by

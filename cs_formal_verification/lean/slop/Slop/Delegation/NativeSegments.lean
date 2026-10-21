@@ -13,7 +13,7 @@ abbrev rowWriteTime (row : Row p) : Nat := row.writeTime
 abbrev windowRows (data : MemoryData p) (lower upper : Nat) : List (Row p) :=
   data.windowRows lower upper
 
-def native_window_boundary_inputs {data : MemoryData p} {before atStart : State} {cells : List Cell}
+theorem native_window_boundary_inputs {data : MemoryData p} {before atStart : State} {cells : List Cell}
     (inputs : MemoryInputs data before cells) {lower upper : Nat} {start finish : List (MemoryToken p)}
     (boundary : Transfer.NativeInputs
       (transferData ⟨data.setup, windowRows data lower upper, start, finish⟩) atStart cells) :
@@ -21,7 +21,7 @@ def native_window_boundary_inputs {data : MemoryData p} {before atStart : State}
   ⟨boundary_image boundary, boundary.distinct, boundary.clocks,
     fun row member => inputs.clockRoom row (List.mem_of_mem_filter member)⟩
 
-def native_window_boundary_inputs_at_boundary {data : MemoryData p} {before atStart : State}
+theorem native_window_boundary_inputs_at_boundary {data : MemoryData p} {before atStart : State}
     {cells : List Cell} (inputs : BoundaryInputs data before cells) {lower upper : Nat}
     {start finish : List (MemoryToken p)}
     (boundary : Transfer.NativeInputs

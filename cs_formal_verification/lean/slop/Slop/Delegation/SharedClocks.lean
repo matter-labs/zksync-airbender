@@ -16,7 +16,7 @@ private theorem architectural_member {port : MemoryPort} (member : port ∈ arch
 def sharedData [Fact p.Prime] (data : RequestTrace p) : Transfer.Data p :=
   ⟨data.machine.initialMemory, data.machine.terminalMemory, data.sharedSteps⟩
 
-def sharedInputs [Fact p.Prime] {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
+theorem sharedInputs [Fact p.Prime] {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {cells : List Cell}
     (inputs : SharedMemoryInputs data before addresses cells) : Transfer.Inputs (sharedData data) before cells :=
   ⟨inputs.initialization, inputs.distinct⟩

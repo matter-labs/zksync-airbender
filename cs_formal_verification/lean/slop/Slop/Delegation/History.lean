@@ -5,7 +5,7 @@ namespace Airbender.Delegation.Proofs
 open Trace
 set_option warningAsError true
 
-def transferInputs {data : MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
+theorem transferInputs {data : MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (inputs : BoundaryInputs data before cells) : Trace.Proofs.Transfer.BoundaryInputs (transferData data) before cells :=
   inputs.toNativeInputs.toBoundaryInputs
 
