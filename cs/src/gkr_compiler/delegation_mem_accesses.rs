@@ -140,7 +140,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
             indirects_alignment_log2,
             indirect_accesses,
         } = memory_query;
-        let ([read_timestamp_low, read_timestamp_high], read_timestamp, borrow_var) =
+        let ([read_timestamp_low, read_timestamp_high], read_timestamp, comparison) =
             if let Some(group) = read_timestamp_group {
                 let (read_timestamp_vars, read_timestamp) = grouped_read_timestamp(
                     graph,
@@ -153,7 +153,11 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                     group,
                     ram_access_sets.len(),
                 );
-                (read_timestamp_vars, read_timestamp, None)
+                (
+                    read_timestamp_vars,
+                    read_timestamp,
+                    ReadTimestampComparison::Grouped { group },
+                )
             } else {
                 let [read_timestamp_low, read_timestamp_high] = std::array::from_fn(|_| {
                     add_compiler_defined_base_layer_variable(
@@ -196,7 +200,9 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                 (
                     [read_timestamp_low, read_timestamp_high],
                     read_timestamp,
-                    Some(borrow_var),
+                    ReadTimestampComparison::PerAccess {
+                        intermediate_borrow: borrow_var,
+                    },
                 )
             };
 
@@ -215,7 +221,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
             local_timestamp_in_cycle: LOCAL_TIMESTAMP_FOR_INDIRECTS,
         });
         let partial_data = ShuffleRamTimestampComparisonPartialData {
-            intermediate_borrow: borrow_var,
+            comparison,
             read_timestamp: [read_timestamp_low, read_timestamp_high],
             local_timestamp_in_cycle: LOCAL_TIMESTAMP_FOR_INDIRECTS as usize,
         };
@@ -332,7 +338,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
             let variable_offset = indirect_access.variable_dependent();
             // (offset, var, indirect_access_var_idx)
 
-            let ([read_timestamp_low, read_timestamp_high], read_timestamp, borrow_var) =
+            let ([read_timestamp_low, read_timestamp_high], read_timestamp, comparison) =
                 if let Some(group) = indirect_access.read_timestamp_group() {
                     let (read_timestamp_vars, read_timestamp) = grouped_read_timestamp(
                         graph,
@@ -345,7 +351,11 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                         group,
                         ram_access_sets.len(),
                     );
-                    (read_timestamp_vars, read_timestamp, None)
+                    (
+                        read_timestamp_vars,
+                        read_timestamp,
+                        ReadTimestampComparison::Grouped { group },
+                    )
                 } else {
                     let [read_timestamp_low, read_timestamp_high] = std::array::from_fn(|_| {
                         add_compiler_defined_base_layer_variable(
@@ -394,7 +404,9 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                     (
                         [read_timestamp_low, read_timestamp_high],
                         read_timestamp,
-                        Some(borrow_var),
+                        ReadTimestampComparison::PerAccess {
+                            intermediate_borrow: borrow_var,
+                        },
                     )
                 };
 
@@ -415,7 +427,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                 local_timestamp_in_cycle: LOCAL_TIMESTAMP_FOR_INDIRECTS,
             });
             let partial_data = ShuffleRamTimestampComparisonPartialData {
-                intermediate_borrow: borrow_var,
+                comparison,
                 read_timestamp: [read_timestamp_low, read_timestamp_high],
                 local_timestamp_in_cycle: LOCAL_TIMESTAMP_FOR_INDIRECTS as usize,
             };

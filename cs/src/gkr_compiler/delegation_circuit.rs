@@ -167,13 +167,6 @@ impl<F: PrimeField> GKRCompiler<F> {
             &mut alignment_range_check_expressions,
             &mut read_timestamp_groups,
         );
-        compile_read_timestamp_group_constraints(
-            &mut structured_statements,
-            &read_timestamp_groups,
-            read_timestamp_group_distances,
-            delegation_circuit_state.execute,
-            delegation_circuit_state.invocation_timestamp,
-        );
 
         // we can add explicit nodes for memory access accumulation, and we also explicitly check write timestamps to be in range
         let mut timestamp_range_check_expressions_to_compile = vec![];
@@ -222,9 +215,31 @@ impl<F: PrimeField> GKRCompiler<F> {
         // ones, and "generic" ones (that includes decoder)
 
         // Timestamps are the easiest - we collect them, and will transform into GKR layers very separately
+        let per_access_comparisons =
+            ram_augmented_sets
+                .iter()
+                .filter_map(|(_, aux)| match aux.comparison {
+                    ReadTimestampComparison::PerAccess {
+                        intermediate_borrow,
+                    } => Some((intermediate_borrow, aux)),
+                    ReadTimestampComparison::Grouped { group } => {
+                        assert_eq!(
+                            aux.read_timestamp,
+                            read_timestamp_groups[&group].read_timestamp
+                        );
+                        None
+                    }
+                });
         super::range_check_exprs::compile_timestamp_comparison_range_checks(
             &mut timestamp_range_check_expressions_to_compile,
-            &ram_augmented_sets,
+            per_access_comparisons,
+            delegation_circuit_state.invocation_timestamp,
+        );
+        compile_read_timestamp_group_constraints(
+            &mut structured_statements,
+            &read_timestamp_groups,
+            read_timestamp_group_distances,
+            delegation_circuit_state.execute,
             delegation_circuit_state.invocation_timestamp,
         );
         timestamp_range_check_expressions_to_compile.extend(alignment_range_check_expressions);
@@ -430,12 +445,13 @@ impl<F: PrimeField> GKRCompiler<F> {
         let aux_layout_data = {
             let shuffle_ram_timestamp_comparison_aux_vars = ram_augmented_sets
                 .iter()
-                .map(|(_, el)| {
-                    el.intermediate_borrow
-                        .map(|intermediate_borrow| RamAuxComparisonSet {
-                            intermediate_borrow: graph
-                                .get_address_for_variable(intermediate_borrow),
-                        })
+                .map(|(_, el)| match el.comparison {
+                    ReadTimestampComparison::PerAccess {
+                        intermediate_borrow,
+                    } => Some(RamAuxComparisonSet {
+                        intermediate_borrow: graph.get_address_for_variable(intermediate_borrow),
+                    }),
+                    ReadTimestampComparison::Grouped { .. } => None,
                 })
                 .collect();
             let relative_timestamp_groups = read_timestamp_groups
