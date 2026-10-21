@@ -3,6 +3,8 @@ import Slop.Blake2Round.OpIndex
 import Slop.Blake2G.OpIndex
 
 set_option warningAsError true
+-- one call's goals may not use every lemma of the shared simp set
+set_option linter.unusedSimpArgs false
 
 namespace Airbender.Blake2Round.Proofs
 
@@ -86,8 +88,12 @@ theorem bd_queries {p : Nat} [Fact p.Prime] (hp : 512 ≤ p) (limb : Fin 8)
   let index : Fin 16 := ⟨8 + limb.val, by have := limb.isLt; omega⟩
   have tag (stage : Fin 4) : finalColumn w index stage 3 =
       ((if stage.val = 0 then 20 else if stage.val = 1 then 19 else 4 : Nat) : ZMod p) := by
-    fin_cases limb <;> fin_cases stage <;> simp [index, finalColumn, finalQuery,
-      importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment]
+    fin_cases limb
+    all_goals fin_cases stage
+    all_goals simp only [index, finalColumn, finalQuery, Fin.isValue, Fin.val_zero, Fin.val_one,
+      Fin.val_two, Fin.val_mk, Fin.coe_ofNat_eq_mod, Nat.reduceMod]
+    all_goals op_index
+    all_goals simp [Expression.eval, Verification.environment]
   have q0 := final_query hp index 0 4 h (tag 0)
   have q1 := final_query hp index 1 3 h (tag 1)
   have q2 := final_query hp index 2 0 h (tag 2)
@@ -95,8 +101,10 @@ theorem bd_queries {p : Nat} [Fact p.Prime] (hp : 512 ≤ p) (limb : Fin 8)
   have initialHigh : finalColumn w index 1 1 =
       (-3932160 : ZMod p) * (bdInitial w limb - w (684 + 7 * limb.val)) := by
     fin_cases limb
-    all_goals simp [index, finalColumn, finalQuery, importedConstraints, FlatOperation.lookups,
-      Expression.eval, Verification.environment, bdInitial]
+    all_goals simp only [index, finalColumn, finalQuery, Fin.isValue, Fin.val_zero, Fin.val_one,
+      Fin.val_two, Fin.val_mk, Fin.coe_ofNat_eq_mod, Nat.reduceMod]
+    all_goals op_index
+    all_goals simp [Expression.eval, Verification.environment, bdInitial]
     all_goals ring
   rw [initialHigh] at q1
   have bWrite := Verification.assertion_of_holds h
@@ -106,9 +114,13 @@ theorem bd_queries {p : Nat} [Fact p.Prime] (hp : 512 ≤ p) (limb : Fin 8)
   have split := Verification.assertion_of_holds h
     ⟨168 + 2 * limb.val, by rw [constraint_count]; have := limb.isLt; omega⟩
   fin_cases limb
-  all_goals simp [index, finalColumn, finalQuery, importedConstraints, FlatOperation.lookups,
-    FlatOperation.constraints, Expression.eval, Verification.environment,
-    bdInitial, bdB, bdD, bdLowB, bdHighB, bdLowD, bdHighD] at q0 q1 q2 q3 bWrite dWrite split ⊢
+  all_goals simp only [index, finalColumn, finalQuery, Fin.isValue, Fin.val_zero, Fin.val_one,
+    Fin.val_two, Fin.val_mk, Fin.coe_ofNat_eq_mod, Nat.reduceMod] at q0 q1 q2 q3 ⊢
+  all_goals try simp only [Nat.reduceDiv, Nat.reduceMod, Nat.reduceMul, Nat.reduceAdd, Fin.val_mk,
+    Fin.isValue] at bWrite dWrite split
+  all_goals op_index at q0 q1 q2 q3 bWrite dWrite split ⊢
+  all_goals simp [Expression.eval, Verification.environment, bdInitial, bdB, bdD, bdLowB, bdHighB,
+    bdLowD, bdHighD] at q0 q1 q2 q3 bWrite dWrite split ⊢
   all_goals refine ⟨q0, q1, q2, ?_, ?_, ?_, ?_⟩
   all_goals first
     | simpa [add_comm] using q3
