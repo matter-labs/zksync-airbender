@@ -24,9 +24,7 @@ private theorem decoding (family : Delegation.Family) :
     SailRV32.Functions.encdec_backwards (encoding family) =
       (.pure (instruction family) : SailRV32.SailM SailRV32.instruction) := by
   cases family <;> dsimp only [encoding, instruction, Requests.csr]
-  all_goals simp only [SailRV32.Functions.encdec_backwards,
-    SailRV32.Functions.currentlyEnabled, SailRV32.Functions.hartSupports]
-  all_goals rfl
+  all_goals with_unfolding_all rfl
 
 theorem original_decoder (family : Delegation.Family) (state : State) :
     run (SailRV32.Functions.encdec_backwards (encoding family)) state =
