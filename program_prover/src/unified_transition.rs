@@ -1,4 +1,4 @@
-//! Delegation-free unified proving under `CommitmentMode::MergedMemoryAndWitness`
+//! Delegation-free unified proving under `CommitmentMode::MergedMemoryAndWitness` (the config's commitment mode)
 //! — the "transition"/feeder driver of the L1 recursion tail.
 //!
 //! Mirrors [`crate::unified::prove_unified_execution_with_replayer`] with three
@@ -38,7 +38,7 @@ use prover::field::baby_bear::ext4::BabyBearExt4;
 use prover::field::*;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::{
-    prove_configured_with_gkr_with_storage_and_backend, Backend, CommitmentMode, GKRBackend,
+    prove_configured_with_gkr_with_storage_and_backend, Backend, GKRBackend, OperationMode,
     WhirOracleStorage,
 };
 use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
@@ -68,7 +68,7 @@ pub struct UnifiedTransitionTimings {
     pub setup_ms: u128,
     /// Pre-challenge MERGED memory+witness tree commitments (all chunks).
     pub merged_tree_commit_ms: u128,
-    /// The setup oracle commitment (`GKRSetup::commit`).
+    /// The setup oracle commitment (`GKRSetup::commit_for_config_with_backend`).
     pub setup_commit_ms: u128,
     /// GKR witness evaluation (all chunks).
     pub witness_eval_ms: u128,
@@ -206,7 +206,7 @@ pub fn prove_unified_transition_with_replayer_timed<
 
     let num_unified_calls =
         counters.get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
-    let trace_len_log2 = <setups::unified_reduced_machine::UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
+    let trace_len_log2 = <setups::unified_reduced_machine::UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::trace_len_log2();
 
     let unified_buffers = replay_unified_circuit::<DelegationsAndUnifiedCounters>(
         DelegationsAndUnifiedCounters::default(),
@@ -236,6 +236,10 @@ pub fn prove_unified_transition_with_replayer_timed<
     assert_eq!(
         unified_prover_config.trace_len_log2,
         trace_len.trailing_zeros() as usize
+    );
+    assert!(
+        unified_prover_config.merged_memory_and_witness(),
+        "this driver commits the single merged memory+witness tree"
     );
 
     let num_circuits_to_prove = num_unified_calls.div_ceil(trace_len);
@@ -372,18 +376,15 @@ pub fn prove_unified_transition_with_replayer_timed<
     // (recompute on memory-constrained machines, in-memory on large ones).
     {
         let twiddles_for_size = &twiddles[&trace_len];
-        // GKRSetup::commit runs on the naive backend internally and consumes
-        // only the plain radix-2 tables (not performance-sensitive).
+        // The setup is committed with the prover config's geometry on the proving
+        // backend (`GKRSetup::commit_for_config_with_backend`).
         let setup_commit_started = std::time::Instant::now();
         let setup_commitment = unified_setup
             .setup
-            .commit_with_backend::<DefaultTreeConstructor, BabyBearExt4, _>(
+            .commit_for_config_with_backend::<DefaultTreeConstructor, BabyBearExt4, _>(
                 backend,
                 twiddles_for_size,
-                prover_config.lde_factor,
-                prover_config.whir_schedule.whir_steps_schedule[0],
-                prover_config.cap_size,
-                trace_len.trailing_zeros() as usize,
+                &prover_config,
                 worker,
             );
         timings.setup_commit_ms = setup_commit_started.elapsed().as_millis();
@@ -451,7 +452,7 @@ pub fn prove_unified_transition_with_replayer_timed<
                 &setup_commitment,
                 twiddles_for_size,
                 &prover_config,
-                CommitmentMode::MergedMemoryAndWitness,
+                OperationMode::MultipleChunks,
                 whir_oracle_storage,
                 top_bits.clone(),
                 trace_len,
@@ -617,7 +618,7 @@ pub fn prove_unified_transition_with_replayer_precommitted_timed<
 
     let num_unified_calls =
         counters.get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
-    let trace_len_log2 = <setups::unified_reduced_machine::UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
+    let trace_len_log2 = <setups::unified_reduced_machine::UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::trace_len_log2();
 
     let unified_buffers = replay_unified_circuit::<DelegationsAndUnifiedCounters>(
         DelegationsAndUnifiedCounters::default(),
@@ -647,6 +648,10 @@ pub fn prove_unified_transition_with_replayer_precommitted_timed<
     assert_eq!(
         unified_prover_config.trace_len_log2,
         trace_len.trailing_zeros() as usize
+    );
+    assert!(
+        unified_prover_config.merged_memory_and_witness(),
+        "this driver commits the single merged memory+witness tree"
     );
 
     let num_circuits_to_prove = num_unified_calls.div_ceil(trace_len);
@@ -790,18 +795,15 @@ pub fn prove_unified_transition_with_replayer_precommitted_timed<
     // witness trace and merged oracle of each chunk (no cloning).
     {
         let twiddles_for_size = &twiddles[&trace_len];
-        // GKRSetup::commit runs on the naive backend internally and consumes
-        // only the plain radix-2 tables (not performance-sensitive).
+        // The setup is committed with the prover config's geometry on the proving
+        // backend (`GKRSetup::commit_for_config_with_backend`).
         let setup_commit_started = std::time::Instant::now();
         let setup_commitment = unified_setup
             .setup
-            .commit_with_backend::<DefaultTreeConstructor, BabyBearExt4, _>(
+            .commit_for_config_with_backend::<DefaultTreeConstructor, BabyBearExt4, _>(
                 backend,
                 twiddles_for_size,
-                prover_config.lde_factor,
-                prover_config.whir_schedule.whir_steps_schedule[0],
-                prover_config.cap_size,
-                trace_len.trailing_zeros() as usize,
+                &prover_config,
                 worker,
             );
         timings.setup_commit_ms = setup_commit_started.elapsed().as_millis();
@@ -833,7 +835,7 @@ pub fn prove_unified_transition_with_replayer_precommitted_timed<
                 &setup_commitment,
                 twiddles_for_size,
                 &prover_config,
-                CommitmentMode::MergedMemoryAndWitness,
+                OperationMode::MultipleChunks,
                 storage,
                 top_bits.clone(),
                 trace_len,

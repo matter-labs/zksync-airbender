@@ -1,15 +1,11 @@
-use crate::upstream::{
-    config_for_security_level_under_pessimistic_conjecture, ProverConfig, SecurityLevel,
-};
+use crate::upstream::{ProverConfig, SecurityLevel};
 use execution_prover_model::circuit_type::CircuitType;
 use riscv_transpiler::jit::JitRunnerRam;
 
-/// Commitments and proofs must use the same geometry on both backends.
+/// Commitments and proofs must use the same geometry on both backends: the
+/// circuit definition's own config (`CircuitType::prover_config`).
 pub fn prover_config(circuit_type: CircuitType, security_level: SecurityLevel) -> ProverConfig {
-    config_for_security_level_under_pessimistic_conjecture(
-        circuit_type.get_domain_size_log2() as usize,
-        security_level,
-    )
+    circuit_type.prover_config(security_level)
 }
 
 pub trait BackendConfiguration: Copy + Send + Sync + 'static + Sized {

@@ -15,8 +15,13 @@ use crate::test_utils::make_test_context;
 use crate::upstream::{
     DefaultTreeConstructor, FieldExtension, MerkleTreeCapVarLength, PrimeField, VirtualSetupPoly,
 };
+// test-only direct upstream imports (the `#[cfg(test)]` exemption of the upstream rule)
 use gpu_core::primitives::field::E4;
 use gpu_ops::simple::set_by_ref;
+use prover::allocation_pool::GenericAllocationPool;
+use prover::gkr::prover::backend::NaiveBackend;
+use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
+use prover::gkr::prover::SetupCommitment;
 
 fn make_test_cpu_setup(
     trace_len: usize,
@@ -261,14 +266,22 @@ fn setup_host_matches_flattened_cpu_setup_and_caps() {
 
     let worker = Worker::new();
     let twiddles: fft::Twiddles<BF, Global> = fft::Twiddles::new(trace_len, &worker);
-    let setup_commitment = setup.commit::<DefaultTreeConstructor>(
-        &twiddles,
-        lde_factor,
-        log_rows_per_leaf as usize,
-        tree_cap_size,
-        trace_len.trailing_zeros() as usize,
-        &worker,
-    );
+    // arbitrary test geometry (no circuit config): commit through the primitive the
+    // config-driven `GKRSetup::commit_for_config` wraps
+    let setup_commitment = {
+        let inputs: Vec<&[BF]> = setup.hypercube_evals.iter().map(|el| &el[..]).collect();
+        SetupCommitment::InMemory(commit_trace_part::<BF, BF, DefaultTreeConstructor, _>(
+            &NaiveBackend,
+            &inputs,
+            &twiddles,
+            lde_factor,
+            log_rows_per_leaf as usize,
+            tree_cap_size,
+            trace_len.trailing_zeros() as usize,
+            &GenericAllocationPool::proxy(),
+            &worker,
+        ))
+    };
     let subcap_size = tree_cap_size / lde_factor;
     let setup_caps = setup_commitment
         .get_cap()
@@ -308,14 +321,22 @@ fn setup_host_matches_cpu_setup_caps_at_production_cap_geometry() {
 
     let worker = Worker::new();
     let twiddles: fft::Twiddles<BF, Global> = fft::Twiddles::new(trace_len, &worker);
-    let setup_commitment = setup.commit::<DefaultTreeConstructor>(
-        &twiddles,
-        lde_factor,
-        log_rows_per_leaf as usize,
-        tree_cap_size,
-        trace_len.trailing_zeros() as usize,
-        &worker,
-    );
+    // arbitrary test geometry (no circuit config): commit through the primitive the
+    // config-driven `GKRSetup::commit_for_config` wraps
+    let setup_commitment = {
+        let inputs: Vec<&[BF]> = setup.hypercube_evals.iter().map(|el| &el[..]).collect();
+        SetupCommitment::InMemory(commit_trace_part::<BF, BF, DefaultTreeConstructor, _>(
+            &NaiveBackend,
+            &inputs,
+            &twiddles,
+            lde_factor,
+            log_rows_per_leaf as usize,
+            tree_cap_size,
+            trace_len.trailing_zeros() as usize,
+            &GenericAllocationPool::proxy(),
+            &worker,
+        ))
+    };
     let subcap_size = tree_cap_size / lde_factor;
     let setup_caps = setup_commitment
         .get_cap()

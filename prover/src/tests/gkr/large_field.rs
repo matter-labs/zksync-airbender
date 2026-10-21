@@ -3,7 +3,7 @@
 //! Runs the plain `basic_fibonacci` program (reduced machine, no oracles, no
 //! precompiles) and TRIES to prove one unified-circuit instance with the packed
 //! commitment mode
-//! [`CommitmentMode::MergedAndPackedMemoryAndWitness`](crate::gkr::prover::CommitmentMode).
+//! [`OperationMode::SingleChunk`](crate::gkr::prover::OperationMode).
 //!
 //! Notes vs the full `unified_circuit.rs` flow:
 //!   * precompiles are DISABLED at preprocessing — the supported-CSR set passed to
@@ -25,7 +25,7 @@ use crate::definitions::SecurityLevel;
 #[cfg(test)]
 use crate::gkr::prover::setup::GKRSetup;
 #[cfg(test)]
-use crate::gkr::prover::CommitmentMode;
+use crate::gkr::prover::OperationMode;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use crate::gkr::witness_gen::family_circuits::{
     build_unified_table_driver, evaluate_gkr_witness_for_executor_family, GKRFullWitnessTrace,
@@ -90,14 +90,12 @@ pub(super) fn circuit_tester_config() -> ProgramConfig {
     }
 }
 
-const TRACE_LEN_LOG2: usize = 22;
-
 pub use crate::gkr::prover_config::example_configs::{
     evm_production_packed_prover_config, EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
     EVM_PRODUCTION_PACK_LOG2,
 };
 
-/// Load the serialized `CommitmentMode` aux data and build the transcript prefix the packed
+/// Load the serialized `OperationMode` aux data and build the transcript prefix the packed
 /// prover now prepends before the top-bits/caps: the 32 register final states as
 /// (value, ts_low, ts_high) u32 triples, then (final_pc, final_ts_low, final_ts_high).
 /// Returns (prefix_u32, register_final_state, final_pc, final_timestamp, external_pow_bits).
@@ -110,13 +108,13 @@ fn load_boundary_transcript_prefix() -> (
     u32,
 ) {
     use crate::cs::definitions::split_timestamp;
-    let aux: CommitmentMode = {
+    let aux: OperationMode = {
         let src =
             std::fs::File::open("unified_circuit_proof_proth120_commitment_mod_aux_data.json")
                 .expect("aux data — run gkr_unified_packed_commitment_basic_fibonacci first");
-        serde_json::from_reader(src).expect("deserialize CommitmentMode aux data")
+        serde_json::from_reader(src).expect("deserialize OperationMode aux data")
     };
-    let CommitmentMode::MergedAndPackedMemoryAndWitness {
+    let OperationMode::SingleChunk {
         register_final_state,
         final_pc,
         final_timestamp,
@@ -124,7 +122,7 @@ fn load_boundary_transcript_prefix() -> (
         ..
     } = aux
     else {
-        panic!("aux data must be MergedAndPackedMemoryAndWitness");
+        panic!("aux data must be OperationMode::SingleChunk");
     };
     let mut prefix = Vec::with_capacity(32 * 3 + 3);
     for reg in register_final_state.iter() {
@@ -154,7 +152,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci() {
 
 /// Copy of [`gkr_unified_packed_commitment_basic_fibonacci`] configured for large
 /// external cloud machines: 64 worker threads and FULLY IN-MEMORY oracles — the
-/// packed setup is committed in memory (`GKRSetup::commit_packed`, no on-disk
+/// packed setup is committed in memory (`GKRSetup::commit_for_config`, no on-disk
 /// cache) and the memory/witness base + intermediate WHIR oracles are fully
 /// materialized (`WhirOracleStorage::fully_in_memory()`). The proof must be
 /// byte-identical to the recompute-based run; this variant does not (re)write the
@@ -188,11 +186,6 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
 ) {
     let worker = Worker::new_with_num_threads(num_threads);
     let level = SecurityLevel::Sec100;
-    // With `pack_log2 = 4` the 2^22 base trace is packed into a single 2^26-variate
-    // multilinear per column — exactly the `message_log2 = 26` of the EVM-production
-    // WHIR config (`generate_whir_input_for_evm_production`), whose parameters we
-    // reuse below.
-    let pack_log2 = 4usize;
     let external_challenges_pow_bits = 20u32;
 
     // 1. Run the plain program (reduced machine, no precompiles).
@@ -215,7 +208,14 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     let num_calls = vm
         .counters
         .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
-    assert!(num_calls <= (1 << TRACE_LEN_LOG2));
+    // The prover config is the single source of the proving geometry (trace
+    // length, packing, schedules): `pack_log2 = 4` packs the 2^22 base trace
+    // into one 2^26-variate multilinear per column — exactly the
+    // `message_log2 = 26` of the EVM-production WHIR config.
+    let prover_config = evm_production_packed_prover_config(level);
+    let trace_len: usize = 1 << prover_config.trace_len_log2;
+    let pack_log2 = prover_config.pack_log2;
+    assert!(num_calls <= trace_len);
 
     // 3. Build the unified witness trace with precompiles disabled at preprocessing.
     let (full_trace, table_driver, decoder_table, top_bits) =
@@ -224,7 +224,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
             super::unified_reduced_machine_proth120::witness_eval_fn,
             &unified_circuit,
             num_teardown_sets,
-            1 << TRACE_LEN_LOG2,
+            trace_len,
             &worker,
         );
 
@@ -339,18 +339,16 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     //    message 2^26). Because `pack_log2 = 4` enlarges each column to 2^26 the
     //    packed polynomials match that message size exactly, so the same folds /
     //    queries / lde_factors / pow schedule applies. base LDE 2^5 => 2^31 codeword.
-    let trace_len: usize = 1 << TRACE_LEN_LOG2;
-    let prover_config = evm_production_packed_prover_config(level);
 
     println!("Computing setup");
     // The proof function's twiddles are of unified circuit size * (1 << pack_log2):
     // the packed commitment interpolates the merged/packed polynomials over the
     // enlarged domain.
     let packed_twiddles: Twiddles<Proth120, Global> =
-        Twiddles::new(trace_len << pack_log2, &worker);
+        Twiddles::new(1usize << prover_config.whir_message_size_log2(), &worker);
 
     // 5. Construct the setup and obtain an ON-DISK commitment for it: the packed
-    //    RS codewords + Merkle tree are computed once via `commit_packed` and cached
+    //    RS codewords + Merkle tree are computed once via `commit_for_config` and cached
     //    on disk; this and subsequent runs read them back lazily through
     //    `SetupCommitment::OnDisk` (so the setup never has to sit in RAM while
     //    proving). Delete the `*.rscw`/`*.tree` cache files to force a recompute.
@@ -372,15 +370,11 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
         // Commit the packed setup fully in memory: RS codewords + monolithic Merkle
         // tree materialized (byte-identical commitment to the on-disk/split path).
         println!("Committing setup in memory (packed)");
-        SetupCommitment::InMemory(setup.commit_packed::<Keccak256MerkleTreeWithCap>(
+        setup.commit_for_config::<Keccak256MerkleTreeWithCap>(
             &packed_twiddles,
-            lde_factor,
-            values_per_leaf.trailing_zeros() as usize,
-            prover_config.cap_size,
-            TRACE_LEN_LOG2,
-            pack_log2,
+            &prover_config,
             &worker,
-        ))
+        )
     } else {
         // On-disk setup with the "second" (per-coset subtree) tree layout: the packed
         // setup is prepared coset-by-coset — each coset's RS codewords and its cap-size-1
@@ -405,7 +399,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
                 lde_factor,
                 values_per_leaf.trailing_zeros() as usize,
                 prover_config.cap_size,
-                TRACE_LEN_LOG2,
+                prover_config.trace_len_log2,
                 pack_log2,
                 setup_disk_prefix,
                 &worker,
@@ -439,8 +433,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     // 6. Prove one unified circuit instance with the packed commitment mode.
     let external_challenges = dummy_external_challenges::<Proth120, Proth120>();
 
-    let commitment_mode = CommitmentMode::MergedAndPackedMemoryAndWitness {
-        pack_log2,
+    let operation_mode = OperationMode::SingleChunk {
         external_challenges_pow_bits,
         final_pc: vm.final_pc(),
         final_timestamp: vm.final_timestamp(),
@@ -488,7 +481,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
         &setup_commitment,
         &packed_twiddles,
         &prover_config,
-        commitment_mode,
+        operation_mode,
         storage,
         top_bits,
         trace_len,
@@ -504,13 +497,13 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     if !fully_in_memory {
         serialize_to_file(&proof, "unified_circuit_proof_proth120.json");
         serialize_to_file(
-            &commitment_mode,
+            &operation_mode,
             "unified_circuit_proof_proth120_commitment_mod_aux_data.json",
         );
     }
 }
 
-/// STEP 1 of the EVM GKR verifier: reproduce the `MergedAndPackedMemoryAndWitness`
+/// STEP 1 of the EVM GKR verifier: reproduce the `OperationMode::SingleChunk`
 /// Fiat-Shamir transcript purely from the serialized proof + circuit, and check the
 /// derived challenges (nonce + `GKRExternalChallenges`) match what the prover stored.
 ///
@@ -530,6 +523,8 @@ fn validate_packed_transcript_recipe() {
     }
 
     let worker = Worker::new_with_num_threads(4);
+    // the proof's prover config: the single source of its proving geometry
+    let prover_config = evm_production_packed_prover_config(SecurityLevel::Sec100);
 
     let unified_circuit: GKRCircuitArtifact<Proth120> = {
         let src = std::fs::File::open(
@@ -595,7 +590,7 @@ fn validate_packed_transcript_recipe() {
     }
 
     let lookup_pow_bits = pow_bits::lookup_challenges_pow_bits::<Proth120, Proth120>(
-        SecurityLevel::Sec100.security_bits(),
+        prover_config.security_level.security_bits(),
         pow_bits::lookup_identity_degree(&unified_circuit),
     );
     // prover draws external challenges with pow = max(lookup_pow_bits, external_pow_bits=20)
@@ -648,6 +643,8 @@ fn capture_gkr_dim_reduce_reference() {
     use transcript::Transcript;
 
     let worker = Worker::new_with_num_threads(4);
+    // the proof's prover config: the single source of its proving geometry
+    let prover_config = evm_production_packed_prover_config(SecurityLevel::Sec100);
     let unified_circuit: GKRCircuitArtifact<Proth120> = {
         let src = std::fs::File::open(
             "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
@@ -678,7 +675,7 @@ fn capture_gkr_dim_reduce_reference() {
     );
     let pow = core::cmp::max(
         pow_bits::lookup_challenges_pow_bits::<Proth120, Proth120>(
-            SecurityLevel::Sec100.security_bits(),
+            prover_config.security_level.security_bits(),
             pow_bits::lookup_identity_degree(&unified_circuit),
         ),
         external_pow_bits,
@@ -1138,7 +1135,8 @@ fn circuit_layer_g(
 #[test]
 fn verify_dim_reduce_layers() {
     use crate::gkr::prover::transcript_utils::{
-        commit_field_els, draw_random_field_els, draw_random_field_els_with_pow,
+        commit_field_els, draw_fresh_random_field_els, draw_random_field_els,
+        draw_random_field_els_with_pow,
     };
     use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
     use crate::gkr::prover::GKRProof;
@@ -1151,6 +1149,8 @@ fn verify_dim_reduce_layers() {
 
     type E = Proth120;
     let worker = Worker::new_with_num_threads(4);
+    // the proof's prover config: the single source of its proving geometry
+    let prover_config = evm_production_packed_prover_config(SecurityLevel::Sec100);
     let unified_circuit: GKRCircuitArtifact<Proth120> = serde_json::from_reader(
         std::fs::File::open(
             "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
@@ -1179,7 +1179,7 @@ fn verify_dim_reduce_layers() {
     let mut seed = <Keccak256Transcript as Transcript<Proth120, Proth120>>::commit_initial_u32(&ti);
     let pow = core::cmp::max(
         pow_bits::lookup_challenges_pow_bits::<Proth120, Proth120>(
-            SecurityLevel::Sec100.security_bits(),
+            prover_config.security_level.security_bits(),
             pow_bits::lookup_identity_degree(&unified_circuit),
         ),
         external_pow_bits,
@@ -1898,9 +1898,9 @@ fn verify_dim_reduce_layers() {
     );
 
     // ===== STEP 4: GKR→WHIR handoff — packed-commitment claims merge + WHIR batching =====
-    // Mirrors prover/src/gkr/prover/mod.rs (MergedAndPackedMemoryAndWitness, lines 875-961).
+    // Mirrors prover/src/gkr/prover/mod.rs (OperationMode::SingleChunk).
     {
-        let pack_log2 = 4usize; // this proof's pack_log2
+        let pack_log2 = prover_config.pack_log2; // this proof's pack_log2
         let base_layer_z = point.clone(); // 22-coord layer-0 folding point
         let get = |addr: GKRAddress| -> E {
             *layer0_merged.get(&addr).expect("base-layer claim present")
@@ -1915,9 +1915,12 @@ fn verify_dim_reduce_layers() {
         mem_wit.extend((0..num_wit).map(|i| get(GKRAddress::BaseLayerWitness(i))));
         let setup_claims: Vec<E> = (0..num_setup).map(|i| get(GKRAddress::Setup(i))).collect();
 
-        // draw extra_coordinates (pack_log2), then merge
-        let extra =
-            draw_random_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, pack_log2);
+        // draw extra_coordinates (pack_log2) FRESH (the GKR phase ended with a draw; for the
+        // Keccak transcript every draw hashes before reading, so this equals a plain draw),
+        // then merge
+        let extra = draw_fresh_random_field_els::<Proth120, Proth120, Keccak256Transcript>(
+            &mut seed, pack_log2,
+        );
         let merge = |input: &[E], extra: &[E]| -> Vec<E> {
             let pl = extra.len();
             let mut result = vec![];
@@ -1948,11 +1951,13 @@ fn verify_dim_reduce_layers() {
         whir_point.extend_from_slice(&base_layer_z);
 
         // draw WHIR batching challenge (1 el, PoW-gated); validate nonce vs the proof
+        assert_eq!(whir_point.len(), prover_config.whir_message_size_log2());
         let pow = pow_bits::batched_proximity_check_pow_bits::<Proth120, Proth120>(
-            SecurityLevel::Sec100.security_bits(),
-            whir_point.len(),
-            5, // base_lde_factor = 1<<5 (this proof's whir schedule)
-            pow_bits::total_base_oracle_columns(&unified_circuit),
+            prover_config.security_level.security_bits(),
+            prover_config.whir_message_size_log2(),
+            prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
+            // the PHYSICALLY committed (packed, merged mem+wit) columns
+            pow_bits::committed_base_oracle_columns(&unified_circuit, pack_log2, true),
         );
         let (nonce, wbc) = draw_random_field_els_with_pow::<Proth120, Proth120, Keccak256Transcript>(
             &mut seed, 1, pow, &worker,
@@ -2376,7 +2381,7 @@ where
     assert_eq!(max_ram_touch % 4, 0);
     let mut inits_and_teardowns = vm.ram.collect_inits_and_teardowns_sets::<F, Global>(
         worker,
-        TRACE_LEN_LOG2,
+        cycles_per_chunks.trailing_zeros() as usize,
         num_teardown_sets,
         Some(((max_ram_touch as usize) + 4) / 4),
     );

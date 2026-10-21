@@ -15,7 +15,15 @@
 use super::common::EXT_DEGREE;
 use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use verifier_common::{DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS};
+#[doc = r" Number of rounds of every same-size GKR layer sumcheck = the number"]
+#[doc = r" of GKR claim-point coordinates: log2 of the LOGICAL (trace-length)"]
+#[doc = r" polynomials. Packing does not change it."]
 pub const GKR_ROUNDS: usize = 23usize;
+#[doc = r" Capacity of the claim-point buffers: the GKR point plus the"]
+#[doc = r" `PACK_LOG2` coordinates appended after the GKR phase for the packed"]
+#[doc = r" base commitment (`TRACE_LEN_LOG2 + pack_log2`, the committed column"]
+#[doc = r" size the WHIR point has). Equals `GKR_ROUNDS` when unpacked."]
+pub const CLAIM_POINT_CAPACITY: usize = 23usize;
 pub const TRACE_LEN_LOG2: u32 = 23u32;
 pub const GKR_ADDRS: usize = 126usize;
 pub const GKR_EVALS: usize = 160usize;
@@ -96,7 +104,7 @@ pub type ConcreteInitialTranscript = ::verifier_common::InitialGKRTranscript<
     PADDING_WORDS,
 >;
 pub type ConcreteGKRVerifierOutput =
-    ::verifier_common::GKRVerifierOutput<BabyBearExt4, GKR_ROUNDS, GKR_ADDRS>;
+    ::verifier_common::GKRVerifierOutput<BabyBearExt4, CLAIM_POINT_CAPACITY, GKR_ADDRS>;
 pub type ConcreteVerifierOutput = ::verifier_common::VerifierOutput<
     BabyBearExt4,
     INIT_AND_TEARDOWN_SETS,

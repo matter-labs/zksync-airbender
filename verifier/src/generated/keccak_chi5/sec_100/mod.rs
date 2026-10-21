@@ -38,7 +38,7 @@ pub fn verify<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
         { constants::NUM_WITNESS_COMMITS },
         { constants::NUM_SETUP_COMMITS },
         { constants::PADDING_WORDS },
-        { constants::GKR_ROUNDS },
+        { constants::CLAIM_POINT_CAPACITY },
         { constants::GKR_ADDRS },
         gkr::VerifierImplementation,
     >(external_challenges, nd_source)

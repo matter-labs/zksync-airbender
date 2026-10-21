@@ -35,7 +35,6 @@ pub(crate) use field::Field;
 pub(crate) use prover::definitions::{GKRExternalChallenges, SecurityLevel};
 pub(crate) use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 pub(crate) use prover::gkr::prover::{GKRProof, WhirSchedule};
-pub(crate) use prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture;
 pub(crate) use prover::gkr::prover_config::pow_bits;
 pub(crate) use prover::gkr::prover_config::{
     validate_sumcheck_schedule, ProverConfig, SumcheckScheduleClass,
@@ -98,7 +97,9 @@ pub(crate) use prover::gkr::prover::stages::initial_commit::commit_separate_memo
 #[cfg(test)]
 pub(crate) use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;
 #[cfg(test)]
-pub(crate) use prover::gkr::prover::CommitmentMode;
+pub(crate) use prover::gkr::prover::OperationMode;
+#[cfg(test)]
+pub(crate) use prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture;
 #[cfg(test)]
 pub(crate) use prover::gkr::witness_gen::delegation_circuits::{
     evaluate_gkr_memory_witness_for_delegation_circuit, evaluate_gkr_witness_for_delegation_circuit,

@@ -48,10 +48,14 @@ pub fn commit_memory_tree_for_unrolled_nonmem_circuits<
     decoder_data: &[Option<ExecutorFamilyDecoderData>],
     worker: &Worker,
 ) -> MerkleTreeCapVarLength {
-    use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
+    use prover::gkr::prover::stages::commitment_utils::commit_trace_part_for_config;
     use prover::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
 
-    let trace_len = twiddles.plain().domain_size;
+    let trace_len = 1usize << prover_config.trace_len_log2;
+    assert!(
+        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2,
+        "twiddles must cover the (packed) base commitment domain"
+    );
     assert!(witness_chunk.len() <= trace_len);
     let now = std::time::Instant::now();
 
@@ -82,14 +86,11 @@ pub fn commit_memory_tree_for_unrolled_nonmem_circuits<
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, EF, T, _>(
+    let mem = commit_trace_part_for_config::<F, EF, T, _>(
         backend,
         &mem_inputs,
         twiddles,
-        prover_config.lde_factor,
-        prover_config.whir_schedule.whir_steps_schedule[0],
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
+        prover_config,
         &prover::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
@@ -117,10 +118,14 @@ pub fn commit_memory_tree_for_unrolled_mem_circuits<
     decoder_data: &[Option<ExecutorFamilyDecoderData>],
     worker: &Worker,
 ) -> MerkleTreeCapVarLength {
-    use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
+    use prover::gkr::prover::stages::commitment_utils::commit_trace_part_for_config;
     use prover::gkr::witness_gen::oracles::MemoryCircuitOracle;
 
-    let trace_len = twiddles.plain().domain_size;
+    let trace_len = 1usize << prover_config.trace_len_log2;
+    assert!(
+        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2,
+        "twiddles must cover the (packed) base commitment domain"
+    );
     assert!(witness_chunk.len() <= trace_len);
     let now = std::time::Instant::now();
 
@@ -150,14 +155,11 @@ pub fn commit_memory_tree_for_unrolled_mem_circuits<
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, EF, T, _>(
+    let mem = commit_trace_part_for_config::<F, EF, T, _>(
         backend,
         &mem_inputs,
         twiddles,
-        prover_config.lde_factor,
-        prover_config.whir_schedule.whir_steps_schedule[0],
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
+        prover_config,
         &prover::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
@@ -184,7 +186,11 @@ pub fn commit_memory_tree_for_inits_and_teardowns<
     prover_config: &ProverConfig,
     worker: &Worker,
 ) -> MerkleTreeCapVarLength {
-    let trace_len = twiddles.plain().domain_size;
+    let trace_len = 1usize << prover_config.trace_len_log2;
+    assert!(
+        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2,
+        "twiddles must cover the (packed) base commitment domain"
+    );
     assert!(trace_len.is_power_of_two());
 
     assert_eq!(inits_and_teardowns.len(), NUM_INIT_AND_TEARDOWN_SETS);
@@ -193,7 +199,7 @@ pub fn commit_memory_tree_for_inits_and_teardowns<
         circuit.memory_layout.teardown_sets.len()
     );
 
-    use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
+    use prover::gkr::prover::stages::commitment_utils::commit_trace_part_for_config;
     use prover::gkr::witness_gen::family_circuits::evaluate_init_and_teardown_memory_witness;
 
     let now = std::time::Instant::now();
@@ -202,14 +208,11 @@ pub fn commit_memory_tree_for_inits_and_teardowns<
         evaluate_init_and_teardown_memory_witness(inits_and_teardowns, circuit, Global, Global);
 
     let mem_inputs: Vec<_> = witness_inner.iter().map(|el| &el[..]).collect();
-    let mem = commit_trace_part::<F, EF, T, _>(
+    let mem = commit_trace_part_for_config::<F, EF, T, _>(
         backend,
         &mem_inputs,
         twiddles,
-        prover_config.lde_factor,
-        prover_config.whir_schedule.whir_steps_schedule[0],
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
+        prover_config,
         &prover::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
@@ -248,10 +251,14 @@ pub fn commit_memory_tree_for_unified_circuits<
     decoder_data: &[Option<ExecutorFamilyDecoderData>],
     worker: &Worker,
 ) -> MerkleTreeCapVarLength {
-    use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
+    use prover::gkr::prover::stages::commitment_utils::commit_trace_part_for_config;
     use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 
-    let trace_len = twiddles.plain().domain_size;
+    let trace_len = 1usize << prover_config.trace_len_log2;
+    assert!(
+        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2,
+        "twiddles must cover the (packed) base commitment domain"
+    );
     assert!(witness_chunk.len() <= trace_len);
     let now = std::time::Instant::now();
 
@@ -281,14 +288,11 @@ pub fn commit_memory_tree_for_unified_circuits<
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, EF, T, _>(
+    let mem = commit_trace_part_for_config::<F, EF, T, _>(
         backend,
         &mem_inputs,
         twiddles,
-        prover_config.lde_factor,
-        prover_config.whir_schedule.whir_steps_schedule[0],
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
+        prover_config,
         &prover::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
@@ -362,7 +366,11 @@ pub fn commit_merged_tree_and_witness_for_unified_circuits<
     use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
     use setups::UnrolledCircuitWitnessEvalFn;
 
-    let trace_len = twiddles.plain().domain_size;
+    let trace_len = 1usize << prover_config.trace_len_log2;
+    assert!(
+        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2,
+        "twiddles must cover the (packed) base commitment domain"
+    );
     assert_eq!(trace_len, unified_setup.trace_len);
     assert!(witness_chunk.len() <= trace_len);
     let now = std::time::Instant::now();
@@ -402,10 +410,7 @@ pub fn commit_merged_tree_and_witness_for_unified_circuits<
         backend,
         &witness_trace,
         twiddles,
-        prover_config.lde_factor,
-        prover_config.whir_schedule.whir_steps_schedule[0],
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
+        prover_config,
         &prover::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
@@ -440,9 +445,13 @@ pub fn commit_memory_tree_for_delegation_circuit<
     prover_config: &ProverConfig,
     worker: &Worker,
 ) -> MerkleTreeCapVarLength {
-    use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
+    use prover::gkr::prover::stages::commitment_utils::commit_trace_part_for_config;
 
-    let trace_len = twiddles.plain().domain_size;
+    let trace_len = 1usize << prover_config.trace_len_log2;
+    assert!(
+        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2,
+        "twiddles must cover the (packed) base commitment domain"
+    );
     assert!(trace_len.is_power_of_two());
 
     let now = std::time::Instant::now();
@@ -470,14 +479,11 @@ pub fn commit_memory_tree_for_delegation_circuit<
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part::<F, EF, T, _>(
+    let mem = commit_trace_part_for_config::<F, EF, T, _>(
         backend,
         &mem_inputs,
         twiddles,
-        prover_config.lde_factor,
-        prover_config.whir_schedule.whir_steps_schedule[0],
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
+        prover_config,
         &prover::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );

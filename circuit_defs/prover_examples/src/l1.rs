@@ -22,7 +22,7 @@ use prover::fft::Twiddles;
 use prover::field::Proth120;
 use prover::gkr::prover::setup::GKRSetup;
 use prover::gkr::prover::{
-    prove_configured_with_gkr_with_storage_and_backend, CommitmentMode, GKRProof, NaiveGKRBackend,
+    prove_configured_with_gkr_with_storage_and_backend, GKRProof, NaiveGKRBackend, OperationMode,
     Proth120WorkStealingLazyBackend, SetupCommitment, WhirOracleStorage,
 };
 use prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
@@ -30,7 +30,7 @@ use prover::gkr::whir::ColumnMajorBaseOracleForLDE;
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use prover::tests::gkr::large_field::{
     build_unified_trace_without_precompiles, evm_production_packed_prover_config,
-    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS, EVM_PRODUCTION_PACK_LOG2,
+    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
 };
 use prover::tests::gkr::orchestration::common::{
     dummy_external_challenges, run_vm_and_capture, ProgramConfig,
@@ -52,7 +52,7 @@ fn serialize_pretty_to_file<T: serde::Serialize>(el: &T, path: &Path) {
 
 /// Prove `program`'s execution as a single Proth120 packed unified proof in
 /// the recompute (memory-light) mode with the EVM-production parameters, and
-/// write the proof + its `CommitmentMode` aux data (the boundary state the
+/// write the proof + its `OperationMode` aux data (the boundary state the
 /// EVM transcript recipe replays) as pretty JSON — the exact fixture pair the
 /// verifier_evm generation and the two-transaction test consume.
 ///
@@ -66,10 +66,11 @@ pub fn prove_l1_wrap_in_recompute_mode(
     aux_output_path: &Path,
     worker: &Worker,
 ) -> L1Proof {
-    let pack_log2 = EVM_PRODUCTION_PACK_LOG2;
     let external_challenges_pow_bits = EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS;
     let level = prover::definitions::SecurityLevel::Sec100;
     let prover_config = evm_production_packed_prover_config(level);
+    // the base-commitment packing is a property of the prover config
+    let pack_log2 = prover_config.pack_log2;
     let trace_len = 1usize << prover_config.trace_len_log2;
 
     // 1. Run the program on the reduced machine and capture the execution.
@@ -105,7 +106,7 @@ pub fn prove_l1_wrap_in_recompute_mode(
     // 4. Packed twiddles: the commitment interpolates the packed polynomials
     //    over the 2^(22 + pack_log2) domain.
     let packed_twiddles: Twiddles<Proth120, std::alloc::Global> =
-        Twiddles::new(trace_len << pack_log2, worker);
+        Twiddles::new(1usize << prover_config.whir_message_size_log2(), worker);
 
     // 5. Setup commitment by COSET RECOMPUTATION: the packed setup codeword
     //    (~2^31 elements) is never materialized or cached — the commitment cap
@@ -138,8 +139,7 @@ pub fn prove_l1_wrap_in_recompute_mode(
     //    (self-derived external challenges from the boundary state).
     let external_challenges = dummy_external_challenges::<Proth120, Proth120>();
 
-    let commitment_mode = CommitmentMode::MergedAndPackedMemoryAndWitness {
-        pack_log2,
+    let operation_mode = OperationMode::SingleChunk {
         external_challenges_pow_bits,
         final_pc: vm.final_pc(),
         final_timestamp: vm.final_timestamp(),
@@ -166,7 +166,7 @@ pub fn prove_l1_wrap_in_recompute_mode(
         &setup_commitment,
         &packed_twiddles,
         &prover_config,
-        commitment_mode,
+        operation_mode,
         WhirOracleStorage::fully_recompute(),
         top_bits,
         trace_len,

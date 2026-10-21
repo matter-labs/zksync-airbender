@@ -41,14 +41,35 @@ pub struct CircuitData {
 }
 
 impl CircuitData {
+    /// The serialized prover config the circuit definition generated next to
+    /// its production layout (`<production_path>/generated/prover_config_<level>.json`,
+    /// written by the circuit's artifact generator from its `prover_config`):
+    /// the config the circuit is proved with, and thus the one its verifier is
+    /// generated for.
+    pub fn prover_config_path_for(&self, level: SecurityLevel) -> String {
+        format!(
+            "{}/generated/prover_config_{}.json",
+            self.production_path,
+            level.dir_suffix()
+        )
+    }
+
     pub fn prover_config_for(&self, level: SecurityLevel) -> &ProverConfig {
         let idx = level as usize;
-        self.prover_configs_cache[idx].get_or_init(|| prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(self.compiled_circuit().trace_len.trailing_zeros() as usize, level))
+        self.prover_configs_cache[idx].get_or_init(|| {
+            let path = self.prover_config_path_for(level);
+            let config: ProverConfig = deserialize_from_file(&path);
+            assert_eq!(
+                1usize << config.trace_len_log2,
+                self.compiled_circuit().trace_len,
+                "{path}: trace length differs from the compiled circuit's — regenerate the artifacts"
+            );
+            config
+        })
     }
 
     pub fn whir_schedule_for(&self, level: SecurityLevel) -> &WhirSchedule {
-        let idx = level as usize;
-        &self.prover_configs_cache[idx].get_or_init(|| prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(self.compiled_circuit().trace_len.trailing_zeros() as usize, level)).whir_schedule
+        &self.prover_config_for(level).whir_schedule
     }
 
     pub fn proof_path_for(&self, level: SecurityLevel) -> String {
@@ -142,6 +163,60 @@ impl CircuitData {
                 (nds, challenges)
             })
             .clone()
+    }
+}
+
+/// The packed-base-commitment test fixture: the `blake2_with_extended_control`
+/// delegation circuit (2^20 trace) proved with `pack_log2 = 4`, so every
+/// committed column is a 2^24 multilinear and WHIR runs the 2^24 schedule.
+pub mod packed_fixture {
+    use super::*;
+
+    pub const CIRCUIT_NAME: &str = "blake2_with_extended_control";
+    pub const PACK_LOG2: usize = 4;
+    /// Output dir suffix (under the circuit's generated dir) of the packed verifier.
+    pub const DIR_SUFFIX: &str = "sec_100_pack4";
+
+    pub fn circuit() -> &'static CircuitData {
+        CIRCUITS
+            .iter()
+            .find(|c| c.name == CIRCUIT_NAME)
+            .expect("packed fixture circuit is registered")
+    }
+
+    /// The 2^20 sec-100 config's GKR/sumcheck schedules with the 2^24 config's
+    /// WHIR side (the packed message is `2^(20 + 4)`) — exactly the config the
+    /// prover's `gkr_blake_delegation_packed_test_sec_100` proves the fixture with.
+    pub fn prover_config() -> ProverConfig {
+        prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
+            20,
+            PACK_LOG2,
+            SecurityLevel::Sec100,
+        )
+    }
+
+    pub fn proof_path() -> String {
+        format!(
+            "{}/prover/test_proofs/{}_sec_100_pack4_gkr_proof.json",
+            REPO_ROOT, CIRCUIT_NAME
+        )
+    }
+
+    pub fn generated_dir() -> String {
+        format!("{}/{}", circuit().generated_dir(), DIR_SUFFIX)
+    }
+
+    pub fn proof() -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
+        deserialize_from_file(&proof_path())
+    }
+
+    pub fn load_nds() -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
+        let circuit = circuit().compiled_circuit();
+        let proof = proof();
+        let nds = flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+            &proof, &circuit,
+        );
+        (nds, proof.external_challenges)
     }
 }
 

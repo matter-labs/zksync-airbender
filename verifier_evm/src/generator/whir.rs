@@ -2,8 +2,8 @@
 //!
 //! The WHIR proving configuration (fold/query/PoW schedule, base rate, merkle cap) is NOT
 //! encoded in the circuit artifact — it must be supplied by the caller as the same
-//! `prover::gkr::prover::WhirSchedule` the prover used. Together with `pack_log2` (from the GKR
-//! `CommitmentMode`) and the artifact's column widths, that fully determines every WHIR verifier
+//! `prover::gkr::prover::WhirSchedule` the prover used. Together with `pack_log2` (the prover's
+//! `ProverConfig::pack_log2`) and the artifact's column widths, that fully determines every WHIR verifier
 //! parameter, so GKR and WHIR are driven from one source and cannot drift.
 //!
 //! This module derives all of those parameters ([`WhirGenConfig`]), renders the per-round
@@ -15,7 +15,7 @@
 
 use super::Lit;
 use field::Proth120;
-use prover::gkr::prover::WhirSchedule;
+use prover::gkr::prover_config::ProverConfig;
 
 /// Every WHIR verifier parameter, derived from `(WhirSchedule, pack_log2, trace_len_log2, widths)`.
 #[derive(Clone, Debug)]
@@ -42,13 +42,10 @@ pub struct WhirGenConfig {
 impl WhirGenConfig {
     /// `num_memwit` = merged memory+witness base width, `num_setup` = generic-lookup setup width
     /// (both pre-packing column counts, from the artifact).
-    pub fn derive(
-        schedule: &WhirSchedule,
-        pack_log2: usize,
-        trace_len_log2: usize,
-        num_memwit: usize,
-        num_setup: usize,
-    ) -> Self {
+    pub fn derive(prover_config: &ProverConfig, num_memwit: usize, num_setup: usize) -> Self {
+        let schedule = &prover_config.whir_schedule;
+        let pack_log2 = prover_config.pack_log2;
+        let trace_len_log2 = prover_config.trace_len_log2;
         let folds = schedule.whir_steps_schedule.clone();
         let queries = schedule.whir_queries_schedule.clone();
         let pow_bits = schedule.whir_pow_schedule.clone();

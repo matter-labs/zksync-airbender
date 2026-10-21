@@ -14,7 +14,9 @@ pub struct KeccakSpecial5DelegationCircuit;
 impl<F: PrimeField> circuit_common::DelegationCircuit<F> for KeccakSpecial5DelegationCircuit {
     const DELEGATION_TYPE_ID: u16 =
         common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER as u16;
-    const DOMAIN_SIZE_LOG2: u32 = 22;
+    fn prover_config(level: circuit_common::SecurityLevel) -> circuit_common::ProverConfig {
+        circuit_common::default_prover_config(22, level)
+    }
 
     fn circuit_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS) {
         define_keccak_special5_delegation_circuit::<_, _, false>(cs);
@@ -37,16 +39,6 @@ mod sealed {
 
     include!("../generated/witness_generation_fn.rs");
 }
-
-// pub fn witness_eval_fn<'a, 'b>(
-//     proxy: &'_ mut ColumnMajorWitnessProxy<'a, KeccakDelegationOracle<'b>, BabyBearField>,
-// ) {
-//     let fn_ptr = sealed::evaluate_witness_fn::<
-//         ScalarWitnessTypeSet<BabyBearField, true>,
-//         ColumnMajorWitnessProxy<'a, KeccakDelegationOracle<'b>, BabyBearField>,
-//     >;
-//     (fn_ptr)(proxy);
-// }
 
 pub fn witness_eval_fn(
     proxy: &'_ mut ColumnMajorWitnessProxy<'_, KeccakDelegationOracle<'_>, BabyBearField>,

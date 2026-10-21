@@ -95,10 +95,52 @@ pub const fn lookup_challenges_pow_bits<F: PrimeField, E: FieldExtension<F>>(
     ) as u32
 }
 
+/// Number of base-layer columns (memory + witness + committed setup): the
+/// number of COMMITTED base-oracle columns when the base commitment is not
+/// packed. See [`committed_base_oracle_columns`] for the packed count.
 pub fn total_base_oracle_columns<F: PrimeField>(compiled_circuit: &GKRCircuitArtifact<F>) -> usize {
     compiled_circuit.memory_layout.total_width
         + compiled_circuit.witness_layout.total_width
         + compiled_circuit.generic_lookup_tables_width
+}
+
+/// Number of PHYSICALLY committed polynomials for three committed column sets
+/// of `num_memory_columns`, `num_witness_columns` and `num_setup_columns`
+/// base columns, each packed by `2^pack_log2` consecutive columns (a short
+/// tail group is zero-padded): `ceil(n / 2^pack_log2)` per set. A merged
+/// memory+witness commitment is ONE set — pass its total as the memory count
+/// and `0` witness columns. The count the WHIR batching challenge is raised
+/// to powers over, and thus the `num_batched_oracles` of
+/// [`batched_proximity_check_pow_bits`].
+pub const fn physically_committed_polys(
+    num_memory_columns: usize,
+    num_witness_columns: usize,
+    num_setup_columns: usize,
+    pack_log2: usize,
+) -> usize {
+    let pack = 1usize << pack_log2;
+    num_memory_columns.div_ceil(pack)
+        + num_witness_columns.div_ceil(pack)
+        + num_setup_columns.div_ceil(pack)
+}
+
+/// [`physically_committed_polys`] of a compiled circuit's base layer: its
+/// memory, witness and (committed, non-virtual) setup columns, with memory and
+/// witness as ONE set when `merged_memory_and_witness`. Equals
+/// [`total_base_oracle_columns`] when `pack_log2 == 0`.
+pub fn committed_base_oracle_columns<F: PrimeField>(
+    compiled_circuit: &GKRCircuitArtifact<F>,
+    pack_log2: usize,
+    merged_memory_and_witness: bool,
+) -> usize {
+    let memory = compiled_circuit.memory_layout.total_width;
+    let witness = compiled_circuit.witness_layout.total_width;
+    let setup = compiled_circuit.generic_lookup_tables_width;
+    if merged_memory_and_witness {
+        physically_committed_polys(memory + witness, 0, setup, pack_log2)
+    } else {
+        physically_committed_polys(memory, witness, setup, pack_log2)
+    }
 }
 
 /// PoW bits required before the WHIR batching (proximity) challenge `γ`.
@@ -155,6 +197,18 @@ mod tests {
             lde,
             ell,
         )
+    }
+
+    #[test]
+    fn physically_committed_polys_counts_packed_sets() {
+        // unpacked: one committed poly per column
+        assert_eq!(physically_committed_polys(225, 538, 6, 0), 769);
+        // the Blake pack4 fixture: 15 + 34 + 1 (tail groups zero-padded)
+        assert_eq!(physically_committed_polys(225, 538, 6, 4), 50);
+        // merged memory+witness: one set of 763 -> 48, plus the setup
+        assert_eq!(physically_committed_polys(225 + 538, 0, 6, 4), 49);
+        // empty sets commit nothing
+        assert_eq!(physically_committed_polys(0, 7, 0, 2), 2);
     }
 
     #[test]

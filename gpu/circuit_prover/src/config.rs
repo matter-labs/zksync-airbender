@@ -1,16 +1,17 @@
 //! Prover configuration policy.
 //!
 //! Maps a `CircuitType` + `SecurityLevel` to the canonical upstream
-//! `ProverConfig`, and owns the GPU-supported-security-level contract. Lives in
+//! `ProverConfig`, and owns the GPU-supported-security-level contract. The
+//! canonical configs are UNPACKED (`ProverConfig::pack_log2 == 0`); the GPU
+//! prover does not implement base-commitment packing, and every GPU entry that
+//! takes a `ProverConfig` rejects a packed one first
+//! (`gpu_trace::trace::memory::assert_unpacked_prover_config`). Lives in
 //! the prover layer because `ProverConfig` is a `prove()` input (see
 //! `proof/mod.rs`): `execution` calls down into this and threads the result
 //! into `prove()`. The low `witness::circuit_type` enum stays a pure
 //! domain type with no `ProverConfig`/`SecurityLevel` coupling.
 
-use crate::upstream::{
-    config_for_security_level_under_pessimistic_conjecture, pow_bits, GKRCircuitArtifact,
-    ProverConfig, SecurityLevel,
-};
+use crate::upstream::{pow_bits, GKRCircuitArtifact, ProverConfig, SecurityLevel};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_trace::witness::circuit_type::CircuitType;
 
@@ -53,8 +54,8 @@ fn config_for_supported_level(
     circuit_type: CircuitType,
     security_level: SecurityLevel,
 ) -> ProverConfig {
-    let domain_size_log_2 = circuit_type.get_domain_size_log2() as usize;
-    config_for_security_level_under_pessimistic_conjecture(domain_size_log_2, security_level)
+    // the circuit definition's own config (`CircuitType::prover_config`)
+    circuit_type.prover_config(security_level)
 }
 
 /// PoW bit count for the lookup challenges (`lookup_alpha`, `lookup_additive`),
@@ -82,23 +83,28 @@ pub(crate) fn batched_proximity_check_pow_bits(
 ) -> u32 {
     pow_bits::batched_proximity_check_pow_bits::<BF, E4>(
         prover_config.security_level.security_bits(),
-        compiled_circuit.trace_len.trailing_zeros() as usize,
+        prover_config.whir_message_size_log2(),
         prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
-        pow_bits::total_base_oracle_columns(compiled_circuit),
+        // the PHYSICALLY committed column count (separate memory/witness sets)
+        pow_bits::committed_base_oracle_columns(compiled_circuit, prover_config.pack_log2, false),
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::upstream::config_for_security_level_under_pessimistic_conjecture;
     use gpu_trace::witness::circuit_type::UnrolledCircuitType;
 
     #[test]
-    fn builds_prover_config_for_all_supported_security_levels() {
+    fn cpu_builds_prover_config_for_all_supported_security_levels() {
         let circuit_type = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns);
         for &level in GPU_SUPPORTED_SECURITY_LEVELS.iter() {
             let cfg = prover_config(circuit_type, level).unwrap();
             assert_eq!(cfg.security_level, level);
+            // the GPU prover implements only the unpacked base commitment
+            assert_eq!(cfg.pack_log2, 0);
+            gpu_trace::trace::memory::assert_unpacked_prover_config(&cfg);
         }
     }
 

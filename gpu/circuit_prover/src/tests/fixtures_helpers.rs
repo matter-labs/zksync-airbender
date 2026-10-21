@@ -257,14 +257,7 @@ pub(super) fn finish_proof_fixture(
         drop(memory_trace);
 
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        let setup_commitment = setup.commit(
-            &twiddles,
-            whir_schedule.base_lde_factor,
-            whir_schedule.whir_steps_schedule[0],
-            whir_schedule.cap_size,
-            trace_len.trailing_zeros() as usize,
-            &worker,
-        );
+        let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, &worker);
         let expected_cpu_proof =
             prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
                 &compiled_circuit,
@@ -274,7 +267,7 @@ pub(super) fn finish_proof_fixture(
                 &setup_commitment,
                 &twiddles,
                 &prover_config,
-                CommitmentMode::SeparateMemoryAndWitness,
+                OperationMode::MultipleChunks,
                 vec![],
                 trace_len,
                 &worker,
@@ -670,14 +663,7 @@ pub(super) fn finish_proof_fixture_memory(
         drop(memory_trace);
 
         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-        let setup_commitment = setup.commit(
-            &twiddles,
-            whir_schedule.base_lde_factor,
-            whir_schedule.whir_steps_schedule[0],
-            whir_schedule.cap_size,
-            trace_len.trailing_zeros() as usize,
-            &worker,
-        );
+        let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, &worker);
         let expected_cpu_proof =
             prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
                 &compiled_circuit,
@@ -687,7 +673,7 @@ pub(super) fn finish_proof_fixture_memory(
                 &setup_commitment,
                 &twiddles,
                 &prover_config,
-                CommitmentMode::SeparateMemoryAndWitness,
+                OperationMode::MultipleChunks,
                 vec![],
                 trace_len,
                 &worker,

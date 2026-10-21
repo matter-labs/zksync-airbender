@@ -309,6 +309,19 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx512WorkStealingBackend 
             .pack_polys_from_hypercubes_to_monomials(evals, pack_log2, pool, worker)
     }
 
+    fn lde_packed_polys_from_hypercubes(
+        &self,
+        evals: &[&[BabyBearField]],
+        pack_log2: usize,
+        twiddles: &Self::TwiddleSet,
+        lde_factor: usize,
+        pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
+        worker: &Worker,
+    ) -> Vec<ColumnMajorBaseOracleForCoset<BabyBearField>> {
+        self.inner
+            .lde_packed_polys_from_hypercubes(evals, pack_log2, twiddles, lde_factor, pool, worker)
+    }
+
     fn monomial_form_from_hypercube_evals(
         &self,
         evals: &[BabyBearExt4],

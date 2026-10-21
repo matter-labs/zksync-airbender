@@ -574,8 +574,7 @@ pub(crate) fn compute_column_major_monomial_form_from_main_domain_owned<
 /// into all `lde_factor` cosets, CONSUMING the monomial forms. For each coset:
 /// scale by the coset offset's powers, bit-reverse, forward NTT — one column at
 /// a time, each step worker-parallel; cosets run sequentially. Shared by the
-/// packed in-memory committers ([`commit_trace_part_packed`] and
-/// `initial_commit::commit_packed_merged_memory_and_witness_subtrees`).
+/// packed in-memory committer ([`commit_trace_part_packed`]).
 pub(crate) fn lde_packed_monomials_into_cosets<F: PrimeField + TwoAdicField>(
     mut monomials: Vec<Vec<F>>,
     twiddles: &Twiddles<F, Global>,
@@ -831,24 +830,34 @@ pub fn commit_trace_part_packed<
         });
     }
 
-    // Pack `2^pack_log2` polys into each packed multilinear (monomial form).
-    let monomials = backend.pack_polys_from_hypercubes_to_monomials(
+    // Pack `2^pack_log2` polys into each packed multilinear, bring the packed
+    // polys to monomial form and LDE them into every coset: the backend's fused
+    // pipeline (`Backend::lde_packed_polys_from_hypercubes`).
+    let t_commit = std::time::Instant::now();
+    let cosets = backend.lde_packed_polys_from_hypercubes(
         input_on_hypercube,
         pack_log2,
+        twiddles,
+        lde_factor,
         pool,
         worker,
     );
-    for m in monomials.iter() {
+    assert_eq!(cosets.len(), lde_factor);
+    for coset in cosets.iter() {
         assert_eq!(
-            m.len(),
-            1 << packed_trace_len_log2,
+            coset.coset_size_log2, packed_trace_len_log2,
             "packed poly must have 2^(packed_trace_len_log2) elements"
         );
     }
-
-    // Same coset-by-coset LDE as `commit_packed_merged_memory_and_witness_subtrees`.
-    let cosets =
-        backend.lde_packed_monomials_into_cosets(monomials, twiddles, lde_factor, pool, worker);
+    println!(
+        "[timing] packed base commit: {} cols 2^{} packed by 2^{} into {} polys, lde {} -> LDE {:.3?}",
+        input_on_hypercube.len(),
+        packed_trace_len_log2 - pack_log2,
+        pack_log2,
+        cosets[0].original_values_normal_order.len(),
+        lde_factor,
+        t_commit.elapsed()
+    );
 
     let tree = build_tree_over_cosets::<F, T>(&cosets, values_per_leaf, tree_cap_size, worker);
 
@@ -858,6 +867,106 @@ pub fn commit_trace_part_packed<
         values_per_leaf,
         coset_size_log2: packed_trace_len_log2,
     })
+}
+
+/// The config-driven in-memory base commitment of one column set:
+/// [`commit_trace_part`] when `pack_log2 == 0` (one committed column per
+/// input column over the `2^trace_len_log2` domain), [`commit_trace_part_packed`]
+/// otherwise (groups of `2^pack_log2` consecutive columns packed into one
+/// `(trace_len_log2 + pack_log2)`-variate column). `trace_len_log2` is always
+/// the INPUT column length; `twiddles` must cover the
+/// `2^(trace_len_log2 + pack_log2)` domain.
+pub fn commit_trace_part_with_packing<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    B: crate::gkr::prover::backend::Backend<F, E>,
+>(
+    backend: &B,
+    input_on_hypercube: &[&[F]],
+    twiddles: &B::TwiddleSet,
+    lde_factor: usize,
+    whir_first_fold_step_log2: usize,
+    tree_cap_size: usize,
+    trace_len_log2: usize,
+    pack_log2: usize,
+    pool: &dyn AllocationPool<F, E>,
+    worker: &Worker,
+) -> ColumnMajorBaseOracleForLDE<F, T> {
+    if pack_log2 == 0 {
+        commit_trace_part::<F, E, T, B>(
+            backend,
+            input_on_hypercube,
+            twiddles,
+            lde_factor,
+            whir_first_fold_step_log2,
+            tree_cap_size,
+            trace_len_log2,
+            pool,
+            worker,
+        )
+    } else {
+        commit_trace_part_packed::<F, E, T, B>(
+            backend,
+            input_on_hypercube,
+            twiddles,
+            lde_factor,
+            whir_first_fold_step_log2,
+            tree_cap_size,
+            trace_len_log2 + pack_log2,
+            pack_log2,
+            pool,
+            worker,
+        )
+    }
+}
+
+/// [`commit_trace_part_with_packing`] with EVERY geometry parameter taken from
+/// the prover config — LDE factor, leaf size (`base_oracles_values_per_leaf`),
+/// cap, `trace_len_log2` and `pack_log2` — so a base commitment made ahead of
+/// the proof (memory trees, merged trees) cannot disagree with the proof's.
+/// Every input column must have `2^trace_len_log2` elements; `twiddles` must
+/// cover the `2^(trace_len_log2 + pack_log2)` domain.
+pub fn commit_trace_part_for_config<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    B: crate::gkr::prover::backend::Backend<F, E>,
+>(
+    backend: &B,
+    input_on_hypercube: &[&[F]],
+    twiddles: &B::TwiddleSet,
+    prover_config: &crate::gkr::prover_config::ProverConfig,
+    pool: &dyn AllocationPool<F, E>,
+    worker: &Worker,
+) -> ColumnMajorBaseOracleForLDE<F, T> {
+    for column in input_on_hypercube.iter() {
+        assert_eq!(
+            column.len(),
+            1usize << prover_config.trace_len_log2,
+            "every committed column must have 2^trace_len_log2 = 2^{} elements",
+            prover_config.trace_len_log2
+        );
+    }
+    assert!(
+        twiddles.plain().domain_size >= 1usize << prover_config.whir_message_size_log2(),
+        "the twiddles cover a 2^{} domain but the (packed) commitment interpolates over \
+         2^(trace_len_log2 + pack_log2) = 2^{}",
+        twiddles.plain().domain_size.trailing_zeros(),
+        prover_config.whir_message_size_log2()
+    );
+    commit_trace_part_with_packing::<F, E, T, B>(
+        backend,
+        input_on_hypercube,
+        twiddles,
+        prover_config.lde_factor,
+        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+        prover_config.cap_size,
+        prover_config.trace_len_log2,
+        prover_config.pack_log2,
+        pool,
+        worker,
+    )
 }
 
 pub(crate) fn pack_polys_parallel_from_hypercubes_to_monomials<F: PrimeField + TwoAdicField>(

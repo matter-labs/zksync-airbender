@@ -221,7 +221,19 @@ pub fn validate_sumcheck_schedule(
     Ok(class)
 }
 
-#[derive(Clone, Debug)]
+/// How the memory and witness base columns are committed: as two base oracles
+/// (two caps in the transcript, two round-0 Merkle paths per query) or as ONE
+/// merged oracle holding the memory columns followed by the witness columns
+/// (one cap, one path). A property of the proving geometry — part of the
+/// [`ProverConfig`] the circuit is proved and verified with — not of how the
+/// proof is used (see `prover::gkr::prover::OperationMode` for that).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum CommitmentMode {
+    SeparateMemoryAndWitness,
+    MergedMemoryAndWitness,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProverConfig {
     /// log2 of the circuit trace length this config was computed for. The
     /// prove entries assert the caller-supplied `trace_len` matches, so a
@@ -250,14 +262,66 @@ pub struct ProverConfig {
     /// NaiveSumcheck for every round otherwise. Each entry must satisfy
     /// [`validate_sumcheck_schedule`] for its key.
     pub dimension_reducing_sumcheck_schedule: BTreeMap<usize, Vec<SumcheckStep>>,
+    /// log2 of the BASE-COMMITMENT packing factor. Every committed column set
+    /// (memory and witness — separately in `SeparateMemoryAndWitness`, as one
+    /// merged set in the merged modes — and the setup) is packed by
+    /// `2^pack_log2` consecutive columns into ONE `(trace_len_log2 +
+    /// pack_log2)`-variate multilinear (block `y` of the packed poly is
+    /// sub-poly `y`; a short tail group is zero-padded), which is LDE'd and
+    /// Merkle-committed over the enlarged domain. The WHIR message is then
+    /// `2^(trace_len_log2 + pack_log2)` and the base claims are merged with
+    /// `pack_log2` extra claim-point coordinates drawn after the GKR phase.
+    /// `0` = unpacked (one committed column per base column). Twiddles passed
+    /// to the prover must cover the `2^(trace_len_log2 + pack_log2)` domain.
+    pub pack_log2: usize,
+    /// Whether memory and witness are committed as two base oracles or as one
+    /// merged oracle (see [`CommitmentMode`]). Decides the transcript layout,
+    /// the committed (packed) column grouping and thus the generated verifier.
+    pub commitment_mode: CommitmentMode,
 }
 
 impl ProverConfig {
+    /// A bare config for WHIR-only drivers and tests: an unpacked
+    /// `SeparateMemoryAndWitness` commitment of `2^trace_len_log2` columns
+    /// under `whir_schedule` (the base LDE factor, cap and round-0 leaf size are
+    /// the schedule's); the GKR-side schedules are the all-naive defaults.
+    pub fn whir_only(
+        trace_len_log2: usize,
+        whir_schedule: WhirSchedule,
+        security_level: SecurityLevel,
+    ) -> Self {
+        Self {
+            trace_len_log2,
+            lde_factor: whir_schedule.base_lde_factor,
+            cap_size: whir_schedule.cap_size,
+            base_oracles_values_per_leaf: 1usize << whir_schedule.whir_steps_schedule[0],
+            sumcheck_explicit_output_size_log_2:
+                crate::definitions::DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
+            security_level,
+            whir_schedule,
+            same_size_sumcheck_schedule: naive_same_size_schedule(),
+            dimension_reducing_sumcheck_schedule: Default::default(),
+            pack_log2: 0,
+            commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
+        }
+    }
+
+    /// Whether memory and witness were committed as ONE merged base oracle.
+    pub fn merged_memory_and_witness(&self) -> bool {
+        matches!(self.commitment_mode, CommitmentMode::MergedMemoryAndWitness)
+    }
+
+    /// log2 of the WHIR message size — the committed (packed) column length
+    /// `trace_len_log2 + pack_log2`; equal to [`Self::trace_len_log2`] when
+    /// unpacked.
+    pub fn whir_message_size_log2(&self) -> usize {
+        self.trace_len_log2 + self.pack_log2
+    }
+
     /// Structural validation of the WHIR schedule for a starting polynomial of
-    /// `message_size_log2` variables — equal to [`Self::trace_len_log2`] for
-    /// the separate/merged commitment modes and `trace_len_log2 + pack_log2`
-    /// for the packed mode. Called by the prove entries after they assert the
-    /// caller's `trace_len` against `trace_len_log2`.
+    /// `message_size_log2` variables — [`Self::whir_message_size_log2`], i.e.
+    /// `trace_len_log2 + pack_log2`. Called by the prove entries after they
+    /// assert the caller's `trace_len` against `trace_len_log2`.
     ///
     /// Beyond shape consistency, enforces the plain-text floor: every
     /// COMMITTED intermediate oracle must be an LDE of a polynomial of at
@@ -266,6 +330,14 @@ impl ProverConfig {
     /// polynomial ships as explicit monomial coefficients, which is strictly
     /// cheaper than another LDE + Merkle commitment + query round for both
     /// prover and verifier.
+    ///
+    /// Also checks the Merkle geometry of EVERY committed oracle (the base
+    /// oracles and each intermediate one): LDE factors, cap and leaf sizes are
+    /// powers of two, a leaf never exceeds its coset, and the cap never exceeds
+    /// the tree's leaf count. These are the only geometric constraints — the
+    /// storage policy ([`WhirOracleStorage`](crate::gkr::prover::WhirOracleStorage),
+    /// in-memory, coset-by-coset recompute or on-disk) imposes none of its own,
+    /// in particular no relation between `cap_size` and the LDE factors.
     pub fn validate_for_whir_message_size(&self, message_size_log2: usize) {
         use crate::definitions::DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2;
 
@@ -281,6 +353,50 @@ impl ProverConfig {
             self.base_oracles_values_per_leaf,
             1usize << schedule.whir_steps_schedule[0],
             "base-oracle leaves hold exactly one round-0 fold worth of values"
+        );
+        assert!(
+            self.lde_factor.is_power_of_two() && self.lde_factor >= 2,
+            "base LDE factor {} must be a power of two >= 2",
+            self.lde_factor
+        );
+        assert!(
+            self.cap_size.is_power_of_two(),
+            "cap size {} must be a power of two",
+            self.cap_size
+        );
+        for (i, lde_factor) in schedule.whir_steps_lde_factors.iter().enumerate() {
+            assert!(
+                lde_factor.is_power_of_two() && *lde_factor >= 2,
+                "WHIR round {i} LDE factor {lde_factor} must be a power of two >= 2"
+            );
+        }
+
+        // Merkle geometry of the oracle committed with LDE factor `lde_factor`
+        // over a 2^poly_size_log2 polynomial, `2^values_per_leaf_log2` values
+        // per leaf: valid for any `cap_size` up to the number of leaves.
+        let check_tree = |what: &str,
+                          poly_size_log2: usize,
+                          lde_factor: usize,
+                          values_per_leaf_log2: usize| {
+            assert!(
+                values_per_leaf_log2 <= poly_size_log2,
+                "{what}: a leaf of 2^{values_per_leaf_log2} values exceeds the 2^{poly_size_log2} coset"
+            );
+            let num_leaves_log2 =
+                poly_size_log2 + lde_factor.trailing_zeros() as usize - values_per_leaf_log2;
+            assert!(
+                self.cap_size.trailing_zeros() as usize <= num_leaves_log2,
+                "{what}: cap size {} exceeds the tree's 2^{num_leaves_log2} leaves \
+                 (2^{poly_size_log2} polynomial, LDE factor {lde_factor}, \
+                 2^{values_per_leaf_log2} values per leaf)",
+                self.cap_size
+            );
+        };
+        check_tree(
+            "base oracles",
+            message_size_log2,
+            self.lde_factor,
+            schedule.whir_steps_schedule[0],
         );
 
         let mut poly_size_log2 = message_size_log2;
@@ -299,6 +415,14 @@ impl ProverConfig {
                     "WHIR round {round} would commit an LDE of a 2^{poly_size_log2} polynomial \
                      (below the 2^{DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2} plain-text floor): \
                      terminate the schedule here and ship the tail in plain text instead"
+                );
+                // the oracle committed after this round: its leaves hold one
+                // NEXT-round fold worth of values
+                check_tree(
+                    &format!("WHIR round {round} intermediate oracle"),
+                    poly_size_log2,
+                    schedule.whir_steps_lde_factors[round],
+                    schedule.whir_steps_schedule[round + 1],
                 );
             }
         }
@@ -662,5 +786,61 @@ mod test {
             &BlakeHashBabyBearExt4CostModel,
         );
         dbg!(prover_config);
+    }
+}
+
+#[cfg(test)]
+mod geometry_validation_tests {
+    use super::example_configs::{
+        config_for_security_level_under_pessimistic_conjecture,
+        packed_config_for_security_level_under_pessimistic_conjecture,
+    };
+    use crate::definitions::SecurityLevel;
+
+    #[test]
+    fn example_configs_pass_for_every_storage_policy() {
+        // Unpacked and packed family shapes (cap 16 over an LDE factor of 2 — the
+        // cap lives inside the cosets); the validation has no cap/LDE relation.
+        for trace_len_log2 in [20usize, 22, 23, 24] {
+            let config = config_for_security_level_under_pessimistic_conjecture(
+                trace_len_log2,
+                SecurityLevel::Sec100,
+            );
+            assert!(config.cap_size > config.lde_factor);
+            config.validate_for_whir_message_size(config.whir_message_size_log2());
+        }
+        let packed = packed_config_for_security_level_under_pessimistic_conjecture(
+            20,
+            4,
+            SecurityLevel::Sec100,
+        );
+        packed.validate_for_whir_message_size(packed.whir_message_size_log2());
+    }
+
+    #[test]
+    #[should_panic(expected = "cap size")]
+    fn cap_larger_than_base_tree_is_rejected() {
+        let mut config =
+            config_for_security_level_under_pessimistic_conjecture(20, SecurityLevel::Sec100);
+        // 2^20 message x LDE 2 / 2 values per leaf = 2^20 leaves
+        config.cap_size = 1 << 21;
+        config.whir_schedule.cap_size = 1 << 21;
+        config.validate_for_whir_message_size(config.whir_message_size_log2());
+    }
+
+    #[test]
+    #[should_panic(expected = "intermediate oracle")]
+    fn cap_larger_than_an_intermediate_tree_is_rejected() {
+        let mut config =
+            config_for_security_level_under_pessimistic_conjecture(20, SecurityLevel::Sec100);
+        // shrink the first intermediate oracle's LDE so its tree has fewer leaves
+        // than the cap: poly 2^(20 - fold0), LDE 2, leaves / 2^fold1
+        config.whir_schedule.whir_steps_lde_factors[0] = 2;
+        let fold0 = config.whir_schedule.whir_steps_schedule[0];
+        let fold1 = config.whir_schedule.whir_steps_schedule[1];
+        let leaves_log2 = 20 - fold0 + 1 - fold1;
+        config.cap_size = 1 << (leaves_log2 + 1);
+        config.whir_schedule.cap_size = config.cap_size;
+        config.validate_for_whir_message_size(config.whir_message_size_log2());
     }
 }

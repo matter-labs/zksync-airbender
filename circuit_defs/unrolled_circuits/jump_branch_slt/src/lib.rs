@@ -14,7 +14,9 @@ pub struct JumpBranchSltCircuit;
 impl<F: PrimeField> circuit_common::RiscVCycleCircuit<F, false> for JumpBranchSltCircuit {
     const CIRCUIT_FAMILY: u8 =
         common_constants::circuit_families::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX;
-    const DOMAIN_SIZE_LOG2: u32 = 24;
+    fn prover_config(level: circuit_common::SecurityLevel) -> circuit_common::ProverConfig {
+        circuit_common::default_prover_config(24, level)
+    }
     const NUM_INIT_AND_TEARDOWN_PAIRS: usize = 0;
 
     fn circuit_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS, _bytecode: &[u32]) {

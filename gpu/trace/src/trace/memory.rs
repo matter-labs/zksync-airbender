@@ -52,6 +52,28 @@ impl<'a> MemoryCommitmentJob<'a> {
     }
 }
 
+/// The GPU prover commits every base column set over the circuit's own
+/// `2^trace_len_log2` domain (one committed column per base column) and starts
+/// WHIR from that size: it does not implement the base-commitment packing of
+/// `ProverConfig::pack_log2` (`2^pack_log2` consecutive columns per committed
+/// polynomial, WHIR message `2^(trace_len_log2 + pack_log2)`, `pack_log2` extra
+/// claim-point coordinates drawn after the GKR phase). Every GPU entry that
+/// takes a `ProverConfig` (the memory commitments here, `prove()` and the DR
+/// preflight in `gpu_circuit_prover`) calls this before enqueuing any
+/// commitment or proof kernel (the preflight rejects before transfers are
+/// even constructed), so a packed config fails closed instead of yielding an
+/// unpacked proof that the verifier generated from the same config rejects.
+pub fn assert_unpacked_prover_config(prover_config: &ProverConfig) {
+    assert_eq!(
+        prover_config.pack_log2,
+        0,
+        "GPU prover does not implement base-commitment packing: ProverConfig::pack_log2 = {} \
+         (WHIR message 2^{}); prove packed configs with the CPU prover",
+        prover_config.pack_log2,
+        prover_config.whir_message_size_log2(),
+    );
+}
+
 fn commit_memory_inner<'a>(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
@@ -62,6 +84,7 @@ fn commit_memory_inner<'a>(
     inputs: Option<TransferKeepalive<'a>>,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
+    assert_unpacked_prover_config(prover_config);
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.whir_schedule.whir_steps_schedule[0]
@@ -336,6 +359,8 @@ pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
     prover_config: &ProverConfig,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
+    // reject a packed config before touching the streams
+    assert_unpacked_prover_config(prover_config);
     // One exec-stream wait covers every H2D bundled by `inputs` (decoder,
     // inits_and_teardowns, tracing_data).
     inputs.ensure_transferred(context)?;
@@ -357,4 +382,34 @@ pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
         Some(transfer.into_keepalive()),
         context,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::assert_unpacked_prover_config;
+    use prover::definitions::SecurityLevel;
+    use prover::gkr::prover_config::example_configs::{
+        config_for_security_level_under_pessimistic_conjecture,
+        packed_config_for_security_level_under_pessimistic_conjecture,
+    };
+
+    #[test]
+    fn cpu_unpacked_prover_config_is_accepted() {
+        let config =
+            config_for_security_level_under_pessimistic_conjecture(20, SecurityLevel::Sec100);
+        assert_eq!(config.pack_log2, 0);
+        assert_unpacked_prover_config(&config);
+    }
+
+    #[test]
+    #[should_panic(expected = "GPU prover does not implement base-commitment packing")]
+    fn cpu_packed_prover_config_is_rejected() {
+        let config = packed_config_for_security_level_under_pessimistic_conjecture(
+            20,
+            4,
+            SecurityLevel::Sec100,
+        );
+        assert_eq!(config.pack_log2, 4);
+        assert_unpacked_prover_config(&config);
+    }
 }

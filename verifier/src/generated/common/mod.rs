@@ -88,6 +88,18 @@ pub fn draw_fresh_single_field_el(ts: &mut TranscriptState) -> BabyBearExt4 {
     ts.advance();
     draw_single_field_el(ts)
 }
+#[doc = r" Variant of [`draw_field_els_into`] that first moves past the digest the preceding"]
+#[doc = r" draw emitted (`seed = H(seed)`), so a draw that directly follows another draw never"]
+#[doc = r" re-emits its words. Matches the prover's `draw_fresh_random_field_els` — used for"]
+#[doc = r" the packing coordinates drawn right after the GKR phase, which ends with a draw."]
+#[inline(always)]
+pub fn draw_fresh_field_els_into<const BUF_CAP: usize>(
+    ts: &mut TranscriptState,
+    dst: &mut [BabyBearExt4],
+) {
+    ts.advance();
+    draw_field_els_into::<BUF_CAP>(ts, dst);
+}
 #[doc = r" Variant of [`draw_field_els_into`] used immediately after a `read_and_verify_pow`:"]
 #[doc = r" the first drawn word was consumed by the PoW, so we draw one extra word and skip it."]
 #[doc = r" The drawn word count matches the prover's `draw_random_field_els_with_pow` exactly."]

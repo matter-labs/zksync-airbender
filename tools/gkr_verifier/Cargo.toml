@@ -82,6 +82,10 @@ name = "blake2_with_extended_control_sec_100"
 path = "src/bin/blake2_with_extended_control_sec_100.rs"
 
 [[bin]]
+name = "blake2_with_extended_control_sec_100_pack4"
+path = "src/bin/blake2_with_extended_control_sec_100_pack4.rs"
+
+[[bin]]
 name = "mem_word_only_sec_100"
 path = "src/bin/mem_word_only_sec_100.rs"
 

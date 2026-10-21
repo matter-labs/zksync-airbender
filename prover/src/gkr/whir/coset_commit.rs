@@ -13,7 +13,13 @@
 //!
 //! A small top tree over the per-coset roots yields the commitment cap. The full
 //! tree's cap equals this top-tree cap because each coset's leaves occupy a
-//! contiguous, power-of-two block whose subtree root is a single node.
+//! contiguous, power-of-two block whose subtree root is a single node. When the
+//! cap is LARGER than the number of cosets the cap lives inside the cosets: each
+//! coset subtree is then capped at `cap_size / lde_factor` nodes and those
+//! sub-caps, in physical coset order, ARE the cap (see
+//! [`SplitTreeGeometry`](crate::merkle_trees::SplitTreeGeometry)). Every
+//! `cap_size` up to the number of leaves is therefore supported, with the same
+//! cap and paths as the monolithic tree.
 //!
 //! WHIR's initial queries recompute the single coset a query lands in, produce
 //! the within-coset Merkle path there, and stitch it to the top-tree path. The
@@ -31,7 +37,9 @@ use crate::gkr::prover::stages::commitment_utils::{
 use crate::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 #[cfg(test)]
 use crate::merkle_trees::PathQueryable;
-use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength};
+use crate::merkle_trees::{
+    ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, SplitTreeGeometry,
+};
 use core::marker::PhantomData;
 use fft::{bitreverse_index, Twiddles};
 #[cfg(test)]
@@ -129,6 +137,12 @@ where
         (1usize << self.trace_len_log2) / self.values_per_leaf
     }
 
+    /// The split-tree geometry (per-coset sub-cap, top-tree leaf mapping).
+    #[inline]
+    pub fn geometry(&self) -> SplitTreeGeometry {
+        SplitTreeGeometry::new(self.lde_factor, self.coset_tree_size(), self.cap_size)
+    }
+
     /// The commitment cap (identical to the monolithic tree's cap).
     #[inline]
     pub fn get_cap(&self) -> MerkleTreeCapVarLength {
@@ -160,13 +174,6 @@ where
         assert!(!input_on_hypercube.is_empty());
         assert!(lde_factor.is_power_of_two());
         assert!(cap_size.is_power_of_two());
-        // The cap must sit at or above the per-coset subtree roots so it can be built
-        // from them (cap 8, lde_factor 32 in production). If cap_size > lde_factor the
-        // cap would live *inside* the cosets and this split no longer applies.
-        assert!(
-            cap_size <= lde_factor,
-            "coset-by-coset commitment requires cap_size ({cap_size}) <= lde_factor ({lde_factor})"
-        );
         let values_per_leaf = 1usize << whir_first_fold_step_log2;
 
         // hypercube evals -> multilinear monomial coefficients (per column, in
@@ -246,29 +253,38 @@ where
     ) -> Self {
         assert!(lde_factor.is_power_of_two());
         assert!(cap_size.is_power_of_two());
-        // The cap must sit at or above the per-coset subtree roots so it can be built
-        // from them. If cap_size > lde_factor the cap would live *inside* the cosets.
-        assert!(
-            cap_size <= lde_factor,
-            "coset-by-coset commitment requires cap_size ({cap_size}) <= lde_factor ({lde_factor})"
+        for m in monomial_forms.iter() {
+            assert_eq!(m.len(), 1usize << trace_len_log2);
+        }
+        // The split geometry: per-coset subtrees reduced to their root when the cap
+        // sits at or above the coset roots (cap 8, lde_factor 32 in production), or
+        // capped at `cap_size / lde_factor` nodes each when the cap lives INSIDE the
+        // cosets (e.g. cap 16 over an LDE factor of 2). Either way the result is
+        // the monolithic tree's cap and paths.
+        let geometry = SplitTreeGeometry::new(
+            lde_factor,
+            (1usize << trace_len_log2) / values_per_leaf,
+            cap_size,
         );
 
-        // Per natural-order coset: root of that coset's leaf subtree. Cosets are
-        // processed sequentially so peak memory stays ~one coset; the per-coset work
-        // (per-column LDE, leaf hashing, subtree) is what runs in parallel.
+        // Per natural-order coset: the sub-cap of that coset's leaf subtree. Cosets
+        // are processed sequentially so peak memory stays ~one coset; the per-coset
+        // work (per-column LDE, leaf hashing, subtree) is what runs in parallel.
         let verbose = trace_len_log2 >= 20;
         let t0 = std::time::Instant::now();
-        let mut natural_roots: Vec<[u32; DIGEST_SIZE_U32_WORDS]> = Vec::with_capacity(lde_factor);
+        let mut natural_caps: Vec<Vec<[u32; DIGEST_SIZE_U32_WORDS]>> =
+            Vec::with_capacity(lde_factor);
         for coset_index in 0..lde_factor {
-            let root = coset_subtree_root::<F, T>(
+            let sub_cap = coset_subtree_cap::<F, T>(
                 &monomial_forms,
                 twiddles,
                 lde_factor,
                 values_per_leaf,
+                geometry.subtree_cap,
                 coset_index,
                 worker,
             );
-            natural_roots.push(root);
+            natural_caps.push(sub_cap);
             if verbose {
                 println!(
                     "[coset-commit +{:6.1}s] coset {}/{} done ({} cols of 2^{})",
@@ -282,14 +298,11 @@ where
         }
 
         // Physical tree slot `k` sources from coset `bitreverse(k)` (the tree is
-        // built with bit-reversed coset order), so reorder the roots accordingly.
-        let cosets_log2 = lde_factor.trailing_zeros();
-        let physical_roots: Vec<[u32; DIGEST_SIZE_U32_WORDS]> = (0..lde_factor)
-            .map(|k| natural_roots[bitreverse_index(k, cosets_log2)])
-            .collect();
+        // built with bit-reversed coset order), so reorder the sub-caps accordingly.
+        let top_leaves = geometry.top_leaves_from_natural_unit_caps(&natural_caps);
 
-        // Top tree over the per-coset roots -> the commitment cap.
-        let top_tree = T::build_over_leaf_hashes(physical_roots, cap_size, worker);
+        // Top tree over the per-coset sub-caps -> the commitment cap.
+        let top_tree = T::build_over_leaf_hashes(top_leaves, cap_size, worker);
 
         Self {
             monomial_forms,
@@ -328,6 +341,7 @@ where
         let num_cosets = self.lde_factor;
         let cosets_log2 = num_cosets.trailing_zeros();
         let coset_tree_size = self.coset_tree_size();
+        let geometry = self.geometry();
         let offsets =
             offsets_vec_for_leaf_construction(1usize << self.trace_len_log2, self.values_per_leaf);
 
@@ -358,7 +372,7 @@ where
             let subtree = T::construct_from_cosets::<F, _>(
                 trace,
                 self.values_per_leaf,
-                1,
+                geometry.subtree_cap,
                 true,
                 false,
                 false,
@@ -366,12 +380,16 @@ where
             );
 
             let physical_slot = bitreverse_index(coset_index, cosets_log2);
-            let (_root, top_path) = self.top_tree.get_proof(physical_slot);
 
             for pos in positions {
                 let internal_index = query_indices[pos] >> cosets_log2;
                 assert!(internal_index < coset_tree_size);
                 let tree_index = physical_slot * coset_tree_size + internal_index;
+                // within-coset path up to the coset's sub-cap, then the top-tree
+                // path from that sub-cap node (empty when the cap is inside the cosets)
+                let (_root, top_path) = self
+                    .top_tree
+                    .get_proof(geometry.top_leaf_index(physical_slot, internal_index));
 
                 // Leaf values in offset-major order (result[offset][column]), exactly
                 // like `ColumnMajorBaseOracleForCoset::values_for_folded_index`.
@@ -421,15 +439,17 @@ where
     }
 }
 
-/// Compute one coset's leaf hashes and build its subtree, returning only the root.
-fn coset_subtree_root<F, T>(
+/// Compute one coset's leaf hashes and build its subtree capped at `subtree_cap`
+/// nodes, returning only that sub-cap (the single root when `subtree_cap == 1`).
+fn coset_subtree_cap<F, T>(
     monomial_forms: &[Vec<F>],
     twiddles: &Twiddles<F, Global>,
     lde_factor: usize,
     values_per_leaf: usize,
+    subtree_cap: usize,
     coset_index: usize,
     worker: &Worker,
-) -> [u32; DIGEST_SIZE_U32_WORDS]
+) -> Vec<[u32; DIGEST_SIZE_U32_WORDS]>
 where
     F: PrimeField + TwoAdicField,
     T: ColumnMajorMerkleTreeConstructor<F>,
@@ -440,15 +460,24 @@ where
     let coset_refs: &[&[F]] = &col_refs[..];
     let trace: &[&[&[F]]] = std::slice::from_ref(&coset_refs);
 
-    let subtree =
-        T::construct_from_cosets::<F, _>(trace, values_per_leaf, 1, true, false, false, worker);
-    subtree.get_cap().cap[0]
+    let subtree = T::construct_from_cosets::<F, _>(
+        trace,
+        values_per_leaf,
+        subtree_cap,
+        true,
+        false,
+        false,
+        worker,
+    );
+    let cap = subtree.get_cap().cap;
+    assert_eq!(cap.len(), subtree_cap);
+    cap
 }
 
 /// Memory-light preparation of an on-disk PACKED base/setup commitment using the
 /// "second" tree layout (per-coset subtree files + a top-tree). Processes ONE LDE
 /// coset at a time — computing its packed RS codewords, writing them to
-/// `<prefix>.coset_NNNN.rscw`, building and writing its cap-size-1 subtree to
+/// `<prefix>.coset_NNNN.rscw`, building and writing its (sub-cap-capped) subtree to
 /// `<prefix>.subtree_NNNN.tree`, and keeping only the subtree root — then builds the
 /// small top-tree over those roots and writes `<prefix>.toptree.tree`. Peak memory
 /// is ~the packed monomial forms plus a single coset's LDE + subtree, so a 2^31-size
@@ -482,7 +511,6 @@ where
 
     assert!(lde_factor.is_power_of_two());
     assert!(cap_size.is_power_of_two());
-    assert!(cap_size <= lde_factor);
     let packed_trace_len_log2 = trace_len_log2 + pack_log2;
     let values_per_leaf = 1usize << whir_first_fold_step_log2;
 
@@ -607,24 +635,26 @@ where
 }
 
 /// Compute the `group_size` LDE cosets that occupy top-tree physical slots
-/// `[group_index*group_size, +group_size)` and return the root of ONE shared
-/// subtree over them (cap size 1). The G cosets are laid out in physical order,
-/// so this root equals the corresponding ancestor node of the monolithic tree.
+/// `[group_index*group_size, +group_size)` and return the sub-cap (`subtree_cap`
+/// nodes; the single root when 1) of ONE shared subtree over them. The G cosets
+/// are laid out in physical order, so these nodes equal the corresponding
+/// ancestor nodes of the monolithic tree.
 ///
 /// When `group_size == 1` this is the original single-coset path (the coset's own
 /// subtree root), computed with the worker-parallel LDE. When `group_size > 1`
 /// (chosen only when each coset's FFT is below the parallel threshold) the G coset
 /// columns are computed CONCURRENTLY — one per worker thread, each internally
 /// serial — and share a single subtree build.
-fn ext_group_subtree_root<F, E, T>(
+fn ext_group_subtree_cap<F, E, T>(
     monomial_form: &[E],
     twiddles: &Twiddles<F, Global>,
     ctx: &ExtCommonCtx<F>,
     group_index: usize,
     group_log2: u32,
     cosets_log2: u32,
+    subtree_cap: usize,
     worker: &Worker,
-) -> [u32; DIGEST_SIZE_U32_WORDS]
+) -> Vec<[u32; DIGEST_SIZE_U32_WORDS]>
 where
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -648,16 +678,19 @@ where
         })
     };
 
-    ext_group_root_from_columns::<F, E, T>(&columns, ctx.values_per_leaf, worker)
+    ext_group_subtree_from_columns::<F, E, T>(&columns, ctx.values_per_leaf, subtree_cap, worker)
+        .get_cap()
+        .cap
 }
 
-/// Build the shared subtree (cap 1) over `columns` (one extension column per coset,
-/// in physical order) and return its single root node.
-fn ext_group_root_from_columns<F, E, T>(
+/// Build the shared subtree (capped at `subtree_cap` nodes) over `columns` (one
+/// extension column per coset, in physical order).
+fn ext_group_subtree_from_columns<F, E, T>(
     columns: &[Box<[E]>],
     values_per_leaf: usize,
+    subtree_cap: usize,
     worker: &Worker,
-) -> [u32; DIGEST_SIZE_U32_WORDS]
+) -> T
 where
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -667,9 +700,15 @@ where
     let per_coset: Vec<[&[E]; 1]> = columns.iter().map(|c| [&c[..]]).collect();
     let coset_slices: Vec<&[&[E]]> = per_coset.iter().map(|a| &a[..]).collect();
     let trace: &[&[&[E]]] = &coset_slices;
-    let subtree =
-        T::construct_from_cosets::<E, _>(trace, values_per_leaf, 1, true, false, false, worker);
-    subtree.get_cap().cap[0]
+    T::construct_from_cosets::<E, _>(
+        trace,
+        values_per_leaf,
+        subtree_cap,
+        true,
+        false,
+        false,
+        worker,
+    )
 }
 
 /// Choose the coset grouping (log2). Returns 0 (no grouping, per-coset roots)
@@ -708,8 +747,10 @@ where
     pub trace_len_log2: usize,
     pub lde_factor: usize,
     pub values_per_leaf: usize,
-    /// log2 of the coset grouping: each top-tree leaf is a shared subtree over
-    /// `2^group_log2` physically-adjacent cosets (0 = one coset per top leaf, the
+    /// Merkle cap size (number of top nodes).
+    pub cap_size: usize,
+    /// log2 of the coset grouping: each top-tree unit is a shared subtree over
+    /// `2^group_log2` physically-adjacent cosets (0 = one coset per unit, the
     /// original layout). > 0 only when the per-coset FFT runs serially.
     pub group_log2: u32,
     pub top_tree: T,
@@ -722,6 +763,17 @@ where
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
 {
+    /// The split-tree geometry: one unit per coset GROUP (`2^group_log2`
+    /// cosets), each unit's subtree capped at `cap_size / num_groups` nodes when
+    /// the cap lives inside the groups.
+    #[inline]
+    pub fn geometry(&self) -> SplitTreeGeometry {
+        let num_groups = self.lde_factor >> self.group_log2;
+        let group_tree_size =
+            ((1usize << self.trace_len_log2) / self.values_per_leaf) << self.group_log2;
+        SplitTreeGeometry::new(num_groups, group_tree_size, self.cap_size)
+    }
+
     #[inline]
     pub fn get_cap(&self) -> MerkleTreeCapVarLength {
         self.top_tree.get_cap()
@@ -736,7 +788,6 @@ where
         worker: &Worker,
     ) -> Self {
         assert!(lde_factor.is_power_of_two());
-        assert!(cap_size <= lde_factor, "cap_size must be <= lde_factor");
         assert!(cap_size.is_power_of_two());
         let trace_len_log2 = monomial_form.len().trailing_zeros() as usize;
         let trace_len = 1usize << trace_len_log2;
@@ -749,6 +800,14 @@ where
         let group_log2 = grouping_log2::<E>(trace_len, cosets_log2, cap_size, worker);
         let group_size = 1usize << group_log2;
         let num_groups = lde_factor >> group_log2;
+        // Grouping never pushes the unit count below the cap, so the cap lives
+        // inside the units only when `cap_size > lde_factor` (then group_size == 1
+        // and each coset subtree is capped at `cap_size / lde_factor` nodes).
+        let geometry = SplitTreeGeometry::new(
+            num_groups,
+            (trace_len / values_per_leaf) << group_log2,
+            cap_size,
+        );
 
         let step = if trace_len_log2 >= 20 {
             1
@@ -759,17 +818,21 @@ where
         let t0 = std::time::Instant::now();
         // Hoist coset-independent factors (root_powers + coeff-conversion table).
         let ctx = ExtCommonCtx::<F>::new(trace_len, lde_factor, values_per_leaf);
-        // Physical top-tree leaf `g` = root of the shared subtree over physical coset
-        // slots `[g*group_size, +group_size)`. (group_size == 1 -> per-coset roots.)
-        let mut physical_roots: Vec<[u32; DIGEST_SIZE_U32_WORDS]> = Vec::with_capacity(num_groups);
+        // Physical unit `g` = the sub-cap of the shared subtree over physical coset
+        // slots `[g*group_size, +group_size)` (group_size == 1 -> per-coset
+        // subtrees; sub-cap 1 -> the unit's root). Units are produced in physical
+        // order already, so they concatenate straight into the top-tree leaves.
+        let mut top_leaves: Vec<[u32; DIGEST_SIZE_U32_WORDS]> =
+            Vec::with_capacity(geometry.num_top_leaves());
         for group_index in 0..num_groups {
-            physical_roots.push(ext_group_subtree_root::<F, E, T>(
+            top_leaves.extend(ext_group_subtree_cap::<F, E, T>(
                 monomial_form,
                 twiddles,
                 &ctx,
                 group_index,
                 group_log2,
                 cosets_log2,
+                geometry.subtree_cap,
                 worker,
             ));
             if (group_index + 1) % step == 0 {
@@ -783,13 +846,15 @@ where
                 );
             }
         }
-        let top_tree = T::build_over_leaf_hashes(physical_roots, cap_size, worker);
+        assert_eq!(top_leaves.len(), geometry.num_top_leaves());
+        let top_tree = T::build_over_leaf_hashes(top_leaves, cap_size, worker);
 
         Self {
             monomial_form: monomial_form.to_vec(),
             trace_len_log2,
             lde_factor,
             values_per_leaf,
+            cap_size,
             group_log2,
             top_tree,
             _marker: PhantomData,
@@ -850,24 +915,22 @@ where
             .map(|&off| my_column[off + internal_index])
             .collect();
 
-        // shared subtree over the group -> path from this leaf up to the group root.
-        let per_coset: Vec<[&[E]; 1]> = columns.iter().map(|c| [&c[..]]).collect();
-        let coset_slices: Vec<&[&[E]]> = per_coset.iter().map(|a| &a[..]).collect();
-        let trace: &[&[&[E]]] = &coset_slices;
-        let subtree = T::construct_from_cosets::<E, _>(
-            trace,
+        // shared subtree over the group -> path from this leaf up to the group's
+        // sub-cap (its root unless the cap lives inside the groups).
+        let geometry = self.geometry();
+        let subtree = ext_group_subtree_from_columns::<F, E, T>(
+            &columns,
             self.values_per_leaf,
-            1,
-            true,
-            false,
-            false,
+            geometry.subtree_cap,
             worker,
         );
         let group_leaf_index = slot_in_group * coset_tree_size + internal_index;
         let (_leaf, mut path) = subtree.get_proof(group_leaf_index);
 
-        // top-tree path (group root -> cap)
-        let (_root, top_path) = self.top_tree.get_proof(group_index);
+        // top-tree path (group sub-cap node -> cap)
+        let (_root, top_path) = self
+            .top_tree
+            .get_proof(geometry.top_leaf_index(group_index, group_leaf_index));
         path.extend_from_slice(&top_path);
 
         let query = ExtensionFieldQuery {
@@ -895,6 +958,7 @@ where
         let coset_tree_size = (1usize << self.trace_len_log2) / self.values_per_leaf;
         let group_log2 = self.group_log2;
         let group_size = 1usize << group_log2;
+        let geometry = self.geometry();
 
         // Group input positions by top-tree group index.
         let mut by_group: std::collections::BTreeMap<usize, Vec<usize>> =
@@ -937,20 +1001,13 @@ where
                 })
             };
 
-            // Shared subtree over the group + the (group-independent) top-tree path.
-            let per_coset: Vec<[&[E]; 1]> = columns.iter().map(|c| [&c[..]]).collect();
-            let coset_slices: Vec<&[&[E]]> = per_coset.iter().map(|a| &a[..]).collect();
-            let trace: &[&[&[E]]] = &coset_slices;
-            let subtree = T::construct_from_cosets::<E, _>(
-                trace,
+            // Shared subtree over the group (capped at the group's sub-cap).
+            let subtree = ext_group_subtree_from_columns::<F, E, T>(
+                &columns,
                 self.values_per_leaf,
-                1,
-                true,
-                false,
-                false,
+                geometry.subtree_cap,
                 worker,
             );
-            let (_root, top_path) = self.top_tree.get_proof(group_index);
 
             for pos in positions {
                 let query_index = query_indices[pos];
@@ -969,6 +1026,11 @@ where
 
                 let group_leaf_index = slot_in_group * coset_tree_size + internal_index;
                 let (_leaf, mut path) = subtree.get_proof(group_leaf_index);
+                // top-tree path from this leaf's sub-cap node (empty when the cap
+                // lives inside the groups)
+                let (_root, top_path) = self
+                    .top_tree
+                    .get_proof(geometry.top_leaf_index(group_index, group_leaf_index));
                 path.extend_from_slice(&top_path);
 
                 let query = ExtensionFieldQuery {
@@ -1207,10 +1269,21 @@ mod test {
     }
 
     #[test]
+    fn matches_monolithic_cap_inside_cosets() {
+        // The production family shape: cap 16 over an LDE factor of 2 — the cap
+        // lives inside the cosets (8 sub-cap nodes per coset, top tree of depth 0).
+        check(4, 7, 1, 1, 16, None);
+        // cap 8 over 4 cosets (2 sub-cap nodes per coset)
+        check(3, 6, 2, 1, 8, None);
+        // cap == number of cosets (one root per coset, top tree of depth 0)
+        check(2, 6, 3, 1, 8, None);
+    }
+
+    #[test]
     fn matches_monolithic_large_parallel_ntt() {
         // message 2^14 (> the NTT parallel threshold 2^12) so `commit`/`query` run the
         // worker-parallel LDE, distribute_powers and bit-reversal. LDE 16 cosets, cap 8
-        // (cap_size <= lde_factor). tree_size = 16 * 2^13 = 2^17. Sample of indices.
+        // (cap at or above the coset roots). tree_size = 16 * 2^13 = 2^17. Sample of indices.
         let sample = [
             0usize, 1, 3, 255, 1024, 65535, 65536, 99999, 131071, 100000, 42,
         ];
@@ -1352,8 +1425,16 @@ mod test {
     fn ext_matches_monolithic() {
         use crate::gkr::prover::stages::commitment_utils::compute_column_major_lde_from_monomial_form;
         let worker = Worker::new_with_num_threads(4);
-        // (trace_len_log2, lde_log2, vpl_log2, cap_size)
-        for (tl, ld, vp, cap) in [(6usize, 3usize, 1usize, 2usize), (8, 4, 2, 8), (8, 5, 2, 8)] {
+        // (trace_len_log2, lde_log2, vpl_log2, cap_size); the last three put the
+        // cap inside the cosets (cap > LDE factor) or exactly at the coset roots
+        for (tl, ld, vp, cap) in [
+            (6usize, 3usize, 1usize, 2usize),
+            (8, 4, 2, 8),
+            (8, 5, 2, 8),
+            (7, 1, 1, 16),
+            (6, 2, 1, 8),
+            (6, 3, 1, 8),
+        ] {
             let trace_len = 1usize << tl;
             let lde_factor = 1usize << ld;
             let vpl = 1usize << vp;

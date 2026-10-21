@@ -178,7 +178,7 @@ fn main() {
         .out_dir
         .join("unified_circuit_proof_proth120_commitment_mod_aux_data.json");
     serialize_pretty_to_file(&result.l1_proof, &proof_path);
-    serialize_pretty_to_file(&result.l1_commitment_mode, &aux_path);
+    serialize_pretty_to_file(&result.l1_operation_mode, &aux_path);
     println!(
         "l1_compression: wrote {} and {}",
         proof_path.display(),

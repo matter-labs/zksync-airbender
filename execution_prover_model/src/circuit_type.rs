@@ -7,7 +7,7 @@ use crate::upstream::{
     UnsignedMulDivCircuit,
 };
 use crate::MachineType;
-use circuit_common::{DelegationCircuit, RiscVCycleCircuit};
+use circuit_common::{DelegationCircuit, ProverConfig, RiscVCycleCircuit, SecurityLevel};
 use common_constants::circuit_families::{
     ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX, INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX,
     JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX, LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX,
@@ -22,34 +22,27 @@ use common_constants::delegation_types::{
     keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
 };
 
-const BIGINT_DOMAIN_SIZE_LOG2: u32 =
-    <BigIntDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2;
-const BLAKE_DOMAIN_SIZE_LOG2: u32 =
-    <Blake2sWithCompressionDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2;
-const BLAKE_G_FUNCTION_DOMAIN_SIZE_LOG2: u32 =
-    <Blake2sGFunctionDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2;
-const KECCAK_DOMAIN_SIZE_LOG2: u32 =
-    <KeccakSpecial5DelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2;
+// log2 trace lengths of the circuits, usable in `const` contexts. The source of
+// truth is each circuit's `prover_config` (`trace_len_log2`); the
+// `trace_lengths_match_prover_configs` test below guards these literals
+// against it.
+const BIGINT_DOMAIN_SIZE_LOG2: u32 = 22;
+const BLAKE_DOMAIN_SIZE_LOG2: u32 = 20;
+const BLAKE_G_FUNCTION_DOMAIN_SIZE_LOG2: u32 = 22;
+const KECCAK_DOMAIN_SIZE_LOG2: u32 = 22;
 
-const ADD_SUB_DOMAIN_SIZE_LOG2: u32 =
-    <AddSubLuiAuipcMopCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
-const UNIFIED_REDUCED_MACHINE_DOMAIN_SIZE_LOG2: u32 =
-    <UnifiedReducedMachineCircuit as RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
-const JUMP_BRANCH_DOMAIN_SIZE_LOG2: u32 =
-    <JumpBranchSltCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
-const SHIFT_BINARY_DOMAIN_SIZE_LOG2: u32 =
-    <ShiftBinaryCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
-const LOAD_STORE_WORD_DOMAIN_SIZE_LOG2: u32 =
-    <LoadStoreWordOnlyCircuit as RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
-const LOAD_STORE_SUBWORD_DOMAIN_SIZE_LOG2: u32 =
-    <LoadStoreSubwordOnlyCircuit as RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
+const ADD_SUB_DOMAIN_SIZE_LOG2: u32 = 24;
+const UNIFIED_REDUCED_MACHINE_DOMAIN_SIZE_LOG2: u32 = 23;
+const JUMP_BRANCH_DOMAIN_SIZE_LOG2: u32 = 24;
+const SHIFT_BINARY_DOMAIN_SIZE_LOG2: u32 = 24;
+const LOAD_STORE_WORD_DOMAIN_SIZE_LOG2: u32 = 24;
+const LOAD_STORE_SUBWORD_DOMAIN_SIZE_LOG2: u32 = 24;
 const INITS_AND_TEARDOWNS_DOMAIN_SIZE_LOG2: u32 = inits_and_teardowns::TRACE_LEN_LOG2;
 const INITS_AND_TEARDOWNS_NUM_SETS: usize = inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS;
 // One inline i&t "pair" allocates two sets (`allocate_inline_inits_and_teardowns_sets`).
 const UNIFIED_REDUCED_MACHINE_NUM_INIT_AND_TEARDOWN_SETS: usize =
     2 * <UnifiedReducedMachineCircuit as RiscVCycleCircuit<BabyBearField, true>>::NUM_INIT_AND_TEARDOWN_PAIRS;
-const MUL_DIV_UNSIGNED_DOMAIN_SIZE_LOG2: u32 =
-    <UnsignedMulDivCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
+const MUL_DIV_UNSIGNED_DOMAIN_SIZE_LOG2: u32 = 23;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum CircuitType {
@@ -58,6 +51,17 @@ pub enum CircuitType {
 }
 
 impl CircuitType {
+    /// The prover config of this circuit at `level`, straight from the circuit
+    /// definition (`DelegationCircuit::prover_config` /
+    /// `RiscVCycleCircuit::prover_config`): the single source of the proving
+    /// and verification geometry (trace length, schedules, packing).
+    pub fn prover_config(&self, level: SecurityLevel) -> ProverConfig {
+        match self {
+            Self::Delegation(delegation_type) => delegation_type.prover_config(level),
+            Self::Unrolled(unrolled_type) => unrolled_type.prover_config(level),
+        }
+    }
+
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
         1 << self.get_domain_size_log2()
@@ -110,9 +114,36 @@ impl DelegationCircuitType {
             Self::Blake2WithCompression => BLAKE_DOMAIN_SIZE_LOG2,
             Self::Blake2GFunction => BLAKE_G_FUNCTION_DOMAIN_SIZE_LOG2,
             Self::KeccakSpecial5 => KECCAK_DOMAIN_SIZE_LOG2,
-            Self::KeccakColumnParity => <KeccakColumnParityDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2,
-            Self::KeccakThetaRho => <KeccakThetaRhoDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2,
-            Self::KeccakChi5 => <KeccakChi5DelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2,
+            Self::KeccakColumnParity => 22,
+            Self::KeccakThetaRho => 22,
+            Self::KeccakChi5 => 22,
+        }
+    }
+
+    /// See [`CircuitType::prover_config`].
+    pub fn prover_config(&self, level: SecurityLevel) -> ProverConfig {
+        match self {
+            Self::BigIntWithControl => {
+                <BigIntDelegationCircuit as DelegationCircuit<BabyBearField>>::prover_config(level)
+            }
+            Self::Blake2WithCompression => {
+                <Blake2sWithCompressionDelegationCircuit as DelegationCircuit<BabyBearField>>::prover_config(level)
+            }
+            Self::Blake2GFunction => {
+                <Blake2sGFunctionDelegationCircuit as DelegationCircuit<BabyBearField>>::prover_config(level)
+            }
+            Self::KeccakSpecial5 => {
+                <KeccakSpecial5DelegationCircuit as DelegationCircuit<BabyBearField>>::prover_config(level)
+            }
+            Self::KeccakColumnParity => {
+                <KeccakColumnParityDelegationCircuit as DelegationCircuit<BabyBearField>>::prover_config(level)
+            }
+            Self::KeccakThetaRho => {
+                <KeccakThetaRhoDelegationCircuit as DelegationCircuit<BabyBearField>>::prover_config(level)
+            }
+            Self::KeccakChi5 => {
+                <KeccakChi5DelegationCircuit as DelegationCircuit<BabyBearField>>::prover_config(level)
+            }
         }
     }
 
@@ -192,6 +223,19 @@ pub enum UnrolledCircuitType {
 }
 
 impl UnrolledCircuitType {
+    /// See [`CircuitType::prover_config`].
+    pub fn prover_config(&self, level: SecurityLevel) -> ProverConfig {
+        match self {
+            Self::InitsAndTeardowns => inits_and_teardowns::prover_config(level),
+            Self::Memory(circuit_type) => circuit_type.prover_config(level),
+            Self::NonMemory(circuit_type) => circuit_type.prover_config(level),
+            Self::Unified => <UnifiedReducedMachineCircuit as RiscVCycleCircuit<
+                BabyBearField,
+                true,
+            >>::prover_config(level),
+        }
+    }
+
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
         1 << self.get_domain_size_log2()
@@ -237,6 +281,20 @@ pub enum UnrolledMemoryCircuitType {
 }
 
 impl UnrolledMemoryCircuitType {
+    /// See [`CircuitType::prover_config`].
+    pub fn prover_config(&self, level: SecurityLevel) -> ProverConfig {
+        match self {
+            Self::LoadStoreSubwordOnly => <LoadStoreSubwordOnlyCircuit as RiscVCycleCircuit<
+                BabyBearField,
+                true,
+            >>::prover_config(level),
+            Self::LoadStoreWordOnly => <LoadStoreWordOnlyCircuit as RiscVCycleCircuit<
+                BabyBearField,
+                true,
+            >>::prover_config(level),
+        }
+    }
+
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
         1 << self.get_domain_size_log2()
@@ -279,6 +337,29 @@ pub enum UnrolledNonMemoryCircuitType {
 }
 
 impl UnrolledNonMemoryCircuitType {
+    /// See [`CircuitType::prover_config`].
+    pub fn prover_config(&self, level: SecurityLevel) -> ProverConfig {
+        match self {
+            Self::AddSubLuiAuipcMop => <AddSubLuiAuipcMopCircuit as RiscVCycleCircuit<
+                BabyBearField,
+                false,
+            >>::prover_config(level),
+            Self::JumpBranchSlt => <JumpBranchSltCircuit as RiscVCycleCircuit<
+                BabyBearField,
+                false,
+            >>::prover_config(level),
+            Self::MulDivUnsigned => <UnsignedMulDivCircuit as RiscVCycleCircuit<
+                BabyBearField,
+                false,
+            >>::prover_config(level),
+            Self::ShiftBinary => {
+                <ShiftBinaryCircuit as RiscVCycleCircuit<BabyBearField, false>>::prover_config(
+                    level,
+                )
+            }
+        }
+    }
+
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
         1 << self.get_domain_size_log2()
@@ -338,6 +419,52 @@ impl UnrolledNonMemoryCircuitType {
             Self::JumpBranchSlt => common_constants::PC_STEP as u32,
             Self::MulDivUnsigned => common_constants::PC_STEP as u32,
             Self::ShiftBinary => common_constants::PC_STEP as u32,
+        }
+    }
+}
+
+#[cfg(test)]
+mod prover_config_tests {
+    use super::*;
+
+    /// The `const` trace-length literals above must agree with every circuit's
+    /// `prover_config` (the source of truth) at every security level.
+    #[test]
+    fn trace_lengths_match_prover_configs() {
+        let all: Vec<CircuitType> = [
+            DelegationCircuitType::BigIntWithControl,
+            DelegationCircuitType::Blake2WithCompression,
+            DelegationCircuitType::Blake2GFunction,
+            DelegationCircuitType::KeccakSpecial5,
+            DelegationCircuitType::KeccakColumnParity,
+            DelegationCircuitType::KeccakThetaRho,
+            DelegationCircuitType::KeccakChi5,
+        ]
+        .into_iter()
+        .map(CircuitType::Delegation)
+        .chain(
+            [
+                UnrolledCircuitType::InitsAndTeardowns,
+                UnrolledCircuitType::Unified,
+                UnrolledCircuitType::Memory(UnrolledMemoryCircuitType::LoadStoreSubwordOnly),
+                UnrolledCircuitType::Memory(UnrolledMemoryCircuitType::LoadStoreWordOnly),
+                UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop),
+                UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::JumpBranchSlt),
+                UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::MulDivUnsigned),
+                UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::ShiftBinary),
+            ]
+            .into_iter()
+            .map(CircuitType::Unrolled),
+        )
+        .collect();
+        for circuit_type in all {
+            for &level in SecurityLevel::ALL {
+                assert_eq!(
+                    circuit_type.get_domain_size_log2() as usize,
+                    circuit_type.prover_config(level).trace_len_log2,
+                    "{circuit_type:?} at {level:?}"
+                );
+            }
         }
     }
 }

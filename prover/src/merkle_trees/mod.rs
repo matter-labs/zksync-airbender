@@ -373,6 +373,102 @@ impl<'a, T: Copy> ColumnView<'a, T> {
 pub type CosetColumnsProducer<'a, E> =
     Box<dyn FnMut(usize) -> Vec<Box<dyn CosetIndexedAccessor<E> + 'a>> + 'a>;
 
+/// Geometry of a Merkle tree SPLIT into `num_units` equal subtrees (one per LDE
+/// coset, or per group of physically adjacent cosets) plus a top tree, for a
+/// commitment with `cap_size` top nodes. Both the coset-by-coset commitments
+/// and the on-disk split layout use it, and it is what makes the split
+/// commitment equal to the monolithic tree for EVERY `cap_size`:
+///
+/// * `cap_size <= num_units`: every unit subtree is reduced to its single root
+///   and the cap is read from the top tree over the `num_units` roots.
+/// * `cap_size > num_units`: the cap lives INSIDE the unit subtrees — each is
+///   capped at `subtree_cap = cap_size / num_units` nodes, the top "tree" is
+///   just those `num_units * subtree_cap = cap_size` nodes in physical order
+///   (depth 0, no top path), and the within-unit path stops at the sub-cap.
+///
+/// Leaves are laid out unit-major in physical (bit-reversed coset) order, so
+/// in both cases the cap and every inclusion path match the monolithic tree
+/// built by [`ColumnMajorMerkleTreeConstructor::construct_from_cosets`] over
+/// the same leaves with the same `cap_size`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SplitTreeGeometry {
+    /// Number of unit subtrees (cosets or coset groups).
+    pub num_units: usize,
+    /// Leaves per unit subtree.
+    pub unit_tree_size: usize,
+    /// The commitment's cap size.
+    pub cap_size: usize,
+    /// Cap size each unit subtree is built with: `1` when `cap_size <=
+    /// num_units` (the top tree over the unit roots carries the cap), else
+    /// `cap_size / num_units` (the cap lives inside the units).
+    pub subtree_cap: usize,
+}
+
+impl SplitTreeGeometry {
+    pub fn new(num_units: usize, unit_tree_size: usize, cap_size: usize) -> Self {
+        assert!(num_units.is_power_of_two());
+        assert!(unit_tree_size.is_power_of_two());
+        assert!(cap_size.is_power_of_two());
+        assert!(
+            cap_size <= num_units * unit_tree_size,
+            "cap_size ({cap_size}) exceeds the number of leaves ({num_units} x {unit_tree_size})"
+        );
+        // Two regimes, split at `cap_size == num_units`:
+        //  * `cap_size <= num_units` (e.g. cap 8 over 32 cosets): every unit is
+        //    reduced to its single root; the TOP tree over the `num_units` roots
+        //    is what gets capped at `cap_size`.
+        //  * `cap_size > num_units` (e.g. cap 16 over 2 cosets): the cap lives
+        //    inside the units, `cap_size / num_units` nodes per unit; the top
+        //    tree is then exactly the cap (depth 0).
+        let subtree_cap = if cap_size <= num_units {
+            1
+        } else {
+            cap_size / num_units
+        };
+        Self {
+            num_units,
+            unit_tree_size,
+            cap_size,
+            subtree_cap,
+        }
+    }
+
+    /// Number of leaves of the top tree: one per unit sub-cap node.
+    #[inline]
+    pub fn num_top_leaves(&self) -> usize {
+        self.num_units * self.subtree_cap
+    }
+
+    /// Top-tree leaf holding the sub-cap node that is the ancestor of leaf
+    /// `leaf_in_unit` of the unit at physical slot `physical_unit`.
+    #[inline]
+    pub fn top_leaf_index(&self, physical_unit: usize, leaf_in_unit: usize) -> usize {
+        debug_assert!(physical_unit < self.num_units);
+        debug_assert!(leaf_in_unit < self.unit_tree_size);
+        let levels_below_sub_cap =
+            self.unit_tree_size.trailing_zeros() - self.subtree_cap.trailing_zeros();
+        physical_unit * self.subtree_cap + (leaf_in_unit >> levels_below_sub_cap)
+    }
+
+    /// The top-tree leaves: the unit sub-caps (`unit_caps[natural unit]`,
+    /// each `subtree_cap` long) concatenated in PHYSICAL unit order, where
+    /// physical slot `k` holds natural unit `bitreverse(k)`.
+    pub fn top_leaves_from_natural_unit_caps(
+        &self,
+        unit_caps: &[Vec<[u32; DIGEST_SIZE_U32_WORDS]>],
+    ) -> Vec<[u32; DIGEST_SIZE_U32_WORDS]> {
+        assert_eq!(unit_caps.len(), self.num_units);
+        let units_log2 = self.num_units.trailing_zeros();
+        let mut leaves = Vec::with_capacity(self.num_top_leaves());
+        for k in 0..self.num_units {
+            let natural = fft::bitreverse_index(k, units_log2);
+            assert_eq!(unit_caps[natural].len(), self.subtree_cap);
+            leaves.extend_from_slice(&unit_caps[natural]);
+        }
+        leaves
+    }
+}
+
 pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
     Sized + Send + Sync + core::fmt::Debug + PathQueryable + 'static
 {
@@ -448,7 +544,7 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
     /// `producer` (the RS-codeword source). [`OnDiskTreeLayout::Monolithic`](on_disk::OnDiskTreeLayout::Monolithic)
     /// writes one tree file (`<base_path>.tree`);
     /// [`OnDiskTreeLayout::CosetSubtrees`](on_disk::OnDiskTreeLayout::CosetSubtrees)
-    /// writes one cap-size-1 subtree file per coset (`<base_path>.subtree_NNNN.tree`)
+    /// writes one subtree file per coset (capped at the per-coset sub-cap, see `SplitTreeGeometry`) (`<base_path>.subtree_NNNN.tree`)
     /// plus a top-tree (`<base_path>.toptree.tree`), processing ONE coset at a time
     /// (memory-light). Read back with [`Self::open_disk_artifacts`].
     ///
@@ -479,4 +575,47 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
         layout: on_disk::OnDiskTreeLayout,
         num_cosets: usize,
     ) -> on_disk::OnDiskTree<Self>;
+}
+
+#[cfg(test)]
+mod split_tree_geometry_tests {
+    use super::SplitTreeGeometry;
+
+    #[test]
+    fn cap_at_or_above_unit_roots() {
+        // production shape: 32 cosets, cap 8 -> unit roots, top tree capped at 8
+        let g = SplitTreeGeometry::new(32, 1 << 10, 8);
+        assert_eq!(g.subtree_cap, 1);
+        assert_eq!(g.num_top_leaves(), 32);
+        assert_eq!(g.top_leaf_index(5, 0), 5);
+        assert_eq!(g.top_leaf_index(5, (1 << 10) - 1), 5);
+        // cap == number of units: still one root per unit, top tree of depth 0
+        let g = SplitTreeGeometry::new(16, 1 << 4, 16);
+        assert_eq!(g.subtree_cap, 1);
+        assert_eq!(g.num_top_leaves(), 16);
+        assert_eq!(g.top_leaf_index(3, 7), 3);
+    }
+
+    #[test]
+    fn cap_inside_units() {
+        // 2 cosets, cap 16 -> 8 sub-cap nodes per coset, top tree == cap
+        let g = SplitTreeGeometry::new(2, 1 << 6, 16);
+        assert_eq!(g.subtree_cap, 8);
+        assert_eq!(g.num_top_leaves(), 16);
+        // leaf `l` of a unit with 64 leaves sits under sub-cap node `l >> 3`
+        assert_eq!(g.top_leaf_index(0, 0), 0);
+        assert_eq!(g.top_leaf_index(0, 7), 0);
+        assert_eq!(g.top_leaf_index(0, 8), 1);
+        assert_eq!(g.top_leaf_index(1, 63), 15);
+        // cap == all leaves: every leaf hash is a cap node
+        let g = SplitTreeGeometry::new(4, 4, 16);
+        assert_eq!(g.subtree_cap, 4);
+        assert_eq!(g.top_leaf_index(2, 3), 11);
+    }
+
+    #[test]
+    #[should_panic]
+    fn cap_larger_than_tree_is_rejected() {
+        let _ = SplitTreeGeometry::new(2, 4, 16);
+    }
 }

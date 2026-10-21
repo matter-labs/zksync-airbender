@@ -50,7 +50,7 @@ pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator + 'static>(
         << <::unified_reduced_machine::UnifiedReducedMachineCircuit as RiscVCycleCircuit<
             BabyBearField,
             true,
-        >>::DOMAIN_SIZE_LOG2;
+        >>::trace_len_log2();
     let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &compiled_circuit);
 
     #[cfg(not(feature = "witness_eval_fn"))]
@@ -69,5 +69,11 @@ pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator + 'static>(
         table_driver,
         setup,
         witness_eval_fn,
+        prover_configs: circuit_common::prover_configs_for_all_levels(
+            <::unified_reduced_machine::UnifiedReducedMachineCircuit as RiscVCycleCircuit<
+                BabyBearField,
+                true,
+            >>::prover_config,
+        ),
     }
 }

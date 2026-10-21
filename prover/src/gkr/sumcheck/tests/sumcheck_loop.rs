@@ -27,6 +27,8 @@ fn test_prover_config() -> prover_config::ProverConfig {
         // FOLDING_STEPS of the tests below; never checked — this config
         // drives `evaluate_sumcheck_for_layer` directly, not a prove entry
         trace_len_log2: 4,
+        pack_log2: 0,
+        commitment_mode: prover_config::CommitmentMode::SeparateMemoryAndWitness,
         lde_factor: 2,
         cap_size: 64,
         base_oracles_values_per_leaf: 2,

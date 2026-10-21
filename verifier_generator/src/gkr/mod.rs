@@ -1,5 +1,6 @@
 use proc_macro2::TokenStream;
 use prover::field::PrimeField;
+use prover::gkr::prover_config::ProverConfig;
 use quote::quote;
 use std::collections::BTreeMap;
 
@@ -23,7 +24,6 @@ use prover::cs::gkr_compiler::{
     GKRCacheRelation, GKRCircuitArtifact, GKRLayerDescription, OutputType,
     SpecialMemoryContributionRelation,
 };
-use prover::gkr::prover::WhirSchedule;
 use prover::gkr::prover_config::pow_bits;
 
 pub mod dim_reducing_layer;
@@ -69,8 +69,17 @@ pub struct OracleInfo {
 pub struct GKRGeneratedFiles {
     pub constants: TokenStream,
     pub gkr: TokenStream,
+    /// The committed base oracles: `num_columns` is the COMMITTED (packed)
+    /// column count, i.e. the round-0 leaf width in field elements per
+    /// evaluation and the number of batching powers the oracle consumes.
     pub oracles: BTreeMap<OracleType, OracleInfo>,
+    /// log2 of the circuit trace length (the GKR variable count).
     pub trace_len_log2: usize,
+    /// log2 of the base-commitment packing factor (0 = unpacked).
+    pub pack_log2: usize,
+    /// log2 of the WHIR message size, `trace_len_log2 + pack_log2`: the
+    /// committed (packed) column length every WHIR-side size derives from.
+    pub whir_message_size_log2: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -366,7 +375,7 @@ fn emit_range_check_eval_check<MW: FieldWrapper>(
         #[doc = " canonical layer-0 layout (memory cols → witness cols → setup cols → virtual setups → others)."]
         #[inline(always)]
         fn #fn_name<E: ErrorCreator>(
-            state: &LayerState<#quartic_struct, GKR_ROUNDS, GKR_ADDRS>,
+            state: &LayerState<#quartic_struct, CLAIM_POINT_CAPACITY, GKR_ADDRS>,
         ) -> Result<(), E::Error> {
             unsafe {
                 // The claim point is in plain VARIABLE order (LSB binding):
@@ -434,7 +443,7 @@ fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
         #[doc = " (memory cols → witness cols → setup cols → virtual setups → others)`."]
         #[inline(always)]
         fn check_virtual_setup_inits_and_teardowns<E: ErrorCreator>(
-            state: &LayerState<#quartic_struct, GKR_ROUNDS, GKR_ADDRS>,
+            state: &LayerState<#quartic_struct, CLAIM_POINT_CAPACITY, GKR_ADDRS>,
         ) -> Result<(), E::Error> {
             unsafe {
                 // The claim point is in plain VARIABLE order (LSB binding):
@@ -1041,22 +1050,7 @@ fn emit_memory_tuple_check<MW: FieldWrapper>(
     }
 }
 
-pub fn generate_gkr_inlined<MW: FieldWrapper>(
-    compiled_circuit: &GKRCircuitArtifact<MW::BaseField>,
-    sumcheck_output_size_log_2: usize,
-    whir_schedule: &WhirSchedule,
-    security_bits: u32,
-) -> GKRGeneratedFiles {
-    generate_gkr_inlined_for_commitment_mode::<MW>(
-        compiled_circuit,
-        sumcheck_output_size_log_2,
-        whir_schedule,
-        security_bits,
-        &prover::gkr::prover::CommitmentMode::SeparateMemoryAndWitness,
-    )
-}
-
-/// [`generate_gkr_inlined`] with an explicit base [`CommitmentMode`].
+/// Generate the inlined GKR verifier for `prover_config` (its `commitment_mode` picks the base commitment layout).
 ///
 /// `SeparateMemoryAndWitness` (the default of every pre-existing entry) emits
 /// the historical two-tree verifier. `MergedMemoryAndWitness` emits a verifier
@@ -1066,24 +1060,48 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 /// witness columns), and also exactly the layer-0 claim layout the GKR side
 /// already uses ([mem 0..M][wit 0..W][setup ...]), so only the oracle/cap view
 /// changes: one Memory oracle of `mem + wit` columns, no Witness commitment.
-/// The packed mode has no generated verifier (the EVM generator serves it).
+/// `MergedMemoryAndWitnessSingleCircuitOnly` commits the same merged tree, but
+/// its transcript init (self-derived external challenges, final register
+/// state / PC / timestamp) is not generated here — the EVM generator serves it.
+///
+/// Every proving-geometry parameter (trace length, explicit sumcheck output
+/// size, WHIR schedule, security level, packing) comes from `prover_config` —
+/// the circuit's own serialized config — so the generated verifier cannot
+/// disagree with the prover. `prover_config.pack_log2` is the base-commitment
+/// packing factor: every committed set
+/// (memory and witness — one merged set in the merged modes — and setup) is
+/// packed by `2^pack_log2` consecutive columns into one committed column of
+/// `2^(trace_len_log2 + pack_log2)` evaluations. With `pack_log2 = 0` the
+/// generated verifier is exactly the unpacked one. With `pack_log2 > 0` the
+/// GKR phase is unchanged; right after it (before the WHIR batching PoW) the
+/// verifier draws `pack_log2` extra claim-point coordinates, merges the base
+/// claims per committed set ([`verifier_common::gkr::merge_packed_claims`]),
+/// extends the claim point at the top, and every WHIR-side size (oracle
+/// depths, fold schedule, final poly, batching powers over the COMMITTED
+/// columns) derives from the message size `trace_len_log2 + pack_log2`.
 ///
 /// [`CommitmentMode`]: prover::gkr::prover::CommitmentMode
-pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
+pub fn generate_gkr_inlined<MW: FieldWrapper>(
     compiled_circuit: &GKRCircuitArtifact<MW::BaseField>,
-    sumcheck_output_size_log_2: usize,
-    whir_schedule: &WhirSchedule,
-    security_bits: u32,
-    commitment_mode: &prover::gkr::prover::CommitmentMode,
+    prover_config: &ProverConfig,
 ) -> GKRGeneratedFiles {
-    use prover::gkr::prover::CommitmentMode;
-    let merged_base_commitment = match commitment_mode {
-        CommitmentMode::SeparateMemoryAndWitness => false,
-        CommitmentMode::MergedMemoryAndWitness => true,
-        CommitmentMode::MergedAndPackedMemoryAndWitness { .. } => {
-            unimplemented!("no generated CPU verifier for the packed base commitment")
-        }
-    };
+    assert_eq!(
+        1usize << prover_config.trace_len_log2,
+        compiled_circuit.trace_len,
+        "the prover config was computed for another trace length than the circuit's"
+    );
+    let sumcheck_output_size_log_2 = prover_config.sumcheck_explicit_output_size_log_2;
+    let whir_schedule = &prover_config.whir_schedule;
+    let security_bits = prover_config.security_level.security_bits() as u32;
+    let pack_log2 = prover_config.pack_log2;
+    // The generated verifier takes caller-supplied external challenges
+    // (`OperationMode::MultipleChunks`); the self-derived transcript init of
+    // `OperationMode::SingleChunk` is served by the EVM generator only.
+    let merged_base_commitment = prover_config.merged_memory_and_witness();
+    // The packed base commitment: every committed set is packed by
+    // `2^pack_log2` consecutive columns, so the WHIR message (the committed
+    // column length) is `2^(trace_len_log2 + pack_log2)`.
+    let pack = 1usize << pack_log2;
     let num_standard_layers = compiled_circuit.layers.len();
     let trace_len = compiled_circuit.trace_len;
     assert!(trace_len.is_power_of_two());
@@ -1196,7 +1214,14 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         })
         .collect();
 
+    // GKR works on the LOGICAL polynomials: every same-size layer sumcheck has
+    // `trace_len_log2` rounds and the GKR claim point has that many
+    // coordinates. The claim-point buffers must additionally hold the
+    // `pack_log2` extra coordinates the packed base commitment appends after
+    // the GKR phase (the WHIR evaluation point has `trace_len_log2 +
+    // pack_log2` coordinates — the committed, packed column size).
     let max_sumcheck_rounds = trace_len_log_2;
+    let claim_point_capacity = trace_len_log_2 + pack_log2;
 
     let max_unique_addrs_standard = standard_sorted_addrs
         .iter()
@@ -1256,6 +1281,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
 
     let trace_len_log2_u32 = compiled_circuit.trace_len.trailing_zeros();
     let trace_len_log2 = trace_len_log2_u32 as usize;
+    let whir_message_size_log2 = trace_len_log2 + pack_log2;
 
     let address_high_bits_shift_val: u32 = if num_teardown_sets > 0 {
         let word_bits = compiled_circuit
@@ -1370,7 +1396,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         ts.commit(&mut evals_commit_buf, evals_data_words);
         let evals_slice: &[#quartic_struct] = unsafe { evals_commit_buf.data_as(#total_evals_needed) };
 
-        let mut all_challenges = LazyVec::<#quartic_struct, { GKR_ROUNDS + 1 }>::new();
+        let mut all_challenges = LazyVec::<#quartic_struct, { CLAIM_POINT_CAPACITY + 1 }>::new();
         unsafe { all_challenges.set_len(#num_challenges); }
         draw_field_els_into::<DRAW_BUF_CAPACITY>(
             ts, all_challenges.as_mut_slice());
@@ -1385,11 +1411,11 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         #claim_accum_body
 
         let prev_point = {
-            let mut lv = LazyVec::<#quartic_struct, GKR_ROUNDS>::new();
+            let mut lv = LazyVec::<#quartic_struct, CLAIM_POINT_CAPACITY>::new();
             for i in 0..#evaluation_point_len {
                 lv.push(*all_challenges.get(i));
             }
-            unsafe { lv.set_len(GKR_ROUNDS); }
+            unsafe { lv.set_len(CLAIM_POINT_CAPACITY); }
             unsafe { lv.into_array() }
         };
 
@@ -1863,6 +1889,40 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         });
     }
 
+    // Packed base commitment (`pack_log2 > 0`): the GKR phase above is
+    // transcript-identical to the unpacked one. Right after it — and BEFORE the
+    // WHIR batching PoW draw — the prover draws `pack_log2` extra claim-point
+    // coordinates with the PLAIN draw, merges the base claims of every
+    // committed set (`merge_claims`) and extends the claim point at the top,
+    // since the pack index occupies the HIGH variables of the packed poly.
+    // Nothing is emitted for `pack_log2 = 0`.
+    let packed_claims_merge = if pack_log2 > 0 {
+        let quartic_zero = MW::quartic_zero();
+        quote! {
+            {
+                let mut extra_coordinates: [#quartic_struct; PACK_LOG2] = [#quartic_zero; PACK_LOG2];
+                // FRESH draw: the GKR phase ended with a draw (the last layer's batching
+                // challenge) and nothing was committed since, so advance the seed first
+                // instead of re-emitting that challenge's words (mirrors the prover).
+                draw_fresh_field_els_into::<PACKED_EXTRA_DRAW_BUF>(ts, &mut extra_coordinates);
+                let merged_len = ::verifier_common::gkr::merge_packed_claims(
+                    state.prev_claims.as_mut_slice(),
+                    &PACKED_CLAIM_SET_LENS,
+                    &extra_coordinates,
+                );
+                debug_assert_eq!(merged_len, TOTAL_ORACLE_COLS);
+                let mut i = 0;
+                while i < PACK_LOG2 {
+                    state.prev_point[state.prev_point_len + i] = extra_coordinates[i];
+                    i += 1;
+                }
+                state.prev_point_len += PACK_LOG2;
+            }
+        }
+    } else {
+        TokenStream::new()
+    };
+
     let mut output_checks = TokenStream::new();
     {
         let mul = |a: TokenStream, b: TokenStream| MW::mul_assign(a, b);
@@ -1963,6 +2023,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         }
     }
 
+    main_body.extend(packed_claims_merge);
     main_body.extend(quote! {
         read_and_verify_pow::<I>(ts, BATCHED_PROXIMITY_POW_BITS, nd_source);
         state.batching_challenge = draw_single_field_el_after_pow(ts);
@@ -2002,9 +2063,15 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
     let batched_proximity_pow_bits =
         pow_bits::batched_proximity_check_pow_bits::<MW::BaseField, MW::ChallengeField>(
             security_bits as usize,
-            trace_len_log_2,
+            // the batched (packed) polynomial size and the PHYSICALLY
+            // committed (packed) column count, exactly as the prover computes it
+            whir_message_size_log2,
             whir_base_lde_factor.trailing_zeros() as usize,
-            pow_bits::total_base_oracle_columns(compiled_circuit),
+            pow_bits::committed_base_oracle_columns(
+                compiled_circuit,
+                pack_log2,
+                merged_base_commitment,
+            ),
         );
     // Derived per-circuit from `security_bits` (same as the batched-proximity bits
     // above), so prover grind and this baked const cannot diverge.
@@ -2020,12 +2087,12 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
 
     let total_fold_steps: usize = whir_fold_steps.iter().sum();
     assert!(
-        trace_len_log2 >= total_fold_steps,
-        "total fold steps ({}) exceed trace_len_log2 ({})",
+        whir_message_size_log2 >= total_fold_steps,
+        "total fold steps ({}) exceed the WHIR message size log2 ({})",
         total_fold_steps,
-        trace_len_log2
+        whir_message_size_log2
     );
-    let final_m = trace_len_log2 - total_fold_steps;
+    let final_m = whir_message_size_log2 - total_fold_steps;
     let final_monomials_len = 1usize << final_m;
 
     let base_lde_factor_log2 = whir_base_lde_factor.trailing_zeros() as usize;
@@ -2034,7 +2101,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
     assert!(configured_cap_size > 0);
     let cap_size_log2 = configured_cap_size.trailing_zeros() as usize;
     let canonical_depth =
-        trace_len_log2 + base_lde_factor_log2 - initial_fold_steps - cap_size_log2;
+        whir_message_size_log2 + base_lde_factor_log2 - initial_fold_steps - cap_size_log2;
 
     let mut oracles = BTreeMap::new();
     {
@@ -2048,6 +2115,8 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         } else {
             compiled_circuit.memory_layout.total_width
         };
+        // committed (packed) columns: `ceil(columns / 2^pack_log2)`
+        let num_columns = num_columns.div_ceil(pack);
         if num_columns > 0 {
             let info = OracleInfo {
                 num_columns,
@@ -2063,6 +2132,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         } else {
             compiled_circuit.witness_layout.total_width
         };
+        let num_columns = num_columns.div_ceil(pack);
         if num_columns > 0 {
             let info = OracleInfo {
                 num_columns,
@@ -2073,7 +2143,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         }
 
         // setup
-        let num_columns = compiled_circuit.generic_lookup_tables_width;
+        let num_columns = compiled_circuit.generic_lookup_tables_width.div_ceil(pack);
         if num_columns > 0 {
             let info = OracleInfo {
                 num_columns,
@@ -2095,7 +2165,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
     let num_intermediate_oracles = whir_rounds - 1;
     let mut whir_oracle_depths = Vec::with_capacity(num_intermediate_oracles);
     {
-        let mut poly_size_log2 = trace_len_log2;
+        let mut poly_size_log2 = whir_message_size_log2;
         for i in 0..num_intermediate_oracles {
             poly_size_log2 -= whir_fold_steps[i];
             let lde_factor_log2 = whir_lde_factors[i].trailing_zeros() as usize;
@@ -2105,6 +2175,27 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         }
     }
 
+    // Packing constants (only for `pack_log2 > 0`): the UNPACKED column count
+    // of every committed set in commitment order — memory, witness (empty in
+    // the merged modes, where memory holds mem ++ wit), setup — i.e. the
+    // layer-0 claim layout the merge compacts in place.
+    let packing_constants = if pack_log2 > 0 {
+        let (mem_set, wit_set) = if merged_base_commitment {
+            (num_memory_cols + num_witness_cols, 0usize)
+        } else {
+            (num_memory_cols, num_witness_cols)
+        };
+        let setup_set = num_setup_cols;
+        quote! {
+            pub const PACK_LOG2: usize = #pack_log2;
+            pub const PACKED_CLAIM_SET_LENS: [usize; 3] = [#mem_set, #wit_set, #setup_set];
+            pub const PACKED_EXTRA_DRAW_BUF: usize =
+                (PACK_LOG2 * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+        }
+    } else {
+        TokenStream::new()
+    };
+
     let constants = quote! {
         use ::verifier_common::blake2s_u32::{
             BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS,
@@ -2113,7 +2204,15 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         use super::common::EXT_DEGREE;
 
         // Upper bound on GKR sumcheck rounds for internal buffers
+        /// Number of rounds of every same-size GKR layer sumcheck = the number
+        /// of GKR claim-point coordinates: log2 of the LOGICAL (trace-length)
+        /// polynomials. Packing does not change it.
         pub const GKR_ROUNDS: usize = #max_sumcheck_rounds;
+        /// Capacity of the claim-point buffers: the GKR point plus the
+        /// `PACK_LOG2` coordinates appended after the GKR phase for the packed
+        /// base commitment (`TRACE_LEN_LOG2 + pack_log2`, the committed column
+        /// size the WHIR point has). Equals `GKR_ROUNDS` when unpacked.
+        pub const CLAIM_POINT_CAPACITY: usize = #claim_point_capacity;
         pub const TRACE_LEN_LOG2: u32 = #trace_len_log2_u32;
         pub const GKR_ADDRS: usize = #max_addrs;
         pub const GKR_EVALS: usize = #max_evals;
@@ -2180,6 +2279,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         pub const TOTAL_ORACLE_COLS: usize = #total_oracle_cols;
         pub const WHIR_ORACLE_DEPTHS: [usize; #num_intermediate_oracles] = [#(#whir_oracle_depths),*];
         pub const WHIR_CAP_WORDS: usize = #whir_cap_words;
+        #packing_constants
 
         #field_use_stmts
 
@@ -2193,7 +2293,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
             NUM_SETUP_COMMITS,
             PADDING_WORDS,
         >;
-        pub type ConcreteGKRVerifierOutput = ::verifier_common::GKRVerifierOutput<#quartic_struct, GKR_ROUNDS, GKR_ADDRS>;
+        pub type ConcreteGKRVerifierOutput = ::verifier_common::GKRVerifierOutput<#quartic_struct, CLAIM_POINT_CAPACITY, GKR_ADDRS>;
         pub type ConcreteVerifierOutput = ::verifier_common::VerifierOutput<#quartic_struct, INIT_AND_TEARDOWN_SETS, CAP_SIZE, NUM_MEMORY_COMMITS, NUM_SETUP_COMMITS>;
 
     };
@@ -2211,7 +2311,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         };
         use super::common::{
             verify_sumcheck_rounds, verify_final_step_check, fold_standard_claims,
-            make_eq_poly, dot_eq, draw_field_els_into, draw_single_field_el,
+            make_eq_poly, dot_eq, draw_field_els_into, draw_fresh_field_els_into, draw_single_field_el,
             draw_field_els_into_after_pow, draw_single_field_el_after_pow,
             read_field_el, read_reduced_field_el,
             ext_from_nds, ext_from_raw_words,
@@ -2249,7 +2349,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
             NUM_WITNESS_COMMITS,
             NUM_SETUP_COMMITS,
             PADDING_WORDS,
-            GKR_ROUNDS,
+            CLAIM_POINT_CAPACITY,
             GKR_ADDRS,
         > for VerifierImplementation {
             #[inline(always)]
@@ -2292,5 +2392,7 @@ pub fn generate_gkr_inlined_for_commitment_mode<MW: FieldWrapper>(
         gkr,
         oracles,
         trace_len_log2,
+        pack_log2,
+        whir_message_size_log2,
     }
 }

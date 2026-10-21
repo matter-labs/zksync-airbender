@@ -14,7 +14,9 @@ pub struct KeccakColumnParityDelegationCircuit;
 impl<F: PrimeField> circuit_common::DelegationCircuit<F> for KeccakColumnParityDelegationCircuit {
     const DELEGATION_TYPE_ID: u16 =
         common_constants::delegation_types::keccak_f1600::KECCAK_COLUMN_PARITY_CSR_REGISTER as u16;
-    const DOMAIN_SIZE_LOG2: u32 = 22;
+    fn prover_config(level: circuit_common::SecurityLevel) -> circuit_common::ProverConfig {
+        circuit_common::default_prover_config(22, level)
+    }
 
     fn circuit_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS) {
         define_keccak_column_parity_delegation_circuit(cs);

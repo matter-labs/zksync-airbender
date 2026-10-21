@@ -32,6 +32,7 @@
 
 use super::{
     ColumnMajorMerkleTreeConstructor, CosetColumnsProducer, MerkleTreeCapVarLength, PathQueryable,
+    SplitTreeGeometry,
 };
 use crate::definitions::DIGEST_SIZE_U32_WORDS;
 use fft::bitreverse_index;
@@ -312,6 +313,12 @@ impl MmapMerkleTree {
         self.layout.num_leaves
     }
 
+    /// Number of cap nodes of this tree.
+    #[inline]
+    pub fn cap_size(&self) -> usize {
+        self.layout.cap_size
+    }
+
     /// Zero-copy whole-file view (lazily paged; no allocation).
     #[inline]
     fn bytes(&self) -> &[u8] {
@@ -362,12 +369,13 @@ pub fn top_tree_file_path(prefix: &str) -> PathBuf {
 /// stitched to the top-tree path, which is byte-identical to a monolithic tree's
 /// `get_proof` — but the subtrees can be prepared and stored one coset at a time.
 pub struct OnDiskCosetTree {
-    /// One subtree per NATURAL coset (each built with cap_size 1).
+    /// One subtree per NATURAL coset (each capped at `geometry.subtree_cap`).
     subtrees: Vec<MmapMerkleTree>,
-    /// Top tree over the per-coset roots (leaves in physical, bit-reversed order).
+    /// Top tree over the per-coset sub-caps (leaves in physical, bit-reversed
+    /// coset order).
     top_tree: MmapMerkleTree,
-    /// Leaves per coset subtree.
-    coset_tree_size: usize,
+    /// The split geometry (cosets, leaves per coset, cap, per-coset sub-cap).
+    geometry: SplitTreeGeometry,
     cosets_log2: u32,
 }
 
@@ -382,10 +390,24 @@ impl OnDiskCosetTree {
         }
         let top_tree = MmapMerkleTree::open(top_tree_file_path(prefix))?;
         let coset_tree_size = subtrees[0].num_leaves();
+        let geometry = SplitTreeGeometry::new(num_cosets, coset_tree_size, top_tree.cap_size());
+        for (i, subtree) in subtrees.iter().enumerate() {
+            assert_eq!(
+                subtree.num_leaves(),
+                coset_tree_size,
+                "subtree {i} leaf count"
+            );
+            assert_eq!(
+                subtree.cap_size(),
+                geometry.subtree_cap,
+                "subtree {i} cap does not match the split geometry"
+            );
+        }
+        assert_eq!(top_tree.num_leaves(), geometry.num_top_leaves());
         Ok(Self {
             subtrees,
             top_tree,
-            coset_tree_size,
+            geometry,
             cosets_log2: num_cosets.trailing_zeros(),
         })
     }
@@ -395,7 +417,7 @@ impl core::fmt::Debug for OnDiskCosetTree {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("OnDiskCosetTree")
             .field("num_cosets", &self.subtrees.len())
-            .field("coset_tree_size", &self.coset_tree_size)
+            .field("geometry", &self.geometry)
             .finish()
     }
 }
@@ -414,12 +436,18 @@ impl PathQueryable for OnDiskCosetTree {
     ) {
         // Monolithic layout puts cosets in physical (bit-reversed) order; a leaf
         // index decomposes into (physical coset slot, index within the coset).
-        let physical_slot = idx / self.coset_tree_size;
-        let internal_index = idx % self.coset_tree_size;
+        let coset_tree_size = self.geometry.unit_tree_size;
+        let physical_slot = idx / coset_tree_size;
+        let internal_index = idx % coset_tree_size;
         let natural_coset = bitreverse_index(physical_slot, self.cosets_log2);
+        // within-coset path up to the coset's sub-cap, then the top-tree path from
+        // that sub-cap node (empty when the cap lives inside the cosets)
         let (leaf, mut path) =
             PathQueryable::get_proof(&self.subtrees[natural_coset], internal_index);
-        let (_root, top_path) = PathQueryable::get_proof(&self.top_tree, physical_slot);
+        let (_root, top_path) = PathQueryable::get_proof(
+            &self.top_tree,
+            self.geometry.top_leaf_index(physical_slot, internal_index),
+        );
         path.extend_from_slice(&top_path);
         (leaf, path)
     }
@@ -510,7 +538,7 @@ impl<T> PathQueryable for OnDiskTree<T> {
 /// one place instead of duplicating it across each tree impl.
 ///
 /// [`OnDiskTreeLayout::Monolithic`] writes one tree file (`<base_path>.tree`);
-/// [`OnDiskTreeLayout::CosetSubtrees`] writes one cap-size-1 subtree file per coset
+/// [`OnDiskTreeLayout::CosetSubtrees`] writes one subtree file per coset (capped at the per-coset sub-cap, see `SplitTreeGeometry`)
 /// (`<base_path>.subtree_NNNN.tree`) plus a top-tree (`<base_path>.toptree.tree`),
 /// processing ONE coset at a time (memory-light). Read back with [`open_disk_artifacts`].
 pub fn write_disk_artifacts<'a, F, T, E, LayersFn>(
@@ -552,12 +580,11 @@ where
         }
         OnDiskTreeLayout::CosetSubtrees => {
             assert!(num_cosets.is_power_of_two());
-            assert!(
-                cap_size <= num_cosets,
-                "split layout requires cap_size ({cap_size}) <= num_cosets ({num_cosets})"
-            );
-            let cosets_log2 = num_cosets.trailing_zeros();
-            let mut natural_roots: Vec<[u32; DIGEST_SIZE_U32_WORDS]> =
+            // Per-coset sub-caps (the coset roots unless `cap_size > num_cosets`,
+            // see `SplitTreeGeometry`); the geometry is fixed once the first
+            // coset's leaf count is known.
+            let mut geometry: Option<SplitTreeGeometry> = None;
+            let mut natural_caps: Vec<Vec<[u32; DIGEST_SIZE_U32_WORDS]>> =
                 Vec::with_capacity(num_cosets);
             for coset_index in 0..num_cosets {
                 let columns = producer(coset_index);
@@ -565,12 +592,20 @@ where
                     &columns[..];
                 let trace: &[&[Box<dyn crate::merkle_trees::CosetIndexedAccessor<E> + 'a>]] =
                     std::slice::from_ref(&coset_refs);
-                // cap-1 subtree over just this coset (bitreverse_cosets is a no-op
-                // for a single coset; the top-tree carries the coset ordering).
+                let geometry = *geometry.get_or_insert_with(|| {
+                    let coset_len = columns
+                        .first()
+                        .map(|c| c.len())
+                        .expect("a coset has at least one column");
+                    SplitTreeGeometry::new(num_cosets, coset_len / combine_by, cap_size)
+                });
+                // subtree over just this coset, capped at the coset's sub-cap
+                // (bitreverse_cosets is a no-op for a single coset; the top-tree
+                // carries the coset ordering).
                 let subtree = T::construct_from_cosets::<E, _>(
                     trace,
                     combine_by,
-                    1,
+                    geometry.subtree_cap,
                     bitreverse_evaluations,
                     false,
                     bitreverse_leaf_hashes,
@@ -582,12 +617,11 @@ where
                 ))?);
                 layers_of(&subtree).write_to(&mut f)?;
                 f.flush()?;
-                natural_roots.push(subtree.get_cap().cap[0]);
+                natural_caps.push(subtree.get_cap().cap);
             }
-            let physical_roots: Vec<[u32; DIGEST_SIZE_U32_WORDS]> = (0..num_cosets)
-                .map(|k| natural_roots[bitreverse_index(k, cosets_log2)])
-                .collect();
-            let top_tree = T::build_over_leaf_hashes(physical_roots, cap_size, worker);
+            let geometry = geometry.expect("at least one coset");
+            let top_leaves = geometry.top_leaves_from_natural_unit_caps(&natural_caps);
+            let top_tree = T::build_over_leaf_hashes(top_leaves, cap_size, worker);
             let mut f = BufWriter::new(std::fs::File::create(top_tree_file_path(base_path))?);
             layers_of(&top_tree).write_to(&mut f)?;
             f.flush()?;
@@ -733,5 +767,113 @@ mod test {
     fn mmap_path_cap_equals_all_leaves() {
         // cap_size == num_leaves: depth 0, no internal layers, cap == leaves.
         roundtrip(2, 3, 8);
+    }
+
+    /// Write the SPLIT layout (per-coset subtree files + top-tree) over
+    /// `num_cosets` cosets and require it to reproduce the monolithic in-memory
+    /// tree's cap and every inclusion path, for caps below, at and above the
+    /// number of cosets.
+    fn split_roundtrip(
+        num_columns: usize,
+        trace_len_log2: usize,
+        num_cosets: usize,
+        cap_size: usize,
+    ) {
+        let worker = Worker::new_with_num_threads(2);
+        let trace_len = 1usize << trace_len_log2;
+
+        let cosets: Vec<Vec<Vec<Proth120>>> = (0..num_cosets)
+            .map(|k| {
+                (0..num_columns)
+                    .map(|c| {
+                        (0..trace_len)
+                            .map(|r| {
+                                Proth120::new(
+                                    ((11 * ((k * num_columns + c) * trace_len + r) + 3) as u128)
+                                        % Proth120::ORDER,
+                                )
+                            })
+                            .collect()
+                    })
+                    .collect()
+            })
+            .collect();
+        let coset_refs: Vec<Vec<&[Proth120]>> = cosets
+            .iter()
+            .map(|cols| cols.iter().map(|c| c.as_slice()).collect())
+            .collect();
+        let trace: Vec<&[&[Proth120]]> = coset_refs.iter().map(|c| c.as_slice()).collect();
+
+        // Reference: the monolithic tree over all cosets (bit-reversed coset order,
+        // as the base commitments build it).
+        let tree = <Keccak256MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
+            Proth120,
+        >>::construct_from_cosets::<Proth120, _>(
+            &trace, 1, cap_size, true, true, false, &worker
+        );
+
+        let prefix = format!(
+            "{}/on_disk_split_roundtrip_{num_columns}_{trace_len_log2}_{num_cosets}_{cap_size}",
+            std::env::temp_dir().display()
+        );
+        let producer: crate::merkle_trees::CosetColumnsProducer<Proth120> = {
+            let coset_refs = coset_refs.clone();
+            Box::new(move |coset: usize| {
+                coset_refs[coset]
+                    .iter()
+                    .map(|c| {
+                        Box::new(*c) as Box<dyn crate::merkle_trees::CosetIndexedAccessor<Proth120>>
+                    })
+                    .collect()
+            })
+        };
+        <Keccak256MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<Proth120>>::write_disk_artifacts::<
+            Proth120,
+        >(
+            &prefix,
+            OnDiskTreeLayout::CosetSubtrees,
+            num_cosets,
+            producer,
+            1,
+            cap_size,
+            true,
+            true,
+            false,
+            &worker,
+        )
+        .unwrap();
+        let disk = <Keccak256MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
+            Proth120,
+        >>::open_disk_artifacts(
+            &prefix, OnDiskTreeLayout::CosetSubtrees, num_cosets
+        );
+
+        assert_eq!(
+            PathQueryable::get_cap(&disk),
+            PathQueryable::get_cap(&tree),
+            "cap mismatch (cols={num_columns}, tl={trace_len_log2}, cosets={num_cosets}, cap={cap_size})"
+        );
+        for idx in 0..num_cosets * trace_len {
+            let (want_leaf, want_path) = PathQueryable::get_proof(&tree, idx);
+            let (got_leaf, got_path) = PathQueryable::get_proof(&disk, idx);
+            assert_eq!(got_leaf, want_leaf, "leaf hash @ {idx}");
+            assert_eq!(got_path, want_path, "path @ {idx}");
+        }
+        drop(disk);
+        for k in 0..num_cosets {
+            let _ = std::fs::remove_file(subtree_file_path(&prefix, k));
+        }
+        let _ = std::fs::remove_file(top_tree_file_path(&prefix));
+    }
+
+    #[test]
+    fn split_layout_matches_monolithic_tree() {
+        // cap below the number of cosets (per-coset roots, capped top tree)
+        split_roundtrip(2, 5, 8, 2);
+        // cap == number of cosets
+        split_roundtrip(3, 4, 4, 4);
+        // cap inside the cosets (the production family shape: cap 16 over LDE 2)
+        split_roundtrip(2, 6, 2, 16);
+        split_roundtrip(1, 5, 4, 8);
     }
 }

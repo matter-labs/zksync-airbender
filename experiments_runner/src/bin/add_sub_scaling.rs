@@ -253,7 +253,7 @@ mod imp {
             prover::merkle_trees::DefaultTreeConstructor,
         > {
             use prover::gkr::prover::{
-                prove_configured_with_gkr_with_storage_and_backend_and_pool, CommitmentMode,
+                prove_configured_with_gkr_with_storage_and_backend_and_pool, OperationMode,
             };
             use prover::merkle_trees::DefaultTreeConstructor;
             use prover::transcript::Blake2sTranscript;
@@ -272,7 +272,7 @@ mod imp {
                 setup_commitment,
                 twiddles,
                 prover_config,
-                CommitmentMode::SeparateMemoryAndWitness,
+                OperationMode::MultipleChunks,
                 storage,
                 Vec::new(),
                 trace_len,
@@ -353,14 +353,8 @@ mod imp {
                 setup_worker,
             );
         let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
-        let setup_commitment = setup.commit(
-            twiddles.plain(),
-            prover_config.lde_factor,
-            prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-            prover_config.cap_size,
-            trace_len.trailing_zeros() as usize,
-            setup_worker,
-        );
+        let setup_commitment =
+            setup.commit_for_config(twiddles.plain(), &prover_config, setup_worker);
         println!(
             "[outer] shared setup (twiddles + setup construct + commit) took {:.3?}",
             t.elapsed()

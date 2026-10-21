@@ -2,9 +2,9 @@ use super::common::*;
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
 use crate::cs::tables::TableDriver;
 use crate::definitions::SecurityLevel;
-use crate::gkr::prover::prove_configured_with_gkr_with_backends;
 use crate::gkr::prover::setup::GKRSetup;
-use crate::gkr::prover::CommitmentMode;
+use crate::gkr::prover::OperationMode;
+use crate::gkr::prover::{prove_configured_with_gkr_with_storage_and_backend, WhirOracleStorage};
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
 use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
@@ -67,6 +67,10 @@ impl DelegationProveOutput {
 }
 
 /// Common prove-side logic shared by all four delegations.
+/// Prove one delegation circuit. `pack_log2 > 0` commits the memory, witness
+/// and setup columns PACKED (`ProverConfig::pack_log2`, see
+/// `packed_config_for_security_level_under_pessimistic_conjecture`): the WHIR
+/// message is `2^(log2(num_delegation_cycles) + pack_log2)`.
 fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
     circuit: &GKRCircuitArtifact<BabyBearField>,
     table_driver: &TableDriver<BabyBearField>,
@@ -75,6 +79,7 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
     num_delegation_cycles: usize,
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
     level: SecurityLevel,
+    pack_log2: usize,
     should_prove: bool,
     proof_path: &str,
     worker: &Worker,
@@ -117,24 +122,30 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
         );
     }
 
-    let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
-        num_delegation_cycles.trailing_zeros() as usize,
-        level,
-    );
-    let twiddles: Twiddles<_, Global> = Twiddles::new(num_delegation_cycles, worker);
+    let prover_config =
+        example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
+            num_delegation_cycles.trailing_zeros() as usize,
+            pack_log2,
+            level,
+        );
+    // the packed commitment interpolates over the enlarged 2^(N + pack_log2) domain
+    let twiddles: Twiddles<_, Global> =
+        Twiddles::new(1usize << prover_config.whir_message_size_log2(), worker);
     let setup = GKRSetup::construct(table_driver, &[], num_delegation_cycles, circuit);
-    let setup_commitment = setup.commit(
-        &twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        num_delegation_cycles.trailing_zeros() as usize,
-        worker,
-    );
+    let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, worker);
 
-    println!("Trying to prove");
+    println!(
+        "Trying to prove (pack_log2 = {pack_log2}, WHIR message 2^{})",
+        prover_config.whir_message_size_log2()
+    );
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr_with_backends::<
+    // The default storage policy of the packed mode (`fully_recompute`): the
+    // in-proof memory/witness commitment is coset-by-coset with the cap (16)
+    // INSIDE the cosets (LDE factor 2), and round-0 queries recompute their
+    // coset. The proof must stay byte-identical to the fully materialized one
+    // (the committed fixture), which exercises the backend's fused
+    // `lde_packed_polys_from_hypercubes` commitment for the setup.
+    let proof = prove_configured_with_gkr_with_storage_and_backend::<
         BabyBearField,
         BabyBearExt4,
         DefaultTreeConstructor,
@@ -149,7 +160,8 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
         &setup_commitment,
         &twiddles,
         &prover_config,
-        CommitmentMode::SeparateMemoryAndWitness,
+        OperationMode::MultipleChunks,
+        WhirOracleStorage::fully_recompute(),
         Vec::new(),
         num_delegation_cycles,
         &crate::gkr::prover::WorkStealingBackend,
@@ -211,6 +223,48 @@ pub fn prove_delegation_blake<C>(
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
 {
+    prove_delegation_blake_with_packing::<C>(
+        snapshotter,
+        tape,
+        expected_final_state,
+        cycles_bound,
+        num_calls,
+        external_challenges,
+        level,
+        0,
+        prove_empty,
+        compute_only,
+        circuits_filter,
+        proof_suffix,
+        worker,
+        eval_fn,
+    )
+}
+
+/// [`prove_delegation_blake`] with a PACKED base commitment when
+/// `pack_log2 > 0` (`ProverConfig::pack_log2`): the 2^20 Blake trace columns
+/// are committed as `2^(20 + pack_log2)`-variate packed polynomials. The proof
+/// is written to `test_proofs/blake2_with_extended_control_{suffix}_pack{pack_log2}_gkr_proof.json`
+/// (the unpacked name when `pack_log2 == 0`).
+pub fn prove_delegation_blake_with_packing<C>(
+    snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
+    tape: &SimpleTape,
+    expected_final_state: &State<C>,
+    cycles_bound: usize,
+    num_calls: usize,
+    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    level: SecurityLevel,
+    pack_log2: usize,
+    prove_empty: bool,
+    compute_only: bool,
+    circuits_filter: &Option<std::collections::HashSet<String>>,
+    proof_suffix: &str,
+    worker: &Worker,
+    eval_fn: fn(&mut ColumnMajorWitnessProxy<'_, Blake2sDelegationOracle<'_>, BabyBearField>),
+) -> DelegationProveOutput
+where
+    C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
+{
     let circuit: GKRCircuitArtifact<BabyBearField> =
         deserialize_from_file(&circuit_path("blake2_with_extended_control"));
     let mut table_driver = TableDriver::<BabyBearField>::new();
@@ -257,11 +311,19 @@ where
         BLAKE_NUM_DELEGATION_CYCLES,
         external_challenges,
         level,
+        pack_log2,
         should_prove,
-        &format!(
-            "test_proofs/blake2_with_extended_control_{}_gkr_proof.json",
-            proof_suffix
-        ),
+        &if pack_log2 == 0 {
+            format!(
+                "test_proofs/blake2_with_extended_control_{}_gkr_proof.json",
+                proof_suffix
+            )
+        } else {
+            format!(
+                "test_proofs/blake2_with_extended_control_{}_pack{}_gkr_proof.json",
+                proof_suffix, pack_log2
+            )
+        },
         worker,
     );
 
@@ -337,6 +399,7 @@ where
         BIGINT_NUM_DELEGATION_CYCLES,
         external_challenges,
         level,
+        0,
         should_prove,
         &format!(
             "test_proofs/bigint_with_extended_control_{}_gkr_proof.json",
@@ -417,6 +480,7 @@ where
         KECCAK_NUM_DELEGATION_CYCLES,
         external_challenges,
         level,
+        0,
         should_prove,
         &format!(
             "test_proofs/keccak_special5_{}_gkr_proof.json",
@@ -501,6 +565,7 @@ where
         BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES,
         external_challenges,
         level,
+        0,
         should_prove,
         &format!(
             "test_proofs/blake2_g_function_{}_gkr_proof.json",
@@ -601,6 +666,7 @@ where
         circuit.trace_len,
         external_challenges,
         level,
+        0,
         should_prove,
         &format!("test_proofs/{stem}_{proof_suffix}_gkr_proof.json"),
         worker,

@@ -25,6 +25,7 @@
 use super::coset_commit::CosetByCosetBaseCommitment;
 use super::*;
 use crate::gkr::prover::stages::commitment_utils::commit_trace_part;
+use crate::gkr::prover::WhirSchedule;
 use crate::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use field::Proth120;
 use rand::{Rng, SeedableRng};
@@ -214,14 +215,15 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
         &setup_commitment,
         vec![],
         gkr_storage,
-        0,
+        &crate::gkr::prover_config::ProverConfig::whir_only(
+            n,
+            schedule.clone(),
+            crate::definitions::SecurityLevel::Sec100,
+        ),
         z.clone(),
         batching_challenge,
-        &schedule,
         &twiddles,
         seed,
-        cap_size,
-        n,
         &crate::gkr::prover::backend::NaiveBackend,
         &crate::gkr::prover::gkr_backend::NaiveGKRBackend,
         WhirIntermediateOracleMode::CosetByCoset,

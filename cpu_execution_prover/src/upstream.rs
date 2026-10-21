@@ -28,8 +28,8 @@ pub(crate) type Blake2sTranscript =
     prover::transcript::Blake2sTranscript<USE_REDUCED_BLAKE2_ROUNDS>;
 pub(crate) use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 pub(crate) use prover::gkr::prover::{
-    prove_configured_with_gkr_with_backends, Backend, CommitmentMode, DefaultBabyBearBackend,
-    DefaultBabyBearGKRBackend, SetupCommitment, TwiddleSetOps,
+    prove_configured_with_gkr_with_backends, Backend, DefaultBabyBearBackend,
+    DefaultBabyBearGKRBackend, OperationMode, SetupCommitment, TwiddleSetOps,
 };
 pub(crate) use prover::gkr::prover_config::ProverConfig;
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};

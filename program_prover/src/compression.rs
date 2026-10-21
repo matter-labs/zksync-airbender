@@ -34,7 +34,7 @@ use full_statement_verifier::host_utils::{
 use full_statement_verifier::program_proof::ProgramProof;
 use prover::definitions::SecurityLevel;
 use prover::gkr::prover::{
-    CommitmentMode, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, RsCodewordSource,
+    DefaultBabyBearBackend, DefaultBabyBearGKRBackend, OperationMode, RsCodewordSource,
     WhirOracleStorage,
 };
 use prover::tests::gkr::orchestration::common::ProgramConfig;
@@ -60,7 +60,7 @@ const FEEDER_FSV_STEM: &str =
 /// the per-stage timing breakdowns.
 pub struct L1CompressionResult {
     pub l1_proof: L1Proof,
-    pub l1_commitment_mode: CommitmentMode,
+    pub l1_operation_mode: OperationMode,
     /// BabyBear feeder stages 1 and 2.
     pub stage_timings: [UnifiedTransitionTimings; 2],
     /// The Proth120 packed stage 3.
@@ -248,7 +248,7 @@ pub fn compress_fixed_point_to_l1(
         cycles_bound: L1_CYCLES_BOUND,
         ram_bound_bytes: RAM_BOUND,
     };
-    let (l1_proof, l1_commitment_mode, l1_timings) =
+    let (l1_proof, l1_operation_mode, l1_timings) =
         prove_l1_wrap_in_memory(&program, proth120_circuit_layout_path, worker);
 
     // ── Timing marks: setup-commitment work vs proving work, per stage and
@@ -289,7 +289,7 @@ pub fn compress_fixed_point_to_l1(
 
     L1CompressionResult {
         l1_proof,
-        l1_commitment_mode,
+        l1_operation_mode,
         stage_timings,
         l1_timings,
     }

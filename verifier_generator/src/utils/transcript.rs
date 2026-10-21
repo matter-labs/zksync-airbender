@@ -76,6 +76,19 @@ pub fn generate_transcript_helpers<MW: FieldWrapper>() -> TokenStream {
             draw_single_field_el(ts)
         }
 
+        /// Variant of [`draw_field_els_into`] that first moves past the digest the preceding
+        /// draw emitted (`seed = H(seed)`), so a draw that directly follows another draw never
+        /// re-emits its words. Matches the prover's `draw_fresh_random_field_els` — used for
+        /// the packing coordinates drawn right after the GKR phase, which ends with a draw.
+        #[inline(always)]
+        pub fn draw_fresh_field_els_into<const BUF_CAP: usize>(
+            ts: &mut TranscriptState,
+            dst: &mut [#quartic_struct],
+        ) {
+            ts.advance();
+            draw_field_els_into::<BUF_CAP>(ts, dst);
+        }
+
         /// Variant of [`draw_field_els_into`] used immediately after a `read_and_verify_pow`:
         /// the first drawn word was consumed by the PoW, so we draw one extra word and skip it.
         /// The drawn word count matches the prover's `draw_random_field_els_with_pow` exactly.

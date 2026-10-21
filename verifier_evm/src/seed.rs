@@ -9,7 +9,7 @@
 
 use field::Proth120;
 use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;
-use prover::gkr::prover::{CommitmentMode, GKRProof};
+use prover::gkr::prover::{GKRProof, OperationMode};
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 
 use cs::gkr_compiler::GKRCircuitArtifact;
@@ -24,17 +24,17 @@ pub type Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 ///   register final states (value, ts_low, ts_high) x32, then
 ///   (final_pc, final_ts_low, final_ts_high), then delegation/circuit top bits,
 ///   then the setup-commitment cap, then the merged memory+witness cap.
-pub(crate) fn build_transcript_input(proof: &Proof, aux: &CommitmentMode) -> Vec<u32> {
+pub(crate) fn build_transcript_input(proof: &Proof, aux: &OperationMode) -> Vec<u32> {
     use cs::definitions::split_timestamp;
 
-    let CommitmentMode::MergedAndPackedMemoryAndWitness {
+    let OperationMode::SingleChunk {
         register_final_state,
         final_pc,
         final_timestamp,
         ..
     } = aux
     else {
-        panic!("aux data must be MergedAndPackedMemoryAndWitness");
+        panic!("aux data must be OperationMode::SingleChunk");
     };
 
     let mut ti: Vec<u32> = Vec::new();
@@ -63,7 +63,7 @@ pub(crate) fn build_transcript_input(proof: &Proof, aux: &CommitmentMode) -> Vec
 
 /// The transcript preimage (little-endian bytes of the u32 words) whose keccak256
 /// is the initial GKR verifier seed.
-pub fn commit_seed_preimage(_circuit: &Circuit, proof: &Proof, aux: &CommitmentMode) -> Vec<u8> {
+pub fn commit_seed_preimage(_circuit: &Circuit, proof: &Proof, aux: &OperationMode) -> Vec<u8> {
     let ti = build_transcript_input(proof, aux);
     ti.iter().flat_map(|w| w.to_le_bytes()).collect()
 }
@@ -104,14 +104,14 @@ impl VerifiedMark {
 }
 
 /// Compute the registry mark for `proof` + `aux` (see [`VerifiedMark`]).
-pub fn verified_mark(proof: &Proof, aux: &CommitmentMode) -> VerifiedMark {
+pub fn verified_mark(proof: &Proof, aux: &OperationMode) -> VerifiedMark {
     use sha3::Digest;
-    let CommitmentMode::MergedAndPackedMemoryAndWitness {
+    let OperationMode::SingleChunk {
         register_final_state,
         ..
     } = aux
     else {
-        panic!("aux data must be MergedAndPackedMemoryAndWitness");
+        panic!("aux data must be OperationMode::SingleChunk");
     };
     let regs = |first: usize| -> [u8; 32] {
         let mut w = [0u8; 32];
