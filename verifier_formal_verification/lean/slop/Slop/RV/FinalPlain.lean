@@ -1,7 +1,7 @@
 import Slop.RV.Main.Run
 import Slop.RV.InitMop
 import Slop.RV.Ext4Poly.Impl
-import Slop.RV.Link
+import Slop.RV.LinkPlain
 import Slop.RV.Merkle.Step
 import Slop.RV.Stuck
 
@@ -34,28 +34,28 @@ theorem program_correct_run (s : State) (x y0 y1 y2 y3 v0 v1 v2 v3 : Word) (root
     (¬ (claimOK #v[x, y0, y1, y2, y3] #v[v0, v1, v2, v3] ∧ pathOK #v[x, y0, y1, y2, y3] root path) →
       ∃ m W, run m s = some W ∧ AtFinishError W) := by
   have hs : Image.bytes.size < 2 ^ 32 := by decide +kernel
-  have cStart := codeAt_of_bytesW himg 0 Code.start (by decide +kernel) hs (by decide +kernel)
-  have cMain := codeAt_of_bytesW himg 0x38 Code.main (by decide +kernel) hs (by decide +kernel)
-  have cInit := codeAt_of_bytesW himg 0x287c Code.init (by decide +kernel) hs (by decide +kernel)
-  have cMemcpy := codeAt_of_bytesW himg 0x2904 Code.memcpy (by decide +kernel) hs (by decide +kernel)
-  have cComb := codeAt_of_bytesW himg 0x2648 Code.combine (by decide +kernel) hs (by decide +kernel)
-  have cInc := codeAt_of_bytesW himg 0x26b4 Code.inc (by decide +kernel) hs (by decide +kernel)
-  have cDbl := codeAt_of_bytesW himg 0x2690 Code.double (by decide +kernel) hs (by decide +kernel)
-  have cPoly := codeAt_of_bytesW himg 0x22f0 Code.poly_eval (by decide +kernel) hs (by decide +kernel)
-  have cMul := codeAt_of_bytesW himg 0x22b4 Code.mul_mod (by decide +kernel) hs (by decide +kernel)
-  have cAdd := codeAt_of_bytesW himg 0x2280 Code.add_mod (by decide +kernel) hs (by decide +kernel)
-  have cEP := codeAt_of_bytesW himg 0x1e8c Code.ext4_poly (by decide +kernel) hs (by decide +kernel)
-  have cHor := codeAt_of_bytesW himg 0x1800 Code.ext4_horner (by decide +kernel) hs (by decide +kernel)
-  have cMA := codeAt_of_bytesW himg 0x18a8 Code.ext4_mul_add (by decide +kernel) hs (by decide +kernel)
-  have cBl := codeAt_of_bytesW himg 0x1c0 Code.blake2s_compress (by decide +kernel) hs (by decide +kernel)
-  have cFin := codeAt_of_bytesW himg 0x2758 Code.finish_success (by decide +kernel) hs (by decide +kernel)
-  have cExt := codeAt_of_bytesW himg 0x27d0 Code.finish_success_extended (by decide +kernel) hs (by decide +kernel)
-  have cFs := codeAt_of_bytesW himg 0x20bc Code.fs_check (by decide +kernel) hs (by decide +kernel)
-  have cErr := codeAt_of_bytesW himg 0x2740 Code.finish_error (by decide +kernel) hs (by decide +kernel)
-  have cMc := codeAt_of_bytesW himg 0x236c Code.merkle_check (by decide +kernel) hs (by decide +kernel)
-  have cMs := codeAt_of_bytesW himg 0x2528 Code.merkle_step (by decide +kernel) hs (by decide +kernel)
-  have cCoef := codeAt_of_bytesW himg 0x4334 Code.COEFFS (by decide +kernel) hs (by decide +kernel)
-  have cCoef4 := codeAt_of_bytesW himg (0x4334 + 0x190) Code.COEFFS4 (by decide +kernel) hs (by decide +kernel)
+  have cStart := codeAt_of_linked himg hs linked_plain 0 rfl
+  have cMain := codeAt_of_linked himg hs linked_plain 1 rfl
+  have cInit := codeAt_of_linked himg hs linked_plain 18 rfl
+  have cMemcpy := codeAt_of_linked himg hs linked_plain 19 rfl
+  have cComb := codeAt_of_linked himg hs linked_plain 12 rfl
+  have cInc := codeAt_of_linked himg hs linked_plain 14 rfl
+  have cDbl := codeAt_of_linked himg hs linked_plain 13 rfl
+  have cPoly := codeAt_of_linked himg hs linked_plain 9 rfl
+  have cMul := codeAt_of_linked himg hs linked_plain 8 rfl
+  have cAdd := codeAt_of_linked himg hs linked_plain 7 rfl
+  have cEP := codeAt_of_linked himg hs linked_plain 5 rfl
+  have cHor := codeAt_of_linked himg hs linked_plain 3 rfl
+  have cMA := codeAt_of_linked himg hs linked_plain 4 rfl
+  have cBl := codeAt_of_linked himg hs linked_plain 2 rfl
+  have cFin := codeAt_of_linked himg hs linked_plain 16 rfl
+  have cExt := codeAt_of_linked himg hs linked_plain 17 rfl
+  have cFs := codeAt_of_linked himg hs linked_plain 6 rfl
+  have cErr := codeAt_of_linked himg hs linked_plain 15 rfl
+  have cMc := codeAt_of_linked himg hs linked_plain 10 rfl
+  have cMs := codeAt_of_linked himg hs linked_plain 11 rfl
+  have cCoef := codeAt_of_linked himg hs linked_plain 20 rfl
+  have cCoef4 := codeAt_of_linked himg hs linked_plain 21 rfl
   simp only [BitVec.ofNat_eq_ofNat] at *
   have H := main_run s Code.main Code.init Code.ext4_poly Code.blake2s_compress
       [(0x1e8c#32 + 4294965620#32, Code.ext4_horner), (0x1e8c#32 + 4294965620#32 + 168#32, Code.ext4_mul_add)] 192

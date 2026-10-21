@@ -2,7 +2,7 @@ import Slop.RV.Step
 import Human.Theorems
 
 /-! Link check: the image bytes at each function's address are the code words the proofs use.
-Checked as one list equality per block (fast in the kernel), then turned into `CodeAt`. -/
+Checked in one pass over the image (`linkedFrom`, fast in the kernel), then turned into `CodeAt`. -/
 
 set_option linter.unusedSimpArgs false
 
@@ -87,11 +87,37 @@ theorem bytesOfW_eq (code : List Word) : bytesOfW code = bytesOf code := by
           (by simp only [bytesOf, List.length_ofFn, List.length_cons] at h2 ⊢; omega)]
         simp only [show (j + 4) / 4 = j / 4 + 1 by omega, show (j + 4) % 4 = j % 4 by omega, List.getElem_cons_succ]
 
-/-- `codeAt_of_bytes` with the linear byte list (what the kernel evaluates). -/
-theorem codeAt_of_bytesW {bytes : Array (BitVec 8)} {s : State} (himg : ImageLoaded bytes s) (a : Nat)
-    (code : List Word) (hb : a + 4 * code.length ≤ bytes.size) (hs : bytes.size < 2 ^ 32)
-    (h : (bytes.toList.drop a).take (4 * code.length) = bytesOfW code) :
-    CodeAt s (BitVec.ofNat 32 a) code :=
-  codeAt_of_bytes himg a code hb hs (by rw [h, bytesOfW_eq])
+/-- The pieces `(a, code)`, by increasing `a`, are at their addresses in the byte list `l` (which starts at address
+`pos`): one pass over the image, which the kernel evaluates once for all the code. -/
+def linkedFrom : List (BitVec 8) → Nat → List (Nat × List Word) → Bool
+  | _, _, [] => true
+  | l, pos, (a, code) :: rest =>
+    decide (pos ≤ a) && decide ((l.drop (a - pos)).take (4 * code.length) = bytesOfW code) &&
+      linkedFrom (l.drop (a - pos)) a rest
+
+theorem linkedFrom_mem : ∀ (l : List (BitVec 8)) (pos : Nat) (layout : List (Nat × List Word)),
+    linkedFrom l pos layout = true → ∀ p ∈ layout,
+      pos ≤ p.1 ∧ (l.drop (p.1 - pos)).take (4 * p.2.length) = bytesOfW p.2
+  | _, _, [], _, _, hp => nomatch hp
+  | l, pos, (a, code) :: rest, h, p, hp => by
+    simp only [linkedFrom, Bool.and_eq_true, decide_eq_true_eq] at h
+    obtain ⟨⟨hpa, hc⟩, hr⟩ := h
+    rcases List.mem_cons.1 hp with rfl | hp
+    · exact ⟨hpa, hc⟩
+    · obtain ⟨h1, h2⟩ := linkedFrom_mem _ a rest hr p hp
+      refine ⟨by omega, ?_⟩
+      rwa [List.drop_drop, show a - pos + (p.1 - a) = p.1 - pos by omega] at h2
+
+/-- Piece `i` of a layout checked by `linkedFrom` is code at its address. -/
+theorem codeAt_of_linked {bytes : Array (BitVec 8)} {s : State} (himg : ImageLoaded bytes s)
+    (hs : bytes.size < 2 ^ 32) {layout : List (Nat × List Word)} (h : linkedFrom bytes.toList 0 layout = true)
+    {a : Nat} {code : List Word} (i : Nat) (hi : layout[i]? = some (a, code)) : CodeAt s (BitVec.ofNat 32 a) code := by
+  obtain ⟨-, hc⟩ := linkedFrom_mem _ 0 layout h _ (List.mem_of_getElem? hi)
+  simp only [Nat.sub_zero] at hc
+  have hl := congrArg List.length hc
+  simp only [List.length_take, List.length_drop, Array.length_toList, bytesOfW_length] at hl
+  rcases Nat.eq_zero_or_pos code.length with h0 | h0
+  · intro i hi; omega
+  · exact codeAt_of_bytes himg a code (by omega) hs (by rw [hc, bytesOfW_eq])
 
 end RV
