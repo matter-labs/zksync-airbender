@@ -87,6 +87,8 @@ example : ¬ (Verification.range16 (Expression.const (65536 : ZMod babyBearModul
   have bound := Verification.range16_bound h
   norm_num [Expression.eval, Arithmetic.limbBase, ZMod.val_ofNat, babyBearModulus] at bound
 
+-- The test driver is one long `do` block; Lean 4.34's new `do` elaborator takes minutes on it, the legacy one does not.
+set_option backward.do.legacy true in
 def main : IO UInt32 := do
   try
     let source ← IO.FS.readFile "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json"
