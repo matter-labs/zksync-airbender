@@ -1,3 +1,8 @@
+import Slop.Blake2Round.PreparationBase
+import Slop.Blake2Round.PreparationExtended0
+import Slop.Blake2Round.PreparationExtended1
+import Slop.Blake2Round.PreparationExtended2
+import Slop.Blake2Round.PreparationExtended3
 import Slop.Blake2Round.ArtifactChecks
 import Slop.Blake2Round.OpIndex
 import Slop.Blake2G.OpIndex
@@ -12,71 +17,6 @@ open Arithmetic
 
 set_option maxRecDepth 4096
 set_option maxHeartbeats 2000000
-
-private theorem iv_limbs : iv = #v[
-    ⟨58983, 27145⟩, ⟨44677, 47975⟩, ⟨62322, 15470⟩, ⟨62778, 42319⟩,
-    ⟨21119, 20750⟩, ⟨26764, 39685⟩, ⟨55723, 8067⟩, ⟨52505, 23520⟩] := by
-  apply Vector.ext
-  intro i hi
-  interval_cases i <;> norm_num [iv, configuredIV, compressionIV, Specs.BLAKE3.iv, splitWord, limbBase]
-  all_goals decide
-
-private theorem configured_limbs : configuredIV = #v[
-    ⟨58951, 27400⟩, ⟨44677, 47975⟩, ⟨62322, 15470⟩, ⟨62778, 42319⟩,
-    ⟨21119, 20750⟩, ⟨26764, 39685⟩, ⟨55723, 8067⟩, ⟨52505, 23520⟩] := by
-  apply Vector.ext
-  intro i hi
-  interval_cases i <;> norm_num [iv, configuredIV, compressionIV, Specs.BLAKE3.iv, splitWord, limbBase]
-  all_goals decide
-
-private theorem compression_limbs : compressionIV = #v[
-    ⟨58983, 27145⟩, ⟨44677, 47975⟩, ⟨62322, 15470⟩, ⟨62778, 42319⟩,
-    ⟨21055, 20750⟩, ⟨26764, 39685⟩, ⟨9812, 57468⟩, ⟨52505, 23520⟩] := by
-  apply Vector.ext
-  intro i hi
-  interval_cases i <;> norm_num [iv, configuredIV, compressionIV, Specs.BLAKE3.iv, splitWord, limbBase]
-  all_goals decide
-
-private theorem get_append8 (xs ys : Vector Word 8) (i : Nat) (hi : i < 16) :
-    (show Vector Word 16 from xs ++ ys)[i] = if h : i < 8 then xs[i] else ys[i - 8] := by
-  exact Vector.getElem_append (xs := xs) (ys := ys) hi
-private theorem get_path_left (xs : Vector Word 16) (ys : Vector Word 8) (i : Nat) (hi : i < 16) :
-    (show Vector Word 16 from xs.take 8 ++ ys)[i] = if h : i < 8 then xs[i] else ys[i - 8] := by
-  have e : (show Vector Word 16 from xs.take 8 ++ ys)[i] =
-      if h : i < 8 then (xs.take 8)[i] else ys[i - 8] :=
-    Vector.getElem_append (xs := xs.take 8) (ys := ys) hi
-  rw [e]
-  split
-  · exact Vector.getElem_take (xs := xs) (j := 8) (by omega)
-  · rfl
-private theorem get_path_right (xs : Vector Word 8) (ys : Vector Word 16) (i : Nat) (hi : i < 16) :
-    (show Vector Word 16 from xs ++ ys.take 8)[i] = if h : i < 8 then xs[i] else ys[i - 8] := by
-  have e : (show Vector Word 16 from xs ++ ys.take 8)[i] =
-      if h : i < 8 then xs[i] else (ys.take 8)[i - 8] :=
-    Vector.getElem_append (xs := xs) (ys := ys.take 8) hi
-  rw [e]
-  split
-  · rfl
-  · exact Vector.getElem_take (xs := ys) (j := 8) (by omega)
-
-private theorem words_eq {p n : Nat} [Fact p.Prime] {w : Nat → ZMod p}
-    {columns : Vector (Nat × Nat) n} {expected : Vector Word n}
-    (bounds : ∀ i : Fin n, expected[i].lo < p ∧ expected[i].hi < p)
-    (equalities : ∀ i : Fin n, w columns[i].1 = (expected[i].lo : ZMod p) ∧
-      w columns[i].2 = (expected[i].hi : ZMod p)) : words w columns = expected := by
-  apply Vector.ext
-  intro i hi
-  obtain ⟨lo, high⟩ := equalities ⟨i, hi⟩
-  obtain ⟨loBound, hiBound⟩ := bounds ⟨i, hi⟩
-  simp only [Fin.getElem_fin] at lo high loBound hiBound
-  simp only [words, Vector.getElem_map]
-  rw [lo, high, ZMod.val_natCast_of_lt loBound, ZMod.val_natCast_of_lt hiBound]
-
-private theorem read_bounds {p n : Nat} [Fact p.Prime] (w : Nat → ZMod p)
-    (columns : Vector (Nat × Nat) n) (i : Fin n) :
-    (words w columns)[i].lo < p ∧ (words w columns)[i].hi < p := by
-  simp only [words, Fin.getElem_fin, Vector.getElem_map]
-  exact ⟨ZMod.val_lt _, ZMod.val_lt _⟩
 
 theorem chaining {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p} (compression : Bool)
@@ -128,23 +68,14 @@ theorem extended {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     all_goals constructor
     all_goals first | exact ZMod.val_lt _ | omega
   intro i
-  let loIndices : Vector Nat 16 := #v[5, 9, 13, 17, 21, 25, 29, 33, 36, 38, 40, 42, 48, 44, 50, 46]
-  let hiIndices : Vector Nat 16 := #v[7, 11, 15, 19, 23, 27, 31, 35, 37, 39, 41, 43, 49, 45, 51, 47]
-  have lo := Verification.assertion_of_holds h ⟨loIndices[i],
-    by rw [constraint_count]; fin_cases i <;> norm_num [loIndices]⟩
-  have high := Verification.assertion_of_holds h ⟨hiIndices[i],
-    by rw [constraint_count]; fin_cases i <;> norm_num [hiIndices]⟩
-  clear h normal
-  fin_cases i <;> simp only [loIndices, hiIndices, Fin.getElem_fin, Vector.getElem_mk,
-    List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ] at lo high <;>
-    op_index at lo high <;> simp [Expression.eval, Verification.environment] at lo high
-  all_goals cases first <;> cases compression
-  all_goals simp only [Bool.false_eq_true, ↓reduceIte]
-  all_goals simp only [Fin.getElem_fin, get_append8]
-  all_goals simp [firstFlag, compressionFlag, normalFlag, words, Variables.preparedState,
-    Variables.chainingInputs, Variables.extendedReads, iv_limbs, compression_limbs] at lo high ⊢
-  all_goals constructor
-  all_goals first | linear_combination -lo | linear_combination -high
+  by_cases a : i.val < 4
+  · exact extended_eqs_0 first compression h firstFlag compressionFlag normalFlag i (Nat.zero_le _) a
+  by_cases b : i.val < 8
+  · exact extended_eqs_1 first compression h firstFlag compressionFlag normalFlag i (by omega) b
+  by_cases c : i.val < 12
+  · exact extended_eqs_2 first compression h firstFlag compressionFlag normalFlag i (by omega) c
+  exact extended_eqs_3 first compression h firstFlag compressionFlag normalFlag i (by omega)
+    (by have := i.isLt; omega)
 
 set_option maxHeartbeats 4000000 in
 theorem message {p : Nat} [Fact p.Prime]
