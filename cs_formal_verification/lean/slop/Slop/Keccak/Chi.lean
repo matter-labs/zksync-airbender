@@ -1,11 +1,14 @@
 import Human.Circuits.Keccak.Chi
 import Slop.Keccak.FixedLookups
 import Slop.Keccak.OpIndex
+import Slop.Eval
 import Slop.Arithmetic.BitwiseAssembly
 
 namespace Airbender.Keccak.Proofs
 open Arithmetic
 set_option warningAsError true
+-- one call's goals may not use every lemma of the shared simp set
+set_option linter.unusedSimpArgs false
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1200000
 
@@ -64,9 +67,11 @@ private theorem chi_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
   have c := Verification.assertion_of_holds h
     ⟨22 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
   cases second <;> fin_cases operation <;> fin_cases limb <;>
-    simp [Variables.modeColumns, chiMode] at m0 m1 m2 m3 m4 m5 m6
+    eval_entry [Variables.modeColumns, chiMode, Bool.false_eq_true, ↓reduceIte, Fin.reduceEq,
+      Nat.mod_succ, Nat.one_mod, Nat.zero_mod] at m0 m1 m2 m3 m4 m5 m6
   all_goals op_index at a b c
-  all_goals simp [Expression.eval, Verification.environment, m0, m1, m2, m3, m4, m5, m6,
+  all_goals eval_entry [Bool.false_eq_true, ↓reduceIte, Fin.mk_one, Fin.reduceFinMk, Fin.zero_eta,
+    Nat.mod_succ, Nat.one_mod, Nat.reduceMod, Nat.reduceMul, zero_mul, m0, m1, m2, m3, m4, m5, m6,
     r0, r1, r2, r3, r4, aColumns, bColumns, cColumns, nativeLimbs, temporary] at a b c ⊢
   all_goals exact ⟨by linear_combination a, by linear_combination b, by linear_combination c⟩
 
@@ -91,15 +96,20 @@ private theorem chi_bytes {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   cases second <;> fin_cases operation <;> fin_cases byte
   all_goals simp only [byteTag, byteQuery] at tags query
   all_goals op_index at tags query
-  all_goals simp [chiMode, operationTags, Expression.eval, Verification.environment,
-    ByteOperationFacts, isAndn] at tags query ⊢
+  all_goals eval_entry [chiMode, operationTags, ByteOperationFacts, isAndn, Bool.false_eq_true,
+    Bool.or_false, Bool.or_self, Bool.or_true, Nat.div_self, Nat.mod_mul_mod, Nat.mod_succ,
+    Nat.ofNat_pos, Nat.one_lt_ofNat, Nat.reduceDiv, Nat.reduceEqDiff, Nat.reduceLT, Nat.reduceMod,
+    Nat.reduceMul, Nat.succ_ne_self, Nat.zero_div, OfNat.ofNat_ne_one, OfNat.ofNat_ne_zero,
+    OfNat.one_ne_ofNat, OfNat.zero_ne_ofNat, Option.getD_some, List.back!_toArray,
+    List.getLast!_eq_getLast?_getD, List.getLast?_cons_cons, List.getLast?_singleton,
+    ZMod.val_eq_zero, decide_false, decide_true, one_ne_zero, zero_ne_one, ↓reduceIte] at tags query ⊢
   all_goals
     split at query
     · rename_i zero
       have value := congrArg ZMod.val zero
       simp only [ZMod.val_zero] at value
       omega
-    · simpa [tags] using query
+    · simpa only [tags, Nat.reduceEqDiff, ↓reduceIte, Nat.reduceMod, Nat.reduceMul, Nat.reduceAdd] using query
 
 private theorem chi_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
@@ -252,11 +262,14 @@ theorem chi_written_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
         ⟨(if second then 144 else 132) + 4 * i.val + limb.val,
           by rw [constraint_count]; cases second <;> simp only [Bool.false_eq_true, ite_false, ite_true] <;> omega⟩
       cases second <;> fin_cases i <;> fin_cases limb
-      all_goals simp [Variables.modeColumns, chiMode] at selected
+      all_goals eval_entry [Variables.modeColumns, chiMode, Bool.false_eq_true, ↓reduceIte,
+        Nat.mod_succ, Nat.reduceMod] at selected
       all_goals simp only [Bool.false_eq_true, ite_false, ite_true] at equation
       all_goals op_index at equation
-      all_goals simp [Expression.eval, Verification.environment, selected, targets, sources] at equation ⊢
-      all_goals linear_combination -equation
+      all_goals eval_entry [selected, targets, sources, Bool.false_eq_true, ↓reduceIte,
+        Fin.mk_one, Fin.reduceFinMk, Fin.zero_eta, Nat.mod_succ, Nat.one_mod, Nat.reduceMod,
+        Nat.reduceMul] at equation ⊢
+      all_goals exact (add_neg_eq_zero.mp equation).symm
     rw [same]
     exact reads sources[i] limb
   have results (op : Fin 5) := (chi_limb hp second h active selected op limb).2.2.1
