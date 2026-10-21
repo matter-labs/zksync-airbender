@@ -85,7 +85,7 @@ private theorem bytesHold (second : Bool) (i : Fin 40) :
     apply Vector.ext
     intro j hj
     change j < 8 at hj
-    interval_cases j <;> simp only [Vector.getElem_map, Vector.getElem_cast] <;> decide +kernel +revert
+    interval_cases j <;> simp only [Vector.getElem_map] <;> decide +kernel +revert
 
 private theorem controllerHolds (second : Bool) :
     ((FlatOperation.lookups (Keccak.importedConstraints setup)).get
@@ -101,7 +101,7 @@ private theorem controllerHolds (second : Bool) :
     apply Vector.ext
     intro j hj
     change j < 8 at hj
-    interval_cases j <;> simp only [Vector.getElem_map] <;> decide +kernel +revert
+    interval_cases j <;> decide +kernel +revert
 
 theorem satisfies (second : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row second))
