@@ -75,6 +75,33 @@ private theorem chi_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
     r0, r1, r2, r3, r4, aColumns, bColumns, cColumns, nativeLimbs, temporary] at a b c ⊢
   all_goals exact ⟨by linear_combination a, by linear_combination b, by linear_combination c⟩
 
+/-- The byte query's three value columns are the chi input and output words of byte `i`. -/
+private theorem byte_columns {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 8))
+    (w : Nat → ZMod p) (i : Fin 40) :
+    ((byteQuery setup i).entry.toArray[0]!).eval (Verification.environment w) =
+      w (102 + 24 * (i.val / 8) + i.val % 8) ∧
+    ((byteQuery setup i).entry.toArray[1]!).eval (Verification.environment w) =
+      w (110 + 24 * (i.val / 8) + i.val % 8) ∧
+    ((byteQuery setup i).entry.toArray[2]!).eval (Verification.environment w) =
+      w (118 + 24 * (i.val / 8) + i.val % 8) := by
+  fin_cases i
+  all_goals simp only [byteQuery]
+  all_goals op_index
+  all_goals eval_entry [Fin.val_mk, Nat.reduceDiv, Nat.reduceMod, Nat.reduceMul, Nat.zero_div,
+    Nat.div_self, and_self, Nat.reduceLT, Nat.ofNat_pos, Nat.one_lt_ofNat]
+
+/-- The tag column of a byte query is the byte tag. -/
+private theorem byte_tag_column {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 8))
+    (w : Nat → ZMod p) (i : Fin 40) :
+    byteTag setup w i = ((byteQuery setup i).entry.toArray[7]!).eval (Verification.environment w) := by
+  unfold byteTag
+  simp only [Array.back!, Vector.size_toArray, byte_query_arity]
+
+/-- The routing tag of each chi operation is ANDN (39) or XOR (4), by the selected mode. -/
+private theorem chi_tag (second : Bool) (operation : Fin 5) :
+    operationTags[chiMode second][operation.val] = if isAndn second operation then 39 else 4 := by
+  cases second <;> fin_cases operation <;> decide
+
 private theorem chi_bytes {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
@@ -90,26 +117,32 @@ private theorem chi_bytes {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
           (w (110 + 24 * operation.val + byte.val)).val
       else (w (102 + 24 * operation.val + byte.val)).val ^^^
         (w (110 + 24 * operation.val + byte.val)).val) := by
-  have query := byte_lookup_checks hp h ⟨8 * operation.val + byte.val, by omega⟩
+  have query := byte_lookup_checks hp h
+  unfold ByteLookupChecks at query
   have tags := selected_tags (by omega) h active (chiMode second) selected
     ⟨8 * operation.val + byte.val, by omega⟩
-  cases second <;> fin_cases operation <;> fin_cases byte
-  all_goals simp only [byteTag, byteQuery] at tags query
-  all_goals op_index at tags query
-  all_goals eval_entry [chiMode, operationTags, ByteOperationFacts, isAndn, Bool.false_eq_true,
-    Bool.or_false, Bool.or_self, Bool.or_true, Nat.div_self, Nat.mod_mul_mod, Nat.mod_succ,
-    Nat.ofNat_pos, Nat.one_lt_ofNat, Nat.reduceDiv, Nat.reduceEqDiff, Nat.reduceLT, Nat.reduceMod,
-    Nat.reduceMul, Nat.succ_ne_self, Nat.zero_div, OfNat.ofNat_ne_one, OfNat.ofNat_ne_zero,
-    OfNat.one_ne_ofNat, OfNat.zero_ne_ofNat, Option.getD_some, List.back!_toArray,
-    List.getLast!_eq_getLast?_getD, List.getLast?_cons_cons, List.getLast?_singleton,
-    ZMod.val_eq_zero, decide_false, decide_true, one_ne_zero, zero_ne_one, ↓reduceIte] at tags query ⊢
-  all_goals
-    split at query
-    · rename_i zero
-      have value := congrArg ZMod.val zero
-      simp only [ZMod.val_zero] at value
-      omega
-    · simpa only [tags, Nat.reduceEqDiff, ↓reduceIte, Nat.reduceMod, Nat.reduceMul, Nat.reduceAdd] using query
+  have ho : (8 * operation.val + byte.val) / 8 = operation.val := by omega
+  have hb : (8 * operation.val + byte.val) % 8 = byte.val := by omega
+  obtain ⟨c0, c1, c2⟩ := byte_columns (setupTable control) w ⟨8 * operation.val + byte.val, by omega⟩
+  simp only [Fin.val_mk, ho, hb] at c0 c1 c2 tags
+  have tagValue : ((byteQuery (setupTable control) ⟨8 * operation.val + byte.val, by omega⟩).entry.toArray[7]!.eval
+      (Verification.environment w)).val = operationTags[chiMode second][operation.val] := by
+    rw [← byte_tag_column, tags]
+  have q : ByteOperationFacts
+      ((byteQuery (setupTable control) ⟨8 * operation.val + byte.val, by omega⟩).entry.toArray[7]!.eval
+        (Verification.environment w)).val
+      ((byteQuery (setupTable control) ⟨8 * operation.val + byte.val, by omega⟩).entry.toArray[0]!.eval
+        (Verification.environment w)).val
+      ((byteQuery (setupTable control) ⟨8 * operation.val + byte.val, by omega⟩).entry.toArray[1]!.eval
+        (Verification.environment w)).val
+      ((byteQuery (setupTable control) ⟨8 * operation.val + byte.val, by omega⟩).entry.toArray[2]!.eval
+        (Verification.environment w)).val := query ⟨8 * operation.val + byte.val, by omega⟩
+  rw [tagValue, c0, c1, c2, chi_tag] at q
+  unfold ByteOperationFacts at q
+  cases hA : isAndn second operation
+  all_goals simp only [hA, Bool.false_eq_true, ↓reduceIte, ite_true, ite_false, Nat.reduceEqDiff,
+    OfNat.ofNat_ne_zero, OfNat.zero_ne_ofNat, decide_true, decide_false] at q ⊢
+  all_goals exact q
 
 private theorem chi_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
