@@ -45,7 +45,7 @@ theorem subword_ram_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     simpa only [Vector.getElem_map] using selected
   have indexBound := i.isLt
   cases byte <;> unfold subwordRow at natural ⊢ <;> dsimp only at natural ⊢
-  all_goals split_ifs at natural ⊢
+  all_goals repeat' (first | split at natural | split)
   all_goals solve
     | contradiction
     | (change (29 : Nat) = _ at natural; contradiction)
@@ -97,7 +97,7 @@ theorem subword_store_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     simpa only [Vector.getElem_map] using selected
   have indexBound := i.isLt
   cases clear <;> unfold subwordRow at natural ⊢ <;> dsimp only at natural ⊢
-  all_goals split_ifs at natural ⊢
+  all_goals repeat' (first | split at natural | split)
   all_goals solve
     | contradiction
     | (change (42 : Nat) = _ at natural; contradiction)

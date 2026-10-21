@@ -42,7 +42,7 @@ private theorem rom_values {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     simpa only [Vector.getElem_map] using selected
   have indexBound := i.isLt
   cases byte <;> unfold subwordRow at natural ⊢ <;> dsimp only at natural ⊢
-  all_goals split_ifs at natural ⊢
+  all_goals repeat' (first | split at natural | split)
   all_goals solve
     | contradiction
     | (change (29 : Nat) = _ at natural; contradiction)
