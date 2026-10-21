@@ -2,7 +2,7 @@ import Slop.Blake2Round.ColumnG
 import Slop.Blake2Round.Lookups
 import Slop.Blake2Round.ArtifactChecks
 import Slop.Blake2Round.OpIndex
-import Slop.Blake2Round.Eval
+import Slop.Eval
 import Slop.Blake2G.OpIndex
 
 set_option warningAsError true
