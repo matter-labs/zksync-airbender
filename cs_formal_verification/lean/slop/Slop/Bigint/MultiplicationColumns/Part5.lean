@@ -93,10 +93,14 @@ theorem native_columns_5 {w : Nat → ZMod babyBearModulus} {left right : Fin 16
   all_goals simp [importedConstraints, FlatOperation.constraints, index, Expression.eval,
     Verification.environment] at gate
   all_goals simp only [l0, r0, q0.1, q0.2, l1, r1, q1.1, q1.2, l2, r2, q2.1, q2.2, l3, r3, q3.1, q3.2, l4, r4, q4.1, q4.2, l5, r5, q5.1, q5.2, l6, r6, q6.1, q6.2, l7, r7, q7.1, q7.2, l8, r8, q8.1, q8.2, l9, r9, q9.1, q9.2, l10, r10, q10.1, q10.2, l11, r11, q11.1, q11.2, l12, r12, q12.1, q12.2, l13, r13, q13.1, q13.2, l14, r14, q14.1, q14.2, l15, r15, q15.1, q15.2] at gate
-  all_goals norm_num [multiplicationColumn, diagonal, byteCross, byteHigh, Fin.sum_univ_succ, Fin.succ,
-    incoming, outgoing, carry, babyBearModulus]
+  all_goals simp only [multiplicationColumn, diagonal, byteCross, byteHigh, Fin.sum_univ_succ, Fin.sum_univ_zero,
+    Fin.succ, Fin.val_succ, Fin.val_zero, Fin.isValue, incoming, outgoing, carry, ↓reduceIte,
+    Nat.reduceEqDiff, Nat.reduceAdd, Nat.reduceMul, Nat.reduceMod, Nat.reduceDiv, Nat.cast_add, Nat.cast_mul,
+    Nat.cast_ofNat, Nat.cast_zero, Nat.cast_one, Nat.cast_sum, Nat.cast_ite, add_zero, zero_add, mul_zero, zero_mul,
+    Fin.reduceFinMk, Fin.reduceSucc, Fin.reduceAdd, Nat.cast_pow, Nat.cast_id, Fin.val_mk, Fin.mk_zero, Fin.zero_eta]
+  all_goals norm_num [babyBearModulus]
   all_goals linear_combination (norm := ring_nf) gate
   all_goals rw [characteristic]
-  all_goals simp
+  all_goals simp only [mul_zero, zero_mul, add_zero, zero_add, sub_zero, zero_sub, sub_self]
 
 end Airbender.Bigint.Multiplication.Proofs
