@@ -1,12 +1,13 @@
 import Human.Circuits.Keccak.Artifact
 import Slop.Keccak.ArtifactChecks
 import Slop.Delegation.ClockFacts
+import Slop.Keccak.OpIndex
 
 namespace Airbender.Keccak.Proofs
 open Trace
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2400000
+set_option maxHeartbeats 1200000
 
 theorem clock_facts {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 8)}
     {w : Nat → ZMod p}
@@ -41,8 +42,8 @@ theorem clock_facts {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 8)}
     fin_cases i
     all_goals have lower := Trace.Proofs.range_bound lowerLookup
     all_goals have upper := Trace.Proofs.range_bound upperLookup
-    all_goals simp [importedConstraints, importedConstraintsDelegationColumns, FlatOperation.constraints,
-        Expression.eval, Verification.environment,
+    all_goals op_index at bit lower upper
+    all_goals simp [importedConstraintsDelegationColumns, Expression.eval, Verification.environment,
         sub_eq_add_neg, Trace.timestampBase] at bit lower upper ⊢
     all_goals refine ⟨?_, ?_, ?_⟩
     all_goals first
