@@ -46,7 +46,7 @@ not a claim that every open PR or every backend has been audited.
 | [AIH-336](https://linear.app/matterlabs/issue/AIH-336) — queryable decoder filler | **Source correction implemented; CPU setup/forward regressions checked, accelerated runtime validation pending.** The live comment agrees with excluding reachable zero padding. [Untagged decoder setup tails](../../prover/src/gkr/prover/setup.rs) now carry field-minus-one in PC-low; tagged setups retain their existing discriminator and generic zero entry. CPU and [GPU cache scheduling](../../gpu/gkr/src/setup/mod.rs) cover the full committed domain. | CUDA/AVX-512 execution and a complete regenerated proof remain to validate on a suitable host. Old decoder-only setup commitments need rebuilding; none is silently upgraded. The temporary [decoder contract](Airbender/Review/Helpers/Context/ExternalBoundary/Decoder.lean) still has an unproved extraction/authentication/query-binding connection. No full invalid-proof acceptance is claimed. |
 | [AIH-339](https://linear.app/matterlabs/issue/AIH-339) — zero-clock workers | **Accepted relation gap, F03; implementation enforcement remains unresolved.** The comments explain caller-to-worker accounting and unique issued clocks. They do not establish the converse that every active worker has a caller, and do not rule out the checked zero-clock state change. | Fix or independently validate full worker-to-caller enforcement. The temporary [occurrence ledger](Airbender/Review/Helpers/Context/ExternalBoundary/Requests.lean) supplies that missing condition; the native cancelling-token permutation does not imply it. |
 | [AIH-113](https://linear.app/matterlabs/issue/AIH-113) — dropped scaled pointer range check | **Historical compiler bug with repair present in the inspected source.** [Delegation compilation](../../cs/src/gkr_compiler/delegation_circuit.rs) now passes the retained range vector into [memory lowering](../../cs/src/gkr_compiler/delegation_mem_accesses.rs), which pushes the scaled check into it. No live comments. | Do not assume every generated/cached artifact includes that repair. Compiled/artifact correspondence remains an external fidelity obligation; no new pointer-alignment assumption or newly discovered current-source bug is asserted. |
-| [AIH-315](https://linear.app/matterlabs/issue/AIH-315) — WHIR randomness reuse | **Acknowledged transcript/protocol bug.** The live comment accepts the freshness issue while noting no known soundness proof for the construction. [BLAKE2s drawing](../../transcript/src/blake2s.rs) copies the current seed before advancing and leaves the last returned block in the seed. | Validate/fix the affected WHIR draw schedule across producer and verifier. A freshness assumption would leave the bug open; no such assumption or cryptographic proof is added here. The report does not establish a full forged proof. |
+| [AIH-315](https://linear.app/matterlabs/issue/AIH-315) — WHIR randomness reuse | **Acknowledged defect; upstream source correction merged in [PR #526](https://github.com/matter-labs/zksync-airbender/pull/526).** The reviewed FV source pin still uses the old post-query draw. The Linear comment accepting the freshness defect is unchanged. | Adopt the coordinated producer/verifier correction and matching regenerated artifacts in this branch, then validate its target. Upstream source and reported CI are checked below; this is not a formal protocol-soundness proof or a demonstrated forged proof. |
 | F02 — bigint controls | **Accepted native/reference discrepancy.** Controls 0 and 65537 violate the pinned call ABI even in initialized caller cycles. | The temporary [control contract](Airbender/Review/Helpers/Context/ExternalBoundary/BigintABI.lean) now supports [complete conditional bigint call retirement](Airbender/Review/Trace/UnifiedReduced/BigintCalls.lean), including actual operand reads, exact Sail writes/frame and PC advance. Actual control validation and full invalid-call/reference behavior still need a fix or justified acceptance binding. |
 | F04 — worker ROM | **Accepted native/reference discrepancy.** Supported COPY with ROM pointers can read zero shadows instead of public bytes; the VM's successful-call ABI rejects those pointers. | The temporary [RAM-port contract](Airbender/Review/Helpers/Context/ExternalBoundary/WorkerRAM.lean) excludes the case for conditional transport. General native acceptance has not been shown to enforce it. |
 | [PR #531](https://github.com/matter-labs/zksync-airbender/pull/531) — recursive output and branch scratch | **Actual source defects addressed by a proposal, still open here.** The [base entrypoint](../../tools/gkr_verifier/src/common_fsv_unified_base_sec_100.rs) discards verified registers and returns a constant; the [branch witness path](../../cs/src/gkr_circuits/unified_reduced_machine/jump_branch_slt.rs) reads shared field scratch as Boolean before guarding branch selection. The latter is a witness-generation defect, not by itself an acceptance exploit. | Review/apply and validate the actual fixes. No output-equality or Boolean-scratch assumption closes them. The PR itself notes validation/regeneration pending after a transcript change. Its other field/recursion fixes require their own target-specific validation. |
@@ -90,8 +90,21 @@ were read; AIH-113 has none, and no comment pages remained.
   attack, or that any proposed transcript patch resolves all producer/verifier
   schedules. No disagreement with the comment's stated caution.
 
-Other reviewed PRs do not certify this target: [#527](https://github.com/matter-labs/zksync-airbender/pull/527)
-changes the transcript protocol; [#209](https://github.com/matter-labs/zksync-airbender/pull/209)
+**21 October recheck.** All five Linear issues and their complete comment pages
+were rechecked; no new comments change the assessments above. The reviewed FV
+source pin is `805909325`. AIH-315 has a merged upstream correction in
+[PR #526](https://github.com/matter-labs/zksync-airbender/pull/526), detailed below;
+the former description as simply awaiting a source fix was stale.
+[PR #527](https://github.com/matter-labs/zksync-airbender/pull/527) merged on
+17 October at head `0603c0f095ed4c5a5b407239907e201ebfbfccc2`: it inherits
+#526 and adds a separate seeded-commit protocol change. Adoption must preserve
+producer/verifier and artifact compatibility. [PR #316](https://github.com/matter-labs/zksync-airbender/pull/316)
+and [private #8](https://github.com/matter-labs/zksync-airbender-private/pull/8)
+remain open at their previously reviewed heads; their proposals and reported
+validation are not implementation or protocol-soundness closure for this target.
+No new circuit defect was demonstrated by this documentation/source recheck.
+
+Other reviewed PRs do not certify this target: [#209](https://github.com/matter-labs/zksync-airbender/pull/209)
 hardens arithmetic in the older Mersenne31 path; [#161](https://github.com/matter-labs/zksync-airbender/pull/161)
 changes CLI proof selection. [#426](https://github.com/matter-labs/zksync-airbender/pull/426)
 contains historical review examples, which are leads rather than evidence of a
@@ -204,6 +217,29 @@ cargo check --locked -p gpu_gkr --tests
 cargo test --locked --config 'profile.dev.package.prover.debug=0' --config 'profile.test.package.prover.debug=0' -p prover --lib --features gkr_self_checks decoder_padding_matches_committed_setup_in_forward_relations --no-run
 cargo test --locked --config 'profile.dev.package.prover.debug=0' --config 'profile.test.package.prover.debug=0' -p prover --lib --features gkr_self_checks decoder_padding_matches_committed_setup_in_forward_relations
 ```
+
+### AIH-315 upstream correction and branch applicability
+
+[PR #526](https://github.com/matter-labs/zksync-airbender/pull/526) merged on
+14 October 2026 as `129f827003b34acd64a3315a5863eac75bc09fe6`. Source inspection
+at its merged descendant `0603c0f095ed4c5a5b407239907e201ebfbfccc2` confirms that
+both affected CPU WHIR call sites use the fresh field-draw helper, which advances
+the Blake2s seed before drawing. Both matching verifier-generator call sites use
+the helper that advances the transcript before constructing the field element.
+The raw-draw API itself intentionally keeps its previous behavior. The reviewed
+FV checkout instead calls the ordinary field draw after queries and does not yet
+include this correction.
+
+The PR reports corresponding GPU scheduling changes, unchanged Keccak behavior,
+and regenerated BabyBear verifiers/proofs/binaries. Its recorded CI is green,
+including tests, GPU checks, verifier regeneration and CLI smoke verification.
+Those are upstream validation results, not new local runtime or GPU executions
+in this review. The change is explicitly protocol breaking for BabyBear WHIR;
+producer/verifier code and generated artifacts must move together. PR #527 adds
+a further seeded-commit change and should not be confused with #526's freshness
+correction. No formal cryptographic soundness proof or forged-proof reproduction
+is claimed. This updates source-fix status without crediting the fix to the
+older FV source pin or silently replacing its artifacts.
 
 ### Native setup table import — checked
 
@@ -672,7 +708,7 @@ retain the existing regression roots with no handwritten project diagnostics.
 | F06 | Discarded LW differs from original Sail | Accepted native NOP with no original Sail execution | `NoDiscardedLoads`, or the named Airbender NOP profile |
 | F07 | Standalone worker claims retain control/participation conditions | Unresolved general binding; discharged in specified stronger scopes | `rounds`, `RoundMask`, `keccakActive` |
 | F08 | Complete hash claims retain protocol shape and first-span restrictions | Public-program binding derives selected span/controller shape and all issued round coverage/masks; full coverage exposes the zero-clock extended-round boundary | Mode/duration/preparation, public code profile, controller extents/full coverage and legacy prefix conditions |
-| F09 | Decoder/setup models need an implementation binding | Unresolved provenance/structural correspondence | Modeled table equality and logical decoder membership |
+| F09 | Setup/decoder queries retain implementation-fidelity boundaries | Actual table contents and semantic connections are imported and checked | Rust/parser fidelity, public-program binding, native query binding and commitment authentication remain external |
 | F10 | Caller-cycle effects are weaker than full custom instruction execution | Complete mixed CSR reference execution now checked under explicit F02/F03 and the public protocol/RAM profiles | General acceptance still admits invalid commands and unissued effects; the conditional theorem does not fix F02/F03/F04 |
 
 Review F01's external correspondence and F02–F04 first. F05 and F06 establish why current
@@ -1072,26 +1108,27 @@ optional preparation variants are outside the frozen finalization scope.
 
 ## F09 — Modeled tables and decoder membership can hide implementation mismatches
 
-**Condition.** [PooledHistoryInputs](Airbender/Review/Helpers/Context/Interfaces.lean)
-fixes modeled word/subword tables to the public image.
-[OperationInputs.tables](Airbender/Review/Helpers/Delegation/Operations.lean)
-fixes worker setup to modeled range/operation/XOR/controller tables.
-[PooledProgram](Airbender/Review/Helpers/Decoder/PooledProgram.lean)
-and request checks assume logical decoder-query membership in tables constructed
-from original public Sail decoding.
+**Content-model gap closed.** The [complete setup import](artifacts/setup/README.md)
+now supplies actual fixed, controller, byte, selected-program ROM and decoder
+rows to the circuit consumers. Kernel proofs connect those imported contents,
+native IDs/offsets and metadata projections to the existing semantic relations.
+The former handwritten-table-content boundary is closed in this published scope;
+it is not remaining proof work.
 
-The lookup behavior and successful source decoding are checked. Correspondence
-of those exact modeled rows, native metadata projections and query bindings with
-the Rust setup/preprocessor is still unproved; see
-[the trust boundary](TRUST_AND_REVIEW.md#modeled-tables-and-logical-arguments).
-A proof against the intended table can miss a bug in the actual table or its use.
-This is a structural/provenance issue even before cryptography.
+**Retained interfaces.** [PooledHistoryInputs](Airbender/Review/Helpers/Context/Interfaces.lean)
+and [OperationInputs.tables](Airbender/Review/Helpers/Delegation/Operations.lean)
+still bind the selected setup and public image. Arbitrary public programs are
+preserved through explicit program/setup profiles; the retained program corpus
+does not replace those scopes. [PooledProgram](Airbender/Review/Helpers/Decoder/PooledProgram.lean)
+and request checks retain exact logical decoder-query membership.
 
-**Closure needed.** Review the actual setup identities, row contents, unsupported
-decoder entries, selector/immediate/register projection and query placement, then
-establish the implementation binding. The original 13 October audit did not
-demonstrate a concrete decoder/setup discrepancy; the 15 October review above
-separately records AIH-336's acknowledged queryable-filler defect.
+**External closure needed.** Formal Rust setup/preprocessing and parser/emitter
+fidelity, compiled query placement and cryptographic setup authentication remain
+unproved; see [the trust boundary](TRUST_AND_REVIEW.md#modeled-tables-and-logical-arguments).
+Importing and checking actual row contents does not prove those connections.
+AIH-336's separate source correction still awaits accelerated runtime agreement,
+complete regenerated proof replay and replacement of old decoder-only setup
+commitments. No new decoder/table discrepancy was demonstrated by this recheck.
 
 ## F10 — Shared cycle composition does not validate the full custom CSR reference
 
