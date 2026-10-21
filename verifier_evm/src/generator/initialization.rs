@@ -33,6 +33,11 @@ pub(super) fn validation_yul(trace_len: usize, word_bits: u32, num_sets: usize) 
                 }}
             }}
         }}
+
+        function gkr_inits_teardowns_topbits(byteoff) -> value {{
+            let word := calldataload(byteoff)
+            value := add(add(byte(0, word), shl(8, byte(1, word))), add(shl(16, byte(2, word)), shl(24, byte(3, word))))
+        }}
         "
     )
 }

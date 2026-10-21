@@ -1,5 +1,6 @@
 import Airbender.Proofs.Delegation.Values
 import Airbender.Proofs.Blake2Round.Row
+import Airbender.Proofs.Blake2Round.PhaseProjection
 import Airbender.Review.Circuits.Blake2Round.Memory
 
 namespace Airbender.Blake2Round.Proofs
@@ -8,27 +9,49 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 12000000
 
-theorem extended_write_bounds [Fact p.Prime] (hp : 65536 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1) {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints setupTable)) :
-    ∀ i : Fin 16, (Preparation.words w Mixing.extendedWrites)[i].Bounded := by
-  have bounds (call : Fin 4) := Blake2G.Proofs.mixing_output_bounds hp inverse
-    (diagonal_g_holds inverse call holds)
+private theorem g_output_bounded (assignment : Nat → ZMod p)
+    (bounds : (Word.mk (assignment 17).val (assignment 18).val).Bounded ∧
+      (Word.mk (assignment 21).val (assignment 22).val).Bounded ∧
+      (Word.mk (assignment 25).val (assignment 26).val).Bounded ∧
+      (Word.mk (assignment 29).val (assignment 30).val).Bounded) :
+    (gOutput assignment).a.Bounded ∧ (gOutput assignment).b.Bounded ∧
+      (gOutput assignment).c.Bounded ∧ (gOutput assignment).d.Bounded := bounds
+
+/-- Range transport is proved with abstract words, so applying it never
+    expands the preceding circuit's packed arithmetic expressions. -/
+private theorem diagonal_update_bounded (output : Fin 4 → Blake2G.Words)
+    (bounds : ∀ call, (output call).a.Bounded ∧ (output call).b.Bounded ∧
+      (output call).c.Bounded ∧ (output call).d.Bounded)
+    (initial : Vector Word 16) (i : Fin 16) :
+    (phaseUpdate 1 initial output)[i].Bounded := by
+  rw [phase_update_initial_irrelevant 1 initial
+    (Vector.replicate 16 (⟨0, 0⟩ : Word)) output]
   have b0 := bounds 0
   have b1 := bounds 1
   have b2 := bounds 2
   have b3 := bounds 3
-  intro i
-  rw [extended_writes holds (Vector.replicate 16 (⟨0, 0⟩ : Word))]
   fin_cases i
   all_goals simp [phaseUpdate, callUpdate, callConstants, Specs.BLAKE3.roundConstants,
-    Blake2G.State.Proofs.update, diagonalOutputs, gOutput]
+    Blake2G.State.Proofs.update]
   all_goals first
     | exact b0.1 | exact b0.2.1 | exact b0.2.2.1 | exact b0.2.2.2
     | exact b1.1 | exact b1.2.1 | exact b1.2.2.1 | exact b1.2.2.2
     | exact b2.1 | exact b2.2.1 | exact b2.2.2.1 | exact b2.2.2.2
     | exact b3.1 | exact b3.2.1 | exact b3.2.2.1 | exact b3.2.2.2
+
+theorem extended_write_bounds [Fact p.Prime] (hp : 65536 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1) {w : Nat → ZMod p}
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints setupTable)) :
+    ∀ i : Fin 16, (Preparation.words w Mixing.extendedWrites)[i].Bounded := by
+  have bounds (call : Fin 4) : (diagonalOutputs w call).a.Bounded ∧
+      (diagonalOutputs w call).b.Bounded ∧ (diagonalOutputs w call).c.Bounded ∧
+      (diagonalOutputs w call).d.Bounded :=
+    g_output_bounded (nativeDiagonalAssignment call w)
+      (Blake2G.Proofs.mixing_output_bounds hp inverse (diagonal_g_holds inverse call holds))
+  intro i
+  rw [extended_writes inverse w (Vector.replicate 16 (⟨0, 0⟩ : Word))]
+  exact diagonal_update_bounded (diagonalOutputs w) bounds _ i
 
 private theorem native_write_word (w : Nat → ZMod p) (port : MemoryPort) :
     ((⟨.blakeRound, w⟩ : Delegation.Row p).writeToken port).word =

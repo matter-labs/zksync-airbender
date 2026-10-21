@@ -12,7 +12,8 @@ set_option maxHeartbeats 2400000
 
 private def row (column : Nat) : ZMod babyBearModulus :=
   if column = 0 ∨ column = 5 ∨ column = 12 then 1
-  else if column = 1 ∨ column = 8 then 4
+  else if column = 1 then 5
+  else if column = 8 then 4
   else if column = 9 then 8
   else if column = 10 then 12
   else if column = 14 ∨ column = 31 ∨ column = 32 then 64
@@ -53,7 +54,7 @@ private theorem core : FlatOperation.ConstraintsHoldFlat (Verification.environme
     have bound : i < 21 := by simpa only [Blake2G.lookup_count] using hi
     by_cases small : i < 2
     · interval_cases i
-      all_goals apply Verification.range16_contains
+      all_goals apply Trace.Proofs.range_contains
       all_goals decide
     · have source := tableQuery ⟨i - 2, by omega⟩
       have position : i - 2 + 2 = i := by omega
@@ -66,12 +67,13 @@ private theorem clocks : FlatOperation.ConstraintsHoldFlat (Verification.environ
   · simp [Blake2G.importedConstraintsTimestampLookups, FlatOperation.constraints]
   · rw [List.forall_mem_iff_forall_getElem]
     intro i hi
-    have bound : i < 20 := by simpa only [Blake2G.timestamp_count] using hi
+    have bound : i < 21 := by simpa only [Blake2G.timestamp_count] using hi
     interval_cases i
     all_goals apply Trace.Proofs.range_contains
     all_goals norm_num [Blake2G.importedConstraintsTimestampLookups, FlatOperation.lookups,
       Expression.eval, Verification.environment, row, Trace.timestampBase,
       ZMod.val_ofNat, ZMod.val_natCast, babyBearModulus]
+    all_goals decide +kernel
 
 private def native : Delegation.Row babyBearModulus := ⟨.blakeG, row⟩
 private def setup : Delegation.Setup babyBearModulus :=
@@ -153,6 +155,10 @@ private theorem interface : Blake2G.Memory.InterfaceAssumptions data before cell
   · constructor
     · exact initialized
     · decide
+    · intro actual member
+      simp only [data, List.mem_singleton] at member
+      subst actual
+      decide
     · intro actual member
       simp only [data, List.mem_singleton] at member
       subst actual
@@ -250,7 +256,7 @@ private theorem boundaryCore : FlatOperation.ConstraintsHoldFlat (Verification.e
     have bound : i < 21 := by simpa only [Blake2G.lookup_count] using hi
     by_cases small : i < 2
     · interval_cases i
-      all_goals apply Verification.range16_contains
+      all_goals apply Trace.Proofs.range_contains
       all_goals decide
     · have source := boundaryTableQuery ⟨i - 2, by omega⟩
       have position : i - 2 + 2 = i := by omega
@@ -263,12 +269,13 @@ private theorem boundaryClocks : FlatOperation.ConstraintsHoldFlat (Verification
   · simp [Blake2G.importedConstraintsTimestampLookups, FlatOperation.constraints]
   · rw [List.forall_mem_iff_forall_getElem]
     intro i hi
-    have bound : i < 20 := by simpa only [Blake2G.timestamp_count] using hi
+    have bound : i < 21 := by simpa only [Blake2G.timestamp_count] using hi
     interval_cases i
     all_goals apply Trace.Proofs.range_contains
     all_goals norm_num [Blake2G.importedConstraintsTimestampLookups, FlatOperation.lookups,
       Expression.eval, Verification.environment, boundaryRow, row, Trace.timestampBase,
       ZMod.val_ofNat, ZMod.val_natCast, babyBearModulus]
+    all_goals decide +kernel
 
 private def retimeSeed (token : MemoryToken babyBearModulus) : MemoryToken babyBearModulus :=
   { token with time := (1, 0) }
@@ -293,7 +300,7 @@ private theorem boundaryAccepted : Delegation.MemoryAccepted boundaryData := by
 
 private theorem boundaryMemory : Delegation.BoundaryMemoryInputs boundaryData before cells := by
   have original := Delegation.Proofs.boundary_image interface.publicState.toBoundaryInputs.toNativeInputs
-  refine ⟨⟨?_, ?_⟩, interface.publicState.distinct, ?_, ?_⟩
+  refine ⟨⟨?_, ?_⟩, interface.publicState.distinct, ?_, ?_, ?_⟩
   · simpa only [boundaryData, List.map_map, Function.comp_def, retimeSeed] using original.addresses
   · intro token member
     obtain ⟨source, sourceMember, rfl⟩ := List.mem_map.mp member
@@ -302,6 +309,10 @@ private theorem boundaryMemory : Delegation.BoundaryMemoryInputs boundaryData be
   · intro token member
     obtain ⟨source, _, rfl⟩ := List.mem_map.mp member
     change 1 < timestampBase ∧ 0 < timestampBase
+    decide
+  · intro actual member
+    simp only [boundaryData, List.mem_singleton] at member
+    subst actual
     decide
   · intro actual member
     simp only [boundaryData, List.mem_singleton] at member
@@ -331,9 +342,9 @@ theorem native_operation_with_nonzero_seeds :
   rfl
 
 theorem incomplete_prefix_rejected (upper : Nat) :
-    ¬ Blake2G.WindowInputs data before cells false 6 upper := by
+    ¬ Blake2G.WindowInputs data before cells false 7 upper := by
   intro inputs
-  have count : (data.prefixRows 6).length = 1 := by decide
+  have count : (data.prefixRows 7).length = 1 := by decide
   have complete := inputs.prefixComplete
   rw [count] at complete
   contradiction
@@ -365,7 +376,7 @@ theorem native_window_from_retained_seeds :
       (atCut : Reference.RiscV.Sail.State),
       tokens.Perm boundaryData.terminal ∧ events.Perm (boundaryData.steps.map transferEvent) ∧
       SailHistory cells events before atCut ∧
-      (∀ token ∈ tokens, token.time = (6, 0) ∧ token.word.Bounded) ∧
+      (∀ token ∈ tokens, token.time = (7, 0) ∧ token.word.Bounded) ∧
       Delegation.BoundaryImage tokens atCut cells := by
   have family : ∀ row ∈ boundaryData.rows, row.family = .blakeG := by
     intro actual member
@@ -380,15 +391,15 @@ theorem native_window_from_retained_seeds :
     all_goals simp [Cell.Aligned]
   obtain ⟨start, _, earlier, _, atStart, _, facts, _, permutation, _, history, _, inputs, _⟩ :=
     Delegation.Proofs.native_span_window_at_boundary (by decide) boundaryAccepted
-      boundaryMemory.toBoundaryInputs rules aligned 6 6
-  have steps : Trace.Proofs.Transfer.beforeSteps (Delegation.Proofs.transferData boundaryData) 6 =
+      boundaryMemory.toBoundaryInputs rules aligned 7 7
+  have steps : Trace.Proofs.Transfer.beforeSteps (Delegation.Proofs.transferData boundaryData) 7 =
       boundaryData.steps := by decide
   have reads : boundaryData.steps.map Prod.fst = boundaryData.initial := by decide
   have writes : boundaryData.steps.map Prod.snd = boundaryData.terminal := by rfl
   have matching := facts.matching
   change (boundaryData.initial ++
-    (Trace.Proofs.Transfer.beforeSteps (Delegation.Proofs.transferData boundaryData) 6).map Prod.snd).Perm
-    (start ++ (Trace.Proofs.Transfer.beforeSteps (Delegation.Proofs.transferData boundaryData) 6).map Prod.fst) at matching
+    (Trace.Proofs.Transfer.beforeSteps (Delegation.Proofs.transferData boundaryData) 7).map Prod.snd).Perm
+    (start ++ (Trace.Proofs.Transfer.beforeSteps (Delegation.Proofs.transferData boundaryData) 7).map Prod.fst) at matching
   rw [steps, reads, writes] at matching
   have exactBoundary : start.Perm boundaryData.terminal :=
     ((List.perm_append_left_iff boundaryData.initial).mp
@@ -401,7 +412,7 @@ theorem native_window_from_retained_seeds :
     obtain ⟨edge, included, rfl⟩ := List.mem_map.mp terminal
     obtain ⟨port, present, rfl⟩ := List.mem_map.mp included
     change ((rawPair boundaryRow boundaryNative.columns.invocation).1 + port.clock.offset,
-      (rawPair boundaryRow boundaryNative.columns.invocation).2) = (6, 0)
+      (rawPair boundaryRow boundaryNative.columns.invocation).2) = (7, 0)
     rw [Delegation.Proofs.port_offset boundaryNative (by simpa using present)]
     decide
 

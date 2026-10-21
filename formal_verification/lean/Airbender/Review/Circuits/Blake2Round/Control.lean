@@ -24,7 +24,7 @@ structure Mapping {p : Nat} (input output : Word) (w : Nat → ZMod p) : Prop wh
 
 -- The control claim holds for any supplied XOR setup. Its behavior does not
 -- depend on lookup-table contents; the whole round will use concrete XOR semantics.
-def circuitModel {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 4)) :
+def circuitModel {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 6)) :
     Verification.CircuitModel Word Word (Nat → ZMod p) where
   satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w)
     (importedConstraints setup)

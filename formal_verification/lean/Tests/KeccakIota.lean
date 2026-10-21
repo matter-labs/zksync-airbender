@@ -118,7 +118,7 @@ theorem satisfies (case : Fin 3) :
     have bound : i < 42 := by simpa only [Keccak.lookup_count] using hi
     by_cases range : i = 0
     · subst i
-      apply Verification.range16_contains
+      apply Trace.Proofs.range_contains
       fin_cases case <;> decide
     by_cases controller : i = 1
     · subst i

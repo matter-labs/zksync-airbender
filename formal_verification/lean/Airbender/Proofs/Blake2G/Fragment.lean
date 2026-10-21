@@ -49,4 +49,19 @@ theorem mixing_flags {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 9)
     mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] at flag ⊢
   all_goals exact flag
 
+/-- Arithmetic query evidence is independent of the Boolean-carry assertions. -/
+def QueryHolds {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9))
+    (w : Nat → ZMod p) : Prop :=
+  ∀ i : Fin 18, ((FlatOperation.lookups (mixingConstraints setup)).get
+    ⟨i.val, by rw [mixing_lookup_count]; exact i.isLt⟩).Contains
+      (Verification.environment w)
+
+theorem query_holds_of_holds {p : Nat} [Fact p.Prime]
+    {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (mixingConstraints setup)) :
+    QueryHolds setup w := by
+  intro i
+  exact Verification.lookup_of_holds h
+    ⟨i.val, by rw [mixing_lookup_count]; exact i.isLt⟩
+
 end Airbender.Blake2G.Proofs

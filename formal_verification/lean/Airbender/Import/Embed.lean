@@ -61,9 +61,22 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     | .error e => throwError "circuit import failed: {e}"
   let lookups ← ranges.toList.mapM fun e => do
     `(_root_.FlatOperation.lookup (Airbender.Verification.range16 $(← cleanExprSyntax e)))
+  -- Native worker pointer alignment moved to the timestamp range table.
+  -- Keep these actual queries in the operation core, before its fixed-table
+  -- queries, while retaining the complete timestamp metadata separately.
+  let alignments ← if blake.isSome || blakeRound.isSome || bigint.isSome || keccak.isSome then do
+    let _ ← match c.delegationColumns with
+      | .ok columns => pure columns
+      | .error e => throwError "circuit import failed: {e}"
+    let queries ← match c.timestampExpressions with
+      | .ok queries => pure queries
+      | .error e => throwError "circuit import failed: {e}"
+    (queries.toList.drop (1 + 2 * c.memory_layout.ram_access_sets.size)).mapM fun e => do
+      `(_root_.FlatOperation.lookup (Airbender.Trace.timestampLookup $(← cleanExprSyntax e)))
+    else pure []
   let memoryFamily := memory.isSome || submemory.isSome || unified.isSome || blake.isSome ||
     blakeRound.isSome || bigint.isSome || keccak.isSome
-  let tableWidth := if keccak.isSome then 8 else if bigint.isSome then 3 else if blakeRound.isSome then 4 else if unified.isSome then 10 else 9
+  let tableWidth := if keccak.isSome then 8 else if bigint.isSome then 3 else if blakeRound.isSome then 6 else if unified.isSome then 10 else 9
   let rom := mkIdent (if submemory.isSome || unified.isSome || blake.isSome || blakeRound.isSome ||
     bigint.isSome || keccak.isSome then `setup else `rom)
   let generic ← if memoryFamily then do
@@ -109,7 +122,7 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
         let entries := entries.toArray
         `(_root_.FlatOperation.lookup (Airbender.Verification.shiftBinopLookup #v[$[$entries],*]))
     else pure []
-  let ops := (ss ++ lookups ++ generic).toArray
+  let ops := (ss ++ lookups ++ alignments ++ generic).toArray
   let prime := mkIdent `p
   if memoryFamily then
     elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)]

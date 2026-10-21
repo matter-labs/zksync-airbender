@@ -64,8 +64,8 @@ theorem call_block_domain [Fact p.Prime] (hp : 8388608 ≤ p)
       (Cell.register 11).read initial = .ok messagePointer initial ∧
       statePointer.toNat % 64 = 0 ∧ messagePointer.toNat % 64 = 0 ∧
       statePointer ≠ messagePointer ∧
-      ∀ block : Bool, ∀ word : Fin 16,
-        Cell.ram ((if block then statePointer else messagePointer) + BitVec.ofNat 32 (4 * word.val)) ∈ cells := by
+      ∀ «block» : Bool, ∀ word : Fin 16,
+        Cell.ram ((if «block» then statePointer else messagePointer) + BitVec.ofNat 32 (4 * word.val)) ∈ cells := by
   have clockBound : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
   obtain ⟨statePointer, messagePointer, stateRead, messageRead, tracked⟩ :=
     call_block_cells hp inverse accepted inputs

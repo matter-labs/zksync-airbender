@@ -2,21 +2,25 @@
 pragma solidity =0.8.36;
 
 import {InitializationWindows} from "../src/InitializationWindows.sol";
-import {GKRVerifier as GeneratedGKR} from "../src/GkrVerifier.sol";
-import {GKRVerifier as CommittedGKR} from "../src/CommittedGkrVerifier.sol";
+import {GkrWhirVerifier as GeneratedGKR} from "../src/GkrVerifier.sol";
+import {GkrWhirVerifierFixture as CommittedGKR} from "../src/GkrWhirVerifierFixture.sol";
 
 interface WindowTestVm {
     function readFileBinary(string calldata path) external view returns (bytes memory);
 }
 
+contract WindowTestRegistry {
+    function markVerified(bytes32, bytes32, bytes32) external {}
+}
+
 contract InitializationWindowsReplayTest {
     WindowTestVm constant vm = WindowTestVm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
 
-    function testExistingValidGKRProofStillVerifies() public {
+    function testExistingValidMergedProofStillVerifies() public {
         bytes memory proof = vm.readFileBinary("fixtures/gkr-calldata.bin");
-        (bool generatedAccepted,) = address(new GeneratedGKR()).call(proof);
+        (bool generatedAccepted,) = address(new GeneratedGKR(address(new WindowTestRegistry()))).call(proof);
         require(generatedAccepted, "regenerated verifier rejected valid proof");
-        (bool committedAccepted,) = address(new CommittedGKR()).call(proof);
+        (bool committedAccepted,) = address(new CommittedGKR(address(new WindowTestRegistry()))).call(proof);
         require(committedAccepted, "committed verifier rejected valid proof");
     }
 }

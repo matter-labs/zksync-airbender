@@ -14,7 +14,7 @@ theorem full_execution [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (inputs : WrappedProgramComputedPreparedProtocolInputs data initial ca oa cells program regions)
     (profile : RetirementProfile data program initial cells)
     (pc : run (SailRV32.Functions.get_arch_pc ()) initial = .ok data.machine.initial.word.toBitVec initial)
-    (commands : BigintCommands data) (ledger : ExternalBoundary.Requests.Binding data)
+    (commands : BigintCommands data)
     (scopes : ∀ window ∈ windows, WrappedProgramComputedProtocolWindowInputs data program window)
     (ordered : WindowsOrdered cut (windows.map HashWindow.interval))
     (coverage : ProgramHashCallerCoverage data windows) :
@@ -35,6 +35,7 @@ theorem full_execution [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
   have covered := program_hash_worker_coverage (by decide) (by decide) inputs.setup accepted inputs.publicProgram
     inputs.ordinaryProgram inputs.registry cuts coverage
   have effects := mixed_memory_effects accepted memory
+  have ledger := ExternalBoundary.Requests.Proofs.native_binding accepted.toRequestChecks effects.requests
   obtain ⟨events, finalState, permutation, order, history, _, _, terminal⟩ := effects.execution
   exact full_execution_at accepted memory profile.code effects.requests pc ledger permutation order history
     (fun _ member ordinary => ordinary_cycle_at accepted memory profile effects permutation order history member ordinary)

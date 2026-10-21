@@ -53,37 +53,42 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
             num_table_subsets
         );
 
-        // dump tables
-        let all_generic_tables = if compiled_circuit.total_tables_size == 0 {
-            Vec::new()
-        } else {
-            table_driver.dump_tables(compiled_circuit.generic_lookup_tables_width)
-        };
-
         assert_eq!(
-            all_generic_tables.len(),
+            table_driver.total_tables_len,
             compiled_circuit.offset_for_decoder_table,
         );
 
         // no parallelism for now
 
         if !compiled_circuit.tables_ids_in_generic_lookups {
-            assert!(all_generic_tables.is_empty() || decoder_table.is_empty());
+            assert!(table_driver.total_tables_len == 0 || decoder_table.is_empty());
         }
 
-        for row_idx in 0..all_generic_tables.len() {
-            let row = &all_generic_tables[row_idx];
-            assert_eq!(
-                row.len(),
-                compiled_circuit.generic_lookup_tables_width,
-                "padded table row from the driver is {}, but setup has {} columns for it",
-                row.len(),
-                compiled_circuit.generic_lookup_tables_width
-            );
-            for column in 0..compiled_circuit.generic_lookup_tables_width {
-                result[column][row_idx] = all_generic_tables[row_idx][column];
+        // Read the actual stored rows directly. Dumping all padded rows here
+        // duplicates every MAX_TABLE_WIDTH buffer alongside the full columns.
+        let mut row_idx = 0;
+        for table in &table_driver.tables {
+            if let cs::tables::LookupWrapper::Initialized(table) = table {
+                if table.table_size() == 0 {
+                    continue;
+                }
+                assert!(table.width() < total_width);
+                assert!(total_width <= cs::definitions::MAX_TABLE_WIDTH);
+                let id = F::from_u32_unchecked(table.id);
+                for index in 0..table.table_size() {
+                    let row = table.data_at_row(index);
+                    assert_eq!(row.len(), table.width());
+                    for (column, value) in row.iter().enumerate() {
+                        result[column][row_idx] = *value;
+                    }
+                    // Remaining data columns are already zero-initialized,
+                    // exactly as in TableDriver::dump_tables(Some(id)).
+                    result[total_width - 1][row_idx] = id;
+                    row_idx += 1;
+                }
             }
         }
+        assert_eq!(row_idx, compiled_circuit.offset_for_decoder_table);
         let offset = compiled_circuit.offset_for_decoder_table;
 
         if !decoder_table.is_empty() {

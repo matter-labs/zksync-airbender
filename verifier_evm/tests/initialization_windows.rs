@@ -4,7 +4,17 @@ mod common;
 
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
+use prover::gkr::prover_config::{example_configs::EVM_PRODUCTION_TRACE_LEN_LOG2, pow_bits};
 use std::path::PathBuf;
+
+fn fixture_final_pc() -> u32 {
+    let encoded = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("debug_data/gkr_step1_preimage.hex"),
+    )
+    .unwrap();
+    let preimage = hex::decode(encoded.trim()).unwrap();
+    u32::from_le_bytes(preimage[384..388].try_into().unwrap())
+}
 
 fn generated_verifier() -> String {
     let json = std::fs::read_to_string(
@@ -13,16 +23,22 @@ fn generated_verifier() -> String {
     )
     .unwrap();
     let circuit: GKRCircuitArtifact<Proth120> = serde_json::from_str(&json).unwrap();
-    verifier_evm::generate_verifiers(
+    let config = common::production_prover_config();
+    let batch_pow_bits = pow_bits::batched_proximity_check_pow_bits::<Proth120, Proth120>(
+        config.security_level.security_bits(),
+        EVM_PRODUCTION_TRACE_LEN_LOG2 + common::PACK_LOG2,
+        config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
+        pow_bits::total_base_oracle_columns(&circuit),
+    );
+    verifier_evm::generate_verifier(
         &circuit,
-        &common::production_prover_config(),
+        &config,
         common::PACK_LOG2,
         20,
-        11,
-        1716376,
-        "0x00000000000000000000000000000000caFe0001",
+        batch_pow_bits,
+        fixture_final_pc(),
+        &[0, 1],
     )
-    .gkr_sol
 }
 
 fn yul_function(source: &str, name: &str) -> String {
@@ -61,10 +77,13 @@ fn generated_verifier_checks_windows_before_transcript_processing() {
     assert!(validation.contains("add(preimage_ptr, 404)"));
     // Both committed entrypoints must carry the same checks as regeneration.
     let normalize = |text: &str| text.split_whitespace().collect::<String>();
-    for name in ["GkrVerifier.sol", "GkrVerifierProduction.sol"] {
+    for name in [
+        "src/GkrWhirVerifier.sol",
+        "test/fixtures/GkrWhirVerifierFixture.sol",
+    ] {
         let committed = std::fs::read_to_string(
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("generated_contracts/gkr/src")
+                .join("generated_contracts/merged")
                 .join(name),
         )
         .unwrap();
@@ -116,7 +135,7 @@ fn generated_window_validation_executes_in_evm() {
     std::fs::create_dir_all(directory.join("test")).unwrap();
     std::fs::create_dir_all(directory.join("fixtures")).unwrap();
     let fixture = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("debug_data/gkr_full_calldata.hex"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("debug_data/merged_calldata.hex"),
     )
     .unwrap();
     std::fs::write(
@@ -125,15 +144,12 @@ fn generated_window_validation_executes_in_evm() {
     )
     .unwrap();
     std::fs::write(directory.join("src/GkrVerifier.sol"), source).unwrap();
-    for name in ["GkrVerifier.sol", "GkrVerifierProduction.sol"] {
-        std::fs::copy(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("generated_contracts/gkr/src")
-                .join(name),
-            directory.join(format!("src/Committed{name}")),
-        )
-        .unwrap();
-    }
+    std::fs::copy(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("generated_contracts/merged/test/fixtures/GkrWhirVerifierFixture.sol"),
+        directory.join("src/GkrWhirVerifierFixture.sol"),
+    )
+    .unwrap();
     std::fs::write(directory.join("src/InitializationWindows.sol"), harness).unwrap();
     std::fs::write(
         directory.join("test/InitializationWindows.t.sol"),

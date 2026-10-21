@@ -3,6 +3,8 @@ import Airbender.Review.Circuits.Keccak.Controls
 import Airbender.Proofs.Constraints
 import Airbender.Proofs.Arithmetic.Chunks
 import Airbender.Proofs.Arithmetic.OneHot
+import Airbender.Proofs.BabyBear
+import Airbender.Proofs.Trace.Timestamps
 import Mathlib.Tactic.FinCases
 import Mathlib.Tactic.LinearCombination
 
@@ -87,14 +89,19 @@ theorem selector_counts (hp : 7 < p)
     have flag := bits ⟨7 + i.val, by omega⟩
     fin_cases i <;> exact flag
 
-theorem pointer_alignment (hp : 16777216 ≤ p)
+theorem pointer_alignment (_hp : 16777216 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     (w 13).val % 256 = 0 := by
-  have bound := Verification.range16_bound
+  have characteristic : (babyBearModulus : ZMod p) = 0 := by
+    unfold babyBearModulus
+    linear_combination -inverse
+  have field := babyBear_eq_of_natCast_zero characteristic
+  have bound := Trace.Proofs.range_bound
     (Verification.lookup_of_holds h ⟨0, by rw [lookup_count]; decide⟩)
-  simp [Expression.eval, Verification.environment, limbBase] at bound
-  have value := value_of_scaled_range hp (by decide) inverse
+  simp [Expression.eval, Verification.environment, ] at bound
+  have value := value_of_scaled_range
+    (by rw [field]; decide : 256 * Trace.timestampBase ≤ p) (by decide) inverse
     (by simpa only [neg_mul] using bound)
   rw [value]
   simp

@@ -178,9 +178,9 @@ def main : IO UInt32 := do
     let .ok blake := parseCircuit blakeSource | throw (IO.userError "BLAKE2 G artifact failed import")
     let .ok blakeQueries := blake.blakeGQueries | throw (IO.userError "BLAKE2 G queries failed import")
     check (blake.structured_statements.size == 32 && blakeQueries.size == 19 &&
-      blakeQueries.all (·.size == 9) && blake.range_check_16_lookup_expressions.size == 2 &&
+      blakeQueries.all (·.size == 9) && blake.range_check_16_lookup_expressions.isEmpty &&
       blakeSource == Blake2G.importedConstraintsSourceBytes)
-      "BLAKE2 G: 32 equations, two scaled ranges, 19 complete queries and source binding"
+      "BLAKE2 G: 32 equations, timestamp alignment, 19 complete queries and source binding"
     let .ok ports := blake.indirectPorts | throw (IO.userError "BLAKE2 G ports failed import")
     check (ports == Blake2G.importedConstraintsIndirectPorts.toArray)
       "BLAKE2 G: all six indirect address/read/write descriptors match embedded metadata"
@@ -260,16 +260,16 @@ def main : IO UInt32 := do
     check (rejected (Circuit.indirectPorts {round with memory_layout :=
       {round.memory_layout with ram_access_sets := round.memory_layout.ram_access_sets.set! 1 variablePort}}))
       "constant port spuriously claiming an unlisted variable offset rejected"
-    check (round.structured_statements.size == 352 && roundQueries.size == 208 &&
-      roundQueries.all (·.size == 4) && round.range_check_16_lookup_expressions.size == 2 &&
+    check (round.structured_statements.size == 220 && roundQueries.size == 192 &&
+      roundQueries.all (·.size == 6) && round.range_check_16_lookup_expressions.isEmpty &&
       roundSource == Blake2Round.importedConstraintsSourceBytes)
-      "BLAKE2 round: 352 equations, two scaled ranges, 208 complete queries and source binding"
-    let roundInspection : Table (ZMod babyBearModulus) (fields 4) :=
+      "BLAKE2 round: 220 equations, timestamp alignment, 192 complete queries and source binding"
+    let roundInspection : Table (ZMod babyBearModulus) (fields 6) :=
       { name := "TagInspection", Contains _ _ := True }
     let roundLookups := (FlatOperation.lookups (Blake2Round.importedConstraints roundInspection)).drop 2
     check (roundLookups.map (fun q => some (q.entry.toArray.back!.eval emptyEnv).val) ==
-      round.generic_lookups.toList.map (fun q => q.columns[3]?.map (·.constant.canonical.val)))
-      "BLAKE2 round: all 208 XOR tags preserved in native Clean queries"
+      round.generic_lookups.toList.map (fun q => q.columns[5]?.map (·.constant.canonical.val)))
+      "BLAKE2 round: all 192 XOR/carry/combined tags preserved in native Clean queries"
     check (rejected (Circuit.blakeRoundQueries {round with generic_lookups := #[]}))
       "BLAKE2 round: missing queries rejected"
     check (rejected (Circuit.blakeRoundQueries {round with generic_lookup_tables_width := 9}))
@@ -277,22 +277,22 @@ def main : IO UInt32 := do
     check (rejected (Circuit.blakeRoundQueries {round with total_tables_size := 344896}))
       "BLAKE2 round: incorrect setup boundary rejected"
     check (rejected (Circuit.blakeRoundQueries {round with
-      table_offsets := round.table_offsets.set! 18 ⟨0, by decide⟩}))
+      table_offsets := round.table_offsets.set! 55 ⟨0, by decide⟩}))
       "BLAKE2 round: incorrect XOR region rejected"
     let some roundXor := round.generic_lookups[0]? | throw (IO.userError "missing round XOR query")
     let changeRound := fun changed => {round with generic_lookups := round.generic_lookups.set! 0 changed}
     check (rejected (Circuit.blakeRoundQueries (changeRound {roundXor with lookup_set_index := 1})))
       "BLAKE2 round: incorrect query-set identity rejected"
     check (rejected (Circuit.blakeRoundQueries (changeRound
-      {roundXor with columns := roundXor.columns.set! 3 ⟨#[], subwordOne⟩})))
+      {roundXor with columns := roundXor.columns.set! 5 ⟨#[], subwordOne⟩})))
       "BLAKE2 round: incorrect XOR tag rejected"
     let bigintSource ← IO.FS.readFile "../../cs/compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json"
     let .ok bigint := parseCircuit bigintSource | throw (IO.userError "bigint artifact failed import")
     let .ok bigintQueries := bigint.bigintQueries | throw (IO.userError "bigint queries failed import")
     check (bigint.structured_statements.size == 136 && bigintQueries.size == 61 &&
-      bigint.range_check_16_lookup_expressions.size == 34 &&
+      bigint.range_check_16_lookup_expressions.size == 32 &&
       bigintSource == Bigint.importedConstraintsSourceBytes)
-      "bigint: 136 equations, 34 ranges, 61 fixed queries and source binding"
+      "bigint: 136 equations, 32 ranges, timestamp alignment, 61 fixed queries and source binding"
     let bigintInspection : Table (ZMod babyBearModulus) (fields 3) :=
       { name := "TagInspection", Contains _ _ := True }
     let bigintLookups := (FlatOperation.lookups (Bigint.importedConstraints bigintInspection)).drop 34
@@ -323,10 +323,10 @@ def main : IO UInt32 := do
     let .ok keccakQueries := keccak.keccakQueries | throw (IO.userError "Keccak queries failed import")
     let .ok keccakPorts := keccak.indirectPorts | throw (IO.userError "Keccak ports failed import")
     check (keccak.structured_statements.size == 187 && keccakQueries.size == 41 &&
-      keccak.range_check_16_lookup_expressions.size == 1 &&
+      keccak.range_check_16_lookup_expressions.isEmpty &&
       (FlatOperation.constraints (Keccak.importedConstraints Tests.Keccak.permissiveSetup)).length == 187 &&
       keccakSource == Keccak.importedConstraintsSourceBytes)
-      "Keccak: 187 equations, range query, all fixed queries and source binding"
+      "Keccak: 187 equations, timestamp alignment, all fixed queries and source binding"
     check (keccakPorts.size == 12 && keccakPorts == Keccak.importedConstraintsIndirectPorts.toArray)
       "Keccak: twelve native ports preserve six shared lane offsets"
     let keccakLookups := (FlatOperation.lookups

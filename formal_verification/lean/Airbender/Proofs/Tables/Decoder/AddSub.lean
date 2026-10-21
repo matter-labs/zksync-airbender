@@ -13,7 +13,7 @@ private theorem prefix_checked : fixedTags addSubSetup.prefixTags.blocks.toList 
   decide +kernel
 
 private def paddingValues : Vector Nat addSubSetup.width :=
-  Vector.ofFn fun lane => if lane.val = 0 then babyBearModulus - 1 else 0
+  Vector.ofFn fun lane => (addSubSetup.padding.columns[lane].get? 0).getD 0
 
 private theorem padding_checked (lane : Fin addSubSetup.width) :
     constantTail paddingValues[lane] 0 addSubSetup.padding.columns[lane].blocks.toList = true := by

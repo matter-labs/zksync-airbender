@@ -58,13 +58,13 @@ theorem wrongFinalWriteRejected (w : Nat → ZMod babyBearModulus)
 theorem wrongFinalChunkRejected (w : Nat → ZMod babyBearModulus) :
     ¬ (FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (Blake2Round.importedConstraints Blake2Round.setupTable) ∧
-      w 628 = 3 ∧ w 578 = 5 ∧ w 629 = 7) := by
+      w 536 = 3 ∧ w 502 = 5 ∧ w 537 = 7) := by
   intro ⟨row, left, right, wrong⟩
   have member := Verification.lookup_of_holds row
-    ⟨146, by rw [Blake2Round.lookup_count]; decide⟩
-  have correct := Blake2Round.Proofs.xor_lookup_raw (by decide) 3 member
+    ⟨130, by rw [Blake2Round.lookup_count]; decide⟩
+  have correct := Blake2Round.Proofs.xor_lookup_raw (by decide) 1 member
     (by rfl) (by simp [Blake2Round.importedConstraints, FlatOperation.lookups,
-      Expression.eval, Verification.environment])
+      Expression.eval, Verification.environment, Blake2Round.Proofs.plainTags])
   have xor := correct.2.2.2
   simp [Blake2Round.importedConstraints, FlatOperation.lookups, Expression.eval,
     Verification.environment] at xor
@@ -125,33 +125,32 @@ theorem wrongRoundOutputRejected (w : Nat → ZMod babyBearModulus) :
     Blake2Round.Proofs.callConstants, Specs.BLAKE3.roundConstants, Specs.BLAKE3.g,
     Arithmetic.Word.value, Arithmetic.limbBase, add32, rotRight32, Fin.getElem_fin] at head
 
-/-- A malformed carry in any column call is rejected through the checked
-    connection to the reusable G fragment. -/
+/-- A malformed native Boolean C-addition carry is rejected in every column call. -/
 theorem wrongColumnCarryRejected (call : Fin 4) (w : Nat → ZMod babyBearModulus)
-    (carry : w (268 + 46 * call.val) = 2) :
+    (carry : w (268 + 40 * call.val) = 2) :
     ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (Blake2Round.importedConstraints Blake2Round.setupTable) := by
   intro holds
-  have flag := Blake2G.Proofs.mixing_flags (Blake2Round.Proofs.column_g_holds call holds) 0
-  norm_num [Blake2G.Variables.booleanColumns, Blake2Round.Proofs.columnGAssignment,
-    Blake2Round.Proofs.columnGBase, Blake2G.Proofs.assemble, carry] at flag
+  have flag := Blake2Round.Proofs.native_column_flags call holds 0
+  norm_num [Blake2Round.Proofs.columnBooleanColumns, carry] at flag
   exact (by decide : ¬ ((2 : ZMod babyBearModulus) = 0 ∨ (2 : ZMod babyBearModulus) = 1)) flag
 
-/-- Each diagonal call is also connected to the native G carry constraints. -/
+/-- Each diagonal call rejects its actual first C-addition carry flag at two. -/
 theorem wrongDiagonalCarryRejected (call : Fin 4) (w : Nat → ZMod babyBearModulus)
-    (carry : w (452 + 44 * call.val) = 2) :
+    (carry : w (426 + 30 * call.val) = 2) :
     ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (Blake2Round.importedConstraints Blake2Round.setupTable) := by
   intro holds
-  have flag := Blake2G.Proofs.mixing_flags
-    (Blake2Round.Proofs.diagonal_g_holds (by decide) call holds) 0
-  norm_num [Blake2G.Variables.booleanColumns, Blake2Round.Proofs.diagonalGAssignment,
-    Blake2Round.Proofs.diagonalGBase, Blake2G.Proofs.assemble, carry] at flag
+  have flag := Blake2Round.Proofs.native_diagonal_first_c_flags call holds 0
+  have address : 416 + 30 * call.val + 10 = 426 + 30 * call.val := by omega
+  norm_num [Blake2Round.Proofs.diagonalFrame, Blake2Round.Proofs.NativeLayout.diagonal,
+    Blake2Round.Proofs.NativeLayout.Layout.read, Blake2Round.Proofs.NativeLayout.Location.read,
+    address, carry] at flag
   exact (by decide : ¬ ((2 : ZMod babyBearModulus) = 0 ∨ (2 : ZMod babyBearModulus) = 1)) flag
 
 /-- A row whose next round mask does not shift is rejected by the imported
     assertions, independently of which XOR setup is supplied. -/
-theorem wrongControlRejected (setup : Table (ZMod babyBearModulus) (fields 4))
+theorem wrongControlRejected (setup : Table (ZMod babyBearModulus) (fields 6))
     (w : Nat → ZMod babyBearModulus) :
     ¬ (Blake2Round.Control.circuitModel setup).relation ⟨123, 8⟩ ⟨0, 8⟩ w := by
   intro row
@@ -164,23 +163,23 @@ theorem wrongControlRejected (setup : Table (ZMod babyBearModulus) (fields 4))
 theorem wrongFirstXorRejected (w : Nat → ZMod babyBearModulus) :
     ¬ (FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (Blake2Round.importedConstraints Blake2Round.setupTable) ∧
-      w 274 = 3 ∧ w 272 = 5 ∧ w 275 = 7) := by
+      w 260 = 3 ∧ w 256 = 5 ∧ w 262 = 7) := by
   intro ⟨row, left, right, wrong⟩
-  have member := Verification.lookup_of_holds row
-    ⟨2, by rw [Blake2Round.lookup_count]; decide⟩
-  have correct := Blake2Round.Proofs.xor_lookup_raw (by decide) 0 member
-    (by rfl) (by simp [Blake2Round.importedConstraints, FlatOperation.lookups,
-      Expression.eval, Verification.environment])
+  have member := Blake2Round.Proofs.native_column_queries_0 (by decide) row 0
+  have correct := Blake2G.Proofs.xor_lookup (by decide) 0 member (by rfl)
   have xor := correct.2.2.2
-  simp [Blake2Round.importedConstraints, FlatOperation.lookups, Expression.eval,
-    Verification.environment] at xor
+  simp [Expression.eval, Verification.environment, Blake2Round.Proofs.nativeColumnAssignment,
+    Blake2G.Proofs.Frame.assignment, Blake2G.Proofs.Frame.base, Blake2Round.Proofs.columnFrame,
+    Blake2Round.Proofs.NativeLayout.column, Blake2Round.Proofs.NativeLayout.columnInputs,
+    Blake2Round.Proofs.NativeLayout.Layout.read, Blake2Round.Proofs.NativeLayout.Location.read,
+    Blake2G.Proofs.assemble] at xor
   norm_num [left, right, wrong, ZMod.val_ofNat, babyBearModulus] at xor
   exact (by decide : (7 : Nat) ≠ 3 ^^^ 5) xor
 
 open Blake2Round.Preparation in
 /-- The first normal round must take lane zero from the chaining state,
     even when the old extended-state lane has a different value. -/
-theorem wrongFirstStateRejected (setup : Table (ZMod babyBearModulus) (fields 4))
+theorem wrongFirstStateRejected (setup : Table (ZMod babyBearModulus) (fields 6))
     (w : Nat → ZMod babyBearModulus) :
     ¬ (FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (Blake2Round.importedConstraints setup) ∧
@@ -189,7 +188,7 @@ theorem wrongFirstStateRejected (setup : Table (ZMod babyBearModulus) (fields 4)
   let input : Input := ⟨true, false, false, words w Blake2Round.Variables.stateReads,
     words w Blake2Round.Variables.extendedReads, words w Blake2Round.Variables.messageReads⟩
   let output : Output := ⟨words w Blake2Round.Variables.chainingInputs,
-    words w Blake2Round.Variables.preparedState, words w Blake2Round.Variables.preparedMessage⟩
+    words w Blake2Round.Variables.preparedState, messageWords w⟩
   have correct := babyBear_soundness setup input output w
     ⟨row, ⟨first, compression, right, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
   have low := congrArg (fun result : Output => result.extended[0].lo) correct
@@ -203,46 +202,49 @@ theorem wrongFirstStateRejected (setup : Table (ZMod babyBearModulus) (fields 4)
 open Blake2Round.Preparation in
 /-- In left-node compression mode the first message word comes from the
     chaining state, not the path data. -/
-theorem wrongCompressionOrderRejected (setup : Table (ZMod babyBearModulus) (fields 4))
+theorem wrongCompressionOrderRejected (setup : Table (ZMod babyBearModulus) (fields 6))
     (w : Nat → ZMod babyBearModulus) :
     ¬ (FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (Blake2Round.importedConstraints setup) ∧
-      w 142 = 0 ∧ w 141 = 1 ∧ w 140 = 0 ∧ w 5 = 3 ∧ w 204 = 5) := by
+      w 142 = 0 ∧ w 141 = 1 ∧ w 140 = 0 ∧ w 5 = 3 ∧
+      Blake2Round.Preparation.messageLimb w 0 0 = 5) := by
   intro ⟨row, first, compression, right, stateWord, wrong⟩
   let input : Input := ⟨false, true, false, words w Blake2Round.Variables.stateReads,
     words w Blake2Round.Variables.extendedReads, words w Blake2Round.Variables.messageReads⟩
   let output : Output := ⟨words w Blake2Round.Variables.chainingInputs,
-    words w Blake2Round.Variables.preparedState, words w Blake2Round.Variables.preparedMessage⟩
+    words w Blake2Round.Variables.preparedState, messageWords w⟩
   have correct := babyBear_soundness setup input output w
     ⟨row, ⟨first, compression, right, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
   have low := congrArg (fun result : Output => result.message[0].lo) correct
   have selected : (step input).message[0] = input.state[0] :=
     Vector.getElem_append_left (xs := input.state) (ys := input.message.take 8) (by decide)
   rw [selected] at low
-  norm_num [input, output, words, Blake2Round.Variables.preparedMessage,
-    Blake2Round.Variables.stateReads, stateWord, wrong, babyBearModulus, ZMod.val_ofNat] at low
+  have selectedWords : (messageLimb w 0 0).val = (w 5).val := by
+    simpa [input, output, words, messageWords, Blake2Round.Variables.stateReads] using low
+  norm_num [stateWord, wrong, babyBearModulus, ZMod.val_ofNat] at selectedWords
 
 open Blake2Round.Schedule in
 /-- Round zero's first selected word must equal the prepared first word. -/
-theorem wrongPermutationRejected (setup : Table (ZMod babyBearModulus) (fields 4))
+theorem wrongPermutationRejected (setup : Table (ZMod babyBearModulus) (fields 6))
     (w : Nat → ZMod babyBearModulus) :
     ¬ (FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (Blake2Round.importedConstraints setup) ∧
       (∀ i : Fin 10, w Blake2Round.Variables.roundBits[i] = if i = 0 then 1 else 0) ∧
-      w 204 = 3 ∧ w 236 = 5) := by
+      Blake2Round.Preparation.messageLimb w 0 0 = 3 ∧ w 224 = 5) := by
   intro ⟨row, mask, firstWord, wrong⟩
-  let input : Input := ⟨0, Blake2Round.Preparation.words w Blake2Round.Variables.preparedMessage⟩
+  let input : Input := ⟨0, Blake2Round.Preparation.messageWords w⟩
   let output : Output := Blake2Round.Preparation.words w Blake2Round.Variables.scheduledMessage
   have correct := babyBear_soundness setup input output w ⟨⟨mask⟩, row, ⟨rfl, rfl⟩⟩
   have low := congrArg (fun result : Output => result[0].lo) correct
-  norm_num [input, output, step, Blake2Round.Preparation.words,
-    Blake2Round.Variables.preparedMessage, Blake2Round.Variables.scheduledMessage,
-    Blake2G.Control.messageSchedule, firstWord, wrong, babyBearModulus, ZMod.val_ofNat] at low
+  have selectedWords : (w 224).val = (Blake2Round.Preparation.messageLimb w 0 0).val := by
+    simpa [input, output, step, Blake2Round.Preparation.words, Blake2Round.Preparation.messageWords,
+      Blake2Round.Variables.scheduledMessage, Blake2G.Control.messageSchedule] using low
+  norm_num [firstWord, wrong, babyBearModulus, ZMod.val_ofNat] at selectedWords
 
 /-- The control classification retains the unsupported zero encoding; this is
     a conditional mask consequence, not an accepted native worker witness. -/
 theorem zero_control_has_no_exclusive_mask [Fact p.Prime] (hp : 8192 ≤ p)
-    {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p}
+    {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (Blake2Round.importedConstraints setup))
     (zero : (w Blake2Round.Variables.controlReadHi).val = 0) :
     ¬ ∃ round, Blake2Round.Memory.RoundMask w round := by
@@ -254,7 +256,7 @@ theorem zero_control_has_no_exclusive_mask [Fact p.Prime] (hp : 8192 ≤ p)
 
 /-- Bits zero and one together are not the exclusive-mask ABI. -/
 theorem multibit_control_has_no_exclusive_mask [Fact p.Prime] (hp : 8192 ≤ p)
-    {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p}
+    {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (Blake2Round.importedConstraints setup))
     (multiple : (w Blake2Round.Variables.controlReadHi).val = 24) :
     ¬ ∃ round, Blake2Round.Memory.RoundMask w round := by

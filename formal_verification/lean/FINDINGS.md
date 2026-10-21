@@ -44,9 +44,9 @@ not a claim that every open PR or every backend has been audited.
 | --- | --- | --- |
 | [AIH-334](https://linear.app/matterlabs/issue/AIH-334) — duplicate initialization windows | **Fixed in the current EVM generator and both tracked GKR sources; validation below.** The Linear comment correctly accepts the original defect as “Valid in general.” [Generated validation](../../verifier_evm/src/generator/initialization.rs) now rejects duplicate/out-of-range windows before transcript processing. The [Rust unified statement](../../full_statement_verifier/src/unified_circuit_statement.rs) separately checks range and increasing order. | The [distinct-selection contract](Airbender/Review/Helpers/Context/ExternalBoundary/Initialization.lean) remains explicit: its formal correspondence to EVM execution is unproved. Valid sparse windows 254/255 and reversed distinct pairs are retained for the 2^22-word/four-byte geometry. Existing deployments are not changed by this source fix. |
 | [AIH-336](https://linear.app/matterlabs/issue/AIH-336) — queryable decoder filler | **Source correction implemented; CPU setup/forward regressions checked, accelerated runtime validation pending.** The live comment agrees with excluding reachable zero padding. [Untagged decoder setup tails](../../prover/src/gkr/prover/setup.rs) now carry field-minus-one in PC-low; tagged setups retain their existing discriminator and generic zero entry. CPU and [GPU cache scheduling](../../gpu/gkr/src/setup/mod.rs) cover the full committed domain. | CUDA/AVX-512 execution and a complete regenerated proof remain to validate on a suitable host. Old decoder-only setup commitments need rebuilding; none is silently upgraded. The temporary [decoder contract](Airbender/Review/Helpers/Context/ExternalBoundary/Decoder.lean) still has an unproved extraction/authentication/query-binding connection. No full invalid-proof acceptance is claimed. |
-| [AIH-339](https://linear.app/matterlabs/issue/AIH-339) — zero-clock workers | **Accepted relation gap, F03; implementation enforcement remains unresolved.** The comments explain caller-to-worker accounting and unique issued clocks. They do not establish the converse that every active worker has a caller, and do not rule out the checked zero-clock state change. | Fix or independently validate full worker-to-caller enforcement. The temporary [occurrence ledger](Airbender/Review/Helpers/Context/ExternalBoundary/Requests.lean) supplies that missing condition; the native cancelling-token permutation does not imply it. |
+| [AIH-339](https://linear.app/matterlabs/issue/AIH-339) — zero-clock workers | **Fixed and verified for the current native BabyBear target.** The adopted #490 timestamp query rejects active zero clocks in all four imported BabyBear families and all 14 cached/no-cache Rust profiles. The historical raw witness is retained and now proved rejected; valid issued execution passes. The original comments' caller-to-worker argument alone did not establish the converse. | [Native occurrence accounting](Airbender/Proofs/ExternalBoundary/NativeRequests.lean) derives the full ledger from accepted constraints and initialized caller binding. The full mixed execution proof uses that derivation. Rust/artifact correspondence and cryptographic enforcement remain external. |
 | [AIH-113](https://linear.app/matterlabs/issue/AIH-113) — dropped scaled pointer range check | **Historical compiler bug with repair present in the inspected source.** [Delegation compilation](../../cs/src/gkr_compiler/delegation_circuit.rs) now passes the retained range vector into [memory lowering](../../cs/src/gkr_compiler/delegation_mem_accesses.rs), which pushes the scaled check into it. No live comments. | Do not assume every generated/cached artifact includes that repair. Compiled/artifact correspondence remains an external fidelity obligation; no new pointer-alignment assumption or newly discovered current-source bug is asserted. |
-| [AIH-315](https://linear.app/matterlabs/issue/AIH-315) — WHIR randomness reuse | **Acknowledged defect; upstream source correction merged in [PR #526](https://github.com/matter-labs/zksync-airbender/pull/526).** The reviewed FV source pin still uses the old post-query draw. The Linear comment accepting the freshness defect is unchanged. | Adopt the coordinated producer/verifier correction and matching regenerated artifacts in this branch, then validate its target. Upstream source and reported CI are checked below; this is not a formal protocol-soundness proof or a demonstrated forged proof. |
+| [AIH-315](https://linear.app/matterlabs/issue/AIH-315) — WHIR randomness reuse | **Upstream correction included in the verified rebase.** The corrected `av_gkr_compiler` target includes the coordinated [#526 correction](https://github.com/matter-labs/zksync-airbender/pull/526) and #527 protocol change. The Linear comment accepting the original freshness defect is unchanged. | The recorded CPU/EVM proof-replay paths pass on this branch. Backend-specific regeneration/compatibility and formal protocol soundness remain separate obligations. The old-pin assessment below is historical; source inclusion and scoped replay are not a general protocol-soundness proof or evidence of a forged proof. |
 | F02 — bigint controls | **Accepted native/reference discrepancy.** Controls 0 and 65537 violate the pinned call ABI even in initialized caller cycles. | The temporary [control contract](Airbender/Review/Helpers/Context/ExternalBoundary/BigintABI.lean) now supports [complete conditional bigint call retirement](Airbender/Review/Trace/UnifiedReduced/BigintCalls.lean), including actual operand reads, exact Sail writes/frame and PC advance. Actual control validation and full invalid-call/reference behavior still need a fix or justified acceptance binding. |
 | F04 — worker ROM | **Accepted native/reference discrepancy.** Supported COPY with ROM pointers can read zero shadows instead of public bytes; the VM's successful-call ABI rejects those pointers. | The temporary [RAM-port contract](Airbender/Review/Helpers/Context/ExternalBoundary/WorkerRAM.lean) excludes the case for conditional transport. General native acceptance has not been shown to enforce it. |
 | [PR #531](https://github.com/matter-labs/zksync-airbender/pull/531) — recursive output and branch scratch | **Actual source defects addressed by a proposal, still open here.** The [base entrypoint](../../tools/gkr_verifier/src/common_fsv_unified_base_sec_100.rs) discards verified registers and returns a constant; the [branch witness path](../../cs/src/gkr_circuits/unified_reduced_machine/jump_branch_slt.rs) reads shared field scratch as Boolean before guarding branch selection. The latter is a witness-generation defect, not by itself an acceptance exploit. | Review/apply and validate the actual fixes. No output-equality or Boolean-scratch assumption closes them. The PR itself notes validation/regeneration pending after a transcript change. Its other field/recursion fixes require their own target-specific validation. |
@@ -57,10 +57,11 @@ F01's typed verifier-PC interface and F05's contribution-mask interface have
 inspected implementation mechanisms, with Rust/argument refinement still external;
 their conditional logical results remain checked. F06 is an explicit project/Sail
 profile difference. F07/F08's complete-protocol profiles are scope conditions, with
-the zero-clock exception retained under F03. F09's general extraction/fidelity
+the historical zero-clock exception analyzed under F03; current native
+BabyBear constraints exclude active instances. F09's general extraction/fidelity
 obligation is distinct from its concrete AIH-336 bug. F10's conditional integration
 is now checked in [full mixed execution](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean);
-unrestricted acceptance still depends on unresolved F02–F04 enforcement. Historical
+unrestricted acceptance still depends on unresolved F02/F04 enforcement. Historical
 progress snapshots below retain their original narrower claims; the F10 section
 records the completed connection.
 
@@ -81,8 +82,10 @@ were read; AIH-113 has none, and no comment pages remained.
   issued clocks. **I disagree with treating that argument as sufficient to dismiss
   the finding:** a zero-clock worker's read/write virtual tokens coincide without
   any call. Initialized physical matching excludes two such workers, but the
-  checked single-worker state change remains. This is a limitation of the
-  argument's scope, not a contradiction of its caller-to-worker implication.
+  pre-fix single-worker state change was valid. The adopted #490 timestamp
+  constraint now rejects that worker; it supplies the missing converse used by
+  native occurrence accounting. This is a limitation of the original argument's
+  scope, not a contradiction of its caller-to-worker implication.
 - **AIH-315, Yoav Eshel, 8 October:** agree that the reported digest reuse should
   be treated as a bug needing fresh-digest validation. His comment explicitly
   notes the absence of a known soundness proof and cites WHIR construction 5.1.
@@ -92,13 +95,15 @@ were read; AIH-113 has none, and no comment pages remained.
 
 **21 October recheck.** All five Linear issues and their complete comment pages
 were rechecked; no new comments change the assessments above. The reviewed FV
-source pin is `805909325`. AIH-315 has a merged upstream correction in
+source pin for that review was `805909325`; the subsequent rebase target is
+`av_gkr_compiler` at `451884662`, now checked through the full FV gates. AIH-315 has a merged upstream correction in
 [PR #526](https://github.com/matter-labs/zksync-airbender/pull/526), detailed below;
 the former description as simply awaiting a source fix was stale.
 [PR #527](https://github.com/matter-labs/zksync-airbender/pull/527) merged on
 17 October at head `0603c0f095ed4c5a5b407239907e201ebfbfccc2`: it inherits
-#526 and adds a separate seeded-commit protocol change. Adoption must preserve
-producer/verifier and artifact compatibility. [PR #316](https://github.com/matter-labs/zksync-airbender/pull/316)
+#526 and adds a separate seeded-commit protocol change. Both are included in
+the rebase. The recorded CPU/EVM proof paths pass; backend-specific
+producer/verifier and artifact compatibility remains explicit. [PR #316](https://github.com/matter-labs/zksync-airbender/pull/316)
 and [private #8](https://github.com/matter-labs/zksync-airbender-private/pull/8)
 remain open at their previously reviewed heads; their proposals and reported
 validation are not implementation or protocol-soundness closure for this target.
@@ -123,22 +128,26 @@ before transcript copying or hashing. It checks that all index bytes exist,
 decodes each complete little-endian u32, checks range and rejects every duplicate
 pair. It does not truncate indices, assume contiguity or require ordering.
 
-Both tracked [GKR source](../../verifier_evm/generated_contracts/gkr/src/GkrVerifier.sol)
-and [production GKR source](../../verifier_evm/generated_contracts/gkr/src/GkrVerifierProduction.sol)
+Both tracked [merged source](../../verifier_evm/generated_contracts/merged/src/GkrWhirVerifier.sol)
+and [replay fixture](../../verifier_evm/generated_contracts/merged/test/fixtures/GkrWhirVerifierFixture.sol)
 carry the same emitted guard and invocation; a regression compares their decoder,
 validation and transcript-init functions to fresh generation. Other generated
 circuits, contracts and proof/cache artifacts are unchanged.
 
 The [Rust/EVM regression](../../verifier_evm/tests/initialization_windows.rs)
-compiles the fresh verifier and both committed GKR sources with Solidity 0.8.36.
+compares both committed entrypoints' guards and transcript initialization to fresh
+generation, and compiles the fresh verifier and committed replay fixture with Solidity 0.8.36.
 It executes the actual generated guard in the
 [EVM suite](../../verifier_evm/tests/contracts/InitializationWindows.t.sol): valid
 sparse/reversed windows, duplicates, both out-of-range positions, high-byte/LE
 decoding, truncated input, adjacent-byte independence and two 256-run fuzz tests.
-The existing valid GKR proof is also replayed through the fresh and committed
-non-production verifiers. The production target is compiled and its guard checked;
-the fixture has a different terminal PC, so no production-proof replay is claimed.
-Scoped Rust tests, the existing calldata/seed regression and full FV checks pass.
+The existing valid merged proof is replayed through the fresh verifier and committed
+fixture. On the rebased `451884662` target, both Rust tests and all eight Solidity
+cases pass, including the two 256-run fuzz tests. The main production contract has
+a different terminal PC; its guard is compared, with no production-proof replay claimed.
+The local macOS run disabled Rust debug information for `prover` and
+`keccak_special5` to avoid the pinned nightly compiler's debug-info crash.
+Full FV validation of the rebased branch remains in progress.
 
 This fixes the source-level AIH-334 validation defect for the current single-proof
 EVM target. It does not prove EVM/Rust/Lean refinement, cryptographic soundness or
@@ -226,9 +235,11 @@ at its merged descendant `0603c0f095ed4c5a5b407239907e201ebfbfccc2` confirms tha
 both affected CPU WHIR call sites use the fresh field-draw helper, which advances
 the Blake2s seed before drawing. Both matching verifier-generator call sites use
 the helper that advances the transcript before constructing the field element.
-The raw-draw API itself intentionally keeps its previous behavior. The reviewed
-FV checkout instead calls the ordinary field draw after queries and does not yet
-include this correction.
+The raw-draw API itself intentionally keeps its previous behavior. The initial
+review checkout lacked the correction; the rebased `av_gkr_compiler` target at
+`451884662` includes both #526 and #527. The recorded CPU/EVM valid-proof replay
+passes on that target. Accelerated/backend-specific regeneration and formal
+protocol soundness remain outside that local validation.
 
 The PR reports corresponding GPU scheduling changes, unchanged Keccak behavior,
 and regenerated BabyBear verifiers/proofs/binaries. Its recorded CI is green,
@@ -281,7 +292,15 @@ every previous 3,011 report is exactly preserved, including all 92 axiom-free re
 findings, F09's general query/authentication/Rust-refinement boundary or AIH-336's
 pending accelerated/full-proof validation. [Reproduction and scope](artifacts/setup/README.md).
 
-## Implementation update: issued round coverage and wrapped preparation
+## Historical integration checkpoints before the rebase
+
+The progress notes in this section describe the pre-#490 relation and their
+original validation totals. Current status is in the case register and F03 below.
+Their accepted zero-clock execution witnesses are preserved in the
+[pre-rebase source](https://github.com/matter-labs/zksync-airbender/blob/010c3cbb3c237b6e125277162dd1011c2f212333/formal_verification/lean/Tests/DelegationZeroInvocation.lean);
+current regressions retain the exact raw witness and prove native rejection.
+
+### Issued round coverage and wrapped preparation
 
 Update verified: 14 October 2026. Round coverage checkpoint: `9d9cf76b7`.
 The current sources also include the comparison-preparation and modular
@@ -696,20 +715,39 @@ The current validation totals are recorded in
 [Verification status](VERIFICATION_STATUS.md); importer, axiom and review checks
 retain the existing regression roots with no handwritten project diagnostics.
 
+## Rebased validation checkpoint — 21 October 2026
+
+The current native artifacts and proof adapters pass the library, both executables,
+all 137 concrete test modules, importer regressions and review/source checks.
+All 13 setup artifacts, 85 native source hashes and 11 retained circuit identities
+are checked. The full audit has 3,830 roots (149 axiom-free), with no added axioms:
+all 3,606 still-applicable prior roots remain, 3,605 reports are identical and one
+uses fewer axioms. The 53 old accepted-zero execution roots were explicitly
+retired because #490 makes those statements false; the exact raw witness,
+arithmetic, cancellation, filtering and valid issued execution remain checked,
+with current native rejection replacing obsolete acceptance. All 166 public
+Review theorem roots remain audited.
+
+The native JSON round-trip check also retains strict equality with the actual
+Rust circuit object. A small [wire-format serializer](Airbender/Import/NativeJson.lean)
+implements Rust's omission of absent `generic_lookup_padding`; present zero,
+nonzero padding and other explicit null fields are retained. This is serialization
+fidelity, not a new circuit assumption or cryptographic correspondence claim.
+
 ## Review priorities
 
 | ID | Finding | Evidence/status | Condition or weaker claim that limits coverage |
 | --- | --- | --- | --- |
 | F01 | Jump terminal PC can be noncanonical locally | Resolved in the logical model under explicit total-verifier boundary binding; original counterexample retained | Canonical u32 contribution closure, cryptographic enforcement and Rust/artifact correspondence remain external |
 | F02 | Issued bigint controls violate the reference ABI | Accepted counterexamples for x12 = 0 and 65537 | Selected-operation effects and caller-cycle observations do not validate the full CSR |
-| F03 | An active worker can run without a caller | Accepted zero-clock worker with an actual state change | Distinct initialized matching bounds it to one and derives its actual first-group states; exclusion remains open |
+| F03 | Historical active worker without a caller | Native timestamp fix, 14 Rust profiles, full execution proof, rejection/valid-issued regressions and full FV gates pass | Native BabyBear exclusion and initialized caller accounting derive the former external ledger |
 | F04 | Worker ROM shadows can disagree with public bytes | Accepted COPY/request counterexample | Physical seed images and tracked-RAM profiles exclude the problematic general native case |
 | F05 | Raw inactive rows need not stutter | Conditionally resolved by the external contribution-mask boundary; no demonstrated implementation bug | Exact whole-layout masked closure derives active acceptance/execution; Rust/GKR/cryptographic enforcement remains external |
 | F06 | Discarded LW differs from original Sail | Accepted native NOP with no original Sail execution | `NoDiscardedLoads`, or the named Airbender NOP profile |
 | F07 | Standalone worker claims retain control/participation conditions | Unresolved general binding; discharged in specified stronger scopes | `rounds`, `RoundMask`, `keccakActive` |
 | F08 | Complete hash claims retain protocol shape and first-span restrictions | Public-program binding derives selected span/controller shape and all issued round coverage/masks; full coverage exposes the zero-clock extended-round boundary | Mode/duration/preparation, public code profile, controller extents/full coverage and legacy prefix conditions |
 | F09 | Setup/decoder queries retain implementation-fidelity boundaries | Actual table contents and semantic connections are imported and checked | Rust/parser fidelity, public-program binding, native query binding and commitment authentication remain external |
-| F10 | Caller-cycle effects are weaker than full custom instruction execution | Complete mixed CSR reference execution now checked under explicit F02/F03 and the public protocol/RAM profiles | General acceptance still admits invalid commands and unissued effects; the conditional theorem does not fix F02/F03/F04 |
+| F10 | Caller-cycle effects are weaker than full custom instruction execution | Complete mixed CSR reference execution uses F02 and public protocol/RAM profiles; native participation is derived | General acceptance still admits invalid bigint commands and ROM-shadow behavior; conditional integration does not fix F02/F04 |
 
 Review F01's external correspondence and F02–F04 first. F05 and F06 establish why current
 participation/profile restrictions matter. F07–F10 identify assumptions or narrower
@@ -812,54 +850,36 @@ the bigint reference-connection proof task, not F02 implementation enforcement.
 behavior to general native acceptance and the full call reference. An assumed
 `validControl` premise would only narrow the theorem and leave these witnesses open.
 
-## F03 — Zero-clock fulfillment matching permits an unissued state change
+## F03 — Historical zero-clock worker; native exclusion adopted
 
-**Evidence.** [DelegationZeroInvocation](Tests/DelegationZeroInvocation.lean)
-proves `active_zero_invocation`, `no_caller_virtual_matching`,
-`mixed_unissued_worker_accepted` and `mixed_unissued_control_update`. An active G
-worker satisfies imported constraints, modeled tables and initialized architectural
-matching, yet matches no caller and changes actual Sail x12 from 0 to 1.
+**Current source and proof.** The rebased `av_gkr_compiler` target includes #490's
+active-invocation timestamp query. All 14 native cached/no-cache Rust profiles
+reject execute-one/zero-invocation rows and retain valid issued/padding cases.
+[Native exclusion](Airbender/Proofs/Delegation/NativeInvocation.lean) proves this
+for all four imported BabyBear worker families. The actual query would require
+503316480 to lie in the 19-bit range. No positive-clock premise is supplied.
+[Native occurrence accounting](Airbender/Proofs/ExternalBoundary/NativeRequests.lean)
+then derives the full occurrence ledger from these accepted constraints and
+initialized caller binding. The full mixed execution proof and current rejection/valid-issued regressions
+pass using this derivation instead of the temporary ledger premise. The full
+137-test/library/executable/importer/audit/review validation passes on this pin.
 
-**Mechanism.** In [Requests.Matching](Airbender/Review/Helpers/Delegation/Requests.lean),
-a zero-clock worker's issued and empty virtual tokens coincide and cancel. Request
-binding/unique scheduling is established for live requests, not an exclusion of
-all additional workers. The [unified RequestBinding](Airbender/Review/Helpers/UnifiedReduced/RequestTrace.lean)
-explicitly classifies zero-clock workers as unissued rather than rejecting them.
-Moving an effect before a selected window retains the effect;
-`zero_worker_retained_before_request_window` checks this directly.
+**Historical evidence.** The exact prior accepted witness and its composed
+x12 = 0→1 prefix effects remain available in the
+[immutable pre-rebase source](https://github.com/matter-labs/zksync-airbender/blob/010c3cbb3c237b6e125277162dd1011c2f212333/formal_verification/lean/Tests/DelegationZeroInvocation.lean).
+Its zero-clock issued/empty virtual tokens coincide, so request cancellation
+alone never supplied worker-to-caller coverage. Initialized physical matching
+bounded this surplus to one; caller-to-worker uniqueness did not exclude it.
+The upstream fix adds the missing native constraint.
 
-**Current preparation scope.**
-[ControlPreparation.prefixScope](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean)
-now excludes worker writes only from the final preparation cycle. Earlier workers,
-including zero-clock workers, remain in the actual history.
-`control_preparation_after_unissued_worker` checks a retained unissued update followed
-by actual ADDI preparation. The original extended-round first-span scope still requires its separate
-empty prefix; the regional entry uses explicit controller coverage and retains
-unissued G-prefix effects. Neither condition is a general fulfillment-exclusion proof. The new program-derived
-request window retains its `unissued` classification and prefix placement too;
-no nonzero-invocation premise is introduced.
-
-**Derived initialization binding.** The
-[unissued worker entry](Airbender/Review/Trace/UnifiedReduced/Theorems.lean)
-now roots all reads of every zero-clock worker directly in the public initial
-image, including raw timestamps and canonical words. This uses native write-clock
-floors and logical memory matching, without supported-operation premises. It
-retains the actual G state change above, including when the later ADDI reset is
-present. For extended rounds, the actual public x12 high limb now characterizes
-exclusive masks exactly; this does not establish exclusion or inertness.
-
-**Derived multiplicity bound.** With a distinct initialized physical-cell domain,
-the shared x10 transfer now derives unique numeric and raw invocation clocks for
-all four families, including zero. The unissued sublist has at most one occurrence.
-`duplicate_unissued_request_checks` preserves native participation and virtual
-matching for two identical G rows; `duplicate_unissued_workers_rejected` proves
-that architectural acceptance rejects that pool. `unissued_worker_bound_is_sharp`
-retains the existing single G worker and its actual state change. This strengthens
-the multiplicity bound while keeping the demonstrated unissued-worker finding.
-
-**Closure needed.** Show that the actual full acceptance argument rejects unissued
-active workers, or gives them a justified inert meaning. Issued-worker uniqueness
-alone is insufficient. Do not close the finding by assuming nonzero invocation.
+**Current regression.** [DelegationZeroInvocation](Tests/DelegationZeroInvocation.lean)
+retains the same raw row, instruction/core arithmetic, zero G result, token
+permutation, virtual cancellation and padding retention. It replaces obsolete
+accepted-execution assertions with `active_zero_invocation_rejected` and
+`unissued_worker_rejected`. Valid issued G execution and hash coverage remain.
+The generic ledger interface and lower-level zero-clock classifications remain
+available for profiles that do not select these native BabyBear constraints.
+Rust/artifact correspondence and cryptographic enforcement stay external.
 
 ## F04 — A valid COPY mode does not bind native worker ROM to public bytes
 
@@ -1144,8 +1164,9 @@ reference sequence is claimed by this observational certificate.
 
 **Retained counterexamples.** F02's invalid bigint calls with controls 0 and
 65537 instantiate the combined certificate itself. The same assembly also covers
-actual COPY→LW/SW retirement and the zero-clock G's real prefix execution.
-The former reference rejects both controls; the latter worker has no caller.
+actual COPY→LW/SW retirement. The pinned bigint reference rejects both
+invalid controls. Historical accepted zero-clock execution is now rejected by
+the imported native timestamp constraints (F03).
 Adding ordinary retirement and terminal observations therefore does not supply
 full-call control/pointer/invalid-call semantics. The original standard/custom
 [Mixed.execution_soundness](Airbender/Review/Trace/UnifiedReduced/Theorems.lean)
@@ -1156,7 +1177,7 @@ now establishes the complete successful reference state transition and PC advanc
 under the temporary F02 command contract. Hash-call reference transitions and
 whole mixed sequencing are now connected in
 [full_execution_soundness](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean)
-under the temporary occurrence ledger. Every ordinary/TRIADD/XORROT and complete
+with participation derived from native constraints and initialized caller accounting. Every ordinary/TRIADD/XORROT and complete
 bigint/G/extended-round/Keccak caller step fetches its actual public instruction,
 executes in the same full Sail states and retires to the next native PC. The
 chain starts at the original public state and reaches actual terminal cells/PC;
@@ -1164,8 +1185,8 @@ it is a `Realizes` result, rather than the older observational certificate.
 Public initial PC, readonly code/configuration, tracked-RAM domain, modeled tables,
 logical matching and the existing complete prepared-protocol profile remain
 explicit. Per-row reads, ABI controls, lane bounds, pointer conditions and
-intermediate states are derived. The occurrence ledger derives total coverage
-and excludes zero-clock prefixes; no positive-invocation premise is added.
+intermediate states are derived. The internally derived occurrence ledger
+gives total coverage; no positive-invocation premise is added.
 The [G](Airbender/Review/Trace/Workers/Blake2G/ReferenceCalls.lean) and
 [extended-round](Airbender/Review/Trace/Workers/Blake2Round/ReferenceCalls.lean) and
 [Keccak](Airbender/Review/Trace/Workers/Keccak/ReferenceCalls.lean)
@@ -1174,15 +1195,15 @@ profiles; they add no per-row control/pointer/result assumption. These bridges
 now also supply mixed caller PC retirement. The COPY→LW/SW regression starts
 with public PC zero and nextPC 123 and realizes the complete mixed trace.
 
-**Scope closure.** F10's conditional proof integration is complete. F02/F03/F04
+**Scope closure.** F10's conditional proof integration is complete. F02/F04
 remain implementation findings; their temporary contracts are neither fixes nor
 unrestricted acceptance claims. Initialization/teardown now has its separately
 checked imported-GKR boundary connection, described below.
 
-**External closure needed.** Bind accepted caller validity and participation to
-the complete pinned reference, including invalid calls, or make an explicit
-reference/scope decision. Current constraints and matching cannot imply the
-missing properties in the face of F02/F03. Worker ROM binding (F04) needs its stated additional inputs. Inactive
+**External closure needed.** Bind accepted caller validity to the complete
+pinned reference, including invalid calls, or make an explicit reference/scope
+decision. Current constraints and matching cannot imply command validity in
+the face of F02. Worker ROM binding (F04) needs its stated additional inputs. Inactive
 padding (F05) now has the separately authorized conditional logical closure.
 Independent composition work is checked. The active continuation prioritizes the
 reviewed implementation findings and their explicitly temporary contracts,
@@ -1221,7 +1242,8 @@ F01 is the important additional endpoint exception in the jump/pooled scope.
 - Shared worker histories derive pointer/operand bounds and actual transfers;
   the RAM-only public domain in F04 must still stay visible.
 - Issued-worker identity, unique invocation clocks and cycle placement are
-  derived; the unissued exception in F03 remains.
+  derived. Current native BabyBear constraints additionally exclude active
+  zero-clock workers and derive the full occurrence ledger (F03).
 - Local G bounds, selected-lane/frame facts and exclusive extended-round masks
   have stronger history/protocol connections. Their presence in a weaker local
   calculation interface is not alone evidence of a circuit bug.
@@ -1236,9 +1258,9 @@ category must never be described simply as public context.
 The temporary-contract proofs check distinct window domains, decoder filler
 exclusion, full occurrence coverage, native command selection and RAM-port token
 transport. Regressions retain sparse/reversed distinct windows, reject duplicates
-and truncation, exhibit zero-clock native matching without a full ledger, and
-exclude the existing invalid-control and ROM-shadow witnesses only from the new
-temporary contracts. The original accepted witnesses remain checked. These are
+and truncation, retain historical raw zero-clock matching while proving current
+native rejection, and exclude the invalid-control and ROM-shadow witnesses only
+from the corresponding temporary contracts. Those latter witnesses remain accepted. These are
 conditional mathematical results, which alone fix no implementation finding.
 AIH-334's separately validated source fix is recorded above.
 
@@ -1258,8 +1280,8 @@ its source/comment assessments are recorded above. Existing terminal-PC, inactiv
 zero-clock, ROM-shadow and discarded-load regressions remain checked.
 
 Review F01's explicit canonical boundary contract and the remaining Rust/artifact
-and cryptographic correspondence. For unresolved F02–F04, review the actual request
-and worker acceptance argument first; then review F07/F08's witness-shape
+and cryptographic correspondence. For unresolved F02/F04, review the actual
+control and worker-ROM acceptance argument first; then review F07/F08's witness-shape
 restrictions and F09's concrete setup binding. Closing a remaining finding should
 supply that connection or explicitly revise the claimed scope; adding the missing
 property as an assumption is not closure.

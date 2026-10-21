@@ -57,6 +57,7 @@ private theorem core : FlatOperation.ConstraintsHoldFlat (Verification.environme
   repeat' apply And.intro
   all_goals solve
     | (apply Verification.range16_contains; decide +kernel)
+    | (apply Trace.Proofs.range_contains; decide +kernel)
     | (refine ⟨⟨0, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; decide +kernel)
     | (refine ⟨⟨262144, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; decide +kernel)
     | (refine ⟨⟨1310720, by decide⟩, ?_⟩; simp only [Bigint.Proofs.lookupReferenceRow]; decide +kernel)
@@ -71,7 +72,7 @@ private theorem clocks : FlatOperation.ConstraintsHoldFlat (Verification.environ
   · simp [Bigint.importedConstraintsTimestampLookups, FlatOperation.constraints]
   · rw [List.forall_mem_iff_forall_getElem]
     intro i bound
-    have short : i < 40 := by simpa only [Bigint.timestamp_count] using bound
+    have short : i < 41 := by simpa only [Bigint.timestamp_count] using bound
     interval_cases i
     all_goals apply Trace.Proofs.range_contains
     all_goals decide +kernel

@@ -80,7 +80,7 @@ theorem satisfies : FlatOperation.ConstraintsHoldFlat (Verification.environment 
     have bound : i < 42 := by simpa only [Keccak.lookup_count] using hi
     by_cases range : i = 0
     · subst i
-      apply Verification.range16_contains
+      apply Trace.Proofs.range_contains
       decide
     by_cases controller : i = 1
     · subst i

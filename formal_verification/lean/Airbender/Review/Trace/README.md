@@ -33,7 +33,8 @@ has a separate registry. [Worker spans](Workers/README.md#checked-results) and
 effects. [Full mixed caller execution](UnifiedReduced/FullExecution.lean) now
 connects complete bigint/G/extended-round/Keccak calls and ordinary retirement
 to terminal PC/cells under the existing public protocol profile and temporary
-F02/F03 contracts.
+F02 command contract. Native BabyBear timestamp constraints and initialized
+caller accounting derive complete worker participation.
 
 Start with [Soundness](Soundness.lean) for the primary six-family standard claim
 and its external-stream extension. [Execution](Execution.lean) defines the generic
@@ -71,12 +72,13 @@ discarded-load restriction differs from the named Airbender PC-only-NOP profile.
 Keep the verifier-boundary contract, active-row scope, public domains and caller ABI
 conditions visible. Caller cycles and complete selected spans do not by themselves
 prove whole mixed execution with callers; the stronger full-execution theorem
-adds the explicit command and occurrence-ledger boundaries. Consult
+uses the explicit command boundary and internally derived occurrence ledger. Consult
 [current coverage](../../../VERIFICATION_STATUS.md) and
 [checked boundaries](../../../TRUST_AND_REVIEW.md#checked-scope-boundaries).
 
 [Padding soundness](Padding.lean) derives the existing restricted, six-family and
 unified execution claims from the [external contribution-mask boundary](../Helpers/Context/PaddingBoundary/README.md).
 Inactive native PC/write columns need not stutter; exact masked tuple closure
-selects the architectural rows. Mixed callers retain their observation scope and
-execute-one zero-clock worker effects.
+selects the architectural rows. Mixed caller observations retain their scope.
+Raw execute-one zero-clock rows survive filtering but fail the current native
+BabyBear timestamp constraints.

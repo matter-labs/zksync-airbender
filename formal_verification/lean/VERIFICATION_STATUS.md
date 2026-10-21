@@ -1,5 +1,7 @@
 # Verification status
 
+Checked on `av_gkr_compiler` at `451884662`.
+
 **Checked** means kernel-checked soundness of the imported richer no-cache
 constraints under the published Review contracts. See [trust boundaries](TRUST_AND_REVIEW.md)
 and the [fixed scope](FORMAL_VERIFICATION_PLAN.md).
@@ -24,7 +26,7 @@ and the [fixed scope](FORMAL_VERIFICATION_PLAN.md).
 | --- | --- |
 | [Pooled execution](Airbender/Review/Trace/Soundness.lean) | Initialized history derives reads, bounds and decoding; six-family Sail execution realizes terminal PC/cells. |
 | [Mixed cycles](Airbender/Review/Trace/UnifiedReduced/MixedCycles.lean) | Ordinary/custom retirement, [complete bigint calls under F02](Airbender/Review/Trace/UnifiedReduced/BigintCalls.lean), caller observations and every worker share one initialized history and raw PC/clock path. |
-| [Full mixed execution](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean) | Ordinary/TRIADD/XORROT and complete bigint/G/extended-round/Keccak CSR calls reach native terminal PC/cells under the existing public protocol profile and explicit F02/F03 contracts. |
+| [Full mixed execution](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean) | Ordinary/TRIADD/XORROT and complete bigint/G/extended-round/Keccak CSR calls reach native terminal PC/cells under the existing public protocol profile and F02 command contract; native constraints derive worker participation. |
 | [Hash spans](Airbender/Review/Trace/UnifiedReduced/Segmentation.lean) | Existing preparation and selected references compose; issued hash workers partition into complete spans under the public protocol profile. |
 | [Canonical terminal PC](Airbender/Review/Helpers/Context/VerifierBoundary/README.md) | Checked under the external canonical verifier boundary. |
 | [Inactive padding](Airbender/Review/Helpers/Context/PaddingBoundary/README.md) | Architectural erasure and existing execution derived under the external contribution-mask boundary. |
@@ -33,25 +35,16 @@ and the [fixed scope](FORMAL_VERIFICATION_PLAN.md).
 
 ## Remaining work
 
-Temporary assumptions narrow proofs; implementation findings remain open until
-fixed or independently shown to be enforced. See the [case register](FINDINGS.md#linear-and-open-pr-review--15-october-2026).
-
-No authorized local proof-integration work remains. Implementation findings and
-external validation/refinement boundaries stay in the case register and deferred plan.
-
-AIH-334's EVM check is fixed and tested. AIH-336's tail/cache correction passes CPU
-regressions; accelerated runtime/proof replay and other findings remain in the case register.
-
-Evidence and detailed boundaries: [findings](FINDINGS.md).
-Separately scoped work: [deferred milestones](FORMAL_VERIFICATION_PLAN.md#deferred-milestones).
+Implementation findings and external validation are tracked in the
+[case register](FINDINGS.md#linear-and-open-pr-review--15-october-2026).
+Temporary assumptions do not close implementation bugs. Separately scoped work:
+[deferred milestones](FORMAL_VERIFICATION_PLAN.md#deferred-milestones).
 
 ## Validation
 
-Current checked checkpoint:
-
-- Library, both executables and all 135 concrete test modules pass.
+- Library, both executables and all 137 concrete test modules pass.
 - Importer regressions pass.
-- Axiom audit: 3,659 roots, 149 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
+- Axiom audit: 3,830 roots, 149 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
 - All 166 public Review theorem roots are audited; review/reference checks pass.
 - No handwritten project diagnostics, `sorry` or project axioms.
 

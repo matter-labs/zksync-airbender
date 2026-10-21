@@ -18,22 +18,22 @@ theorem message_port_layout (i : Fin 16) : importedConstraintsIndirectPorts[24 +
   fin_cases i <;> rfl
 
 theorem timestamp_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 88 := rfl
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 89 := rfl
 
 theorem delegation_columns : importedConstraintsDelegationColumns =
     (⟨0, #v[1, 2], (Vector.ofFn (fun i : Fin 43 =>
-      Trace.TimestampPort.mk 2 #v[740 + 3 * i.val, 741 + 3 * i.val]
-        (742 + 3 * i.val))).toArray⟩ : Delegation.ClockColumns) := by decide
+      Trace.TimestampPort.mk 2 #v[632 + 3 * i.val, 633 + 3 * i.val]
+        (634 + 3 * i.val))).toArray⟩ : Delegation.ClockColumns) := by decide
 
 theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
     importedConstraintsDelegationColumns.ports := by
   simp [importedConstraintsMemoryPorts, importedConstraintsDelegationColumns]
 
-theorem constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 4)) :
-    (FlatOperation.constraints (importedConstraints setup)).length = 352 := rfl
+theorem constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 6)) :
+    (FlatOperation.constraints (importedConstraints setup)).length = 220 := rfl
 
-theorem lookup_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 4)) :
-    (FlatOperation.lookups (importedConstraints setup)).length = 210 := rfl
+theorem lookup_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 6)) :
+    (FlatOperation.lookups (importedConstraints setup)).length = 194 := rfl
 
 theorem variable_roles :
     importedConstraintsVariableNames.lookup 0 = some "Execute flag for cycle" ∧

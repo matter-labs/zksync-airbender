@@ -3,23 +3,26 @@
 These contracts support conditional proofs. Their individual
 [finding statuses](../../../../../FINDINGS.md#linear-and-open-pr-review--15-october-2026)
 distinguish open defects from validated source fixes with unproved formal bindings.
-They are not proved consequences of current native/verifier acceptance,
-implemented fixes, or a certificate for the full custom CSR. Existing acceptance
-definitions and counterexamples retain their original scope.
+The generic contracts remain explicit at their conditional entries. Current
+native BabyBear constraints and initialized caller accounting now derive the
+Requests ledger; full mixed execution uses that derivation. The other contracts
+retain the implementation and formal-binding boundaries listed below.
 
 | Contract | Conditional consequence | Finding and missing enforcement |
 | --- | --- | --- |
 | [Initialization](Initialization.lean) | Typed window geometry and distinct selected indices give distinct aligned physical cells, including all GPRs. | AIH-334's EVM validation is implemented and tested; formal correspondence remains external. Geometry comes from the target layout; no copied fixed ceiling, contiguous-window requirement or assumed public memory values. |
 | [Decoder](Decoder.lean) | Committed real rows plus unreachable filler and exact active query binding imply the existing logical public decoder membership. | AIH-336 / F09: source tail/cache correction and CPU regressions now exist; accelerated runtime/proof replay validation and formal extraction/authentication/query binding remain open. The contract itself is unchanged. |
-| [Requests](Requests.lean) | A full occurrence ledger plus the existing request binding gives every worker a caller at its native slot, and excludes the zero-clock surplus. | AIH-339 / F03: native cancelling tokens do not supply this ledger. No clock-positivity premise or worker result is added. |
+| [Requests](Requests.lean) | A full occurrence ledger gives every worker a caller at its native slot. | Current BabyBear timestamp constraints exclude active zero clocks; [native accounting](../../../../Proofs/ExternalBoundary/NativeRequests.lean) derives the ledger from accepted constraints and initialized caller binding. The generic contract remains available for weaker profiles. No clock-positivity or worker-result premise is added. |
 | [Bigint control](BigintABI.lean) | Full x12 binding to one opcode plus carry now supports [complete bigint call retirement](../../../Trace/UnifiedReduced/BigintCalls.lean), with pointers/operands/frame derived from accepted initialized history. | F02: native acceptance admits controls 0/65537. This is temporary control validation, not an implementation fix; it supplies no pointers, operands, results or desired execution. Carry uses bit six; COPY uses bit seven. |
 | [Worker RAM](WorkerRAM.lean) | [Whole mixed-memory composition](../../../Trace/UnifiedReduced/NativeMixedROM.lean) now derives physical boot initialization and one public-byte ordinary/caller/worker history with terminal cells. | F04: accepted ROM-shadow COPY remains a discrepancy. The address-only restriction supplies neither reads nor writes; arbitrary native acceptance has not established it. |
 
 [Public conditional results](../../../Trace/ExternalBoundaries.lean) reuse
 the [proof implementations](../../../../Proofs/ExternalBoundary/Initialization.lean).
-They expose each temporary premise directly. Original terminal-PC, inactive-row,
-invalid-control, zero-clock and ROM-shadow witnesses remain checked under their
-old acceptance relations. Passing a temporary contract is not a finding-closure
+They expose each conditional premise directly. Terminal-PC, inactive-row,
+invalid-control and ROM-shadow fixtures retain their scopes. The
+[zero-clock fixture](../../../../../Tests/DelegationZeroInvocation.lean) retains
+its raw arithmetic, token cancellation and padding behavior, and now proves
+rejection by the current native timestamp constraints. Passing a temporary contract is not a finding-closure
 criterion: inspect and validate the actual implementation fix or independent
 global enforcement before changing the finding's status.
 
