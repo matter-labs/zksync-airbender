@@ -24,7 +24,7 @@ theorem column_g_queries_1 {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
         ⟨i.val, by rw [Blake2G.Proofs.mixing_lookup_count]; exact i.isLt⟩).Contains
       (Verification.environment (Blake2G.Proofs.assemble (columnGBase (1 : Fin 4) w))) := by
   have member := Verification.lookup_of_holds h
-    ⟨2 + 18 * (1 : Fin 4).val + i.val, by rw [lookup_count]; have size := i.isLt; simp; omega⟩
+    ⟨2 + 18 * 1 + i.val, by rw [lookup_count]; have size := i.isLt; simp; omega⟩
   fin_cases i
   all_goals op_index at member ⊢
   all_goals apply padded_membership member
