@@ -6577,6 +6577,53 @@
       "source_path": "Airbender/Proofs/SubwordMemory/Data.lean",
       "source_sha256": "f284444a8f4674cce1a5dc871f34f0e2100688679365b1292f06a16a41fd18ee",
       "change": "Adapt the pinned bounded-word-to-original-Sail extension argument to actual v2 RAM/ROM selectors, raw metadata, two-bit offsets, single aligned ROM table and masked writes. Native key/index/range interfaces and original fields are derived; no v3 field inverse, table layout or desired read/result premise is copied."
+    },
+    {
+      "path": "Airbender/Review/Circuits/SubwordMemory/StoreModel.lean",
+      "backport_reuse_revision": "88b3fb85f86a65599d7868fcd5a9b5f48598e4a0",
+      "backport_reuse_path": "Airbender/Review/Circuits/SubwordMemory/DataModel.lean",
+      "backport_reuse_sha256": "de982890bb6511c9d0da136c055868f1fcb6c54f074fb078f7be3afa06322c54",
+      "change": "Reuse actual native data/write observables. Add only the actual third-read word and the changed/preserved SB/SH byte-window result. Keep original Sail memory access, exceptions and retirement separate."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/StoreData.lean",
+      "backport_reuse_revision": "88b3fb85f86a65599d7868fcd5a9b5f48598e4a0",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/StoreBounds.lean",
+      "backport_reuse_sha256": "d28e8d42ad28e2bdfec076dc7a3c7ba0c0f9f37f0248eaea915c9ae74a027216",
+      "change": "Reuse literal native clearing/placement keys, exact packing, no-wrap merged bounds and actual field write muxes. Derive the whole natural merged word and each changed/preserved byte from actual read bounds and original decoded metadata. No v3 native column, field, selector or table identity is imported."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/SubwordMemory/StoreData.lean",
+      "backport_reuse_revision": "88b3fb85f86a65599d7868fcd5a9b5f48598e4a0",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/SubwordMemory/LoadData.lean",
+      "backport_reuse_sha256": "8517596557a2c3d30d22df4eeb91f652bc621a033b169ff248c5f22740b11705",
+      "change": "Reuse actual initialized read-range extraction and same-public-state address/decoding recovery. Extract the third actual old-word read range and discharge every local store interface from native acceptance and original decoding, without supplied source/old values, ranges, alignment, expected writes or intermediate states."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/SubwordMemory/Stores.lean",
+      "backport_reuse_revision": "88b3fb85f86a65599d7868fcd5a9b5f48598e4a0",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/SubwordMemory/Loads.lean",
+      "backport_reuse_sha256": "00173983a91f3bd75b7c031792e5222d1db19ab75a2d1521faaef9febb34f3e6",
+      "change": "Reuse one short public initialization/decoding/native-acceptance wrapper. Derive every changed and preserved SB/SH byte. Keep calculation and assembly under Proofs and original memory-access/exception/retirement semantics explicitly separate."
+    },
+    {
+      "path": "Tests/SubwordStoreData.lean",
+      "backport_reuse_revision": "88b3fb85f86a65599d7868fcd5a9b5f48598e4a0",
+      "backport_reuse_path": "Tests/SubwordLoadData.lean",
+      "backport_reuse_sha256": "6713871a2881939f2f8b563e9dc175525c4527fb34326dfa2559bf78d4c00b75",
+      "change": "Reuse all eight complete native initialized decoded traces unchanged for the new public store claim. Check actual SB offset-three replacement and SH low-halfword replacement with nonzero high source/old limbs and high-bit byte data."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/StoreBytes.lean",
+      "source_path": "Airbender/Proofs/SubwordMemory/Stores.lean",
+      "source_sha256": "45849c2a38f4c71838adad5c7f48330cc528ab325687a1241d971f3a38f4cd44",
+      "change": "Adapt the pinned v3 store_data/store_byte_encoding natural merge and BitVec byte-window argument into a pure proof helper. Use native v2 clearing arithmetic 256*(half/256), factor whole-word bounds, and retain default recursion/heartbeat limits. No v3 native field, column, lookup key, selector, mapping premise or resource override is copied."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/StoreData.lean",
+      "source_path": "Airbender/Proofs/SubwordMemory/Stores.lean",
+      "source_sha256": "45849c2a38f4c71838adad5c7f48330cc528ab325687a1241d971f3a38f4cd44",
+      "change": "Adapt pinned v3 store assembly to actual v2 clearing/placement raw-funct3 keys, two-bit offset, old/source read columns and actual store writes. Every selector/key/range/mapping is derived from native acceptance and initialized reads before the byte-window claim. Keep all full literal helper rows and derive SH alignment from original decoded metadata and actual fixed offset constraints."
     }
   ],
   "setup_artifacts": [

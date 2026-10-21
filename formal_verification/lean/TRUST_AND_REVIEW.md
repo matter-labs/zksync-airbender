@@ -2495,3 +2495,46 @@ compiler refinement and physical verifier/cryptographic enforcement remain
 separate. FINDINGS and its exact historical archive are unchanged; no confirmed
 native defect is added. Resource ceilings are unchanged, the original checkout
 is preserved and no push/publication is authorized.
+
+## Initialized native subword store-byte checkpoint (2026-10-21)
+
+[Pure byte arithmetic](Airbender/Proofs/SubwordMemory/StoreBytes.lean) adapts the
+pinned v3 natural-merge/BitVec argument, using native v2 clearing arithmetic and
+separate whole-word bounds at default recursion and heartbeat limits. No native
+v3 field, column, table, key, selector or mapping premise is copied.
+[The native connection](Airbender/Proofs/SubwordMemory/StoreData.lean) reconstructs
+both actual packed keys and clearing/placement outputs from bounded actual reads.
+Disjoint contributions cannot wrap Mersenne31 or carry beyond the selected limb.
+The accepted native size/upper muxes and actual write equations then give the
+complete merged word and each changed/preserved byte. SB selects exactly the
+low source byte at any of four positions; SH selects the low source halfword at
+either aligned position. Original decoding and the native offset mask derive
+SH alignment. Complete literal table domains, including unused/odd rows, remain
+unchanged; no aligned-domain table replacement is used.
+
+[Initialized assembly](Airbender/Proofs/Trace/Families/SubwordMemory/StoreData.lean)
+extracts both actual data-port and old-word-port read bounds from accepted history.
+[One short public claim](Airbender/Review/Trace/Families/SubwordMemory/Stores.lean)
+uses the same original public state for initialization and full sparse decoding.
+No expected source/old word, range, alignment, selector, packed-key identity,
+written value, table equivalence or intermediate state is supplied. Review adds
+only the actual old-word observable, byte-window result and short theorem;
+calculation and proof assembly remain under Proofs.
+
+[Eight unchanged complete native traces](Tests/SubwordStoreData.lean) pass the new
+claim, preserving all original memory/state matches and public code/seed reads.
+Concrete accepted SB at offset three changes 0x89cd4567 to 0xabcd4567 from source
+0xdead12ab; accepted SH changes it to 0x89cd12ab. Nonzero high source bits are
+discarded and unselected old bytes are preserved. All-input byte correctness is
+kernel proved, rather than inferred from these examples.
+
+Next work connects these derived load/store values and addresses to actual
+architectural memory/ROM read-write history, original Sail access/exception
+behavior, native PC/prepare/retire behavior and full original subword execution.
+The accepted odd LH-to-x0 case still has an open original exception comparison;
+this store-byte checkpoint does not resolve or reclassify it. Delegation/custom/
+CSR, unified execution, initialization/teardown and terminal/padding boundaries
+remain unfinished. General Rust/JSON/compiler refinement and physical verifier/
+cryptographic enforcement remain separate. FINDINGS and its exact historical
+archive are unchanged, with zero confirmed native defects. Resource ceilings
+are unchanged, the original checkout is preserved and nothing is pushed.

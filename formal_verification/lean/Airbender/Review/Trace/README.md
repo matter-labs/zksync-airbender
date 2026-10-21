@@ -418,3 +418,12 @@ native read range, both offset bits and exact ROM index are derived. Eight old
 full traces remain unchanged; a ninth full odd LH-to-x0 trace prevents an
 unconditional alignment premise. Store byte windows and original architectural
 access/exception/retirement/execution remain open.
+
+[Initialized subword store bytes](Families/SubwordMemory/Stores.lean)
+derive every SB/SH byte update from the same public state used for initialization
+and original sparse decoding. Existing native history supplies both actual
+source and old-RAM read bounds. Eight unchanged complete traces retain their
+actual matching; SB offset-three and SH halfword replacement preserve all other
+old bytes. No per-row expected read/write, range, alignment or intermediate
+state is supplied. Architectural read/write/ROM binding and original exception/
+retirement behavior remain open dependencies.

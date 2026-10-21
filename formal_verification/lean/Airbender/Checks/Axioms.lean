@@ -112,6 +112,8 @@ import Tests.SubwordLoadData
 import Tests.SubwordLoadExtension
 import Tests.SubwordOddX0
 
+import Tests.SubwordStoreData
+
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
 #print axioms Airbender.AddSub.Proofs.constraint_count
@@ -2470,3 +2472,16 @@ import Tests.SubwordOddX0
 #print axioms Tests.SubwordOddX0.decoded
 #print axioms Tests.SubwordOddX0.public_loads
 #print axioms Tests.SubwordOddX0.actual_odd_write
+
+#print axioms Airbender.SubwordMemory.Proofs.merged_store_bound
+#print axioms Airbender.SubwordMemory.Proofs.merged_store_bytes
+#print axioms Airbender.SubwordMemory.Proofs.packed_store_sum
+#print axioms Airbender.SubwordMemory.Proofs.native_store_merge
+#print axioms Airbender.SubwordMemory.Proofs.entry_store_effect
+#print axioms Airbender.SubwordMemory.Proofs.old_bound_of_reads
+#print axioms Airbender.SubwordMemory.Proofs.image_native_stores
+#print axioms Airbender.SubwordMemory.public_native_stores
+#print axioms Tests.SubwordStoreData.public_stores
+#print axioms Tests.SubwordStoreData.actual_stores
+#print axioms Tests.SubwordStoreData.actual_sb
+#print axioms Tests.SubwordStoreData.actual_sh

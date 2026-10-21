@@ -60,3 +60,13 @@ through exact v2 native keys and derived controls. Native ROM indexing and actua
 RAM word ranges are derived; the odd discarded-load waiver remains explicit.
 No native v3 key/table identity, table equivalence or expected read/result is
 supplied. Original architectural access/exception/retirement remains separate.
+
+## Native subword store byte windows
+
+[Pure byte arithmetic](../../Proofs/SubwordMemory/StoreBytes.lean) adapts the
+pinned v3 mathematical merge argument at default resource settings.
+[The initialized native store claim](../Trace/Families/SubwordMemory/Stores.lean)
+connects it to actual v2 clearing/placement keys, complete literal table outputs
+and derived native selectors. SH alignment comes from the actual offset mask
+and original decoding. No native v3 table/field identity or desired write is
+assumed. Original architectural memory access/exception/retirement is separate.

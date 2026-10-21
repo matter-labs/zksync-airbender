@@ -1457,3 +1457,10 @@ ROM word index and retained alignment are derived. Nine complete traces include
 an odd discarded LH-to-x0 without imposing unconditional alignment. Store byte
 windows, architectural ROM/access/exception binding and original execution remain
 next work; no confirmed defect or repair is claimed by this value checkpoint.
+
+[Initialized native subword store bytes](Airbender/Review/Trace/Families/SubwordMemory/Stores.lean)
+now derive every changed and preserved SB/SH byte from actual initialized reads,
+original decoding and native constraints. Exact clearing/placement keys, size,
+upper selection and SH alignment are derived. Architectural read/write and ROM
+binding, original access/exception behavior and full instruction execution remain
+next work; this byte-effect checkpoint adds no confirmed finding.

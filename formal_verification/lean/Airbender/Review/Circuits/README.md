@@ -53,3 +53,9 @@ native controls and initialized words. The single native ROM index and retained
 alignment are derived; an odd discarded halfword remains in a full initialized
 trace. Store byte windows, architectural ROM/access/exception binding and original
 subword retirement/execution remain next dependencies.
+
+[Initialized subword store bytes](../Trace/Families/SubwordMemory/Stores.lean)
+now connect actual native clearing/placement queries and write muxes to every
+changed/preserved SB/SH byte. Actual source/old ranges and selectors are derived;
+full literal helper domains remain unchanged. Architectural memory/ROM and
+original access/exception/retirement remain separate next dependencies.
