@@ -6,6 +6,13 @@
 The [findings audit](FINDINGS.md) keeps observed behavior separate from unported
 v3 findings and missing proof connections.
 
+The current user priority is the [actual combined reduced machine](../../cs/reduced_machine_preprocessed_layout.json).
+It has not passed: its native layout currently rejects in the importer, and no
+v2 reduced-machine execution theorem is claimed. Existing standalone-family
+results are reusable components, not combined-machine coverage. The reduced
+machine is word-only for memory operations; subword retirement is not a required
+predecessor. See the [active priority and concrete blocker](FORMAL_VERIFICATION_PLAN.md#user-priority-native-reduced-machine-2026-10-21).
+
 The proof path is:
 
 ```text

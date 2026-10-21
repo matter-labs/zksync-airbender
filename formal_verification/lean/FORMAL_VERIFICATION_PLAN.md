@@ -6,6 +6,36 @@ boundaries. This document is a snapshot of pending work; checked coverage lives
 in [Verification status](VERIFICATION_STATUS.md), and accepted counterexamples
 and unresolved connections live in [Findings](FINDINGS.md).
 
+## User priority: native reduced machine (2026-10-21)
+
+Work directly on the [actual combined reduced circuit](../../cs/reduced_machine_preprocessed_layout.json)
+and its original Sail execution connection now. The six standalone-family
+checkpoints are reusable components; they do not establish reduced-machine
+coverage. Do not complete remaining standalone/subword work first. The
+[native reduced path](../../cs/src/machine/ops/unrolled/reduced_machine_ops.rs)
+uses LoadOp with SUPPORT_LESS_THAN_WORD=false and StoreOp with the same flag
+false. Subword retirement is therefore not a prerequisite for this machine.
+This explicit user priority supersedes the older ordinary-family-first order
+in the historical checkpoints below.
+
+**The reduced machine has not passed.** A direct bounded importer probe of the
+pinned native layout rejects its U16GetSignAndHighByte selector before a reduced
+theorem is emitted. The actual artifact has 114 quadratic/five linear equations,
+eight scalar/eight timestamp queries, two constant/four dynamic tagged slots,
+141 logical variables and a log-23 trace. Its native state, decoder, lazy
+initialization/teardown and delegation-request descriptors must be retained
+explicitly. The importer currently checks different standalone selector/setup
+profiles. This is an importer/coverage blocker, not a source-defect finding or
+an accepted execution counterexample.
+
+The immediate sequence is exact reduced-layout intake and native table/setup
+connections, reduced selector/operand/write recovery, original clause execution,
+then combined histories, delegation accounting and terminal/public-state
+obligations. Reuse the existing ordinary proofs only through checked native
+reduced connections. Preserve original Clean/Sail semantics and all resource
+caps. Do not replace missing obligations with desired outputs, table equivalence
+or supplied intermediate states. The recurring task now records this priority.
+
 ## Integrated review contract
 
 Keep the same ownership boundaries as the source formalization:
