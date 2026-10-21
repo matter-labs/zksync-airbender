@@ -11,7 +11,7 @@
 4. runs `sail --lean` with upstream's flags (taken from sail-riscv's `model/CMakeLists.txt`) and `config/airbender-base.json`;
 5. post-processes (two mechanical edits, see below), assembles the Lake package `lean/sail-rv32/`
    (`lakefile.toml`, `lean-toolchain` = v4.34.1, `SailRV32/*.lean`, `lean-sail/` (fetched, never committed), `airbender-base.json` (the config the model was generated with),
-   `PROVENANCE.txt`, `SailRV32Smoke.lean`).
+   `lake-manifest.json`, `PROVENANCE.txt`, `SailRV32Smoke.lean`).
 
 Cold run: ~3.5 min, 1.3 GB RSS (with the Airbender config: 3:27). The output is byte-identical between runs (checked). `lake build` of the result:
 4.3-4.5 min wall, 4.8 GB peak RSS, 16 cores, 146-148 jobs, no errors.

@@ -80,6 +80,14 @@ which ships with the pinned toolchain (`--fresh` also replays Mathlib and Sail).
 metaprograms that might add declarations without the kernel. It takes tens of minutes, so it is not part of
 `verify.sh` and not run per commit: run it only at major milestones, such as before tagging or publishing a result.
 
+`leanchecker` selects modules by name prefix (`Human` means every `Human.*` module) and replays each selected module
+with its own copy of the imported environment, in parallel and without a limit. Given a root module or a batch, it
+can exhaust the machine's memory. So pass it one module at a time, never a module with modules below it unless it is
+small. Bound how many run at once by the memory available, not the core count. A check is mostly the system mapping
+the imported `.olean` files, so a few processes at once are faster than many. `backup-check.sh` does this. Lean 4.35's
+`lake check` replaces this: one export and one replay for the whole package, about 1 h for a Mathlib project, with
+nothing cached between runs. `lake check --paranoid` also runs independent kernels (lean4lean, nanoda and others).
+
 ### 1.6 Working with several agents or sessions
 
 - One writer per worktree at a time. Two sessions (or a forked session) on the same files overwrite each other and
