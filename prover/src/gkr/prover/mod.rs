@@ -2308,14 +2308,13 @@ mod packing_merge_tests {
 
     /// Inverse of `pack_polys_parallel_from_hypercubes_to_monomials` for a single
     /// packed poly: turn the whole `(N + pack_log2)`-variate monomial vector back
-    /// into hypercube evaluations. The forward transform is `bitreverse` then
-    /// `multivariate_hypercube_evals_into_coeffs` over ALL variables, so the inverse
-    /// is `multivariate_coeffs_into_hypercube_evals` then `bitreverse`. The vector is
+    /// into hypercube evaluations. The forward transform uses natural (LSB) order
+    /// over ALL variables without bit reversal, so the inverse is just
+    /// `multivariate_coeffs_into_hypercube_evals`. The vector is
     /// treated as one multilinear — it can NOT be split into per-sub-poly halves.
     fn packed_monomials_to_hypercube_evals(packed: &mut [F]) {
         let size_log2 = packed.len().trailing_zeros();
         multivariate_coeffs_into_hypercube_evals(packed, size_log2);
-        crate::fft::bitreverse_enumeration_inplace(packed);
     }
 
     /// Concatenate two `2^N`-sized multilinear polys `a`, `b` into a single
