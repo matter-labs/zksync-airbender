@@ -6475,6 +6475,108 @@
       "backport_reuse_path": "Tests/SubwordWordBounds.lean",
       "backport_reuse_sha256": "31959fc220faa632a0b503e8fd784719e55a722e9f0d253509572bd948e0a8a9",
       "change": "Reuse original decoder/metadata/query regressions plus short factored native-address applications. Check sign extension, both native carry levels, offset and containing words on the two complete native boundary rows. Keep boundary address checks separate from original instruction execution."
+    },
+    {
+      "path": "Airbender/Review/Circuits/SubwordMemory/DataModel.lean",
+      "backport_reuse_revision": "4d1afd05528e188b5ac378e3ef25fe7a85a69600",
+      "backport_reuse_path": "Airbender/Review/Circuits/SubwordMemory/AddressModel.lean",
+      "backport_reuse_sha256": "ad067a0461e9531686965e94ba71f5b8b6ebad6c2dc86452eb6e98f030d0adeb",
+      "change": "Reuse small actual native word/field observables. Add original operation width/unsigned projections and actual RAM/ROM load input, size/offset controls and masked Sail-extension results. State only load-value effects; original access/exception/retirement and store byte windows remain separate."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadExtension.lean",
+      "backport_reuse_revision": "4d1afd05528e188b5ac378e3ef25fe7a85a69600",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/PackedKeys.lean",
+      "backport_reuse_sha256": "05f039517204db0f160c56dc7bca3df51c9988f6b70dfba2a067438d21adbc28",
+      "change": "Reuse exact native 16-bit limb/two-bit offset/three-bit raw funct3 decomposition. Interpret literal native load outputs using unchanged shared Sail extension/extraction arithmetic. Keep all odd halfword/unused native rows and prove the retained aligned value formula without v3 key/table/field identities."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/DataControls.lean",
+      "backport_reuse_revision": "4d1afd05528e188b5ac378e3ef25fe7a85a69600",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/OffsetValues.lean",
+      "backport_reuse_sha256": "360bfaba4cae3c0284379ab35fa26344dfdb4d39509d7442ab3ee863003958df",
+      "change": "Reuse actual fixed-offset membership and accepted mask/size/upper controls. Recover exact raw/load/x0 bits from native canonical packing and original decoded fields. Derive size one and retained/store halfword alignment, preserving the native discarded-load waiver without assuming unconditional alignment."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/ROMAddress.lean",
+      "backport_reuse_revision": "4d1afd05528e188b5ac378e3ef25fe7a85a69600",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/Address.lean",
+      "backport_reuse_sha256": "4650dc6f993817c67466aca99005cd0f0794d5e86cfb5eafa593597861722d2a",
+      "change": "Reuse the derived containing-word geometry and bounded field lifting. Prove the native inverse-of-four ROM key equals the actual aligned word index and recover the full actual ROM word, preserving native UNIMP padding and the separate architectural ROM binding."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadData.lean",
+      "backport_reuse_revision": "4d1afd05528e188b5ac378e3ef25fe7a85a69600",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/Decoder.lean",
+      "backport_reuse_sha256": "d97a14c476401ed1f5d346b57ab0faef0a235b84e899607adf01e6d75ab26269",
+      "change": "Reuse original decoded metadata and actual native RAM/ROM candidates plus x0-masked writes. Derive both offset bits, selected limb and key from accepted controls and bounded actual reads, then derive original Sail byte/halfword extension values. All local numerical interfaces are discharged by initialized assembly."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/SubwordMemory/LoadData.lean",
+      "backport_reuse_revision": "4d1afd05528e188b5ac378e3ef25fe7a85a69600",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/SubwordMemory/Address.lean",
+      "backport_reuse_sha256": "77b09b4538bd9db93b8d8976d5f078f7baff9eead67390dfcec317aea3d3adfc",
+      "change": "Reuse actual initialized read-bound extraction and same-public-state native address/decoder recovery. Derive the second actual read range and every native load-value interface without per-row read, range, sign, size, alignment, expected-result or intermediate-state premises."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/SubwordMemory/Loads.lean",
+      "backport_reuse_revision": "4d1afd05528e188b5ac378e3ef25fe7a85a69600",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/SubwordMemory/Address.lean",
+      "backport_reuse_sha256": "9d088b19bb68bf5ba3a03ca7a566960b2095b700a02af4e07d8d82ec0c84ecae",
+      "change": "Reuse one short same-public-state initialization/decoding/native-acceptance wrapper. Add exact native load-value effects using original Sail extension functions. Keep store byte windows, architectural ROM and original instruction access/exception/retirement behavior explicit and separate."
+    },
+    {
+      "path": "Tests/SubwordLoadData.lean",
+      "backport_reuse_revision": "4d1afd05528e188b5ac378e3ef25fe7a85a69600",
+      "backport_reuse_path": "Tests/SubwordAddresses.lean",
+      "backport_reuse_sha256": "820759966b52c4924450214e6f9ba3908f8854e865ec9b4e517a705541fdce53",
+      "change": "Reuse all eight complete native initialized decoded traces unchanged. Derive the new load-value claim and retain a concrete distinct native-ROM/instruction-shadow example, including actual signed write, x0 and an rs1=rd refresh."
+    },
+    {
+      "path": "Tests/SubwordLoadExtension.lean",
+      "backport_reuse_revision": "4d1afd05528e188b5ac378e3ef25fe7a85a69600",
+      "backport_reuse_path": "Tests/SubwordPackedBounds.lean",
+      "backport_reuse_sha256": "6175a2078bd60a44e8b22393eb19c3703fc752bb6e23f4484eeedfbe5b1b9655",
+      "change": "Reuse independent kernel boundary-regression style. Check signed byte/halfword thresholds, unsigned halfword range, all four native byte positions and actual zero odd-halfword helper rows. Do not replace all-input proofs with sampled certificates or assert original execution."
+    },
+    {
+      "path": "Tests/SubwordOddX0Row.lean",
+      "backport_reuse_revision": "4d1afd05528e188b5ac378e3ef25fe7a85a69600",
+      "backport_reuse_path": "Tests/SubwordDecoderPart1.lean",
+      "backport_reuse_sha256": "80f7ccbb08ffe4d2b825975f1fc08d7e15163898c97ce3c258bf8e1c0817d007",
+      "change": "Reuse the complete 51-equation/14-lookup native LH-to-x0 row checker in a separate exact odd-offset copy. Retain original controls and all intermediate equations, native offset key 1638403 and actual load-data key 491521, including zero candidate limbs and actual masked writes."
+    },
+    {
+      "path": "Tests/SubwordOddX0Fixture.lean",
+      "backport_reuse_revision": "4d1afd05528e188b5ac378e3ef25fe7a85a69600",
+      "backport_reuse_path": "Tests/SubwordBoundsFixture.lean",
+      "backport_reuse_sha256": "08e4361fe6f1b4a52a7b502dc1927d1ba8183f829bb14cd8e05c90d393429199",
+      "change": "Reuse complete actual native state/memory matching and same-state public seed construction for a single odd LH-to-x0 row. Independent actual instruction bytes, source 4194307, aligned RAM word 0x80018001 and x0 seed remain actual Sail reads."
+    },
+    {
+      "path": "Tests/SubwordOddX0.lean",
+      "backport_reuse_revision": "4d1afd05528e188b5ac378e3ef25fe7a85a69600",
+      "backport_reuse_path": "Tests/SubwordWordBounds.lean",
+      "backport_reuse_sha256": "31959fc220faa632a0b503e8fd784719e55a722e9f0d253509572bd948e0a8a9",
+      "change": "Reuse original Sail decoding, full sparse public setup construction and exact native query membership. Exercise the integrated load-value claim on the full odd-x0 initialized trace. Prove the observed odd offset/zero candidates/masked write without an original access/exception/retirement success claim."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/ByteMath.lean",
+      "source_path": "Airbender/Proofs/SubwordMemory/Lookups.lean",
+      "source_sha256": "6407acf571013c82b66490b78072db9d7cd4ce2b5767d2146cfcb8c36396fe4f",
+      "change": "Copy the two mathematical theorem statements and proof bodies extend_subword_limbs and subword_extract unchanged from the pinned v3 file into the proof layer. Only file imports/header differ. No native v3 field, key, table, selector, memory premise or instruction contract is imported."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadExtension.lean",
+      "source_path": "Airbender/Proofs/SubwordMemory/Lookups.lean",
+      "source_sha256": "6407acf571013c82b66490b78072db9d7cd4ce2b5767d2146cfcb8c36396fe4f",
+      "change": "Adapt pinned packed-extension assembly to actual v2 raw funct3/offset keys using the unchanged shared mathematical extension/extraction lemmas. Native v2 literal outputs and odd-halfword zero rows remain unchanged; retained alignment is derived at the integrated boundary."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/LoadData.lean",
+      "source_path": "Airbender/Proofs/SubwordMemory/Data.lean",
+      "source_sha256": "f284444a8f4674cce1a5dc871f34f0e2100688679365b1292f06a16a41fd18ee",
+      "change": "Adapt the pinned bounded-word-to-original-Sail extension argument to actual v2 RAM/ROM selectors, raw metadata, two-bit offsets, single aligned ROM table and masked writes. Native key/index/range interfaces and original fields are derived; no v3 field inverse, table layout or desired read/result premise is copied."
     }
   ],
   "setup_artifacts": [

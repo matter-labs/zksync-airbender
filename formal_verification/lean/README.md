@@ -1449,3 +1449,11 @@ mixed-port words from the same public initialization/decoding and native matchin
 Eight full initialized traces and two full-native signed/wrap boundary rows
 exercise the connection. Width/sign/byte effects, architectural ROM projection
 and original subword instruction execution remain next work.
+
+[Initialized native subword load values](Airbender/Review/Trace/Families/SubwordMemory/Loads.lean)
+now derive original Sail byte/halfword extension functions and actual masked
+writes from public initialization/decoding and native matching. The exact native
+ROM word index and retained alignment are derived. Nine complete traces include
+an odd discarded LH-to-x0 without imposing unconditional alignment. Store byte
+windows, architectural ROM/access/exception binding and original execution remain
+next work; no confirmed defect or repair is claimed by this value checkpoint.

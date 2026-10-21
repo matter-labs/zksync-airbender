@@ -108,6 +108,10 @@ import Tests.SubwordPackedBounds
 import Tests.SubwordAddresses
 import Tests.SubwordAddressBoundaries
 
+import Tests.SubwordLoadData
+import Tests.SubwordLoadExtension
+import Tests.SubwordOddX0
+
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
 #print axioms Airbender.AddSub.Proofs.constraint_count
@@ -2431,3 +2435,38 @@ import Tests.SubwordAddressBoundaries
 #print axioms Tests.SubwordAddressBoundaries.native_addresses
 #print axioms Tests.SubwordAddressBoundaries.observed_wrap
 #print axioms Tests.SubwordAddressBoundaries.observed_negative
+
+#print axioms Airbender.Verification.extend_subword_limbs
+#print axioms Airbender.Verification.subword_extract
+#print axioms Airbender.SubwordMemory.Proofs.packed_load_extension
+#print axioms Airbender.SubwordMemory.Proofs.word_load_extension
+#print axioms Airbender.SubwordMemory.Proofs.offset_key_parts
+#print axioms Airbender.SubwordMemory.Proofs.entry_raw_values
+#print axioms Airbender.SubwordMemory.Proofs.supported_mask_size
+#print axioms Airbender.SubwordMemory.Proofs.supported_mask_alignment
+#print axioms Airbender.SubwordMemory.Proofs.entry_data_controls
+#print axioms Airbender.SubwordMemory.Proofs.native_rom_index
+#print axioms Airbender.SubwordMemory.Proofs.native_rom_word
+#print axioms Airbender.SubwordMemory.Proofs.selected_word
+#print axioms Airbender.SubwordMemory.Proofs.native_load_result
+#print axioms Airbender.SubwordMemory.Proofs.entry_load_effect
+#print axioms Airbender.SubwordMemory.Proofs.data_bound_of_reads
+#print axioms Airbender.SubwordMemory.Proofs.image_native_loads
+#print axioms Airbender.SubwordMemory.public_native_loads
+#print axioms Tests.SubwordLoadData.public_loads
+#print axioms Tests.SubwordLoadData.actual_loads
+#print axioms Tests.SubwordLoadData.actual_rom_word
+#print axioms Tests.SubwordLoadExtension.signed_boundaries
+#print axioms Tests.SubwordLoadExtension.native_byte_positions
+#print axioms Tests.SubwordLoadExtension.odd_halfword_rows
+#print axioms Tests.SubwordOddX0Row.native_constraints
+#print axioms Tests.SubwordOddX0Fixture.accepted
+#print axioms Tests.SubwordOddX0Fixture.public_inputs
+#print axioms Tests.SubwordOddX0.fields
+#print axioms Tests.SubwordOddX0.actual_bytes
+#print axioms Tests.SubwordOddX0.original_decode
+#print axioms Tests.SubwordOddX0.constructed
+#print axioms Tests.SubwordOddX0.query
+#print axioms Tests.SubwordOddX0.decoded
+#print axioms Tests.SubwordOddX0.public_loads
+#print axioms Tests.SubwordOddX0.actual_odd_write

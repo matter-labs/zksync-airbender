@@ -172,3 +172,18 @@ cover all six forms, x0/aliases, negative immediates and wraparound. Native x0
 trap-waiver semantics are preserved; aligned containing words do not assert
 alignment of every discarded instruction access. Original byte/halfword effects
 and architectural instruction/data-ROM projection remain separate next work.
+
+## Initialized native load-value effects
+
+[Load observables](DataModel.lean) name actual native RAM/ROM words, original
+width/unsigned projections, derived controls and actual masked extension values.
+[The short public claim](../../Trace/Families/SubwordMemory/Loads.lean) supplies
+no row read/range, sign, size, alignment or expected result. [Native assembly](../../../Proofs/SubwordMemory/LoadData.lean)
+uses exact v2 keys and literal tables, with [exact ROM indexing](../../../Proofs/SubwordMemory/ROMAddress.lean).
+[Two mathematical lemmas](../../../Proofs/SubwordMemory/ByteMath.lean) are unchanged
+from pinned v3; its native fields/keys/selectors are not imported. [Eight existing
+traces](../../../../Tests/SubwordLoadData.lean) and [a ninth odd LH-to-x0 trace](../../../../Tests/SubwordOddX0.lean) retain the latter case,
+which passes the native logical relation and retains zero candidates/write.
+Retained/store alignment is derived; discarded alignment is not assumed.
+Original access/exception/retirement comparison remains open. This is a load-value
+checkpoint, not an original instruction success, confirmed defect or repair.

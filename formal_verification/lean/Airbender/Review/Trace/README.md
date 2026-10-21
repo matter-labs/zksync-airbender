@@ -410,3 +410,11 @@ fields derive every remaining numerical interface. Eight unchanged initialized
 traces retain all forms, x0 and aliases, while complete native signed/wrap rows
 check boundary carries. Original width/sign/byte effects, architectural ROM
 projection and instruction execution remain next dependencies.
+
+[Initialized subword load values](Families/SubwordMemory/Loads.lean) now derive
+original Sail byte/halfword extension functions and actual masked writes from
+one public state supplying initialization and original decoding. The second
+native read range, both offset bits and exact ROM index are derived. Eight old
+full traces remain unchanged; a ninth full odd LH-to-x0 trace prevents an
+unconditional alignment premise. Store byte windows and original architectural
+access/exception/retirement/execution remain open.

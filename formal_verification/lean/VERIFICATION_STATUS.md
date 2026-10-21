@@ -1259,10 +1259,10 @@ Rust/compiler refinement and cryptographic enforcement remain separate.
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all one hundred and thirty-one concrete test modules pass.
+- Library, both CLI entrypoints and all one hundred and thirty-six concrete test modules pass.
 - Importer regressions: 492 checks pass.
-- Axiom audit: 2245 explicit roots; only propext, Classical.choice and Quot.sound.
-- All one hundred and thirty-five public Review theorems (forty-six circuit claims, sixty-two trace claims and twenty-seven helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 2279 explicit roots; only propext, Classical.choice and Quot.sound.
+- All one hundred and thirty-six public Review theorems (forty-six circuit claims, sixty-three trace claims and twenty-seven helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 79 unchanged reused files, six native circuit artifacts, fifty native Rust sources plus compiled shift-offset metadata, twenty-one native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
@@ -2204,6 +2204,56 @@ General Rust/JSON/compiler refinement and physical verifier/cryptographic
 enforcement remain separate. FINDINGS and its historical archive are unchanged;
 no confirmed native defect is added. Resource ceilings are unchanged, the
 original checkout is preserved and no push/publication is authorized.
+
+## Initialized native subword load-value checkpoint (2026-10-21)
+
+[Two shared mathematical lemmas](Airbender/Proofs/SubwordMemory/ByteMath.lean)
+copy the pinned v3 statements and proof bodies unchanged: bounded limb sign/
+zero extension and byte/halfword extraction. [The v2 connection](Airbender/Proofs/SubwordMemory/LoadExtension.lean)
+uses the actual raw-funct3/two-bit-offset keys and the already certified complete
+literal native load tables. It retains odd-halfword zero rows and unused keys;
+no native v3 field, inverse, key, table or selector identity is imported.
+
+[Native data controls](Airbender/Proofs/SubwordMemory/DataControls.lean) recover
+raw funct3, load and x0 key bits without Mersenne31 wrap. Original decoded fields
+and actual fixed-offset membership derive the subword mux and upper selector.
+Retained halfword loads and stores align through absence of the native trap bit.
+Discarded loads retain the native waiver; unconditional alignment is not assumed.
+[Exact ROM indexing](Airbender/Proofs/SubwordMemory/ROMAddress.lean) proves that
+the native inverse-of-four query names the actual containing word index, then
+recovers both complete ROM limbs, including native UNIMP padding. Architectural
+instruction/data-ROM byte binding remains separate.
+
+[Actual native load data](Airbender/Proofs/SubwordMemory/LoadData.lean) derives
+both offset bits, the selected limb and the packed key from accepted controls
+and actual bounded words. Native RAM/ROM candidates then equal the original
+Sail extension of the selected byte/halfword slice. The actual x0 flag controls
+the actual masked write. [Initialized assembly](Airbender/Proofs/Trace/Families/SubwordMemory/LoadData.lean)
+and [one short public claim](Airbender/Review/Trace/Families/SubwordMemory/Loads.lean)
+use one original public state for seed reads and full sparse decoding. Existing
+history supplies actual read bounds; no row read/range, sign, size, alignment,
+expected result, table equivalence or intermediate state is supplied.
+
+[Eight unchanged complete initialized traces](Tests/SubwordLoadData.lean) retain
+all six forms, actual stores, x0, aliases and distinct native ROM versus logical
+instruction-shadow data. [Independent boundary checks](Tests/SubwordLoadExtension.lean)
+exercise signedness thresholds, all byte positions and odd-halfword helper rows.
+[A ninth complete initialized decoded trace](Tests/SubwordOddX0.lean) retains
+odd LH-to-x0 with every native equation, lookup, state/memory match and actual
+public byte/seed read. Its offset is three, both candidate limbs are zero and
+the actual masked write is zero. This prevents treating unconditional halfword
+alignment as a consequence of the accepted logical relation. Original Sail
+access/exception/retirement comparison for this case remains unproved; neither
+an original instruction success nor a defect or repair is claimed here.
+
+Next work connects store byte-window effects, actual architectural read/write
+history and ROM bytes, native subword PC/prepare/retire behavior and full original
+instruction execution. Delegation/custom/CSR, unified execution, initialization/
+teardown and terminal/padding boundaries remain unfinished. General Rust/JSON/
+compiler refinement and physical verifier/cryptographic enforcement remain
+separate. FINDINGS and its exact historical archive are unchanged; no confirmed
+native defect is added. Resource ceilings are unchanged, the original checkout
+is preserved and no push/publication is authorized.
 
 ## Historical coverage and boundary notes
 

@@ -51,3 +51,12 @@ The exact native offset relation and carry equations derive the containing
 aligned word and actual mixed-port addresses. No helper table identity or
 per-row expected address/read is supplied. Shared Clean/Sail semantics and
 all original native fixed tables remain unchanged.
+
+## Native subword load extensions
+
+[Unchanged shared extension/extraction arithmetic](../../Proofs/SubwordMemory/ByteMath.lean)
+now feeds [the initialized load-value claim](../Trace/Families/SubwordMemory/Loads.lean)
+through exact v2 native keys and derived controls. Native ROM indexing and actual
+RAM word ranges are derived; the odd discarded-load waiver remains explicit.
+No native v3 key/table identity, table equivalence or expected read/result is
+supplied. Original architectural access/exception/retirement remains separate.

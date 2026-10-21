@@ -46,3 +46,10 @@ words from public seed reads, original decoding and native matching. Eight full
 initialized traces and signed/wrap native boundary certificates pass. The next
 connection is original byte/halfword effects and execution, with architectural
 ROM projection explicit.
+
+[Initialized subword load values](../Trace/Families/SubwordMemory/Loads.lean)
+now derive original Sail extension functions and actual masked writes from
+native controls and initialized words. The single native ROM index and retained
+alignment are derived; an odd discarded halfword remains in a full initialized
+trace. Store byte windows, architectural ROM/access/exception binding and original
+subword retirement/execution remain next dependencies.
