@@ -11,7 +11,7 @@ namespace Airbender.Keccak.Proofs
 open Arithmetic
 open scoped BigOperators
 set_option warningAsError true
-set_option maxHeartbeats 800000
+set_option maxHeartbeats 400000
 set_option maxRecDepth 16384
 
 variable {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
