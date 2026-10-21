@@ -189,7 +189,14 @@ pub fn preprocess_bytecode<
                 Instruction::from_imm(InstructionName::Jal, 0, 0, rd, imm)
             }
             OPCODE_JALR => {
-                // I format
+                // I format, funct3 must be 000; the other seven encodings are reserved
+                if funct3 != 0 {
+                    panic!(
+                        "Unknown JALR-like opcode 0x{:08x} at PC = 0x{:08x}",
+                        opcode,
+                        i * 4
+                    );
+                }
                 let mut imm: u32 = ITypeOpcode::imm(opcode);
                 // quasi sign extend
                 sign_extend(&mut imm, 12);
@@ -758,7 +765,13 @@ pub fn preprocess_bytecode<
                             panic!("Unknown system space opcode 0x{:08x}", opcode);
                         }
                     }
-                } else if funct3 & ZICSR_MASK != 0 {
+                } else if funct3 != 0b001 && funct3 & ZICSR_MASK != 0 {
+                    // not CSRRW (csrrs/csrrc/csrrwi/...): decode as illegal so the
+                    // program only fails if the instruction is actually executed.
+                    // Checked before the CSR match below because the delegation
+                    // branches `continue` early and would otherwise skip it.
+                    illegal_instr
+                } else if funct3 == 0b001 {
                     let csr_number = ITypeOpcode::imm(opcode);
 
                     // read
@@ -977,12 +990,7 @@ pub fn preprocess_bytecode<
                         }
                     };
 
-                    if funct3 != 0b001 {
-                        // not CSRRW (csrrs/csrrc/csrrwi/...): same treatment
-                        illegal_instr
-                    } else {
-                        instr
-                    }
+                    instr
                 } else {
                     // funct3 == 0: ecall/ebreak/mret/wfi... GCC emits `ebreak`
                     // for `__builtin_trap` on unreachable paths; decode as
