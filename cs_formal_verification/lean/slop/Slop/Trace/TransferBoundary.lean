@@ -11,7 +11,7 @@ structure NativeInputs (data : Data p) (before : State) (cells : List Cell) : Pr
   words : ∀ token ∈ data.initial, token.word.Bounded
   clocks : ∀ token ∈ data.initial, (timeOfPair token.time).Bounded
 
-def Inputs.toNativeInputs {data : Data p} {before : State} {cells : List Cell}
+theorem Inputs.toNativeInputs {data : Data p} {before : State} {cells : List Cell}
     (inputs : Inputs data before cells) : NativeInputs data before cells :=
   ⟨inputs.toBoundaryInputs, image_bounds inputs.initialization, image_clocks inputs.initialization⟩
 
