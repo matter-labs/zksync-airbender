@@ -30,7 +30,7 @@ theorem diagonal_g_queries_1 {p : Nat} [Fact p.Prime]
   subst p
   unfold babyBearModulus at *
   have member := Verification.lookup_of_holds h
-    ⟨74 + 18 * (1 : Fin 4).val + i.val, by rw [lookup_count]; have size := i.isLt; simp; omega⟩
+    ⟨74 + 18 * 1 + i.val, by rw [lookup_count]; have size := i.isLt; simp; omega⟩
   fin_cases i
   all_goals op_index at member ⊢
   all_goals apply padded_membership member
