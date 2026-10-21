@@ -46,7 +46,6 @@ private theorem queries_unchanged (i : Fin 42) :
   all_goals intro j hj
   all_goals first | change j < 1 at hj | change j < 8 at hj
   all_goals interval_cases j
-  all_goals simp only [Vector.getElem_map]
   all_goals decide +kernel +revert
 
 private theorem core : FlatOperation.ConstraintsHoldFlat (Verification.environment row)
