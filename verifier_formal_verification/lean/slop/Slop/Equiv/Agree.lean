@@ -7,7 +7,7 @@ open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
 variable {next : BitVec 32}
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 theorem set_regs_self (σ : SailState) (r : Register) (v : RegisterType r) : (σ.set r v).regs r = v := by
   simp [SailState.set]

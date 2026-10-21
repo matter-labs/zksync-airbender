@@ -8,7 +8,7 @@ of the challenge from `st`, it returns like a function; otherwise the run gets s
 
 namespace RV
 open _root_.RV.Sym Spec
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 /-- `fs_check`'s claim: the 4 words at `v` are `poly4` of the challenge, the 4 words at `st` (as BabyBear elements:
 `limbsAt` casts each word to the field, i.e. reduces it). -/

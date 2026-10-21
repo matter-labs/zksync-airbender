@@ -7,7 +7,7 @@ CSR, for any CSR (`dec_csrrw00`), hence for any decoded kind (`dec_delegate`). W
 open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 /-- `csrrw x0, c, x0`, any `c`. -/
 theorem dec_csrrw00 (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 115)

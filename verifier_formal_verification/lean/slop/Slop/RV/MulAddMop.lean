@@ -7,7 +7,7 @@ By the symbolic executor: one kernel run of the body, then the four stored limbs
 
 namespace RV
 open _root_.RV.Sym
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 sym_block MulAddMop := Code.ext4_mul_add_mop
 

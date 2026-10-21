@@ -9,7 +9,7 @@ zero, `ra` and `s0` restored, `a1 = 64` (bytes), `a2 = 1` (last block), `sp` bac
 
 namespace RV
 open _root_.RV.Sym Spec
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 sym_run MStepD := (Code.merkle_step_mop.drop 9).take 62
 

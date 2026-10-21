@@ -6,7 +6,7 @@ for 1, 2 and 4 bytes. -/
 open Sail SailRV32 SailRV32.Functions
 
 namespace Slop.Equiv
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 theorem sail_int_getElem {α : Type} {n : Nat} (v : Vector α n) (i : Int) (h : i.toNat < n) :
     v[i] = v[i.toNat] := rfl

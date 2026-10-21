@@ -6,7 +6,7 @@ little-endian): equal for 1, 2 and 4 bytes, when the access does not wrap around
 open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 theorem word_add_toNat (a : BitVec 32) (k : Nat) (h : a.toNat + k < 2 ^ 32) :
     (a + BitVec.ofNat 32 k).toNat = a.toNat + k := by

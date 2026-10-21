@@ -6,7 +6,7 @@ import Slop.RV.MemcpyTail
 set_option linter.deprecated false
 
 namespace RV
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 theorem or_and3_of_aligned (s d : Word) (hs : s.toNat % 4 = 0) (hd : d.toNat % 4 = 0) : (s ||| d) &&& 3#32 = 0#32 := by
   apply BitVec.eq_of_toNat_eq

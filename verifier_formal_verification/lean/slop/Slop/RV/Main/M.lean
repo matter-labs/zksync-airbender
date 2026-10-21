@@ -7,7 +7,7 @@ of its contract. -/
 
 namespace RV
 open _root_.RV.Sym Spec
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 theorem main_m (U : State) (codeM : List Word) (Am : Word) (codeS : List Word)
     (calleesS : List (Word × List Word)) (FS al len : Nat)

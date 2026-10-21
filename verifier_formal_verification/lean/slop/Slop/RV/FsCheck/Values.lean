@@ -7,7 +7,7 @@ subtractions, as rustc compiles `from_raw_repr_with_reduction`), the challenge (
 
 namespace RV
 open _root_.RV.Sym
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 /-- One conditional subtraction of `p`, branch-free: `x + (-(k < x) &&& m)` with `k = p - 1`, `m = -p`. -/
 def csub (k m x : Word) : Word := alu .add x (alu .and m (alu .sub 0 (alu .sltu k x)))

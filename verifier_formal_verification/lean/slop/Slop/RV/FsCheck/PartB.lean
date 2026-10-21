@@ -10,7 +10,7 @@ epilogue and `ret` (the claim is right), or `zksync_os_finish_error`, whose `csr
 
 namespace RV
 open _root_.RV.Sym Spec
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 namespace FsPartB
 abbrev rF : Region := ⟨2, 0, 64, 16⟩

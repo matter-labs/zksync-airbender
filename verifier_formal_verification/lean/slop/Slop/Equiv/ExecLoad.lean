@@ -7,7 +7,7 @@ open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
 variable {next : BitVec 32}
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 set_option maxRecDepth 1000000
 
 theorem regidx_beq_zreg (rd : BitVec 5) (h : rd ≠ 0) : (regidx.Regidx rd == zreg) = false := by

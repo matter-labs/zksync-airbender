@@ -8,7 +8,7 @@ the remaining count `k`. Generic in the code's address and in the implementation
 
 namespace RV
 open Spec
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 /-- From the loop head with `k` coefficients left and `acc` (at `sp0 - 40`) holding `hornerAcc` of the `n - k` done,
 to the loop exit (`+0x68`) with `acc` holding all of them. -/

@@ -6,7 +6,7 @@ ROM or RAM returns the bytes in Sail's memory (`readBytes`), state unchanged. On
 open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 set_option maxRecDepth 1000000
 
 /-- What `default_access_info` gives a load in machine mode. -/

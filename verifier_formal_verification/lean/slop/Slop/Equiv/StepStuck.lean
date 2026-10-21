@@ -8,7 +8,7 @@ row of the decoding table), and runs of the machine compose. -/
 open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 theorem airbender_stuck {T : RV.State} {m : Airbender.Machine} (h : Airbender.Agree T m) (hT : RV.AtFinishError T) :
     Airbender.step m = none := by

@@ -5,7 +5,7 @@ import Slop.RV.Blake.Values
 
 namespace RV
 open _root_.RV.Sym
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 set_option maxRecDepth 100000
 
 /-- `n` words at `p`. -/

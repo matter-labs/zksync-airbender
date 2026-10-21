@@ -5,7 +5,7 @@ import Slop.RV.Code.start
 (at `0x38`, right after them) with the stack pointer set. -/
 
 namespace RV
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 /-- From reset (`pc = 0`, any registers): enters `main` with `sp = 0x13ffff0` (two words saved just above it),
 `ra` aligned, memory unchanged outside `[0x13ffff8, 0x1400000)`. -/

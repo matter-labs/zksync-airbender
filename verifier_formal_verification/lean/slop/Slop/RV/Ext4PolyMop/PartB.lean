@@ -7,7 +7,7 @@ back) and the `ret`. -/
 
 namespace RV
 open _root_.RV.Sym Spec
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 namespace PolyMB
 abbrev rSp : Region := ⟨2, 0, 48, 16⟩

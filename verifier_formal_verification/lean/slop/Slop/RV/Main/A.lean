@@ -13,7 +13,7 @@ contracts. -/
 
 namespace RV
 open _root_.RV.Sym
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 /-- What `init` does (`init_run`), for an image's `init` at `A` copying `.rodata` from ROM `src`. -/
 def InitOK (A src : Word) (codeI : List Word) : Prop :=

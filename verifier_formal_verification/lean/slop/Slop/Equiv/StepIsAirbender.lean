@@ -9,7 +9,7 @@ import Slop.RV.DecodeShape
 open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 /-- On Sail's state: our step is a step of the machine fed the next input word. -/
 theorem step_sail (s t : RV.State) (σ : SailState) (h : Airbender.AgreeSail s σ) (ht : RV.step s = some t)

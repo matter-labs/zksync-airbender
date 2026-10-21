@@ -7,7 +7,7 @@ import Mathlib.Tactic.IntervalCases
 
 namespace RV
 open Spec
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 set_option linter.unusedSimpArgs false
 
 /-- The control word before round `r` (7 rounds, normal mode): bit 16, and round `r` one-hot from bit 19. -/

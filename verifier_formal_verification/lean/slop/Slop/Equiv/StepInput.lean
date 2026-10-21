@@ -9,7 +9,7 @@ has no CSR 0x7c0): both sides write the next input word to `rd`. -/
 open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 variable {s t : RV.State} {σ : SailState} {next : BitVec 32}
 

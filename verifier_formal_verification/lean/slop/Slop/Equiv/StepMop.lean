@@ -7,7 +7,7 @@ Zimop writes 0: both sides compute `RV.mopVal`). -/
 open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 variable {s t : RV.State} {σ : SailState} {next : BitVec 32}
 

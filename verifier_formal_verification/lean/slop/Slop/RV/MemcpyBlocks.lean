@@ -6,7 +6,7 @@ import Slop.RV.MemcpyLoop
 set_option linter.deprecated false
 
 namespace RV
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 /-- The 32-byte block of `memcpy`'s tail (`memcpy + 0x7d0`). -/
 theorem memcpy_blk32 (A : Word) (S : State) (p q : Word)

@@ -5,7 +5,7 @@ import Slop.RV.MemcpyIter
 set_option linter.deprecated false
 
 namespace RV
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 /-- One iteration in terms of the whole block copy. -/
 theorem memcpy_iter_blk (A d s : Word) (N : Word → BitVec 8) (hA : A.toNat % 4 = 0) (hAr : A.toNat + 4 * 1676 ≤ 4194304)

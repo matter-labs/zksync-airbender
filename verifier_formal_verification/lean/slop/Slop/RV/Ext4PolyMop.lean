@@ -8,7 +8,7 @@ import Slop.RV.Ext4PolyMop.PartB
 
 namespace RV
 open Spec
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 /-- `ext4_poly` (feature `mop`) at `A`, with `ext4_horner` at `A - 0x16c` and its `ext4_mul_add` after it. -/
 theorem ext4_poly_mop_impl (A : Word) (hA : 0x16c ≤ A.toNat) (hAr : A.toNat + 0xc0 ≤ 4194304) :

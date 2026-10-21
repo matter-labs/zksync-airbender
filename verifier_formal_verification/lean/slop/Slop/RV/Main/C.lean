@@ -7,7 +7,7 @@ self-jump with the outputs in `x10 … x25`. From `main + 0x148`. -/
 
 namespace RV
 open _root_.RV.Sym Spec
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 namespace MainC
 abbrev rF : Region := ⟨2, 0, 112, 16⟩

@@ -7,7 +7,7 @@ code's address and `j`), and code in ROM survives copies into RAM. -/
 set_option linter.deprecated false
 
 namespace RV
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 /-- `j` pairs `lw rT, o+4i(rS)` / `sw rT, o+4i(rD)` (at `X + 8i`, `X + 8i + 4`) copy words `o … o+4j` of a block
 copy from `q` (in `rS`) to `p` (in `rD`); only `rT` changes among the registers. -/

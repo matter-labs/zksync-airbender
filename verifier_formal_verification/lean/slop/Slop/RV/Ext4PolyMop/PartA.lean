@@ -7,7 +7,7 @@ frame, saved registers, call arguments) and the `jal`. -/
 
 namespace RV
 open _root_.RV.Sym Spec
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 namespace PolyMA
 abbrev rSp : Region := ⟨2, -48, 0, 16⟩

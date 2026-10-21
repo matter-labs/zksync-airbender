@@ -6,7 +6,7 @@ to bit 0, each running its block (`MemcpyBlocks`) when the bit is set; ends at o
 set_option linter.deprecated false
 
 namespace RV
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 theorem and_bit (R i : Nat) (hi : i < 32) :
     BitVec.ofNat 32 R &&& BitVec.ofNat 32 (2 ^ i) = if R / 2 ^ i % 2 = 1 then BitVec.ofNat 32 (2 ^ i) else 0#32 := by

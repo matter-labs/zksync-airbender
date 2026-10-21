@@ -7,7 +7,7 @@ proof of `MainBlakeOK`); from `main + 0x68` to `main + 0x14c`. -/
 
 namespace RV
 open _root_.RV.Sym Spec
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 namespace MainB
 abbrev rF : Region := ⟨2, 0, 112, 16⟩

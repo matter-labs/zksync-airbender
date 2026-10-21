@@ -6,7 +6,7 @@ limbs (`Values`). -/
 
 namespace RV
 open _root_.RV.Sym
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 namespace MulAdd
 abbrev rSp : Region := ⟨2, -80, 0, 16⟩

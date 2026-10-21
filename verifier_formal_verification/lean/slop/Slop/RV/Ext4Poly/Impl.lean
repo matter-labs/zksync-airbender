@@ -8,7 +8,7 @@ import Slop.RV.Ext4Poly.PartB
 
 namespace RV
 open Spec
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 /-- `ext4_poly` (plain) at `A`, with `ext4_horner` at `A - 0x68c` and its `ext4_mul_add` after it. -/
 theorem ext4_poly_impl (A : Word) (hA : 0x68c ≤ A.toNat) (hAr : A.toNat + 560 ≤ 4194304) :

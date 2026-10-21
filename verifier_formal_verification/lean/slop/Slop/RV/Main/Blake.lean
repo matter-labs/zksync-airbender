@@ -9,7 +9,7 @@ start) set up with the configured IV and the five input words (`s4 … s8`), the
 
 namespace RV
 open _root_.RV.Sym Spec
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 /-- From `main + 0x88` (the code of `main` and of `blake2s_compress` in place, `sp = 0x13fff80`, `BLAKE` zero), the
 run reaches `main + 0x14c` with `s3 = BLAKE` holding the Blake2s digest of `s4 … s8`; other callee-saved registers,

@@ -7,7 +7,7 @@ open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
 variable {next : BitVec 32}
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 set_option maxRecDepth 1000000
 
 theorem exec_store (σ : SailState) (hs : Airbender.Configured σ) (rs2 rs1 : BitVec 5) (x : BitVec 12) (n : Nat)

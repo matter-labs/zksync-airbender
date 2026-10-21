@@ -14,7 +14,7 @@ input empty (`run_lift`): they read no input, whatever the functions do. -/
 
 namespace RV
 open Spec
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 set_option maxRecDepth 100000
 
 theorem main_run (s : State) (codeM codeI codeEP codeB : List Word) (calleesEP : List (Word × List Word)) (FEP : Nat)

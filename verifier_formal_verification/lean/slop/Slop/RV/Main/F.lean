@@ -8,7 +8,7 @@ wrong one gets the run stuck. -/
 
 namespace RV
 open _root_.RV.Sym Spec
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 /-- The four claim reads (`csrrw a0/a1/a2/a3, 0x7c0, x0`), from `main + 0x114`. -/
 theorem main_reads_v (R : State) (codeM : List Word) (v0 v1 v2 v3 : Word) (rest : List Word)

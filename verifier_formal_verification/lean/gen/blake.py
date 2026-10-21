@@ -106,7 +106,7 @@ def main():
 
 namespace RV.Blake
 open _root_.RV.Sym
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 set_option maxRecDepth 100000
 set_option linter.unusedSimpArgs false
 set_option hygiene false in

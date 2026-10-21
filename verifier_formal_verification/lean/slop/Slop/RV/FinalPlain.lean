@@ -11,7 +11,7 @@ whole program (`main_run`); a wrong claim: the run gets stuck, so it never halts
 namespace RV
 open Spec
 
-set_option maxHeartbeats 0 in
+set_option maxHeartbeats 400000 in
 set_option maxRecDepth 1000000 in
 theorem program_correct_run (s : State) (x y0 y1 y2 y3 v0 v1 v2 v3 : Word) (root : Vector Word 8)
     (path : List MerkleStep) (rest : List Word) (hpc : s.pc = 0)
@@ -96,7 +96,7 @@ set_option maxRecDepth 100000 in
 /-- Airbender's decoder accepts the image (no delegation runs of other lengths). -/
 theorem accepted : Accepted Image.bytes := by decide +kernel
 
-set_option maxHeartbeats 0 in
+set_option maxHeartbeats 400000 in
 theorem program_correct : ProgramCorrect := by
   refine ⟨accepted, ?_⟩
   intro s x y0 y1 y2 y3 v0 v1 v2 v3 root path rest hpc himg hram hin hd hxP hy0p hy1p hy2p hy3p

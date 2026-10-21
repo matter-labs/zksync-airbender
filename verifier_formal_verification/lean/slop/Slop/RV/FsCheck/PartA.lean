@@ -7,7 +7,7 @@ of `ext4_poly(sp - 40, sp - 56)`. -/
 
 namespace RV
 open _root_.RV.Sym Spec
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 namespace FsPartA
 abbrev rF : Region := ⟨2, -64, 0, 16⟩

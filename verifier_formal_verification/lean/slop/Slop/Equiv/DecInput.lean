@@ -7,7 +7,7 @@ conditions, which `gen/decode_rows.py` does not generate). -/
 open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 theorem dec_read (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 115)
     (h1 : Bits w 12 3 1) (h2 : Bits w 15 5 0) (h3 : Bits w 20 12 1984) :

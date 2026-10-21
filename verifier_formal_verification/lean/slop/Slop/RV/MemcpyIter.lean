@@ -5,7 +5,7 @@ import Slop.RV.Code.memcpy
 64-byte loop. General in the code's address, the pointers and the memory. -/
 
 namespace RV
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 
 set_option maxRecDepth 100000 in
 theorem memcpy_length : Code.memcpy.length = 1676 := rfl

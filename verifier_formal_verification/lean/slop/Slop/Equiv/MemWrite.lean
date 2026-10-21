@@ -6,7 +6,7 @@ import Slop.Equiv.MemVmem
 open Sail SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
-set_option maxHeartbeats 0
+set_option maxHeartbeats 400000
 set_option maxRecDepth 1000000
 
 theorem mem_write_ea_ram1 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVec 32) (ha : a.toNat % 1 = 0)
