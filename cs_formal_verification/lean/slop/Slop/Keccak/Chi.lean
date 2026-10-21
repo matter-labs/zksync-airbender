@@ -88,10 +88,11 @@ private theorem chi_bytes {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   have query := byte_lookup_checks hp h ⟨8 * operation.val + byte.val, by omega⟩
   have tags := selected_tags (by omega) h active (chiMode second) selected
     ⟨8 * operation.val + byte.val, by omega⟩
-  cases second <;> fin_cases operation <;> fin_cases byte <;>
-    simp [chiMode, operationTags, byteTag, byteQuery, importedConstraints,
-      FlatOperation.lookups, Expression.eval, Verification.environment,
-      ByteOperationFacts, isAndn] at tags query ⊢
+  cases second <;> fin_cases operation <;> fin_cases byte
+  all_goals simp only [byteTag, byteQuery] at tags query
+  all_goals op_index at tags query
+  all_goals simp [chiMode, operationTags, Expression.eval, Verification.environment,
+    ByteOperationFacts, isAndn] at tags query ⊢
   all_goals
     split at query
     · rename_i zero
