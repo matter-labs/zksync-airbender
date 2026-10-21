@@ -6239,6 +6239,69 @@
       "backport_reuse_path": "Tests/ArtifactImport.lean",
       "backport_reuse_sha256": "dd844a8b2787953b855eff0ec769098a6dfdb3b7a230d14cf4e284bb07606af7",
       "change": "Reuse strict decoder schema/extent/canonical-field regressions and add nineteen subword checks, including every crossed arithmetic/control/shift profile. Existing 473 checks remain present."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/Timestamp.lean",
+      "backport_reuse_revision": "d43675ef6d0ca93aa59e69be72715925681d65a7",
+      "backport_reuse_path": "Airbender/Proofs/WordMemory/Timestamp.lean",
+      "backport_reuse_sha256": "a6c93567e14e1b5b04f835e2ce7fea49d68fd5322e016db83675bb0eb18df0d7",
+      "change": "Reuse the native v2 two-limb clock proof with exact subword quadratic borrow indices 5/6/7, carry index 8, linear equations 49/50 and eight timestamp queries 2..9. Use actual imported port columns 68..76 and carry 77. Preserve shared strict-order and increment lemmas; no per-row input is added to the integrated claim."
+    },
+    {
+      "path": "Airbender/Review/Helpers/Context/SubwordMemory.lean",
+      "backport_reuse_revision": "d43675ef6d0ca93aa59e69be72715925681d65a7",
+      "backport_reuse_path": "Airbender/Review/Helpers/Context/WordMemory.lean",
+      "backport_reuse_sha256": "6b1b79399171526b50ea28141943f134a090860a289c951aafa1e55778da335c",
+      "change": "Reuse the separate native family registry with the actual subword state, memory, decoder metadata and WordROM-dependent imported constraints. No selector meaning, range, read or execution result is asserted by the registry."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/SubwordMemory/History.lean",
+      "backport_reuse_revision": "d43675ef6d0ca93aa59e69be72715925681d65a7",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/History.lean",
+      "backport_reuse_sha256": "04d34f1762359db6fdc3cf5fc9838ac7c8265cc64c91bb91fcb38e32b0d2d634",
+      "change": "Discharge the unchanged shared ClockLaws contract using actual subword constraints, native port metadata and local timestamp proofs. Shared initialized matching then derives current/prior bounds and alignment; keep original Clean semantics unchanged."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/SubwordMemory/History.lean",
+      "backport_reuse_revision": "d43675ef6d0ca93aa59e69be72715925681d65a7",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/WordMemory/History.lean",
+      "backport_reuse_sha256": "31cb24615ff1e4fd9bba61ee47cd07dfe8ff7016383b28cb6f166945e601c1d4",
+      "change": "Reuse one short public history wrapper over original Sail seed reads/PC and actual native state/memory matching. Retain all three ports, readonly ROM shadows, alias refreshes and actual masked writes. Packed-key normalization, architectural ROM projection and original instruction execution remain separate."
+    },
+    {
+      "path": "Tests/SubwordHistoryRows.lean",
+      "backport_reuse_revision": "d43675ef6d0ca93aa59e69be72715925681d65a7",
+      "backport_reuse_path": "Tests/SubwordDecoderPart0.lean",
+      "backport_reuse_sha256": "eec02b9b4cc0cab4adde80e940c7aa526a7be20cb15745899ea2db78a3f3a55d",
+      "change": "Reuse complete native assertion/lookup checks and the unchanged seven decoder-compatible fixtures. Add an independent eighth full LB row with rs1=rd=1 and actual previous destination clock four. Keep all 51 equations and 14 queries."
+    },
+    {
+      "path": "Tests/SubwordHistoryFixture.lean",
+      "backport_reuse_revision": "d43675ef6d0ca93aa59e69be72715925681d65a7",
+      "backport_reuse_path": "Tests/ShiftHistoryFixture.lean",
+      "backport_reuse_sha256": "589d3f257c7fb119d153ed3ee942a3d12cc06a2e91e48e4e7d7a7a62daff4197",
+      "change": "Reuse initialized native trace/public seed construction with independent original Sail registers and explicit little-endian data bytes. Adapt mixed register/RAM ports, shadow reads, actual SB/SH writes and x0. Remove duplicate source/destination initialization for the alias; all eight full logical traces pass matching without supplied row reads or intermediate states."
+    },
+    {
+      "path": "Tests/SubwordHistoryStale.lean",
+      "backport_reuse_revision": "d43675ef6d0ca93aa59e69be72715925681d65a7",
+      "backport_reuse_path": "Tests/SubwordDecoderPart0.lean",
+      "backport_reuse_sha256": "eec02b9b4cc0cab4adde80e940c7aa526a7be20cb15745899ea2db78a3f3a55d",
+      "change": "Reuse the full native row certificate for the stale alias previous timestamp zero. Every local native constraint still holds. Keep this calculation separate from matching rejection to preserve the allocation cap."
+    },
+    {
+      "path": "Tests/SubwordHistory.lean",
+      "backport_reuse_revision": "d43675ef6d0ca93aa59e69be72715925681d65a7",
+      "backport_reuse_path": "Tests/ShiftHistory.lean",
+      "backport_reuse_sha256": "d2ef35c986c3f5f626a4e81a3e2439495382dfe219c2c609e9d7b869edc0590f",
+      "change": "Reuse nonvacuous public history/latest-read/derived-clock checks for eight initialized traces and actual masked store/x0 observations. Reject the stale alias via native timestamp multiplicities before reducing word/address payloads. No expected result or desired-history premise is supplied."
+    },
+    {
+      "path": "Tests/SubwordClock.lean",
+      "backport_reuse_revision": "d43675ef6d0ca93aa59e69be72715925681d65a7",
+      "backport_reuse_path": "Tests/SubwordDecoderPart0.lean",
+      "backport_reuse_sha256": "eec02b9b4cc0cab4adde80e940c7aa526a7be20cb15745899ea2db78a3f3a55d",
+      "change": "Reuse full actual native equation/lookup checks at low clock 524284 with carry one. Derive final clock 0/1, value 524288 and strict port ordering from the new native timestamp connection. Reject nonboolean carry and high-limb overflow under unchanged default/resource limits."
     }
   ],
   "setup_artifacts": [

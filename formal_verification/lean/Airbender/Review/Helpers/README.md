@@ -18,3 +18,14 @@ unchanged. Original Sail execution is still a separate connection for this famil
 ## Unsigned MUL/DIV helpers
 
 [Stateful public setup](Decoder/StatefulSetup.lean) retains actual extension-configuration reads. [The native context](Context/MulDiv.lean) and [full decoder membership](Decoder/MulDiv.lean) feed the [initialized trace claims](../Trace/Families/MulDiv/README.md).
+
+## Subword native context
+
+[The separate registry](Context/SubwordMemory.lean) selects actual native
+subword state, decoder, mixed memory ports and ROM-dependent constraints.
+[Native clock laws](../../Proofs/Trace/Families/SubwordMemory/History.lean)
+discharge the unchanged shared contract; [public history](../Trace/Families/SubwordMemory/History.lean)
+derives current/prior clock inputs and complete original Clean consistency from
+actual Sail seeds and native matching. No shared semantic definitions or original
+Sail clauses change. Canonical values/key binding and instruction execution remain
+separate subword obligations.

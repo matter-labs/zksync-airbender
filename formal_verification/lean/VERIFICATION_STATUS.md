@@ -1259,10 +1259,10 @@ Rust/compiler refinement and cryptographic enforcement remain separate.
 
 Current checked checkpoint:
 
-- Library, both CLI entrypoints and all one hundred and thirteen concrete test modules pass.
+- Library, both CLI entrypoints and all one hundred and eighteen concrete test modules pass.
 - Importer regressions: 492 checks pass.
-- Axiom audit: 2171 explicit roots; only propext, Classical.choice and Quot.sound.
-- All one hundred and thirty-two public Review theorems (forty-six circuit claims, fifty-nine trace claims and twenty-seven helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
+- Axiom audit: 2193 explicit roots; only propext, Classical.choice and Quot.sound.
+- All one hundred and thirty-three public Review theorems (forty-six circuit claims, sixty trace claims and twenty-seven helper claims including the two reused port-representation lemmas) have explicit axiom roots; guide references, links and layering checks pass.
 - Source provenance: 79 unchanged reused files, six native circuit artifacts, fifty native Rust sources plus compiled shift-offset metadata, twenty-one native setup artifacts and four exporter source/manifest/lock files.
 - Aliased sources/destination form a nonempty accepted history. A stale alias
   read passes local constraints and is rejected by logical memory matching.
@@ -2055,6 +2055,52 @@ teardown and terminal/padding boundaries remain unfinished. Physical verifier
 and cryptographic enforcement remain separate. No confirmed defect is added;
 FINDINGS and its historical archive, original Clean/Sail and native sources/
 circuit/helper artifacts are unchanged. The original checkout is preserved.
+
+## Initialized native subword history checkpoint (2026-10-21)
+
+The separate [native registry](Airbender/Review/Helpers/Context/SubwordMemory.lean)
+retains the actual imported subword constraints, state, decoder and three mixed
+register/RAM port descriptors. [Native clock extraction](Airbender/Proofs/SubwordMemory/Timestamp.lean)
+checks the three Boolean comparison borrows, Boolean carry, both clock equations
+and all eight timestamp queries against the subword artifact. These discharge
+the unchanged [shared clock contract](Airbender/Proofs/Trace/Families/SubwordMemory/History.lean).
+No v3 column identity or assumed table equivalence is used.
+
+[One short public claim](Airbender/Review/Trace/Families/SubwordMemory/History.lean)
+now derives complete original Clean online memory history and every newest
+preceding read from actual original Sail seed reads/PC and accepted native
+state/memory matching. Row bounds, prior-clock bounds, alignment, port order,
+history and read values are derived. Readonly ROM-shadow accesses and their
+timestamp refreshes stay in matching, as do actual masked destination writes.
+
+[Eight complete initialized traces](Tests/SubwordHistoryFixture.lean) cover
+signed/unsigned byte and halfword loads, ROM shadows, RAM, x0 and actual SB/SH
+writes. Their independent public registers and little-endian data bytes construct
+the seed image. The eighth load aliases rs1=rd=1 and consumes the source port's
+readonly refresh at clock four, using a unique seed domain. [The stale version](Tests/SubwordHistoryStale.lean)
+still satisfies every local native constraint, but [logical matching rejects it](Tests/SubwordHistory.lean).
+This is a regression for the intended matching boundary, not a confirmed defect.
+Projecting to timestamp multiplicities makes rejection small without reducing
+word/address payloads. Splitting local acceptance from history checks preserves
+the existing Lean allocation/resource ceilings after an initial check hit the cap.
+
+[Clock regressions](Tests/SubwordClock.lean) verify a full native row at low clock
+524284: the actual carry advances to low/high 0/1 and clock value 524288, with all
+three ports strictly after their prior clocks. Nonboolean carry and high-limb
+overflow are rejected. All earlier decoder, table, routing, value and execution
+checks remain unchanged. Calculations and assembly stay under Proofs; Import
+keeps its separate data-fidelity boundary.
+
+This closes initialized logical history for subword rows. Canonical source/old-RAM
+word bounds, whole store-write bounds, packed byte/halfword key binding, public
+instruction/data-ROM projection and original subword Sail execution remain next
+dependencies. The fixtures do not yet identify their ROM-shadow data bytes with
+architectural instruction bytes. Delegation/custom/CSR, unified execution,
+initialization/teardown and terminal/padding boundaries remain unfinished.
+General Rust/JSON/compiler refinement and physical verifier/cryptographic
+enforcement remain separate. No confirmed defect is added; FINDINGS and its
+historical archive are unchanged. Original Clean/Sail, native sources/artifacts,
+exporter, earlier fixtures and the original checkout are preserved.
 
 ## Historical coverage and boundary notes
 

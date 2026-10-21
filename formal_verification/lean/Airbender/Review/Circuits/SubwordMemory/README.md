@@ -126,3 +126,17 @@ with unchanged proof/resource limits. [Regressions](../../../../Tests/SubwordNat
 retain negative I/S metadata and complete row/text coverage. This is specific
 export fidelity; initialized history/key binding and original execution remain
 unfinished. General compiler and physical verifier bindings remain separate.
+
+## Initialized native memory history
+
+[The short history claim](../../Trace/Families/SubwordMemory/History.lean) now
+derives complete original Clean history and newest reads from actual public Sail
+seed reads/PC and native logical matching. The [native clock proof](../../../Proofs/SubwordMemory/Timestamp.lean)
+checks all eight timestamp queries, three borrows and both carry equations.
+[Eight initialized fixtures](../../../../Tests/SubwordHistoryFixture.lean)
+retain ROM shadows, RAM, x0, actual SB/SH writes and a unique-seed rs1=rd alias.
+Stale alias clocks pass local constraints and fail native matching; full clock
+carry and malformed clock rejection pass under unchanged resource ceilings.
+This is logical cell history. Source/old-RAM bounds, whole store-write bounds,
+packed-key binding, instruction/data-ROM projection and original subword
+execution remain separate; the earlier table/decoder claims are unchanged.

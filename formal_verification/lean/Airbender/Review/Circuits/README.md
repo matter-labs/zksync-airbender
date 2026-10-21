@@ -24,3 +24,10 @@ now checks every row of the actual thirteen-word native export against original
 public Sail setup, including negative immediates, x0, unsupported LW and the
 complete sentinel tail. This adds no general compiler refinement or initialized
 subword execution claim.
+
+[Native subword history](../Trace/Families/SubwordMemory/History.lean) now
+connects all three actual mixed register/RAM ports to complete original Clean
+history and newest reads from public Sail initialization and native matching.
+Readonly shadows/alias refreshes and actual masked writes remain. Native clock
+carry/rejection and eight initialized fixtures pass. Original subword execution,
+canonical word/key bounds and architectural ROM projection remain separate.

@@ -1426,3 +1426,11 @@ Sail setup for the thirteen-word fixture: all six forms, negative immediates,
 x0 loads, unused-index clearing, unsupported LW and complete sentinel tail.
 Nineteen new strict importer checks and native binary-text/rejection checks pass.
 Initialized history, packed-key binding and original subword execution remain open.
+
+[Initialized native subword history](Airbender/Review/Trace/Families/SubwordMemory/History.lean)
+now derives original Clean consistency and latest reads for all three mixed ports
+from actual public Sail seeds/PC and native matching. Eight complete traces retain
+ROM shadows, x0, SB/SH writes and source/destination alias refreshes; stale alias
+matching, nonboolean clock carry and high overflow reject. Full native low-clock
+carry is checked. Word/key bounds, architectural ROM projection and original
+subword instruction execution remain separate next dependencies.

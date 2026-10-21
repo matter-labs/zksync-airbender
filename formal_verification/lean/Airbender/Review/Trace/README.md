@@ -383,3 +383,12 @@ read original Sail setup. Six forms, signed immediate/x0 variants, unused-index
 clearing, unsupported LW and full sentinel tail are checked under unchanged limits.
 This is a specific Import/data prerequisite; initialized subword history, bounded
 source/old-RAM reads, packed-key binding and original execution remain next work.
+
+[Initialized native subword history](Families/SubwordMemory/History.lean)
+now constructs complete original Clean history and newest reads for all three
+mixed register/RAM ports. Actual public Sail seed reads/PC and native state/memory
+matching derive every row/prior clock input. Eight fixtures include ROM shadows,
+actual SB/SH writes, x0 and a source/destination readonly-refresh alias. Stale
+alias matching rejects, and full native clock carry plus malformed clock
+rejections pass. Canonical reads/store bounds, packed-key binding, architectural
+ROM projection and original subword instruction execution remain next work.

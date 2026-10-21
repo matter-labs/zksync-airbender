@@ -99,6 +99,9 @@ import Tests.SubwordDecoder
 
 import Tests.SubwordNativeDecoder
 
+import Tests.SubwordHistory
+import Tests.SubwordClock
+
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
 #print axioms Airbender.AddSub.Proofs.constraint_count
@@ -2345,3 +2348,26 @@ import Tests.SubwordNativeDecoder
 #print axioms Tests.SubwordNativeDecoder.signed_zero_loads
 #print axioms Tests.SubwordNativeDecoder.negative_stores
 #print axioms Tests.SubwordNativeDecoder.actual_text
+
+#print axioms Airbender.SubwordMemory.Proofs.timestamp_equations
+#print axioms Airbender.SubwordMemory.Proofs.final_clock_bound
+#print axioms Airbender.SubwordMemory.Proofs.clock_advance
+#print axioms Airbender.SubwordMemory.Proofs.clock_effects
+#print axioms Airbender.SubwordMemory.public_memory_soundness
+#print axioms Tests.SubwordHistoryRows.native_constraints
+#print axioms Tests.SubwordHistoryFixture.accepted
+#print axioms Tests.SubwordHistoryFixture.public_inputs
+#print axioms Tests.SubwordHistory.public_history
+#print axioms Tests.SubwordHistory.latest
+#print axioms Tests.SubwordHistory.derived_clocks
+#print axioms Tests.SubwordHistory.native_clock_advances
+#print axioms Tests.SubwordHistory.alias_clock
+#print axioms Tests.SubwordHistory.actual_store_writes
+#print axioms Tests.SubwordHistory.actual_x0_write
+#print axioms Tests.SubwordHistory.stale_alias_rejected
+#print axioms Tests.SubwordHistoryStale.stale_local_constraints
+#print axioms Tests.SubwordClock.native_constraints
+#print axioms Tests.SubwordClock.native_rollover
+#print axioms Tests.SubwordClock.native_port_order
+#print axioms Tests.SubwordClock.nonboolean_carry_rejected
+#print axioms Tests.SubwordClock.overflowing_high_rejected
