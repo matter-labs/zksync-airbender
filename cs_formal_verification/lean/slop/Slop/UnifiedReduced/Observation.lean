@@ -72,19 +72,17 @@ theorem observe_supported {instruction : SailRV32.instruction} {data : DecoderDa
   cases first : Trace.decoderFields instruction with
   | some original =>
     unfold Trace.decoderFields at first
-    split at first <;> simp_all
+    split at first <;> grind
   | none =>
     cases second : JumpBranchSlt.decoderFields instruction with
     | some original =>
       unfold JumpBranchSlt.decoderFields at second
-      split at second <;> simp_all
-      all_goals rename_i x imm rs2 rs1 op excluded
-      all_goals exact False.elim (excluded imm (.Regidx rs2) (.Regidx rs1) op rfl rfl rfl rfl)
+      split at second <;> grind
     | none =>
       cases third : ShiftBinop.decoderFields instruction with
       | none => simp [first, second, third] at fields
       | some original =>
         unfold ShiftBinop.decoderFields at third
-        split at third <;> simp_all
+        split at third <;> grind
 
 end Airbender.UnifiedReduced.Proofs
