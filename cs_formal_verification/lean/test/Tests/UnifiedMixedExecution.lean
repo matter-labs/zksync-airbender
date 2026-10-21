@@ -95,7 +95,7 @@ private theorem configuration : FlatMemoryConfiguration before := by
   have written : run (SailRV32.Functions.wX_bits (.Regidx 1) 0) Tests.TraceExecution.before =
       .ok () { Tests.TraceExecution.before with regs := Tests.TraceExecution.before.regs.insert .x1 0 } := by
     simp only [SailRV32.Functions.wX_bits, SailRV32.Functions.wX,
-      SailRV32.Functions.regval_into_reg, write_callback_pure, freeM_pure_bind]
+      SailRV32.Functions.regval_into_reg, write_callback_pure]
     exact run_bind_of_ok _ _ _ _ _ (write_register .x1 0 Tests.TraceExecution.before)
   have preserved := configuration_gpr_write Tests.TraceExecution.configuration 1 0 written
   exact configuration_register_frame (before := { Tests.TraceExecution.before with
