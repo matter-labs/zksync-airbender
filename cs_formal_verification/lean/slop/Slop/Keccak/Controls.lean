@@ -1,4 +1,5 @@
 import Slop.Keccak.ArtifactChecks
+import Slop.Keccak.OpIndex
 import Human.Circuits.Keccak.Controls
 import Slop.Constraints
 import Slop.Arithmetic.Chunks
@@ -22,12 +23,15 @@ theorem control_bits
     (w 0 = 0 ∨ w 0 = 1) ∧ ∀ i : Fin 17, w (63 + i.val) = 0 ∨ w (63 + i.val) = 1 := by
   constructor
   · have flag := Verification.assertion_of_holds h ⟨0, by rw [constraint_count]; decide⟩
-    simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero, or_comm] using flag
+    op_index at flag
+    simpa [Expression.eval, Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero,
+      or_comm] using flag
   · intro i
     have flag := Verification.assertion_of_holds h ⟨156 + i.val, by rw [constraint_count]; omega⟩
-    fin_cases i <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] at flag ⊢
+    fin_cases i
+    all_goals op_index at flag
+    all_goals simp [Expression.eval, Verification.environment, mul_eq_zero, ← sub_eq_add_neg,
+      sub_eq_zero] at flag ⊢
     all_goals exact flag
 
 theorem control_high_zero
@@ -35,8 +39,8 @@ theorem control_high_zero
     w 4 = 0 ∧ w 6 = 0 := by
   have read := Verification.assertion_of_holds h ⟨1, by rw [constraint_count]; decide⟩
   have write := Verification.assertion_of_holds h ⟨2, by rw [constraint_count]; decide⟩
-  simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] using And.intro read write
+  op_index at read write
+  simpa [Expression.eval, Verification.environment] using And.intro read write
 
 private theorem counts_field
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
@@ -46,8 +50,8 @@ private theorem counts_field
   have activeIteration := Verification.assertion_of_holds h ⟨5, by rw [constraint_count]; decide⟩
   have inactiveMode := Verification.assertion_of_holds h ⟨6, by rw [constraint_count]; decide⟩
   have inactiveIteration := Verification.assertion_of_holds h ⟨7, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at activeMode activeIteration inactiveMode inactiveIteration
+  op_index at activeMode activeIteration inactiveMode inactiveIteration
+  simp [Expression.eval, Verification.environment] at activeMode activeIteration inactiveMode inactiveIteration
   simp [Variables.modeColumns, Variables.iterationColumns, Fin.sum_univ_succ]
   rcases (control_bits h).1 with zero | one
   · simp [zero] at inactiveMode inactiveIteration
@@ -135,7 +139,8 @@ theorem control_read_bound {p : Nat} [Fact p.Prime] (hp : 2048 ≤ p)
       _ = 31 := by decide
   have packedBound : mode + 8 * iteration + 64 * round < p := by omega
   have definition := Verification.assertion_of_holds h ⟨3, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment] at definition
+  op_index at definition
+  simp [Expression.eval, Verification.environment] at definition
   have field : ((mode + 8 * iteration + 64 * round : Nat) : ZMod p) = w 3 := by
     simp [mode, iteration, round, Variables.modeColumns, Variables.iterationColumns,
       Variables.roundColumns, Fin.sum_univ_succ]
