@@ -1442,3 +1442,10 @@ packed fields and disjoint byte contributions bound merged SB/SH writes without
 assuming bounded results. Eight full traces retain actual code/shadow bytes,
 x0 and alias refreshes. Address/width/sign/ROM bindings and original subword
 instruction execution remain next work.
+
+[Initialized native subword addresses](Airbender/Review/Trace/Families/SubwordMemory/Address.lean)
+now derive RV32 source-plus-immediate addition, byte offsets and actual aligned
+mixed-port words from the same public initialization/decoding and native matching.
+Eight full initialized traces and two full-native signed/wrap boundary rows
+exercise the connection. Width/sign/byte effects, architectural ROM projection
+and original subword instruction execution remain next work.

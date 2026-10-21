@@ -1071,3 +1071,50 @@ boundaries remain unfinished. General Rust/JSON/compiler refinement and physical
 verifier/cryptographic enforcement remain separate. FINDINGS and its historical
 archive are unchanged; no confirmed defect is added. The original checkout is
 preserved and no push/publication is authorized.
+
+## Initialized native subword address checkpoint (2026-10-21)
+
+[Native Mersenne31 addition](Airbender/Proofs/SubwordMemory/AddressArithmetic.lean)
+now derives the effective RV32 byte address from the actual source and decoded
+immediate limbs. The existing word-memory carry calculation is reused with the
+checked native subword equation indices. Both scalar address queries supply
+canonical limbs; low and high carries retain native RV32 wraparound.
+
+[Offset and port geometry](Airbender/Proofs/SubwordMemory/Address.lean) derives
+canonical native offset-key packing from the ranged address, original raw
+funct3/x0 fields and native store Booleanity. Accepted fixed-table membership
+then yields the byte offset. Native subtraction recovers the containing aligned
+word without field wrap or natural underflow. Its address is exactly byte-address
+floor division by four, including the top RV32 word, and adding the derived
+offset recovers the byte address. The actual mixed load/store port address is
+that containing word; no cell, address, alignment or expected-result premise is
+supplied.
+
+[Initialized assembly](Airbender/Proofs/Trace/Families/SubwordMemory/Address.lean)
+uses the same original public Sail state for seed reads and full sparse decoding.
+The established history supplies the actual first-port source range; original
+decoding supplies the immediate and raw/x0 ranges. [One short public claim](Airbender/Review/Trace/Families/SubwordMemory/Address.lean)
+derives actual public source evidence, decoded metadata and every native address
+property. No caller-supplied row read, bound, clock, flag or intermediate state is
+added. The observables remain in Review and all arithmetic/assembly remains in
+Proofs.
+
+[Eight unchanged complete initialized traces](Tests/SubwordAddresses.lean) now
+exercise address and port geometry for all six forms, actual SB/SH writes, x0,
+ROM-shadow/RAM data and a source/destination alias. [Two split complete-native
+boundary certificates](Tests/SubwordAddressBoundaries.lean) retain all 51 native
+equations and 14 lookups each: 0xffffffff plus one wraps to zero with both native
+carry levels, and zero plus original sign-extended minus three yields byte
+address 0xfffffffd and containing word 0xfffffffc. Actual original instruction
+decoding and native metadata/query fields are checked. The boundary certificates
+are address regressions; they do not claim original instruction execution.
+
+Next work binds width/sign/offset selectors and the bounded source/old-memory
+words to original Sail byte/halfword load/store effects, then prepares/retires
+and composes full subword execution. Architectural instruction/data-ROM
+projection remains explicit. Delegation/custom/CSR, unified execution,
+initialization/teardown and terminal/padding boundaries remain unfinished.
+General Rust/JSON/compiler refinement and physical verifier/cryptographic
+enforcement remain separate. FINDINGS and its historical archive are unchanged;
+no confirmed native defect is added. Resource ceilings are unchanged, the
+original checkout is preserved and no push/publication is authorized.

@@ -401,3 +401,12 @@ merged SB/SH writes using both source and old reads. Eight full fixtures include
 actual overlapping instruction/shadow bytes, x0 and readonly alias refreshes.
 Address/width/sign/ROM bindings and original subword execution remain next work;
 no expected read, result or intermediate state is supplied.
+
+[Initialized subword native addresses](Families/SubwordMemory/Address.lean)
+now derive RV32 byte-address addition, offsets, containing aligned words and
+actual load/store port addresses from one public state supplying initialization
+and original decoding. Established history derives the source bound; decoded
+fields derive every remaining numerical interface. Eight unchanged initialized
+traces retain all forms, x0 and aliases, while complete native signed/wrap rows
+check boundary carries. Original width/sign/byte effects, architectural ROM
+projection and instruction execution remain next dependencies.

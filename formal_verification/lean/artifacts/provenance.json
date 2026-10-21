@@ -6405,6 +6405,76 @@
       "source_path": "Airbender/Proofs/SubwordMemory/Values.lean",
       "source_sha256": "d56dc8496e1fcd78a7339e8f3a2d33290e66a616bd0c8ead82d68615fb387047",
       "change": "Adapt the pinned v3 disjoint store-byte bound and two-read initialized value-preservation argument to actual v2 native raw funct3/offset keys, literal helpers, mixed ports and masked writes. Retain original x0, Mersenne31 arithmetic, native clock rollover and actual original public decoding. Reuse shared value induction unchanged; no v3 table identity, column mapping, source-field inverse, caller-supplied clock/seed bounds or table-equivalence premise is imported."
+    },
+    {
+      "path": "Airbender/Review/Circuits/SubwordMemory/AddressModel.lean",
+      "backport_reuse_revision": "b7d67e39a55171afe4bd57d8be575a452693c858",
+      "backport_reuse_path": "Airbender/Review/Circuits/WordMemory/Model.lean",
+      "backport_reuse_sha256": "45e7b4d8e926f5b5ab6054b1443ee05000ccc51b542d101140177a00d95a19a2",
+      "change": "Reuse canonical source/immediate/address observables and native transfer properties. Select actual v2 subword columns and low-address offset subtraction; state effective address, offset, containing word and actual mixed-port observables only. Original byte execution and architectural ROM projection remain separate."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/AddressArithmetic.lean",
+      "backport_reuse_revision": "b7d67e39a55171afe4bd57d8be575a452693c858",
+      "backport_reuse_path": "Airbender/Proofs/WordMemory/Address.lean",
+      "backport_reuse_sha256": "a7ed6a26b584d0ad85dcc05ddf2f58bb8391ba90b18f6a0e1dae8bfd24fad2f6",
+      "change": "Reuse the checked native Mersenne31 low-carry inverse and bounded two-limb RV32 addition argument. Change only the actual subword equation indices and scalar-bound extraction; retain native address rollover and all original Clean equations."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/Address.lean",
+      "backport_reuse_revision": "b7d67e39a55171afe4bd57d8be575a452693c858",
+      "backport_reuse_path": "Airbender/Proofs/SubwordMemory/PackedKeys.lean",
+      "backport_reuse_sha256": "05f039517204db0f160c56dc7bca3df51c9988f6b70dfba2a067438d21adbc28",
+      "change": "Reuse bounded native field-to-natural key lifting. Derive canonical offset packing from actual scalar queries, native store Booleanity and original raw/x0 ranges; recover the containing aligned word and actual load/store port address, including top-of-RV32 offsets. No aligned-cell, expected-address or table-equivalence premise."
+    },
+    {
+      "path": "Airbender/Proofs/Trace/Families/SubwordMemory/Address.lean",
+      "backport_reuse_revision": "b7d67e39a55171afe4bd57d8be575a452693c858",
+      "backport_reuse_path": "Airbender/Proofs/Trace/Families/WordMemory/Inputs.lean",
+      "backport_reuse_sha256": "8e61443c0d140e78bb15cf4ae196212cb12ea03d16ae44d6dfef78cdaf7a916d",
+      "change": "Reuse actual first-port source-bound extraction from initialized reads and public decoder recovery. Derive immediate/raw/x0 interfaces from the same actual original public state and full sparse setup; apply native subword address/containing-word calculations with every numerical interface discharged."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/SubwordMemory/Address.lean",
+      "backport_reuse_revision": "b7d67e39a55171afe4bd57d8be575a452693c858",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/SubwordMemory/Values.lean",
+      "backport_reuse_sha256": "ba17abe16041a95d9912d6a0719f19abdc64f05c8aeccae982fc5cda0e112d6a",
+      "change": "Reuse one short same-public-state initialization/decoding/native-acceptance wrapper. Conclude actual source evidence, decoded metadata and native RV32/offset/port geometry without per-row range, read, flag, address or expected-effect premises. Original instruction execution remains separate."
+    },
+    {
+      "path": "Tests/SubwordAddresses.lean",
+      "backport_reuse_revision": "b7d67e39a55171afe4bd57d8be575a452693c858",
+      "backport_reuse_path": "Tests/SubwordWordBounds.lean",
+      "backport_reuse_sha256": "31959fc220faa632a0b503e8fd784719e55a722e9f0d253509572bd948e0a8a9",
+      "change": "Reuse all eight full native decoded initialized traces unchanged, including each original subword form, actual stores, discarded x0 and an rs1=rd refresh. Derive the integrated address properties and check observed containing words and byte addresses."
+    },
+    {
+      "path": "Tests/SubwordAddressWitness.lean",
+      "backport_reuse_revision": "b7d67e39a55171afe4bd57d8be575a452693c858",
+      "backport_reuse_path": "Tests/SubwordBoundsWitness.lean",
+      "backport_reuse_sha256": "58960eeb8d28b0564e44dc2bbc891dd0ca2c1792c9acbd8224dbbc52e35f9922",
+      "change": "Reuse complete native rows in separate edge copies. Retain all native equations/queries while setting source=0xffffffff, immediate=1, native low/high carries and address=0, or source=0 and original sign-extended immediate=-3 with address=0xfffffffd. Keep actual wrap-row instruction shadow bytes and exact RAM/ROM selection."
+    },
+    {
+      "path": "Tests/SubwordAddressPart0.lean",
+      "backport_reuse_revision": "b7d67e39a55171afe4bd57d8be575a452693c858",
+      "backport_reuse_path": "Tests/SubwordBoundsPart0.lean",
+      "backport_reuse_sha256": "8ae8fdb6537363314852a662075889fdabfd786e6762e9e45172d5cf3fccaf2c",
+      "change": "Reuse a separate full 51-equation/14-lookup native certificate for the RV32-wrap boundary. Keep literal native offset/separator and unchanged dynamic queries; do not infer native acceptance from address arithmetic alone."
+    },
+    {
+      "path": "Tests/SubwordAddressPart1.lean",
+      "backport_reuse_revision": "b7d67e39a55171afe4bd57d8be575a452693c858",
+      "backport_reuse_path": "Tests/SubwordDecoderPart1.lean",
+      "backport_reuse_sha256": "80f7ccbb08ffe4d2b825975f1fc08d7e15163898c97ce3c258bf8e1c0817d007",
+      "change": "Reuse a separate complete native certificate for negative-immediate address 0xfffffffd and containing word 0xfffffffc. Use exact native offset key 589821, separator high limb 65535 and unchanged dynamic queries."
+    },
+    {
+      "path": "Tests/SubwordAddressBoundaries.lean",
+      "backport_reuse_revision": "b7d67e39a55171afe4bd57d8be575a452693c858",
+      "backport_reuse_path": "Tests/SubwordWordBounds.lean",
+      "backport_reuse_sha256": "31959fc220faa632a0b503e8fd784719e55a722e9f0d253509572bd948e0a8a9",
+      "change": "Reuse original decoder/metadata/query regressions plus short factored native-address applications. Check sign extension, both native carry levels, offset and containing words on the two complete native boundary rows. Keep boundary address checks separate from original instruction execution."
     }
   ],
   "setup_artifacts": [

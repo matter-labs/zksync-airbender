@@ -105,6 +105,9 @@ import Tests.SubwordClock
 import Tests.SubwordWordBounds
 import Tests.SubwordPackedBounds
 
+import Tests.SubwordAddresses
+import Tests.SubwordAddressBoundaries
+
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
 #print axioms Airbender.AddSub.Proofs.constraint_count
@@ -2408,3 +2411,23 @@ import Tests.SubwordPackedBounds
 #print axioms Tests.SubwordBoundsPart0.constraints_0
 #print axioms Tests.SubwordBoundsPart6.constraints_6
 #print axioms Tests.SubwordBoundsPart7.constraints_7
+
+#print axioms Airbender.SubwordMemory.Proofs.address_bounds
+#print axioms Airbender.SubwordMemory.Proofs.effective_address
+#print axioms Airbender.SubwordMemory.Proofs.native_offset_key
+#print axioms Airbender.SubwordMemory.Proofs.native_address
+#print axioms Airbender.SubwordMemory.Proofs.source_bound_of_reads
+#print axioms Airbender.SubwordMemory.Proofs.image_native_addresses
+#print axioms Airbender.SubwordMemory.public_native_addresses
+#print axioms Tests.SubwordAddresses.public_addresses
+#print axioms Tests.SubwordAddresses.actual_addresses
+#print axioms Tests.SubwordAddresses.observed_cells
+#print axioms Tests.SubwordAddressPart0.constraints_0
+#print axioms Tests.SubwordAddressPart1.constraints_1
+#print axioms Tests.SubwordAddressBoundaries.fields
+#print axioms Tests.SubwordAddressBoundaries.original_wrap_decode
+#print axioms Tests.SubwordAddressBoundaries.original_negative_decode
+#print axioms Tests.SubwordAddressBoundaries.query
+#print axioms Tests.SubwordAddressBoundaries.native_addresses
+#print axioms Tests.SubwordAddressBoundaries.observed_wrap
+#print axioms Tests.SubwordAddressBoundaries.observed_negative

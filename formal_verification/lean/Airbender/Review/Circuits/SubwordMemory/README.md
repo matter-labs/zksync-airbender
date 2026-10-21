@@ -155,3 +155,20 @@ join original code bytes to initialization, including overlapping shadow bytes,
 x0 and a source/destination alias. Boundary checks cover maximum keys/merges and
 the raw-field range dependency. Effective addresses, width/sign/offset and
 architectural ROM projection still need connection to original Sail execution.
+
+## Initialized native address geometry
+
+[Address observables](AddressModel.lean) name the actual source, immediate,
+byte address and low-offset-subtracted containing word. [The short public
+claim](../../Trace/Families/SubwordMemory/Address.lean) derives all numerical
+interfaces from initialized history and actual original public decoding.
+[Native calculations](../../../Proofs/SubwordMemory/Address.lean) derive exact
+offset packing, containing-word alignment and actual mixed-port routing;
+[carry arithmetic](../../../Proofs/SubwordMemory/AddressArithmetic.lean) retains
+Mersenne31 and RV32 rollover. No desired address, aligned cell or row range is
+assumed. [Eight initialized traces](../../../../Tests/SubwordAddresses.lean) and
+[two complete-native boundary rows](../../../../Tests/SubwordAddressBoundaries.lean)
+cover all six forms, x0/aliases, negative immediates and wraparound. Native x0
+trap-waiver semantics are preserved; aligned containing words do not assert
+alignment of every discarded instruction access. Original byte/halfword effects
+and architectural instruction/data-ROM projection remain separate next work.

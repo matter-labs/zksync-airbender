@@ -39,3 +39,10 @@ byte contributions bound merged stores. Eight complete traces use one public
 state for instruction and seed bytes, including shadows, x0 and aliases.
 Architectural address/ROM/byte effects and original subword execution remain
 separate next dependencies.
+
+[Initialized subword native addresses](../Trace/Families/SubwordMemory/Address.lean)
+now derive actual RV32 effective addresses, offsets and containing aligned port
+words from public seed reads, original decoding and native matching. Eight full
+initialized traces and signed/wrap native boundary certificates pass. The next
+connection is original byte/halfword effects and execution, with architectural
+ROM projection explicit.

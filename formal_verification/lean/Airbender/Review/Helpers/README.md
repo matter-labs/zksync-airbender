@@ -41,3 +41,13 @@ funct3/x0 ranges. [Same-state regressions](../../../Tests/SubwordWordBounds.lean
 retain actual public code/seed bytes. Shared Clean/Sail definitions, tables and
 logical history semantics are unchanged; original instruction execution remains
 separate.
+
+## Subword native address geometry
+
+[Original subword decoder membership](Decoder/SubwordMemory.lean) and the
+unchanged initialized value induction now supply source/immediate/raw/x0 ranges
+for [native address geometry](../Trace/Families/SubwordMemory/Address.lean).
+The exact native offset relation and carry equations derive the containing
+aligned word and actual mixed-port addresses. No helper table identity or
+per-row expected address/read is supplied. Shared Clean/Sail semantics and
+all original native fixed tables remain unchanged.
