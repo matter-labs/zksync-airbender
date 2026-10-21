@@ -222,3 +222,9 @@ these native candidate bounds with the x0 flag derived from original public
 decoding. Actual load writes are bounded without an added flag/range premise.
 Packed raw-key normalization, exported decoder fidelity and initialized old/source
 reads and whole store-write bounds remain separate unfinished connections.
+
+[Actual subword decoder data](../../Trace/Families/SubwordMemory/NativeDecoder.lean)
+now has a specific full-capacity public Sail fidelity certificate. Original raw
+funct3/store fields, negative immediates, x0 and unused-index clearing are retained.
+These metadata checks complement the existing native table certificates; binding
+packed keys to initialized bounded reads and original execution remains open.

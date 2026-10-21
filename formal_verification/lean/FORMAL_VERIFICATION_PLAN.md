@@ -922,3 +922,50 @@ Rust/compiler refinement and physical verifier/cryptographic enforcement remain
 separate. No confirmed native defect is added; FINDINGS and its historical
 archive, original Clean/Sail, native circuit/helper artifacts and source checkout
 are unchanged.
+
+## Native subword decoder export checkpoint (2026-10-21)
+
+[The actual native export](artifacts/setup/subword-decoder-native.json) now
+retains thirteen original words: all six subword forms, their negative-immediate
+variants with original x0 load destinations, and an unsupported LW slot. The
+exporter calls the pinned original native subword family and shared preprocessor/
+flattening functions; its codec, dependencies and other profile behavior remain
+unchanged. The independent strict [parser](Airbender/Import/Setup.lean) and
+[literal emitter](Airbender/Import/SetupEmbed.lean) retain the exact subword family,
+Mersenne31 field, text bounds and full ten-column 1,048,576-row extent.
+
+[Independent public data](Airbender/Review/Circuits/SubwordMemory/NativeData.lean)
+spells original instruction bytes and Sail constructors separately from exported
+metadata. [Small pure original reductions](Airbender/Proofs/SubwordMemory/NativeDecode.lean)
+retain signed immediates and original x0 forms before replay in the public state.
+[Byte reads and internal certificates](Airbender/Proofs/SubwordMemory/NativeSetup.lean)
+construct the exact public indexed setup and prove equality with every actual
+exported row. Four small byte-read partitions and symbolic compressed-column tail
+getters preserve all default proof/resource ceilings; no million-row expansion,
+expected result or table-equivalence premise is introduced.
+
+[One short public claim](Airbender/Review/Trace/Families/SubwordMemory/NativeDecoder.lean)
+checks this specific export's fidelity. Native I-type unused rs2 is zero, original
+x0 destinations retain zero flag one, and negative immediates use 65535/65535.
+Native S-type raw bits contain apparent rd=31 for immediate -1; the actual decoder
+clears that unused index, retains rs2 and sets zero flag one. The unsupported LW
+keeps its physical slot and the entire sentinel tail is retained.
+
+[Kernel regressions](Tests/SubwordNativeDecoder.lean) cover original text and
+Sail decoding, full row equality, tail, signed x0 loads and negative stores.
+Nineteen added importer checks reject bad/crossed profiles, altered fields,
+noncanonical words, incomplete columns/extents and unknown fields. Native Rust
+runs reproduce the fixture and independent little-endian text input; actual
+word/doubleword/ADD/CSR filtering and malformed/oversized text rejection pass.
+All previous native exports and importer checks remain covered.
+
+This closes the specific decoder-data fidelity dependency, not arbitrary Rust/
+JSON/compiler refinement or subword instruction execution. Native constraints,
+initialized matching, public state/ROM bindings and packed-key normalization must
+still derive source/old-RAM reads, whole store-write bounds and original subword
+Sail execution. Five other ordinary families remain at their existing checked
+execution checkpoints; delegation/custom/CSR, unified execution, initialization/
+teardown and terminal/padding boundaries remain unfinished. Physical verifier
+and cryptographic enforcement remain separate. No confirmed defect is added;
+FINDINGS and its historical archive, original Clean/Sail and native sources/
+circuit/helper artifacts are unchanged. The original checkout is preserved.

@@ -18,3 +18,9 @@ LB/LH/LBU/LHU/SB/SH fields and bounded actual load writes from native acceptance
 and constructed public logical setup membership. All seven full native fixtures
 and five decoder rejections pass. Exported decoder fidelity, decoded-key
 normalization, initialized history and original subword execution remain open.
+
+[Subword decoder export fidelity](../Trace/Families/SubwordMemory/NativeDecoder.lean)
+now checks every row of the actual thirteen-word native export against original
+public Sail setup, including negative immediates, x0, unsupported LW and the
+complete sentinel tail. This adds no general compiler refinement or initialized
+subword execution claim.

@@ -97,6 +97,8 @@ import Tests.SubwordValues
 
 import Tests.SubwordDecoder
 
+import Tests.SubwordNativeDecoder
+
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.mersenne31_soundness
 #print axioms Airbender.AddSub.Proofs.constraint_count
@@ -2315,3 +2317,31 @@ import Tests.SubwordDecoder
 #print axioms Tests.SubwordDecoderOriginal.decoded_4
 #print axioms Tests.SubwordDecoderOriginal.decoded_5
 #print axioms Tests.SubwordDecoderOriginal.decoded_6
+
+#print axioms Airbender.SubwordMemory.Proofs.native_decoded_0
+#print axioms Airbender.SubwordMemory.Proofs.native_decoded_1
+#print axioms Airbender.SubwordMemory.Proofs.native_decoded_2
+#print axioms Airbender.SubwordMemory.Proofs.native_decoded_3
+#print axioms Airbender.SubwordMemory.Proofs.native_decoded_4
+#print axioms Airbender.SubwordMemory.Proofs.native_decoded_5
+#print axioms Airbender.SubwordMemory.Proofs.native_decoded_6
+#print axioms Airbender.SubwordMemory.Proofs.native_decoded_7
+#print axioms Airbender.SubwordMemory.Proofs.native_decoded_8
+#print axioms Airbender.SubwordMemory.Proofs.native_decoded_9
+#print axioms Airbender.SubwordMemory.Proofs.native_decoded_10
+#print axioms Airbender.SubwordMemory.Proofs.native_decoded_11
+#print axioms Airbender.SubwordMemory.Proofs.native_decoded_12
+#print axioms Airbender.SubwordMemory.Proofs.native_fixture_decode
+#print axioms Airbender.SubwordMemory.Proofs.native_fixture_words
+#print axioms Airbender.SubwordMemory.Proofs.native_fixture_slot
+#print axioms Airbender.SubwordMemory.Proofs.native_fixture_image
+#print axioms Airbender.SubwordMemory.Proofs.native_exported_tail
+#print axioms Airbender.SubwordMemory.Proofs.native_exported_rows
+#print axioms Airbender.SubwordMemory.exported_decoder_fidelity
+#print axioms Tests.SubwordNativeDecoder.constructed
+#print axioms Tests.SubwordNativeDecoder.original_decode
+#print axioms Tests.SubwordNativeDecoder.all_rows
+#print axioms Tests.SubwordNativeDecoder.tail
+#print axioms Tests.SubwordNativeDecoder.signed_zero_loads
+#print axioms Tests.SubwordNativeDecoder.negative_stores
+#print axioms Tests.SubwordNativeDecoder.actual_text

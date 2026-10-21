@@ -376,3 +376,10 @@ byte construction, original Sail decoding, complete logical setup membership and
 native acceptance. This closes the local Boolean x0 dependency. Native exported
 decoder fidelity, raw-key normalization and initialized history still precede
 original subword instruction/trace execution and composition.
+
+[Native subword decoder fidelity](Families/SubwordMemory/NativeDecoder.lean)
+connects every actual exported row of the thirteen-word fixture to independently
+read original Sail setup. Six forms, signed immediate/x0 variants, unused-index
+clearing, unsupported LW and full sentinel tail are checked under unchanged limits.
+This is a specific Import/data prerequisite; initialized subword history, bounded
+source/old-RAM reads, packed-key binding and original execution remain next work.

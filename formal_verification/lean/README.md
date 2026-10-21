@@ -1419,3 +1419,10 @@ load writes/bounds, including x0. Seven full native rows and original public
 byte images support both short claims; five decoder rejections pass. Native
 exported decoder fidelity, packed-key normalization and initialized history
 remain open before original subword execution and whole-machine composition.
+
+[Actual subword decoder fidelity](Airbender/Review/Trace/Families/SubwordMemory/NativeDecoder.lean)
+now connects every native exported decoder row to independently read original
+Sail setup for the thirteen-word fixture: all six forms, negative immediates,
+x0 loads, unused-index clearing, unsupported LW and complete sentinel tail.
+Nineteen new strict importer checks and native binary-text/rejection checks pass.
+Initialized history, packed-key binding and original subword execution remain open.

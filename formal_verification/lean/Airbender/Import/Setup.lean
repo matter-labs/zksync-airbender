@@ -295,6 +295,13 @@ def DecoderArtifact.validateShift (artifact : DecoderArtifact) : Except String U
 def parseShiftDecoder (source : String) : Except String DecoderArtifact :=
   parseDecoderFor "shift_binop_csrrw" source
 
+/-- Separate original native subword decoder profile, including x0 forms. -/
+def DecoderArtifact.validateSubword (artifact : DecoderArtifact) : Except String Unit :=
+  validateDecoder "subword_only_load_store" artifact
+
+def parseSubwordDecoder (source : String) : Except String DecoderArtifact :=
+  parseDecoderFor "subword_only_load_store" source
+
 /-- A strict actual native zero/XOR/OR/AND prefix, not the complete shift family. -/
 def ControlArtifact.validateBinary (artifact : ControlArtifact) : Except String Unit := do
   unless artifact.version == 1 && artifact.field_modulus == mersenne31Modulus &&

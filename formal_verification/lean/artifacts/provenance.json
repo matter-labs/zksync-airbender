@@ -6169,6 +6169,76 @@
       "source_path": "Airbender/Proofs/SubwordMemory/Decoder.lean",
       "source_sha256": "d149b1fce1c6fb55693fb0c37336620ec3a2239881a064f73617c8502a176066",
       "change": "Adapt the pinned v3 original-Sail subword projection/field proof approach, with actual v2 one-bit store mask and raw funct3. Preserve original x0 loads, ten native fields, Mersenne31 values and the complete sparse tail; do not copy v3 three-bit selectors, x0 exclusion, table model or coverage."
+    },
+    {
+      "path": "Airbender/Review/Circuits/SubwordMemory/NativeData.lean",
+      "backport_reuse_revision": "18bc513db839fb7b9036588227f750e2a10e47fd",
+      "backport_reuse_path": "Airbender/Review/Circuits/ShiftBinop/NativeData.lean",
+      "backport_reuse_sha256": "871c1261bf58c6b610e73fcd41a8336dcb4b97f4faea02ca177ca19f19371c0a",
+      "change": "Adapt independent original words/instructions/public bytes and sparse setup to all six actual native v2 subword forms, original x0 loads, negative immediates, unused register clearing and a retained unsupported LW slot. The imported native columns are separate literal data."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/NativeDecode.lean",
+      "backport_reuse_revision": "18bc513db839fb7b9036588227f750e2a10e47fd",
+      "backport_reuse_path": "Tests/SubwordDecoderOriginal.lean",
+      "backport_reuse_sha256": "7ebc849a8dfbad6023b187b34ad693851d43515428dffe74e2a2f64a7e30a1f5",
+      "change": "Reuse small pure reductions of the pinned original Sail decoder before public state replay. Cover all thirteen actual instruction encodings with default recursion/allocation limits; retain negative S-type/I-type immediates, original x0 forms and unsupported LW decoding."
+    },
+    {
+      "path": "Airbender/Proofs/SubwordMemory/NativeSetup.lean",
+      "backport_reuse_revision": "18bc513db839fb7b9036588227f750e2a10e47fd",
+      "backport_reuse_path": "Airbender/Proofs/ShiftBinop/NativeSetup.lean",
+      "backport_reuse_sha256": "71d05a92b73a1b7893ac6e9455aef94d2ef2b6b600b500b38f618f2ff75a3a53",
+      "change": "Adapt actual public-byte reads in four small partitions, original stateful slot/image construction and symbolic constant-tail getter proofs. Check all literal native columns across all 1048576 rows, retaining unsupported slot and complete sentinel tail. No table equivalence, expected-result premise or raised limit."
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/SubwordMemory/NativeDecoder.lean",
+      "backport_reuse_revision": "18bc513db839fb7b9036588227f750e2a10e47fd",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ShiftBinop/NativeDecoder.lean",
+      "backport_reuse_sha256": "f8b1bb5482b1a80d7e645a6f87ab8b1815ce3711b03263c4d342b1b77e9720be",
+      "change": "Reuse the short specific exported-decoder fidelity wrapper. The actual v2 subword export is proved equal to independently read/originally decoded public setup; general Rust/JSON/compiler refinement, initialized history and instruction execution remain separate."
+    },
+    {
+      "path": "Tests/SubwordNativeDecoder.lean",
+      "backport_reuse_revision": "18bc513db839fb7b9036588227f750e2a10e47fd",
+      "backport_reuse_path": "Tests/ShiftDecoder.lean",
+      "backport_reuse_sha256": "a07db35aab75f21892f74d12ecb5c13e27bb8a46fd07ecc31c3c00593cc19d67",
+      "change": "Adapt finite decoder-fidelity regressions for actual text, original decoding, every native row, complete sentinel tail, negative I-type x0 loads and negative S-type unused-rd clearing. Do not claim native subword execution."
+    },
+    {
+      "path": "Airbender/Import/Setup.lean",
+      "backport_reuse_revision": "18bc513db839fb7b9036588227f750e2a10e47fd",
+      "backport_reuse_path": "Airbender/Import/Setup.lean",
+      "backport_reuse_sha256": "7568477203ab2885a3b210909de5e598ea12434db02dd613b3bb4b959e715d91",
+      "change": "Reuse the unchanged strict generic decoder schema/column/extent validators through a separate native subword family guard. Existing arithmetic/control/shift entrypoints remain exact; no semantic recipe is inferred."
+    },
+    {
+      "path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_revision": "18bc513db839fb7b9036588227f750e2a10e47fd",
+      "backport_reuse_path": "Airbender/Import/SetupEmbed.lean",
+      "backport_reuse_sha256": "c291f21b4e93c9ff86bc2d7f585bb4e9842439663909681eba3aeb6d3c375363",
+      "change": "Reuse literal decoder/text emission through the independent strict native subword parser. No kernel semantic equivalence is supplied by emission."
+    },
+    {
+      "path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_revision": "18bc513db839fb7b9036588227f750e2a10e47fd",
+      "backport_reuse_path": "../native_setup_exporter/src/main.rs",
+      "backport_reuse_sha256": "51af6f27a9564e30be2ba316f7eb5486370efdb012d6a3ee5332b4dae5add6c9",
+      "change": "Reuse unchanged generic actual native preprocess_bytecode/materialize_flattened_decoder_table and little-endian text handling with SubwordOnlyMemoryFamilyDecoder. Add a thirteen-word original subword fixture and CLI; keep shared column codec, all other profiles, manifests/lock and native sources unchanged."
+    },
+    {
+      "path": "scripts/check_native_setup.py",
+      "backport_reuse_revision": "18bc513db839fb7b9036588227f750e2a10e47fd",
+      "backport_reuse_path": "scripts/check_native_setup.py",
+      "backport_reuse_sha256": "b35233a2318642777d7d536c3f1c4de459e04d520de200f969a9cdbebf98ed24",
+      "change": "Extend serial native reproducibility to the actual subword export and binary text input, original signed/x0 metadata, word/doubleword/unrelated opcode filtering and partial/oversized text rejection. Preserve all previous twenty native artifact checks."
+    },
+    {
+      "path": "Tests/ArtifactImport.lean",
+      "backport_reuse_revision": "18bc513db839fb7b9036588227f750e2a10e47fd",
+      "backport_reuse_path": "Tests/ArtifactImport.lean",
+      "backport_reuse_sha256": "dd844a8b2787953b855eff0ec769098a6dfdb3b7a230d14cf4e284bb07606af7",
+      "change": "Reuse strict decoder schema/extent/canonical-field regressions and add nineteen subword checks, including every crossed arithmetic/control/shift profile. Existing 473 checks remain present."
     }
   ],
   "setup_artifacts": [
@@ -6343,6 +6413,13 @@
       "profile": "actual native v2 written-value placement table ID 55, compiled offset 7405569, all 2097152 tagged rows; every offset/funct3, full SH limb and unused zero output retained; accepted full stores and original execution remain separate",
       "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
       "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
+    },
+    {
+      "path": "artifacts/setup/subword-decoder-native.json",
+      "sha256": "b78cbd2ddab412431df7e18cfed0d873f7bf54ea4e14573950c28429132c5a67",
+      "profile": "actual native v2 subword decoder for thirteen original words, all six forms, negative I/S immediates, x0 loads, unused register clearing and unsupported LW; all 1048576 rows connected to original public Sail setup; general compiler refinement remains separate",
+      "reproduce": "scripts/check_native_setup.py under scripts/bounded_fv.py",
+      "native_revision": "67ee094449abaebc77e58435f130ce6ea27721e5"
     }
   ],
   "native_exporter_files": [
@@ -6356,7 +6433,7 @@
     },
     {
       "path": "../native_setup_exporter/src/main.rs",
-      "sha256": "51af6f27a9564e30be2ba316f7eb5486370efdb012d6a3ee5332b4dae5add6c9"
+      "sha256": "8a5b2409799fd728ceddc9796bc5336fc47507571c61372e06c665211c4204d2"
     },
     {
       "path": "../native_setup_exporter/src/columns.rs",

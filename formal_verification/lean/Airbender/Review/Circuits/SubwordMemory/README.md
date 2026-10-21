@@ -112,3 +112,17 @@ wrong decoder memberships. Old local fixtures remain unchanged and accepted
 locally; their incompatible unused-index/zero-flag metadata is rejected by
 public decoding. Symbolic sparse-head membership avoids concrete-tail expansion
 and preserves every proof/resource ceiling. No confirmed defect is added.
+
+## Specific native decoder export fidelity
+
+[Independent original public data](NativeData.lean) now has an actual native
+[export](../../../../artifacts/setup/subword-decoder-native.json). [The short
+fidelity claim](../../Trace/Families/SubwordMemory/NativeDecoder.lean) proves all
+1,048,576 rows equal public original Sail setup: six forms, negative immediate
+variants, original x0 loads, unused-index clearing, unsupported LW and full tail.
+[Pure decoding](../../../Proofs/SubwordMemory/NativeDecode.lean) and
+[byte/row proofs](../../../Proofs/SubwordMemory/NativeSetup.lean) remain internal,
+with unchanged proof/resource limits. [Regressions](../../../../Tests/SubwordNativeDecoder.lean)
+retain negative I/S metadata and complete row/text coverage. This is specific
+export fidelity; initialized history/key binding and original execution remain
+unfinished. General compiler and physical verifier bindings remain separate.

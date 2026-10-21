@@ -161,6 +161,19 @@ elab "import_native_shift_decoder " name:ident " from " path:str : command => do
   let countName := mkIdent (name.getId.appendAfter "TextWords")
   elabCommand (← `(def $countName : Nat := $(quote artifact.text_words)))
 
+/-- Literal original native subword decoder/text; no semantic equivalence is supplied. -/
+elab "import_native_subword_decoder " name:ident " from " path:str : command => do
+  let source ← IO.FS.readFile path.getString
+  let artifact ← match parseSubwordDecoder source with
+    | .ok artifact => pure artifact
+    | .error error => throwError "native subword decoder import failed: {error}"
+  emitData (mkIdent (name.getId.appendAfter "Decoder")) artifact.decoder 0
+  let column ← columnSyntax artifact.text
+  let textName := mkIdent (name.getId.appendAfter "Text")
+  elabCommand (← `(def $textName : Airbender.Setup.Column := $column))
+  let countName := mkIdent (name.getId.appendAfter "TextWords")
+  elabCommand (← `(def $countName : Nat := $(quote artifact.text_words)))
+
 /-- Literal actual native binary prefix, including the conditional zero row. -/
 elab "import_native_binary " name:ident " from " path:str : command => do
   let artifact ← match parseBinary (← IO.FS.readFile path.getString) with

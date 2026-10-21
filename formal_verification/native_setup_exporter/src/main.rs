@@ -11,7 +11,7 @@ use cs::machine::ops::unrolled::load_store_word_only::{
 use cs::machine::ops::unrolled::{
     decoder_table_padding, materialize_flattened_decoder_table, preprocess_bytecode,
     AddSubLuiAuipcMopDecoder, JumpSltBranchDecoder, OpcodeFamilyDecoder, ShiftBinaryCsrrwDecoder,
-    WordOnlyMemoryFamilyDecoder,
+    SubwordOnlyMemoryFamilyDecoder, WordOnlyMemoryFamilyDecoder,
 };
 use cs::tables::{TableDriver, TableType};
 use field::{Mersenne31Field, PrimeField};
@@ -165,8 +165,17 @@ fn export_small_range() -> ControlTables {
 fn export_binary_prefix() -> ControlTables {
     let mut driver = TableDriver::<Mersenne31Field>::new();
     let family = cs::machine::ops::unrolled::shift_binary_csr::shift_binop_csrrw_tables();
-    let selected = [TableType::ZeroEntry, TableType::Xor, TableType::Or, TableType::And];
-    let mut prefix: Vec<_> = family.iter().copied().filter(|kind| (*kind as u32) < 8).collect();
+    let selected = [
+        TableType::ZeroEntry,
+        TableType::Xor,
+        TableType::Or,
+        TableType::And,
+    ];
+    let mut prefix: Vec<_> = family
+        .iter()
+        .copied()
+        .filter(|kind| (*kind as u32) < 8)
+        .collect();
     prefix.sort();
     assert_eq!(prefix.as_slice(), selected.as_slice());
     for kind in selected {
@@ -174,16 +183,21 @@ fn export_binary_prefix() -> ControlTables {
     }
     let rows = driver.dump_tables();
     let mut offset = 0;
-    let tables = driver.tables.iter().filter(|table| table.get_size() != 0).map(|table| {
-        let length = table.get_size();
-        let region = Region {
-            id: table.get_table_id(),
-            offset,
-            data: matrix(&rows[offset..offset + length]),
-        };
-        offset += length;
-        region
-    }).collect();
+    let tables = driver
+        .tables
+        .iter()
+        .filter(|table| table.get_size() != 0)
+        .map(|table| {
+            let length = table.get_size();
+            let region = Region {
+                id: table.get_table_id(),
+                offset,
+                data: matrix(&rows[offset..offset + length]),
+            };
+            offset += length;
+            region
+        })
+        .collect();
     assert_eq!(offset, rows.len());
     ControlTables {
         version: 1,
@@ -197,31 +211,52 @@ fn export_binary_prefix() -> ControlTables {
 /// Selected actual native tables. Offsets come from the supplied compiled
 /// layout, while row values/tags come only from the native table generator.
 /// Each table is materialized and dropped separately to preserve headroom.
-fn export_shift_regions(layout_path: &Path, selected: &[TableType], profile: &str) -> ControlTables {
-    let layout: serde_json::Value = serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
+fn export_shift_regions(
+    layout_path: &Path,
+    selected: &[TableType],
+    profile: &str,
+) -> ControlTables {
+    let layout: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
     let family = cs::machine::ops::unrolled::shift_binary_csr::shift_binop_csrrw_tables();
     let mut generic_rows = 0;
-    let tables = selected.iter().copied().map(|kind| {
-        assert!(family.contains(&kind));
-        let table = kind.generate_table::<Mersenne31Field>();
-        let id = table.get_table_id();
-        assert_eq!(id, kind as u32);
-        let length = table.get_size();
-        let mut rows = Vec::with_capacity(length);
-        table.dump_into::<4>(&mut rows, Some(id));
-        assert_eq!(rows.len(), length);
-        let offset = layout["table_offsets"][id as usize].as_u64().unwrap() as usize;
-        generic_rows += length;
-        Region { id, offset, data: matrix(&rows) }
-    }).collect();
-    ControlTables { version: 1, field_modulus: MODULUS,
-        profile: profile.into(), generic_rows, tables }
+    let tables = selected
+        .iter()
+        .copied()
+        .map(|kind| {
+            assert!(family.contains(&kind));
+            let table = kind.generate_table::<Mersenne31Field>();
+            let id = table.get_table_id();
+            assert_eq!(id, kind as u32);
+            let length = table.get_size();
+            let mut rows = Vec::with_capacity(length);
+            table.dump_into::<4>(&mut rows, Some(id));
+            assert_eq!(rows.len(), length);
+            let offset = layout["table_offsets"][id as usize].as_u64().unwrap() as usize;
+            generic_rows += length;
+            Region {
+                id,
+                offset,
+                data: matrix(&rows),
+            }
+        })
+        .collect();
+    ControlTables {
+        version: 1,
+        field_modulus: MODULUS,
+        profile: profile.into(),
+        generic_rows,
+        tables,
+    }
 }
 
 /// One actual native subword offset/trap region, materialized independently.
 fn export_subword_offset(layout_path: &Path) -> ControlTables {
     let kind = TableType::MemoryGetOffsetAndMaskWithTrap;
-    assert!(cs::machine::ops::unrolled::load_store_subword_only::subword_only_load_store_tables().contains(&kind));
+    assert!(
+        cs::machine::ops::unrolled::load_store_subword_only::subword_only_load_store_tables()
+            .contains(&kind)
+    );
     let table = kind.generate_table::<Mersenne31Field>();
     let id = table.get_table_id();
     assert_eq!(id, kind as u32);
@@ -229,17 +264,29 @@ fn export_subword_offset(layout_path: &Path) -> ControlTables {
     let mut rows = Vec::with_capacity(length);
     table.dump_into::<4>(&mut rows, Some(id));
     assert_eq!(rows.len(), length);
-    let layout: serde_json::Value = serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
+    let layout: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
     let offset = layout["table_offsets"][id as usize].as_u64().unwrap() as usize;
-    ControlTables { version: 1, field_modulus: MODULUS,
-        profile: "subword_memory_offset_mask".into(), generic_rows: length,
-        tables: vec![Region { id, offset, data: matrix(&rows) }] }
+    ControlTables {
+        version: 1,
+        field_modulus: MODULUS,
+        profile: "subword_memory_offset_mask".into(),
+        generic_rows: length,
+        tables: vec![Region {
+            id,
+            offset,
+            data: matrix(&rows),
+        }],
+    }
 }
 
 /// One actual native subword load-data region, materialized independently.
 fn export_subword_load(layout_path: &Path) -> ControlTables {
     let kind = TableType::MemoryLoadHalfwordOrByte;
-    assert!(cs::machine::ops::unrolled::load_store_subword_only::subword_only_load_store_tables().contains(&kind));
+    assert!(
+        cs::machine::ops::unrolled::load_store_subword_only::subword_only_load_store_tables()
+            .contains(&kind)
+    );
     let table = kind.generate_table::<Mersenne31Field>();
     let id = table.get_table_id();
     assert_eq!(id, kind as u32);
@@ -247,17 +294,29 @@ fn export_subword_load(layout_path: &Path) -> ControlTables {
     let mut rows = Vec::with_capacity(length);
     table.dump_into::<4>(&mut rows, Some(id));
     assert_eq!(rows.len(), length);
-    let layout: serde_json::Value = serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
+    let layout: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
     let offset = layout["table_offsets"][id as usize].as_u64().unwrap() as usize;
-    ControlTables { version: 1, field_modulus: MODULUS,
-        profile: "subword_memory_load_data".into(), generic_rows: length,
-        tables: vec![Region { id, offset, data: matrix(&rows) }] }
+    ControlTables {
+        version: 1,
+        field_modulus: MODULUS,
+        profile: "subword_memory_load_data".into(),
+        generic_rows: length,
+        tables: vec![Region {
+            id,
+            offset,
+            data: matrix(&rows),
+        }],
+    }
 }
 
 /// One actual native subword store-clear region, materialized independently.
 fn export_subword_store_clear(layout_path: &Path) -> ControlTables {
     let kind = TableType::MemStoreClearOriginalRamValueLimb;
-    assert!(cs::machine::ops::unrolled::load_store_subword_only::subword_only_load_store_tables().contains(&kind));
+    assert!(
+        cs::machine::ops::unrolled::load_store_subword_only::subword_only_load_store_tables()
+            .contains(&kind)
+    );
     let table = kind.generate_table::<Mersenne31Field>();
     let id = table.get_table_id();
     assert_eq!(id, kind as u32);
@@ -265,17 +324,29 @@ fn export_subword_store_clear(layout_path: &Path) -> ControlTables {
     let mut rows = Vec::with_capacity(length);
     table.dump_into::<4>(&mut rows, Some(id));
     assert_eq!(rows.len(), length);
-    let layout: serde_json::Value = serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
+    let layout: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
     let offset = layout["table_offsets"][id as usize].as_u64().unwrap() as usize;
-    ControlTables { version: 1, field_modulus: MODULUS,
-        profile: "subword_memory_store_clear".into(), generic_rows: length,
-        tables: vec![Region { id, offset, data: matrix(&rows) }] }
+    ControlTables {
+        version: 1,
+        field_modulus: MODULUS,
+        profile: "subword_memory_store_clear".into(),
+        generic_rows: length,
+        tables: vec![Region {
+            id,
+            offset,
+            data: matrix(&rows),
+        }],
+    }
 }
 
 /// One actual native subword store-place region, materialized independently.
 fn export_subword_store_place(layout_path: &Path) -> ControlTables {
     let kind = TableType::MemStoreClearWrittenValueLimb;
-    assert!(cs::machine::ops::unrolled::load_store_subword_only::subword_only_load_store_tables().contains(&kind));
+    assert!(
+        cs::machine::ops::unrolled::load_store_subword_only::subword_only_load_store_tables()
+            .contains(&kind)
+    );
     let table = kind.generate_table::<Mersenne31Field>();
     let id = table.get_table_id();
     assert_eq!(id, kind as u32);
@@ -283,51 +354,92 @@ fn export_subword_store_place(layout_path: &Path) -> ControlTables {
     let mut rows = Vec::with_capacity(length);
     table.dump_into::<4>(&mut rows, Some(id));
     assert_eq!(rows.len(), length);
-    let layout: serde_json::Value = serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
+    let layout: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
     let offset = layout["table_offsets"][id as usize].as_u64().unwrap() as usize;
-    ControlTables { version: 1, field_modulus: MODULUS,
-        profile: "subword_memory_store_place".into(), generic_rows: length,
-        tables: vec![Region { id, offset, data: matrix(&rows) }] }
+    ControlTables {
+        version: 1,
+        field_modulus: MODULUS,
+        profile: "subword_memory_store_place".into(),
+        generic_rows: length,
+        tables: vec![Region {
+            id,
+            offset,
+            data: matrix(&rows),
+        }],
+    }
 }
 
 fn export_shift_scalars(layout_path: &Path) -> ControlTables {
-    export_shift_regions(layout_path, &[TableType::TruncateShiftAmount,
-        TableType::Sra16BitInputSignFill, TableType::RangeCheck16WithZeroPads],
-        "shift_binop_scalar_regions")
+    export_shift_regions(
+        layout_path,
+        &[
+            TableType::TruncateShiftAmount,
+            TableType::Sra16BitInputSignFill,
+            TableType::RangeCheck16WithZeroPads,
+        ],
+        "shift_binop_scalar_regions",
+    )
 }
 
 fn export_shift_csr_properties(layout_path: &Path) -> ControlTables {
     // This is the exact compilation-test profile in shift_binary_csr.rs.
     // Proving/setup may install a different CSR table; that binding is separate.
     let id = TableType::SpecialCSRProperties as u32;
-    let table = cs::machine::machine_configurations::create_csr_table_for_delegation::<Mersenne31Field>(
-        true, &[], id);
+    let table = cs::machine::machine_configurations::create_csr_table_for_delegation::<
+        Mersenne31Field,
+    >(true, &[], id);
     let table = cs::tables::LookupWrapper::Dimensional3(table);
     let length = table.get_size();
     let mut rows = Vec::with_capacity(length);
     table.dump_into::<4>(&mut rows, Some(id));
     assert_eq!(rows.len(), 4096);
-    let layout: serde_json::Value = serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
+    let layout: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(layout_path).unwrap()).unwrap();
     let offset = layout["table_offsets"][id as usize].as_u64().unwrap() as usize;
-    ControlTables { version: 1, field_modulus: MODULUS,
-        profile: "shift_binop_compilation_csr_properties".into(), generic_rows: length,
-        tables: vec![Region { id, offset, data: matrix(&rows) }] }
+    ControlTables {
+        version: 1,
+        field_modulus: MODULUS,
+        profile: "shift_binop_compilation_csr_properties".into(),
+        generic_rows: length,
+        tables: vec![Region {
+            id,
+            offset,
+            data: matrix(&rows),
+        }],
+    }
 }
 
 fn export_srl_low(layout_path: &Path) -> ControlTables {
-    export_shift_regions(layout_path, &[TableType::SrlWith16BitInputLow], "shift_binop_srl_low")
+    export_shift_regions(
+        layout_path,
+        &[TableType::SrlWith16BitInputLow],
+        "shift_binop_srl_low",
+    )
 }
 
 fn export_srl_high(layout_path: &Path) -> ControlTables {
-    export_shift_regions(layout_path, &[TableType::SrlWith16BitInputHigh], "shift_binop_srl_high")
+    export_shift_regions(
+        layout_path,
+        &[TableType::SrlWith16BitInputHigh],
+        "shift_binop_srl_high",
+    )
 }
 
 fn export_sll_high(layout_path: &Path) -> ControlTables {
-    export_shift_regions(layout_path, &[TableType::SllWith16BitInputHigh], "shift_binop_sll_high")
+    export_shift_regions(
+        layout_path,
+        &[TableType::SllWith16BitInputHigh],
+        "shift_binop_sll_high",
+    )
 }
 
 fn export_sll_low(layout_path: &Path) -> ControlTables {
-    export_shift_regions(layout_path, &[TableType::SllWith16BitInputLow], "shift_binop_sll_low")
+    export_shift_regions(
+        layout_path,
+        &[TableType::SllWith16BitInputLow],
+        "shift_binop_sll_low",
+    )
 }
 
 fn export_decoder_padding() -> DecoderPadding {
@@ -379,6 +491,14 @@ fn export_control_decoder(text: Vec<u32>) -> DecoderArtifact {
 
 fn export_shift_decoder(text: Vec<u32>) -> DecoderArtifact {
     export_decoder(text, Box::new(ShiftBinaryCsrrwDecoder), "shift_binop_csrrw")
+}
+
+fn export_subword_decoder(text: Vec<u32>) -> DecoderArtifact {
+    export_decoder(
+        text,
+        Box::new(SubwordOnlyMemoryFamilyDecoder),
+        "subword_only_load_store",
+    )
 }
 
 fn export_scalars() -> Scalars {
@@ -501,6 +621,29 @@ fn export(mut image: Vec<u32>, text: Vec<u32>) -> Artifact {
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().collect();
+    if (args.len() == 3 && args[1] == "--subword-decoder-fixture")
+        || (args.len() == 4 && args[1] == "--subword-decoder")
+    {
+        let words = if args.len() == 3 {
+            // All six original forms, then negative immediates with original
+            // x0 load destinations, then a retained unsupported LW slot.
+            vec![
+                0x00008183, 0x00009183, 0x0000c183, 0x0000d183, 0x00208023, 0x00209023, 0xfff08003,
+                0xfff09003, 0xfff0c003, 0xfff0d003, 0xfe208fa3, 0xfe209fa3, 0x0000a183,
+            ]
+        } else {
+            read_words(Path::new(&args[2]))?
+        };
+        let artifact = export_subword_decoder(words);
+        let bytes = serde_json::to_vec_pretty(&artifact)?;
+        let recovered: DecoderArtifact = serde_json::from_slice(&bytes)?;
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
+        std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
+        return Ok(());
+    }
     if (args.len() == 3 && args[1] == "--shift-decoder-fixture")
         || (args.len() == 4 && args[1] == "--shift-decoder")
     {
@@ -530,7 +673,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let artifact = export_srl_low(Path::new(&args[2]));
         let bytes = serde_json::to_vec_pretty(&artifact)?;
         let recovered: ControlTables = serde_json::from_slice(&bytes)?;
-        assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
         std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
         return Ok(());
     }
@@ -538,7 +684,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let artifact = export_subword_offset(Path::new(&args[2]));
         let bytes = serde_json::to_vec_pretty(&artifact)?;
         let recovered: ControlTables = serde_json::from_slice(&bytes)?;
-        assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
         std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
         return Ok(());
     }
@@ -546,7 +695,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let artifact = export_subword_load(Path::new(&args[2]));
         let bytes = serde_json::to_vec_pretty(&artifact)?;
         let recovered: ControlTables = serde_json::from_slice(&bytes)?;
-        assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
         std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
         return Ok(());
     }
@@ -554,7 +706,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let artifact = export_subword_store_clear(Path::new(&args[2]));
         let bytes = serde_json::to_vec_pretty(&artifact)?;
         let recovered: ControlTables = serde_json::from_slice(&bytes)?;
-        assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
         std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
         return Ok(());
     }
@@ -562,7 +717,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let artifact = export_subword_store_place(Path::new(&args[2]));
         let bytes = serde_json::to_vec_pretty(&artifact)?;
         let recovered: ControlTables = serde_json::from_slice(&bytes)?;
-        assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
         std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
         return Ok(());
     }
@@ -570,7 +728,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let artifact = export_shift_csr_properties(Path::new(&args[2]));
         let bytes = serde_json::to_vec_pretty(&artifact)?;
         let recovered: ControlTables = serde_json::from_slice(&bytes)?;
-        assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
         std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
         return Ok(());
     }
@@ -578,7 +739,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let artifact = export_srl_high(Path::new(&args[2]));
         let bytes = serde_json::to_vec_pretty(&artifact)?;
         let recovered: ControlTables = serde_json::from_slice(&bytes)?;
-        assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
         std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
         return Ok(());
     }
@@ -586,7 +750,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let artifact = export_sll_high(Path::new(&args[2]));
         let bytes = serde_json::to_vec_pretty(&artifact)?;
         let recovered: ControlTables = serde_json::from_slice(&bytes)?;
-        assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
         std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
         return Ok(());
     }
@@ -594,7 +761,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let artifact = export_sll_low(Path::new(&args[2]));
         let bytes = serde_json::to_vec_pretty(&artifact)?;
         let recovered: ControlTables = serde_json::from_slice(&bytes)?;
-        assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
         std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
         return Ok(());
     }
@@ -602,7 +772,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let artifact = export_shift_scalars(Path::new(&args[2]));
         let bytes = serde_json::to_vec_pretty(&artifact)?;
         let recovered: ControlTables = serde_json::from_slice(&bytes)?;
-        assert_eq!(serde_json::to_value(&artifact)?, serde_json::to_value(recovered)?);
+        assert_eq!(
+            serde_json::to_value(&artifact)?,
+            serde_json::to_value(recovered)?
+        );
         std::fs::write(args.last().unwrap(), [bytes, vec![b'\n']].concat())?;
         return Ok(());
     }

@@ -447,6 +447,44 @@ private def shiftDecoderChecks : IO Unit := do
   check (rejected (Setup.parseShiftDecoder (← IO.FS.readFile "artifacts/setup/jump-decoder-native.json")))
     "reject control export as shift decoder"
 
+private def subwordDecoderChecks : IO Unit := do
+  let source ← IO.FS.readFile "artifacts/setup/subword-decoder-native.json"
+  let a ← IO.ofExcept (Setup.parseSubwordDecoder source)
+  check (a.text_words == 13 && a.decoder.length == 1048576 && a.decoder.columns.size == 10)
+    "actual native subword decoder extent"
+  check (rejected ({a with version := 2}.validateSubword)) "reject subword decoder version"
+  check (rejected ({a with field_modulus := 2013265921}.validateSubword)) "reject v3 subword decoder field"
+  check (rejected ({a with family := "add_sub_lui_auipc_mop"}.validateSubword)) "reject subword decoder family"
+  check (rejected ({a with text_words := 1048577}.validateSubword)) "reject oversized subword text"
+  check (rejected ({a with text_words := 12}.validateSubword)) "reject incomplete subword text"
+  check (rejected ({a with text := ⟨#[.dense #[4294967296]]⟩,text_words := 1}.validateSubword))
+    "reject oversized subword instruction word"
+  check (rejected ({a with decoder := {a.decoder with length := 1048575}}.validateSubword))
+    "reject truncated subword decoder"
+  check (rejected ({a with decoder := {a.decoder with columns := a.decoder.columns.extract 0 9}}.validateSubword))
+    "reject missing subword decoder column"
+  check (rejected ({a with decoder := {a.decoder with columns := a.decoder.columns.push ⟨#[.affine 1048576 0 0]⟩}}.validateSubword))
+    "reject extra subword decoder column"
+  check (rejected ({a with decoder := {a.decoder with columns :=
+    (#[⟨#[.affine 1048576 2147483647 0]⟩] : Array Setup.Column) ++ a.decoder.columns.extract 1 10}}.validateSubword))
+    "reject noncanonical subword decoder data"
+  check (rejected ({a with decoder := {a.decoder with columns :=
+    (#[⟨#[.affine 1048575 0 0]⟩] : Array Setup.Column) ++ a.decoder.columns.extract 1 10}}.validateSubword))
+    "reject incomplete subword decoder column"
+  let j ← IO.ofExcept (Json.parse source)
+  let extra ← IO.ofExcept (replaceField j "invented" (.bool true))
+  check (rejected (Setup.parseSubwordDecoder extra.compress)) "reject unknown subword decoder field"
+  check (rejected (Setup.parseDecoder source)) "reject subword export as arithmetic decoder"
+  check (rejected (Setup.parseControlDecoder source)) "reject subword export as control decoder"
+  check (rejected (Setup.parseSubwordDecoder (← IO.FS.readFile "artifacts/setup/arithmetic-native.json")))
+    "reject arithmetic export as subword decoder"
+  check (rejected (Setup.parseSubwordDecoder (← IO.FS.readFile "artifacts/setup/jump-decoder-native.json")))
+    "reject control export as subword decoder"
+
+  check (rejected (Setup.parseShiftDecoder source)) "reject subword export as shift decoder"
+  check (rejected (Setup.parseSubwordDecoder (← IO.FS.readFile "artifacts/setup/shift-decoder-native.json")))
+    "reject shift export as subword decoder"
+
 private def decoderChecks (setupSource : String) : IO Unit := do
   let source ← IO.FS.readFile "artifacts/setup/arithmetic-native.json"
   let artifact ← IO.ofExcept (Setup.parseDecoder source)
@@ -983,6 +1021,7 @@ def main : IO UInt32 := do
     scalarChecks setupSource
     decoderChecks setupSource
     shiftDecoderChecks
+    subwordDecoderChecks
     binaryChecks
     shiftScalarChecks
     srlLowChecks

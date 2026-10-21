@@ -210,6 +210,30 @@ def main():
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             assert result.returncode != 0 and not output.exists(), label
             print("PASS reject " + label, flush=True)
+        subprocess.run([str(binary), "--subword-decoder-fixture", str(output)], check=True)
+        expected_subword = (ROOT / "artifacts/setup/subword-decoder-native.json").read_bytes()
+        assert output.read_bytes() == expected_subword
+        subword_words = [33155, 37251, 49539, 53635, 2129955, 2134051, 4293951491, 4293955587, 4293967875, 4293971971, 4263546787, 4263550883, 41347]
+        text.write_bytes(b"".join(word.to_bytes(4, "little") for word in subword_words))
+        subprocess.run([str(binary), "--subword-decoder", str(text), str(output)], check=True)
+        assert output.read_bytes() == expected_subword
+        print("PASS reproducible native subword decoder, signed immediates and original x0 binary text", flush=True)
+        # Word/doubleword and unrelated opcodes are unsupported by this family.
+        text.write_bytes(b"".join(word.to_bytes(4, "little") for word in
+            [0x0000a183,0x0000e183,0x0000b183,0x0020a023,0x001080b3,0xc0001073]))
+        subprocess.run([str(binary), "--subword-decoder", str(text), str(output)], check=True)
+        rejected_subword = json.loads(output.read_bytes())
+        assert all(sample(column,i) == (1 << 31) - 2 for i in range(6)
+                   for column in rejected_subword["decoder"]["columns"])
+        print("PASS actual native subword rejection of word/doubleword/ADD/CSR opcodes", flush=True)
+        for label, content in [("partial subword text", b"xx"),
+                               ("oversized subword text", bytes(4194308))]:
+            text.write_bytes(content)
+            output.unlink(missing_ok=True)
+            result = subprocess.run([str(binary), "--subword-decoder", str(text), str(output)],
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            assert result.returncode != 0 and not output.exists(), label
+            print("PASS reject " + label, flush=True)
         for label, image_bytes, text_bytes in [
             ("partial image word", b"xx", text.read_bytes()),
             ("partial text word", image.read_bytes(), b"xx"),
