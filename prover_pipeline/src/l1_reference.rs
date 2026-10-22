@@ -243,30 +243,10 @@ pub(super) const CPU_FEEDER_HOST_WINDOW_GIB: u64 = 136;
 // The measured wrap peak was 37.57 GiB; round to 40 GiB plus the host reserve.
 const CPU_WRAP_HOST_WINDOW_GIB: u64 = 80;
 
-/// The CPU execution used by the reference producer.
-#[derive(Clone, Copy)]
-struct Execution {
-    backend: ProverBackend,
-}
-
-impl Execution {
-    const CPU: Self = Self {
-        backend: ProverBackend::Cpu,
-    };
-
-    fn admits_input(self, input: ProverBackend) -> bool {
-        input == ProverBackend::Cpu || input == self.backend
-    }
-
-    fn host_window_gib(self, cpu_gib: u64) -> u64 {
-        cpu_gib
-    }
-}
-
-fn config(target: ProofTarget, execution: Execution) -> ProgramProverConfig {
+fn config(target: ProofTarget) -> ProgramProverConfig {
     ProgramProverConfig {
         target,
-        backend: execution.backend,
+        backend: ProverBackend::Cpu,
         worker_threads: Some(24),
         cycles_bound: None,
         ..ProgramProverConfig::default()
@@ -376,7 +356,6 @@ enum GenerateFrom<'a> {
 
 fn write_reference_manifest(
     sink: &Path,
-    execution: Execution,
     files: Inventory,
     program: ProgramIdentity,
     fsv: Vec<FsvIdentity>,
@@ -391,7 +370,7 @@ fn write_reference_manifest(
             fsv,
             configuration: ReferenceConfiguration {
                 security_level: COMPILED_SECURITY_LEVEL,
-                backend: execution.backend,
+                backend: ProverBackend::Cpu,
                 worker_threads: 24,
                 batch_id: 0,
                 blake_unrolled: blake.unrolled.tag().into(),
@@ -406,28 +385,20 @@ fn write_reference_manifest(
     Ok(names)
 }
 
-fn generate_into(
-    sink: &Path,
-    from: GenerateFrom<'_>,
-    execution: Execution,
-) -> Result<Inventory, String> {
+fn generate_into(sink: &Path, from: GenerateFrom<'_>) -> Result<Inventory, String> {
     deterministic_pow_required();
     fs::create_dir_all(sink).map_err(|error| format!("L1 reference sink: {error}"))?;
     let source = source();
     let seed_only = matches!(&from, GenerateFrom::ProgramSeed);
     let names = match from {
         GenerateFrom::Program | GenerateFrom::ProgramSeed => {
-            preflight(
-                "program",
-                execution.host_window_gib(CPU_PROGRAM_HOST_WINDOW_GIB),
-            );
+            preflight("program", CPU_PROGRAM_HOST_WINDOW_GIB);
             let loaded = load_program(&source)?;
             let blake = PipelineBlakeModes::from_env();
             let identities = fsv_identities(blake)?;
             let start = start_stage();
             let base = {
-                let mut prover =
-                    ProgramProver::new(source.clone(), config(ProofTarget::Base, execution))?;
+                let mut prover = ProgramProver::new(source.clone(), config(ProofTarget::Base))?;
                 prover.prove_words(0, vec![])?
             };
             log_stage("base", start);
@@ -435,7 +406,7 @@ fn generate_into(
             let mut artifact = {
                 let mut prover = ProgramProver::for_continuation(
                     source.clone(),
-                    config(ProofTarget::RecursionUnified, execution),
+                    config(ProofTarget::RecursionUnified),
                     &base,
                 )?;
                 prover.continue_artifact(base)?
@@ -449,17 +420,14 @@ fn generate_into(
                 files.extend(generate_into(
                     sink,
                     GenerateFrom::RecursionUnified(&sink.join("recursion_unified.json")),
-                    execution,
                 )?);
                 files.extend(generate_into(
                     sink,
                     GenerateFrom::L1Feeder(&sink.join("l1_feeder.json")),
-                    execution,
                 )?);
             }
             write_reference_manifest(
                 sink,
-                execution,
                 files,
                 ProgramIdentity {
                     bin_keccak256: hex_digest(&loaded.bin_bytes),
@@ -470,18 +438,14 @@ fn generate_into(
             )?
         }
         GenerateFrom::RecursionUnified(input) => {
-            preflight(
-                "feeder",
-                execution.host_window_gib(CPU_FEEDER_HOST_WINDOW_GIB),
-            );
+            preflight("feeder", CPU_FEEDER_HOST_WINDOW_GIB);
             let artifact: ProofArtifact = read_typed(input)?;
             if artifact.target != ProofTarget::RecursionUnified
                 || artifact.batch_id != 0
-                || !execution.admits_input(artifact.backend)
+                || artifact.backend != ProverBackend::Cpu
             {
                 return Err(
-                    "L1 reference requires a CPU or same-backend recursion-unified checkpoint at batch_id 0"
-                        .into(),
+                    "L1 reference requires a CPU recursion-unified checkpoint at batch_id 0".into(),
                 );
             }
             let start = start_stage();
@@ -495,7 +459,7 @@ fn generate_into(
             let mut artifact = {
                 let mut prover = ProgramProver::for_continuation(
                     source.clone(),
-                    config(ProofTarget::L1Feeder, execution),
+                    config(ProofTarget::L1Feeder),
                     &artifact,
                 )?;
                 prover.continue_artifact_observed(artifact, &mut observer)?
@@ -516,10 +480,7 @@ fn generate_into(
                 .collect()
         }
         GenerateFrom::FeederLayer(input) => {
-            preflight(
-                "feeder_resume",
-                execution.host_window_gib(CPU_FEEDER_HOST_WINDOW_GIB),
-            );
+            preflight("feeder_resume", CPU_FEEDER_HOST_WINDOW_GIB);
             let manifest: ProofManifest = read_typed(
                 &input
                     .parent()
@@ -529,7 +490,7 @@ fn generate_into(
             let loaded = load_program(&source)?;
             if manifest.format_version != 1
                 || manifest.configuration.security_level != COMPILED_SECURITY_LEVEL
-                || !execution.admits_input(manifest.configuration.backend)
+                || manifest.configuration.backend != ProverBackend::Cpu
                 || manifest.configuration.batch_id != 0
                 || manifest.configuration.worker_threads != 24
                 || !manifest.configuration.user_nd_words.is_empty()
@@ -574,7 +535,7 @@ fn generate_into(
             };
             let mut prover = ProgramProver::for_feeder_checkpoint(
                 source.clone(),
-                config(ProofTarget::L1Feeder, execution),
+                config(ProofTarget::L1Feeder),
                 blake,
             )?;
             let state = prover.resume_feeder_checkpoint(state, 0, &mut observer)?;
@@ -600,22 +561,21 @@ fn generate_into(
                 .collect()
         }
         GenerateFrom::L1Feeder(input) => {
-            preflight("wrap", execution.host_window_gib(CPU_WRAP_HOST_WINDOW_GIB));
+            preflight("wrap", CPU_WRAP_HOST_WINDOW_GIB);
             let artifact: ProofArtifact = read_typed(input)?;
             if artifact.target != ProofTarget::L1Feeder
                 || artifact.batch_id != 0
-                || !execution.admits_input(artifact.backend)
+                || artifact.backend != ProverBackend::Cpu
             {
                 return Err(
-                    "L1 reference requires a CPU or same-backend L1-feeder checkpoint at batch_id 0"
-                        .into(),
+                    "L1 reference requires a CPU L1-feeder checkpoint at batch_id 0".into(),
                 );
             }
             let start = start_stage();
             let artifact = {
                 let mut prover = ProgramProver::for_continuation(
                     source.clone(),
-                    config(ProofTarget::L1, execution),
+                    config(ProofTarget::L1),
                     &artifact,
                 )?;
                 prover.continue_artifact(artifact)?
@@ -800,8 +760,7 @@ fn compare_reproduced_file(name: &str, expected: &[u8], actual: &[u8]) -> Result
 fn guard(from: GenerateFrom<'_>) {
     let reference = fixture_dir();
     let sink = disposable_dir("guard");
-    let inventory =
-        generate_into(&sink, from, Execution::CPU).expect("L1 reference guard regeneration");
+    let inventory = generate_into(&sink, from).expect("L1 reference guard regeneration");
     compare_files(&reference, &sink, &inventory).unwrap_or_else(|message| panic!("{message}"));
     fs::remove_dir_all(sink).expect("L1 reference guard removes disposable sink");
 }
@@ -810,8 +769,7 @@ fn guard(from: GenerateFrom<'_>) {
 #[ignore = "requires 150 GiB for Program, then 136 GiB free in the same process; does not fit this host: use generate_l1_reference_from_recursion_unified"]
 fn generate_l1_reference() {
     let sink = disposable_dir("generate");
-    let inventory = generate_into(&sink, GenerateFrom::Program, Execution::CPU)
-        .expect("L1 reference generation");
+    let inventory = generate_into(&sink, GenerateFrom::Program).expect("L1 reference generation");
     let reference = fixture_dir();
     fs::create_dir_all(&reference).expect("L1 reference creates fixture directory");
     for file in &inventory {
@@ -848,8 +806,8 @@ fn generate_l1_reference_seed() {
         managed.insert("witness_manifest.json".into());
     }
     let sink = disposable_dir("generate-seed");
-    let inventory = generate_into(&sink, GenerateFrom::ProgramSeed, Execution::CPU)
-        .expect("L1 reference seed generation");
+    let inventory =
+        generate_into(&sink, GenerateFrom::ProgramSeed).expect("L1 reference seed generation");
     assert_eq!(
         inventory
             .iter()
@@ -921,17 +879,12 @@ fn generate_l1_reference_from_recursion_unified() {
     let feeder = generate_into(
         &sink,
         GenerateFrom::RecursionUnified(&sink.join(&seed.name)),
-        Execution::CPU,
     )
     .expect("L1 reference feeder generation");
-    let wrap = generate_into(
-        &sink,
-        GenerateFrom::L1Feeder(&sink.join("l1_feeder.json")),
-        Execution::CPU,
-    )
-    .expect("L1 reference wrap generation");
+    let wrap = generate_into(&sink, GenerateFrom::L1Feeder(&sink.join("l1_feeder.json")))
+        .expect("L1 reference wrap generation");
     let files = std::iter::once(seed).chain(feeder).chain(wrap).collect();
-    let names = write_reference_manifest(&sink, Execution::CPU, files, program, identities, blake)
+    let names = write_reference_manifest(&sink, files, program, identities, blake)
         .expect("L1 reference manifest");
     for name in names {
         fs::rename(sink.join(&name), reference.join(&name))
