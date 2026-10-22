@@ -1,4 +1,4 @@
-import Airbender.Proofs.Blake2G.Frame
+import Airbender.Proofs.Blake2G.FrameDefinitions
 import Airbender.Proofs.Blake2Round.ArtifactChecks
 
 namespace Airbender.Blake2Round.Proofs.NativeLayout

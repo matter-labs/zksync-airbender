@@ -1,19 +1,10 @@
+import Airbender.Proofs.Blake2G.AssemblyDefinitions
 import Airbender.Proofs.Blake2G.SecondHalf
 
 namespace Airbender.Blake2G.Proofs
 
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
-
-/-- Supply the eight output limbs from the G fragment's existing intermediates.
-    This is witness wiring, not another constraint or reference semantics. -/
-def assemble {p : Nat} (base : Nat → ZMod p) (column : Nat) : ZMod p :=
-  match column with
-  | 17 => secondAlo base | 18 => secondAhi base
-  | 21 => base 80 + 512 * base 81 | 22 => base 82 + 512 * base 79
-  | 25 => secondClo base | 26 => secondChi base
-  | 29 => base 72 + 256 * base 73 | 30 => base 74 + 256 * base 71
-  | n => base n
 
 /-- A native G fragment follows from its twelve carries and eighteen queries.
     Its output-assembly equations are checked once for every embedding. -/

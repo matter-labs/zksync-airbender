@@ -1,4 +1,5 @@
-import Airbender.Proofs.Blake2G.Frame
+import Airbender.Proofs.Blake2G.FrameDefinitions
+import Airbender.Proofs.Arithmetic.FieldSlices
 
 namespace Airbender.Blake2G.Proofs
 open Arithmetic

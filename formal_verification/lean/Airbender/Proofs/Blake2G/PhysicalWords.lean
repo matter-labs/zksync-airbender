@@ -1,7 +1,7 @@
 import Airbender.Proofs.Blake2G.WordFrame
 import Airbender.Proofs.Blake2G.State
-import Airbender.Proofs.Blake2G.NativeExecution
-import Airbender.Proofs.Blake2Round.PhysicalWords
+import Airbender.Proofs.Blake2G.NativeEffects
+import Airbender.Proofs.Blake2Round.PhysicalWordDefinitions
 
 namespace Airbender.Blake2G.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic Reference.RiscV.Sail

@@ -4,7 +4,7 @@ import Airbender.Proofs.Blake2Round.FrameOutputs
 import Airbender.Proofs.Blake2Round.Reference
 import Airbender.Review.Circuits.Blake2Round.Mixing
 import Airbender.Proofs.Arithmetic.FieldSliceNormalization
-import Airbender.Proofs.Blake2G.Soundness
+import Airbender.Proofs.Blake2G.SerializedField
 import Mathlib.Tactic.ReduceModChar
 
 namespace Airbender.Blake2Round.Proofs

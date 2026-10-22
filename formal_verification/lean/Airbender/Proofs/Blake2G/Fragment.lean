@@ -1,5 +1,5 @@
 import Airbender.Review.Circuits.Blake2G.Model
-import Airbender.Proofs.Constraints
+import Airbender.Proofs.Constraints.Core
 import Mathlib.Tactic.FinCases
 
 namespace Airbender.Blake2G.Proofs

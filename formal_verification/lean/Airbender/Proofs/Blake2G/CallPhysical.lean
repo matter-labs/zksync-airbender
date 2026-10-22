@@ -37,10 +37,15 @@ theorem call_physical_steps [Fact p.Prime] (hp : 8388608 ≤ p)
   have sameMessage := (EStateM.Result.ok.inj (messageRead.symm.trans messageRead')).1
   subst state
   subst message
-  have operations : Delegation.Proofs.BoundaryOperationInputs data initial cells Keccak.Controller.rows := by
-    refine ⟨inputs.memory, inputs.tables, ?_, ?_⟩
-    all_goals intro row member other; have := inputs.family row member; simp_all
-  have bounds := operation_word_bounds_at_boundary hp inverse accepted operations
+  have rules := Blake2G.Proofs.memory_rules (by omega) inverse accepted inputs.family
+    (by rw [inputs.tables]; rfl)
+  have bounds : Delegation.WordBounds data :=
+    ⟨fun _ member _ present => Delegation.Proofs.read_value_bounds clockBound accepted
+        inputs.memory rules member present,
+      fun _ member _ present => Delegation.Proofs.write_value_bounds clockBound accepted
+        inputs.memory rules member present,
+      fun _ present => Delegation.Proofs.terminal_value_bounds clockBound accepted
+        inputs.memory rules present⟩
   refine ⟨statePointer, messagePointer, after, states, count, stateRead, messageRead,
     head, last, trace, readable, ?_⟩
   intro i

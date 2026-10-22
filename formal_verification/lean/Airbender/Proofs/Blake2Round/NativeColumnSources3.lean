@@ -1,3 +1,4 @@
+import Mathlib.Tactic.IntervalCases
 import Airbender.Proofs.Arithmetic.ExpressionRows
 import Airbender.Proofs.Blake2Round.NativeLayout
 import Airbender.Review.Helpers.Properties

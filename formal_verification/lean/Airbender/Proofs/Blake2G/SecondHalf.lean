@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2G.AssemblyDefinitions
 import Airbender.Proofs.Blake2G.Mixing
 
 namespace Airbender.Blake2G.Proofs
@@ -5,13 +6,6 @@ namespace Airbender.Blake2G.Proofs
 open Arithmetic
 
 set_option maxHeartbeats 1200000
-
-def secondAlo {p : Nat} (w : Nat → ZMod p) : ZMod p :=
-  firstAlo w + w 59 + 16 * w 62 + 128 * w 63 + w 35 - 65536 * w 65 - 131072 * w 66
-
-def secondAhi {p : Nat} (w : Nat → ZMod p) : ZMod p :=
-  firstAhi w + w 64 + 16 * w 57 + 128 * w 58 + w 36 + w 65 + 2 * w 66 -
-    65536 * w 67 - 131072 * w 68
 
 private theorem second_xors_of_queries {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
@@ -163,12 +157,6 @@ theorem second_addition {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
   exact Word.add32_of_limbs hp
     (carry := (w 65).val + 2 * (w 66).val) (wrap := (w 67).val + 2 * (w 68).val)
     leftBound rightBound messageBound outputBound (by omega) (by omega) low high
-
-def secondClo {p : Nat} (w : Nat → ZMod p) : ZMod p :=
-  firstClo w + w 72 + 256 * w 73 - 65536 * w 75
-
-def secondChi {p : Nat} (w : Nat → ZMod p) : ZMod p :=
-  firstChi w + w 74 + 256 * w 71 + w 75 - 65536 * w 76
 
 private theorem inverse128 {p : Nat} [Fact p.Prime]
     (compatible : 64 * (-31457280 : ZMod p) = 1) :

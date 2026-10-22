@@ -1,5 +1,6 @@
 import Airbender.Review.Circuits.Keccak.Call
-import Airbender.Proofs.Keccak.NativeExecution
+import Airbender.Proofs.Keccak.NativeEffects
+import Airbender.Proofs.Keccak.MicroOperations
 import Airbender.Proofs.Arithmetic.Word
 
 namespace Airbender.Keccak.Call.Proofs

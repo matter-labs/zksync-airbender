@@ -1,4 +1,4 @@
-import Airbender.Proofs.Keccak.NativeExecution
+import Airbender.Proofs.Keccak.NativeEffects
 
 namespace Airbender.Keccak.Proofs
 set_option warningAsError true

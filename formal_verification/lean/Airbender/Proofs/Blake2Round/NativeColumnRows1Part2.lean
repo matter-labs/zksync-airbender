@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2G.FrameQueryBindings
 import Airbender.Proofs.Blake2G.FrameQueryRows
 import Airbender.Proofs.Blake2Round.NativeColumnView1
 import Airbender.Proofs.Blake2Round.NativeCombinedTransfer

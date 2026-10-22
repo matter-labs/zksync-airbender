@@ -15,4 +15,9 @@ theorem serialized_field {p : Nat} [Fact p.Prime]
   exact ((Nat.dvd_prime babyBearPrime.out).mp divisor).resolve_left
     (Nat.Prime.ne_one (Fact.out : p.Prime))
 
+theorem inverse256 {p : Nat} [Fact p.Prime]
+    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+    256 * (-7864320 : ZMod p) = 1 := by
+  linear_combination compatible
+
 end Airbender.Blake2G.Proofs

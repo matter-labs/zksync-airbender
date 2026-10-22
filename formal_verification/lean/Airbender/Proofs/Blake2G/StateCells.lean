@@ -1,7 +1,7 @@
 import Airbender.Proofs.Blake2G.PhysicalPorts
 import Airbender.Proofs.Blake2G.CallHistory
 import Airbender.Proofs.Blake2G.PointerHistory
-import Airbender.Proofs.Delegation.Operations
+import Airbender.Proofs.Blake2G.Memory
 
 namespace Airbender.Blake2G.Proofs
 open Trace Trace.Proofs Delegation.Proofs Arithmetic Reference.RiscV.Sail
@@ -38,10 +38,15 @@ theorem call_block_cells [Fact p.Prime] (hp : 8388608 ≤ p)
   obtain ⟨statePointer, messagePointer, stateRead, messageRead, pointers, _, _⟩ :=
     call_pointers clockBound accepted inputs
   obtain ⟨ordered, permutation, _, controls, _⟩ := ordered_controls clockBound accepted inputs
-  have operation : Delegation.Proofs.BoundaryOperationInputs data initial cells Keccak.Controller.rows := by
-    refine ⟨inputs.memory, inputs.tables, ?_, ?_⟩
-    all_goals intro row member other; have := inputs.family row member; simp_all
-  have bounds := operation_word_bounds_at_boundary hp inverse accepted operation
+  have rules := Blake2G.Proofs.memory_rules (by omega) inverse accepted inputs.family
+    (by rw [inputs.tables]; rfl)
+  have bounds : Delegation.WordBounds data :=
+    ⟨fun _ member _ present => Delegation.Proofs.read_value_bounds clockBound accepted
+        inputs.memory rules member present,
+      fun _ member _ present => Delegation.Proofs.write_value_bounds clockBound accepted
+        inputs.memory rules member present,
+      fun _ present => Delegation.Proofs.terminal_value_bounds clockBound accepted
+        inputs.memory rules present⟩
   refine ⟨statePointer, messagePointer, stateRead, messageRead, ?_⟩
   intro «block» word
   obtain ⟨call, index, coverage⟩ := first_round_coverage reduced «block» word

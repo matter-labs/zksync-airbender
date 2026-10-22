@@ -1,3 +1,5 @@
+import Airbender.Proofs.Blake2G.SerializedField
+import Airbender.Proofs.Blake2G.AssemblyDefinitions
 import Airbender.Proofs.Blake2G
 import Airbender.Proofs.Arithmetic.Word
 
@@ -9,17 +11,6 @@ set_option maxHeartbeats 1200000
 
 -- These are intermediate field expressions from the imported queries, not a
 -- second G specification. The target operation is Clean's native reference.
-def firstAlo {p : Nat} (w : Nat → ZMod p) : ZMod p :=
-  w 15 + w 19 + w 33 - 65536 * w 37 - 131072 * w 38
-
-def firstAhi {p : Nat} (w : Nat → ZMod p) : ZMod p :=
-  w 16 + w 20 + w 34 + w 37 + 2 * w 38 - 65536 * w 39 - 131072 * w 40
-
-theorem inverse256 {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1) :
-    256 * (-7864320 : ZMod p) = 1 := by
-  linear_combination compatible
-
 def chunkXor {p : Nat} (width : Nat) (x y z : ZMod p) : Prop :=
   x.val < 2 ^ width ∧ y.val < 2 ^ width ∧ z.val < 2 ^ width ∧ z.val = x.val ^^^ y.val
 
@@ -156,12 +147,6 @@ theorem first_rotation {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     a.Bounded ∧ d.Bounded ∧ rotated.Bounded ∧
       rotated.value = rotRight32 (d.value ^^^ a.value) 16 := by
   exact first_rotation_of_queries hp compatible (query_holds_of_holds h)
-
-def firstClo {p : Nat} (w : Nat → ZMod p) : ZMod p :=
-  w 23 + w 47 + 256 * w 48 - 65536 * w 49
-
-def firstChi {p : Nat} (w : Nat → ZMod p) : ZMod p :=
-  w 24 + w 44 + 256 * w 45 + w 49 - 65536 * w 50
 
 private theorem inverse4096 {p : Nat} [Fact p.Prime]
     (compatible : 64 * (-31457280 : ZMod p) = 1) :

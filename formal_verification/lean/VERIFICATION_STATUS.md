@@ -44,7 +44,7 @@ Temporary assumptions do not close implementation bugs. Separately scoped work:
 
 - Library, both executables and all 137 concrete test modules pass.
 - Importer regressions pass.
-- Axiom audit: 3,850 roots, 149 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
+- Axiom audit: 4,363 roots, 149 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
 - All 166 public Review theorem roots are audited; review/reference checks pass.
 - No handwritten project diagnostics, `sorry` or project axioms.
 

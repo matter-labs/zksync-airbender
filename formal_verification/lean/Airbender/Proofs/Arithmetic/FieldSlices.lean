@@ -1,3 +1,4 @@
+import Airbender.Proofs.Arithmetic.FieldSliceDefinitions
 import Airbender.Proofs.Arithmetic.FieldChunks
 
 namespace Airbender.Arithmetic
@@ -5,11 +6,6 @@ set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
-
-def carryLow {p : Nat} (value : ZMod p) : ZMod p := ((value.val % 2 : Nat) : ZMod p)
-def carryHigh {p : Nat} (value : ZMod p) : ZMod p := ((value.val / 2 : Nat) : ZMod p)
-def combinedLow {p : Nat} (value : ZMod p) : ZMod p := ((value.val % 16 : Nat) : ZMod p)
-def combinedHigh {p : Nat} (value : ZMod p) : ZMod p := ((value.val / 16 : Nat) : ZMod p)
 
 theorem carry_recompose {p : Nat} [Fact p.Prime] (value : ZMod p) :
     carryLow value + 2 * carryHigh value = value := by
