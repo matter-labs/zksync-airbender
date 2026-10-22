@@ -1,3 +1,4 @@
+use crate::prover::common_constants::{RomGeometry, L1_WRAP_ROM, REGULAR_ROM};
 use crate::prover::definitions::USE_REDUCED_BLAKE2_ROUNDS;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -33,6 +34,11 @@ pub enum FsvProgram {
     UnrolledRecursionLayer,
     UnifiedBaseLayer,
     UnifiedRecursionLayer,
+    UnifiedRecursionLayerL1Feeder,
+    UnifiedRecursionLayerL1FeederWrap,
+    /// The recurrent L1 feeder verifier over proofs of the 2^23 feeder
+    /// profile A.
+    UnifiedRecursionLayerL1FeederA,
 }
 
 impl FsvProgram {
@@ -43,6 +49,21 @@ impl FsvProgram {
             Self::UnrolledRecursionLayer => "fsv_unrolled_recursion_layer_sec_100",
             Self::UnifiedBaseLayer => "fsv_unified_base_layer_sec_100",
             Self::UnifiedRecursionLayer => "fsv_unified_recursion_layer_sec_100",
+            Self::UnifiedRecursionLayerL1Feeder => "fsv_unified_recursion_layer_sec_100_l1_feeder",
+            Self::UnifiedRecursionLayerL1FeederWrap => {
+                "fsv_unified_recursion_layer_sec_100_l1_feeder_wrap"
+            }
+            Self::UnifiedRecursionLayerL1FeederA => {
+                "fsv_unified_recursion_layer_sec_100_l1_feeder_a"
+            }
+        }
+    }
+
+    #[must_use]
+    pub const fn rom(self) -> RomGeometry {
+        match self {
+            Self::UnifiedRecursionLayerL1FeederWrap => L1_WRAP_ROM,
+            _ => REGULAR_ROM,
         }
     }
 
@@ -54,6 +75,18 @@ impl FsvProgram {
     #[must_use]
     pub const fn supports(self, mode: BlakeMode) -> bool {
         match (self, mode) {
+            (
+                Self::UnifiedRecursionLayerL1Feeder
+                | Self::UnifiedRecursionLayerL1FeederWrap
+                | Self::UnifiedRecursionLayerL1FeederA,
+                BlakeMode::BlakeSpecialOpcodes,
+            ) => true,
+            (
+                Self::UnifiedRecursionLayerL1Feeder
+                | Self::UnifiedRecursionLayerL1FeederWrap
+                | Self::UnifiedRecursionLayerL1FeederA,
+                _,
+            ) => false,
             (Self::UnifiedBaseLayer | Self::UnifiedRecursionLayer, _) => true,
             (_, BlakeMode::BlakeSpecialOpcodes) => false,
             (_, _) => true,
@@ -90,6 +123,23 @@ mod tests {
         assert!(!FsvProgram::UnrolledBaseLayer.supports(BlakeMode::BlakeSpecialOpcodes));
         assert!(!FsvProgram::UnrolledRecursionLayer.supports(BlakeMode::BlakeSpecialOpcodes));
         assert!(FsvProgram::UnrolledBaseLayer.supports(BlakeMode::Compression));
+        assert!(FsvProgram::UnifiedRecursionLayerL1Feeder.supports(BlakeMode::BlakeSpecialOpcodes));
+        assert!(!FsvProgram::UnifiedRecursionLayerL1Feeder.supports(BlakeMode::Compression));
+        assert!(
+            FsvProgram::UnifiedRecursionLayerL1FeederWrap.supports(BlakeMode::BlakeSpecialOpcodes)
+        );
+        assert!(!FsvProgram::UnifiedRecursionLayerL1FeederWrap.supports(BlakeMode::Compression));
+        assert_eq!(FsvProgram::UnifiedRecursionLayerL1Feeder.rom(), REGULAR_ROM);
+        assert!(FsvProgram::UnifiedRecursionLayerL1FeederA.supports(BlakeMode::BlakeSpecialOpcodes));
+        assert!(!FsvProgram::UnifiedRecursionLayerL1FeederA.supports(BlakeMode::Compression));
+        assert_eq!(
+            FsvProgram::UnifiedRecursionLayerL1FeederA.rom(),
+            REGULAR_ROM
+        );
+        assert_eq!(
+            FsvProgram::UnifiedRecursionLayerL1FeederWrap.rom(),
+            L1_WRAP_ROM
+        );
     }
 
     #[test]
@@ -105,6 +155,18 @@ mod tests {
             (
                 FsvProgram::UnifiedRecursionLayer,
                 &[BlakeMode::Compression, BlakeMode::BlakeSpecialOpcodes][..],
+            ),
+            (
+                FsvProgram::UnifiedRecursionLayerL1Feeder,
+                &[BlakeMode::BlakeSpecialOpcodes][..],
+            ),
+            (
+                FsvProgram::UnifiedRecursionLayerL1FeederWrap,
+                &[BlakeMode::BlakeSpecialOpcodes][..],
+            ),
+            (
+                FsvProgram::UnifiedRecursionLayerL1FeederA,
+                &[BlakeMode::BlakeSpecialOpcodes][..],
             ),
         ] {
             for mode in modes {

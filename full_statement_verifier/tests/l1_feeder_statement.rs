@@ -1,0 +1,108 @@
+//! Cheap typing and boundary checks of the L1 feeder statement. The
+//! fixture-backed controls (delegation count words, setup-cap leaf flips)
+//! live with the feeder-chain fixtures in `prover_pipeline`.
+
+use full_statement_verifier::imports::unified_reduced_machine_sec_100 as standard;
+use full_statement_verifier::imports::unified_reduced_machine_sec_100_l1_feeder as feeder;
+use full_statement_verifier::imports::unified_reduced_machine_sec_100_l1_feeder_a as feeder_a;
+use full_statement_verifier::unified_circuit_statement::{
+    address_high_bits_shift, STANDARD_ADDRESS_HIGH_BITS_SHIFT, STANDARD_CYCLES_PER_INSTANCE,
+};
+use verifier_common::prover::definitions::DEFAULT_CAP_SIZE;
+
+#[test]
+fn feeder_verifier_geometry() {
+    assert_eq!(feeder::TRACE_LEN_LOG2, 22);
+    assert_eq!(feeder::CAP_SIZE, 16);
+    assert_eq!(
+        feeder::INIT_AND_TEARDOWN_SETS,
+        standard::INIT_AND_TEARDOWN_SETS
+    );
+    assert_eq!(standard::TRACE_LEN_LOG2, 23);
+    assert_eq!(DEFAULT_CAP_SIZE, 16);
+    assert_eq!(feeder_a::TRACE_LEN_LOG2, 23);
+    assert_eq!(feeder_a::CAP_SIZE, 4);
+    assert_eq!(
+        feeder_a::INIT_AND_TEARDOWN_SETS,
+        standard::INIT_AND_TEARDOWN_SETS
+    );
+}
+
+/// The generated feeder verifier carries the configured query/PoW tuple,
+/// and no PoW of a feeder proof (WHIR rounds, lookup challenges, batched
+/// proximity, external challenges) exceeds the feeder PoW ceiling.
+#[test]
+fn feeder_pows_stay_under_the_ceiling() {
+    use verifier_common::prover::gkr::prover_config::example_configs::{
+        L1_FEEDER_MAX_POW_BITS, L1_FEEDER_QUERIES_AND_POW,
+    };
+    for (round, (queries, pow)) in L1_FEEDER_QUERIES_AND_POW.iter().enumerate() {
+        assert_eq!(feeder::WHIR_QUERIES[round], *queries);
+        assert_eq!(feeder::WHIR_POW_BITS[round], *pow);
+    }
+    let ceiling = L1_FEEDER_MAX_POW_BITS;
+    assert!(feeder::WHIR_POW_BITS.iter().all(|pow| *pow <= ceiling));
+    assert!(feeder::LOOKUP_CHALLENGES_POW_BITS <= ceiling);
+    assert!(feeder::BATCHED_PROXIMITY_POW_BITS <= ceiling);
+    assert!(verifier_common::MEMORY_DELEGATION_POW_BITS as u32 <= ceiling);
+}
+
+/// The same for the 2^23 feeder verifier of profile A.
+#[test]
+fn feeder_a_pows_stay_under_the_ceiling() {
+    use verifier_common::prover::gkr::prover_config::example_configs::{
+        L1_FEEDER_A_QUERIES_AND_POW, L1_FEEDER_MAX_POW_BITS,
+    };
+    for (round, (queries, pow)) in L1_FEEDER_A_QUERIES_AND_POW.iter().enumerate() {
+        assert_eq!(feeder_a::WHIR_QUERIES[round], *queries);
+        assert_eq!(feeder_a::WHIR_POW_BITS[round], *pow);
+    }
+    let ceiling = L1_FEEDER_MAX_POW_BITS;
+    assert!(feeder_a::WHIR_POW_BITS.iter().all(|pow| *pow <= ceiling));
+    assert!(feeder_a::LOOKUP_CHALLENGES_POW_BITS <= ceiling);
+    assert!(feeder_a::BATCHED_PROXIMITY_POW_BITS <= ceiling);
+}
+
+#[test]
+fn feeder_instance_geometry_keeps_the_standard_address_ceiling() {
+    assert_eq!(
+        address_high_bits_shift(23),
+        STANDARD_ADDRESS_HIGH_BITS_SHIFT
+    );
+    assert_eq!(address_high_bits_shift(feeder::TRACE_LEN_LOG2), 9);
+    assert_eq!(
+        address_high_bits_shift(feeder_a::TRACE_LEN_LOG2),
+        STANDARD_ADDRESS_HIGH_BITS_SHIFT
+    );
+    // MAX_TOP_BIT * window bytes: the same 2 GiB for both geometries
+    for (trace_len_log2, shift) in [(23u32, 10u32), (22, 9)] {
+        let max_top_bit = 1u64 << (32 - 16 - shift);
+        let window_bytes = (1u64 << trace_len_log2) * 4;
+        assert_eq!(max_top_bit * window_bytes, 1 << 31);
+    }
+    assert_eq!(STANDARD_CYCLES_PER_INSTANCE, 1 << 24);
+    assert_eq!(1u64 << feeder::TRACE_LEN_LOG2, 1 << 22);
+}
+
+#[cfg(all(feature = "host_utils", feature = "verifiers"))]
+#[test]
+fn truncated_feeder_streams_are_rejected_at_the_checked_boundary() {
+    use full_statement_verifier::host_utils::{
+        native_verify_unified_l1_feeder, native_verify_unified_l1_feeder_a,
+    };
+    // an empty stream and a stream that ends inside the setup cap
+    let verifiers: [(fn(Vec<u32>) -> Result<[u32; 16], String>, usize); 2] = [
+        (native_verify_unified_l1_feeder, feeder::CAP_SIZE),
+        (native_verify_unified_l1_feeder_a, feeder_a::CAP_SIZE),
+    ];
+    for (verify, cap_size) in verifiers {
+        for len in [0usize, 8, cap_size * 8 - 1] {
+            let stream = vec![0u32; len];
+            let err = verify(stream).unwrap_err();
+            assert!(
+                err.starts_with("unified l1 feeder statement rejected the stream"),
+                "{err}"
+            );
+        }
+    }
+}

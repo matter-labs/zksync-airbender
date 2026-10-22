@@ -3,10 +3,6 @@
 pub use ::prover;
 pub use ::setups;
 
-#[cfg(feature = "l1")]
-pub mod compression;
-#[cfg(feature = "l1")]
-pub mod l1;
 pub mod proof_assembly;
 pub mod unified;
 pub mod unified_transition;

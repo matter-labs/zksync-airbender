@@ -121,6 +121,67 @@ cargo run --release -p cli -- verify \
   --bin examples/basic_fibonacci/app.bin
 ```
 
+## L1 Feeder Checkpoint
+
+`--target l1-feeder` continues a `recursion-unified` proof with a routed
+feeder chain. Each layer uses profile C (`2^22` trace, base LDE 16, cap 16)
+when the verifier program fits one instance; otherwise it uses profile A
+(`2^23` trace, base LDE 4, cap 4). Both use a merged memory and witness
+commitment. The first layer verifies the standard unified proof, and later
+layers verify profile-A proofs.
+
+The chain stops at one profile-C instance, whose verification must fit the
+L1 wrap. One profile-A instance continues through another layer. For the
+committed `basic_fibonacci` input, the chain is two A instances, one A
+instance, then one C instance. At most eight feeder layers are allowed.
+
+Artifacts retain schema 5. Multi-layer feeder artifacts from the previous C-only chain
+must be regenerated from a `recursion-unified` checkpoint. The resulting
+`l1-feeder` artifact is the input of the L1 wrap.
+
+The committed reference can be regenerated in a fresh process with the ignored
+`l1_reference::generate_l1_reference_from_recursion_unified` test, which
+requires 136 GiB MemAvailable.
+
+```bash
+cargo run --release -p cli -- continue-proof \
+  --proof output/recursion_unified.json \
+  --bin examples/basic_fibonacci/app.bin \
+  --target l1-feeder \
+  --output-dir output \
+  --output-file l1_feeder.json
+
+cargo run --release -p cli -- verify \
+  --proof output/l1_feeder.json \
+  --bin examples/basic_fibonacci/app.bin
+```
+
+## L1 Proof
+
+`--target l1` continues an `l1-feeder` checkpoint (or runs through it) and
+proves the L1 feeder verifier's execution as one Proth120 packed unified proof
+with Keccak commitments, the proof shape the EVM verifier consumes. The
+artifact (schema 5) keeps the BabyBear feeder sidecar and adds the `l1` bundle
+(proof and operation-mode data).
+
+```bash
+cargo run --release -p cli -- continue-proof \
+  --proof output/l1_feeder.json \
+  --bin examples/basic_fibonacci/app.bin \
+  --target l1 \
+  --backend cpu \
+  --output-dir output \
+  --output-file l1.json
+
+cargo run --release -p cli -- verify \
+  --proof output/l1.json \
+  --bin examples/basic_fibonacci/app.bin
+```
+
+There is no native verifier for the Proth120 proof: `verify` on an L1 artifact
+checks the feeder sidecar, the recursion chain and the bundle's packing
+parameters, and says that the Proth proof was not verified.
+
 ## Prove Batch
 
 ```bash

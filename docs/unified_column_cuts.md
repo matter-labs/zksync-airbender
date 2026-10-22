@@ -37,7 +37,7 @@ root.
 
 The widths and the first layer's gate count are those of the committed layouts
 `cs/compiled_circuits/unified_reduced_machine_layout_gkr.json` and
-`unified_reduced_machine_layout_gkr_proth120.json` (`memory_layout.total_width`,
+`unified_reduced_machine_layout_gkr_proth120_2p21.json` (`memory_layout.total_width`,
 `witness_layout.total_width`, `layers[0].gates`), against the same files before the column cuts.
 
 The eight columns, by their names in the previous layout:

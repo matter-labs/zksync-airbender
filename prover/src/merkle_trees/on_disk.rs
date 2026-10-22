@@ -13,7 +13,7 @@
 //! then the leaf hashes, then the internal layer hashes bottom-up:
 //!
 //! ```text
-//! [ header (24 bytes) ]
+//! [ header (32 bytes) ]
 //! [ cap:      cap_size            digests ]   // get_cap()
 //! [ leaves:   num_leaves          digests ]   // depth-0 siblings
 //! [ layer 1:  num_leaves / 2      digests ]   // depth-1 siblings
@@ -26,6 +26,8 @@
 //! (`layer k`) is stored once, up front, and is never needed as a sibling, so the
 //! internal blocks stop at `layer k-1`. Each digest is written as
 //! `DIGEST_SIZE_U32_WORDS` little-endian `u32` words (deterministic across hosts).
+//! The header records the tree type's `DIGEST_BYTES`; a reader expecting another
+//! digest width rejects the artifact.
 //!
 //! The layout is intentionally minimal; a richer, self-describing variant can be
 //! added later without touching the trait surface.
@@ -60,11 +62,12 @@ pub fn monolithic_tree_file_path(prefix: &str) -> PathBuf {
     PathBuf::from(format!("{prefix}.tree"))
 }
 
-/// Magic marker ("MTR1") identifying the format.
-pub const MERKLE_DISK_MAGIC: u32 = u32::from_le_bytes(*b"MTR1");
+/// Magic marker ("MTR2") identifying the format.
+pub const MERKLE_DISK_MAGIC: u32 = u32::from_le_bytes(*b"MTR2");
 
-/// Header size in bytes: magic(4) + digest_words(4) + num_leaves(8) + cap_size(8).
-pub const HEADER_BYTES: usize = 24;
+/// Header size in bytes: magic(4) + digest_words(4) + num_leaves(8) + cap_size(8)
+/// + digest_bytes(8).
+pub const HEADER_BYTES: usize = 32;
 
 /// Bytes occupied by a single digest.
 pub const DIGEST_BYTES: usize = DIGEST_SIZE_U32_WORDS * core::mem::size_of::<u32>();
@@ -101,10 +104,12 @@ fn num_internal_layers(num_leaves: usize, cap_size: usize) -> usize {
 /// in-memory `Vec<u8>`, a `BufWriter<File>`, etc.). `cap` is `get_cap().cap`;
 /// `leaf_hashes` is the leaf layer; `internal_layers` are the node layers strictly
 /// BELOW the cap (`L1 .. L_{depth-1}`, bottom-up), i.e.
-/// `node_hashes_enumerated_from_leafs` without its last (cap) layer. Writes the
-/// byte image described in the module docs.
+/// `node_hashes_enumerated_from_leafs` without its last (cap) layer;
+/// `digest_bytes` is the tree type's `DIGEST_BYTES`. Writes the byte image
+/// described in the module docs.
 pub fn serialize_layers<W: Write>(
     out: &mut W,
+    digest_bytes: usize,
     num_leaves: usize,
     cap_size: usize,
     cap: &[Digest],
@@ -125,6 +130,7 @@ pub fn serialize_layers<W: Write>(
     out.write_all(&(DIGEST_SIZE_U32_WORDS as u32).to_le_bytes())?;
     out.write_all(&(num_leaves as u64).to_le_bytes())?;
     out.write_all(&(cap_size as u64).to_le_bytes())?;
+    out.write_all(&(digest_bytes as u64).to_le_bytes())?;
 
     for d in cap.iter() {
         write_digest(out, d)?;
@@ -163,9 +169,14 @@ pub struct SerializableTreeLayers<'a> {
 impl<'a> SerializableTreeLayers<'a> {
     /// Write these layers into `out` in the on-disk format. Crate-internal on
     /// purpose: `write_disk_artifacts` is the only intended caller.
-    pub(crate) fn write_to<W: Write>(&self, out: &mut W) -> std::io::Result<()> {
+    pub(crate) fn write_to<W: Write>(
+        &self,
+        out: &mut W,
+        digest_bytes: usize,
+    ) -> std::io::Result<()> {
         serialize_layers(
             out,
+            digest_bytes,
             self.num_leaves,
             self.cap_size,
             &self.cap,
@@ -205,7 +216,7 @@ pub fn tree_layers<'a>(
 }
 
 /// Byte-offset layout of a serialized single-tree image (see module docs), parsed
-/// from the 24-byte header. Kept separate from the mapping so a reader can own its
+/// from the header. Kept separate from the mapping so a reader can own its
 /// `MemoryMappedFile` and re-derive a zero-copy view per access.
 #[derive(Clone, Debug)]
 struct TreeLayout {
@@ -219,7 +230,7 @@ struct TreeLayout {
 }
 
 impl TreeLayout {
-    fn parse(header: &[u8]) -> Self {
+    fn parse(header: &[u8], digest_bytes: usize) -> Self {
         assert!(
             header.len() >= HEADER_BYTES,
             "on-disk merkle image shorter than header"
@@ -234,6 +245,11 @@ impl TreeLayout {
         );
         let num_leaves = u64::from_le_bytes(header[8..16].try_into().unwrap()) as usize;
         let cap_size = u64::from_le_bytes(header[16..24].try_into().unwrap()) as usize;
+        let on_disk_digest_bytes = u64::from_le_bytes(header[24..32].try_into().unwrap()) as usize;
+        assert_eq!(
+            on_disk_digest_bytes, digest_bytes,
+            "on-disk merkle digest_bytes mismatch"
+        );
         assert!(num_leaves.is_power_of_two());
         assert!(cap_size.is_power_of_two());
         assert!(cap_size <= num_leaves);
@@ -298,12 +314,13 @@ pub struct MmapMerkleTree {
 
 impl MmapMerkleTree {
     /// Memory-map a serialized tree file (as written by `write_disk_artifacts`).
-    pub fn open<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
+    /// Panics unless the file was written with `digest_bytes`.
+    pub fn open<P: AsRef<Path>>(path: P, digest_bytes: usize) -> std::io::Result<Self> {
         let mmap = MemoryMappedFile::open_ro(path).map_err(mmap_io_err)?;
         let header = mmap
             .as_slice_bytes(0, HEADER_BYTES as u64)
             .map_err(mmap_io_err)?;
-        let layout = TreeLayout::parse(header);
+        let layout = TreeLayout::parse(header, digest_bytes);
         Ok(Self { mmap, layout })
     }
 
@@ -381,14 +398,17 @@ pub struct OnDiskCosetTree {
 
 impl OnDiskCosetTree {
     /// Open `num_cosets` subtree files (NATURAL coset order) + the top-tree file
-    /// under a shared `prefix`.
-    pub fn open(prefix: &str, num_cosets: usize) -> std::io::Result<Self> {
+    /// under a shared `prefix`, all written with `digest_bytes`.
+    pub fn open(prefix: &str, num_cosets: usize, digest_bytes: usize) -> std::io::Result<Self> {
         assert!(num_cosets.is_power_of_two());
         let mut subtrees = Vec::with_capacity(num_cosets);
         for i in 0..num_cosets {
-            subtrees.push(MmapMerkleTree::open(subtree_file_path(prefix, i))?);
+            subtrees.push(MmapMerkleTree::open(
+                subtree_file_path(prefix, i),
+                digest_bytes,
+            )?);
         }
-        let top_tree = MmapMerkleTree::open(top_tree_file_path(prefix))?;
+        let top_tree = MmapMerkleTree::open(top_tree_file_path(prefix), digest_bytes)?;
         let coset_tree_size = subtrees[0].num_leaves();
         let geometry = SplitTreeGeometry::new(num_cosets, coset_tree_size, top_tree.cap_size());
         for (i, subtree) in subtrees.iter().enumerate() {
@@ -575,7 +595,7 @@ where
             );
             let mut f =
                 BufWriter::new(std::fs::File::create(monolithic_tree_file_path(base_path))?);
-            layers_of(&tree).write_to(&mut f)?;
+            layers_of(&tree).write_to(&mut f, T::DIGEST_BYTES)?;
             f.flush()?;
         }
         OnDiskTreeLayout::CosetSubtrees => {
@@ -615,7 +635,7 @@ where
                     base_path,
                     coset_index,
                 ))?);
-                layers_of(&subtree).write_to(&mut f)?;
+                layers_of(&subtree).write_to(&mut f, T::DIGEST_BYTES)?;
                 f.flush()?;
                 natural_caps.push(subtree.get_cap().cap);
             }
@@ -623,7 +643,7 @@ where
             let top_leaves = geometry.top_leaves_from_natural_unit_caps(&natural_caps);
             let top_tree = T::build_over_leaf_hashes(top_leaves, cap_size, worker);
             let mut f = BufWriter::new(std::fs::File::create(top_tree_file_path(base_path))?);
-            layers_of(&top_tree).write_to(&mut f)?;
+            layers_of(&top_tree).write_to(&mut f, T::DIGEST_BYTES)?;
             f.flush()?;
         }
     }
@@ -635,13 +655,18 @@ where
 /// Memory-maps the on-disk tree artifacts previously written by
 /// [`write_disk_artifacts`] at `base_path`, producing an [`OnDiskTree`]. `layout` is
 /// the layout the caller expects; this PANICS if the artifacts on disk are of a
-/// different layout. `num_cosets` is used only for the split layout. Needs no
-/// concrete-tree accessor — the reader types are field-agnostic.
-pub fn open_disk_artifacts<T>(
+/// different layout or written with a digest width other than `T::DIGEST_BYTES`.
+/// `num_cosets` is used only for the split layout. Needs no concrete-tree
+/// accessor — the reader types are field-agnostic.
+pub fn open_disk_artifacts<F, T>(
     base_path: &str,
     layout: OnDiskTreeLayout,
     num_cosets: usize,
-) -> OnDiskTree<T> {
+) -> OnDiskTree<T>
+where
+    F: PrimeField,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+{
     let mono_present = monolithic_tree_file_path(base_path).exists();
     let split_present =
         top_tree_file_path(base_path).exists() && subtree_file_path(base_path, 0).exists();
@@ -659,11 +684,12 @@ pub fn open_disk_artifacts<T>(
     );
     match layout {
         OnDiskTreeLayout::Monolithic => OnDiskTree::monolithic(
-            MmapMerkleTree::open(monolithic_tree_file_path(base_path))
+            MmapMerkleTree::open(monolithic_tree_file_path(base_path), T::DIGEST_BYTES)
                 .expect("open monolithic tree artifact"),
         ),
         OnDiskTreeLayout::CosetSubtrees => OnDiskTree::coset_subtrees(
-            OnDiskCosetTree::open(base_path, num_cosets).expect("open split tree artifacts"),
+            OnDiskCosetTree::open(base_path, num_cosets, T::DIGEST_BYTES)
+                .expect("open split tree artifacts"),
         ),
     }
 }
@@ -875,5 +901,43 @@ mod test {
         // cap inside the cosets (the production family shape: cap 16 over LDE 2)
         split_roundtrip(2, 6, 2, 16);
         split_roundtrip(1, 5, 4, 8);
+    }
+
+    #[test]
+    #[should_panic(expected = "on-disk merkle digest_bytes mismatch")]
+    fn mmap_rejects_other_digest_bytes() {
+        type Tree = Keccak256MerkleTreeWithCap<Global>;
+        let worker = Worker::new_with_num_threads(1);
+        let col: Vec<Proth120> = (0..16u128).map(Proth120::new).collect();
+        let col_ref: &[Proth120] = &col;
+        let tree = <Tree as ColumnMajorMerkleTreeConstructor<Proth120>>::construct_from_cosets::<
+            Proth120,
+            _,
+        >(&[&[col_ref][..]], 1, 1, true, false, false, &worker);
+        let node_layers: Vec<&[Digest]> = tree
+            .node_hashes_enumerated_from_leafs
+            .iter()
+            .map(|l| &l[..])
+            .collect();
+        let path = std::env::temp_dir().join(format!(
+            "on_disk_digest_bytes_mismatch_{}.tree",
+            std::process::id()
+        ));
+        let mut f = std::fs::File::create(&path).unwrap();
+        tree_layers(tree.cap_size, &tree.leaf_hashes[..], &node_layers)
+            .write_to(
+                &mut f,
+                <Tree as ColumnMajorMerkleTreeConstructor<Proth120>>::DIGEST_BYTES,
+            )
+            .unwrap();
+        drop(f);
+        assert!(MmapMerkleTree::open(
+            &path,
+            <Tree as ColumnMajorMerkleTreeConstructor<Proth120>>::DIGEST_BYTES
+        )
+        .is_ok());
+        let opened = std::panic::catch_unwind(|| MmapMerkleTree::open(&path, DIGEST_BYTES));
+        let _ = std::fs::remove_file(&path);
+        std::panic::resume_unwind(opened.expect_err("32-byte reader accepted a 25-byte tree"));
     }
 }

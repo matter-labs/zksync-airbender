@@ -50,11 +50,13 @@ Useful flags:
 
 ## Creating proofs
 
-The CLI exposes three proof targets:
+The CLI exposes five proof targets:
 
 - `base`
 - `recursion-unrolled`
 - `recursion-unified` (default)
+- `l1-feeder` (CPU only): `recursion-unified` followed by the high-LDE feeder layers that prepare the L1 wrap
+- `l1` (CPU only): `l1-feeder` followed by the Proth120 L1 wrap proof; `verify` checks its feeder part (the Proth proof itself has no native verifier)
 
 For most users, the default target is the right one because it runs the whole active recursion pipeline and emits a single proof artifact.
 

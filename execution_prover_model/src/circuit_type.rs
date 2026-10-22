@@ -3,8 +3,8 @@ use crate::upstream::{
     Blake2sGFunctionDelegationCircuit, Blake2sWithCompressionDelegationCircuit,
     JumpBranchSltCircuit, KeccakChi5DelegationCircuit, KeccakColumnParityDelegationCircuit,
     KeccakSpecial5DelegationCircuit, KeccakThetaRhoDelegationCircuit, LoadStoreSubwordOnlyCircuit,
-    LoadStoreWordOnlyCircuit, ShiftBinaryCircuit, UnifiedReducedMachineCircuit,
-    UnsignedMulDivCircuit,
+    LoadStoreWordOnlyCircuit, ProofProfile, ShiftBinaryCircuit, UnifiedReducedMachineCircuit,
+    UnifiedReducedMachineCircuit2_22, UnsignedMulDivCircuit,
 };
 use crate::MachineType;
 use circuit_common::{DelegationCircuit, ProverConfig, RiscVCycleCircuit, SecurityLevel};
@@ -21,6 +21,7 @@ use common_constants::delegation_types::{
     blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
     keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
 };
+use common_constants::rom::{RomGeometry, L1_WRAP_ROM, REGULAR_ROM};
 
 // log2 trace lengths of the circuits, usable in `const` contexts. The source of
 // truth is each circuit's `prover_config` (`trace_len_log2`); the
@@ -37,17 +38,22 @@ const JUMP_BRANCH_DOMAIN_SIZE_LOG2: u32 = 24;
 const SHIFT_BINARY_DOMAIN_SIZE_LOG2: u32 = 24;
 const LOAD_STORE_WORD_DOMAIN_SIZE_LOG2: u32 = 24;
 const LOAD_STORE_SUBWORD_DOMAIN_SIZE_LOG2: u32 = 24;
+const UNIFIED_REDUCED_MACHINE_2_22_DOMAIN_SIZE_LOG2: u32 = 22;
 const INITS_AND_TEARDOWNS_DOMAIN_SIZE_LOG2: u32 = inits_and_teardowns::TRACE_LEN_LOG2;
 const INITS_AND_TEARDOWNS_NUM_SETS: usize = inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS;
 // One inline i&t "pair" allocates two sets (`allocate_inline_inits_and_teardowns_sets`).
 const UNIFIED_REDUCED_MACHINE_NUM_INIT_AND_TEARDOWN_SETS: usize =
     2 * <UnifiedReducedMachineCircuit as RiscVCycleCircuit<BabyBearField, true>>::NUM_INIT_AND_TEARDOWN_PAIRS;
 const MUL_DIV_UNSIGNED_DOMAIN_SIZE_LOG2: u32 = 23;
+const UNIFIED_REDUCED_MACHINE_2_22_NUM_INIT_AND_TEARDOWN_SETS: usize =
+    2 * <UnifiedReducedMachineCircuit2_22 as RiscVCycleCircuit<BabyBearField, true>>::NUM_INIT_AND_TEARDOWN_PAIRS;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum CircuitType {
     Delegation(DelegationCircuitType),
     Unrolled(UnrolledCircuitType),
+    /// The 2^21 Proth120 L1 wrap over the 512 KiB wrap ROM.
+    L1Wrap21,
 }
 
 impl CircuitType {
@@ -59,6 +65,9 @@ impl CircuitType {
         match self {
             Self::Delegation(delegation_type) => delegation_type.prover_config(level),
             Self::Unrolled(unrolled_type) => unrolled_type.prover_config(level),
+            Self::L1Wrap21 => {
+                ProofProfile::L1Wrap.prover_config(self.get_domain_size_log2() as usize, level)
+            }
         }
     }
 
@@ -72,6 +81,7 @@ impl CircuitType {
         match self {
             Self::Delegation(delegation_type) => delegation_type.get_domain_size_log2(),
             Self::Unrolled(unrolled_type) => unrolled_type.get_domain_size_log2(),
+            Self::L1Wrap21 => 21,
         }
     }
 
@@ -80,6 +90,27 @@ impl CircuitType {
         match self {
             Self::Delegation(_) => panic!("delegation circuits do not have a circuit family idx"),
             Self::Unrolled(unrolled_type) => unrolled_type.get_family_idx(),
+            Self::L1Wrap21 => REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
+        }
+    }
+
+    pub const fn get_num_inits_and_teardowns_sets(&self) -> usize {
+        match self {
+            Self::Unrolled(circuit) => circuit.get_num_inits_and_teardowns_sets(),
+            Self::L1Wrap21 => 2,
+            Self::Delegation(_) => panic!("delegation circuits do not carry inits and teardowns"),
+        }
+    }
+
+    pub const fn is_l1_wrap(&self) -> bool {
+        matches!(self, Self::L1Wrap21)
+    }
+
+    /// The ROM geometry the circuit's load/store and decoder tables assume.
+    pub const fn rom(&self) -> RomGeometry {
+        match self {
+            Self::L1Wrap21 => L1_WRAP_ROM,
+            Self::Delegation(_) | Self::Unrolled(_) => REGULAR_ROM,
         }
     }
 }
@@ -187,6 +218,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn l1_wrap_identities_carry_their_domain_and_rom() {
+        assert_eq!(CircuitType::L1Wrap21.get_domain_size_log2(), 21);
+        assert_eq!(CircuitType::L1Wrap21.rom(), L1_WRAP_ROM);
+        assert!(CircuitType::L1Wrap21.is_l1_wrap());
+        assert_eq!(
+            CircuitType::L1Wrap21.get_family_idx(),
+            REDUCED_MACHINE_CIRCUIT_FAMILY_IDX
+        );
+        assert_eq!(CircuitType::L1Wrap21.get_num_inits_and_teardowns_sets(), 2);
+        for circuit in [
+            CircuitType::Unrolled(UnrolledCircuitType::Unified),
+            CircuitType::Unrolled(UnrolledCircuitType::Unified22),
+            CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression),
+        ] {
+            assert!(!circuit.is_l1_wrap());
+            assert_eq!(circuit.rom(), REGULAR_ROM);
+        }
+    }
+
+    #[test]
     fn rejects_unknown_delegation_type_ids() {
         let err = DelegationCircuitType::try_from(u16::MAX).unwrap_err();
 
@@ -219,7 +270,12 @@ pub enum UnrolledCircuitType {
     InitsAndTeardowns,
     Memory(UnrolledMemoryCircuitType),
     NonMemory(UnrolledNonMemoryCircuitType),
+    /// The 2^23 unified reduced-machine circuit of regular recursion.
     Unified,
+    /// The 2^22 unified reduced-machine circuit of the L1 feeder layers:
+    /// same family and definition as [`Self::Unified`], distinct geometry
+    /// (and so distinct setups, precomputations and proof shape).
+    Unified22,
 }
 
 impl UnrolledCircuitType {
@@ -230,6 +286,10 @@ impl UnrolledCircuitType {
             Self::Memory(circuit_type) => circuit_type.prover_config(level),
             Self::NonMemory(circuit_type) => circuit_type.prover_config(level),
             Self::Unified => <UnifiedReducedMachineCircuit as RiscVCycleCircuit<
+                BabyBearField,
+                true,
+            >>::prover_config(level),
+            Self::Unified22 => <UnifiedReducedMachineCircuit2_22 as RiscVCycleCircuit<
                 BabyBearField,
                 true,
             >>::prover_config(level),
@@ -248,6 +308,7 @@ impl UnrolledCircuitType {
             Self::Memory(circuit_type) => circuit_type.get_domain_size_log2(),
             Self::NonMemory(circuit_type) => circuit_type.get_domain_size_log2(),
             Self::Unified => UNIFIED_REDUCED_MACHINE_DOMAIN_SIZE_LOG2,
+            Self::Unified22 => UNIFIED_REDUCED_MACHINE_2_22_DOMAIN_SIZE_LOG2,
         }
     }
 
@@ -257,7 +318,7 @@ impl UnrolledCircuitType {
             Self::InitsAndTeardowns => INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX,
             Self::Memory(circuit_type) => circuit_type.get_family_idx(),
             Self::NonMemory(circuit_type) => circuit_type.get_family_idx(),
-            Self::Unified => REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
+            Self::Unified | Self::Unified22 => REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
         }
     }
 
@@ -269,6 +330,7 @@ impl UnrolledCircuitType {
             Self::InitsAndTeardowns => INITS_AND_TEARDOWNS_NUM_SETS,
             Self::Memory(_) | Self::NonMemory(_) => 0,
             Self::Unified => UNIFIED_REDUCED_MACHINE_NUM_INIT_AND_TEARDOWN_SETS,
+            Self::Unified22 => UNIFIED_REDUCED_MACHINE_2_22_NUM_INIT_AND_TEARDOWN_SETS,
         }
     }
 }
@@ -446,6 +508,7 @@ mod prover_config_tests {
             [
                 UnrolledCircuitType::InitsAndTeardowns,
                 UnrolledCircuitType::Unified,
+                UnrolledCircuitType::Unified22,
                 UnrolledCircuitType::Memory(UnrolledMemoryCircuitType::LoadStoreSubwordOnly),
                 UnrolledCircuitType::Memory(UnrolledMemoryCircuitType::LoadStoreWordOnly),
                 UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop),

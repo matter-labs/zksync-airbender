@@ -252,3 +252,83 @@ pub fn commit_merged_memory_and_witness_recompute<
         worker,
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fft::Twiddles;
+    use crate::gkr::prover::backend::NaiveBackend;
+    use crate::merkle_trees::DefaultTreeConstructor;
+    use field::baby_bear::base::BabyBearField;
+    use rand::{RngCore, SeedableRng};
+
+    type F = BabyBearField;
+
+    const TRACE_LEN_LOG2: usize = 10;
+    const LDE_FACTOR: usize = 16;
+    const CAP_SIZE: usize = 16;
+    const VALUES_PER_LEAF_LOG2: usize = 1;
+
+    fn columns(rng: &mut impl RngCore, count: usize) -> Vec<Vec<F>> {
+        (0..count)
+            .map(|_| {
+                (0..1usize << TRACE_LEN_LOG2)
+                    .map(|_| F::from_u32_with_reduction(rng.next_u32()))
+                    .collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn merged_recompute_commit_matches_subtrees() {
+        let worker = Worker::new_with_num_threads(2);
+        let mut config = crate::gkr::prover_config::ProverConfig::whir_only(
+            TRACE_LEN_LOG2,
+            crate::gkr::prover::WhirSchedule {
+                base_lde_factor: LDE_FACTOR,
+                cap_size: CAP_SIZE,
+                whir_steps_schedule: vec![VALUES_PER_LEAF_LOG2],
+                whir_queries_schedule: vec![1],
+                whir_steps_lde_factors: vec![],
+                whir_pow_schedule: vec![0],
+            },
+            crate::definitions::SecurityLevel::Sec100,
+        );
+        config.commitment_mode = crate::gkr::prover_config::CommitmentMode::MergedMemoryAndWitness;
+        let twiddles = Twiddles::<F, Global>::new(1 << TRACE_LEN_LOG2, &worker);
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0x3e46);
+        let trace = GKRFullWitnessTrace::<F, Global, Global> {
+            column_major_memory_trace: columns(&mut rng, 3),
+            column_major_witness_trace: columns(&mut rng, 2),
+            column_major_scratch_space_trace: Vec::new(),
+            generic_lookup_mapping: Vec::new(),
+            range_check_16_lookup_mapping: Vec::new(),
+            timestamp_range_check_lookup_mapping: Vec::new(),
+        };
+
+        let subtrees: ColumnMajorBaseOracleForLDE<F, DefaultTreeConstructor> =
+            commit_merged_memory_and_witness_subtrees::<F, F, _, _>(
+                &NaiveBackend,
+                &trace,
+                &twiddles,
+                &config,
+                &*crate::allocation_pool::default_proxy_pool_for(),
+                &worker,
+            );
+        let recompute: ColumnMajorBaseOracleForLDE<F, DefaultTreeConstructor> =
+            commit_merged_memory_and_witness_recompute(&trace, &twiddles, &config, &worker);
+
+        assert_eq!(subtrees.get_cap().cap, recompute.get_cap().cap);
+        let indices: Vec<usize> =
+            (0..(LDE_FACTOR << TRACE_LEN_LOG2) >> VALUES_PER_LEAF_LOG2).collect();
+        let expected = subtrees.query_many(&indices, &twiddles, &worker);
+        let actual = recompute.query_many(&indices, &twiddles, &worker);
+        assert_eq!(expected.len(), actual.len());
+        for ((ev, eq), (av, aq)) in expected.iter().zip(actual.iter()) {
+            assert_eq!(ev, av);
+            assert_eq!(eq.index, aq.index);
+            assert_eq!(eq.leaf_values_concatenated, aq.leaf_values_concatenated);
+            assert_eq!(eq.path, aq.path);
+        }
+    }
+}

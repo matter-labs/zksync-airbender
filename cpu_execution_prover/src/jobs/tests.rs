@@ -6,6 +6,8 @@ use execution_prover::messages::{
     WorkResult,
 };
 use execution_prover::setup::build_delegation_setup;
+use execution_prover::CommitmentMode;
+use execution_prover::ProofProfile;
 use execution_prover_model::allocator::CpuTraceAllocator;
 use execution_prover_model::circuit_type::{CircuitType, DelegationCircuitType};
 use execution_prover_model::trace::{
@@ -50,6 +52,7 @@ fn prove(
     let precomputations = CpuCircuitPrecomputations::from_canonical(
         circuit_type,
         build_delegation_setup(DELEGATION, &worker),
+        &[ProofProfile::Standard],
     );
     jobs.execute::<CpuTraceAllocator>(
         WorkRequest::SetupInitialization(SetupInitializationRequest {
@@ -70,6 +73,8 @@ fn prove(
             inits_and_teardowns: None,
             tracing_data: Some(empty_trace()),
             security_level: SECURITY_LEVEL,
+            commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
+            profile: ProofProfile::Standard,
         }),
         &worker,
     ) else {
@@ -86,6 +91,8 @@ fn prove(
             external_challenges: challenges(),
             memory_caps: memory_caps(committed.merkle_tree_caps),
             security_level: SECURITY_LEVEL,
+            commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
+            profile: ProofProfile::Standard,
         }),
         &worker,
     ) else {
@@ -127,4 +134,17 @@ fn an_altered_prior_memory_cap_is_rejected() {
         caps[0].cap[0][0] ^= 1;
         caps
     });
+}
+
+#[test]
+fn unified22_uses_recompute() {
+    use prover::gkr::prover::RsCodewordSource;
+    assert_eq!(
+        crate::jobs::whir_storage(ProofProfile::L1Feeder).base_rs_source,
+        RsCodewordSource::Recompute
+    );
+    assert_ne!(
+        crate::jobs::whir_storage(ProofProfile::Standard).base_rs_source,
+        RsCodewordSource::Recompute
+    );
 }

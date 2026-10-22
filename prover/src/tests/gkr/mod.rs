@@ -936,7 +936,7 @@ pub mod unified_reduced_machine_proth120 {
     use ::field::proth120::Proth120;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 
-    include!("../../../compiled_circuits/unified_reduced_machine_generated_gkr_proth120.rs");
+    include!("../../../compiled_circuits/unified_reduced_machine_generated_gkr_proth120_2p21.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>, Proth120>,

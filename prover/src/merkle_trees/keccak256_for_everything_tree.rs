@@ -5,10 +5,12 @@
 //! way the EVM (Solidity) WHIR verifier expects: each field element is the
 //! 16-byte big-endian normal (`u128`) form, a leaf is `keccak256` of the
 //! concatenation, and each internal node is `keccak256(left || right)` over the
-//! two 32-byte child digests.
+//! two zero-padded 32-byte child digests. Every digest is truncated to
+//! [`KECCAK256_MERKLE_DIGEST_BYTES`].
 
 use super::keccak256_hash_leafs::{
-    keccak256_leaf_hashes_from_cosets, keccak_digest_to_bytes, KECCAK256_DIGEST_SIZE_U32_WORDS,
+    keccak256_leaf_hashes_from_cosets, keccak_digest_to_bytes, keccak_merkle_digest_from_bytes,
+    KECCAK256_DIGEST_SIZE_U32_WORDS, KECCAK256_MERKLE_DIGEST_BYTES,
 };
 use super::CosetLeafAccessor;
 use super::*;
@@ -28,7 +30,8 @@ pub struct Keccak256MerkleTreeWithCap<A: GoodAllocator = Global> {
     pub node_hashes_enumerated_from_leafs: Vec<Vec<Digest32, A>>,
 }
 
-/// `keccak256(left || right)` over the two 32-byte child digests.
+/// `keccak256(left || right)` over the two zero-padded 32-byte child digests,
+/// truncated.
 #[inline(always)]
 fn compress_two_to_one(left: &Digest32, right: &Digest32) -> Digest32 {
     let mut input = [0u8; 64];
@@ -36,7 +39,7 @@ fn compress_two_to_one(left: &Digest32, right: &Digest32) -> Digest32 {
     input[32..].copy_from_slice(&keccak_digest_to_bytes(right));
     let mut out = [0u8; 32];
     out.copy_from_slice(Keccak256::digest(input).as_slice());
-    super::keccak256_hash_leafs::keccak_digest_from_bytes(out)
+    keccak_merkle_digest_from_bytes(out)
 }
 
 impl<A: GoodAllocator> Keccak256MerkleTreeWithCap<A> {
@@ -119,6 +122,8 @@ impl<B: GoodAllocator + 'static> ColumnMajorMerkleTreeConstructor<Proth120>
 {
     type Verifier = Keccak256LeafInclusionVerifier;
 
+    const DIGEST_BYTES: usize = KECCAK256_MERKLE_DIGEST_BYTES;
+
     fn dummy() -> Self {
         Keccak256MerkleTreeWithCap {
             cap_size: 0,
@@ -170,7 +175,9 @@ impl<B: GoodAllocator + 'static> ColumnMajorMerkleTreeConstructor<Proth120>
         layout: crate::merkle_trees::on_disk::OnDiskTreeLayout,
         num_cosets: usize,
     ) -> crate::merkle_trees::on_disk::OnDiskTree<Self> {
-        crate::merkle_trees::on_disk::open_disk_artifacts::<Self>(base_path, layout, num_cosets)
+        crate::merkle_trees::on_disk::open_disk_artifacts::<Proth120, Self>(
+            base_path, layout, num_cosets,
+        )
     }
 
     fn construct_from_cosets<E: FieldExtension<Proth120>, A: CosetIndexedAccessor<E>>(
@@ -301,8 +308,9 @@ pub fn keccak_leaf_encoding_words(values: &[Proth120]) -> Vec<u32> {
 /// exercised and validated locally:
 /// - the leaf hash is `keccak256` of the leaf preimage (the concatenated 16-byte
 ///   big-endian `u128` values, supplied via `leaf_encoding`),
-/// - each level compresses `keccak256(left || right)` over two 32-byte digests,
-///   ordered by the index bit,
+/// - each level compresses `keccak256(left || right)` over two zero-padded
+///   32-byte digests, ordered by the index bit,
+/// - leaf and node hashes are truncated to [`KECCAK256_MERKLE_DIGEST_BYTES`],
 /// - the reconstructed digest is compared against `merkle_cap[coset][index]`.
 ///
 /// It allocates and uses `sha3`, so it is only compiled with the `prover`
@@ -337,8 +345,7 @@ impl LeafInclusionVerifier for Keccak256LeafInclusionVerifier {
         for w in words.iter() {
             preimage.extend_from_slice(&w.to_be_bytes());
         }
-        let mut h =
-            super::keccak256_hash_leafs::keccak_digest_from_bytes(keccak256_bytes(&preimage));
+        let mut h = keccak_merkle_digest_from_bytes(keccak256_bytes(&preimage));
 
         let mut index = leaf_index as usize;
         for _ in 0..depth {
@@ -357,7 +364,7 @@ impl LeafInclusionVerifier for Keccak256LeafInclusionVerifier {
                 input[..32].copy_from_slice(&keccak_digest_to_bytes(&sibling));
                 input[32..].copy_from_slice(&keccak_digest_to_bytes(&h));
             }
-            h = super::keccak256_hash_leafs::keccak_digest_from_bytes(keccak256_bytes(&input));
+            h = keccak_merkle_digest_from_bytes(keccak256_bytes(&input));
             index >>= 1;
         }
 
@@ -379,6 +386,19 @@ mod test {
         let mut out = [0u8; 32];
         out.copy_from_slice(Keccak256::digest(bytes).as_slice());
         out
+    }
+
+    fn merkle_keccak(bytes: &[u8]) -> [u8; 32] {
+        let mut out = keccak(bytes);
+        out[25..].fill(0);
+        out
+    }
+
+    fn digest_from_hex(hex: &str) -> Digest32 {
+        assert_eq!(hex.len(), 64);
+        let bytes: [u8; 32] =
+            core::array::from_fn(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap());
+        keccak_digest_from_bytes(bytes)
     }
 
     #[test]
@@ -442,11 +462,11 @@ mod test {
             }
             // preimage is NUM_COLUMNS * 16 bytes, exactly the EVM packing.
             assert_eq!(preimage.len(), NUM_COLUMNS * 16);
-            let expected = keccak(&preimage);
+            let expected = merkle_keccak(&preimage);
             assert_eq!(
                 keccak_digest_to_bytes(&tree.leaf_hashes[row]),
                 expected,
-                "leaf {row} does not match keccak256 of BE-packed u128 values"
+                "leaf {row} does not match truncated keccak256 of BE-packed u128 values"
             );
         }
 
@@ -469,7 +489,7 @@ mod test {
                     input[..32].copy_from_slice(&keccak_digest_to_bytes(sibling));
                     input[32..].copy_from_slice(&keccak_digest_to_bytes(&h));
                 }
-                h = keccak_digest_from_bytes(keccak(&input));
+                h = keccak_digest_from_bytes(merkle_keccak(&input));
                 i >>= 1;
             }
             assert_eq!(h, root, "reconstructed root for leaf {idx} != cap");
@@ -549,6 +569,39 @@ mod test {
                 "verify_leaf_inclusion should accept the correct leaf {idx}"
             );
 
+            // Negative: the untruncated keccak256 of the sibling leaf must be rejected.
+            let sibling_values: Vec<Proth120> =
+                (0..NUM_COLUMNS).map(|c| cols[c][idx ^ 1]).collect();
+            let sibling_preimage: Vec<u8> = keccak_leaf_encoding_words(&sibling_values)
+                .iter()
+                .flat_map(|w| w.to_be_bytes())
+                .collect();
+            let untruncated = keccak_digest_from_bytes(keccak(&sibling_preimage));
+            assert_eq!(&untruncated[..6], &path[0][..6]);
+            assert_ne!(untruncated, path[0]);
+            let mut nd_untruncated = {
+                let mut v: Vec<u32> = Vec::with_capacity(path.len() * 8);
+                v.extend_from_slice(&untruncated);
+                for sib in path[1..].iter() {
+                    v.extend_from_slice(sib);
+                }
+                v.into_iter()
+            };
+            let untruncated_ok = unsafe {
+                verifier.verify_leaf_inclusion::<_, CAP_SIZE, 1>(
+                    0,
+                    idx as u32,
+                    depth,
+                    leaf_encoding,
+                    &merkle_cap,
+                    &mut nd_untruncated,
+                )
+            };
+            assert!(
+                !untruncated_ok,
+                "verify_leaf_inclusion must reject an untruncated sibling for leaf {idx}"
+            );
+
             // Negative: a corrupted leaf value must be rejected.
             let mut bad_values = leaf_values.clone();
             bad_values[0] = Proth120::new((bad_values[0].to_u128() + 1) % Proth120::ORDER);
@@ -578,5 +631,93 @@ mod test {
                 "verify_leaf_inclusion must reject a corrupted leaf {idx}"
             );
         }
+    }
+
+    /// Known-answer vectors computed independently with OpenSSL KECCAK-256: leaf,
+    /// node, a 2^4-leaf tree cap and path, and the cap absorb.
+    #[test]
+    fn truncated_merkle_digest_vectors() {
+        let left =
+            digest_from_hex("0102030405060708090a0b0c0d0e0f1011121314151617181900000000000000");
+        let right =
+            digest_from_hex("e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff00000000000000");
+        assert_eq!(
+            compress_two_to_one(&left, &right),
+            digest_from_hex("56cb8aabd58e0e0af083606c2a743b147ef3b4d534d98c31b100000000000000")
+        );
+
+        let mut full =
+            digest_from_hex("71bbce0e781072883b2d22f4889309e3c28fdb0cc2bfc6a144c30b6b73c53cb6");
+        super::super::keccak256_hash_leafs::truncate_keccak_merkle_digest(&mut full);
+        assert_eq!(
+            full,
+            digest_from_hex("71bbce0e781072883b2d22f4889309e3c28fdb0cc2bfc6a14400000000000000")
+        );
+
+        const COLUMNS: usize = 2;
+        const ROWS: usize = 16;
+        const CAP_SIZE: usize = 2;
+        let worker = Worker::new_with_num_threads(1);
+        let cols: Vec<Vec<Proth120>> = (0..COLUMNS)
+            .map(|c| {
+                (0..ROWS)
+                    .map(|r| {
+                        Proth120::new(
+                            (Proth120::ORDER - 1 - 1000003 * (c * ROWS + r) as u128)
+                                % Proth120::ORDER,
+                        )
+                    })
+                    .collect()
+            })
+            .collect();
+        let col_refs: Vec<&[Proth120]> = cols.iter().map(|c| c.as_slice()).collect();
+        let coset: &[&[Proth120]] = &col_refs;
+        let tree = <Keccak256MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
+            Proth120,
+        >>::construct_from_cosets::<Proth120, _>(
+            &[coset],
+            1,
+            CAP_SIZE,
+            true,
+            false,
+            false,
+            &worker,
+        );
+
+        let cap = tree.get_cap();
+        let expected_cap = [
+            digest_from_hex("fad093ea3f87ca9e79b7d403a5205d4200979faabc6c90314000000000000000"),
+            digest_from_hex("b3255e27a291cd068319bda8693612eecd025fdcc3731e1f8900000000000000"),
+        ];
+        assert_eq!(cap.cap, expected_cap);
+        let (leaf, path) = tree.get_proof(5);
+        assert_eq!(
+            leaf,
+            digest_from_hex("71bbce0e781072883b2d22f4889309e3c28fdb0cc2bfc6a14400000000000000")
+        );
+        assert_eq!(
+            path,
+            [
+                digest_from_hex("5b4b4ceaca3ff41b53cf772b47b203858da5a8da698c00153500000000000000"),
+                digest_from_hex("c40d1e79ee23470a746d13443857ad7e4a25178271df64771300000000000000"),
+                digest_from_hex("ee6774826d75100eb64d6df9796783f08a4db9e6ec7b0e641300000000000000"),
+            ]
+        );
+
+        let mut words = Vec::new();
+        crate::gkr::prover::utils::flatten_merkle_caps_iter_into(core::iter::once(cap), &mut words);
+        assert_eq!(words.len(), CAP_SIZE * 8);
+        for digest in words.chunks(8) {
+            assert_eq!(digest[6] & 0x00ff_ffff, 0);
+            assert_eq!(digest[7], 0);
+        }
+        let mut seed = transcript::Keccak256Seed([0x11; 32]);
+        <transcript::Keccak256Transcript as transcript::Transcript<Proth120, Proth120>>::commit_u32_with_seed(
+            &mut seed, &words,
+        );
+        assert_eq!(
+            hex_lower(&seed.0),
+            "67ce9b19c8fcb03608ff0843cad0bd7593536f6131b395962c71b90d3be3f2a8"
+        );
     }
 }

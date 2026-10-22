@@ -687,13 +687,13 @@ mod tests {
     /// mode under the high-LDE "L1 feeder" config (every oracle domain at
     /// BabyBear's 2^27 two-adicity cap, plain-text 2^3 tail, pow-tuned
     /// queries), so their verification gets cheap enough for the L1 (Proth120)
-    /// wrapper's 2^22-cycle unified circuit. Layer 0 proves the STANDARD
+    /// wrapper's 2^21-cycle unified circuit. Layer 0 proves the STANDARD
     /// special-opcodes verifier run over the converged pipeline proof
     /// (1 unified + 1 blake — the feeder input); every later layer proves the
     /// MERGED-mode feeder verifier run over the previous feeder proof. Each
     /// iteration measures how many cycles verifying the result takes (the
     /// measurement IS a full VM run of the feeder verifier, so it doubles as
-    /// the verification check). Stops on success (fits 2^22) or on a
+    /// the verification check). Stops on success (fits 2^21) or on a
     /// non-contracting fixed point. Prints cycles + chunk grids at every
     /// stage. Needs the caches of `test_recursive_proving_pipeline_zksync_os`
     /// and the MERGED-mode feeder fsv binary
@@ -780,7 +780,7 @@ mod tests {
         );
 
         let feeder_config =
-            prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23();
+            prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_22();
         println!(
             "[l1-feeder] config: base lde {}, whir steps {:?}, queries {:?}, pow {:?}, \
              intermediate lde factors {:?}",
@@ -852,82 +852,24 @@ mod tests {
                 measured.div_ceil(1 << 22),
             );
 
-            if measured <= 1 << 22 {
+            if measured <= 1 << 21 {
                 println!(
                     "[l1-feeder] TARGET REACHED: verifying the layer-{k} feeder proof takes \
-                     {measured} <= 2^22 = {} cycles — fits the L1 (Proth120) unified circuit",
-                    1u64 << 22
+                     {measured} <= 2^21 = {} cycles — fits the L1 (Proth120) wrap circuit",
+                    1u64 << 21
                 );
                 return;
             }
             if need >= chunks {
                 println!(
                     "[l1-feeder] NO FURTHER CONTRACTION: {chunks}-chunk feeder proof needs \
-                     {need} chunk(s) to re-verify at {measured} cycles (> 2^22) — the schedule \
+                     {need} chunk(s) to re-verify at {measured} cycles (> 2^21) — the schedule \
                      must get more aggressive (higher base LDE / larger intermediate rates)"
                 );
                 return;
             }
         }
         panic!("no verdict within {MAX_LAYERS} feeder layers");
-    }
-
-    /// The FINAL L1 step: prove the merged-mode feeder verifier's execution
-    /// over the converged single-chunk feeder proof (`feeder_layer_1`, ~2.8M
-    /// cycles <= 2^22) as ONE Proth120 packed unified-circuit proof with the
-    /// EVM-production parameters, writing the proof + commitment-mode aux
-    /// fixtures into `prover/` — exactly where the verifier_evm generation and
-    /// the single-transaction verifier test (`generated_contracts/run_merged.sh`)
-    /// pick them up. Requires `--features l1` and the caches of
-    /// `test_l1_feeder_high_lde_research`; the packed setup commitment is
-    /// served by coset recomputation (program-specific, nothing cached).
-    #[cfg(feature = "l1")]
-    #[test]
-    #[ignore = "manual heavy proving run (Proth120 packed 2^26 commitment)"]
-    #[serial_test::serial(prover_examples_proof_artifacts)]
-    fn test_l1_wrap_proth120() {
-        use prover::tests::gkr::orchestration::common::ProgramConfig;
-        skip_if_ci!();
-
-        let worker = Worker::new_with_num_threads(12);
-        let u_tag = unrolled_blake_mode().tag();
-        let bridge_tag = bridge_blake_mode().tag();
-        let final_tag = final_blake_mode().tag();
-        let tags = format!("{u_tag}_{bridge_tag}_{final_tag}");
-
-        let proof: ProgramProof =
-            try_deserialize_compressed_from_file(&format!("feeder_layer_1_proof_{tags}.bin"))
-                .expect("run test_l1_feeder_high_lde_research first");
-        let setups: Setups =
-            try_deserialize_compressed_from_file(&format!("feeder_layer_1_setups_{tags}.bin"))
-                .unwrap();
-        let stream = build_unified_stream(&setups, &proof);
-
-        let program = ProgramConfig {
-            binary_path: format!(
-                "{FSV_DIR}/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.bin"
-            ),
-            text_section_path: format!(
-                "{FSV_DIR}/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.text"
-            ),
-            non_determinism_reads: stream,
-            cycles_bound: 1 << 22,
-            ram_bound_bytes: 1 << 30,
-        };
-
-        let _l1_proof = crate::l1::prove_l1_wrap_in_recompute_mode(
-            &program,
-            Path::new(
-                "../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
-            ),
-            Path::new("../../prover/unified_circuit_proof_proth120.json"),
-            Path::new("../../prover/unified_circuit_proof_proth120_commitment_mod_aux_data.json"),
-            &worker,
-        );
-        println!(
-            "L1 wrap complete: run the single-transaction verification with \
-             verifier_evm/generated_contracts/run_merged.sh"
-        );
     }
 
     /// Debug helper: host-side verification of the cached feeder-layer-0

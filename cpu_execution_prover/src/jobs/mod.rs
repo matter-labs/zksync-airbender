@@ -1,15 +1,20 @@
+use execution_prover::ProofProfile;
 mod caps;
 mod inits_and_teardowns;
+mod l1_wrap;
 mod memory;
 mod proof;
 
+pub(crate) use l1_wrap::evaluate_witness;
+
 use crate::precomputations::CpuCircuitPrecomputations;
-use crate::upstream::{Backend, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, BF, E4};
+use crate::upstream::{
+    Backend, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, WhirOracleStorage, BF, E4,
+};
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{
     SetupInitializationRequest, SetupInitializationResult, WorkRequest, WorkResult,
 };
-use execution_prover::prover_config;
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::trace::{ChunkedTraceHolder, InitsAndTeardownsTraceHost};
 use inits_and_teardowns::TeardownColumns;
@@ -19,6 +24,18 @@ use std::sync::Arc;
 use worker::Worker;
 
 type CpuTwiddles = <DefaultBabyBearBackend as Backend<BF, E4>>::TwiddleSet;
+
+#[doc(hidden)]
+pub fn expand_inits_and_teardowns<A: HostTraceAllocator>(
+    trace: &InitsAndTeardownsTraceHost<A>,
+    num_sets: usize,
+    trace_len_log2: u32,
+) -> Vec<(
+    [Vec<crate::upstream::Proth120>; 2],
+    [Vec<crate::upstream::Proth120>; 2],
+)> {
+    inits_and_teardowns::expand::<crate::upstream::Proth120, A>(trace, num_sets, trace_len_log2)
+}
 
 #[derive(Default)]
 pub(crate) struct CpuJobs {
@@ -34,6 +51,9 @@ impl CpuJobs {
         worker: &Worker,
     ) -> WorkResult<A> {
         match request {
+            WorkRequest::L1WrapProof(request) => {
+                WorkResult::L1WrapProof(l1_wrap::run(request, worker))
+            }
             WorkRequest::SetupInitialization(request) => {
                 WorkResult::SetupInitialization(self.initialize_setup(request, worker))
             }
@@ -56,9 +76,14 @@ impl CpuJobs {
             precomputations,
             security_level,
         } = request;
-        let config = prover_config(circuit_type, security_level);
-        let twiddles = self.twiddles(precomputations.trace_len, worker);
-        precomputations.initialize_setup(&config, &*twiddles, worker);
+        if circuit_type.is_l1_wrap() {
+            let l1_wrap = precomputations.l1_wrap();
+            assert_eq!(circuit_type, l1_wrap.circuit_type);
+            l1_wrap.initialize_setup(security_level, worker);
+        } else {
+            let twiddles = self.twiddles(precomputations.trace_len, worker);
+            precomputations.initialize_setup(security_level, &*twiddles, worker);
+        }
         SetupInitializationResult {
             batch_id,
             circuit_type,
@@ -77,6 +102,14 @@ impl CpuJobs {
                 ))
             })
             .clone()
+    }
+}
+
+fn whir_storage(profile: ProofProfile) -> WhirOracleStorage {
+    if profile.is_l1_feeder() {
+        WhirOracleStorage::recompute_base_materialized_intermediates()
+    } else {
+        WhirOracleStorage::fully_in_memory()
     }
 }
 

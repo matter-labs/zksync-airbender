@@ -3,7 +3,6 @@ use full_statement_verifier::program_proof::ProgramProof;
 use setups::Setups;
 use verifier_common::fsv_binaries::FsvProgram;
 use verifier_common::gkr::flatten::flatten_gkr_proof_for_nds;
-use verifier_common::prover::definitions::MerkleTreeCap;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Section {
@@ -36,7 +35,7 @@ pub fn plan_unrolled_stream(
     let mut w = 0usize;
 
     for params in setups.values() {
-        w += MerkleTreeCap::flatten_single(&params.setup_caps).len();
+        w += params.flattened_setup_caps().len();
     }
     w += 32 * 3;
     w += 3;

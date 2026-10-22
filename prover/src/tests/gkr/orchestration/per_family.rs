@@ -279,7 +279,11 @@ pub fn prove_built_family_trace_on_disk_setup(
     let rs = OnDiskRsCodewords::<BabyBearField>::open(coset_paths)
         .expect("open on-disk setup RS codewords");
     let disk_tree = crate::merkle_trees::on_disk::OnDiskTree::monolithic(
-        crate::merkle_trees::on_disk::MmapMerkleTree::open(&tree_path).expect("mmap tree file"),
+        crate::merkle_trees::on_disk::MmapMerkleTree::open(
+            &tree_path,
+            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::DIGEST_BYTES,
+        )
+        .expect("mmap tree file"),
     );
 
     let setup_commitment = SetupCommitment::OnDisk {

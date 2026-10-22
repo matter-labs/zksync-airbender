@@ -3,11 +3,12 @@ use crate::tracing::{DataTraceRanges, TracingDataProducers, TracingType};
 use common_constants::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use crossbeam_channel::{Receiver, Sender};
 use execution_prover_model::allocator::HostTraceAllocator;
-use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
+use execution_prover_model::circuit_type::CircuitType;
 use execution_prover_model::MachineType;
 use itertools::Itertools;
 use log::{debug, trace};
 #[cfg(target_arch = "x86_64")]
+use riscv_transpiler::common_constants::rom::RomGeometry;
 use riscv_transpiler::common_constants::ROM_WORD_SIZE;
 #[cfg(target_arch = "x86_64")]
 use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
@@ -51,6 +52,7 @@ unsafe impl<R: DataTraceRanges, S: Send> Send for Snapshot<R, S> {}
 /// delegation burst can violate — so anything `max_it_instances` circuits
 /// behind the run front is provably empty.
 pub(crate) struct EmptyInitsAndTeardownsStreamer {
+    pub circuit_type: CircuitType,
     pub cycles_per_circuit: usize,
     pub max_it_instances: usize,
     pub next_sequence_id: usize,
@@ -66,7 +68,7 @@ impl EmptyInitsAndTeardownsStreamer {
         let frontier = completed_circuits.saturating_sub(self.max_it_instances);
         while self.next_sequence_id < frontier {
             let data = InitsAndTeardownsData {
-                circuit_type: CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                circuit_type: self.circuit_type,
                 sequence_id: self.next_sequence_id,
                 inits_and_teardowns: None,
             };
@@ -106,6 +108,8 @@ pub(crate) struct SimulationRunner<
     pub is_aborted: bool,
     pub ram_config: JitRunnerRam,
     pub assume_canonical_mop_inputs: bool,
+    /// The ROM of the circuit the run is proven in; the binary image must fit it.
+    pub rom: RomGeometry,
 }
 
 impl<
@@ -118,6 +122,7 @@ impl<
     pub fn new(
         batch_id: u64,
         machine_type: MachineType,
+        unified_circuit: CircuitType,
         non_determinism_source: ND,
         free_trace_chunks_sender: Sender<S>,
         free_trace_chunks_receiver: Receiver<S>,
@@ -129,10 +134,15 @@ impl<
         ram_config: JitRunnerRam,
         assume_canonical_mop_inputs: bool,
     ) -> Self {
-        let tracing_data_producers =
-            T::Producers::new(machine_type, free_allocators, results.clone());
+        let tracing_data_producers = T::Producers::new(
+            machine_type,
+            unified_circuit,
+            free_allocators,
+            results.clone(),
+        );
         let tracing_data_producers = Some(tracing_data_producers);
         Self {
+            rom: unified_circuit.rom(),
             batch_id,
             machine_type,
             non_determinism_source,
@@ -234,7 +244,11 @@ impl<
             }
         };
         let binary_image_len = binary_image.len();
-        assert!(binary_image_len <= ROM_WORD_SIZE);
+        assert!(
+            binary_image_len <= self.rom.word_size(),
+            "the binary image ({binary_image_len} words) exceeds the circuit's {:?}",
+            self.rom
+        );
         // NOTE: on reuse the holder is already clean outside the ROM region: every RAM word
         // the JIT writes is timestamped, and `pack_pages` zeroes both the
         // value and the timestamp of every timestamped word (the abort path resets the whole
@@ -432,11 +446,13 @@ impl<
 mod cpu_streamer_tests {
     use super::*;
     use execution_prover_model::allocator::CpuTraceAllocator;
+    use execution_prover_model::circuit_type::UnrolledCircuitType;
 
     #[test]
     fn cpu_streamer_releases_only_provably_empty_markers() {
         let (tx, rx) = crossbeam_channel::unbounded::<WorkerResult<CpuTraceAllocator>>();
         let mut streamer = EmptyInitsAndTeardownsStreamer {
+            circuit_type: CircuitType::Unrolled(UnrolledCircuitType::Unified),
             cycles_per_circuit: 1000,
             max_it_instances: 3,
             next_sequence_id: 0,

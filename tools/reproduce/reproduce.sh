@@ -17,6 +17,9 @@ cd "$(dirname "$0")/../gkr_verifier"
 # Full-statement verifiers in every blake variant the recursion pipeline can select.
 ./dump_recursive_verifiers.sh
 
+# The Proth120 wrap guest has a separate workspace to isolate its circuit features.
+bash ../gkr_verifier_l1_wrap/dump_bin.sh --blake special_opcodes_extension --variant caches
+
 # Standalone circuit verifiers consumed by the cost-model drift guard. Keep this list in
 # sync with the generated Rust code.
 ./dump_bin.sh --sec 100 \

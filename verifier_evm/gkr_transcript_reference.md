@@ -1,8 +1,10 @@
 # GKR EVM verifier — STEP 1 reference: transcript init (OperationMode::SingleChunk)
 
-Validated in pure Rust against `prover/unified_circuit_proof_proth120.json` by the test
-`prover/src/tests/gkr/large_field.rs::validate_packed_transcript_recipe` (fast; no proving).
-The derived nonce and `GKRExternalChallenges` match the proof exactly.
+The active bundle uses `prover/unified_circuit_proof_proth120_2p21.json` and its
+matching OperationMode aux data. `verifier_evm/tests/flatten_roundtrip.rs` checks its calldata
+and transcript seed when that bundle is available. The numerical examples in
+these historical notes came from the retired wrap bundle; its proof and the
+original Rust replay tests remain in Git history.
 
 ## Field
 Proth120: `P = 7*2^120 + 1 = 0x7000000000000000000000000000001` (same as whir.sol). One
@@ -263,8 +265,8 @@ The Rust mirror `verify_dim_reduce_layers` is the validated authority for every 
 1. Fix the mid-refactor compile: make the `*_to_calldata*` helpers return `Dual` consistently
    (they already build Dual); update signatures/callers. Get parse.rs building on the OLD target.
 2. Field migration: switch `GKRCircuitArtifact<BabyBearField>` → `<Proth120>`, target
-   `unified_reduced_machine_layout_gkr_proth120.json`, replace `const_to_evm(&x.as_u32_reduced())`
-   call sites with `proth120_const_to_evm(x)`, set trace_len assert to 1<<22.
+   `unified_reduced_machine_layout_gkr_proth120_2p21.json`, replace `const_to_evm(&x.as_u32_reduced())`
+   call sites with `proth120_const_to_evm(x)`, set trace_len assert to 1<<21.
 3. Complete the input-address resolver (the crux): map each layer input GKRAddress to its source.
    Calldata layout = per-layer at-point evals in SORTED input-address order, 16B BE each
    (= mirror's `evals` = final_step_evaluations.values()); read as `shr(128, calldataload(add(ptr,

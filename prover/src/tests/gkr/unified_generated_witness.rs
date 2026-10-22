@@ -1,9 +1,11 @@
 //! The SSA-generated unified witness functions satisfy the committed layouts on real
-//! traces: regular 2^23 over the multi-family smoke program and Proth120 2^22
+//! traces: regular 2^23 over the multi-family smoke program and Proth120 2^21
 //! over `circuit_tester` (no delegations).
 
 use super::large_field::{build_unified_trace_without_precompiles, circuit_tester_config};
-use super::orchestration::common::{run_vm_and_capture, ProgramConfig};
+use super::orchestration::common::{
+    run_vm_and_capture, run_vm_and_capture_with_rom, ProgramConfig,
+};
 use super::orchestration::unified::build_unified_full_trace;
 use super::{
     base_trace_len, check_lookups_in_range, check_satisfied, deserialize_from_file,
@@ -14,6 +16,7 @@ use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 use ::field::baby_bear::base::BabyBearField;
 use ::field::{PrimeField, Proth120};
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
+use common_constants::rom::L1_WRAP_ROM;
 use cs::gkr_circuits::unified_reduced_machine::{
     FAMILY_2_FLAG_OFFSET, FAMILY_3_FLAG_OFFSET, FAMILY_4_LW_BIT, UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
 };
@@ -112,12 +115,13 @@ fn generated_witness_satisfies_regular_layout() {
 #[test]
 fn generated_witness_satisfies_proth120_wrap_layout() {
     let worker = Worker::new_with_num_threads(8);
-    let vm = run_vm_and_capture::<DelegationsAndUnifiedCounters, ReducedMachineDecoderConfig>(
-        &circuit_tester_config(),
-        &worker,
-    );
+    let vm = run_vm_and_capture_with_rom::<
+        DelegationsAndUnifiedCounters,
+        ReducedMachineDecoderConfig,
+        { L1_WRAP_ROM.second_word_bits() },
+    >(&circuit_tester_config(), &worker);
     let circuit: GKRCircuitArtifact<Proth120> = deserialize_from_file(
-        "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+        "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json",
     );
     let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
     let (trace, _table_driver, decoder_table, _top_bits) = build_unified_trace_without_precompiles(
@@ -129,7 +133,7 @@ fn generated_witness_satisfies_proth120_wrap_layout() {
         &worker,
     );
     assert_generated_witness_satisfies(
-        "proth120 2^22 circuit_tester",
+        "proth120 2^21 circuit_tester",
         &circuit,
         &trace,
         &decoder_table,

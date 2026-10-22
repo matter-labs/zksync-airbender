@@ -1,0 +1,45 @@
+cargo-features = ["panic-immediate-abort"]
+
+[package]
+name = "gkr_verifier_l1_wrap"
+version = "0.1.0"
+edition = "2021"
+authors = ["The Matter Labs Team <hello@matterlabs.dev>"]
+homepage = "https://zksync.io/"
+repository = "https://github.com/matter-labs/zksync-airbender/"
+license = "MIT OR Apache-2.0"
+keywords = ["blockchain", "zksync", "zk"]
+categories = ["cryptography"]
+
+[dependencies]
+verifier_common = { path = "../../verifier_common", default-features = false, features = ["modular_ops", "modular_fma"] }
+non_determinism_source = { path = "../../non_determinism_source" }
+riscv_common = { path = "../../riscv_common", default-features = false, features = ["boot_sequence", "ram_16mb_no_heap_wrap"] }
+field = { path = "../../field", default-features = false, features = ["modular_ops", "modular_fma"] }
+# The shared feeder entry needs only the no_std verifier, with the Blake mode
+# selected through verifier_common above.
+full_statement_verifier = { path = "../../full_statement_verifier", default-features = false, features = ["verifiers"] }
+
+[features]
+blake2_with_compression = ["verifier_common/blake2_with_compression"]
+blake2_g_function = ["verifier_common/blake2_g_function"]
+mop_extension = ["verifier_common/mop_extension"]
+modular_fma = ["verifier_common/modular_fma", "field/modular_fma"]
+special_opcodes_extension = ["verifier_common/special_opcodes_extension"]
+no_caches = ["verifier_common/no_caches"]
+verifier_stats = ["verifier_common/verifier_stats"]
+default = ["special_opcodes_extension"]
+
+[[bin]]
+name = "fsv_unified_recursion_layer_sec_100_l1_feeder_wrap"
+path = "src/bin/fsv_unified_recursion_layer_sec_100_l1_feeder_wrap.rs"
+
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "immediate-abort"
+debug = true
+strip = false

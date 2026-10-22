@@ -17,14 +17,18 @@ use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 
 pub use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as FAMILY_IDX;
 
+/// The unified circuit at trace length `2^LOG2`. The default is the
+/// 2^23 shape; the L1 feeder uses the 2^22 specialization with the same witness.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct UnifiedReducedMachineCircuit;
+pub struct UnifiedReducedMachineCircuit<const LOG2: u32 = { TRACE_LEN_LOG2 }>;
 
-impl<F: PrimeField> circuit_common::RiscVCycleCircuit<F, true> for UnifiedReducedMachineCircuit {
+impl<F: PrimeField, const LOG2: u32> circuit_common::RiscVCycleCircuit<F, true>
+    for UnifiedReducedMachineCircuit<LOG2>
+{
     const CIRCUIT_FAMILY: u8 =
         common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
     fn prover_config(level: circuit_common::SecurityLevel) -> circuit_common::ProverConfig {
-        circuit_common::default_prover_config(TRACE_LEN_LOG2, level)
+        circuit_common::default_prover_config(LOG2, level)
     }
     const NUM_INIT_AND_TEARDOWN_PAIRS: usize = 1;
 

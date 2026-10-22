@@ -474,6 +474,10 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
 {
     type Verifier: LeafInclusionVerifier;
 
+    /// Bytes of each `[u32; DIGEST_SIZE_U32_WORDS]` digest that carry hash output;
+    /// the rest of the slot is zero.
+    const DIGEST_BYTES: usize;
+
     fn dummy() -> Self;
 
     /// Build a tree whose leaves ARE the given digests (e.g. per-coset subtree roots),
