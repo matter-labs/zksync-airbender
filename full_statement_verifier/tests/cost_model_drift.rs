@@ -1,7 +1,8 @@
 #![cfg(all(feature = "host_utils", feature = "verifiers"))]
 
-//! Proof fixtures must use the current schedule; CI's Docker clean-diff check
-//! ensures their standalone verifier guests also match the generated code.
+//! Proof fixtures must use the current schedule; a clean `git status` after
+//! `tools/reproduce/reproduce.sh` ensures their standalone verifier guests also
+//! match the generated code.
 
 #[allow(dead_code)]
 mod trace;
@@ -104,7 +105,7 @@ fn per_circuit_verifier_cost_has_not_drifted() {
 }
 
 #[test]
-#[ignore = "regenerate the Sec100 proof fixtures and Docker verifier binaries first"]
+#[ignore = "regenerate the Sec100 proof fixtures and verifier binaries (tools/reproduce/reproduce.sh) first"]
 fn emit_per_circuit_verifier_costs() {
     for (circuit, _) in EXPECTED {
         println!("(\"{circuit}\", {}),", guest_cycles(circuit));
