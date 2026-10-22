@@ -78,13 +78,35 @@ if ! $SHOW_WARNINGS; then
     trap 'if [ -f .cargo/config.toml.bak ]; then mv .cargo/config.toml.bak .cargo/config.toml; fi' EXIT
 fi
 
+# Reproducibility across machines: the checkout root, the toolchain sysroot (build-std
+# compiles core/alloc from its rust-src) and the cargo registry would otherwise leak into
+# DWARF and `source_filename` as absolute host paths. Remap them to fixed names. These
+# prefixes are only known at build time, so they are passed here via `--config`, whose
+# arrays are appended after config.toml's rustflags. Symbol names are pinned separately by
+# rustc_wrapper.sh (see .cargo/config.toml).
+REPO_ROOT=$(cd ../.. && pwd -P)
+SYSROOT=$(rustc --print sysroot)
+CARGO_REGISTRY="${CARGO_HOME:-$HOME/.cargo}/registry/src"
+for p in "$REPO_ROOT" "$SYSROOT" "$CARGO_REGISTRY"; do
+    case "$p" in
+        *[[:space:]\"]*) echo "ERROR: path with whitespace or quotes is not supported: $p" >&2; exit 1 ;;
+    esac
+done
+REMAP_ARGS="\"--remap-path-prefix=${REPO_ROOT}=/src\",\"--remap-path-prefix=${SYSROOT}=/rustc-sysroot\""
+# Every registry index dir (sparse and git protocol use different names) maps to one prefix.
+for d in "$CARGO_REGISTRY"/*; do
+    [ -d "$d" ] || continue
+    REMAP_ARGS="${REMAP_ARGS},\"--remap-path-prefix=${d}=/cargo-registry\""
+done
+
 # The canonical fsv_* binaries keep config.toml's `-C debuginfo=0` (the reproducible set,
 # #417). Every other binary is a per-circuit verifier that the transpiler tests profile, and
 # the flamegraph symbolizer reads only DWARF, so those re-enable debug info: `--config` arrays
 # are appended after config.toml's rustflags, so this `-C debuginfo=2` wins. They build in their
 # own target dir (CARGO_TARGET_DIR: `cargo objcopy` rejects --target-dir) so the two flag sets
 # don't evict each other's artifacts.
-PROFILED_FLAGS='--config build.rustflags=["-C","debuginfo=2"]'
+FSV_FLAGS="--config build.rustflags=[${REMAP_ARGS}]"
+PROFILED_FLAGS="--config build.rustflags=[${REMAP_ARGS},\"-C\",\"debuginfo=2\"]"
 PROFILED_TARGET_DIR="target/profiled"
 is_fsv() {
     case "$1" in
@@ -104,7 +126,7 @@ for circuit in $CIRCUITS; do
     fi
 done
 if [ -n "$FSV_BIN_FLAGS" ]; then
-    cargo build $COMMON_FLAGS $FSV_BIN_FLAGS
+    cargo build $COMMON_FLAGS $FSV_FLAGS $FSV_BIN_FLAGS
 fi
 if [ -n "$PROFILED_BIN_FLAGS" ]; then
     CARGO_TARGET_DIR="$PROFILED_TARGET_DIR" cargo build $COMMON_FLAGS $PROFILED_FLAGS $PROFILED_BIN_FLAGS
@@ -117,14 +139,16 @@ pids=""
 for circuit in $CIRCUITS; do
     (
         if is_fsv "$circuit"; then
-            EXTRA_FLAGS=""
+            EXTRA_FLAGS="$FSV_FLAGS"
         else
             EXTRA_FLAGS="$PROFILED_FLAGS"
             export CARGO_TARGET_DIR="$PROFILED_TARGET_DIR"
         fi
         rm -f ${circuit}.bin ${circuit}.elf ${circuit}.text
         cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -O binary ${circuit}.bin
-        cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -R .text ${circuit}.elf
+        # .comment holds the rustc/LLD build strings, which differ between the dist
+        # toolchains of different hosts; drop it so the .elf is reproducible too.
+        cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -R .text -R .comment ${circuit}.elf
         cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -O binary --only-section=.text ${circuit}.text
     ) > "${log_dir}/${circuit}.log" 2>&1 &
     pids="${pids} $!"
