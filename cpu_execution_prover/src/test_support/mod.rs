@@ -130,6 +130,8 @@ where
 struct CaptureState {
     callback: Option<Callback>,
     result: Option<Sender<CaptureOutcome>>,
+    #[cfg(test)]
+    regular: bool,
 }
 
 struct CaptureBackend {
@@ -227,7 +229,15 @@ fn serve(
             WorkRequest::L1WrapProof(request) => {
                 WorkResult::L1WrapProof(capture(request, worker, state))
             }
-            WorkRequest::MemoryCommitment(_) | WorkRequest::Proof(_) => {
+            #[cfg(test)]
+            WorkRequest::MemoryCommitment(request) => {
+                WorkResult::MemoryCommitment(tests::capture_regular(request, worker, state))
+            }
+            #[cfg(not(test))]
+            WorkRequest::MemoryCommitment(_) => {
+                panic!("capture backend accepts only SetupInitialization and L1WrapProof")
+            }
+            WorkRequest::Proof(_) => {
                 panic!("capture backend accepts only SetupInitialization and L1WrapProof")
             }
         };
@@ -243,7 +253,9 @@ fn capture(
     worker: &Worker,
     state: &Mutex<CaptureState>,
 ) -> L1WrapProofResult<CpuTraceAllocator> {
-    let CaptureState { callback, result } = std::mem::take(&mut *state.lock().unwrap());
+    let CaptureState {
+        callback, result, ..
+    } = std::mem::take(&mut *state.lock().unwrap());
     let (Some(callback), Some(result)) = (callback, result) else {
         panic!("capture backend received an L1WrapProof without an installed callback")
     };
