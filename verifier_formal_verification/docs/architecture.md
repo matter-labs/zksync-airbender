@@ -42,7 +42,8 @@
   (0x7cc-0x7ce) modelled but not decoded (newer than the ISA table). Control-word layouts are from source (the
   table does not give them). Run lengths (7/10, 56/80, 649) are a static check on the image (`Accepted`, part of
   `ProgramCorrect`); jumping into the middle of a run is not modelled as rejected. Complete runs vs the standard
-  operation (Blake2s rounds, Keccak-f[1600], `Nat` arithmetic) are checked by `run_image` (not proven).
+  operation (Blake2s rounds, Keccak-f[1600]) are proven (`Human/DelegationRuns.lean`); `run_image`
+  (`verify.sh --sanity`) also runs them on sample inputs.
 - Airbender halts when PC is unchanged (`j .`); we state `step s = some s`-style fixpoint at the halt address.
 - Modularity with `+relax`: theorems are re-instantiated per layout; reused across relinks are the kind lemmas,
   word lemmas and proof scripts. Option B later: `-relax` + modelled relocations.

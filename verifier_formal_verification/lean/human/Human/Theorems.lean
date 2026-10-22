@@ -28,11 +28,18 @@ def RamZero (s : State) : Prop := ∀ addr : Word, ROM_END ≤ addr.toNat → ad
 /-- A register value as a BabyBear element. -/
 def bb (w : Word) : Spec.F := w.toNat
 
-/-- Booted at address 0 (registers arbitrary) with the image loaded and RAM zero, the input (CSR `0x7c0`) starting
-with a Mersenne31 element `x` (`x ≤ P`), a BabyBear Ext4 element `y` (4 canonical limbs, `< BabyBearP`), the
-prover's Fiat–Shamir claim `v` (4 words, `Human/SpecFS.lean`) and a Merkle path of at most 32 levels to a root
-(`pathInput`, `Human/SpecMerkle.lean`): if the claim and the path are right, the program reaches its final self-jump
-`halt` with
+/-- What the final theorem assumes of the start and the input: booted at address 0 (registers arbitrary) with the image
+`bytes` loaded and RAM zero, the input (CSR `0x7c0`) starting with a Mersenne31 element `x` (`x ≤ P`), a BabyBear Ext4
+element `y` (4 canonical limbs, `< BabyBearP`), the prover's Fiat–Shamir claim `v` (4 words, `Human/SpecFS.lean`) and
+a Merkle path of at most 32 levels to a root (`pathInput`, `Human/SpecMerkle.lean`). -/
+def Assumptions (bytes : Array (BitVec 8)) (start : State) (x y0 y1 y2 y3 v0 v1 v2 v3 : Word) (root : Vector Word 8)
+    (path : List Spec.MerkleStep) (rest : List Word) : Prop :=
+  start.pc = 0 ∧ ImageLoaded bytes start ∧ RamZero start ∧
+  start.input = x :: y0 :: y1 :: y2 :: y3 :: v0 :: v1 :: v2 :: v3 :: (Spec.pathInput root path ++ rest) ∧
+  path.length ≤ 32 ∧ x.toNat ≤ Spec.P ∧
+  y0.toNat < BabyBearP ∧ y1.toNat < BabyBearP ∧ y2.toNat < BabyBearP ∧ y3.toNat < BabyBearP
+
+/-- Under the `Assumptions`: if the claim and the path are right, the program reaches its final self-jump `halt` with
 * `a0 = combine x`, `a1 = poly x` in the Mersenne31 field (as a `u32 ≤ P`, Airbender's representation),
 * `a2 … a5` (`x12 … x15`) the limbs of `poly4 y` in BabyBear's Ext4 (canonical),
 * `a6, a7` (`x16, x17`) the first two words of the Blake2s (7 rounds) digest of the five input words,
@@ -42,10 +49,7 @@ the outputs some steps later); if the claim or the path is wrong, no run ever re
 Airbender cannot prove it). For the image `bytes` with its final self-jump at `halt`. -/
 def ProgramCorrectOf (bytes : Array (BitVec 8)) (halt : Nat) : Prop :=
   ∀ (start : State) (x y0 y1 y2 y3 v0 v1 v2 v3 : Word) (root : Vector Word 8) (path : List Spec.MerkleStep)
-    (rest : List Word), start.pc = 0 → ImageLoaded bytes start → RamZero start →
-    start.input = x :: y0 :: y1 :: y2 :: y3 :: v0 :: v1 :: v2 :: v3 :: (Spec.pathInput root path ++ rest) →
-    path.length ≤ 32 → x.toNat ≤ Spec.P →
-    y0.toNat < BabyBearP → y1.toNat < BabyBearP → y2.toNat < BabyBearP → y3.toNat < BabyBearP →
+    (rest : List Word), Assumptions bytes start x y0 y1 y2 y3 v0 v1 v2 v3 root path rest →
     (Spec.claimOK #v[x, y0, y1, y2, y3] #v[v0, v1, v2, v3] ∧ Spec.pathOK #v[x, y0, y1, y2, y3] root path →
     ∃ numSteps final, run numSteps start = some final ∧ final.pc = BitVec.ofNat 32 halt ∧
       final.getReg a0 = Spec.combine x ∧
@@ -62,12 +66,24 @@ def ProgramCorrectOf (bytes : Array (BitVec 8)) (halt : Nat) : Prop :=
     (¬ (Spec.claimOK #v[x, y0, y1, y2, y3] #v[v0, v1, v2, v3] ∧ Spec.pathOK #v[x, y0, y1, y2, y3] root path) →
       ∀ numSteps final, run numSteps start = some final → final.pc ≠ BitVec.ofNat 32 halt)
 
+/-- `ProgramCorrectOf` is not vacuous: some start and input meet its `Assumptions` with a right claim and path, and
+some with a wrong one, so both of its conclusions are about real runs. -/
+def NonVacuousOf (bytes : Array (BitVec 8)) : Prop :=
+  (∃ (start : State) (x y0 y1 y2 y3 v0 v1 v2 v3 : Word) (root : Vector Word 8) (path : List Spec.MerkleStep)
+    (rest : List Word), Assumptions bytes start x y0 y1 y2 y3 v0 v1 v2 v3 root path rest ∧
+      (Spec.claimOK #v[x, y0, y1, y2, y3] #v[v0, v1, v2, v3] ∧ Spec.pathOK #v[x, y0, y1, y2, y3] root path)) ∧
+  (∃ (start : State) (x y0 y1 y2 y3 v0 v1 v2 v3 : Word) (root : Vector Word 8) (path : List Spec.MerkleStep)
+    (rest : List Word), Assumptions bytes start x y0 y1 y2 y3 v0 v1 v2 v3 root path rest ∧
+      ¬ (Spec.claimOK #v[x, y0, y1, y2, y3] #v[v0, v1, v2, v3] ∧ Spec.pathOK #v[x, y0, y1, y2, y3] root path))
+
 /-- The final theorem for the plain-Rust image (`build/app.bin`, `lean/image/Image.lean`): Airbender's decoder accepts
-it (`Accepted`, `Human/Delegations.lean`) and it is correct. -/
-def ProgramCorrect : Prop := Accepted Image.bytes ∧ ProgramCorrectOf Image.bytes Image.halt
+it (`Accepted`, `Human/Delegations.lean`), it is correct, and that is not vacuous. -/
+def ProgramCorrect : Prop :=
+  Accepted Image.bytes ∧ ProgramCorrectOf Image.bytes Image.halt ∧ NonVacuousOf Image.bytes
 
 /-- The final theorem for the field-opcode image (`build/app_mop.bin`, `lean/image/ImageMop.lean`: field opcodes and the
 Blake2s delegation). -/
-def ProgramCorrectMop : Prop := Accepted ImageMop.bytes ∧ ProgramCorrectOf ImageMop.bytes ImageMop.halt
+def ProgramCorrectMop : Prop :=
+  Accepted ImageMop.bytes ∧ ProgramCorrectOf ImageMop.bytes ImageMop.halt ∧ NonVacuousOf ImageMop.bytes
 
 end RV

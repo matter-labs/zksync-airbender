@@ -16,8 +16,8 @@ definition from `slop/`; `human/` imports only these libraries; every proof uses
    `sail/fetch-lean-sail.sh`, with the patches in `sail/patches/`).
 4. **The images** (`Image`, `ImageMop`): the guest binaries' bytes as Lean data. `verify.sh` rebuilds the binaries and
    checks the images equal them.
-5. **Transcriptions of standards** in `human/`: Blake2s (RFC 7693), Keccak-f[1600] (FIPS 202); `test/` checks them
-   against the standards' test vectors.
+5. **Transcriptions of standards** in `human/`: Blake2s (RFC 7693), Keccak-f[1600] (FIPS 202); `Human/Vectors.lean`
+   states that they give the standards' test vectors (proven).
 6. **Airbender facts** in `human/` (its decoder table, its changes to Sail, its precompiles), taken from Airbender's
    sources as cited at each definition (`docs/airbender-notes.md`).
 

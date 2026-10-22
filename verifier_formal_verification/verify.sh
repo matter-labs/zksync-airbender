@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # One-command check: rebuild the binary, check the Lean copy of it, check every proof, check the final theorem's
 # statement and axioms. Everything generated must be identical to what is committed.
+#   ./verify.sh            # everything that proves the final theorems
+#   ./verify.sh --sanity   # also run both images and the delegations on the RV32 spec for a few inputs (a test, ~3 min;
+#                          # proofs cover all of it: the final theorems state that their assumptions can be met)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -21,18 +24,22 @@ git diff --exit-code -- lean/slop/Slop/RV/Code || { echo "FAIL: generated code f
 echo "== 3. Lean build (spec + proofs)"
 (cd lean && lake build Human Slop.RV.FinalPlain Slop.RV.FinalMop Slop.Deleg 2>&1 | grep -E "error|Build completed" )
 
-echo "== 4. Final theorems (plain-Rust image, field-opcode image) and delegation runs: statements and axioms"
+echo "== 4. Final theorems (plain-Rust image, field-opcode image), delegation runs, standards' test vectors: statements and axioms"
 thms=("program_correct : RV.ProgramCorrect" "program_correct_mop : RV.ProgramCorrectMop"
   "blake_compress_run : RV.BlakeCompressRun" "blake_hash_run : RV.BlakeHashRun" "blake_g_run : RV.BlakeGRun"
   "blake_compress_run10 : RV.BlakeCompressRun10" "blake_hash_run10 : RV.BlakeHashRun10" "blake_g_run10 : RV.BlakeGRun10"
-  "keccak_special5_run : RV.KeccakSpecial5Run" "keccak_f1600_run : RV.KeccakF1600Run" "calls_run : RV.CallsRun")
+  "keccak_special5_run : RV.KeccakSpecial5Run" "keccak_f1600_run : RV.KeccakF1600Run" "calls_run : RV.CallsRun"
+  "standard_vectors : RV.StandardVectors")
 out=$(cd lean && { printf 'import Slop.RV.FinalPlain\nimport Slop.RV.FinalMop\nimport Slop.Deleg\n'
   for t in "${thms[@]}"; do printf '#check (RV.%s : %s)\n#print axioms RV.%s\n' "${t%% *}" "${t##* }" "${t%% *}"; done
   } | lake env lean --stdin)
 echo "$out"
 for t in "${thms[@]}"; do
   echo "$out" | grep -q "^RV.$t$" || { echo "FAIL: statement $t"; exit 1; }
-  echo "$out" | grep -q "'RV.${t%% *}' depends on axioms: \[propext, Classical.choice, Quot.sound\]$" \
+  # only the standard axioms (any of them)
+  axs=$(echo "$out" | sed -n "s/^'RV.${t%% *}' depends on axioms: \[\(.*\)\]$/\1/p")
+  echo "$out" | grep -q "^'RV.${t%% *}' does not depend on any axioms$" \
+    || { [[ -n "$axs" ]] && ! tr ',' '\n' <<< "$axs" | tr -d ' ' | grep -qvxE 'propext|Classical\.choice|Quot\.sound'; } \
     || { echo "FAIL: unexpected axioms (${t%% *})"; exit 1; }
 done
 echo "== 5. Our spec vs Sail (needs the generated Sail model: sail/regen.sh)"
@@ -73,7 +80,9 @@ echo "   human/ imports nothing else, no axiom/sorry/native evaluation, unsafe c
   || { echo "FAIL: trust checks"; exit 1; }
 
 
-echo "== 6. Sanity (not a proof): run both images on the RV32 spec for a few inputs"
-(cd lean && lake build run_image >/dev/null && lake exe run_image)
+if [[ "${1:-}" == "--sanity" ]]; then
+  echo "== 6. Sanity (not a proof): run both images and the delegations on the RV32 spec for a few inputs"
+  (cd lean && lake build run_image >/dev/null && lake exe run_image)
+fi
 echo "OK: the images at build/app.bin, build/app_mop.bin satisfy RV.ProgramCorrect, RV.ProgramCorrectMop (lean/human/Human/Theorems.lean)"
 echo "OK: and Airbender.ProgramCorrect, Airbender.ProgramCorrectMop on the Sail-based Airbender machine (lean/human/HumanSail/Theorems.lean)"

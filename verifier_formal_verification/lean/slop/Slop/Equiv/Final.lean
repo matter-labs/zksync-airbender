@@ -4,6 +4,7 @@ import Slop.RV.FinalMop
 import Slop.RV.FinalPlain
 import HumanSail.Theorems
 import Slop.Equiv.Checks
+import Slop.Equiv.NonVacuous
 
 /-! `Airbender.ProgramCorrect`: the final theorem, carried from our spec to the Airbender machine. -/
 
@@ -42,7 +43,7 @@ deterministic. -/
 theorem program_correct_of (bytes : Array (BitVec 8)) (halt : Nat) (hb : bytes.size < 2 ^ 32)
     (h : RV.ProgramCorrectOf bytes halt) (hstuck : RV.StuckOnBadClaim bytes) :
     Airbender.ProgramCorrectOf bytes halt := by
-  intro σ x y0 y1 y2 y3 v0 v1 v2 v3 root path rest hs hd hpc himg hram hxP hy0p hy1p hy2p hy3p
+  intro σ x y0 y1 y2 y3 v0 v1 v2 v3 root path rest ⟨hs, hd, hpc, himg, hram, hxP, hy0p, hy1p, hy2p, hy3p⟩
   set inp := x :: y0 :: y1 :: y2 :: y3 :: v0 :: v1 :: v2 :: v3 :: (Spec.pathInput root path ++ rest) with hinp
   have hA := agree_ofSail σ inp hs
   have himg' : RV.ImageLoaded bytes (ofSail σ inp) := by
@@ -50,7 +51,9 @@ theorem program_correct_of (bytes : Array (BitVec 8)) (halt : Nat) (hb : bytes.s
     show σ.mem (BitVec.ofNat 32 i).toNat = _
     rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]; exact himg i hi
   have hram' : RV.RamZero (ofSail σ inp) := fun addr h1 h2 => hram addr.toNat h1 h2
-  have H := h _ x y0 y1 y2 y3 v0 v1 v2 v3 root path rest hpc himg' hram' rfl hd hxP hy0p hy1p hy2p hy3p
+  have hA0 : RV.Assumptions bytes (ofSail σ inp) x y0 y1 y2 y3 v0 v1 v2 v3 root path rest :=
+    ⟨hpc, himg', hram', rfl, hd, hxP, hy0p, hy1p, hy2p, hy3p⟩
+  have H := h _ x y0 y1 y2 y3 v0 v1 v2 v3 root path rest hA0
   refine ⟨fun hc => ?_, fun hc => ?_⟩
   · obtain ⟨n, s', hr, hpc', h10, h11a, h11b, hlt, hlimbs, h16, h17, hz, hk⟩ := H.1 hc
     obtain ⟨σ', hσ', hA'⟩ := run_agree n _ s' _ hA hr
@@ -70,8 +73,7 @@ theorem program_correct_of (bytes : Array (BitVec 8)) (halt : Nat) (hb : bytes.s
       · intro i; rw [hA''.1.2.2.1, hreg, hreg'']
   · intro n M hM hpcM
     have hnever := H.2 hc
-    obtain ⟨m, T, hT, hstk⟩ := hstuck _ x y0 y1 y2 y3 v0 v1 v2 v3 root path rest hpc himg' hram' rfl hd hxP hy0p hy1p
-      hy2p hy3p hc
+    obtain ⟨m, T, hT, hstk⟩ := hstuck _ x y0 y1 y2 y3 v0 v1 v2 v3 root path rest hA0 hc
     obtain ⟨MT, hMT, hAT⟩ := run_agree m _ T _ hA hT
     by_cases hnm : n ≤ m
     · obtain ⟨k, rfl⟩ := Nat.exists_eq_add_of_le hnm
@@ -88,11 +90,15 @@ theorem program_correct_of (bytes : Array (BitVec 8)) (halt : Nat) (hb : bytes.s
 
 /-- `Airbender.ProgramCorrect`: the plain-Rust image on the Airbender machine. -/
 theorem program_correct_airbender : Airbender.ProgramCorrect :=
-  ⟨RV.program_correct.1, Airbender.machine_checks, program_correct_of _ _ (by decide +kernel) RV.program_correct.2 RV.program_correct_stuck⟩
+  ⟨RV.program_correct.1, Airbender.machine_checks,
+    program_correct_of _ _ (lt_of_le_of_lt RV.fits_plain (by decide)) RV.program_correct.2.1 RV.program_correct_stuck,
+    nonvacuous_of _ RV.fits_plain⟩
 
 /-- `Airbender.ProgramCorrectMop`: the field-opcode image on the Airbender machine. -/
 theorem program_correct_airbender_mop : Airbender.ProgramCorrectMop :=
-  ⟨RV.program_correct_mop.1, Airbender.machine_checks, program_correct_of _ _ (by decide +kernel) RV.program_correct_mop.2
-    RV.program_correct_mop_stuck⟩
+  ⟨RV.program_correct_mop.1, Airbender.machine_checks,
+    program_correct_of _ _ (lt_of_le_of_lt RV.fits_mop (by decide)) RV.program_correct_mop.2.1
+      RV.program_correct_mop_stuck,
+    nonvacuous_of _ RV.fits_mop⟩
 
 end Slop.Equiv

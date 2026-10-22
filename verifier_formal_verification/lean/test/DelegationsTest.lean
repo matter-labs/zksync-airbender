@@ -97,20 +97,6 @@ def checkKeccak (seed : Nat) : Bool :=
     | some s => (lanes (wordsAt s.mem B 50)).toList == want.toList && s.getReg 10 == 1544
     | none => false
 
-/-- The slot map against the source's table (`KECCAK_F1600_PERMUTATIONS`, rows 1 and 24) and the standard
-Keccak-f[1600] test vector on the zero state. -/
-def checkKeccakTables : Bool :=
-  (List.finRange 25).map (fun p => (laneSlot 1 p).val) ==
-    [0, 6, 12, 18, 24, 3, 9, 10, 16, 22, 1, 7, 13, 19, 20, 4, 5, 11, 17, 23, 2, 8, 14, 15, 21] &&
-  (List.finRange 25).all (fun p => laneSlot 24 p == p) &&
-  (keccakF (Vector.replicate 25 0))[0] == 0xF1258F7940E1DDE7 && (keccakF (Vector.replicate 25 0))[1] == 0x84D5CCF933C0478A
-
-/-- RFC 7693 Appendix B: BLAKE2s-256("abc") = 508c5e8c 327c14e2 e1a72ba3 4eeb452f 37458b20 9ed63a29 4d999b4c 86675982
-(digest bytes; words little-endian), as one compression with 10 rounds, counter 3, last block. -/
-def checkBlakeRFC : Bool :=
-  (compressRounds 10 (Vector.ofFn configuredIV) #v[0x00636261, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] 3#32 true).toList
-    == [0x8C5E8C50, 0xE2147C32, 0xA32BA7E1, 0x2F45EB4E, 0x208B4537, 0x293AD69E, 0x4C9B994D, 0x82596786]
-
 def delegationChecks : IO Bool := do
   let mut ok := true
   for (name, good) in [("blake2s round (0x7c7) x 7 = blake5", checkBlakeRound [5, 1, 2, 3, 4] &&
@@ -118,8 +104,6 @@ def delegationChecks : IO Bool := do
       ("blake2s round (0x7c7) compression mode x 7 = hash2", checkCompression 0 && checkCompression 1),
       ("blake2s G (0x7c8) x 56 = 7 rounds", checkG 0 && checkG 1),
       ("bigint (0x7ca) ops and flags", checkBigint),
-      ("keccak tables, keccakF test vector", checkKeccakTables),
-      ("blake2s RFC 7693 test vector (abc)", checkBlakeRFC),
       ("keccak special5 (0x7cb) x 649, f1600 (0x7cc-0x7ce) x 361 = keccakF", checkKeccak 0 && checkKeccak 1)] do
     IO.println s!"delegation: {name}: {if good then "OK" else "MISMATCH"}"
     ok := ok && good

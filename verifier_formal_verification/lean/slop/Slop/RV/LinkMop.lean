@@ -55,4 +55,7 @@ def layoutMop : List (Nat × List Word) := [
 set_option maxRecDepth 100000 in
 theorem linked_mop : linkedFrom ImageMop.bytes.toList 0 layoutMop = true := by decide +kernel
 
+/-- The image fits in ROM. -/
+theorem fits_mop : ImageMop.bytes.size ≤ ROM_END := by decide +kernel
+
 end RV

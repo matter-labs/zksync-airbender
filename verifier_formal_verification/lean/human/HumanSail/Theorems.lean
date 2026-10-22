@@ -48,20 +48,26 @@ noncomputable def run : (numSteps : Nat) → Machine → Option Machine
   | 0,     m => some m
   | n + 1, m => (step m).bind (run n)
 
+/-- What the final theorem on the Airbender machine assumes of the start: any Airbender state (`Configured`: privilege,
+CSRs, memory map as after reset) at address 0, with the image `bytes` loaded and RAM zero; of the input `x`, `y`
+(below the field moduli) and a Merkle path of at most 32 levels, as in `RV.Assumptions` (`Human/Theorems.lean`). -/
+def Assumptions (bytes : Array (BitVec 8)) (start : SailState) (x y0 y1 y2 y3 : RV.Word)
+    (path : List Spec.MerkleStep) : Prop :=
+  Configured start ∧ path.length ≤ 32 ∧ start.regs .PC = 0 ∧
+  (∀ i (h : i < bytes.size), start.mem i = bytes[i]) ∧
+  (∀ addr : Nat, RV.ROM_END ≤ addr → addr < RV.RAM_END → start.mem addr = 0) ∧
+  x.toNat ≤ Spec.P ∧
+  y0.toNat < RV.BabyBearP ∧ y1.toNat < RV.BabyBearP ∧ y2.toNat < RV.BabyBearP ∧ y3.toNat < RV.BabyBearP
+
 /-- 3. The final theorem on the Airbender machine itself: `RV.ProgramCorrectOf` (`Human/Theorems.lean`), with Sail's
-state in place of ours. Started from any Airbender state (`Configured`: privilege, CSRs, memory map as after reset) at
-address 0, with the image loaded, RAM zero and an input starting with `x`, the 4 limbs of `y`, the 4 words of the
-Fiat–Shamir claim `v` and a Merkle path (`pathInput`): if the claim and the path are right, Airbender reaches `halt` with `a0 = combine x`, `a1 = poly x`, `a2 … a5` the limbs of `poly4 y`, `a6, a7` the first two
-words of the Blake2s (7 rounds) digest of the input, `x18 … x25` zero, and stays
-there; if either is wrong, Airbender never reaches `halt`. Follows from 1 and 2 and the final theorem on our spec. -/
+state in place of ours. Under the `Assumptions`, with an input starting with `x`, the 4 limbs of `y`, the 4 words of
+the Fiat–Shamir claim `v` and the Merkle path (`pathInput`): if the claim and the path are right, Airbender reaches
+`halt` with `a0 = combine x`, `a1 = poly x`, `a2 … a5` the limbs of `poly4 y`, `a6, a7` the first two words of the
+Blake2s (7 rounds) digest of the input, `x18 … x25` zero, and stays there; if either is wrong, Airbender never reaches
+`halt`. Follows from 1 and 2 and the final theorem on our spec. -/
 def ProgramCorrectOf (bytes : Array (BitVec 8)) (halt : Nat) : Prop :=
   ∀ (start : SailState) (x y0 y1 y2 y3 v0 v1 v2 v3 : RV.Word) (root : Vector RV.Word 8)
-    (path : List Spec.MerkleStep) (rest : List RV.Word), Configured start → path.length ≤ 32 →
-    start.regs .PC = 0 →
-    (∀ i (h : i < bytes.size), start.mem i = bytes[i]) →
-    (∀ addr : Nat, RV.ROM_END ≤ addr → addr < RV.RAM_END → start.mem addr = 0) →
-    x.toNat ≤ Spec.P →
-    y0.toNat < RV.BabyBearP → y1.toNat < RV.BabyBearP → y2.toNat < RV.BabyBearP → y3.toNat < RV.BabyBearP →
+    (path : List Spec.MerkleStep) (rest : List RV.Word), Assumptions bytes start x y0 y1 y2 y3 path →
     (Spec.claimOK #v[x, y0, y1, y2, y3] #v[v0, v1, v2, v3] ∧ Spec.pathOK #v[x, y0, y1, y2, y3] root path →
     ∃ (numSteps : Nat) (final' : Machine),
       run numSteps ⟨start, x :: y0 :: y1 :: y2 :: y3 :: v0 :: v1 :: v2 :: v3 :: (Spec.pathInput root path ++ rest)⟩ = some final' ∧
@@ -83,10 +89,25 @@ def ProgramCorrectOf (bytes : Array (BitVec 8)) (halt : Nat) : Prop :=
         run numSteps ⟨start, x :: y0 :: y1 :: y2 :: y3 :: v0 :: v1 :: v2 :: v3 :: (Spec.pathInput root path ++ rest)⟩ = some final' →
         final'.sail.regs .PC ≠ BitVec.ofNat 32 halt)
 
-/-- 3. for the plain-Rust image (`build/app.bin`), with the checks pinning down the machine (`Checks.lean`). -/
-def ProgramCorrect : Prop := RV.Accepted Image.bytes ∧ MachineChecks ∧ ProgramCorrectOf Image.bytes Image.halt
+/-- `ProgramCorrectOf` is not vacuous: some start and input meet its `Assumptions` with a right claim and path, and
+some with a wrong one. -/
+def NonVacuousOf (bytes : Array (BitVec 8)) : Prop :=
+  (∃ (start : SailState) (x y0 y1 y2 y3 v0 v1 v2 v3 : RV.Word) (root : Vector RV.Word 8)
+    (path : List Spec.MerkleStep), Assumptions bytes start x y0 y1 y2 y3 path ∧
+      (Spec.claimOK #v[x, y0, y1, y2, y3] #v[v0, v1, v2, v3] ∧ Spec.pathOK #v[x, y0, y1, y2, y3] root path)) ∧
+  (∃ (start : SailState) (x y0 y1 y2 y3 v0 v1 v2 v3 : RV.Word) (root : Vector RV.Word 8)
+    (path : List Spec.MerkleStep), Assumptions bytes start x y0 y1 y2 y3 path ∧
+      ¬ (Spec.claimOK #v[x, y0, y1, y2, y3] #v[v0, v1, v2, v3] ∧ Spec.pathOK #v[x, y0, y1, y2, y3] root path))
 
-/-- 3. for the field-opcode image (`build/app_mop.bin`: field opcodes and the Blake2s delegation), with the checks. -/
-def ProgramCorrectMop : Prop := RV.Accepted ImageMop.bytes ∧ MachineChecks ∧ ProgramCorrectOf ImageMop.bytes ImageMop.halt
+/-- 3. for the plain-Rust image (`build/app.bin`), with the checks pinning down the machine (`Checks.lean`), not
+vacuous. -/
+def ProgramCorrect : Prop :=
+  RV.Accepted Image.bytes ∧ MachineChecks ∧ ProgramCorrectOf Image.bytes Image.halt ∧ NonVacuousOf Image.bytes
+
+/-- 3. for the field-opcode image (`build/app_mop.bin`: field opcodes and the Blake2s delegation), with the checks, not
+vacuous. -/
+def ProgramCorrectMop : Prop :=
+  RV.Accepted ImageMop.bytes ∧ MachineChecks ∧ ProgramCorrectOf ImageMop.bytes ImageMop.halt ∧
+    NonVacuousOf ImageMop.bytes
 
 end Airbender

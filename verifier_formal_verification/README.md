@@ -35,10 +35,13 @@ input; the verifier's two-to-one Blake2s hash) — a wrong root fails the run.
   `Human/SpecBlake.lean` (Blake2s compression, RFC 7693, 7 rounds), `Human/SpecFS.lean` (the challenge and the
   claim the program checks), `Human/SpecMerkle.lean` (the two-to-one hash, the root a path leads to, how the path is
   read).
-- `Human/Theorems.lean` — the final statement `ProgramCorrectOf`: from reset, with the image loaded, RAM zero and an
-  input starting with the five words and the claim: if the claim is right, the program reaches its final self-jump
-  with the outputs in `a0 … a7` and stays there; if it is wrong, no run ever reaches it. `ProgramCorrect` (plain
-  image) and `ProgramCorrectMop` instantiate it (both proven).
+- `Human/Theorems.lean` — the final statement `ProgramCorrectOf`: under its `Assumptions` (from reset, with the image
+  loaded, RAM zero and an input starting with the five words and the claim): if the claim is right, the program
+  reaches its final self-jump with the outputs in `a0 … a7` and stays there; if it is wrong, no run ever reaches it.
+  `NonVacuousOf`: the assumptions can be met, with a right and with a wrong claim. `ProgramCorrect` (plain image) and
+  `ProgramCorrectMop` combine them (both proven).
+- `Human/Vectors.lean` — the standards' test vectors: Blake2s (RFC 7693) and Keccak-f[1600] give the published
+  results, and the Keccak slot map matches Airbender's table (proven by evaluation).
 - `HumanSail/Airbender.lean` — the Airbender machine as the official Sail RISC-V model plus a short list of
   changes, each marked `-- Airbender:` (needs the generated Sail model, `sail/regen.sh`).
 - `HumanSail/Theorems.lean` — our spec = Sail: `DecodeIsSail`, `StepIsAirbender`, and `ProgramCorrect` on the

@@ -55,4 +55,7 @@ def layoutPlain : List (Nat × List Word) := [
 set_option maxRecDepth 100000 in
 theorem linked_plain : linkedFrom Image.bytes.toList 0 layoutPlain = true := by decide +kernel
 
+/-- The image fits in ROM. -/
+theorem fits_plain : Image.bytes.size ≤ ROM_END := by decide +kernel
+
 end RV

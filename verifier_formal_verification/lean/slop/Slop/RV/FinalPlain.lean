@@ -4,6 +4,7 @@ import Slop.RV.Ext4Poly.Impl
 import Slop.RV.LinkPlain
 import Slop.RV.Merkle.Step
 import Slop.RV.Stuck
+import Slop.RV.NonVacuous
 
 /-! The final theorem for the plain image: link check (image bytes = the code and tables the proofs use), then the
 whole program (`main_run`); a wrong claim: the run gets stuck, so it never halts (`stuck_never_halts`). -/
@@ -33,7 +34,7 @@ theorem program_correct_run (s : State) (x y0 y1 y2 y3 v0 v1 v2 v3 : Word) (root
       (∀ b : Word, b.toNat < ROM_END → W.mem b = s.mem b)) ∧
     (¬ (claimOK #v[x, y0, y1, y2, y3] #v[v0, v1, v2, v3] ∧ pathOK #v[x, y0, y1, y2, y3] root path) →
       ∃ m W, run m s = some W ∧ AtFinishError W) := by
-  have hs : Image.bytes.size < 2 ^ 32 := by decide +kernel
+  have hs : Image.bytes.size < 2 ^ 32 := lt_of_le_of_lt fits_plain (by decide)
   have cStart := codeAt_of_linked himg hs linked_plain 0 rfl
   have cMain := codeAt_of_linked himg hs linked_plain 1 rfl
   have cInit := codeAt_of_linked himg hs linked_plain 18 rfl
@@ -98,8 +99,8 @@ theorem accepted : Accepted Image.bytes := by decide +kernel
 
 set_option maxHeartbeats 400000 in
 theorem program_correct : ProgramCorrect := by
-  refine ⟨accepted, ?_⟩
-  intro s x y0 y1 y2 y3 v0 v1 v2 v3 root path rest hpc himg hram hin hd hxP hy0p hy1p hy2p hy3p
+  refine ⟨accepted, ?_, nonvacuous_of _ fits_plain⟩
+  intro s x y0 y1 y2 y3 v0 v1 v2 v3 root path rest ⟨hpc, himg, hram, hin, hd, hxP, hy0p, hy1p, hy2p, hy3p⟩
   obtain ⟨hhalt, hok, hbad⟩ := program_correct_run s x y0 y1 y2 y3 v0 v1 v2 v3 root path rest hpc himg hram hin hd hxP
     hy0p hy1p hy2p hy3p
   refine ⟨fun hc => ?_, fun hc => ?_⟩
@@ -112,8 +113,8 @@ theorem program_correct : ProgramCorrect := by
     exact stuck_never_halts s W m hrun hst.step_none _ (by decide) (by decide) hhalt
 
 /-- With a wrong claim or path the run ends at `zksync_os_finish_error`. -/
-theorem program_correct_stuck : StuckOnBadClaim Image.bytes := fun s x y0 y1 y2 y3 v0 v1 v2 v3 root path rest hpc himg
-    hram hin hd hxP hy0p hy1p hy2p hy3p hc => (program_correct_run s x y0 y1 y2 y3 v0 v1 v2 v3 root path rest hpc himg hram
-      hin hd hxP hy0p hy1p hy2p hy3p).2.2 hc
+theorem program_correct_stuck : StuckOnBadClaim Image.bytes :=
+  fun s x y0 y1 y2 y3 v0 v1 v2 v3 root path rest ⟨hpc, himg, hram, hin, hd, hxP, hy0p, hy1p, hy2p, hy3p⟩ hc =>
+    (program_correct_run s x y0 y1 y2 y3 v0 v1 v2 v3 root path rest hpc himg hram hin hd hxP hy0p hy1p hy2p hy3p).2.2 hc
 
 end RV
