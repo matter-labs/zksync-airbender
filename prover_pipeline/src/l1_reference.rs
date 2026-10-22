@@ -4,7 +4,11 @@ use std::fs::{self, File};
 use std::io::{BufReader, BufWriter, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-const REGENERATE: &str = "RUST_MIN_STACK=1073741824 cargo test -p prover_pipeline --release --lib l1_reference::generate_l1_reference -- --exact --ignored --nocapture --test-threads=1";
+const REGENERATE: &str = concat!(
+    "RUST_MIN_STACK=1073741824 cargo test -p prover_pipeline --release --lib l1_reference::generate_l1_reference_seed -- --exact --ignored --nocapture --test-threads=1 && ",
+    "RUST_MIN_STACK=1073741824 cargo test -p prover_pipeline --release --lib l1_reference::generate_l1_reference_from_recursion_unified -- --exact --ignored --nocapture --test-threads=1 && ",
+    "RUST_MIN_STACK=1073741824 cargo test -p cpu_execution_prover --release --test l1_reference generate_l1_witness_reference -- --exact --ignored --nocapture --test-threads=1"
+);
 static MAX_STAGE_VMHWM: AtomicU64 = AtomicU64::new(0);
 
 fn fixture_dir() -> PathBuf {
@@ -363,6 +367,7 @@ impl FeederObserver for FixtureObserver<'_> {
 
 enum GenerateFrom<'a> {
     Program,
+    ProgramSeed,
     RecursionUnified(&'a Path),
     /// A feeder-layer checkpoint: the rest of the feeder chain.
     FeederLayer(&'a Path),
@@ -409,8 +414,9 @@ fn generate_into(
     deterministic_pow_required();
     fs::create_dir_all(sink).map_err(|error| format!("L1 reference sink: {error}"))?;
     let source = source();
+    let seed_only = matches!(&from, GenerateFrom::ProgramSeed);
     let names = match from {
-        GenerateFrom::Program => {
+        GenerateFrom::Program | GenerateFrom::ProgramSeed => {
             preflight(
                 "program",
                 execution.host_window_gib(CPU_PROGRAM_HOST_WINDOW_GIB),
@@ -438,20 +444,19 @@ fn generate_into(
             artifact.timings_ms = ProofTimingsMs::default();
             write_compact(&sink.join("recursion_unified.json"), &artifact)?;
             drop(artifact);
-            let feeder = generate_into(
-                sink,
-                GenerateFrom::RecursionUnified(&sink.join("recursion_unified.json")),
-                execution,
-            )?;
-            let wrap = generate_into(
-                sink,
-                GenerateFrom::L1Feeder(&sink.join("l1_feeder.json")),
-                execution,
-            )?;
-            let files: Inventory = std::iter::once(file_identity(sink, "recursion_unified.json")?)
-                .chain(feeder)
-                .chain(wrap)
-                .collect();
+            let mut files = vec![file_identity(sink, "recursion_unified.json")?];
+            if !seed_only {
+                files.extend(generate_into(
+                    sink,
+                    GenerateFrom::RecursionUnified(&sink.join("recursion_unified.json")),
+                    execution,
+                )?);
+                files.extend(generate_into(
+                    sink,
+                    GenerateFrom::L1Feeder(&sink.join("l1_feeder.json")),
+                    execution,
+                )?);
+            }
             write_reference_manifest(
                 sink,
                 execution,
@@ -814,6 +819,69 @@ fn generate_l1_reference() {
             .expect("L1 reference promotes complete fixture set");
     }
     fs::remove_dir_all(sink).expect("L1 reference removes staging directory");
+}
+
+/// Produce the Standard recursion-unified seed in its own process before the feeder and wrap.
+#[test]
+#[ignore = "regenerates the CPU Standard seed; requires 150 GiB MemAvailable"]
+fn generate_l1_reference_seed() {
+    let reference = fixture_dir();
+    let mut managed = BTreeSet::new();
+    if reference.join("manifest.json").exists() {
+        managed.extend(
+            validated_manifest(&reference)
+                .expect("previous L1 reference manifest")
+                .files
+                .into_iter()
+                .map(|file| file.name),
+        );
+    }
+    let witness_manifest = reference.join("witness_manifest.json");
+    if witness_manifest.exists() {
+        #[derive(Deserialize)]
+        struct ManagedFiles {
+            files: Vec<FileIdentity>,
+        }
+        let previous: ManagedFiles =
+            read_typed(&witness_manifest).expect("previous L1 witness manifest");
+        managed.extend(previous.files.into_iter().map(|file| file.name));
+        managed.insert("witness_manifest.json".into());
+    }
+    let sink = disposable_dir("generate-seed");
+    let inventory = generate_into(&sink, GenerateFrom::ProgramSeed, Execution::CPU)
+        .expect("L1 reference seed generation");
+    assert_eq!(
+        inventory
+            .iter()
+            .map(|file| file.name.as_str())
+            .collect::<Vec<_>>(),
+        ["recursion_unified.json", "manifest.json"]
+    );
+    fs::create_dir_all(&reference).expect("L1 reference creates fixture directory");
+    for name in managed {
+        assert_eq!(
+            Path::new(&name).file_name().and_then(|name| name.to_str()),
+            Some(name.as_str())
+        );
+        if name != "recursion_unified.json" && name != "manifest.json" {
+            fs::remove_file(reference.join(name))
+                .expect("L1 seed removes the previous managed fixture");
+        }
+    }
+    for file in &inventory {
+        fs::rename(sink.join(&file.name), reference.join(&file.name))
+            .expect("L1 reference promotes the seed and its manifest");
+    }
+    fs::remove_dir_all(sink).expect("L1 reference removes seed staging directory");
+    let seeded = validated_manifest(&reference).expect("seed-only manifest validates");
+    assert_eq!(
+        seeded
+            .files
+            .iter()
+            .map(|file| file.name.as_str())
+            .collect::<Vec<_>>(),
+        ["recursion_unified.json"]
+    );
 }
 
 /// Run in a fresh process after independently reproducing the committed standard seed.
