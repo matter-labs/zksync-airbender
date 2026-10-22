@@ -100,7 +100,7 @@
   | load_store_subword_only | LB + LBU + LH + LHU + SB + SH |
   | mul_div_unsigned | MUL + MULHU + DIVU + REMU |
   | unified_reduced_machine | Combines add_sub_lui_auipc_mop + jump_branch_slt + shift_binary + load_store_word_only; adds MOP.RR.4 + MOP.R.16 + MOP.R.12 + MOP.R.8 + MOP.R.7. For every address in its verifier-bound 4-byte-aligned RAM windows, it embeds the same Write-Set initialisation and Read-Set teardown tuples as inits_and_teardowns, closing the global RAM access history inline. |
-  | inits_and_teardowns | For every 4-byte-aligned address < 2³⁰, contributes the Write-Set initialisation tuple (1 (RAM), address[15:0], address[31:16], 0, 0, 0, 0) and Read-Set teardown tuple (1 (RAM), address[15:0], address[31:16], ts_final[18:0], ts_final[37:19], val_final[15:0], val_final[31:16]). The addresses are split across 16 fixed contiguous windows; together with execution reads and writes, these tuples close the global RAM access history between the zero-initialised and final RAM states. |
+  | inits_and_teardowns | For every 4-byte-aligned address < 2³², contributes the Write-Set initialisation tuple (1 (RAM), address[15:0], address[31:16], 0, 0, 0, 0) and Read-Set teardown tuple (1 (RAM), address[15:0], address[31:16], ts_final[18:0], ts_final[37:19], val_final[15:0], val_final[31:16]). Together with execution reads and writes, these tuples close the global RAM access history between the zero-initialised and final RAM states. |
   | blake2_with_compression | Fulfills BLAKE2s round and compression delegation requests |
   | bigint_with_control | Fulfills controlled 256-bit arithmetic delegation requests |
   | keccak_special5 | Fulfills Keccak-f[1600] special5 micro-operation delegation requests |
