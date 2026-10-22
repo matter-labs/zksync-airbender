@@ -113,7 +113,7 @@ theorem run_entry_source {Kind : Type} {before : Reference.RiscV.Sail.State} {pc
       | some data =>
         simp only [fields, pure, Option.some.injEq] at image
         subst entry
-        exact ⟨rfl, ⟨read, (Reference.Sail.decoded_misa_frame _ decoded).2 before rfl, fields⟩⟩
+        exact ⟨rfl, ⟨read, (Reference.Sail.decoded_misa_frame _ decoded).2 before (fun _ _ => rfl), fields⟩⟩
 
 theorem run_program_sources {Kind : Type} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List (ProgramEntry Kind)}

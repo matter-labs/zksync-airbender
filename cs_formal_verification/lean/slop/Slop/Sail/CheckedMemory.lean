@@ -11,34 +11,20 @@ private theorem native_unit_bind {α : Type} (next : Unit → SailRV32.SailM α)
 
 theorem configuration_register_frame {before after : State}
     (registers : after.regs = before.regs) (configuration : Configured before) :
-    Configured after := by
-  cases configuration
-  constructor <;> simp_all only
-
-private def configurationKeys : List SailRV32.Register :=
-  [.cur_privilege, .mstatus, .misa, .senvcfg, .menvcfg, .pmpcfg_n, .pmpaddr_n,
-    .pma_regions, .mhartid, .htif_tohost_base]
+    Configured after := fun r outside => registers ▸ configuration r outside
 
 set_option backward.isDefEq.respectTransparency false in
 private theorem configuration_insert {before : State} (configuration : Configured before)
     (key : SailRV32.Register) (value : SailRV32.RegisterType key)
-    (outside : key ∉ configurationKeys) :
+    (written : Configuration.writtenByProgram key = true) :
     Configured { before with regs := before.regs.insert key value } := by
-  have distinct (other : SailRV32.Register) (member : other ∈ configurationKeys) : key ≠ other := by
-    intro same
-    exact outside (same ▸ member)
-  have privilege := distinct .cur_privilege (by decide)
-  have status := distinct .mstatus (by decide)
-  have isa := distinct .misa (by decide)
-  have supervisor := distinct .senvcfg (by decide)
-  have machine := distinct .menvcfg (by decide)
-  have pmp := distinct .pmpcfg_n (by decide)
-  have addresses := distinct .pmpaddr_n (by decide)
-  have pma := distinct .pma_regions (by decide)
-  have hart := distinct .mhartid (by decide)
-  have htif := distinct .htif_tohost_base (by decide)
-  cases configuration
-  constructor <;> simp_all [Std.ExtDHashMap.get?_insert]
+  intro r outside
+  have distinct : key ≠ r := by
+    rintro rfl
+    rw [written] at outside
+    cases outside
+  simp only [Std.ExtDHashMap.get?_insert, beq_iff_eq, distinct, ↓reduceDIte]
+  exact configuration r outside
 
 /-- Native RAM writes leave every configuration register unchanged. -/
 theorem configuration_word_write {before : State} (configuration : Configured before)
