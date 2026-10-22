@@ -305,7 +305,7 @@ theorem fabricated_read_rejected :
     decide
   exact mismatch admitted.memory
 
-theorem external_read_retirement [MemoryPlatform SailRV32.exception] (second : Bool) :
+theorem external_read_retirement  (second : Bool) :
     ∃ rowBefore rowAfter original,
       NonDeterminism.clause [0x12345678, 0xbeef, 0xcafe]
         (NonDeterminism.Pooled.readIndex trace (readRow second))
@@ -383,7 +383,7 @@ private theorem inputs : PooledBootInputs trace before cells program NonDetermin
   · intro address member _
     simp [cells, Tests.TraceExecution.cells] at member
 
-theorem complete_mixed_trace [MemoryPlatform SailRV32.exception] :
+theorem complete_mixed_trace  :
     ∃ after, NonDeterminism.Pooled.ExecutionTrace [0x12345678, 0xbeef, 0xcafe] program
       (before, 0) (after, 2) ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok 12 after ∧

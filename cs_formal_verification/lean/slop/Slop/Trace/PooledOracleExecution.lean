@@ -4,7 +4,6 @@ import Slop.Trace.OracleExecution
 
 namespace Airbender.Trace.NonDeterminism.Pooled.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail Trace.Proofs
-variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in

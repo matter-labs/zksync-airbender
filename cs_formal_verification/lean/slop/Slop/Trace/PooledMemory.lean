@@ -134,7 +134,6 @@ set_option backward.isDefEq.respectTransparency false in
 theorem pooled_word_execution {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
     [registry : PooledRegistry projection]
-    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}

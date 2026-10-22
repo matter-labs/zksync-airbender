@@ -219,7 +219,7 @@ theorem normal_step_rebased {before : State} {pc : BitVec 32}
       · subst reader
         simp
       · simp [Std.ExtDHashMap.get?_insert, Ne.symm current, Ne.symm next]
-  simp only [normalStep, SailRV32.Functions.normal_base_next_pc, freeM_bind_assoc]
+  simp only [normalStep, normalBaseNextPC, freeM_bind_assoc]
   have readPC : run (SailRV32.readReg .PC) before = .ok pc before := read
   have rebasedPC : run (SailRV32.readReg .PC) (retiredState before pc) =
       .ok pc (retiredState before pc) := retired_state_pc before pc

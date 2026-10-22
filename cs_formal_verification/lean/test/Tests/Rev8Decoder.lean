@@ -42,7 +42,7 @@ theorem actual_public_encoding (enabled : Bool) :
     programEntryRunWith, bytes, decoded, bind, Option.bind]
   rfl
 
-theorem actual_clause [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+theorem actual_clause  :
     Trace.instructionClause entry.instruction =
       some (SailRV32.Functions.execute_REV8 (.Regidx 1) (.Regidx 3)) := rfl
 

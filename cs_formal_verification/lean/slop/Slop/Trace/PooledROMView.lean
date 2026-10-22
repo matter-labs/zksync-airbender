@@ -283,7 +283,7 @@ theorem execution_boundary {p : Nat} [Fact p.Prime] (hp : 4 < p)
   rw [initialState, inputs.profile.pc, inputs.initialBoundary]
 
 /-- Lift pooled physical execution back to the unchanged native trace. -/
-theorem trace_execution [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem trace_execution
     {p : Nat} [Fact p.Prime]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} {before : State} {cells : List Cell} {program : List PooledProgramEntry}

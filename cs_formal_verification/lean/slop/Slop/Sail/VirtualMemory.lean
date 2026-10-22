@@ -5,7 +5,7 @@ namespace Airbender.Reference.RiscV.Sail
 open Airbender.Reference.Sail
 open _root_.Sail.ArchSem
 
-private theorem configured_translation [MemoryPlatform SailRV32.exception]
+private theorem configured_translation
     {before : State} (configuration : FlatMemoryConfiguration before)
     (address : BitVec 32) (access : SailRV32.MemoryAccessType SailRV32.mem_payload)
     (ordinary : access = .Load .Data ∨ access = .Store .Data ∨ access = .InstructionFetch ()) :
@@ -31,7 +31,7 @@ theorem physical_memory_read {size : Nat} {before : State} {address : BitVec 32}
   rfl
 
 set_option backward.isDefEq.respectTransparency false in
-theorem physical_memory_write [MemoryPlatform SailRV32.exception]
+theorem physical_memory_write
     {size : Nat} {before after : State} {address : BitVec 32}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
@@ -46,7 +46,7 @@ theorem physical_memory_write [MemoryPlatform SailRV32.exception]
   rfl
 
 set_option backward.isDefEq.respectTransparency false in
-theorem translated_memory_read [MemoryPlatform SailRV32.exception]
+theorem translated_memory_read
     {size : Nat} {before : State} {address : BitVec 32} {value : BitVec (8 * size)}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
@@ -118,7 +118,7 @@ private theorem unit_bind {α : Type} (next : Unit → SailRV32.SailM α) :
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 4096 in
-theorem virtual_address_memory_read [MemoryPlatform SailRV32.exception]
+theorem virtual_address_memory_read
     {size : Nat} {before : State} {address : BitVec 32} {value : BitVec (8 * size)}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
@@ -150,7 +150,7 @@ theorem virtual_address_memory_read [MemoryPlatform SailRV32.exception]
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 4096 in
-theorem virtual_address_memory_write [MemoryPlatform SailRV32.exception]
+theorem virtual_address_memory_write
     {size : Nat} {before after : State} {address : BitVec 32}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
@@ -208,7 +208,7 @@ private theorem effective_memory_address {before : State} {source : BitVec 32}
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 4096 in
-theorem virtual_memory_read [MemoryPlatform SailRV32.exception]
+theorem virtual_memory_read
     {size : Nat} {before : State} {source : BitVec 32} {value : BitVec (8 * size)}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
     (configuration : FlatMemoryConfiguration before) (index : SailRV32.regidx) (offset : BitVec 32)
@@ -233,7 +233,7 @@ theorem virtual_memory_read [MemoryPlatform SailRV32.exception]
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 4096 in
-theorem virtual_memory_write [MemoryPlatform SailRV32.exception]
+theorem virtual_memory_write
     {size : Nat} {before after : State} {source : BitVec 32}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
     (configuration : FlatMemoryConfiguration before) (index : SailRV32.regidx) (offset : BitVec 32)
@@ -270,7 +270,7 @@ theorem physical_memory_read_error {size : Nat} {before after : State} {address 
   rw [run_bind_of_error _ _ _ _ _ checked]
 
 set_option backward.isDefEq.respectTransparency false in
-theorem translated_memory_read_error [MemoryPlatform SailRV32.exception]
+theorem translated_memory_read_error
     {size : Nat} {before after : State} {address : BitVec 32}
     {error : _root_.Sail.Error SailRV32.exception}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
@@ -286,7 +286,7 @@ theorem translated_memory_read_error [MemoryPlatform SailRV32.exception]
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 4096 in
-theorem virtual_address_memory_read_error [MemoryPlatform SailRV32.exception]
+theorem virtual_address_memory_read_error
     {size : Nat} {before after : State} {address : BitVec 32}
     {error : _root_.Sail.Error SailRV32.exception}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
@@ -316,7 +316,7 @@ theorem virtual_address_memory_read_error [MemoryPlatform SailRV32.exception]
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 4096 in
-theorem virtual_memory_read_error [MemoryPlatform SailRV32.exception]
+theorem virtual_memory_read_error
     {size : Nat} {before after : State}
     {error : _root_.Sail.Error SailRV32.exception} {source : BitVec 32}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
@@ -348,7 +348,7 @@ theorem physical_word_read {before : State} {address value : BitVec 32}
         .ok (.Ok value) before :=
   physical_memory_read (Or.inr (Or.inr rfl)) configuration aligned ordinary read
 
-theorem physical_word_write [MemoryPlatform SailRV32.exception]
+theorem physical_word_write
     {before : State} {address : BitVec 32}
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address) (value : BitVec 32) :
@@ -357,7 +357,7 @@ theorem physical_word_write [MemoryPlatform SailRV32.exception]
         .ok (.Ok true) (wordWriteState before address.toNat value) :=
   physical_memory_write (Or.inr (Or.inr rfl)) configuration aligned ordinary value (write_word_state before address value)
 
-theorem translated_word_read [MemoryPlatform SailRV32.exception]
+theorem translated_word_read
     {before : State} {address value : BitVec 32}
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address)
@@ -371,7 +371,7 @@ theorem word_page_split (address : BitVec 32) (aligned : address.toNat % 4 = 0) 
     SailRV32.Functions.split_on_page_boundary address 4 = pure (4, 0) :=
   memory_page_split address (Or.inr (Or.inr rfl)) aligned
 
-theorem virtual_address_word_read [MemoryPlatform SailRV32.exception]
+theorem virtual_address_word_read
     {before : State} {address value : BitVec 32}
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address)
@@ -380,7 +380,7 @@ theorem virtual_address_word_read [MemoryPlatform SailRV32.exception]
       ⟨.Machine, 0, false⟩ false false false) before = .ok (.Ok value) before :=
   virtual_address_memory_read (Or.inr (Or.inr rfl)) configuration aligned ordinary read
 
-theorem virtual_address_word_write [MemoryPlatform SailRV32.exception]
+theorem virtual_address_word_write
     {before : State} {address : BitVec 32}
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address) (value : BitVec 32) :
@@ -389,7 +389,7 @@ theorem virtual_address_word_write [MemoryPlatform SailRV32.exception]
         .ok (.Ok true) (wordWriteState before address.toNat value) :=
   virtual_address_memory_write (Or.inr (Or.inr rfl)) configuration aligned ordinary value (write_word_state before address value)
 
-theorem virtual_word_read [MemoryPlatform SailRV32.exception]
+theorem virtual_word_read
     {before : State} {source value : BitVec 32}
     (configuration : FlatMemoryConfiguration before) (index : SailRV32.regidx) (offset : BitVec 32)
     (registerRead : run (SailRV32.Functions.rX_bits index) before = .ok source before)
@@ -400,7 +400,7 @@ theorem virtual_word_read [MemoryPlatform SailRV32.exception]
       .ok (.Ok value) before :=
   virtual_memory_read (Or.inr (Or.inr rfl)) configuration index offset registerRead aligned ordinary read
 
-theorem virtual_word_write [MemoryPlatform SailRV32.exception]
+theorem virtual_word_write
     {before : State} {source : BitVec 32}
     (configuration : FlatMemoryConfiguration before) (index : SailRV32.regidx) (offset : BitVec 32)
     (registerRead : run (SailRV32.Functions.rX_bits index) before = .ok source before)
@@ -420,7 +420,7 @@ theorem physical_word_read_error {before after : State} {address : BitVec 32}
         .error error after :=
   physical_memory_read_error (Or.inr (Or.inr rfl)) configuration aligned ordinary read
 
-theorem translated_word_read_error [MemoryPlatform SailRV32.exception]
+theorem translated_word_read_error
     {before after : State} {address : BitVec 32}
     {error : _root_.Sail.Error SailRV32.exception}
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
@@ -431,7 +431,7 @@ theorem translated_word_read_error [MemoryPlatform SailRV32.exception]
         .error error after :=
   translated_memory_read_error (Or.inr (Or.inr rfl)) configuration aligned ordinary read
 
-theorem virtual_address_word_read_error [MemoryPlatform SailRV32.exception]
+theorem virtual_address_word_read_error
     {before after : State} {address : BitVec 32}
     {error : _root_.Sail.Error SailRV32.exception}
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
@@ -441,7 +441,7 @@ theorem virtual_address_word_read_error [MemoryPlatform SailRV32.exception]
       ⟨.Machine, 0, false⟩ false false false) before = .error error after :=
   virtual_address_memory_read_error (Or.inr (Or.inr rfl)) configuration aligned ordinary read
 
-theorem virtual_word_read_error [MemoryPlatform SailRV32.exception]
+theorem virtual_word_read_error
     {before after : State} {source : BitVec 32}
     {error : _root_.Sail.Error SailRV32.exception}
     (configuration : FlatMemoryConfiguration before) (index : SailRV32.regidx) (offset : BitVec 32)

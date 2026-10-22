@@ -199,7 +199,7 @@ private theorem ports : NonDeterminism.StreamPorts trace [0x12345678, 0xbeef] :=
 
 /-- One native read followed by dependent arithmetic and a hint: native clocks
     supply the order, the real Sail x2 value is derived, and the counter is one. -/
-theorem complete_mixed_trace [MemoryPlatform SailRV32.exception] :
+theorem complete_mixed_trace  :
     ∃ after, NonDeterminism.ExecutionTrace [0x12345678, 0xbeef] program (before, 0) (after, 1) ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok 12 after ∧
       (Cell.register 2).read after = .ok 0x12345679 after := by

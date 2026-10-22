@@ -16,7 +16,7 @@ namespace Airbender.Trace
     `Realizes` proves a Sail execution reaching the native terminal PC and
     cell values. `ROMView.token before` interprets zero ROM shadow tokens as
     public bytes. Operand/address bounds and actual reads are derived internally. -/
-theorem pooled_native_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem pooled_native_soundness
     {trace : PooledTrace babyBearModulus} {before : Reference.RiscV.Sail.State}
     {cells : List Cell} {program : List PooledProgramEntry}
     (inputs : PooledBootInputs trace before cells program)
@@ -37,7 +37,6 @@ theorem pooled_native_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exc
     count. Per-row bounds, reads, decoding and execution are derived internally;
     cryptographic enforcement and import/table fidelity remain external. -/
 theorem NonDeterminism.Pooled.native_soundness
-    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     {trace : PooledTrace babyBearModulus} {before : Reference.RiscV.Sail.State}
     {cells : List Cell} {program : List PooledProgramEntry} {stream : List (BitVec 32)}
     (inputs : PooledBootInputs trace before cells program NonDeterminism.Pooled.decoderFields)

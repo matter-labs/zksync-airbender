@@ -180,7 +180,7 @@ theorem actual_division_retirement (remainder : Bool)
 
 /-- The complete trace starts at the unchanged public state, uses the real
     configuration-dependent decoder and reaches the native terminal PC. -/
-theorem actual_division_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem actual_division_trace
     (remainder : Bool) (rom : Table (ZMod babyBearModulus) (fields 9)) :
     ∃ after, Airbender.MulDiv.SailTrace [entry remainder] (before remainder) after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok 0x40000 after := by
@@ -263,7 +263,7 @@ private theorem pooledInputs (remainder : Bool) :
 
 /-- Inhabited per-circuit DIVU/REMU claims for a zero divisor and aliased rs1/rd.
     All bounds, reads and selectors are supplied by initialized shared history. -/
-theorem per_circuit_division_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem per_circuit_division_soundness
     (remainder : Bool) :
     ∃ input : Airbender.MulDiv.Input,
       (Airbender.MulDiv.circuitModel (pooled remainder) (before remainder) cells (pooledProgram remainder)).relation

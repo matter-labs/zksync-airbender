@@ -222,7 +222,7 @@ theorem actual_store_accesses : ∃ after,
     exact ramWrite
 
 set_option maxHeartbeats 2000000 in
-theorem actual_virtual_store [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
+theorem actual_virtual_store : ∃ after,
     SailHistory [.register 1, .register 2, .ram 4259840]
       (Trace.rowEvents trace.memoryEpoch row).reverse before after ∧
     Reference.Sail.run (SailRV32.Functions.vmem_write (.Regidx 1) 4 4
@@ -236,7 +236,7 @@ theorem actual_virtual_store [Sail.ArchSem.MemoryPlatform SailRV32.exception] : 
   norm_num [entry, assignment, ZMod.val_ofNat, babyBearModulus] at transport
   exact ⟨after, history, transport.2⟩
 
-theorem actual_sail_store [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
+theorem actual_sail_store : ∃ after,
     SailHistory [.register 1, .register 2, .ram 4259840]
       (Trace.rowEvents trace.memoryEpoch row).reverse before after ∧
     Reference.Sail.run (SailRV32.Functions.execute_STORE 4 (.Regidx 2) (.Regidx 1) 4)
@@ -248,7 +248,7 @@ theorem actual_sail_store [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃
     (entry := entry) rfl (by decide) rfl configuration history⟩
 
 set_option maxHeartbeats 2000000 in
-theorem actual_store_step [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
+theorem actual_store_step : ∃ after,
     SailHistory [.register 1, .register 2, .ram 4259840]
       (Trace.rowEvents trace.memoryEpoch row).reverse before after ∧
     Reference.Sail.run (Reference.RiscV.Sail.normalStep
@@ -419,7 +419,7 @@ private theorem pooledInputs : NativeInputs pooledDecoderFields pooled before
 
 /-- Real SW effects follow from the review model with no per-row range, read
     value or successful-access assumption. -/
-theorem per_circuit_store_soundness [Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+theorem per_circuit_store_soundness :
     ∃ input : WordMemory.Input,
       (WordMemory.circuitModel pooled before [.register 1, .register 2, .ram 4259840] pooledProgram).relation
         input ⟨⟨0, 65⟩, ⟨1234, 5678⟩, ⟨0, 1⟩⟩ assignment ∧
@@ -586,7 +586,7 @@ theorem grouped : ∃ after, SailHistory loadCells
   exact ⟨after, by simpa only [List.flatMap_singleton] using execution⟩
 
 set_option maxHeartbeats 2000000 in
-theorem actual_sail_load [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
+theorem actual_sail_load : ∃ after,
     SailHistory loadCells
       (Trace.rowEvents loadTrace.memoryEpoch loadRow).reverse loadState after ∧
     Reference.Sail.run (SailRV32.Functions.execute_LOAD 4 (.Regidx 1) (.Regidx 1) false 4)
@@ -612,7 +612,7 @@ theorem native_pc_increment : loadRow.finish.word.toBitVec = loadRow.start.word.
     (Proofs.initial_pc_bound (by decide) public_pc) (List.mem_singleton_self loadRow)
 
 set_option maxHeartbeats 2000000 in
-theorem actual_load_step [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
+theorem actual_load_step : ∃ after,
     SailHistory loadCells
       (Trace.rowEvents loadTrace.memoryEpoch loadRow).reverse loadState after ∧
     Reference.Sail.run (Reference.RiscV.Sail.normalStep

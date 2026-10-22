@@ -45,7 +45,7 @@ set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
 /-- Shared subword retirement over the imported constraints and actual port
     history. Bounds/address/ROM facts are supplied by the global history proof. -/
-theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem local_execution {p : Nat} [Fact p.Prime]
     (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {program : Nat → BitVec 32} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Verification.subwordTable program)))
@@ -257,7 +257,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- RAM loads/stores reach the actual native after-state. All operand ranges,
     reads, decoding and virtual transport are derived from the accepted history.
     The address-domain restriction is on public initialized cells. -/
-theorem row_ram_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem row_ram_execution {p : Nat} [Fact p.Prime]
     (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : NativeTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}

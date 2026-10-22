@@ -172,7 +172,7 @@ theorem actual_register_retirement (rom : Table (ZMod babyBearModulus) (fields 9
 
 /-- Public fetch/decoding and native histories compose from the unchanged
     public state through original Sail execution to the terminal PC. -/
-theorem actual_register_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem actual_register_trace
     (rom : Table (ZMod babyBearModulus) (fields 9)) :
     ∃ after, Airbender.ShiftBinop.SailTrace [entry] before after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok 65536 after := by
@@ -249,7 +249,7 @@ private theorem pooledInputs : NativeInputs pooledDecoderFields pooled before ce
 
 /-- The per-circuit XOR claim is inhabited by actual public decoding and an
     accepted aliased byte-port history, with no assumed ranges or reads. -/
-theorem per_circuit_xor_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+theorem per_circuit_xor_soundness  :
     ∃ input : Airbender.ShiftBinop.Input,
       (Airbender.ShiftBinop.circuitModel pooled before cells pooledProgram).relation
         input ⟨⟨0, 0⟩, ⟨0, 1⟩⟩ row.assignment ∧
@@ -283,7 +283,7 @@ theorem per_circuit_xor_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.e
     cells pooledProgram assumptions input output _ relation⟩
 
 /-- Canonical PC mapping rejects a field alias after local range assumptions are removed. -/
-theorem per_circuit_pc_alias_rejected [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem per_circuit_pc_alias_rejected
     (current : State) :
     ¬ Airbender.ShiftBinop.TraceMapping pooled before cells pooledProgram
       (⟨.xor, false, 0, 0, ⟨babyBearModulus + 65532, 0⟩,

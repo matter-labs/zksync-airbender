@@ -1,4 +1,4 @@
-import SailRV32.SailPlatform
+import SailRV32
 
 namespace Airbender.Reference.Sail
 open _root_.Sail

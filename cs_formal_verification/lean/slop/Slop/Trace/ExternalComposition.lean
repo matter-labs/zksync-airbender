@@ -38,7 +38,6 @@ def finalState {Kind : Type} [CircuitLayout Kind] {p : Nat}
     (rows : List (Row p Kind)) (after : State) (pc : BitVec 32) : State :=
   match rows with | [] => after | _ :: _ => retiredState after pc
 
-variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 theorem step_of_rebased {Kind : Type}
     {projection : SailRV32.instruction → Option (DecoderData Kind)} {profile : ISAProfile}

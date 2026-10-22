@@ -37,7 +37,7 @@ theorem decoded_metadata {input : Airbender.WordMemory.Input} {entry : ProgramEn
   · simpa [decoderFields, Trace.decoderFields, arithmeticFields, DecoderData.mapFamily,
       metadata] using fields.symm
 
-private theorem retire_ram [MemoryPlatform SailRV32.exception]
+private theorem retire_ram
     (input : Airbender.WordMemory.Input) (output : Airbender.WordMemory.Output)
     (address : output.address.toBitVec = input.source.toBitVec + input.immediate.toBitVec)
     (successor : output.pc.toBitVec = input.pc.toBitVec + 4)
@@ -85,7 +85,7 @@ private theorem retire_ram [MemoryPlatform SailRV32.exception]
       simp [prepared]
 
 
-theorem row_soundness_from_history [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem row_soundness_from_history [Fact p.Prime]
     (hp : 524288 < p)
     {setup : Table (ZMod p) (fields 10)} {initial : State} {cells : List Cell} {events : List MemoryAccess}
     {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output} {w : Nat → ZMod p}
@@ -314,7 +314,7 @@ theorem ram_copy_from_history [Fact p.Prime] (hp : 524288 < p)
   have inputWord : input.readData = Word.mk (w 42).val (w 43).val := congrArg₂ Word.mk words.readLo words.readHi
   rw [outputWord, inputWord, copied.1, copied.2]
 
-theorem row_soundness_from_memory [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem row_soundness_from_memory [Fact p.Prime]
     (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output} {w : Nat → ZMod p}
@@ -352,7 +352,7 @@ theorem row_soundness_from_memory [Fact p.Prime] [MemoryPlatform SailRV32.except
     history sourceRange words source.fields query encoding configuration (fun address present => initialization.aligned (.ram address) present)
     ordinary destination copiedWord pcRead
 
-theorem row_soundness [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem row_soundness [Fact p.Prime]
     (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output} {w : Nat → ZMod p}
@@ -372,7 +372,7 @@ theorem row_soundness [Fact p.Prime] [MemoryPlatform SailRV32.exception]
     (UnifiedReduced.Proofs.memory_execution hp inverse accepted initialization decoded)
     initialization configuration ordinary destination copiedWord
 
-theorem soundness [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem soundness [Fact p.Prime]
     (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (trace : UnifiedTrace p) (initial : State) (cells : List Cell) (program : List ProgramEntry) :
     (circuitModel trace initial cells program).SoundnessUnder

@@ -188,7 +188,7 @@ private theorem decoded (store : Bool) : UnifiedReduced.Decoded (trace store) [e
   change ∃ i : Fin 1, _
   exact ⟨0, by cases store <;> decide⟩
 
-theorem ram_soundness [Sail.ArchSem.MemoryPlatform SailRV32.exception] (store : Bool) : Airbender.WordMemory.spec (input store) output := by
+theorem ram_soundness (store : Bool) : Airbender.WordMemory.spec (input store) output := by
   apply UnifiedReduced.WordMemory.soundness (by decide) (by decide) (trace store) (before store)
     (cells store) [entry store] (input store) output (assignment store)
   refine ⟨?_, ⟨accepted store, decoded store, by simp [trace, row]⟩, ?_⟩

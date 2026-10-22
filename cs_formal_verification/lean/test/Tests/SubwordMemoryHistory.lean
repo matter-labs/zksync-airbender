@@ -111,7 +111,7 @@ private theorem configuration : FlatMemoryConfiguration before := by
   · exact ⟨7, by simp [before, dataState, initial, wordWriteState, Std.ExtDHashMap.get?_insert]⟩
   · simp [before, dataState, initial, wordWriteState, Std.ExtDHashMap.get?_insert]
 
-private theorem ram_inputs [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] : Airbender.SubwordMemory.RAMInputs trace before cells [entry] := by
+private theorem ram_inputs  : Airbender.SubwordMemory.RAMInputs trace before cells [entry] := by
   constructor
   · constructor
     · decide
@@ -145,7 +145,7 @@ private theorem ram_inputs [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exceptio
 
 /-- A real accepted LBU row reaches original Sail retirement and native
     terminal cells. Only public initialization and logical matching are supplied. -/
-theorem actual_native_execution [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+theorem actual_native_execution  :
     ∃ after, Airbender.SubwordMemory.SailTrace [entry] before after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok 4 after ∧
       run (SailRV32.Functions.rX_bits (.Regidx 2)) after = .ok 18 after := by

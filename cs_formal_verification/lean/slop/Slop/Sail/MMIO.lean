@@ -9,24 +9,15 @@ private theorem clint_size : SailRV32.Functions.plat_clint_size = (49152 : BitVe
 private theorem signature_base : SailRV32.Functions.plat_sig_base = (201326592 : BitVec 34) := rfl
 private theorem signature_size : SailRV32.Functions.plat_sig_size = (32 : BitVec 34) := rfl
 
+-- The Airbender configuration has no CLINT (`plat_have_clint = false`): `within_clint` is
+-- `pure false` without reading any register, so the exclusion holds for every address.
 theorem clint_excluded_sized {size : Nat} {before : State} {hart : BitVec 32} {address : BitVec 32}
     (positive : 0 < size)
     (initialized : before.regs.get? .mhartid = some hart)
     (outside : address.toNat < 33554432 ∨ 33603584 ≤ address.toNat) :
     run (SailRV32.Functions.within_clint (.Physaddr (address.setWidth 34)) size) before =
       .ok false before := by
-  simp only [SailRV32.Functions.within_clint, SailRV32.Functions.plat_have_clint,
-    SailRV32.not, Bool.not_true, Bool.false_eq_true, ite_false]
-  rw [run_bind_of_ok _ _ _ _ _ (read_register initialized)]
-  have excluded : ((33554432 ≤b address.toNat) &&
-      ((address.toNat : Int) + size ≤b 33603584)) = false := by
-    by_cases low : 33554432 ≤ address.toNat
-    · have high : ¬ ((address.toNat : Int) + size ≤ 33603584) := by omega
-      simp [low, high]
-    · simp [low]
-  have reduced : (address.toNat : Int) % 17179869184 = address.toNat :=
-    Int.emod_eq_of_lt (Int.natCast_nonneg _) (by have bound := address.isLt; omega)
-  simp [clint_base, clint_size, _root_.Sail.BitVec.toNatInt, reduced, excluded]
+  simp only [SailRV32.Functions.within_clint, SailRV32.Functions.plat_have_clint, SailRV32.not]
   rfl
 
 theorem clint_excluded {before : State} {hart : BitVec 32} {address : BitVec 32}

@@ -9,7 +9,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
-theorem soundness_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem soundness_from_memory [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
@@ -74,7 +74,7 @@ theorem soundness_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform
     (List.mem_map.mpr ⟨native, inRows, equal⟩) words position source query encoding memory nativeInputs
     configuration ordinary destination copied
 
-theorem soundness [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem soundness [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (trace : UnifiedTrace p) (initial : State) (cells : List Cell) (program : List ProgramEntry) :
     (circuitModel trace initial cells program).SoundnessUnder

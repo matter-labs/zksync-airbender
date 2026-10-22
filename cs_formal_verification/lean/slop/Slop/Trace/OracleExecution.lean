@@ -4,7 +4,7 @@ import Slop.Trace.OracleConsumption
 namespace Airbender.Trace.NonDeterminism.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail Trace.Proofs
 
-theorem clause_standard [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem clause_standard
     {instruction : SailRV32.instruction} {data : DecoderData}
     (fields : Trace.decoderFields instruction = some data)
     {stream : List (BitVec 32)} {position : Nat}
@@ -15,7 +15,7 @@ theorem clause_standard [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
   unfold clause
   split <;> simp_all [Trace.decoderFields]
 
-theorem clause_original [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem clause_original
     {instruction : SailRV32.instruction} {stream : List (BitVec 32)} {position : Nat}
     {original : SailRV32.SailM SailRV32.ExecutionResult}
     (selected : instructionClause instruction = some original) :
@@ -91,7 +91,6 @@ theorem read_row_execution [Fact p.Prime] (hp : ROM.limit < p)
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
 theorem instruction_step {p : Nat} [Fact p.Prime]
-    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}

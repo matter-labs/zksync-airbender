@@ -176,7 +176,7 @@ theorem actual_jalr_retirement (rom : Table (ZMod babyBearModulus) (fields 9)) :
 
 /-- The whole-trace theorem starts at the unmodified public Sail state,
     derives the actual aliased JALR clause, and reaches the native terminal PC. -/
-theorem actual_jalr_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem actual_jalr_trace
     (rom : Table (ZMod babyBearModulus) (fields 9)) :
     ∃ after, JumpBranchSlt.SailTrace [entry] before after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok 0 after := by

@@ -6,7 +6,6 @@ import Slop.SubwordMemory.Composition
 
 namespace Airbender.SubwordMemory
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 
 /-- RAM LB/LBU/LH/LHU/SB/SH execute the public program in native time order

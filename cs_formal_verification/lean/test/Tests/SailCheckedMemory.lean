@@ -66,7 +66,7 @@ private def byteWritten : State := { loaded with mem := loaded.mem.insert 429496
 private def halfWritten : State :=
   { loaded with mem := (loaded.mem.insert 4294967294 0xff).insert 4294967295 0x80 }
 
-theorem store_last_byte [MemoryPlatform SailRV32.exception] :
+theorem store_last_byte  :
     Sail.run (SailRV32.Functions.checked_mem_write (.Physaddr 0xffffffff) 1 0x80
       (.Store .Data) .PBMT_PMA .Machine () false false false) loaded =
         .ok (.Ok true) byteWritten := by
@@ -76,7 +76,7 @@ theorem store_last_byte [MemoryPlatform SailRV32.exception] :
   · unfold OrdinaryWordAddress; decide
   · rfl
 
-theorem store_last_halfword [MemoryPlatform SailRV32.exception] :
+theorem store_last_halfword  :
     Sail.run (SailRV32.Functions.checked_mem_write (.Physaddr 0xfffffffe) 2 0x80ff
       (.Store .Data) .PBMT_PMA .Machine () false false false) loaded =
         .ok (.Ok true) halfWritten := by
@@ -119,7 +119,7 @@ theorem load_last_word :
   · unfold OrdinaryWordAddress; decide
   · exact written_word_read configured 4294967292 0xabcdef12
 
-theorem store_last_word [MemoryPlatform SailRV32.exception] :
+theorem store_last_word  :
     Sail.run (SailRV32.Functions.checked_mem_write (.Physaddr 0xfffffffc) 4 0xabcdef12
       (.Store .Data) .PBMT_PMA .Machine () false false false) configured =
         .ok (.Ok true) (wordWriteState configured 4294967292 0xabcdef12) := by
@@ -147,7 +147,7 @@ theorem ram_and_pc_keep_configuration :
   exact configuration_pc_write (configuration_next_pc_write
     (configuration_word_write configuration 4194304 0x12345678) 65536) 65536
 
-theorem virtual_load_last_word [MemoryPlatform SailRV32.exception] :
+theorem virtual_load_last_word  :
     Sail.run (SailRV32.Functions.vmem_read (.Regidx 0) 0xfffffffc 4
       (.Load .Data) false false false) loaded = .ok (.Ok 0xabcdef12) loaded := by
   apply virtual_word_read (source := 0)
@@ -157,7 +157,7 @@ theorem virtual_load_last_word [MemoryPlatform SailRV32.exception] :
   · unfold OrdinaryWordAddress; decide
   · exact written_word_read configured 4294967292 0xabcdef12
 
-theorem virtual_store_last_word [MemoryPlatform SailRV32.exception] :
+theorem virtual_store_last_word  :
     Sail.run (SailRV32.Functions.vmem_write (.Regidx 0) 0xfffffffc 4 0xabcdef12
       (.Store .Data) false false false) configured =
         .ok (.Ok true) (wordWriteState configured 4294967292 0xabcdef12) := by
@@ -167,7 +167,7 @@ theorem virtual_store_last_word [MemoryPlatform SailRV32.exception] :
   · unfold OrdinaryWordAddress; decide
 
 /-- Discarding LW's result still performs the original Sail memory access. -/
-theorem load_discarded_result [MemoryPlatform SailRV32.exception] :
+theorem load_discarded_result  :
     Sail.run (SailRV32.Functions.execute_LOAD 0xffc (.Regidx 0) (.Regidx 0) false 4) loaded =
       .ok SailRV32.Functions.RETIRE_SUCCESS loaded := by
   rw [load_word (show Sail.run (SailRV32.Functions.vmem_read (.Regidx 0)
@@ -175,7 +175,7 @@ theorem load_discarded_result [MemoryPlatform SailRV32.exception] :
       false false false) loaded = .ok (.Ok 0xabcdef12) loaded from virtual_load_last_word)]
   rfl
 
-theorem store_zero_register [MemoryPlatform SailRV32.exception] :
+theorem store_zero_register  :
     Sail.run (SailRV32.Functions.execute_STORE 0xffc (.Regidx 0) (.Regidx 0) 4) configured =
       .ok SailRV32.Functions.RETIRE_SUCCESS (wordWriteState configured 4294967292 0) := by
   apply store_word (value := 0)
@@ -187,7 +187,7 @@ theorem store_zero_register [MemoryPlatform SailRV32.exception] :
 
 /-- Complete virtual accesses use original Sail address calculation, translation,
     permissions and byte memory, including the final RV32 addresses. -/
-theorem virtual_load_last_byte [MemoryPlatform SailRV32.exception] :
+theorem virtual_load_last_byte  :
     Sail.run (SailRV32.Functions.vmem_read (.Regidx 0) 0xffffffff 1 (.Load .Data)
       false false false) loaded = .ok (.Ok 0xab) loaded := by
   apply virtual_memory_read (source := 0) (Or.inl rfl)
@@ -199,7 +199,7 @@ theorem virtual_load_last_byte [MemoryPlatform SailRV32.exception] :
       (written_word_read configured 4294967292 0xabcdef12)
     simpa [loaded] using bytes
 
-theorem virtual_load_last_halfword [MemoryPlatform SailRV32.exception] :
+theorem virtual_load_last_halfword  :
     Sail.run (SailRV32.Functions.vmem_read (.Regidx 0) 0xfffffffe 2 (.Load .Data)
       false false false) loaded = .ok (.Ok 0xabcd) loaded := by
   apply virtual_memory_read (source := 0) (Or.inr (Or.inl rfl))
@@ -211,7 +211,7 @@ theorem virtual_load_last_halfword [MemoryPlatform SailRV32.exception] :
       (written_word_read configured 4294967292 0xabcdef12)
     simpa [loaded] using bytes
 
-theorem virtual_store_last_byte [MemoryPlatform SailRV32.exception] :
+theorem virtual_store_last_byte  :
     Sail.run (SailRV32.Functions.vmem_write (.Regidx 0) 0xffffffff 1 0x80 (.Store .Data)
       false false false) loaded = .ok (.Ok true) byteWritten := by
   apply virtual_memory_write (source := 0) (Or.inl rfl)
@@ -221,7 +221,7 @@ theorem virtual_store_last_byte [MemoryPlatform SailRV32.exception] :
   · unfold OrdinaryWordAddress; decide
   · rfl
 
-theorem virtual_store_last_halfword [MemoryPlatform SailRV32.exception] :
+theorem virtual_store_last_halfword  :
     Sail.run (SailRV32.Functions.vmem_write (.Regidx 0) 0xfffffffe 2 0x80ff (.Store .Data)
       false false false) loaded = .ok (.Ok true) halfWritten := by
   apply virtual_memory_write (source := 0) (Or.inr (Or.inl rfl))
@@ -231,7 +231,7 @@ theorem virtual_store_last_halfword [MemoryPlatform SailRV32.exception] :
   · unfold OrdinaryWordAddress; decide
   · rfl
 
-theorem virtual_missing_halfword_byte [MemoryPlatform SailRV32.exception] :
+theorem virtual_missing_halfword_byte  :
     Sail.run (SailRV32.Functions.vmem_read (.Regidx 0) 4194304 2 (.Load .Data)
       false false false) { configured with mem := configured.mem.insert 4194304 0x12 } =
         .error (.OutOfMemoryRange 4194305)

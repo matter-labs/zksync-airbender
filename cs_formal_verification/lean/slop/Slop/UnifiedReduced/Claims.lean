@@ -123,7 +123,6 @@ theorem native_rom_memory_execution [Fact p.Prime]
 
 
 theorem WordMemory.NativeROM.soundness [Fact p.Prime]
-    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List ProgramEntry) :
@@ -132,7 +131,7 @@ theorem WordMemory.NativeROM.soundness [Fact p.Prime]
   WordMemory.NativeROM.Proofs.soundness hp inverse trace initial cells program
 
 
-theorem WordMemory.soundness [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem WordMemory.soundness [Fact p.Prime]
     (hp : 2 * Trace.timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List ProgramEntry) :
@@ -399,7 +398,7 @@ theorem Caller.jump_cycle_soundness
   Caller.Proofs.mixed_jump_cycle accepted inputs started isa landingPad member words instruction
 
 
-theorem Caller.ram_cycle_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem Caller.ram_cycle_soundness
     {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     (accepted : Caller.MixedMemoryAccepted data program)

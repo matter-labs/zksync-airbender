@@ -178,7 +178,7 @@ theorem physical_bytes_are_not_native_seed : physical ≠ trace.initialMemory :=
 
 /-- The same native trace reaches the actual Sail state and terminal register
     value. The ROM permutation token never supplies the instruction bytes. -/
-theorem complete_rom_load [MemoryPlatform SailRV32.exception] :
+theorem complete_rom_load  :
     ∃ after, AirbenderTrace [entry] before after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok 4 after ∧
       (Cell.register 1).read after = .ok 0x2083 after := by

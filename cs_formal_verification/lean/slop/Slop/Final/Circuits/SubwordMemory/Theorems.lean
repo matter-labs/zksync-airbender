@@ -5,7 +5,6 @@ import Slop.SubwordMemory.Trace
 
 namespace Airbender.SubwordMemory
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 /-- Original Sail subword loads/stores, aligned cell address, merged/register
     writes and PC effects. Shared history supplies all local ranges and reads. -/

@@ -182,7 +182,7 @@ private theorem noDiscardedLoads : NoDiscardedLoads Tests.TraceMemory.sequential
 
 /-- The whole-trace theorem executes both actual public-decoded instructions
     and fixes every terminal GPR value, including untouched initialized cells. -/
-theorem complete_dependent_trace [MemoryPlatform SailRV32.exception] :
+theorem complete_dependent_trace  :
     ∃ after, SailTrace Tests.TraceMemory.sequentialProgram before after ∧
       Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) after = .ok 8 after ∧
       ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧

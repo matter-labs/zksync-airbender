@@ -35,7 +35,7 @@ theorem branch_register_retirement [Fact p.Prime] (hp : 524288 < p)
   have metadata := branch_metadata encoding fields
   exact register_retirement hp core fields query (by rw [metadata.1]; decide) metadata.2 epoch history spec
 
-theorem branch_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem branch_execution_from_memory [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
@@ -71,7 +71,7 @@ theorem branch_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryP
     branch_register_retirement (by omega) core fields query encoding trace.memoryEpoch history spec⟩
   rw [encoding]; rfl
 
-theorem branch_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem branch_execution [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (accepted : Accepted trace) (decoded : Decoded trace program)
@@ -122,7 +122,7 @@ theorem comparison_register_retirement [Fact p.Prime] (hp : 524288 < p)
   have metadata := comparison_metadata encoding fields
   exact register_retirement hp core fields query (by rw [metadata.1]; decide) metadata.2 epoch history spec
 
-theorem comparison_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem comparison_execution_from_memory [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
@@ -157,7 +157,7 @@ theorem comparison_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.Mem
     comparison_register_retirement (by omega) core fields query encoding trace.memoryEpoch history spec⟩
   rw [encoding]; cases op : input.opcode <;> simp [Control.Comparison.instruction, instructionClause, Reference.RiscV.Sail.registerClause, JumpBranchSlt.Comparison.execution, JumpBranchSlt.Comparison.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, op, Option.get_some]
 
-theorem comparison_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem comparison_execution [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (accepted : Accepted trace) (decoded : Decoded trace program)
@@ -210,7 +210,7 @@ theorem jump_register_retirement [Fact p.Prime] (hp : 524288 < p)
     rw [metadata.1]; split <;> split <;> decide
   exact register_retirement hp core fields query mask metadata.2 epoch history spec
 
-theorem jump_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem jump_execution_from_memory [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
@@ -250,7 +250,7 @@ theorem jump_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPla
     jump_register_retirement (by omega) core fields query encoding trace.memoryEpoch history spec⟩
   rw [encoding]; cases op : input.instruction <;> simp [Jump.instruction, instructionClause, Reference.RiscV.Sail.registerClause, JumpBranchSlt.Jump.execution, JumpBranchSlt.Jump.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, op, Option.get_some]
 
-theorem jump_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem jump_execution [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (accepted : Accepted trace) (decoded : Decoded trace program)

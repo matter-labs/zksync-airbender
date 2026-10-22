@@ -3,7 +3,6 @@ import Human.Circuits.WordMemory.Model
 namespace Airbender.WordMemory
 open Airbender.Arithmetic Airbender.Reference.RiscV Airbender.Reference.Sail
 open _root_.Sail.ArchSem Variables
-variable [MemoryPlatform SailRV32.exception]
 
 -- Internal row-calculation obligations, discharged by initialized trace history.
 /-- A successful RAM path through Sail's address translation/access machinery.
@@ -33,7 +32,6 @@ structure MemoryAccess (input : Input) : Prop where
       pure (.Ok true))
       { input.before with regs := input.before.regs.insert .nextPC nextPC }
 
-omit [MemoryPlatform SailRV32.exception] in
 structure RowWordMapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
   sourceLo : w Variables.sourceLo = (input.source.lo : ZMod p)
   sourceHi : w Variables.sourceHi = (input.source.hi : ZMod p)
@@ -55,7 +53,6 @@ structure RowWordMapping {p : Nat} (input : Input) (output : Output) (w : Nat �
   finalPCLo : output.pc.lo = (w Variables.finalPCLo).val
   finalPCHi : output.pc.hi = (w Variables.finalPCHi).val
 
-omit [MemoryPlatform SailRV32.exception] in
 def rowCircuitModel {p : Nat} [Fact p.Prime] (rom : Table (ZMod p) (fields 9)) :
     Verification.CircuitModel Input Output (Nat → ZMod p) where
   satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints rom)

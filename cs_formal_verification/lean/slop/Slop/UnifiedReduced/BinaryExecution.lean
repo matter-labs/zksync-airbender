@@ -43,7 +43,7 @@ theorem binary_register_retirement [Fact p.Prime] (hp : 524288 < p)
   have mask : entry.data.mask < 262144 := by rw [metadata.1]; cases shift <;> decide
   exact register_retirement hp core fields query mask metadata.2 epoch history spec
 
-theorem binary_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem binary_execution_from_memory [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (byteInverse : 256 * (-7864320 : ZMod p) = 1) (shift : Bool)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
@@ -86,7 +86,7 @@ theorem binary_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryP
   all_goals rw [← encoding]
   all_goals rfl
 
-theorem binary_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem binary_execution [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (byteInverse : 256 * (-7864320 : ZMod p) = 1) (shift : Bool)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}

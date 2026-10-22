@@ -1,8 +1,10 @@
 import Slop.Sail.MisaWalk
+import Slop.Sail.MisaDecoder
 
 namespace Airbender.Reference.Sail
 open Reference.RiscV.Sail _root_.Sail.ArchSem
 
+set_option maxRecDepth 65536 in
 /-- Successful original Sail decoding changes no state. Its result is unchanged
     in any state with the same `misa` image, including native GPR/PC updates. -/
 theorem decoded_misa_frame (bits : BitVec 32) {before after : State}

@@ -131,7 +131,7 @@ private def prepared : State := { before with regs := before.regs.insert .nextPC
 set_option backward.isDefEq.respectTransparency false in
 /-- The actual upstream clause still performs the ignored load. Native NOP
     acceptance therefore does not establish its successful Sail execution. -/
-theorem original_discarded_load_error [MemoryPlatform SailRV32.exception] :
+theorem original_discarded_load_error  :
     run (normalStep (SailRV32.Functions.execute_LOAD 0 (.Regidx 1) (.Regidx 0) false 4)) before =
       .error (.OutOfMemoryRange 4194304) prepared := by
   have config := configuration_next_pc_write configuration 4
@@ -165,7 +165,7 @@ theorem original_discarded_load_error [MemoryPlatform SailRV32.exception] :
 
 /-- This actual public instruction has no successful normal Sail step under
     the otherwise accepted native/public boundary conditions. -/
-theorem no_sail_step [MemoryPlatform SailRV32.exception] (after : State) :
+theorem no_sail_step  (after : State) :
     ¬SailStep [entry] before after := by
   rintro ⟨actual, present, _, _, clause, selected, success⟩
   have same := List.mem_singleton.mp present
@@ -179,7 +179,7 @@ theorem no_sail_step [MemoryPlatform SailRV32.exception] (after : State) :
 /-- In particular, no successful Sail trace can reach the native terminal PC.
     This is a counterexample to dropping the current LW-to-x0 restriction,
     not a claim about the full Airbender system or its admissible public memory. -/
-theorem no_native_terminal_execution [MemoryPlatform SailRV32.exception] :
+theorem no_native_terminal_execution  :
     ¬∃ after, SailTrace [entry] before after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok trace.terminal.word.toBitVec after := by
   rintro ⟨after, execution, pc⟩
@@ -196,7 +196,7 @@ theorem no_native_terminal_execution [MemoryPlatform SailRV32.exception] :
 
 /-- The documented Airbender deviation covers that exact same accepted trace,
     without supplying an ignored read value or inventing a successful LOAD. -/
-theorem profile_terminal_execution [MemoryPlatform SailRV32.exception] :
+theorem profile_terminal_execution  :
     ∃ after, AirbenderTrace [entry] before after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok trace.terminal.word.toBitVec after ∧
       ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧

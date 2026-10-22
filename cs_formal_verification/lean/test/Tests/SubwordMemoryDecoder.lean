@@ -40,7 +40,7 @@ theorem all_instruction_forms : ∀ sample ∈ samples,
   rcases member with rfl | rfl | rfl | rfl | rfl | rfl
   all_goals apply extraction _ _ _ _ <;> with_unfolding_all rfl
 
-theorem all_instruction_clauses [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+theorem all_instruction_clauses  :
     ∀ sample ∈ samples, (Trace.instructionClause sample.2.1).isSome = true := by
   intro sample member
   simp only [samples, List.mem_cons, List.not_mem_nil, or_false] at member

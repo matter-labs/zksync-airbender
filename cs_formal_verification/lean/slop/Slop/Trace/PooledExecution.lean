@@ -8,7 +8,6 @@ import Slop.ShiftBinop.Composition
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 set_option backward.isDefEq.respectTransparency false in
 /-- Original multiply/divide clauses consume the shared mixed-family history
@@ -165,7 +164,6 @@ theorem pooled_arithmetic_execution {p : Nat} [Fact p.Prime]
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
 
-omit [MemoryPlatform SailRV32.exception] in
 theorem pooled_control_bounds {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
     [registry : PooledRegistry projection]

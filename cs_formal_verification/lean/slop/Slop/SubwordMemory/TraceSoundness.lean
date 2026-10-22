@@ -10,7 +10,7 @@ set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
 /-- Reuse pooled subword execution, containing-cell equations and native effects.
     All operand bounds, reads and Sail access transport come from shared history. -/
-theorem pooled_row_soundness {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem pooled_row_soundness {p : Nat} [Fact p.Prime]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
     InterfaceAssumptions trace initial cells program →

@@ -62,7 +62,7 @@ private theorem machine_senvcfg {before : State} {supervisor machine : BitVec 64
 
 /-- The upstream supervisor user-address check is false in Machine mode. Its
     eagerly evaluated environment reads are discharged from initialized CSRs. -/
-theorem machine_svukte [MemoryPlatform SailRV32.exception]
+theorem machine_svukte
     {before : State} {supervisor machine : BitVec 64}
     (supervisorConfig : before.regs.get? .senvcfg = some supervisor)
     (machineConfig : before.regs.get? .menvcfg = some machine)
@@ -80,7 +80,7 @@ theorem machine_svukte [MemoryPlatform SailRV32.exception]
   rfl
 
 /-- Bare Machine translation in the original first-stage address translator. -/
-theorem machine_translate_vs [MemoryPlatform SailRV32.exception] {before : State} {isa : BitVec 32}
+theorem machine_translate_vs  {before : State} {isa : BitVec 32}
     (initialized : before.regs.get? .misa = some isa)
     (address : SailRV32.virtaddr)
     (access : SailRV32.MemoryAccessType SailRV32.mem_payload) :
@@ -96,7 +96,7 @@ theorem machine_translate_vs [MemoryPlatform SailRV32.exception] {before : State
 /-- Ordinary Machine accesses use the original Sail translator with unchanged
     state and the zero-extended virtual address. This establishes translation,
     not PMP/PMA permission or a successful read/write. -/
-theorem machine_translate_address [MemoryPlatform SailRV32.exception]
+theorem machine_translate_address
     {before : State} {isa : BitVec 32} {supervisor machine : BitVec 64}
     (initialized : before.regs.get? .misa = some isa)
     (supervisorConfig : before.regs.get? .senvcfg = some supervisor)

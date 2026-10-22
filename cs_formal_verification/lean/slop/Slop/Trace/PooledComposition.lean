@@ -7,7 +7,6 @@ import Human.Trace.PooledExecution
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 set_option backward.isDefEq.respectTransparency false in
 /-- The shared composition rule consumes actual earlier pooled transfers,

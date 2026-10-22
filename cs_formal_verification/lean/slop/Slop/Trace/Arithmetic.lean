@@ -364,7 +364,6 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Original arithmetic clause selection is shared by the restricted and pooled
     traces. All read/range facts stay in proof machinery. -/
 theorem local_arithmetic_instruction_execution {p : Nat} [Fact p.Prime]
-    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (profile : ISAProfile) (hp : ROM.limit < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
     {initial : State} {cells : List Cell} {seed : List (MemoryToken p)}

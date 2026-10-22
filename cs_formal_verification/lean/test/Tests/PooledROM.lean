@@ -174,7 +174,7 @@ private theorem configuration : FlatMemoryConfiguration before := by
   · simpa [before, Std.ExtDHashMap.get?_insert] using Tests.TraceExecution.configuration.hart
   · simpa [before, Std.ExtDHashMap.get?_insert] using Tests.TraceExecution.configuration.htifDisabled
 
-private theorem inputs [MemoryPlatform SailRV32.exception] : PooledBootInputs trace before cells [entry] := by
+private theorem inputs  : PooledBootInputs trace before cells [entry] := by
   refine {
     registers := fun index => List.mem_append_left _ (Tests.TraceExecution.inputs.registers index)
     distinct := by decide
@@ -212,7 +212,7 @@ private theorem inputs [MemoryPlatform SailRV32.exception] : PooledBootInputs tr
 
 /-- The primary native claim is inhabited by a nonzero public ROM-byte load.
     Initialization, actual decoding and setup binding are all proved here. -/
-theorem complete_rom_load [MemoryPlatform SailRV32.exception] :
+theorem complete_rom_load  :
     ∃ after, Relation.ReflTransGen (PooledStep [entry]) before after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok 4 after ∧
       (Cell.register 1).read after = .ok 0x40 after := by
@@ -229,7 +229,7 @@ theorem complete_rom_load [MemoryPlatform SailRV32.exception] :
 /-- The subword per-circuit claim also covers the public ROM-byte fixture.
     The proved physical view binds reads to public bytes while native shadow
     tokens stay zero; no input bound or desired-read interface is supplied. -/
-theorem per_circuit_rom_load [MemoryPlatform SailRV32.exception] :
+theorem per_circuit_rom_load  :
     ∃ input : SubwordMemory.Input,
       (SubwordMemory.circuitModel (PooledROMView.data before trace) before cells [entry]).relation
         input ⟨⟨0, 0⟩, ⟨64, 0⟩, ⟨4, 0⟩⟩ (PooledROMView.row before nativeRow).assignment ∧

@@ -8,7 +8,6 @@ import Slop.Trace.Terminal
 namespace Airbender.JumpBranchSlt.Proofs
 open Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxHeartbeats 2000000 in

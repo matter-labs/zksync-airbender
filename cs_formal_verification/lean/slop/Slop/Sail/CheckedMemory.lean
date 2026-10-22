@@ -213,7 +213,7 @@ theorem checked_word_read_error {before after : State} {address : BitVec 32}
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 4096 in
-theorem checked_memory_write [MemoryPlatform SailRV32.exception] {size : Nat} {before after : State} {address : BitVec 32}
+theorem checked_memory_write  {size : Nat} {before after : State} {address : BitVec 32}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
     (ordinary : OrdinaryWordAddress address) (value : BitVec (8 * size))
@@ -250,7 +250,7 @@ theorem checked_memory_write [MemoryPlatform SailRV32.exception] {size : Nat} {b
           _root_.Sail.BitVec.addInt, _root_.Sail.BitVec.extractLsb, BitVec.extractLsb]
     rfl
 
-theorem checked_word_write [MemoryPlatform SailRV32.exception] {before : State} {address : BitVec 32}
+theorem checked_word_write  {before : State} {address : BitVec 32}
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address) (value : BitVec 32) :
     run (SailRV32.Functions.checked_mem_write (.Physaddr (address.setWidth 34)) 4 value

@@ -197,7 +197,7 @@ private theorem decoded : UnifiedReduced.Decoded (trace 1) program := by
   · change ∃ i : Fin 3, _
     exact ⟨0, by decide +kernel⟩
 
-theorem sail_complete_mixed_trace [MemoryPlatform SailRV32.exception] :
+theorem sail_complete_mixed_trace  :
     Realizes (Mixed.Step program) (trace 1) before cells (Trace.ROMView.token before) :=
   Mixed.execution_soundness (by decide) (by decide) (by decide) inputs accepted decoded
 

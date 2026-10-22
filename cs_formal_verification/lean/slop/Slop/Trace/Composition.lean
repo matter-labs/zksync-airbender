@@ -14,7 +14,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Discharge every selected original instruction against its native row.
     Decoder fields select the clause; all read/range/effect facts are derived
     by the existing family proofs. No expected instruction effect is assumed. -/
-theorem row_instruction_step (profile : ISAProfile) {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem row_instruction_step (profile : ISAProfile) {p : Nat} [Fact p.Prime]
     (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -89,7 +89,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- The current instruction is obtained from logical decoder membership and
     preserved public bytes. Original Sail stepping is supplied by the native
     family proofs, not by a desired-read or desired-result premise. -/
-theorem row_execution_step (profile : ISAProfile) {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem row_execution_step (profile : ISAProfile) {p : Nat} [Fact p.Prime]
     (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -127,7 +127,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Compose all native rows in their derived order. The first step starts
     from the public state unchanged; subsequent steps reuse the existing
     history through the actual retired Sail control-register states. -/
-theorem rows_execution_trace (profile : ISAProfile) {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem rows_execution_trace (profile : ISAProfile) {p : Nat} [Fact p.Prime]
     (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -169,7 +169,7 @@ set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
 /-- Whole selected-trace soundness, from the public initial state through
     every native instruction row to the actual terminal PC and cell reads. -/
-theorem restricted_trace_execution (profile : ISAProfile) {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem restricted_trace_execution (profile : ISAProfile) {p : Nat} [Fact p.Prime]
     (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : Data p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (inputs : ExecutionBoundary trace initial cells program)

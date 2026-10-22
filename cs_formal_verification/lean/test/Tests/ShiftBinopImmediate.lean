@@ -190,7 +190,7 @@ theorem actual_immediate_retirement (rom : Table (ZMod babyBearModulus) (fields 
 
 /-- Public fetch/decoding and native histories compose from the unchanged
     public state through original Sail execution to the terminal PC. -/
-theorem actual_immediate_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem actual_immediate_trace
     (rom : Table (ZMod babyBearModulus) (fields 9)) :
     ∃ after, Airbender.ShiftBinop.SailTrace [entry] before after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok 65536 after := by

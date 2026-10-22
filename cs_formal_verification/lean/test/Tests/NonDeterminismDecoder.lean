@@ -190,7 +190,7 @@ theorem native_register_history :
 
 /-- Native CSR register effects and PC retirement are one actual reference
     step, consuming exactly the first independently supplied external word. -/
-theorem native_read_step [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+theorem native_read_step  :
     ∃ after, NonDeterminism.Step [0x12345678] [readEntry, writeEntry]
       (before, 0) (after, 1) ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok 4 after := by

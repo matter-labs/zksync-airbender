@@ -160,7 +160,7 @@ private theorem mapped_word : Trace.ROMView.publicWord before (Nat.pair 1 (Nat.p
 theorem memory_transport : UnifiedReduced.MemoryExecution (UnifiedReduced.ROMView.data before trace) before cells :=
   UnifiedReduced.native_rom_memory_execution (by decide) (by decide) accepted public_inputs decoded
 
-theorem sail_rom_load [MemoryPlatform SailRV32.exception] : Airbender.WordMemory.spec input output := by
+theorem sail_rom_load  : Airbender.WordMemory.spec input output := by
   apply UnifiedReduced.WordMemory.NativeROM.soundness (by decide) (by decide)
     trace before cells [entry] input output mapped.assignment
   refine ⟨⟨public_inputs, configuration, ?_, by decide⟩,
@@ -207,7 +207,7 @@ private theorem execution_inputs : UnifiedReduced.ExecutionInputs trace before c
     subst actual
     simp [entry]
 
-theorem sail_complete_trace [MemoryPlatform SailRV32.exception] :
+theorem sail_complete_trace  :
     Realizes (UnifiedReduced.Step [entry]) trace before cells (Trace.ROMView.token before) :=
   UnifiedReduced.execution_soundness (by decide) (by decide) (by decide) execution_inputs accepted decoded
 

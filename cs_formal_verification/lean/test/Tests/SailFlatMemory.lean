@@ -13,13 +13,13 @@ private def configured : State :=
 
 -- Check the complete generated translator, including its environment queries.
 -- The top RV32 word address must remain intact in the 34-bit physical address.
-theorem high_address_load [MemoryPlatform SailRV32.exception] :
+theorem high_address_load  :
     Sail.run (SailRV32.Functions.translateAddr (.Virtaddr 0xfffffffc) (.Load .Data) .Machine)
       configured = .ok (.Ok (.Physaddr 0xfffffffc, .PBMT_PMA, ())) configured := by
   apply machine_translate_address (isa := 0x40000100) (supervisor := 0) (machine := 0x10)
   all_goals first | exact Or.inl rfl | simp [configured, Std.ExtDHashMap.get?_insert]
 
-theorem code_fetch [MemoryPlatform SailRV32.exception] :
+theorem code_fetch  :
     Sail.run (SailRV32.Functions.translateAddr (.Virtaddr 16) (.InstructionFetch ()) .Machine)
       configured = .ok (.Ok (.Physaddr 16, .PBMT_PMA, ())) configured := by
   apply machine_translate_address (isa := 0x40000100) (supervisor := 0) (machine := 0x10)

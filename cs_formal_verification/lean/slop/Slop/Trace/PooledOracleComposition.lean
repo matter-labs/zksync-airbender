@@ -47,7 +47,6 @@ theorem view_ports {p : Nat} [Fact p.Prime] (initial : State) {trace : PooledTra
   rw [view_index, view_response initial row selected]
   exact ports row present selected
 
-variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 set_option backward.isDefEq.respectTransparency false in
 theorem trace_execution {p : Nat} [Fact p.Prime]

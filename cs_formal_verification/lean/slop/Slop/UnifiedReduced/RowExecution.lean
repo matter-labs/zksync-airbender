@@ -11,7 +11,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
-theorem row_clause_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem row_clause_from_memory [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (byteInverse : 256 * (-7864320 : ZMod p) = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
@@ -77,7 +77,7 @@ theorem row_clause_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatfor
       inputs.boot inputs.configuration inputs.ordinary destination words state (state.symm ▸ position)
       source memory query encoding history
 
-theorem row_clause [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem row_clause [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (byteInverse : 256 * (-7864320 : ZMod p) = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}

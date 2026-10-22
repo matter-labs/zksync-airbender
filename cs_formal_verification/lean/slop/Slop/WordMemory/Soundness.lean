@@ -6,7 +6,6 @@ namespace Airbender.WordMemory.Proofs
 open Airbender.Arithmetic Airbender.Reference.RiscV Airbender.Reference.Sail
 open _root_.Sail.ArchSem
 
-variable [MemoryPlatform SailRV32.exception]
 
 theorem soundness {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     (inverse : (-30720 : ZMod p) * 65536 = 1) (rom : Table (ZMod p) (fields 9)) :

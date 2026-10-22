@@ -48,7 +48,7 @@ theorem all_instruction_forms : ∀ sample ∈ samples,
 
 /-- The shared trace dispatcher selects the original Sail execution clauses
     for the same twelve publicly decoded instruction forms. -/
-theorem all_instruction_clauses [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+theorem all_instruction_clauses  :
     ∀ sample ∈ samples, (Trace.instructionClause sample.2.1).isSome = true := by
   intro sample member
   simp only [samples, List.mem_cons, List.not_mem_nil, or_false] at member

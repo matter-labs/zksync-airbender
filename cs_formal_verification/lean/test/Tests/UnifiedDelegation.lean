@@ -1630,7 +1630,7 @@ private def memoryView (store : Bool) : Airbender.WordMemory.Input :=
   ⟨store, ⟨0, 64⟩, ⟨0, 0⟩, ⟨0, 0⟩, ⟨4, 0⟩, .Regidx 10, .Regidx 12, .Regidx 12, 0, default⟩
 private def memoryOutput : Airbender.WordMemory.Output := ⟨⟨0, 64⟩, ⟨0, 0⟩, ⟨8, 0⟩⟩
 
-theorem copy_then_ram_retirement [Sail.ArchSem.MemoryPlatform SailRV32.exception] (store : Bool) : ∃ events finalState,
+theorem copy_then_ram_retirement (store : Bool) : ∃ events finalState,
     events.Perm ((memoryData store).mixedSteps.map transferEvent) ∧
     Trace.SailHistory cells events (memoryBefore store) finalState ∧
     UnifiedReduced.Caller.RetiresCycle cells events (memoryBefore store) finalState (memoryRow store)

@@ -7,7 +7,7 @@ open _root_.Sail.ArchSem
 
 /-- Platform transport follows from configuration and the derived address domain;
     no successful Sail virtual access is supplied by the caller. -/
-theorem memory_access [MemoryPlatform SailRV32.exception] {input : Input}
+theorem memory_access  {input : Input}
     (configuration : Sail.FlatMemoryConfiguration input.before)
     (aligned : (input.source.toBitVec + input.immediate.toBitVec).toNat %
       (if input.byte then 1 else 2) = 0)
