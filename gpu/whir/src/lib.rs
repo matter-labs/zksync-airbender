@@ -12,6 +12,7 @@ pub(crate) mod in_domain;
 pub(crate) mod kernels;
 mod oracle_commit;
 pub mod pow;
+pub mod proth120;
 pub(crate) mod upstream;
 
 #[cfg(test)]
@@ -63,6 +64,27 @@ enum CapTarget<'a> {
 enum OracleValues {
     Coefficients,
     Recomputed(gpu_core::primitives::context::DeviceAllocation<BF>),
+}
+
+/// Admits a recursive WHIR oracle shape; returns whether it takes the fused route.
+fn admit_oracle_shape(
+    trace_len_log2: u32,
+    log_values_per_leaf: u32,
+    log_lde_factor: u32,
+    log_tree_cap_size: u32,
+) -> bool {
+    assert!(trace_len_log2 >= log_values_per_leaf);
+    let total_leaf_count_log2 = trace_len_log2 - log_values_per_leaf + log_lde_factor;
+    assert!(
+        total_leaf_count_log2 > PARTIAL_TREE_REDUCTION_LAYERS + log_tree_cap_size,
+        "recursive WHIR commitments require a partial tree",
+    );
+    let fused_coefficients = fused_commit::supported(trace_len_log2, log_values_per_leaf);
+    assert!(
+        fused_coefficients || matches!((trace_len_log2, log_values_per_leaf), (14..=23, 5)),
+        "unsupported recursive WHIR coefficient shape: log_n={trace_len_log2}, log_v={log_values_per_leaf}",
+    );
+    fused_coefficients
 }
 
 pub(crate) struct GpuWhirExtensionOracle {
@@ -128,19 +150,14 @@ impl GpuWhirExtensionOracle {
         let log_lde_factor = lde_factor.trailing_zeros();
         let log_values_per_leaf = values_per_leaf.trailing_zeros();
         let log_tree_cap_size = tree_cap_size.trailing_zeros();
-        assert!(trace_len_log2 >= log_values_per_leaf);
+        let fused_coefficients = admit_oracle_shape(
+            trace_len_log2,
+            log_values_per_leaf,
+            log_lde_factor,
+            log_tree_cap_size,
+        );
         let packed_leaf_count = trace_len / values_per_leaf;
-        let packed_leaf_count_log2 = packed_leaf_count.trailing_zeros();
-        let total_leaf_count_log2 = packed_leaf_count_log2 + log_lde_factor;
-        assert!(
-            total_leaf_count_log2 > PARTIAL_TREE_REDUCTION_LAYERS + log_tree_cap_size,
-            "recursive WHIR commitments require a partial tree",
-        );
-        let fused_coefficients = fused_commit::supported(trace_len_log2, log_values_per_leaf);
-        assert!(
-            fused_coefficients || matches!((trace_len_log2, log_values_per_leaf), (14..=23, 5)),
-            "unsupported recursive WHIR coefficient shape: log_n={trace_len_log2}, log_v={log_values_per_leaf}",
-        );
+        let total_leaf_count_log2 = packed_leaf_count.trailing_zeros() + log_lde_factor;
 
         // Reinterpret bitreverse-N coefficients as V bitreverse-(N/V)
         // residue polynomials per BF limb. The leaf reader's bit-reversed
@@ -157,6 +174,7 @@ impl GpuWhirExtensionOracle {
             log_tree_cap_size,
             EXT4_DEGREE * values_per_leaf,
             TreesCacheMode::CachePartial,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             context,
         )?;
         // Retained oracles release the relabel scratch after all its readers
@@ -511,4 +529,24 @@ fn decode_leaf_values(leafs: &[BF], values_per_leaf: usize) -> Vec<E4> {
     }
 
     result
+}
+
+#[cfg(test)]
+mod cpu_tests {
+    use super::admit_oracle_shape;
+    use crate::test_utils::l1_feeder_oracle_shapes;
+
+    #[test]
+    fn cpu_l1_feeder_whir_oracle_shapes_are_admitted() {
+        let shapes = l1_feeder_oracle_shapes();
+        assert!(!shapes.is_empty());
+        for (log_n, log_v, lde_factor, cap_size) in shapes {
+            admit_oracle_shape(
+                log_n,
+                log_v,
+                lde_factor.trailing_zeros(),
+                cap_size.trailing_zeros(),
+            );
+        }
+    }
 }

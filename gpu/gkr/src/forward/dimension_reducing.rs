@@ -2,14 +2,14 @@ use super::vm::desc::{REDUCTION_PAIR_CAP, REDUCTION_PAIR_LOOKUP, REDUCTION_PAIR_
 use super::*;
 
 #[derive(Clone, Copy)]
-pub(super) enum LoweredSlotInitialInput<E> {
+pub(crate) enum LoweredSlotInitialInput<E> {
     PairwiseProduct { input: *const E },
     LookupPair { num: *const E, den: *const E },
 }
 
 /// Per-slot output pointers for a single reduction round.
 #[derive(Clone, Copy)]
-pub(super) enum LoweredSlotOutput<E> {
+pub(crate) enum LoweredSlotOutput<E> {
     PairwiseProduct {
         output: *mut E,
     },
@@ -19,27 +19,27 @@ pub(super) enum LoweredSlotOutput<E> {
     },
 }
 
-pub(super) struct LoweredDimReducingForwardRound<E> {
-    pub(super) slot_initial_inputs: Vec<LoweredSlotInitialInput<E>>,
-    pub(super) slot_output_types: Vec<OutputType>,
-    pub(super) slot_outputs: Vec<LoweredSlotOutput<E>>,
-    pub(super) layer_description: BTreeMap<OutputType, DimensionReducingInputOutput>,
-    pub(super) computed_extension_outputs: Vec<(GKRAddress, GpuExtensionFieldPoly<E>)>,
+pub(crate) struct LoweredDimReducingForwardRound<E> {
+    pub(crate) slot_initial_inputs: Vec<LoweredSlotInitialInput<E>>,
+    pub(crate) slot_output_types: Vec<OutputType>,
+    pub(crate) slot_outputs: Vec<LoweredSlotOutput<E>>,
+    pub(crate) layer_description: BTreeMap<OutputType, DimensionReducingInputOutput>,
+    pub(crate) computed_extension_outputs: Vec<(GKRAddress, GpuExtensionFieldPoly<E>)>,
 }
 
-pub(super) struct PreparedDimensionReductionForward<E> {
-    pub(super) initial_trace_log_2: u32,
-    pub(super) total_rounds: u32,
-    pub(super) final_layer_idx: usize,
-    pub(super) dimension_reduction_description:
+pub(crate) struct PreparedDimensionReductionForward<E> {
+    pub(crate) initial_trace_log_2: u32,
+    pub(crate) total_rounds: u32,
+    pub(crate) final_layer_idx: usize,
+    pub(crate) dimension_reduction_description:
         BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>>,
-    pub(super) slot_initial_inputs: Vec<LoweredSlotInitialInput<E>>,
-    pub(super) slot_output_types: Vec<OutputType>,
-    pub(super) per_round_slot_outputs: Vec<Vec<LoweredSlotOutput<E>>>,
+    pub(crate) slot_initial_inputs: Vec<LoweredSlotInitialInput<E>>,
+    pub(crate) slot_output_types: Vec<OutputType>,
+    pub(crate) per_round_slot_outputs: Vec<Vec<LoweredSlotOutput<E>>>,
 }
 
-pub(super) fn prepare_dimension_reduction_forward<E>(
-    storage: &mut GpuGKRStorage<BF, E>,
+pub(crate) fn prepare_dimension_reduction_forward<B, E>(
+    storage: &mut GpuGKRStorage<B, E>,
     initial_layer_idx: usize,
     initial_output_map: &BTreeMap<OutputType, Vec<GKRAddress>>,
     initial_trace_log_2: u32,
@@ -48,7 +48,8 @@ pub(super) fn prepare_dimension_reduction_forward<E>(
     context: &ProverContext,
 ) -> CudaResult<PreparedDimensionReductionForward<E>>
 where
-    E: FieldExtension<BF> + Field + 'static,
+    B: 'static,
+    E: Field + 'static,
 {
     let total_rounds = initial_trace_log_2
         .checked_sub(final_trace_log_2)
@@ -109,7 +110,7 @@ where
     })
 }
 
-pub(super) fn schedule_prepared_dimension_reduction_forward<E>(
+pub(crate) fn schedule_prepared_dimension_reduction_forward<E>(
     prepared: &PreparedDimensionReductionForward<E>,
     start_round: u32,
     context: &ProverContext,
@@ -248,16 +249,17 @@ fn pair_output_streams<E>(
 // backings populated by `GpuGKRStorageLayout::from_artifact_with_tower`. Each
 // view returned by `storage.allocate_ext_view` is sized to the round's
 // `output_trace_len` (the layout's per-layer `log2_stride` halves each round).
-fn lower_dimension_reducing_forward_round<E>(
+fn lower_dimension_reducing_forward_round<B, E>(
     layer_inputs: &BTreeMap<OutputType, Vec<GKRAddress>>,
     current_layer_idx: usize,
     output_trace_len: usize,
-    storage: &mut GpuGKRStorage<BF, E>,
+    storage: &mut GpuGKRStorage<B, E>,
     output_evaluations_slab: Option<&ForwardOutputSlabTarget<E>>,
     context: &ProverContext,
 ) -> CudaResult<LoweredDimReducingForwardRound<E>>
 where
-    E: FieldExtension<BF> + Field,
+    B: 'static,
+    E: Field,
     E: 'static,
 {
     let output_layer = current_layer_idx + 1;

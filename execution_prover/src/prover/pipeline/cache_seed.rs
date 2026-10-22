@@ -16,6 +16,7 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
     batch_id: u64,
     external_challenges: Option<&GKRExternalChallenges<BF, E4>>,
     proof_caps: &BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
+    proof_partial_trees: &mut BTreeMap<(CircuitType, usize), MemoryPartialTrees>,
     work_requests_sender: &Sender<WorkRequest<B::Allocator, B::Precomputations>>,
     profile: ProofProfile,
 ) -> CacheSeedOutcome {
@@ -77,6 +78,7 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
                 external_challenges: *external_challenges
                     .expect("proof cache seeding requires external challenges"),
                 memory_caps,
+                memory_partial_trees: proof_partial_trees.remove(&(circuit_type, sequence_id)),
                 security_level: prover.configuration.security_level,
                 commitment_mode: crate::prover_config(
                     circuit_type,

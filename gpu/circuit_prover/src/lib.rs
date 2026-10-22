@@ -8,10 +8,12 @@
 #![allow(clippy::mut_from_ref)]
 
 pub mod config;
+pub mod l1_wrap;
 pub mod proof;
 pub(crate) mod upstream;
 
 pub use config::{UnsupportedGpuSecurityLevel, GPU_SUPPORTED_SECURITY_LEVELS};
+pub use upstream::CommitmentMode;
 
 #[cfg(test)]
 gpu_core::force_serial_libtest!();

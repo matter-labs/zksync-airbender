@@ -9,7 +9,6 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use field::PrimeField;
 use gkr_eval_ir::{
     claim_roots, read_place_field, DagLayer, Expr, ExprId, FieldKind, SourceId as DagSourceId,
     SourceKind,
@@ -23,7 +22,7 @@ use super::model::{
     NormalizedCoefficientRecipe, ProjectionId, SourceId, TermId,
 };
 use super::source::OriginLeaf;
-use super::Bf;
+use crate::ElementModel;
 
 /// Order-stable handle on one structural source origin, used everywhere inside the
 /// lowering in place of a [`SourceId`] (which only exists once the surviving
@@ -36,8 +35,10 @@ type Recipe = NormalizedCoefficientRecipe;
 pub(crate) fn lower_coeff_layer(
     canonical: &DagLayer,
     distilled: &DistilledLayer,
+    model: ElementModel,
 ) -> Result<CoeffLayer, CoeffError> {
     let mut cx = Lowering {
+        model,
         canonical,
         distilled,
         pure: scalar_pure_flags(&distilled.layer),
@@ -97,12 +98,12 @@ struct Quad {
     quad: BTreeMap<(SourceKey, SourceKey), Recipe>,
 }
 
-fn bump<K: Ord>(map: &mut BTreeMap<K, Recipe>, key: K, add: Recipe) {
+fn bump<K: Ord>(model: ElementModel, map: &mut BTreeMap<K, Recipe>, key: K, add: Recipe) {
     if add.is_zero() {
         return;
     }
     let slot = map.entry(key).or_insert_with(Recipe::zero);
-    *slot = slot.add(&add);
+    *slot = slot.add(&add, model);
 }
 
 impl Quad {
@@ -151,14 +152,14 @@ impl Quad {
         }
     }
 
-    fn add(&self, other: &Self) -> Self {
+    fn add(&self, other: &Self, model: ElementModel) -> Self {
         let mut out = self.clone();
-        out.scalar = out.scalar.add(&other.scalar);
+        out.scalar = out.scalar.add(&other.scalar, model);
         for (k, c) in &other.linear {
-            bump(&mut out.linear, *k, c.clone());
+            bump(model, &mut out.linear, *k, c.clone());
         }
         for (k, c) in &other.quad {
-            bump(&mut out.quad, *k, c.clone());
+            bump(model, &mut out.quad, *k, c.clone());
         }
         out.prune();
         out
@@ -167,28 +168,28 @@ impl Quad {
     /// `Err(degree)` when the product would exceed degree two. The degree is
     /// EXACT for this product, computed from both operands' pruned parts, so a
     /// part that cancelled to zero never inflates it.
-    fn mul(&self, other: &Self) -> Result<Self, usize> {
+    fn mul(&self, other: &Self, model: ElementModel) -> Result<Self, usize> {
         let degree = self.degree() + other.degree();
         if degree > 2 {
             return Err(degree);
         }
-        let mut out = Quad::from_scalar(self.scalar.mul(&other.scalar));
+        let mut out = Quad::from_scalar(self.scalar.mul(&other.scalar, model));
         for (k, c) in &other.linear {
-            bump(&mut out.linear, *k, self.scalar.mul(c));
+            bump(model, &mut out.linear, *k, self.scalar.mul(c, model));
         }
         for (k, c) in &self.linear {
-            bump(&mut out.linear, *k, other.scalar.mul(c));
+            bump(model, &mut out.linear, *k, other.scalar.mul(c, model));
         }
         for (k, c) in &other.quad {
-            bump(&mut out.quad, *k, self.scalar.mul(c));
+            bump(model, &mut out.quad, *k, self.scalar.mul(c, model));
         }
         for (k, c) in &self.quad {
-            bump(&mut out.quad, *k, other.scalar.mul(c));
+            bump(model, &mut out.quad, *k, other.scalar.mul(c, model));
         }
         for (a, ca) in &self.linear {
             for (b, cb) in &other.linear {
                 let key = if a <= b { (*a, *b) } else { (*b, *a) };
-                bump(&mut out.quad, key, ca.mul(cb));
+                bump(model, &mut out.quad, key, ca.mul(cb, model));
             }
         }
         out.prune();
@@ -225,6 +226,7 @@ impl BodyKey {
 // ── Lowering ─────────────────────────────────────────────────────────────────
 
 struct Lowering<'a> {
+    model: ElementModel,
     canonical: &'a DagLayer,
     distilled: &'a DistilledLayer,
     /// Bottom-up scalar purity, indexed by distilled `ExprId`.
@@ -283,12 +285,12 @@ impl Lowering<'_> {
             let mut value = Quad::one();
             for &atom in &fragment.atoms {
                 let atom_value = self.expand(atom)?;
-                value = value
-                    .mul(&atom_value)
-                    .map_err(|degree| CoeffError::DegreeTooHigh {
+                value = value.mul(&atom_value, self.model).map_err(|degree| {
+                    CoeffError::DegreeTooHigh {
                         fragment: index,
                         degree,
-                    })?;
+                    }
+                })?;
             }
             self.emit(&k, value);
         }
@@ -298,12 +300,16 @@ impl Lowering<'_> {
     /// Route one fragment's expanded value into terms / `c_init`.
     fn emit(&mut self, k: &Recipe, value: Quad) {
         let r0 = self.distilled.regime == crate::BwdRegime::R0;
-        self.c_init = self.c_init.add(&k.mul(&value.scalar));
+        let model = self.model;
+        self.c_init = self.c_init.add(&k.mul(&value.scalar, model), model);
         for (source, coefficient) in &value.linear {
-            self.push_body(BodyKey::C0Linear { source: *source }, k.mul(coefficient));
+            self.push_body(
+                BodyKey::C0Linear { source: *source },
+                k.mul(coefficient, model),
+            );
         }
         for ((lhs, rhs), coefficient) in &value.quad {
-            let coefficient = k.mul(coefficient);
+            let coefficient = k.mul(coefficient, model);
             let body = if r0 {
                 BodyKey::C2Product {
                     lhs: *lhs,
@@ -340,7 +346,7 @@ impl Lowering<'_> {
                     let mut acc = Quad::zero();
                     for c in children {
                         let part = self.expand(c)?;
-                        acc = acc.add(&part);
+                        acc = acc.add(&part, self.model);
                     }
                     acc
                 }
@@ -351,7 +357,7 @@ impl Lowering<'_> {
                     for c in children {
                         let part = self.expand(c)?;
                         acc = acc
-                            .mul(&part)
+                            .mul(&part, self.model)
                             .map_err(|degree| CoeffError::DegreeTooHigh { fragment, degree })?;
                     }
                     acc
@@ -370,9 +376,7 @@ impl Lowering<'_> {
         let d = self.distilled;
         let r = match &d.layer.exprs[e.0 as usize] {
             Expr::Source(sid) => match &d.layer.sources[sid.0 as usize] {
-                SourceKind::Constant { value } => {
-                    Recipe::scalar(Bf::from_u32_with_reduction(*value))
-                }
+                SourceKind::Constant { value } => Recipe::scalar(self.model, *value),
                 SourceKind::Challenge { reference } => Recipe::challenge(*reference),
                 SourceKind::InitsAndTeardownsTopBits { reference } => {
                     Recipe::inits_and_teardowns_top_bits(*reference)
@@ -384,7 +388,7 @@ impl Lowering<'_> {
                 let mut acc = Recipe::zero();
                 for c in children {
                     let part = self.scalar_expr(c)?;
-                    acc = acc.add(&part);
+                    acc = acc.add(&part, self.model);
                 }
                 acc
             }
@@ -393,7 +397,7 @@ impl Lowering<'_> {
                 let mut acc = Recipe::one();
                 for c in children {
                     let part = self.scalar_expr(c)?;
-                    acc = acc.mul(&part);
+                    acc = acc.mul(&part, self.model);
                 }
                 acc
             }
@@ -413,9 +417,9 @@ impl Lowering<'_> {
                     return Err(CoeffError::NonScalarCoefficientFactor { expr: factor });
                 }
                 let part = self.scalar_expr(factor)?;
-                product = product.mul(&part);
+                product = product.mul(&part, self.model);
             }
-            sum = sum.add(&product);
+            sum = sum.add(&product, self.model);
         }
         Ok(sum)
     }
@@ -480,7 +484,7 @@ impl Lowering<'_> {
 
     fn push_body(&mut self, key: BodyKey, coefficient: Recipe) {
         let slot = self.bodies.entry(key).or_insert_with(Recipe::zero);
-        *slot = slot.add(&coefficient);
+        *slot = slot.add(&coefficient, self.model);
     }
 
     // ── Assembly ─────────────────────────────────────────────────────────────
@@ -513,12 +517,12 @@ impl Lowering<'_> {
         let c_init_recipe = (!self.c_init.is_zero()).then(|| self.c_init.clone());
         let mut bank: BTreeSet<Recipe> = BTreeSet::new();
         for (_, r) in &live {
-            if r.reserved_id().is_none() {
+            if r.reserved_id(self.model).is_none() {
                 bank.insert(r.clone());
             }
         }
         if let Some(r) = &c_init_recipe {
-            if r.reserved_id().is_none() {
+            if r.reserved_id(self.model).is_none() {
                 bank.insert(r.clone());
             }
         }
@@ -537,7 +541,7 @@ impl Lowering<'_> {
         let mut terms = Vec::with_capacity(live.len());
         for (index, (body, recipe)) in live.iter().enumerate() {
             let id = TermId(index as u32);
-            let coefficient = coefficient_id(&coefficients, recipe);
+            let coefficient = coefficient_id(self.model, &coefficients, recipe);
             terms.push(match body {
                 BodyKey::C0Linear { source } => {
                     let s = ids[source];
@@ -569,10 +573,11 @@ impl Lowering<'_> {
         }
         let c_init = c_init_recipe
             .as_ref()
-            .map(|r| coefficient_id(&coefficients, r));
+            .map(|r| coefficient_id(self.model, &coefficients, r));
 
         Ok(CoeffLayer {
             regime: self.distilled.regime,
+            model: self.model,
             c_init,
             coefficients,
             sources,
@@ -585,8 +590,12 @@ impl Lowering<'_> {
 
 /// The id addressing `recipe`: a reserved literal when it is `+1`/`-1`, else its
 /// bank index (the bank is sorted, so this is a binary search).
-fn coefficient_id(coefficients: &[Recipe], recipe: &Recipe) -> CoefficientRecipeId {
-    recipe.reserved_id().unwrap_or_else(|| {
+fn coefficient_id(
+    model: ElementModel,
+    coefficients: &[Recipe],
+    recipe: &Recipe,
+) -> CoefficientRecipeId {
+    recipe.reserved_id(model).unwrap_or_else(|| {
         CoefficientRecipeId::from_bank_index(
             coefficients
                 .binary_search(recipe)

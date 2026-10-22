@@ -22,7 +22,7 @@ mod upstream {
 
 use crate::upstream::build_unrolled_stream;
 use gpu_execution_prover::{
-    ExecutionKind, ExecutionProver, ExecutionProverConfiguration, MachineType,
+    CommitmentMode, ExecutionKind, ExecutionProver, ExecutionProverConfiguration, MachineType,
 };
 use program_prover::assemble_program_proof;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;

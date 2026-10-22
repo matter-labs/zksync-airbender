@@ -60,6 +60,23 @@ pub struct MemoryCommitmentRequest<A: GoodAllocator, P> {
     pub profile: ProofProfile,
 }
 
+/// A commitment's partial Merkle trees, kept on the host so the proof of the
+/// same instance opens them instead of rebuilding them. The backend produces
+/// and interprets the nodes; the orchestrator moves them from the commitment
+/// to that instance's proof request.
+pub struct MemoryPartialTrees {
+    pub layout_version: u32,
+    pub circuit_type: CircuitType,
+    pub profile: ProofProfile,
+    pub log_domain_size: u32,
+    pub log_lde_factor: u32,
+    pub log_rows_per_leaf: u32,
+    pub log_tree_cap_size: u32,
+    pub reduction_layers: u32,
+    pub columns_count: usize,
+    pub nodes: Vec<[u32; 8]>,
+}
+
 pub struct MemoryCommitmentResult<A: GoodAllocator> {
     pub batch_id: u64,
     pub circuit_type: CircuitType,
@@ -67,6 +84,7 @@ pub struct MemoryCommitmentResult<A: GoodAllocator> {
     pub inits_and_teardowns: Option<InitsAndTeardownsTraceHost<A>>,
     pub tracing_data: Option<TracingDataHost<A>>,
     pub merkle_tree_caps: Vec<MerkleTreeCapVarLength>,
+    pub memory_partial_trees: Option<MemoryPartialTrees>,
 }
 
 pub struct SetupInitializationRequest<P> {
@@ -95,6 +113,8 @@ pub struct ProofRequest<A: GoodAllocator, P> {
     /// per coset, in natural order). The GPU backend builds a
     /// `GpuGKRMemoryTransfer` from these caps.
     pub memory_caps: Vec<MerkleTreeCapVarLength>,
+    /// The partial trees this circuit's commitment persisted, if any.
+    pub memory_partial_trees: Option<MemoryPartialTrees>,
     pub security_level: SecurityLevel,
     pub commitment_mode: CommitmentMode,
     pub profile: ProofProfile,

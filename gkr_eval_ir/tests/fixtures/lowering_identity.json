@@ -1,0 +1,17 @@
+{
+  "add_sub_lui_auipc_mop": "54cad1d1bc9407da596cae9b6899956713b3d6ad7cdabe390530bf6ca4fee3e0",
+  "bigint_with_extended_control": "220764d828ac59e3d564b919d0606fc5dd0addc91e55ef6645ff0f5f95a1e565",
+  "blake2_g_function": "547f08084791950bfeb3a854411f00a60e1317fcbf7b34c8a361a6f2f1ade48f",
+  "blake2_with_extended_control": "114bff765633f25f755ca8d3022a1b58aa1d5fb4810eee4ded1a0fd0f1eea004",
+  "inits_and_teardowns": "807665543721d4acbc1d7b861b56150ed4908189f264d082d7903f4bd312d7a8",
+  "jump_branch_slt": "2ff4703467f8cd767f64b3df83b2bc8f28898371415acf7ebe3e311eb359d381",
+  "keccak_chi5": "92c60218f9e16761dc88403d2c4c346ac14d24c89860e2a088c892305717d6f9",
+  "keccak_column_parity": "4d06e777cc77b06ceb72f666adfb306fad565180d2894fc6faf65f45f7195986",
+  "keccak_special5": "9290fb2f231c869191798613700cafc64273f663fdb1f6f6e37a8ff3ebb25ba3",
+  "keccak_theta_rho": "ea57965d4bddb60f7bbbc7b52c02006a12641d6a349cf6992169dabd69785ec0",
+  "mem_subword_only": "b33236d1bc4119aad9da0e0dce8a6ae8d99b3a98d9206fe59c8c68ba1744a72a",
+  "mem_word_only": "2173d7fd98d2920d3195fd7eb21434c2e2dc7f6f220abca85654795b19402023",
+  "shift_binop": "1587ac279b1c3314390ab7fb3e0b0fd094dbadf024819be88003df8e019da331",
+  "unified_reduced_machine": "9470789ce7678cec673a9c40c6dfea3e45babf1785f35cd074ba68c9b0108610",
+  "unsigned_mul_div": "918a55cecd9a0c7c17a032a2deae110a10574ac1d52d756c528954e7f2009a4f"
+}

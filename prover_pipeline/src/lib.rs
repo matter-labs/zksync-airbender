@@ -51,6 +51,9 @@ use std::time::Instant;
 use unified_recursion::{unified_recursion_step, UnifiedProofShape};
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 
+#[cfg(feature = "gpu")]
+pub use gpu_execution_prover::MemoryPreset;
+
 /// Serde-friendly mirror of `prover::definitions::SecurityLevel` (which does
 /// not derive serde) for the persisted artifact.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -125,6 +128,9 @@ pub struct ProgramProverConfig {
     pub worker_threads: Option<usize>,
     /// `None` keeps the backend's default.
     pub replay_threads: Option<usize>,
+    /// GPU device arena preset; Auto selects according to available device memory.
+    #[cfg(feature = "gpu")]
+    pub gpu_memory_preset: MemoryPreset,
 }
 
 impl Default for ProgramProverConfig {
@@ -136,6 +142,8 @@ impl Default for ProgramProverConfig {
             ram_size: RamSize::default(),
             worker_threads: None,
             replay_threads: None,
+            #[cfg(feature = "gpu")]
+            gpu_memory_preset: MemoryPreset::Auto,
         }
     }
 }
@@ -1599,15 +1607,6 @@ impl ProgramProver {
         if config.target == ProofTarget::L1 {
             validate_l1_wrap_activation()?;
         }
-        if config.backend == ProverBackend::Gpu {
-            match config.target {
-                ProofTarget::L1 => l1_wrap::validate_l1_wrap_backend(config.backend)?,
-                ProofTarget::L1Feeder => {
-                    return Err("ProofTarget::L1Feeder is not supported by the GPU backend".into());
-                }
-                _ => {}
-            }
-        }
         let backend = match config.backend {
             ProverBackend::Cpu => {
                 BackendImpl::Cpu(PipelineBackend::new(&config, Default::default()))
@@ -1615,7 +1614,14 @@ impl ProgramProver {
             ProverBackend::Gpu => {
                 #[cfg(feature = "gpu")]
                 {
-                    BackendImpl::Gpu(PipelineBackend::new(&config, Default::default()))
+                    if config.target == ProofTarget::L1 {
+                        l1_wrap::validate_l1_wrap_backend(config.backend)?;
+                    }
+                    let mut defaults = execution_prover::ExecutionProverConfiguration::<
+                        gpu_execution_prover::GpuBackendConfiguration,
+                    >::default();
+                    defaults.backend.memory_preset = config.gpu_memory_preset;
+                    BackendImpl::Gpu(PipelineBackend::new(&config, defaults))
                 }
                 #[cfg(not(feature = "gpu"))]
                 {

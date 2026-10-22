@@ -30,8 +30,8 @@ pub use common::order::split_round_robin;
 pub use common::source_layout::WindowFamily;
 
 pub use continuation::{
-    compile_continuations, ContinuationCompileError, ContinuationLayerProgram,
-    ContinuationProgramBundle,
+    compile_continuations, compile_continuations_with_model, ContinuationCompileError,
+    ContinuationLayerProgram, ContinuationProgramBundle,
 };
 pub use main_continuation_partitions::{
     select_main_continuation_partition, MainContinuationPartitionPlan,
@@ -45,8 +45,9 @@ pub use main_continuation_window::{
     MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS, MAIN_CONTINUATION_WINDOW_SOURCE_CAPACITY,
     MAIN_CONTINUATION_WINDOW_SOURCE_WINDOW_CAPACITY,
 };
+pub use main_continuation_window_manifest::PR_MAIN_CONTINUATION_MASKS;
 pub use main_tail::{lower_main_tail_program, MainTailProgram};
-pub use r0::{compile_r0, R0CompileError, R0Kernel, R0WindowProgram};
+pub use r0::{compile_r0, compile_r0_with_model, R0CompileError, R0Kernel, R0WindowProgram};
 pub use window::{
     WindowCoefficientPlan, WindowProgram, WINDOW_COEFFICIENT_BANK_BIAS,
     WINDOW_MAX_COEFFICIENT_PLANS, WINDOW_SECTION_WORDS,

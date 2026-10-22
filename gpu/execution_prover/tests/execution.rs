@@ -1,6 +1,6 @@
 use gpu_execution_prover::{
-    ExecutionKind, ExecutionProver, ExecutionProverConfiguration, GpuBackendConfiguration,
-    MachineType, ProveResult,
+    CommitmentMode, ExecutionKind, ExecutionProver, ExecutionProverConfiguration,
+    GpuBackendConfiguration, MachineType, ProveResult,
 };
 use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
 use prover::definitions::SecurityLevel;
