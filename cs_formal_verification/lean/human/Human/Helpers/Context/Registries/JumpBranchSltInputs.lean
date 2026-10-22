@@ -18,10 +18,7 @@ structure ExecutionBoundary {p : Nat} [Fact p.Prime] (trace : NativeTrace p)
   terminalCanonical : trace.terminal.word.Bounded
   programImage : ∃ addresses, JumpBranchSlt.programImage initial addresses = some program
   clocks : ClockBoundary trace
-  misa : ∃ value, initial.regs.get? .misa = some value
-  -- Machine mode and disabled landing pads are the admitted JALR configuration.
-  indirect : initial.regs.get? .cur_privilege = some .Machine ∧
-    ∃ security, initial.regs.get? .mseccfg = some security ∧
-      SailRV32.Functions._get_Seccfg_MLPE security = 0
+  /-- The Airbender machine's configuration (`Configured`). -/
+  configuration : Configured initial
 
 end Airbender.JumpBranchSlt

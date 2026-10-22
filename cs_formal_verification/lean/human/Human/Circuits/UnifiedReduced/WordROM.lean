@@ -14,7 +14,7 @@ structure InterfaceAssumptions [Fact p.Prime] (trace : UnifiedTrace p) (initial 
     (input : Airbender.WordMemory.Input) (_output : Airbender.WordMemory.Output)
     (_w : Nat → ZMod p) : Prop where
   boot : BootInputs trace initial cells program
-  configuration : FlatMemoryConfiguration initial
+  configuration : Configured initial
   ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address
   destination : input.store = false → input.rd ≠ zeroRegister
 

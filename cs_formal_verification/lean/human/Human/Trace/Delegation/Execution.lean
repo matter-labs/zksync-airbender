@@ -22,8 +22,8 @@ def MemoryExecution (data : MemoryData p) (before : Reference.RiscV.Sail.State)
     (∀ edge ∈ data.steps, PortExecution cells events before after edge) ∧
     (∀ cell : Cell, cell.Aligned → (∀ edge ∈ data.steps, edge.1.address ≠ cell.addressCode) →
       ∀ value, cell.read before = .ok value before → cell.read after = .ok value after) ∧
-    (Reference.RiscV.Sail.FlatMemoryConfiguration before →
-      Reference.RiscV.Sail.FlatMemoryConfiguration after) ∧
+    (Reference.RiscV.Sail.Configured before →
+      Reference.RiscV.Sail.Configured after) ∧
     ∀ token ∈ data.terminal, ∃ cell ∈ cells, cell.addressCode = token.address ∧
       cell.read after = .ok (memoryWord token.value) after
 

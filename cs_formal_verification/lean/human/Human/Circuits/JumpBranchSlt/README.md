@@ -18,7 +18,7 @@ yet discharge standalone jump teardown; the checked aliased endpoint remains.
 2. Read [Model](Model.lean) for satisfaction, named observable mappings and interface assumptions.
 3. Follow [the selected reference](Branch.lean) and [Artifact](Artifact.lean) for semantics and imported variable placement.
 
-Retain aligned public code and canonical terminal-PC limbs. Branch/jump configuration is visible in their models; JALR additionally retains its Machine/MLPE-clear scope.
+Retain aligned public code and canonical terminal-PC limbs. Branch/jump configuration is the machine's `Configured` initial state (reset privilege, `misa`, landing-pad state), visible in their models.
 
 Follow [shared row context](../../Helpers/Context/README.md),
 [decoding](../../Helpers/Decoder/README.md) and [memory history](../../Helpers/Memory/README.md)

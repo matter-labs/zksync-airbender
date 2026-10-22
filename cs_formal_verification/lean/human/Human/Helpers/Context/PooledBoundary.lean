@@ -17,11 +17,8 @@ structure PooledPublicInputs (initial : State) (cells : List Cell)
   registers : ∀ index, Cell.register index ∈ cells
   /-- Tracked RAM avoids platform-specific MMIO windows. -/
   ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address
-  /-- Public CSR/PMA/PMP values select the supported Machine memory path. -/
-  configuration : FlatMemoryConfiguration initial
-  /-- Disable JALR landing-pad updates, which the native circuit does not model. -/
-  landingPadDisabled : ∃ security, initial.regs.get? .mseccfg = some security ∧
-    SailRV32.Functions._get_Seccfg_MLPE security = 0
+  /-- The Airbender machine's configuration (`Configured`). -/
+  configuration : Configured initial
   /-- Public instructions lie below the ROM limit at four-byte-aligned addresses. -/
   code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0
   /-- Exclude LW-to-x0, whose Airbender NOP behavior differs from unchanged Sail. -/

@@ -47,7 +47,7 @@ structure PublicBoundary (initial : State) (cells : List Cell)
   /-- Tracked RAM excludes the platform's special MMIO windows. -/
   ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address
   /-- Public CSR/PMA/PMP settings select the supported Machine memory path. -/
-  configuration : FlatMemoryConfiguration initial
+  configuration : Configured initial
   /-- The restricted program is fetched from public bytes and decoded by Sail. -/
   programImage : ∃ addresses, Trace.programImageWith projection initial addresses = some program
   /-- Instruction addresses lie in public ROM and are aligned to four bytes. -/

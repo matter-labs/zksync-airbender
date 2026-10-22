@@ -18,12 +18,9 @@ structure ExecutionInputsWith (projection : SailRV32.instruction → Option (Dec
   registers : ∀ index, Cell.register index ∈ cells
   /-- Fetch uses aligned instruction words within the public readonly ROM. -/
   code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0
-  /-- Public CSR data selects the reviewed Sail memory path. -/
-  configuration : FlatMemoryConfiguration initial
+  /-- The Airbender machine's configuration (`Configured`). -/
+  configuration : Configured initial
   ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address
-  /-- Indirect-jump programs disable the experimental landing pad. -/
-  landingPadDisabled : (∃ entry ∈ program, ∃ imm rs1 rd, entry.instruction = .JALR (imm, rs1, rd)) → ∃ security, initial.regs.get? .mseccfg = some security ∧
-    SailRV32.Functions._get_Seccfg_MLPE security = 0
   /-- Native LW-to-x0 is a project NOP; this claim uses unchanged Sail instead. -/
   loads : ∀ entry ∈ program, ∀ (imm : BitVec 12) (rs1 : BitVec 5),
     entry.instruction ≠ .LOAD (imm, .Regidx rs1, .Regidx 0, false, 4)

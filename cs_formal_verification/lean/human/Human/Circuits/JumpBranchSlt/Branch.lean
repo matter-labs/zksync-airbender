@@ -81,7 +81,7 @@ def circuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
 structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry)
     : Prop extends TraceInputs trace initial cells program where
-  /-- Sail's branch-target check can read the public ISA configuration register. -/
-  isa : ∃ value, initial.regs.get? .misa = some value
+  /-- The Airbender machine's configuration (`Configured`). -/
+  configuration : Sail.Configured initial
 
 end Airbender.JumpBranchSlt.Branch
