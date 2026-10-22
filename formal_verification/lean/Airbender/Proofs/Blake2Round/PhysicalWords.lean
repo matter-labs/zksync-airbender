@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2Round.PhysicalWordDefinitions
 import Airbender.Proofs.Blake2Round.StateTransport
 import Airbender.Proofs.Blake2Round.Compression
 
@@ -6,9 +7,6 @@ open Trace Delegation.Proofs Arithmetic Reference.RiscV.Sail
 set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
-
-def blockWords (state : State) (pointer : BitVec 32) (n offset : Nat) : Vector Word n :=
-  Vector.ofFn fun i => ramEncoding state (pointer + BitVec.ofNat 32 (4 * (offset + i.val)))
 
 def physicalState (state : State) (pointer : BitVec 32) : Compression.State :=
   (blockWords state pointer 8 0, blockWords state pointer 16 8)

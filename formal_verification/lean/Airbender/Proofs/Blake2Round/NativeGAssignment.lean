@@ -1,3 +1,4 @@
+import Airbender.Proofs.Arithmetic.FieldSlices
 import Airbender.Proofs.Blake2Round.NativeLayout
 
 namespace Airbender.Blake2Round.Proofs

@@ -95,8 +95,10 @@ theorem abi_in_span [Fact p.Prime] (hp : 16777216 ≤ p)
       (readToken row.assignment importedConstraintsMemoryPorts[0]).word = ⟨control.packed, 0⟩ := by
   have clockBound : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
   obtain ⟨control, supported, binding⟩ := derived_control clockBound accepted inputs member
-  have bounds := Delegation.Proofs.operation_word_bounds_at_boundary (by omega) (by linear_combination inverse)
-    accepted (operation_inputs inputs tables)
+  have memory : Keccak.Proofs.BoundaryMemoryInputs data initial domain Controller.rows :=
+    ⟨inputs.memory, inputs.family, by rw [tables]; rfl, inputs.active⟩
+  have bounds := Keccak.Memory.Proofs.value_bounds_at_boundary
+    (by norm_num [timestampBase]; omega) accepted memory
   have family := inputs.family row member
   have active := inputs.active row member
   rcases row with ⟨kind, w⟩
@@ -105,7 +107,7 @@ theorem abi_in_span [Fact p.Prime] (hp : 16777216 ≤ p)
   have core := native_core accepted tables member
   have readsBound : ∀ port ∈ importedConstraintsMemoryPorts, (readToken w port).word.Bounded := by
     intro port present
-    exact bounds.reads _ member port (by change port ∈ importedConstraintsMemoryPorts; exact present)
+    exact bounds.1 _ member port (by change port ∈ importedConstraintsMemoryPorts; exact present)
   have effects := Native.Proofs.native_effects hp inverse core active readsBound
   have pointerBound : (statePointer w).Bounded := by
     rw [← (pointer_words w).1]

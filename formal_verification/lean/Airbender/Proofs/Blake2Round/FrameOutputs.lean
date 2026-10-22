@@ -1,3 +1,4 @@
+import Airbender.Review.Circuits.Blake2G.Model
 import Airbender.Proofs.Blake2Round.NativeDiagonalAssignment
 
 namespace Airbender.Blake2Round.Proofs
