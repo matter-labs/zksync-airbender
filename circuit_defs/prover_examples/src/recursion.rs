@@ -734,14 +734,4 @@ mod scripts {
         e.write_all(&buffer).expect("must compress");
         let _ = e.finish();
     }
-
-    #[test]
-    fn convert_file() {
-        // type T = full_statement_verifier::program_proof::ProgramProof;
-        type T = setups::Setups;
-
-        let file_name = "recursion_layer_0_setups";
-        let data: T = program_prover::deserialize_from_file(&format!("{file_name}.json"));
-        serialize_compressed_to_file(&data, &format!("{file_name}.bin"));
-    }
 }
