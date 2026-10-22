@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.Binary
 
 namespace Airbender.UnifiedReduced.Proofs
@@ -6,7 +7,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1200000
 
-theorem binary_destination [Fact p.Prime] (hp : 65536 < p)
+theorem binary_destination [Fact p.Prime] (hp : FieldCapacity.NoWrap p 65536)
     {before : Reference.RiscV.Sail.State} {w : Nat → ZMod p} {left right : BitVec 32}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table before)))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)

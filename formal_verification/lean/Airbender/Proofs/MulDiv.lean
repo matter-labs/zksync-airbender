@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.MulDiv.ArtifactChecks
 import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.Arithmetic.Word
@@ -36,7 +38,7 @@ theorem local_ranges {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
 
 /-- Four real low-byte queries: the divisor and selected quotient limbs.
     The latter are resolved through checked scratch aliases during import. -/
-theorem byte_values {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
+theorem byte_values {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
     ∀ i : Fin 4, let pair := [(24, 33), (25, 34), (49, 60), (50, 61)].get i
       (w pair.1).val < limbBase ∧ w pair.2 = (((w pair.1).val % 256 : Nat) : ZMod p) := by
@@ -57,7 +59,7 @@ theorem carry_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     (Verification.range13_bound query)
 
 /-- The zero flag is derived from fixed-table membership, not an interface. -/
-theorem divisor_zero_iff {p : Nat} [Fact p.Prime] (hp : 131072 ≤ p) {w : Nat → ZMod p}
+theorem divisor_zero_iff {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 131072) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
     w 32 = 1 ↔ (⟨(w 24).val, (w 25).val⟩ : Word).value = 0 := by
   have bytes := byte_values (by omega) h
@@ -79,7 +81,7 @@ theorem divisor_zero_iff {p : Nat} [Fact p.Prime] (hp : 131072 ≤ p) {w : Nat �
 
 /-- Imported exceptional-case equations force DIVU=max and REMU=dividend.
     This is local arithmetic, not yet native Sail instruction soundness. -/
-theorem division_by_zero {p : Nat} [Fact p.Prime] (hp : 131072 ≤ p)
+theorem division_by_zero {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 131072)
     {w : Nat → ZMod p} (remainder : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 12 = (if remainder then 0 else 1) ∧ w 13 = (if remainder then 1 else 0))
@@ -116,8 +118,8 @@ theorem division_by_zero {p : Nat} [Fact p.Prime] (hp : 131072 ≤ p)
 
 /-- The same serialized carry inverse and shared word-increment proof as ADD/SUB.
     This local PC update excludes 32-bit overflow. -/
-theorem pc_successor {p : Nat} [Fact p.Prime] (hp : 196608 < p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1)
+theorem pc_successor {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
+    (inverse : SerializedInverse.Limb16 p)
     {w : Nat → ZMod p} {initial final : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (mapping : w 0 = (initial.lo : ZMod p) ∧ w 1 = (initial.hi : ZMod p) ∧

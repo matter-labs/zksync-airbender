@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.SubwordMemory.RowClaims
 import Airbender.Proofs.SubwordMemory.TraceSoundness
 import Airbender.Proofs.BabyBear
@@ -13,7 +15,7 @@ variable [MemoryPlatform SailRV32.exception]
     and reach its terminal PC and cell values. Global history supplies all input
     bounds and reads; the public boundary contains no per-row assumptions. -/
 theorem ram_trace_soundness {p : Nat} [Fact p.Prime]
-    (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NoWrap p 33554432) (inverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {program : List ProgramEntry} (inputs : RAMInputs trace initial cells program)
     (accepted : Trace.Accepted trace) (decoded : Decoded trace program) :

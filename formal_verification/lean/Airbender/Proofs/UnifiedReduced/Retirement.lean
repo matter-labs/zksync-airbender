@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.UnifiedReduced.Control
 import Airbender.Proofs.UnifiedReduced.History
 import Airbender.Proofs.UnifiedReduced.CustomDecoder
@@ -35,7 +36,7 @@ theorem register_effects [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
       pairCode, memoryWord, Nat.unpair_pair, Word.toBitVec, Word.value]) normalized
   simpa only [retired_state_overwrite] using projection
 
-theorem custom_register_retirement [Fact p.Prime] (hp : 524288 < p)
+theorem custom_register_retirement [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} {cells : List Cell}
     {entry : ProgramEntry} {rd : SailRV32.regidx}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))

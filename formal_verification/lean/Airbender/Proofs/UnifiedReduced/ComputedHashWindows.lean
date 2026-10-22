@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.ComputedHashWindows
 import Airbender.Proofs.UnifiedReduced.HashPreparation
 import Airbender.Proofs.Delegation.SpanTarget
@@ -70,8 +72,8 @@ theorem hash_control_preparation_after_initial [Fact p.Prime]
 
 /-- The public placement condition is applied to the actual decoded instruction,
     whose membership and address are derived from native constraints and clocks. -/
-theorem pc_relative_hash_control [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem pc_relative_hash_control [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cut : Nat} {span : Delegation.Caller.HashSpan} {immediate : BitVec 20}
     (setup : data.machine.rom = Setup.table before)
@@ -91,8 +93,8 @@ theorem pc_relative_hash_control [Fact p.Prime] (hp : 8388608 ≤ p)
 
 /-- Each public preparation form produces the canonical native entry token.
     Its actual write timestamp is retained before any hash-reference transport. -/
-theorem hash_control_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem hash_control_preparation_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {span : Delegation.Caller.HashSpan}
     {tokens : List (MemoryToken p)}
@@ -126,8 +128,8 @@ theorem hash_control_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
         initialization unique prior nonzero (by have floor := public_register_dataflow_after_initial prior; omega) prefixMatching)
       (hash_control_register_nonzero span) aligned matching
 
-theorem hash_control_preparation_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem hash_control_preparation_at_boundary [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before atCut : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {span : Delegation.Caller.HashSpan}
     {tokens : List (MemoryToken p)}
@@ -146,8 +148,8 @@ theorem hash_control_preparation_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
   rw [hash_preparation_value]
   exact ⟨bits ▸ read, token, present, address, timestamp, bits⟩
 
-theorem hash_control_preparation [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem hash_control_preparation [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Clock p) (rotationInverse : SerializedInverse.Scale64 p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {span : Delegation.Caller.HashSpan}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
@@ -180,15 +182,15 @@ theorem computed_hash_memory_inputs [Fact p.Prime]
   intro row member round
   exact False.elim (inputs.roundsAbsent row member round)
 
-theorem computed_hash_window [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem computed_hash_window [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {span : Delegation.Caller.HashSpan} {lower upper : Nat}
     (accepted : MixedMemoryAccepted data program)
     (inputs : ComputedPreparedHashWindowInputs data before ca oa cells program span lower upper)
     (first : lower % 4 = 0) (last : upper % 4 = 0) :
     JointHashWindowResult data before cells span lower upper := by
-  have rotationInverse : 64 * (-31457280 : ZMod p) = 1 := by linear_combination clockInverse
+  have rotationInverse : SerializedInverse.Scale64 p := by linear_combination clockInverse
   have memory := computed_hash_memory_inputs inputs
   have floor := hash_control_preparation_after_initial inputs.preparation
   have duration := inputs.duration
@@ -211,8 +213,8 @@ theorem computed_hash_window [Fact p.Prime] (hp : 16777216 ≤ p)
     start, finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm,
     firstHistory, spanHistory, startBoundary, finishBoundary, selected, initialized, result⟩
 
-theorem computed_hash_reference_at_states [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem computed_hash_reference_at_states [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before atStart atFinish : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {span : Delegation.Caller.HashSpan} {lower upper : Nat}
     {start finish : List (MemoryToken p)} {spanEvents : List MemoryAccess}
@@ -246,8 +248,8 @@ theorem computed_hash_reference_at_states [Fact p.Prime] (hp : 16777216 ≤ p)
     (fun row member => accepted.workerActive row (List.mem_of_mem_filter member))
     (fun cell member => inputs.aligned cell (List.mem_of_mem_filter member)) target terminal.1.addresses
 
-theorem computed_hash_chain [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem computed_hash_chain [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {firstSpan secondSpan : Delegation.Caller.HashSpan}
     {a b c d : Nat}
@@ -256,7 +258,7 @@ theorem computed_hash_chain [Fact p.Prime] (hp : 16777216 ≤ p)
     (secondInputs : ComputedPreparedHashWindowInputs data before ca oa cells program secondSpan c d)
     (aa : a % 4 = 0) (ba : b % 4 = 0) (ca' : c % 4 = 0) (da : d % 4 = 0) (gap : b ≤ c) :
     PreparedHashChainResult data before cells firstSpan secondSpan a b c d := by
-  have rotationInverse : 64 * (-31457280 : ZMod p) = 1 := by linear_combination clockInverse
+  have rotationInverse : SerializedInverse.Scale64 p := by linear_combination clockInverse
   have floor := hash_control_preparation_after_initial firstInputs.preparation
   have firstDuration := firstInputs.duration
   have secondDuration := secondInputs.duration
@@ -276,8 +278,8 @@ theorem computed_hash_chain [Fact p.Prime] (hp : 16777216 ≤ p)
     (Delegation.Caller.Proofs.window_call_count secondRequests).trans secondInputs.calls,
     chain, history, firstResult, secondResult⟩
 
-theorem computed_hash_sequence_at_segments [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem computed_hash_sequence_at_segments [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {windows : List HashWindow}
     (accepted : MixedMemoryAccepted data program)
@@ -308,8 +310,8 @@ theorem computed_hash_sequence_at_segments [Fact p.Prime] (hp : 16777216 ≤ p)
       exact .cons ⟨requests, (Delegation.Caller.Proofs.window_call_count requests).trans selectedInputs.calls, result⟩
         (ih (fun next member => inputs next (List.mem_cons_of_mem _ member)) restOrder tail)
 
-theorem computed_hash_sequence [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem computed_hash_sequence [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {first : HashWindow} {rest : List HashWindow}
     (accepted : MixedMemoryAccepted data program)
@@ -318,7 +320,7 @@ theorem computed_hash_sequence [Fact p.Prime] (hp : 16777216 ≤ p)
       window.span window.lower window.upper)
     (ordered : WindowsOrdered first.lower ((first :: rest).map HashWindow.interval)) :
     PreparedHashSequenceResult data before cells first rest := by
-  have rotationInverse : 64 * (-31457280 : ZMod p) = 1 := by linear_combination clockInverse
+  have rotationInverse : SerializedInverse.Scale64 p := by linear_combination clockInverse
   have aligned : first.lower % 4 = 0 := ordered.2.2.1
   have floor := hash_control_preparation_after_initial firstInputs.preparation
   obtain ⟨sequence, actual⟩ := mixed_window_sequence (by omega) clockInverse rotationInverse accepted
@@ -334,8 +336,8 @@ theorem computed_hash_sequence [Fact p.Prime] (hp : 16777216 ≤ p)
 
 /-- Public preparation supplies the lower-clock bound. Native matching and the
     modular code policy derive every selected caller, request slot and worker. -/
-theorem wrapped_program_hash_preparation_schedule [Fact p.Prime] (hp : 4194304 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem wrapped_program_hash_preparation_schedule [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)}
     {program : List UnifiedReduced.ProgramEntry} {span : Delegation.Caller.HashSpan} {lower upper : Nat}
     (setup : data.machine.rom = Setup.table before)
@@ -350,8 +352,8 @@ theorem wrapped_program_hash_preparation_schedule [Fact p.Prime] (hp : 4194304 �
   exact wrapped_program_caller_window hp clockInverse setup accepted publicProgram ordinaryProgram registry region
     first last (by omega) ordered (by omega) beforeTerminal
 
-theorem wrapped_program_computed_hash_inputs [Fact p.Prime] (hp : 4194304 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem wrapped_program_computed_hash_inputs [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {window : HashWindow}
     (accepted : MixedMemoryAccepted data program)
@@ -367,8 +369,8 @@ theorem wrapped_program_computed_hash_inputs [Fact p.Prime] (hp : 4194304 ≤ p)
   rw [← schedule.workerCount, schedule.machineCount, scope.duration]
   omega
 
-theorem wrapped_program_computed_hash_window [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem wrapped_program_computed_hash_window [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {window : HashWindow}
     (accepted : MixedMemoryAccepted data program)
@@ -385,8 +387,8 @@ theorem wrapped_program_computed_hash_window [Fact p.Prime] (hp : 16777216 ≤ p
 
 /-- Code regions derive every window's shape before the existing source-aware
     composition realizes all gaps and references in one initialized history. -/
-theorem wrapped_program_computed_hash_sequence [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem wrapped_program_computed_hash_sequence [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {first : HashWindow} {rest : List HashWindow}
     (accepted : MixedMemoryAccepted data program)

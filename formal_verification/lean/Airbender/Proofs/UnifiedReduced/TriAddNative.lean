@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.TriAdd
 import Airbender.Proofs.UnifiedReduced.CustomHistory
 import Airbender.Proofs.UnifiedReduced.RegisterReads
@@ -26,7 +28,7 @@ theorem triadd_metadata {entry : ProgramEntry} {input : TriAdd.Input}
       exact result.2
     · simpa [zeroRegister] using zero
 
-theorem triadd_old_read [Fact p.Prime] (hp : limbBase < p)
+theorem triadd_old_read [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} {entry : ProgramEntry}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (noStore : w 29 = 0) (query : decoderQuery w = entry.query)
@@ -52,7 +54,7 @@ theorem triadd_old_read [Fact p.Prime] (hp : limbBase < p)
   simpa [TriAdd.oldDestination, readToken, MemoryToken.word, importedConstraintsMemoryPorts,
     MemoryPort.readCode, WordColumns.code, WordColumns.evaluate, pairCode, memoryWord, Cell.read] using read
 
-theorem triadd_soundness_from_history [Fact p.Prime] (hp : 524288 < p)
+theorem triadd_soundness_from_history [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {cells : List Cell}
     {input : TriAdd.Input} {output : Output} {w : Nat → ZMod p} {after : State} {epoch : Nat}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -141,8 +143,8 @@ theorem triadd_soundness_from_history [Fact p.Prime] (hp : 524288 < p)
   exact triadd_soundness calculationSize setup input output w ⟨interfaces, core, oldMapping⟩
 
 
-theorem triadd_soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem triadd_soundness_from_memory [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     (inputs : NativeInputs projection trace initial cells program) (accepted : Accepted trace)
@@ -169,8 +171,8 @@ theorem triadd_soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 
   exact triadd_soundness_from_history (by dsimp [timestampBase] at hp; omega)
     core (accepted.active _ member) history bounds words fields query encoding pc
 
-theorem native_triadd_soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem native_triadd_soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     (trace : UnifiedTrace p) (initial : State) (cells : List Cell) (program : List ProgramEntry) :
     (TriAdd.circuitModel trace initial cells program).SoundnessUnder
       (TriAdd.InterfaceAssumptions trace initial cells program) TriAdd.spec := by
@@ -181,8 +183,8 @@ theorem native_triadd_soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (custom_memory_execution hp inverse accepted assumptions.initialization decoded) member
     mapping.words mapping.state (run_program_sources image entry present).fields query encoding
 
-theorem triadd_execution_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem triadd_execution_from_memory [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     (accepted : Accepted trace)
@@ -210,8 +212,8 @@ theorem triadd_execution_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 
   exact custom_register_retirement (by dsimp [timestampBase] at hp; omega)
     core fields query destination trace.memoryEpoch history result
 
-theorem triadd_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem triadd_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (accepted : Accepted trace) (decoded : Decoded trace program)
     (inputs : NativeInputs customDecoderFields trace initial cells program)

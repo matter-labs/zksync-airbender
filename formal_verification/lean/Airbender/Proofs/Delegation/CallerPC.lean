@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Delegation.Decoder
 import Airbender.Proofs.AddSub.PC
 import Airbender.Proofs.Sail.PC
@@ -8,7 +10,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
-theorem query_pc (hp : 65536 < p) {w : Nat → ZMod p} {entry : ProgramEntry}
+theorem query_pc (hp : FieldCapacity.NoWrap p 65536) {w : Nat → ZMod p} {entry : ProgramEntry}
     (equal : nativeQuery w = query entry) : initialPC w = Word.ofBitVec entry.pc := by
   have low := congrArg (fun values : Vector (ZMod p) 9 => values[0]) equal
   have high := congrArg (fun values : Vector (ZMod p) 9 => values[1]) equal
@@ -17,8 +19,8 @@ theorem query_pc (hp : 65536 < p) {w : Nat → ZMod p} {entry : ProgramEntry}
   change (⟨(w 0).val, (w 1).val⟩ : Word) = Word.ofBitVec entry.pc
   exact Trace.Proofs.word_of_pc_query hp low high
 
-theorem pc_binding [Fact p.Prime] (hp : 196608 < p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1)
+theorem pc_binding [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
+    (inverse : SerializedInverse.Limb16 p)
     {before : State} {addresses : List (BitVec 32)}
     {program : List ProgramEntry} {w : Nat → ZMod p}
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints)

@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2G.FrameQueryBindings
 import Airbender.Proofs.Blake2G.FrameQueryRows
 import Airbender.Proofs.Blake2Round.NativeColumnView0
@@ -52,7 +53,7 @@ theorem columns11 {p : Nat} [Fact p.Prime]
   interval_cases lane
   all_goals (simp [values11, frame, source8Values, plainPad] <;> ring)
 
-theorem queries {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem queries {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) (i : Fin 3) :

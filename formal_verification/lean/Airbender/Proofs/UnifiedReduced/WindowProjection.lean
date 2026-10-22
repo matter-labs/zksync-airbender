@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.WindowProjection
 import Airbender.Proofs.UnifiedReduced.MixedWindows
 import Airbender.Proofs.UnifiedReduced.WorkerProjection
@@ -8,8 +10,8 @@ namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Trace.Proofs Reference.RiscV.Sail
 set_option warningAsError true
 
-theorem worker_write_off_cut [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {data : RequestTrace p} {before : State}
+theorem worker_write_off_cut [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {data : RequestTrace p} {before : State}
     {addresses : List (BitVec 32)} (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     (requests : RequestBinding data before) {cut : Nat} (aligned : cut % 4 = 0)
     {worker : Delegation.Row p} (member : worker ∈ data.workers.rows) : worker.writeTime ≠ cut := by
@@ -28,8 +30,8 @@ theorem worker_write_off_cut [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     have time : worker.writeTime = 2 := by simp [write, zero, timeOfPair, Timestamp.value]
     omega
 
-theorem worker_prefix_shift [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {data : RequestTrace p} {before : State}
+theorem worker_prefix_shift [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {data : RequestTrace p} {before : State}
     {addresses : List (BitVec 32)} (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     (requests : RequestBinding data before) {cut : Nat} (aligned : cut % 4 = 0) (positive : 2 ≤ cut) :
     data.workers.prefixRows (cut - 1) = data.workers.prefixRows cut := by
@@ -59,8 +61,8 @@ theorem window_filtered_tokens [Fact p.Prime] {data : RequestTrace p} {before : 
   Delegation.Caller.Proofs.filtered_architectural_tokens _ _ (window_machine_addresses accepted requests)
     (Delegation.Caller.Proofs.worker_addresses (data := ⟨data.workers.setup, data.workers.windowRows lower upper, [], []⟩)) written
 
-theorem prefix_filtered_tokens [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {data : RequestTrace p} {before : State}
+theorem prefix_filtered_tokens [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {data : RequestTrace p} {before : State}
     {addresses : List (BitVec 32)} (accepted : MixedMemoryAccepted data []) (inputs : RequestInputs data before addresses)
     (requests : RequestBinding data before) {lower : Nat} (first : lower % 4 = 0) (positive : 2 ≤ lower) (written : Bool) :
     (((data.prefixSteps lower).map fun edge => if written then edge.2 else edge.1).filter
@@ -95,8 +97,8 @@ theorem native_boundary_restriction {tokens : List (MemoryToken p)} {state : Sta
   ⟨Delegation.Proofs.boundary_image_restriction boundary.1 (fun address => address != (Cell.register 0).addressCode),
     fun token member => boundary.2 token (List.mem_of_mem_filter member)⟩
 
-theorem projected_window [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem projected_window [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p) (rotationInverse : SerializedInverse.Scale64 p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data []) (inputs : MixedMemoryInputs data [] before ca oa cells)
     {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0) (positive : 2 ≤ lower) (ordered : lower ≤ upper) :

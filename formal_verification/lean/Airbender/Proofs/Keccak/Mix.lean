@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Keccak.Lanes
 import Airbender.Proofs.Keccak.MixRotation
 import Mathlib.Tactic.IntervalCases
@@ -27,7 +28,7 @@ theorem mix_preserved {p : Nat} [Fact p.Prime]
     Verification.environment, selected, preservedLanes, readLaneLimbs, writeLaneLimbs] at equation ⊢
   all_goals linear_combination -equation
 
-theorem mix_written_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem mix_written_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))
@@ -83,7 +84,7 @@ private theorem write_limbs_native {p : Nat} (w : Nat → ZMod p) (lane : Fin 6)
     (writeLaneLimbs w lane)[limb] = w (nativeLimbs (17 + 8 * lane.val))[limb] := by
   fin_cases limb <;> simp [writeLaneLimbs, nativeLimbs] <;> congr 1 <;> omega
 
-private theorem mix_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+private theorem mix_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {first second : Nat → ZMod p}
     (hfirst : FlatOperation.ConstraintsHoldFlat (Verification.environment first)
       (importedConstraints (setupTable control)))
@@ -151,7 +152,7 @@ private theorem mix_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   · have bound := s4 limb
     fin_cases limb <;> simpa [aColumns, nativeLimbs, readLaneLimbs] using bound
 
-theorem mixed_columns {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem mixed_columns {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {first second : Nat → ZMod p}
     {c : Vector Nat 5} {round : Fin 32}
     (hfirst : FlatOperation.ConstraintsHoldFlat (Verification.environment first)

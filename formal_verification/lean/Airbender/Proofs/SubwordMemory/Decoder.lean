@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.SubwordMemory.Decoder
 import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.SubwordMemory
@@ -27,7 +28,7 @@ theorem decoder_load_nonzero {instruction : SailRV32.instruction} {data : Trace.
   all_goals simp_all [Nat.testBit]
 
 /-- Three native Boolean bits are uniquely fixed by the public packed mask. -/
-theorem decoder_selectors {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem decoder_selectors {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p} {entry : ProgramEntry}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (small : entry.data.mask < 8) (query : decoderQuery w = entry.query) :
@@ -46,7 +47,7 @@ theorem decoder_selectors {p : Nat} [Fact p.Prime] (hp : limbBase < p)
   exact Trace.Proofs.unpack_decoder_bits_of_width (by dsimp [limbBase] at hp; omega)
     (by decide) (by omega) boolean packed
 
-theorem fetched {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem fetched {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImage before addresses = some program)

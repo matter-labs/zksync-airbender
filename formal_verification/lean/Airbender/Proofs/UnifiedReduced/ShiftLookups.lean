@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.Setup
 import Airbender.Proofs.ShiftBinop.Lookups
 
@@ -65,7 +66,7 @@ theorem ordinary_region {before : Reference.RiscV.Sail.State} {i : Fin 2097537} 
     rw [same] at selected
     rcases valid with rfl | rfl | rfl <;> omega
 
-theorem ordinary_lookup [Fact p.Prime] (hp : 55 ≤ p)
+theorem ordinary_lookup [Fact p.Prime] (hp : FieldCapacity.AtLeast p 55)
     {before : Reference.RiscV.Sail.State} {entry : Vector (Expression (ZMod p)) 10}
     {env : Environment (ZMod p)} (holds : (Lookup.mk (table before).toRaw entry).Contains env)
     (tag : Nat) (valid : tag = 3 ∨ tag = 8 ∨ tag = 9)

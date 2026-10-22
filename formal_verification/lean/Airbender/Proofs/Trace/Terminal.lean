@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.NativeSailHistory
 
 namespace Airbender.Trace.Proofs
@@ -28,8 +30,8 @@ theorem last_write_max (history : MemoryAccessList)
         ih (List.Pairwise.of_cons sorted) member
           (fun other present => latest other (List.mem_cons_of_mem _ present))
 
-private theorem terminal_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+private theorem terminal_path [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup)
     {sink : MemoryToken p} (member : sink ∈ trace.terminalMemory) :
@@ -49,8 +51,8 @@ private theorem terminal_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 /-- The final native token is the last write in Clean's complete history.
     This follows from native matching and strict chronology, not a result premise. -/
-theorem terminal_latest_value [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem terminal_latest_value [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup)
     {history : TimestampSortedMemoryAccessList} (bound : MemoryHistory trace history)
@@ -126,8 +128,8 @@ theorem terminal_latest_value [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 /-- The realized Sail state reads the exact terminal register/RAM values from
     native matching. No claimed terminal value is assumed to be correct. -/
-theorem terminal_sail_reads [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem terminal_sail_reads [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before after : State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory) (domain : cells.Nodup)

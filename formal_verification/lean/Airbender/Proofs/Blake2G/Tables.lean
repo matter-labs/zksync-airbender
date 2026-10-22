@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2G.ImportedXor
 import Mathlib.Tactic.FinCases
 
@@ -18,7 +19,7 @@ private theorem xor_rows {control : Fin 512 → Vector Nat 7} (index : Fin 34489
 
 /-- Each selected XOR region in the native static table enforces its chunk bounds
     and exact XOR. This uses table membership, not an assumed circuit result. -/
-theorem xor_lookup {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem xor_lookup {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {control : Fin 512 → Vector Nat 7} {entry : Vector (Expression (ZMod p)) 9}
     {env : Environment (ZMod p)} (kind : Fin 5)
     (h : (Lookup.mk (setupTable control).toRaw entry).Contains env)
@@ -62,7 +63,7 @@ theorem xor_lookup {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
 set_option maxRecDepth 4096 in
 /-- Tag 28 selects the controller region and binds every output column to one
     supplied row. No assumptions about that row's behavior are used here. -/
-theorem control_lookup {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem control_lookup {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {control : Fin 512 → Vector Nat 7} {entry : Vector (Expression (ZMod p)) 9}
     {env : Environment (ZMod p)}
     (h : (Lookup.mk (setupTable control).toRaw entry).Contains env)

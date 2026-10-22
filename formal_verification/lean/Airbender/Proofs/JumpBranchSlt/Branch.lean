@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.JumpBranchSlt.Signed
 import Airbender.Proofs.JumpBranchSlt.PC
 import Mathlib.Tactic.IntervalCases
@@ -16,7 +17,7 @@ theorem masked_destination {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
   simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment, zero] using And.intro lo hi
 
-private theorem branch_bits {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+private theorem branch_bits {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {w : Nat → ZMod p} {left right : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 14 = 1) (other : w 11 = 0 ∧ w 12 = 0 ∧ w 13 = 0)
@@ -94,7 +95,7 @@ private theorem branch_bits {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
 set_option maxHeartbeats 600000 in
 /-- Local branch resolution, derived from subtraction and the imported lookup.
     This is not yet an architectural Sail branch/PC soundness theorem. -/
-theorem branch_resolution {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem branch_resolution {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {w : Nat → ZMod p} {left right : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 14 = 1) (other : w 11 = 0 ∧ w 12 = 0 ∧ w 13 = 0)
@@ -146,7 +147,7 @@ theorem branch_resolution {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
 /-- A selected branch uses its resolved bit for PC selection. Even offsets are
     a decoder obligation; the imported bit-1 check enforces four-byte alignment
     when taken. The final high-PC bound remains a state/ROM obligation. -/
-theorem branch_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem branch_pc {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {w : Nat → ZMod p} {initial offset final : Word} (taken : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 14 = 1) (other : w 11 = 0 ∧ w 12 = 0 ∧ w 13 = 0)

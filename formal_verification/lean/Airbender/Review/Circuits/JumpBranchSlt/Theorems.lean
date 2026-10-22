@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.JumpBranchSlt.RowClaims
 import Airbender.Proofs.JumpBranchSlt.TraceSoundness
 import Airbender.Proofs.JumpBranchSlt.BranchSoundness
@@ -16,7 +18,7 @@ namespace Comparison
 /-- Original Sail execution with register/PC effects. Shared history supplies
     local ranges and reads; public conditions remain visible in the model. -/
 theorem soundness {p : Nat} [Fact p.Prime]
-    (hp : 536870912 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (clockInverse : SerializedInverse.Clock p)
     (trace : Trace.PooledTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List Trace.PooledProgramEntry) :
     InterfaceAssumptions trace initial cells program →
@@ -37,7 +39,7 @@ namespace Branch
 /-- Original Sail execution with register/PC effects. Shared history supplies
     local ranges and reads; public conditions remain visible in the model. -/
 theorem soundness {p : Nat} [Fact p.Prime]
-    (hp : 536870912 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (clockInverse : SerializedInverse.Clock p)
     (trace : Trace.PooledTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List Trace.PooledProgramEntry) :
     InterfaceAssumptions trace initial cells program →
@@ -58,7 +60,7 @@ namespace Jump
 /-- Original Sail execution with register/PC effects. Shared history supplies
     local ranges and reads; public conditions remain visible in the model. -/
 theorem soundness {p : Nat} [Fact p.Prime]
-    (hp : 536870912 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (clockInverse : SerializedInverse.Clock p)
     (trace : Trace.PooledTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List Trace.PooledProgramEntry) :
     (circuitModel trace initial cells program).SoundnessUnder

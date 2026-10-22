@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Keccak.BoundaryInputs
 import Airbender.Proofs.Delegation.Readonly
 import Airbender.Review.Trace.Workers.Keccak.Call
@@ -21,7 +22,7 @@ private theorem pointer_copies {data : Delegation.MemoryData p}
     rcases portMember with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
     all_goals first | rfl | simp [readToken, MemoryAddress.code, Cell.addressCode] at address
 
-theorem pointer_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem pointer_history [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {pointer : BitVec 32}
     (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.Proofs.BoundaryInputs data initial cells)
     (family : ∀ row ∈ data.rows, row.family = .keccak)
@@ -41,7 +42,7 @@ theorem pointer_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   simpa [statePointer, readToken, MemoryToken.word, MemoryPort.readCode,
     WordColumns.code, importedConstraintsMemoryPorts, pairCode] using result
 
-theorem call_pointer [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem call_pointer [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells) :
     CallPointer data initial := by

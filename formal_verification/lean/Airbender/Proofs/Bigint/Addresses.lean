@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Bigint.ArtifactChecks
 import Airbender.Review.Circuits.Bigint.Addresses
 import Airbender.Proofs.MemoryPorts
@@ -14,8 +16,8 @@ set_option warningAsError true
 set_option maxHeartbeats 800000
 set_option maxRecDepth 16384
 
-theorem pointer_alignment {p : Nat} [Fact p.Prime] (_hp : 2097152 ≤ p)
-    (inverse : 32 * (-62914560 : ZMod p) = 1) {w : Nat → ZMod p}
+theorem pointer_alignment {p : Nat} [Fact p.Prime] (_hp : FieldCapacity.AtLeast p 2097152)
+    (inverse : SerializedInverse.Scale32 p) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :
     (w 3).val % 32 = 0 ∧ (w 37).val % 32 = 0 := by
@@ -35,8 +37,8 @@ theorem pointer_alignment {p : Nat} [Fact p.Prime] (_hp : 2097152 ≤ p)
     (by simpa only [neg_mul] using right)
   constructor <;> first | (rw [lv]; simp) | (rw [rv]; simp)
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 2097152 ≤ p)
-    (inverse : 32 * (-62914560 : ZMod p) = 1) :
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 2097152)
+    (inverse : SerializedInverse.Scale32 p) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec := by
   intro input output w ⟨bounds, h, mapping⟩
   have align := pointer_alignment hp inverse h

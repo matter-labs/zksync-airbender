@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.RowModel
 import Airbender.Proofs.UnifiedReduced
 import Airbender.Proofs.AddSub
@@ -9,7 +10,7 @@ open Airbender.Arithmetic
 set_option maxRecDepth 8192
 set_option maxHeartbeats 1200000
 
-private theorem other_standard_flags {p : Nat} [Fact p.Prime] (hp : 18 < p)
+private theorem other_standard_flags {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 18)
     {setup : Table (ZMod p) (fields 10)} {input : Sail.Input} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (dc : DecoderContract input w) :
@@ -25,7 +26,7 @@ private theorem other_standard_flags {p : Nat} [Fact p.Prime] (hp : 18 < p)
   have equal := congrArg Fin.val same
   omega
 
-private theorem standard_selectors {p : Nat} [Fact p.Prime] (hp : 18 < p)
+private theorem standard_selectors {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 18)
     {setup : Table (ZMod p) (fields 10)} {input : Sail.Input} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (dc : DecoderContract input w) (nonzero : input.rd ≠ Sail.zeroRegister) :
@@ -43,7 +44,7 @@ private theorem standard_selectors {p : Nat} [Fact p.Prime] (hp : 18 < p)
     | exact other 1 (by decide)
     | exact other 2 (by decide)
 
-private theorem selected_equations {p : Nat} [Fact p.Prime] (hp : 18 < p)
+private theorem selected_equations {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 18)
     {setup : Table (ZMod p) (fields 10)} {input : Sail.Input} {output : Sail.Output}
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -94,7 +95,7 @@ private theorem output_bounds {p : Nat} [Fact p.Prime]
 
 /-- Standard instructions reuse the standalone limb calculation and native Sail
     execution/retirement proofs; only the imported placement and gates differ. -/
-theorem standard_soundness {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+theorem standard_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
     (setup : Table (ZMod p) (fields 10)) :
     (rowCircuitModel setup).SoundnessUnder RowInterfaces Sail.spec := by
   rintro input output w ⟨assumptions, constraints, mapping⟩

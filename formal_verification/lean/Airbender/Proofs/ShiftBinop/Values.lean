@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.ShiftBinop.Trace
 import Airbender.Proofs.ShiftBinop.Ports
 import Airbender.Proofs.Trace.Values
@@ -7,7 +9,7 @@ open Arithmetic Trace
 
 /-- Native writes are bounded before read transport. Actual public decoding
     selects the tag; imported lookups and assembly bound the result. -/
-theorem row_write_sources {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem row_write_sources {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     (row : Row p TraceKind)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) importedConstraints)
     {before : Reference.RiscV.Sail.State} (fetch : Fetched row.assignment before) :
@@ -41,7 +43,7 @@ theorem row_write_sources {p : Nat} [Fact p.Prime] (hp : 262144 < p)
         exact binary_written_bounds (by omega) h selected _ tags tag
     simpa [Trace.Proofs.write_word, importedConstraintsMemoryPorts, Word.Bounded] using destination
 
-theorem write_sources {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem write_sources {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {trace : NativeTrace p} (accepted : Accepted trace)
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List ProgramEntry} (image : programImage before addresses = some program)
@@ -54,7 +56,7 @@ theorem write_sources {p : Nat} [Fact p.Prime] (hp : 262144 < p)
 /-- Shared latest-write/read induction derives bounded operands, writes and
     terminal cells from public initialization, without a result premise. -/
 theorem native_value_bounds {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)

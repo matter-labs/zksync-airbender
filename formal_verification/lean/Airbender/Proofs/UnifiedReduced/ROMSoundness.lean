@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.ROMData
 import Airbender.Review.Circuits.UnifiedReduced.WordROM
 import Airbender.Proofs.UnifiedReduced.WordMemorySoundness
@@ -10,7 +12,7 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
 theorem soundness_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     (boot : BootInputsWith projection trace initial cells program)
@@ -75,7 +77,7 @@ theorem soundness_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform
     configuration ordinary destination copied
 
 theorem soundness [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     (trace : UnifiedTrace p) (initial : State) (cells : List Cell) (program : List ProgramEntry) :
     (circuitModel trace initial cells program).SoundnessUnder
       (InterfaceAssumptions trace initial cells program) Airbender.WordMemory.spec := by

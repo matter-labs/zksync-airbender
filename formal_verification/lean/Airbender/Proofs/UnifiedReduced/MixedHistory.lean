@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.MixedExecution
 import Airbender.Proofs.UnifiedReduced.CustomHistory
 
@@ -24,7 +26,7 @@ theorem field_bounds {instruction : SailRV32.instruction} {data : DecoderData Un
   · exact UnifiedReduced.Proofs.decoder_field_bounds standard
   · exact UnifiedReduced.Proofs.custom_field_bounds custom
 
-theorem zero_preserving [Fact p.Prime] (hp : 524288 < p) {trace : UnifiedTrace p}
+theorem zero_preserving [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288) {trace : UnifiedTrace p}
     (accepted : Accepted trace) {initial : State}
     {addresses : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry}
     (image : Mixed.programImage initial addresses = some program) (decoded : UnifiedReduced.Decoded trace program) :
@@ -45,8 +47,8 @@ theorem zero_preserving [Fact p.Prime] (hp : 524288 < p) {trace : UnifiedTrace p
       exact UnifiedReduced.Proofs.row_zero_preserving hp core (accepted.active _ member) fetched
     · exact UnifiedReduced.Proofs.custom_row_zero_preserving hp core custom query
 
-theorem memory_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : UnifiedTrace p}
+theorem memory_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : UnifiedTrace p}
     (accepted : Accepted trace) {initial : State} {cells : List Cell} {program : List UnifiedReduced.ProgramEntry}
     (inputs : NativeInputs Mixed.decoderFields trace initial cells program)
     (decoded : UnifiedReduced.Decoded trace program) : MemoryExecution trace initial cells := by
@@ -55,7 +57,7 @@ theorem memory_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   exact Trace.Proofs.native_row_history hp inverse accepted inputs.clocks inputs.image inputs.distinct inputs.aligned
     (Trace.Proofs.zero_writes_of_preserving hp inverse accepted inputs.clocks inputs.image zero)
 
-theorem source_after_history [Fact p.Prime] (hp : 131072 < p)
+theorem source_after_history [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072)
     {trace : UnifiedTrace p} (accepted : Accepted trace)
     {initial before : State} {cells : List Cell} {events : List MemoryAccess}
     (past : SailHistory cells events initial before)

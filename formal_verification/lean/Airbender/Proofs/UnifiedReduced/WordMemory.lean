@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced
 import Airbender.Proofs.Lookups
 
@@ -7,7 +8,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
-theorem word_memory_address [Fact p.Prime] (hp : 196608 < p)
+theorem word_memory_address [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} (store : Bool)
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 28 = if store then 0 else 1) (other : w 29 = if store then 1 else 0)
@@ -52,7 +53,7 @@ theorem word_memory_copy [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
   all_goals constructor
   all_goals first | linear_combination low | linear_combination high
 
-theorem word_memory_ram [Fact p.Prime] (hp : 131072 < p)
+theorem word_memory_ram [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} (store : Bool)
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 28 = if store then 0 else 1) (other : w 29 = if store then 1 else 0)

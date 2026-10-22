@@ -1,10 +1,11 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Context.PCState.Theorems
 import Airbender.Proofs.JumpBranchSlt
 
 namespace Airbender.JumpBranchSlt.Proofs
 open Arithmetic
 
-theorem final_pc_low_bound {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem final_pc_low_bound {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
     (w Variables.finalPCLo).val < limbBase := by
@@ -16,7 +17,7 @@ theorem final_pc_low_bound {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   exact lt_of_le_of_lt (Nat.sub_le _ _) low
 
 /-- One range discharge serves comparisons, branches and both jump selectors. -/
-theorem final_pc_bounds {p n : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem final_pc_bounds {p n : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {context : PCState.Context p n} {w : Nat → ZMod p}
     (global : PCState.Interface context)
     (outgoing : PCState.Outgoing context (w Variables.finalPCLo, w Variables.finalPCHi))

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.NativeCell
 import Airbender.Review.Circuits.UnifiedReduced.WordMemory
 import Airbender.Proofs.UnifiedReduced.WordMemory
@@ -86,7 +88,7 @@ private theorem retire_ram [MemoryPlatform SailRV32.exception]
 
 
 theorem row_soundness_from_history [Fact p.Prime] [MemoryPlatform SailRV32.exception]
-    (hp : 524288 < p)
+    (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {initial : State} {cells : List Cell} {events : List MemoryAccess}
     {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output} {w : Nat → ZMod p}
     {after : State} {epoch : Nat}
@@ -247,7 +249,7 @@ theorem row_soundness_from_history [Fact p.Prime] [MemoryPlatform SailRV32.excep
   exact retire_ram input output effective successor.2.2 copiedWord
     sourceRead storeRead loadRead extension pcRead access
 
-theorem ram_copy_from_history [Fact p.Prime] (hp : 524288 < p)
+theorem ram_copy_from_history [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {cells : List Cell} {w : Nat → ZMod p} {epoch : Nat}
     {before after : State} {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -315,7 +317,7 @@ theorem ram_copy_from_history [Fact p.Prime] (hp : 524288 < p)
   rw [outputWord, inputWord, copied.1, copied.2]
 
 theorem row_soundness_from_memory [Fact p.Prime] [MemoryPlatform SailRV32.exception]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output} {w : Nat → ZMod p}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
@@ -353,7 +355,7 @@ theorem row_soundness_from_memory [Fact p.Prime] [MemoryPlatform SailRV32.except
     ordinary destination copiedWord pcRead
 
 theorem row_soundness [Fact p.Prime] [MemoryPlatform SailRV32.exception]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output} {w : Nat → ZMod p}
     (accepted : Accepted trace) (decoded : Decoded trace program)
@@ -373,7 +375,7 @@ theorem row_soundness [Fact p.Prime] [MemoryPlatform SailRV32.exception]
     initialization configuration ordinary destination copiedWord
 
 theorem soundness [Fact p.Prime] [MemoryPlatform SailRV32.exception]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     (trace : UnifiedTrace p) (initial : State) (cells : List Cell) (program : List ProgramEntry) :
     (circuitModel trace initial cells program).SoundnessUnder
       (InterfaceAssumptions trace initial cells program) Airbender.WordMemory.spec := by

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.AddSub.ArtifactChecks
 import Airbender.Review.Circuits.WordMemory.Artifact
 import Airbender.Proofs.AddSub.Timestamp
@@ -20,7 +22,7 @@ theorem addSub_final_bound {p : Nat} [Fact p.Prime]
   exact finalBound
 
 theorem addSub_step {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {w : Nat → ZMod p} (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (AddSub.clockConstraints))
     (initialBound : (decodeTimestamp w AddSub.importedConstraintsTraceColumns.initialTime).Bounded) :
@@ -39,7 +41,7 @@ theorem addSub_step {p : Nat} [Fact p.Prime]
   exact ⟨finalBound, advance⟩
 
 theorem addSub_clock {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {w : Nat → ZMod p} (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (AddSub.clockConstraints)) (inputs : ClockInputs AddSub.importedConstraintsTraceColumns w) :
     ClockEffects AddSub.importedConstraintsTraceColumns w := by
@@ -135,7 +137,7 @@ theorem wordMemory_final_bound {p : Nat} [Fact p.Prime] (rom : Table (ZMod p) (f
   exact finalBound
 
 theorem wordMemory_step {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1) (rom : Table (ZMod p) (fields 9))
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p) (rom : Table (ZMod p) (fields 9))
     {w : Nat → ZMod p} (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (WordMemory.clockConstraints rom))
     (initialBound : (decodeTimestamp w WordMemory.importedConstraintsTraceColumns.initialTime).Bounded) :
@@ -164,7 +166,7 @@ theorem wordMemory_step {p : Nat} [Fact p.Prime]
   exact ⟨finalBound, advance⟩
 
 theorem wordMemory_clock {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1) (rom : Table (ZMod p) (fields 9))
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p) (rom : Table (ZMod p) (fields 9))
     {w : Nat → ZMod p} (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (WordMemory.clockConstraints rom)) (inputs : ClockInputs WordMemory.importedConstraintsTraceColumns w) :
     ClockEffects WordMemory.importedConstraintsTraceColumns w := by

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.SubwordMemory.Values
 import Airbender.Proofs.Trace.PortReads
 
@@ -9,14 +11,14 @@ abbrev nativeEvents (epoch : Nat) (w : Nat → ZMod p) :=
 
 /-- Query membership identifies rs1; native equations identify the opposite
     register port (rs2 for stores, rd for loads). -/
-theorem source_address {p : Nat} (hp : limbBase < p) {w : Nat → ZMod p} {entry : ProgramEntry}
+theorem source_address {p : Nat} (hp : FieldCapacity.NoWrap p limbBase) {w : Nat → ZMod p} {entry : ProgramEntry}
     (query : decoderQuery w = entry.query) :
     importedConstraintsMemoryPorts[0].address.code w = (Cell.register entry.data.rs1).addressCode := by
   have index := (Trace.Proofs.native_query_indices hp query).1
   change (w 5).val = entry.data.rs1.toNat at index
   simp [importedConstraintsMemoryPorts, MemoryAddress.code, Cell.addressCode, index]
 
-theorem opposite_register_address {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem opposite_register_address {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p} {entry : ProgramEntry} (store : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 10 = if store then 1 else 0) (query : decoderQuery w = entry.query) :
@@ -30,7 +32,7 @@ theorem opposite_register_address {p : Nat} [Fact p.Prime] (hp : limbBase < p)
   all_goals simp [importedConstraintsMemoryPorts, MemoryAddress.code, pairCode, Cell.addressCode,
     selected, wiring.1, wiring.2, indices.2.1, indices.2.2]
 
-theorem source_read {p : Nat} (hp : limbBase < p) {w : Nat → ZMod p} {entry : ProgramEntry}
+theorem source_read {p : Nat} (hp : FieldCapacity.NoWrap p limbBase) {w : Nat → ZMod p} {entry : ProgramEntry}
     {cells : List Cell} (epoch : Nat) {before after : State}
     (query : decoderQuery w = entry.query)
     (history : Trace.SailHistory cells (nativeEvents epoch w).reverse before after) :
@@ -39,7 +41,7 @@ theorem source_read {p : Nat} (hp : limbBase < p) {w : Nat → ZMod p} {entry : 
   Trace.Proofs.native_history_read epoch rfl rfl rfl history
     (by simp [importedConstraintsMemoryPorts]) (source_address hp query)
 
-theorem register_read {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem register_read {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p} {entry : ProgramEntry} (store : Bool)
     {cells : List Cell} (epoch : Nat) {before after : State}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -51,7 +53,7 @@ theorem register_read {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     (by cases store <;> simp [importedConstraintsMemoryPorts])
     (opposite_register_address hp store h selected query)
 
-theorem destination_write {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem destination_write {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p} {entry : ProgramEntry}
     {cells : List Cell} (epoch : Nat) {before after : State}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -64,8 +66,8 @@ theorem destination_write {p : Nat} [Fact p.Prime] (hp : limbBase < p)
 
 /-- Matching roots the RAM port at a public aligned cell, deriving the actual
     canonical byte address. No address-limb bound is supplied as a premise. -/
-theorem ram_cell {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : NativeTrace p}
+theorem ram_cell {p : Nat} [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : NativeTrace p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell} (image : initialImage initial cells = some trace.initialMemory)
     {w : Nat → ZMod p} (member : (⟨.subwordMemory, w⟩ : Row p TraceKind) ∈ trace.rows)
@@ -83,8 +85,8 @@ theorem ram_cell {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     refine ⟨Nat.pair (w 27).val (w 28).val, ?_⟩
     simp [importedConstraintsMemoryPorts, MemoryAddress.code, pairCode, selected, ZMod.val_one]
 
-theorem ram_read {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : NativeTrace p}
+theorem ram_read {p : Nat} [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : NativeTrace p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell} (image : initialImage initial cells = some trace.initialMemory)
     {w : Nat → ZMod p} (member : (⟨.subwordMemory, w⟩ : Row p TraceKind) ∈ trace.rows)
@@ -98,8 +100,8 @@ theorem ram_read {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (by cases store <;> simp [importedConstraintsMemoryPorts])
     (ram_cell hp inverse accepted boundary image member store selected).2
 
-theorem ram_write {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : NativeTrace p}
+theorem ram_write {p : Nat} [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : NativeTrace p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell} (image : initialImage initial cells = some trace.initialMemory)
     {w : Nat → ZMod p} (member : (⟨.subwordMemory, w⟩ : Row p TraceKind) ∈ trace.rows)

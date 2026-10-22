@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2Round.NativeXorTransfer
 import Airbender.Proofs.Blake2G.Tables
 import Airbender.Proofs.Constraints
@@ -10,7 +11,7 @@ set_option maxHeartbeats 2000000
 
 /-- Ordinary native regions project to the same imported G XOR rows. Carry and
     packed regions have their separate checked projections. -/
-theorem padded_membership {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem padded_membership {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {source : Vector (Expression (ZMod p)) 6} {target : Vector (Expression (ZMod p)) 9}
     {sourceEnv targetEnv : Environment (ZMod p)} (kind : Fin 3)
     (h : (Lookup.mk setupTable.toRaw source).Contains sourceEnv)
@@ -19,7 +20,7 @@ theorem padded_membership {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
     (Lookup.mk (Blake2G.setupTable (fun _ => Vector.replicate 7 0)).toRaw target).Contains targetEnv :=
   plain_membership hp _ kind h tag columns
 
-theorem xor_lookup {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem xor_lookup {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {entry : Vector (Expression (ZMod p)) 6} {env : Environment (ZMod p)}
     (kind : Fin 3) (h : (Lookup.mk setupTable.toRaw entry).Contains env)
     (selected : entry[5].eval env = ((plainTags[kind] : Nat) : ZMod p)) :
@@ -37,7 +38,7 @@ theorem xor_lookup {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
   fin_cases kind <;> simpa [padded, plainBase, plainGKind] using result
 
 /-- Raw queries retain all six physical columns, including their native tag. -/
-theorem xor_lookup_raw {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem xor_lookup_raw {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {query : Lookup (ZMod p)} {env : Environment (ZMod p)} (kind : Fin 3)
     (h : query.Contains env) (table : query.table = setupTable.toRaw)
     (selected : (query.entry.toArray[5]!).eval env = ((plainTags[kind] : Nat) : ZMod p)) :

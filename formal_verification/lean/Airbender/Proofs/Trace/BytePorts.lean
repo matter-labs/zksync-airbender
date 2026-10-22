@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Trace.MemoryPorts
 import Airbender.Proofs.Trace.SailHistory
 
@@ -5,7 +6,7 @@ namespace Airbender.Trace.Proofs
 open Arithmetic
 
 /-- Canonical byte pairs have a unique packing in the base field. -/
-theorem packed_bytes_unique {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem packed_bytes_unique {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {a b c d : ZMod p} (ha : a.val < 256) (hb : b.val < 256)
     (hc : c.val < 256) (hd : d.val < 256) (packed : a + 256 * b = c + 256 * d) :
     a = c ∧ b = d := by
@@ -15,7 +16,7 @@ theorem packed_bytes_unique {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
 
 /-- Lookup-bounded native bytes are the bytes of the word read through the
     existing memory history. No separate source-word interpretation is assumed. -/
-theorem byte_port_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem byte_port_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {w : Nat → ZMod p} (columns : Vector Nat 4)
     (bounds : ∀ i : Fin 4, (w columns[i]).val < 256) :
     ∀ i : Fin 4, w columns[i] =
@@ -46,7 +47,7 @@ theorem byte_port_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
 
 /-- Shifts need only the two low source bytes. Unused high bytes are allowed
     arbitrary field values; their packing cannot change these low bytes. -/
-theorem byte_port_low_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem byte_port_low_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {w : Nat → ZMod p} (columns : Vector Nat 4)
     (bounds : ∀ i : Fin 2, (w columns[i.val]).val < 256) :
     ∀ i : Fin 2, w columns[i.val] =

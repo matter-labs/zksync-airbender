@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Keccak.ArtifactChecks
 import Airbender.Review.Circuits.Keccak.Controls
 import Airbender.Proofs.Constraints
@@ -63,7 +65,7 @@ private theorem counts_field
     · linear_combination activeMode
     · linear_combination activeIteration
 
-private theorem count_value {n : Nat} (hn : n < p) {bits : Fin n → ZMod p}
+private theorem count_value {n : Nat} (hn : FieldCapacity.NoWrap p n) {bits : Fin n → ZMod p}
     (boolean : ∀ i, bits i = 0 ∨ bits i = 1) (sum : (∑ i, bits i) = w 0) :
     (∑ i, (bits i).val) = (w 0).val := by
   have bounded : (∑ i, (bits i).val) ≤ n := by
@@ -73,7 +75,7 @@ private theorem count_value {n : Nat} (hn : n < p) {bits : Fin n → ZMod p}
   apply bounded_nat_eq (F := ZMod p) (p := p) (by omega) (ZMod.val_lt _)
   simpa only [Nat.cast_sum, ZMod.natCast_zmod_val] using sum
 
-theorem selector_counts (hp : 7 < p)
+theorem selector_counts (hp : FieldCapacity.NoWrap p 7)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     (∑ i : Fin 7, (w Variables.modeColumns[i]).val) = (w 0).val ∧
     (∑ i : Fin 5, (w Variables.iterationColumns[i]).val) = (w 0).val := by
@@ -89,8 +91,8 @@ theorem selector_counts (hp : 7 < p)
     have flag := bits ⟨7 + i.val, by omega⟩
     fin_cases i <;> exact flag
 
-theorem pointer_alignment (_hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem pointer_alignment (_hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     (w 13).val % 256 = 0 := by
   have characteristic : (babyBearModulus : ZMod p) = 0 := by
@@ -108,7 +110,7 @@ theorem pointer_alignment (_hp : 16777216 ≤ p)
 
 /-- Packed mode, iteration and round bits range the actual input control
     register. No external control-register bound or fixed-table rows are used. -/
-theorem control_read_bound {p : Nat} [Fact p.Prime] (hp : 2048 ≤ p)
+theorem control_read_bound {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 2048)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     (w 3).val < 2048 := by
@@ -152,8 +154,8 @@ theorem control_read_bound {p : Nat} [Fact p.Prime] (hp : 2048 ≤ p)
     exact ZMod.val_natCast_of_lt packedBound
   omega
 
-theorem local_checks (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem local_checks (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     LocalChecks w := by
   have bits := control_bits h

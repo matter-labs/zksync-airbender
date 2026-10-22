@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Keccak.CallExecution
 import Airbender.Proofs.Delegation.CallHistory
 
@@ -13,8 +15,8 @@ theorem call_event_time (row : Delegation.Row p) {port : MemoryPort} (present : 
     rfl
   simp only [transferEvent, same, callWriteTime]
 
-theorem call_scheduled_history [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem call_scheduled_history [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells)
     (tables : data.setup = Delegation.modeledSetup Controller.rows)
@@ -54,8 +56,8 @@ theorem call_scheduled_history [Fact p.Prime] (hp : 16777216 ≤ p)
     grouped_history (fun row => callWriteTime row + 1) _ rowOrder eventOrder projection times history,
     terminal⟩
 
-theorem call_history [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem call_history [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells)
     (tables : data.setup = Delegation.modeledSetup Controller.rows)

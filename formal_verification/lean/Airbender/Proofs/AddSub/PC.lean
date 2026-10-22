@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.AddSub.RowModel
 import Airbender.Proofs.Arithmetic.Lemmas
 import Airbender.Proofs.Arithmetic.Word
@@ -20,7 +22,7 @@ theorem pc_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
   exact ⟨mapping.finalLo ▸ lo, mapping.finalHi ▸ hi⟩
 
 private theorem pc_equations {p : Nat} [Fact p.Prime]
-    (inverse : (-30720 : ZMod p) * 65536 = 1) {w : Nat → ZMod p}
+    (inverse : SerializedInverse.Limb16 p) {w : Nat → ZMod p}
     {initial final : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (mapping : PCMapping initial final w) :
@@ -50,7 +52,7 @@ private theorem pc_equations {p : Nat} [Fact p.Prime]
     The inverse premise refers to the serialized BabyBear constant, not a replacement
     inverse for another field. No execution-selector or honest-witness assumption is used. -/
 theorem pc_successor {p : Nat} [Fact p.Prime]
-    (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1)
+    (hp : FieldCapacity.NoWrap p 196608) (inverse : SerializedInverse.Limb16 p)
     {w : Nat → ZMod p} {initial final : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (mapping : PCMapping initial final w) (initialBounds : initial.Bounded) :

@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.JumpArithmetic
 import Airbender.Proofs.Arithmetic.Word
 
@@ -5,7 +6,7 @@ namespace Airbender.UnifiedReduced.Caller.Proofs
 open Arithmetic
 set_option warningAsError true
 
-theorem immediate_add_result [Fact p.Prime] (hp : 196608 < p)
+theorem immediate_add_result [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 4 = 1) (selected : w 11 = 1)

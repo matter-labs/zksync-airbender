@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.ShiftBinop.RowModel
 import Airbender.Proofs.ShiftBinop
 import Airbender.Proofs.ShiftBinop.Shifts
@@ -38,7 +40,7 @@ private theorem wiring {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
 
 /-- The imported byte query enforces both source bounds and the output byte.
     Shared by the local ISA proof and native port interpretation. -/
-theorem binary_query_values {p : Nat} [Fact p.Prime] (hp : 256 < p)
+theorem binary_query_values {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 0 ∧ w 12 = 1) (tag : Nat)
@@ -60,7 +62,7 @@ theorem binary_query_values {p : Nat} [Fact p.Prime] (hp : 256 < p)
     simpa [Expression.eval, Verification.environment, wires.1, wires.2.1,
       wires.2.2.1] using value
 
-private theorem byte_result {p : Nat} [Fact p.Prime] (hp : 256 < p)
+private theorem byte_result {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     {input : Input} {output : Sail.Output} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (interface : RowInterfaces input output w)
@@ -94,7 +96,7 @@ private theorem byte_result {p : Nat} [Fact p.Prime] (hp : 256 < p)
     simp_all [Operation.isShift, Verification.byteOperation, Operation.tag, BitVec.extractLsb'_xor,
       BitVec.extractLsb'_or, BitVec.extractLsb'_and]
 
-private theorem destination {p : Nat} [Fact p.Prime] (hp : 65536 < p)
+private theorem destination {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 65536)
     {input : Input} {output : Sail.Output} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (interface : RowInterfaces input output w)
@@ -131,7 +133,7 @@ private theorem destination {p : Nat} [Fact p.Prime] (hp : 65536 < p)
     ring
   rw [value, Nat.mod_eq_of_lt result.isLt]
 
-private theorem shift_count {p : Nat} [Fact p.Prime] (hp : 256 < p)
+private theorem shift_count {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     {input : Input} {output : Sail.Output} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (interface : RowInterfaces input output w)
@@ -171,7 +173,7 @@ private theorem shift_count {p : Nat} [Fact p.Prime] (hp : 256 < p)
     rw [ZMod.val_natCast, Nat.mod_eq_of_lt (by
       have := (input.encodedImmediate.extractLsb' 0 5).isLt; omega)]
 
-private theorem shifted_destination {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+private theorem shifted_destination {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {input : Input} {output : Sail.Output} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (interface : RowInterfaces input output w)
@@ -210,8 +212,8 @@ private theorem sail_shift_arithmetic (x : BitVec 32) (amount : BitVec n) :
 
 /-- One shared native Sail claim covers the binary and shift branches. Counts
     come from the imported truncation query and decoder operand mapping. -/
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 < p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1) :
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
+    (inverse : SerializedInverse.Limb16 p) :
     rowCircuitModel.SoundnessUnder (RowInterfaces (p := p)) spec := by
   intro input output w ⟨interface, h, mapping⟩
   have pc := pc_successor (by omega) inverse h

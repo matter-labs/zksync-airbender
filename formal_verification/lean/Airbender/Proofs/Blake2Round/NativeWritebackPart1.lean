@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2Round.PhaseProjection
 import Airbender.Proofs.Blake2G.FrameNormalization
 import Airbender.Proofs.Blake2Round.FrameOutputs
@@ -15,7 +16,7 @@ set_option maxHeartbeats 8000000
 
 /-- A four-word projection checks native writeback wiring. -/
 theorem native_writeback_part_1 {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+    (compatible : SerializedInverse.Scale64 p)
     (w : Nat → ZMod p) (initial : Vector Arithmetic.Word 16) (i : Fin 4) :
     (Preparation.words w Mixing.extendedWrites)[4 * 1 + i.val] =
       (phaseUpdate 1 (phaseUpdate 0 initial (columnOutputs w)) (diagonalOutputs w))[4 * 1 + i.val] := by

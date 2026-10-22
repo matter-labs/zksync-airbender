@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.AddSub.Model
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.AddSub.TraceSoundness
@@ -10,7 +12,7 @@ open Reference.RiscV Reference.RiscV.Sail Trace
     The per-circuit assumptions are listed in Model.lean; none are input bounds
     or expected reads. Standalone calculation/custom claims remain regressions. -/
 theorem soundness {p : Nat} [Fact p.Prime]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
     InterfaceAssumptions trace initial cells program →
     Properties.Soundness (circuitModel trace initial cells program).relation Sail.spec :=

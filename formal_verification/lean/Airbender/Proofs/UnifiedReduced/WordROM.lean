@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.WordMemory
 import Airbender.Proofs.UnifiedReduced.ROMLookups
 
@@ -7,7 +8,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1000000
 
-theorem word_rom_selection [Fact p.Prime] (hp : 131072 < p)
+theorem word_rom_selection [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} (store : Bool)
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 28 = if store then 0 else 1) (other : w 29 = if store then 1 else 0) :

@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2G.ArtifactChecks
 import Airbender.Proofs.Blake2G.Tables
 import Airbender.Proofs.Blake2G.Fragment
@@ -9,7 +10,7 @@ namespace Airbender.Blake2G.Proofs
 set_option maxHeartbeats 1200000
 
 /-- The imported arithmetic fragment supplies all eighteen sized XOR queries. -/
-theorem data_lookups_of_queries {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem data_lookups_of_queries {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : QueryHolds (setupTable control) w) :
     ∀ q : Fin 18,
@@ -35,7 +36,7 @@ theorem data_lookups_of_queries {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
     | exact xor_lookup hp 3 member (by simp [importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment])
     | exact xor_lookup hp 4 member (by simp [importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment])
 
-theorem data_lookups {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem data_lookups {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (mixingConstraints (setupTable control))) :

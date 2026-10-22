@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2Round.BoundaryInputs
 import Airbender.Proofs.Blake2Round.ExclusiveMask
 import Airbender.Proofs.Delegation.CallPaths
@@ -27,7 +28,7 @@ structure ControlMatchingInputs [Fact p.Prime] (data : Delegation.MemoryData p) 
     token.word = controlAt flags 0
   roundsBound : data.rows.length ≤ 10
 
-theorem ControlPoolInputs.toMatching [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem ControlPoolInputs.toMatching [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : ControlPoolInputs data initial cells flags) :
     ControlMatchingInputs data flags := by
@@ -104,7 +105,7 @@ private theorem call_path [Fact p.Prime] {data : Delegation.MemoryData p} {flags
   exact ⟨source, path, length, head, initialWord, ordered, matching, sink, sinkMember,
     sinkAddress.trans sourceCode, last⟩
 
-private theorem scheduled_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+private theorem scheduled_path [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : ControlMatchingInputs data flags) :
     ∃ path : List (MemoryToken p), path.length = data.rows.length + 1 ∧
@@ -139,7 +140,7 @@ private theorem scheduled_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have count := inputs.roundsBound
   rw [sequence i bound, initialWord, control_iterate flags (by omega)]
 
-theorem pool_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem pool_order [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : ControlPoolInputs data initial cells flags) :
     ∃ ordered : List (Delegation.Row p), ordered.Perm data.rows ∧
@@ -150,7 +151,7 @@ theorem pool_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   obtain ⟨ordered, perm, _, clocks⟩ := Delegation.Proofs.ordered_rows_from_path _ matching increasing
   exact ⟨ordered, perm, clocks⟩
 
-theorem pool_ordered_controls [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem pool_ordered_controls [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : ControlPoolInputs data initial cells flags) :
     ∃ ordered : List (Delegation.Row p), ordered.Perm data.rows ∧
@@ -185,7 +186,7 @@ theorem pool_ordered_controls [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     simpa only [length, Nat.add_sub_cancel] using
       (congrArg MemoryToken.word endToken).symm.trans value
 
-theorem matching_rounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem matching_rounds [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : ControlMatchingInputs data flags) :
     ∀ row ∈ data.rows, ∃ round : Fin 10, Memory.RoundMask row.assignment round ∧
@@ -220,14 +221,14 @@ theorem matching_rounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
         (importedConstraints setupTable) importedConstraintsTimestampLookups))
     flags ⟨i, iBound⟩ high, high⟩
 
-theorem pool_rounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem pool_rounds [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : ControlPoolInputs data initial cells flags) :
     ∀ row ∈ data.rows, ∃ round : Fin 10, Memory.RoundMask row.assignment round ∧
       (row.assignment Variables.controlReadHi).val = flags.val + 8 * 2 ^ round.val :=
   matching_rounds hp accepted (inputs.toMatching hp accepted)
 
-theorem matching_masks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem matching_masks [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : ControlMatchingInputs data flags) :
     CallMasks data := by
@@ -235,7 +236,7 @@ theorem matching_masks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   obtain ⟨round, mask, _⟩ := matching_rounds hp accepted inputs row member
   exact ⟨round, mask⟩
 
-theorem pool_masks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem pool_masks [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : ControlPoolInputs data initial cells flags) :
     CallMasks data := by
@@ -243,7 +244,7 @@ theorem pool_masks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   obtain ⟨round, mask, _⟩ := pool_rounds hp accepted inputs row member
   exact ⟨round, mask⟩
 
-theorem pool_modes [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem pool_modes [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : ControlPoolInputs data initial cells flags) :
     CallModes data flags := by

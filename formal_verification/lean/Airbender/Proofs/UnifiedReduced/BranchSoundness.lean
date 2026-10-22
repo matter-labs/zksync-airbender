@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.ControlContext
 import Airbender.Proofs.JumpBranchSlt.BranchSoundness
 
@@ -21,7 +23,7 @@ private theorem decoded_metadata {input : Input} {entry : ProgramEntry}
   simpa [instruction, JumpBranchSlt.Branch.instruction, decoderFields, Trace.decoderFields, JumpBranchSlt.decoderFields,
     jumpFields, DecoderData.mapFamily, metadata] using fields.symm
 
-theorem soundness_from_history [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem soundness_from_history [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {setup : Table (ZMod p) (fields 10)} {initial : State} {cells : List Cell} {events : List MemoryAccess}
     {input : Input} {output : Output} {w : Nat → ZMod p} {after : State} {epoch : Nat}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -137,8 +139,8 @@ theorem soundness_from_history [Fact p.Prime] (hp : 4194304 ≤ p)
     misaRead := misaRead }
   exact JumpBranchSlt.Proofs.branch_soundness hp input output _ ⟨interface, projected, rowMapping⟩
 
-theorem soundness_from_memory [Fact p.Prime] (hp : 4194304 ≤ p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem soundness_from_memory [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     (inputs : NativeInputs projection trace initial cells program) (accepted : Accepted trace)
@@ -171,8 +173,8 @@ theorem soundness_from_memory [Fact p.Prime] (hp : 4194304 ≤ p)
     (by simpa [words.pc, Row.start, Row.columns, CircuitLayout.columns, PCState.State.word,
       rawPair, importedConstraintsTraceColumns, initialPC] using past) history leftRange rightRange words source query encoding codeAligned isa pcRead
 
-theorem soundness [Fact p.Prime] (hp : 4194304 ≤ p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem soundness [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (inverse : SerializedInverse.Clock p)
     (trace : UnifiedTrace p) (initial : State) (cells : List Cell) (program : List ProgramEntry) :
     (circuitModel trace initial cells program).SoundnessUnder
       (InterfaceAssumptions trace initial cells program) JumpBranchSlt.Branch.spec := by

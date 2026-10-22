@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.InitialImage
 import Airbender.Proofs.AddSub.PC
 import Airbender.Proofs.WordMemory
@@ -66,14 +68,14 @@ theorem trace_pc_bounds [Fact p.Prime] {trace : Data p} (accepted : Accepted tra
 
 /-- Global native PC matching supplies each input bound; the imported equations
     then enforce the common four-byte increment for both selected families. -/
-theorem row_pc_successor [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem row_pc_successor [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (initial : trace.initial.word.Bounded)
     {row : Row p} (member : row ∈ trace.rows) :
     row.finish.word.toBitVec = row.start.word.toBitVec + 4 := by
   have bound := (trace_pc_bounds accepted initial).1 row member
   have constraints := accepted.constraints row member
-  have addressInverse : (-30720 : ZMod p) * 65536 = 1 := by
+  have addressInverse : SerializedInverse.Limb16 p := by
     calc
       (-30720 : ZMod p) * 65536 = (-3840 : ZMod p) * 524288 := by ring
       _ = 1 := inverse

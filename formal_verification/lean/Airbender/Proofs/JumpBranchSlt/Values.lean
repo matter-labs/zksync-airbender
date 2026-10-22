@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.JumpBranchSlt.Trace
 import Airbender.Proofs.JumpBranchSlt.Jump
 import Airbender.Proofs.JumpBranchSlt.Branch
@@ -17,7 +19,7 @@ private theorem decoder_masks {instruction : SailRV32.instruction}
   all_goals simp_all
 
 private theorem comparison_destination_bounds {p : Nat} [Fact p.Prime]
-    (hp : 4194304 ≤ p) {w : Nat → ZMod p}
+    (hp : FieldCapacity.NativeRomCapacity p) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 0 ∧ w 12 = 0 ∧ w 13 = 1 ∧ w 15 = 0) :
     (⟨(w 30).val, (w 31).val⟩ : Word).Bounded := by
@@ -48,7 +50,7 @@ private theorem comparison_destination_bounds {p : Nat} [Fact p.Prime]
 
 /-- Only the decoded native mode and equations establish destination bounds:
     comparisons write a bit, jumps a ranged link, and branches write x0. -/
-theorem destination_bounds {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem destination_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {w : Nat → ZMod p} {before : Reference.RiscV.Sail.State}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (fetch : Fetched w before) (initialLo : (w 0).val < limbBase) :
@@ -72,7 +74,7 @@ theorem destination_bounds {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
 
 /-- The two readonly ports copy their reads; actual decoding and the imported
     equations bound the destination. No source-word bound is supplied here. -/
-theorem row_write_sources {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem row_write_sources {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     (row : Row p TraceKind)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) importedConstraints)
     {before : Reference.RiscV.Sail.State} (fetch : Fetched row.assignment before)
@@ -86,7 +88,7 @@ theorem row_write_sources {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     simpa [Trace.Proofs.write_word, importedConstraintsMemoryPorts] using
       destination_bounds hp h fetch initialLo
 
-theorem write_sources {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem write_sources {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {trace : NativeTrace p} (accepted : Accepted trace)
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List ProgramEntry} (image : programImage before addresses = some program)
@@ -100,7 +102,7 @@ theorem write_sources {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
 /-- Native history derives all operand, write and terminal-register ranges from
     the actual public Sail image. Canonical terminal PC remains a separate issue. -/
 theorem native_value_bounds {p : Nat} [Fact p.Prime]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)

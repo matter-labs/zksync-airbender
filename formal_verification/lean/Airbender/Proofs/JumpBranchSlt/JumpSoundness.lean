@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.JumpBranchSlt.JumpRowModel
 import Airbender.Proofs.JumpBranchSlt.Jump
 import Airbender.Proofs.Sail.JumpRetirement
@@ -8,7 +9,7 @@ open Airbender.Reference.RiscV
 open Airbender.Reference.Sail
 
 /-- JAL and JALR share target/link algebra, native writes and retirement. -/
-theorem jump_soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) :
+theorem jump_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p) :
     Jump.rowCircuitModel.SoundnessUnder (Jump.RowInterfaces (p := p)) Jump.spec := by
   intro input output w ⟨interface, h, mapping⟩
   have selected : w 11 + w 12 = 1 := by

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Keccak.CallPorts
 import Airbender.Proofs.Delegation.Atomic
 import Airbender.Proofs.Delegation.SailHistory
@@ -10,7 +12,7 @@ open Trace Trace.Proofs Delegation.Proofs Reference.RiscV.Sail
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-theorem native_port_codes_distinct [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
+theorem native_port_codes_distinct [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536) {w : Nat → ZMod p}
     (i : Fin 649) (effects : Native.RowEffects w) (active : w Variables.execute = 1)
     (control : (w Variables.controlReadLo).val = (scheduleControl ⟨i.val, by omega⟩).packed) :
     ((Delegation.Row.mk .keccak w).memorySteps.map fun edge => edge.1.address).Nodup := by
@@ -22,7 +24,7 @@ theorem native_port_codes_distinct [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat �
   subst b
   exact (Fin.lt_irrefl a) earlier
 
-theorem native_atomic_observations [Fact p.Prime] (hp : 65536 ≤ p)
+theorem native_atomic_observations [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {row : Delegation.Row p} {events : List MemoryAccess} {cells : List Cell} {before after : State}
     (i : Fin 649) (family : row.family = .keccak) (effects : Native.RowEffects row.assignment)
     (active : row.assignment Variables.execute = 1)
@@ -61,8 +63,8 @@ theorem native_atomic_observations [Fact p.Prime] (hp : 65536 ≤ p)
     exact ⟨port, by simpa only [Array.mem_toList_iff] using member, rfl⟩
   exact observations _ present
 
-theorem call_atomic_observations [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem call_atomic_observations [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells)
     (tables : data.setup = Delegation.modeledSetup Controller.rows)

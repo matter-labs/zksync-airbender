@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.ZeroValues
 import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.Trace.Values
@@ -91,7 +93,7 @@ def standardDecoderRules : DecoderRules decoderFields where
   loadNonzero _ _ := decoder_load_nonzero
 
 theorem addsub_zero_preprocessing {p : Nat}
-    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : limbBase < p) {w : Nat → ZMod p}
+    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : FieldCapacity.NoWrap p limbBase) {w : Nat → ZMod p}
     {before : Reference.RiscV.Sail.State} (fetched : (⟨.addSub, w⟩ : Row p).Fetched before projection)
     (zero : AddSub.importedConstraintsMemoryPorts[2].address.code w = (Cell.register 0).addressCode) :
     w 5 = 0 ∧ w 6 = 0 ∧ w 8 = 0 ∧ w 9 = 0 ∧ w 10 = 1 ∧
@@ -130,7 +132,7 @@ theorem addsub_zero_preprocessing {p : Nat}
       | exact flags ⟨6, by decide⟩
 
 theorem word_memory_write_nonzero {p : Nat} [Fact p.Prime]
-    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : limbBase < p)
+    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : FieldCapacity.NoWrap p limbBase)
     {w : Nat → ZMod p} {rom : Table (ZMod p) (fields 9)} {before : Reference.RiscV.Sail.State}
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (WordMemory.importedConstraints rom))
@@ -159,7 +161,7 @@ theorem word_memory_write_nonzero {p : Nat} [Fact p.Prime]
   exact nonzero (BitVec.eq_of_toNat_eq (by simpa using value.symm))
 
 theorem row_zero_write_from_reads [Fact p.Prime]
-    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : 196608 < p)
+    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : FieldCapacity.NoWrap p 196608)
     {before : Reference.RiscV.Sail.State} (row : Row p)
     (setup : Table (ZMod p) (fields 9))
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
@@ -218,7 +220,7 @@ theorem row_zero_write_from_reads [Fact p.Prime]
       · exact False.elim (word_memory_write_nonzero rules (lt_trans (by decide) hp) core fetched zero)
 
 private theorem zero_write_from_reads [Fact p.Prime]
-    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : 196608 < p) {trace : Data p}
+    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : FieldCapacity.NoWrap p 196608) {trace : Data p}
     (accepted : Accepted trace) {before : Reference.RiscV.Sail.State}
     (row : Row p) (member : row ∈ trace.rows) (fetched : row.Fetched before projection)
     (port : MemoryPort) (present : port ∈ row.ports)
@@ -234,8 +236,8 @@ private theorem zero_write_from_reads [Fact p.Prime]
 /-- Native matching and strict prior-write clocks propagate Sail's x0 value
     through every selected row; decoder membership supplies the NOP case. -/
 theorem native_zero_reads [Fact p.Prime]
-    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)
@@ -253,8 +255,8 @@ theorem native_zero_reads [Fact p.Prime]
     port present address reads
 
 theorem native_zero_writes [Fact p.Prime]
-    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)
@@ -285,8 +287,8 @@ theorem native_zero_writes [Fact p.Prime]
     separate x0/read-value premise. Public image/domain and logical decoder
     membership remain the explicit boundaries. Instruction/PC stepping is later. -/
 theorem decoded_sail_history [Fact p.Prime]
-    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)

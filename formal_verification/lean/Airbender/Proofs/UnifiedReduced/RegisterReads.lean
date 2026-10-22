@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.History
 
 namespace Airbender.UnifiedReduced.Proofs
@@ -5,7 +6,7 @@ open Arithmetic Reference.RiscV Reference.RiscV.Sail Reference.Sail Trace Trace.
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-theorem register_reads [Fact p.Prime] (hp : limbBase < p)
+theorem register_reads [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} {entry : ProgramEntry}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (noRAM : w 28 = 0) (query : decoderQuery w = entry.query)

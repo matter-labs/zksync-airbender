@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.JumpBranchSlt.Theorems
 import Airbender.Review.Trace.Families.JumpBranchSlt.Theorems
 import Airbender.Proofs.JumpBranchSlt.RowClaims
@@ -14,7 +15,7 @@ import Airbender.Proofs.BabyBear
 namespace Airbender.JumpBranchSlt
 
 
-theorem final_pc_bounds {p n : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem final_pc_bounds {p n : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {context : PCState.Context p n} {w : Nat → ZMod p}
     (global : PCState.Interface context)
     (outgoing : PCState.Outgoing context (w Variables.finalPCLo, w Variables.finalPCHi))
@@ -31,7 +32,7 @@ theorem clocks {w : Nat → ZMod babyBearModulus}
   Proofs.clocks (by decide) (by decide) h inputs
 
 
-theorem fetched {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+theorem fetched {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     {w : Nat → ZMod p} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImage before addresses = some program)

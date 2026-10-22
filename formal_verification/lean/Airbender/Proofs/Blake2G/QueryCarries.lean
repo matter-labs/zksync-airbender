@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2G.FrameCarries
 
 namespace Airbender.Blake2G.Proofs
@@ -10,7 +12,7 @@ set_option maxHeartbeats 2000000
 /-- A bounded sum of two limbs and one incoming bit cannot carry twice. The
     statement concerns field values and is independent of native storage. -/
 theorem two_input_carry_bound {p a b output incoming : Nat} [Fact p.Prime]
-    (hp : 262144 ≤ p) {carry : ZMod p}
+    (hp : FieldCapacity.AtLeast p 262144) {carry : ZMod p}
     (ha : a < 65536) (hb : b < 65536) (ho : output < 65536)
     (hi : incoming ≤ 1) (hc : carry.val < 3)
     (equation : (a : ZMod p) + b + incoming = output + 65536 * carry) :
@@ -34,8 +36,8 @@ theorem boolean_of_value_le_one {p : Nat} [Fact p.Prime] {value : ZMod p}
 
 /-- Query-only G bounds discharge the final two carry flags. This avoids a
     circular dependence on the full fragment's Boolean assertions. -/
-theorem second_c_carries_of_queries {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+theorem second_c_carries_of_queries {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 262144)
+    (compatible : SerializedInverse.Scale64 p)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (queries : QueryHolds (setupTable control) w)
     (carries : (w 75).val < 3 ∧ (w 76).val < 3) :
@@ -58,8 +60,8 @@ theorem second_c_carries_of_queries {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
 
 /-- One shared certificate discharges all carry flags for a query-projected
     frame, including layouts which encode the final carries inside lookups. -/
-theorem Frame.flags_from_queries {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) (frame : Frame p)
+theorem Frame.flags_from_queries {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 262144)
+    (compatible : SerializedInverse.Scale64 p) (frame : Frame p)
     (control : Fin 512 → Vector Nat 7) (queries : QueryHolds (setupTable control) frame.assignment)
     (addition : ∀ slot : Fin 4, frame.addCarries[slot].val < 3)
     (firstC : ∀ slot : Fin 2,

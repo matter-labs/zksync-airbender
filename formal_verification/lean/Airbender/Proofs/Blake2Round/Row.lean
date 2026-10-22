@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.Blake2Round.Row
 import Airbender.Proofs.Blake2Round.Control
 import Airbender.Proofs.Blake2Round.Preparation
@@ -13,8 +15,8 @@ open Arithmetic
 set_option maxHeartbeats 800000
 set_option maxRecDepth 16384
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (compatible : SerializedInverse.Scale64 p) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec := by
   intro input output w ⟨interface, constraints, mapping⟩
   let prepared : Preparation.Output := ⟨Preparation.words w Variables.chainingInputs,
@@ -64,7 +66,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p)
     finalInput output.state w ⟨⟨interface.roundMask⟩, constraints, finalMapping⟩
   have controller := Control.Proofs.soundness (by omega) setupTable input.controller output.controller w
     ⟨constraints, mapping.controller⟩
-  have compatible128 : 128 * (-15728640 : ZMod p) = 1 := by
+  have compatible128 : SerializedInverse.Scale128 p := by
     linear_combination compatible
   have addressMapping : Addresses.Mapping ⟨input.statePointer, input.messagePointer⟩ output.addresses w :=
     ⟨mapping.statePointer, mapping.messagePointer, mapping.addresses⟩

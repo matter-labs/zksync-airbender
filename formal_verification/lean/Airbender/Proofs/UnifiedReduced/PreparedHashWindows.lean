@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.ComputedHashWindows
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
@@ -12,8 +14,8 @@ theorem prepared_hash_memory_inputs [Fact p.Prime]
     MixedMemoryInputs data program before ca oa cells :=
   computed_hash_memory_inputs (literal_computed_hash_inputs inputs)
 
-theorem prepared_hash_window [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem prepared_hash_window [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {span : Delegation.Caller.HashSpan} {lower upper : Nat}
     (accepted : MixedMemoryAccepted data program)
@@ -22,8 +24,8 @@ theorem prepared_hash_window [Fact p.Prime] (hp : 16777216 ≤ p)
     JointHashWindowResult data before cells span lower upper :=
   computed_hash_window hp clockInverse accepted (literal_computed_hash_inputs inputs) first last
 
-theorem prepared_hash_reference_at_states [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem prepared_hash_reference_at_states [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before atStart atFinish : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {span : Delegation.Caller.HashSpan} {lower upper : Nat}
     {start finish : List (MemoryToken p)} {spanEvents : List MemoryAccess}
@@ -41,8 +43,8 @@ theorem prepared_hash_reference_at_states [Fact p.Prime] (hp : 16777216 ≤ p)
   computed_hash_reference_at_states hp clockInverse accepted (literal_computed_hash_inputs inputs)
     first last prefixMatching matching startBoundary finishBoundary spanPerm spanHistory
 
-theorem prepared_hash_chain [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem prepared_hash_chain [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {firstSpan secondSpan : Delegation.Caller.HashSpan}
     {a b c d : Nat}
@@ -54,8 +56,8 @@ theorem prepared_hash_chain [Fact p.Prime] (hp : 16777216 ≤ p)
   computed_hash_chain hp clockInverse accepted (literal_computed_hash_inputs firstInputs)
     (literal_computed_hash_inputs secondInputs) aa ba ca' da gap
 
-theorem prepared_hash_sequence_at_segments [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem prepared_hash_sequence_at_segments [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {windows : List HashWindow}
     (accepted : MixedMemoryAccepted data program)
@@ -68,8 +70,8 @@ theorem prepared_hash_sequence_at_segments [Fact p.Prime] (hp : 16777216 ≤ p)
   computed_hash_sequence_at_segments hp clockInverse accepted
     (fun window member => literal_computed_hash_inputs (inputs window member)) ordered actual
 
-theorem prepared_hash_sequence [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem prepared_hash_sequence [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {first : HashWindow} {rest : List HashWindow}
     (accepted : MixedMemoryAccepted data program)

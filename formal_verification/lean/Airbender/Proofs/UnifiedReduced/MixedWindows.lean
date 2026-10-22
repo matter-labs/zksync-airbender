@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.MixedWindows
 import Airbender.Proofs.UnifiedReduced.MixedMemory
 import Airbender.Proofs.UnifiedReduced.RequestWindows
@@ -22,8 +24,8 @@ theorem instruction_window_clock {clock offset lower upper : Nat}
     (lower - 1 < clock + offset ∧ clock + offset ≤ upper - 1) ↔
       (lower ≤ clock ∧ clock < upper) := by omega
 
-theorem worker_windows_shift [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem worker_windows_shift [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     (requests : RequestBinding data before) {lower upper : Nat}
@@ -49,8 +51,8 @@ theorem worker_windows_shift [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     simp only [time]
     simp [Nat.not_lt.mpr pastZero, Nat.not_lt.mpr (by omega : 2 ≤ lower - 1)]
 
-theorem mixed_window_steps [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem mixed_window_steps [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0) (pastZero : 2 ≤ lower) (ordered : lower ≤ upper) :
@@ -123,9 +125,9 @@ theorem native_boundary_read {tokens : List (MemoryToken p)} {state : State} {ce
   rw [word, Word.ofBitVec_roundtrip]
   exact read
 
-theorem mixed_window_execution [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem mixed_window_execution [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
@@ -161,8 +163,8 @@ theorem mixed_window_execution [Fact p.Prime] (hp : 8388608 ≤ p)
     start, finish, earlierEvents, spanEvents, atStart, atFinish, firstPerm, spanPerm, firstHistory, spanHistory,
     earlierFacts.matching, selectedFacts.matching, native_boundary startInputs, native_boundary finishInputs⟩
 
-theorem prefix_window_partition [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem prefix_window_partition [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before ca)
     {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0)
@@ -245,8 +247,8 @@ theorem mixed_prefix_steps [Fact p.Prime] (data : RequestTrace p) {cut : Nat} (p
   simp only [decide_eq_true_eq]
   omega
 
-theorem matching_at_next_cut [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem matching_at_next_cut [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before ca)
     {lower upper : Nat} {start finish : List (MemoryToken p)}
@@ -262,8 +264,8 @@ theorem matching_at_next_cut [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   exact ((partition.map Prod.snd).symm.append_left _).trans
     (joined.trans ((partition.map Prod.fst).append_left _))
 
-theorem mixed_window_chain [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem mixed_window_chain [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p) (rotationInverse : SerializedInverse.Scale64 p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {a b c d : Nat}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
@@ -308,8 +310,8 @@ theorem mixed_window_chain [Fact p.Prime] (hp : 8388608 ≤ p)
   exact ⟨chain, ⟨pp, p1, pg, p2, hp1, h1, hg, h2, prefixFacts.matching, firstFacts.matching,
     prefixAtC, secondFacts.matching, native_boundary n1, native_boundary n2, native_boundary n3, native_boundary n4⟩⟩
 
-theorem native_window_segments [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem native_window_segments [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca : List (BitVec 32)} {cells : List Cell}
     (accepted : RequestChecks data) (publicInputs : RequestInputs data before ca)
     (bounds : ∀ edge ∈ (mixedData data).steps, edge.2.word.Bounded)
@@ -345,8 +347,8 @@ theorem native_window_segments [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     exact ⟨segment :: segments, gapPerm, gapHistory, gapFacts.matching, atLower, spanPerm, spanHistory,
       spanFacts.matching, native_boundary startInputs, native_boundary finishInputs, actual⟩
 
-theorem mixed_window_sequence [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem mixed_window_sequence [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p) (rotationInverse : SerializedInverse.Scale64 p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {windows : List (Nat × Nat)}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)

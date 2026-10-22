@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2G.CallWorkVector
 import Airbender.Proofs.Blake2Round.CompressionBinding
 
@@ -6,8 +8,8 @@ open Trace Trace.Proofs Delegation.Proofs Arithmetic Reference.RiscV.Sail
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-theorem workvector_binding_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem workvector_binding_at_boundary [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
@@ -39,8 +41,8 @@ theorem workvector_binding_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
   rw [messageSame] at final
   exact final
 
-theorem workvector_binding [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem workvector_binding [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
     (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells reduced)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :

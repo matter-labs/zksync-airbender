@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Helpers.Context.RowContext
 import Airbender.Proofs.Trace.PooledHistory
 import Airbender.Proofs.Trace.Retirement
@@ -52,7 +54,7 @@ theorem register_history_projection_at {p : Nat}
 
 /-- Shared register-effect projection for three-port rows. The destination
     index and data equations are observable wiring, not instruction behavior. -/
-theorem register_history_projection {p : Nat} [Fact p.Prime] (hp : 32 ≤ p)
+theorem register_history_projection {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 32)
     {cells : List Cell} {columns : TraceColumns} {first second destination : MemoryPort}
     {w : Nat → ZMod p} {rd : BitVec 5} {index : Nat} (epoch : Nat)
     (firstReadonly : first.writeValue = none) (secondReadonly : second.writeValue = none)
@@ -125,7 +127,7 @@ theorem row_position_of_history {Kind : Type} [CircuitLayout Kind] [Fact p.Prime
 /-- Recover actual reads at any selected position using the complete initialized
     pooled history. The caller supplies only a write-only state representation. -/
 theorem pooled_row_context {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -149,7 +151,7 @@ theorem pooled_row_context {p : Nat} [Fact p.Prime]
 
 /-- Normalize the recovered histories to the row's start PC. -/
 theorem pooled_row_position {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -169,7 +171,7 @@ theorem pooled_row_position {p : Nat} [Fact p.Prime]
 /-- Every admitted row has a represented pre-state. The row view does not add
     an existential consistency premise beyond the shared memory argument. -/
 theorem pooled_row_position_exists {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.Memory
 import Airbender.Proofs.UnifiedReduced.Trace
 import Airbender.Proofs.Trace.RowContext
@@ -7,8 +9,8 @@ open Trace Trace.Proofs Reference.RiscV.Sail
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-theorem row_position_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : UnifiedTrace p}
+theorem row_position_from_memory [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : UnifiedTrace p}
     (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell} (memory : MemoryExecution trace initial cells)
     {row : Row p UnifiedFamily} {before : State}

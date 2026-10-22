@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2Round.NativeFinalQueryBase
 
 namespace Airbender.Blake2Round.Proofs
@@ -9,7 +10,7 @@ set_option maxHeartbeats 8000000
 
 /-- Native query projections for the first half of finalization. -/
 theorem native_ac_queries_0 {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+    (compatible : SerializedInverse.Scale64 p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :
@@ -75,7 +76,7 @@ theorem native_ac_queries_0 {p : Nat} [Fact p.Prime]
 
 /-- Native query projections for the first half of finalization. -/
 theorem native_ac_queries_1 {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+    (compatible : SerializedInverse.Scale64 p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :
@@ -141,7 +142,7 @@ theorem native_ac_queries_1 {p : Nat} [Fact p.Prime]
 
 /-- Native query projections for the first half of finalization. -/
 theorem native_ac_queries_2 {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+    (compatible : SerializedInverse.Scale64 p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :
@@ -207,7 +208,7 @@ theorem native_ac_queries_2 {p : Nat} [Fact p.Prime]
 
 /-- Native query projections for the first half of finalization. -/
 theorem native_ac_queries_3 {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+    (compatible : SerializedInverse.Scale64 p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :

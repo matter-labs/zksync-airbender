@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.Delegation.SharedOperations
 import Airbender.Proofs.Delegation.SharedMemory
 import Airbender.Proofs.Delegation.Operations
@@ -8,8 +10,8 @@ open Trace Arithmetic Trace.Proofs Reference.RiscV.Sail
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-private theorem worker_rules [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+private theorem worker_rules [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)} {cells : List Cell}
     (accepted : SharedMemoryAccepted data) (inputs : SharedOperationInputs data before addresses cells) :
     Delegation.Proofs.WriteBoundsFromReads data.workers := by
@@ -20,8 +22,8 @@ private theorem worker_rules [Fact p.Prime] (hp : 8388608 ≤ p)
   change row.assignment 0 = 1 at active ⊢
   exact active
 
-theorem shared_write_rules [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem shared_write_rules [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)} {cells : List Cell}
     (accepted : SharedMemoryAccepted data) (inputs : SharedOperationInputs data before addresses cells)
     (requests : RequestBinding data before) : Transfer.WriteRules (sharedData data) := by
@@ -52,9 +54,9 @@ theorem shared_write_rules [Fact p.Prime] (hp : 8388608 ≤ p)
         Delegation.Proofs.port_offset row (by simpa using portMember)]
     rw [same]
 
-theorem shared_word_bounds [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem shared_word_bounds [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)} {cells : List Cell}
     (accepted : SharedMemoryAccepted data) (inputs : SharedOperationInputs data before addresses cells)
     (requests : RequestBinding data before) : SharedWordBounds data := by

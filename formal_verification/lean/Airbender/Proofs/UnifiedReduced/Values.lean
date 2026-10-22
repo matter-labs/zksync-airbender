@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.Trace
 import Airbender.Proofs.UnifiedReduced
 import Airbender.Proofs.Trace.Values
@@ -26,7 +28,7 @@ theorem row_write_sources {p : Nat} [Fact p.Prime]
       simpa [write_word, Word.Bounded] using destination_bounds core
 
 theorem value_bounds {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory) :
@@ -43,7 +45,7 @@ theorem value_bounds {p : Nat} [Fact p.Prime]
     terminal_bounds_of_rules hp inverse accepted clocks seed rules⟩
 
 theorem memory_history {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory) (distinct : cells.Nodup) :

@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Arithmetic.Chunks
 
 namespace Airbender.Arithmetic
@@ -5,7 +6,7 @@ set_option warningAsError true
 
 /-- A bounded two-chunk field equation fixes the canonical integer value. -/
 theorem value_of_bounded_pair {p radix capacity : Nat} [Fact p.Prime]
-    (hp : radix * capacity ≤ p) {x low high : ZMod p}
+    (hp : FieldCapacity.AtLeast p (radix * capacity)) {x low high : ZMod p}
     (lowBound : low.val < radix) (highBound : high.val < capacity)
     (equation : low + (radix : ZMod p) * high = x) :
     x.val = low.val + radix * high.val := by

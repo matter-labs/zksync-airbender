@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2Round.NativeXorTransfer
 
 namespace Airbender.Blake2Round.Proofs
@@ -12,7 +13,7 @@ def combinedLowPad {p : Nat} (row : Vector (ZMod p) 6) : Vector (ZMod p) 9 :=
 def combinedHighPad {p : Nat} (row : Vector (ZMod p) 6) : Vector (ZMod p) 9 :=
   #v[row[1], row[3], combinedHigh row[4], 0, 0, 0, 0, 0, 17]
 
-private theorem combined_payload {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+private theorem combined_payload {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {source : Vector (Expression (ZMod p)) 6} {env : Environment (ZMod p)}
     (member : (Lookup.mk setupTable.toRaw source).Contains env)
     (selected : source[5].eval env = 57) :
@@ -26,7 +27,7 @@ private theorem combined_payload {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
   exact ⟨n, bound, row⟩
 
 /-- The imported packed XOR output splits into its two actual bounded XORs. -/
-theorem combined_output_slices {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem combined_output_slices {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     (n : Nat) (bound : n < 16384) :
     let low := n / 1024 ^^^ n / 8 % 16;
     let high := n / 128 % 8 ^^^ n % 8;
@@ -47,7 +48,7 @@ theorem combined_output_slices {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
   · change (((((low + 16 * high : Nat) : ZMod p)).val / 16 : Nat) : ZMod p) = (high : ZMod p)
     rw [native, upper]
 
-theorem combined_low_membership {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem combined_low_membership {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     (control : Fin 512 → Vector Nat 7)
     {source : Vector (Expression (ZMod p)) 6} {target : Vector (Expression (ZMod p)) 9}
     {sourceEnv targetEnv : Environment (ZMod p)}
@@ -71,7 +72,7 @@ theorem combined_low_membership {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
       List.getElem_cons_zero, List.getElem_cons_succ]
     all_goals first | exact output | simp
 
-theorem combined_high_membership {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem combined_high_membership {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     (control : Fin 512 → Vector Nat 7)
     {source : Vector (Expression (ZMod p)) 6} {target : Vector (Expression (ZMod p)) 9}
     {sourceEnv targetEnv : Environment (ZMod p)}

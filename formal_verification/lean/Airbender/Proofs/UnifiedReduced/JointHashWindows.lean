@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.JointHashWindows
 import Airbender.Proofs.UnifiedReduced.WindowProjection
 import Airbender.Proofs.Delegation.SpanTarget
@@ -9,7 +11,7 @@ open Trace Trace.Proofs Arithmetic Reference.RiscV.Sail
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-theorem round_window_masks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem round_window_masks [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : RequestTrace p} {before : State} {cells : List Cell} {addresses : List (BitVec 32)}
     {flags : Fin 8} {lower upper : Nat} (accepted : MixedMemoryAccepted data [])
     (inputs : JointHashWindowInputs data before addresses cells (.blakeRound flags) lower upper)
@@ -36,7 +38,7 @@ theorem round_window_masks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   intro row member
   exact masks row member
 
-theorem hash_window_memory_inputs [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem hash_window_memory_inputs [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : RequestTrace p} {before : State} {cells : List Cell} {addresses : List (BitVec 32)}
     {span : Delegation.Caller.HashSpan} {lower upper : Nat} (accepted : MixedMemoryAccepted data [])
     (inputs : JointHashWindowInputs data before addresses cells span lower upper)
@@ -57,7 +59,7 @@ theorem hash_window_memory_inputs [Fact p.Prime] (hp : 2 * timestampBase + 4 < p
     rw [actual] at family
     cases family
 
-theorem joint_entry_control [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem joint_entry_control [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : RequestTrace p} {before atStart : State} {cells : List Cell} {addresses : List (BitVec 32)}
     {span : Delegation.Caller.HashSpan} {lower upper : Nat} {start : List (MemoryToken p)}
     (accepted : MixedMemoryAccepted data []) (inputs : JointHashWindowInputs data before addresses cells span lower upper)
@@ -135,15 +137,15 @@ theorem joint_entry_control [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     cases actual
     exact inputs.controlStart
 
-theorem joint_hash_window [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem joint_hash_window [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)} {cells : List Cell}
     {span : Delegation.Caller.HashSpan} {lower upper : Nat} (accepted : MixedMemoryAccepted data [])
     (inputs : JointHashWindowInputs data before addresses cells span lower upper)
     (first : lower % 4 = 0) (last : upper % 4 = 0) (positive : 2 ≤ lower) (ordered : lower ≤ upper) :
     JointHashWindowResult data before cells span lower upper := by
   have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
-  have rotationInverse : 64 * (-31457280 : ZMod p) = 1 := by linear_combination clockInverse
+  have rotationInverse : SerializedInverse.Scale64 p := by linear_combination clockInverse
   have requests := request_binding size clockInverse accepted.toRequestChecks inputs.publicProgram
   have memoryInputs := hash_window_memory_inputs size accepted inputs requests
   have projection := projected_window (by omega) clockInverse rotationInverse accepted memoryInputs first last positive ordered

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.SubwordMemory.Trace
 import Airbender.Proofs.SubwordMemory.Stores
 import Airbender.Proofs.SubwordMemory.ROM
@@ -8,7 +10,7 @@ open Arithmetic Trace
 
 /-- Imported table/merge equations preserve bounds from the source and old
     cell reads. Readonly ports preserve their own words. No result is assumed. -/
-theorem row_write_rule {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
+theorem row_write_rule {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 33554432)
     (row : Row p TraceKind) {program : Nat → BitVec 32}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (importedConstraints (Verification.subwordTable program)))
@@ -57,7 +59,7 @@ theorem row_write_rule {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
         exact merged.1
     simpa [Trace.Proofs.write_word, importedConstraintsMemoryPorts] using output
 
-theorem write_rules {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
+theorem write_rules {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 33554432)
     {trace : NativeTrace p} (accepted : Accepted trace) {program : Nat → BitVec 32}
     (setup : trace.rom = Verification.subwordTable program) :
     Trace.Proofs.WriteBoundsFromReads trace := by
@@ -69,8 +71,8 @@ theorem write_rules {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
 
 /-- Public seed bounds propagate through native matching to every operand,
     merged write and terminal token using the shared time induction. -/
-theorem native_value_bounds {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem native_value_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 33554432)
+    (inverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     (seed : ∀ token ∈ trace.initialMemory, token.word.Bounded) {program : Nat → BitVec 32}
     (setup : trace.rom = Verification.subwordTable program) :

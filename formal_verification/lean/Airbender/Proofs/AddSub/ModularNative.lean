@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.AddSub.Modular
 import Airbender.Proofs.AddSub.ModularProgram
 import Airbender.Proofs.Trace.Arithmetic
@@ -28,7 +29,7 @@ theorem word_residue (w : Nat → ZMod babyBearModulus) (lo hi : Nat)
 
 /-- Recover the old destination from the third native port before its write,
     including when it aliases either source register. -/
-theorem old_destination_read {p : Nat} (hp : limbBase < p)
+theorem old_destination_read {p : Nat} (hp : FieldCapacity.NoWrap p limbBase)
     {w : Nat → ZMod p} {entry : ProgramEntry}
     (query : (⟨.addSub, w⟩ : Row p).decoderQuery = entry.query)
     {cells : List Cell} (epoch : Nat) {before after : State}

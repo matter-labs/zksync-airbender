@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.Blake2Round.Finalization
 import Airbender.Proofs.Blake2Round.NativeFinalQueries
 
@@ -18,8 +20,8 @@ theorem final_write {p : Nat} [Fact p.Prime] (limb : Fin 16) {w : Nat → ZMod p
 
 /-- The a/c half of finalization needs no external limb bounds: the four
     imported queries bound and identify each of its three XOR inputs. -/
-theorem ac_limb_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) (limb : Fin 8)
+theorem ac_limb_xor {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p) (limb : Fin 8)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) (enabled : w 152 = 1) :
@@ -29,7 +31,7 @@ theorem ac_limb_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (w (7 + 4 * (limb.val / 2) + limb.val % 2)).val =
       (acInitial w limb).val ^^^ (acA w limb).val ^^^ (acC w limb).val := by
   obtain ⟨q0, q1, q2, q3⟩ := ac_queries compatible limb h
-  have inverse : 128 * (-15728640 : ZMod p) = 1 := by linear_combination compatible
+  have inverse : SerializedInverse.Scale128 p := by linear_combination compatible
   have recover (x low : ZMod p) : x = low + 128 * ((-15728640 : ZMod p) * (x - low)) := by
     linear_combination -(x - low) * inverse
   have first := xor_limb_chunks hp (width := 7) (remaining := 9) (by decide) q0 q1
@@ -46,8 +48,8 @@ theorem ac_limb_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
 
 /-- Both XOR decompositions come from native queries. The width change is
     an algebraic regrouping of the optimized expression. -/
-theorem bd_limb_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) (limb : Fin 8)
+theorem bd_limb_xor {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p) (limb : Fin 8)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) (enabled : w 152 = 1) :
@@ -57,8 +59,8 @@ theorem bd_limb_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (w (23 + 4 * (limb.val / 2) + limb.val % 2)).val =
       (bdInitial w limb).val ^^^ (bdB w limb).val ^^^ (bdD w limb).val := by
   obtain ⟨q0, q1, q2, q3⟩ := bd_queries compatible limb h
-  have inverse9 : 512 * (-3932160 : ZMod p) = 1 := by linear_combination compatible
-  have inverse8 : 256 * (-7864320 : ZMod p) = 1 := by linear_combination compatible
+  have inverse9 : SerializedInverse.Scale512 p := by linear_combination compatible
+  have inverse8 : SerializedInverse.Scale256 p := by linear_combination compatible
   have recover9 (x low : ZMod p) : x = low + 512 * ((-3932160 : ZMod p) * (x - low)) := by
     linear_combination -(x - low) * inverse9
   have bChunks : bdB w limb = bdLowB w limb + 512 * bdHighB w limb := recover9 _ _
@@ -83,8 +85,8 @@ theorem bd_limb_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   ac_rfl
 
 /-- Uniform statement for every low/high limb of all eight chaining writes. -/
-theorem final_limb_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) (limb : Fin 16)
+theorem final_limb_xor {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p) (limb : Fin 16)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) (enabled : w 152 = 1) :
@@ -160,8 +162,8 @@ theorem xor_three_words {initial a c output : Word}
   simp only [Word.value, limbBase]
   rw [first, second, ← low, ← high]
 
-theorem final_xor_writes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) {w : Nat → ZMod p}
+theorem final_xor_writes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) (enabled : w 152 = 1) :
     (Preparation.words w Finalization.stateWrites).map Word.value =

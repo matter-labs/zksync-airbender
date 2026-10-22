@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2Round.NativeFinalACQueries0
 import Airbender.Proofs.Blake2Round.NativeFinalACQueries1
 import Airbender.Proofs.Blake2Round.NativeFinalBDQueries0
@@ -9,7 +10,7 @@ set_option warningAsError true
 set_option Elab.async false
 
 theorem ac_queries {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1) (limb : Fin 8)
+    (compatible : SerializedInverse.Scale64 p) (limb : Fin 8)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :
@@ -30,7 +31,7 @@ theorem ac_queries {p : Nat} [Fact p.Prime]
   · exact native_ac_queries_7 compatible h
 
 theorem bd_queries {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1) (limb : Fin 8)
+    (compatible : SerializedInverse.Scale64 p) (limb : Fin 8)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :

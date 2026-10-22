@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Memory.Initialization
 import Airbender.Proofs.Trace.InitialImage
 
@@ -28,7 +29,7 @@ theorem boot_image {before : State} {cells : List Cell}
 
 /-- Fixed boot PC/time and the canonical seed discharge all existing initial
     PC/clock/image premises. Per-row bounds remain derived by the trace proofs. -/
-theorem boot_boundary {p : Nat} [Fact p.Prime] (hp : 4 < p)
+theorem boot_boundary {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 4)
     {before : State} {cells : List Cell} {trace : Data p}
     (profile : InitialProfile before cells)
     (image : bootImage before cells = some trace.initialMemory)

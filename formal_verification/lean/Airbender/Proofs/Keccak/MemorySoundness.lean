@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.Keccak.Memory
 import Airbender.Proofs.Keccak.Memory
 import Airbender.Proofs.Keccak.BoundaryInputs
@@ -6,7 +7,7 @@ namespace Airbender.Keccak.Memory.Proofs
 open Trace
 set_option warningAsError true
 
-theorem memory_rules_at_boundary [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem memory_rules_at_boundary [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
     {control : Fin 4096 → Vector Nat 6}
     (accepted : Delegation.MemoryAccepted data) (inputs : Keccak.Proofs.BoundaryMemoryInputs data before cells control) :
@@ -23,7 +24,7 @@ theorem memory_rules_at_boundary [Fact p.Prime] (hp : 1048576 ≤ p)
     rw [inputs.table] at h
     exact Keccak.Proofs.memory_write_rule hp h (inputs.active _ member) reads
 
-theorem value_bounds_at_boundary [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem value_bounds_at_boundary [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
     {control : Fin 4096 → Vector Nat 6}
     (accepted : Delegation.MemoryAccepted data) (inputs : Keccak.Proofs.BoundaryMemoryInputs data before cells control) :
@@ -38,14 +39,14 @@ theorem value_bounds_at_boundary [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       inputs.publicState rules member present,
     fun token present => Delegation.Proofs.terminal_value_bounds hp accepted inputs.publicState rules present⟩
 
-theorem memory_rules [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem memory_rules [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
     {control : Fin 4096 → Vector Nat 6}
     (accepted : Delegation.MemoryAccepted data) (inputs : Inputs data before cells control) :
     Delegation.Proofs.WriteBoundsFromReads data :=
   memory_rules_at_boundary hp accepted inputs.toBoundaryInputs
 
-theorem value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem value_bounds [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
     {control : Fin 4096 → Vector Nat 6}
     (accepted : Delegation.MemoryAccepted data) (inputs : Inputs data before cells control) :

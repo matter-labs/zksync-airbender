@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.UnifiedReduced.Control
 import Airbender.Proofs.UnifiedReduced.RegisterReads
 import Airbender.Proofs.UnifiedReduced.ControlMembership
@@ -8,7 +9,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
-theorem selectors [Fact p.Prime] (hp : 524288 < p)
+theorem selectors [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} {entry : ProgramEntry}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (fields : decoderFields entry.instruction = some entry.data)

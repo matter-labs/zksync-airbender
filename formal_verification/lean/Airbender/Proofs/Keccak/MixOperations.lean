@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.Keccak.Mix
 import Airbender.Proofs.Keccak.DecodeControl
 import Airbender.Proofs.Keccak.FixedLookups
@@ -29,7 +30,7 @@ def packed {p : Nat} (w : Nat → ZMod p) (columns : Vector Nat 4) : Nat :=
   (w columns[0]).val + 65536 * ((w columns[1]).val +
     65536 * ((w columns[2]).val + 65536 * (w columns[3]).val))
 
-theorem mix_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
+theorem mix_routes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 7)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p} (second : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 0 = 1) (selected : w Variables.modeColumns[mixMode second] = 1)
@@ -79,7 +80,7 @@ theorem mix_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
     | exact ⟨by linear_combination a, by linear_combination b, by linear_combination c⟩
 
 
-theorem mix_xor_bytes {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem mix_xor_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))
@@ -107,7 +108,7 @@ theorem mix_xor_bytes {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
       omega
     · simpa [tags] using query
 
-theorem mix_xor_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem mix_xor_limb {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))
@@ -141,7 +142,7 @@ theorem mix_xor_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   norm_num only [Nat.reducePow] at value
   exact value.symm
 
-theorem mix_xor_operation {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem mix_xor_operation {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))

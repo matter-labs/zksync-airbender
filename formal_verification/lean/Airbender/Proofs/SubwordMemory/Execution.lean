@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.SubwordMemory.Address
 import Airbender.Proofs.SubwordMemory.Soundness
 import Airbender.Proofs.Trace.Retirement
@@ -46,7 +48,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Shared subword retirement over the imported constraints and actual port
     history. Bounds/address/ROM facts are supplied by the global history proof. -/
 theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
-    (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NoWrap p 33554432) (inverse : SerializedInverse.Clock p)
     {program : Nat → BitVec 32} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Verification.subwordTable program)))
     (active : w 4 = 1) {cells : List Cell} (epoch : Nat)
@@ -209,7 +211,7 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
     · exact memory_access
         (Trace.Proofs.retired_state_configuration configuration currentPC)
         aligned domain
-  have addressInverse : (-30720 : ZMod p) * 65536 = 1 := by
+  have addressInverse : SerializedInverse.Limb16 p := by
     calc
       (-30720 : ZMod p) * 65536 = (-3840 : ZMod p) * 524288 := by ring
       _ = 1 := inverse
@@ -258,7 +260,7 @@ set_option backward.isDefEq.respectTransparency false in
     reads, decoding and virtual transport are derived from the accepted history.
     The address-domain restriction is on public initialized cells. -/
 theorem row_ram_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
-    (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NoWrap p 33554432) (inverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)

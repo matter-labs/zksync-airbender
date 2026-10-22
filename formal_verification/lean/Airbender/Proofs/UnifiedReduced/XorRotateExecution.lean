@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.XorRotateNative
 
 namespace Airbender.UnifiedReduced.Proofs
@@ -6,9 +8,9 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
-theorem xorrot_execution_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem xorrot_execution_from_memory [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     (accepted : Accepted trace)
@@ -37,9 +39,9 @@ theorem xorrot_execution_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 
   exact custom_register_retirement (by dsimp [timestampBase] at hp; omega)
     core fields query destination trace.memoryEpoch history result
 
-theorem xorrot_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem xorrot_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (accepted : Accepted trace) (decoded : Decoded trace program)
     (inputs : NativeInputs customDecoderFields trace initial cells program)

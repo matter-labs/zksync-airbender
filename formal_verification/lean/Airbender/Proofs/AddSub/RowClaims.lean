@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.AddSub
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.AddSub.Modular
@@ -14,7 +16,7 @@ open Airbender.Reference.RiscV
     Covers ADD/ADDI/SUB/LUI/AUIPC, including x0/NOP preprocessing and discarded writes.
     Includes nextPC initialization and PC retirement for the normal decoded four-byte path. -/
 theorem row_soundness {p : Nat} [Fact p.Prime]
-    (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) :
+    (hp : FieldCapacity.NoWrap p 196608) (inverse : SerializedInverse.Limb16 p) :
     (rowCircuitModel (p := p)).SoundnessUnder RowInterfaces Sail.spec :=
   Proofs.soundness hp inverse
 
@@ -27,7 +29,7 @@ theorem babyBear_row_soundness :
     SLT/SLTI/SLTU/SLTIU as well as retained arithmetic, bitwise, register shifts and REV8;
     original Sail reads precede discarded writes and PC retirement. -/
 theorem Discarded.soundness {p : Nat} [Fact p.Prime]
-    (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) :
+    (hp : FieldCapacity.NoWrap p 196608) (inverse : SerializedInverse.Limb16 p) :
     (Discarded.circuitModel (p := p)).SoundnessUnder
       Discarded.InterfaceAssumptions Discarded.spec :=
   Proofs.discarded_soundness hp inverse
@@ -48,7 +50,7 @@ theorem Modular.soundness :
     The custom project specification treats source values as unproved hints;
     oracle responses and application I/O are not covered by this claim. -/
 theorem NonDeterminism.write_soundness {p : Nat} [Fact p.Prime]
-    (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) :
+    (hp : FieldCapacity.NoWrap p 196608) (inverse : SerializedInverse.Limb16 p) :
     (NonDeterminism.writeModel (p := p)).SoundnessUnder
       NonDeterminism.WriteInterfaces NonDeterminism.writeSpec :=
   Proofs.nondeterminism_write_soundness hp inverse
@@ -62,7 +64,7 @@ theorem NonDeterminism.babyBear_write_soundness :
     PC through native Sail effects. `ReadMapping.responsePort` is an explicit
     external connection, not an oracle guarantee enforced by the circuit. -/
 theorem NonDeterminism.read_soundness {p : Nat} [Fact p.Prime]
-    (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) :
+    (hp : FieldCapacity.NoWrap p 196608) (inverse : SerializedInverse.Limb16 p) :
     (NonDeterminism.readModel (p := p)).SoundnessUnder
       NonDeterminism.ReadInterfaces NonDeterminism.readSpec :=
   Proofs.nondeterminism_read_soundness hp inverse

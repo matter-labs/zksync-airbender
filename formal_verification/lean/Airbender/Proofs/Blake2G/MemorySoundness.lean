@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.Blake2G.Memory
 import Airbender.Proofs.Blake2G.Memory
 
@@ -6,8 +8,8 @@ open Trace Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-theorem soundness [Fact p.Prime] (hp : 4194304 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1) (data : Delegation.MemoryData p)
+theorem soundness [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (inverse : SerializedInverse.Scale64 p) (data : Delegation.MemoryData p)
     (before : Reference.RiscV.Sail.State) (cells : List Cell) :
     (circuitModel data).SoundnessUnder (InterfaceAssumptions data before cells) Blake2G.spec := by
   intro input output w ⟨interface, holds, mapping⟩

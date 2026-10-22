@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Keccak.CallPermutation
 import Airbender.Review.Trace.Workers.Keccak.Permutation
 
@@ -40,8 +42,8 @@ private theorem lanes_at {state : State} {pointer : BitVec 32} {cells : List Cel
   have := high.isLt
   omega
 
-theorem permutation_binding_at_boundary [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem permutation_binding_at_boundary [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells)
     (tables : data.setup = Delegation.modeledSetup Controller.rows)
@@ -60,8 +62,8 @@ theorem permutation_binding_at_boundary [Fact p.Prime] (hp : 16777216 ≤ p)
     logicalLanes 0 (physicalLanes after pointer),
     ⟨pointerRead, lanes_at tracked initialReadable, lanes_at tracked afterReadable⟩, trace, result⟩
 
-theorem permutation_binding [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem permutation_binding [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells)
     (tables : data.setup = Delegation.modeledSetup Controller.rows)

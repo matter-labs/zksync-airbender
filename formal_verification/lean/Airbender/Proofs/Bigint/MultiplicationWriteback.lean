@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.Bigint.Multiplication
 import Airbender.Proofs.Bigint.EqualityGates
 
@@ -8,7 +9,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 4000000
 
-theorem native_writes {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
+theorem native_writes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p} (operation : Operation)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w Variables.operations[operation.index] = 1) :
@@ -32,7 +33,7 @@ theorem native_writes {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   all_goals norm_num [Variables.writtenLimbs]
   all_goals linear_combination -gate
 
-theorem native_high_sum {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
+theorem native_high_sum {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 62 = 1) : w 210 = ∑ i : Fin 16, w (147 + i.val) := by
@@ -46,7 +47,7 @@ theorem native_high_sum {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   norm_num [Fin.sum_univ_succ]
   linear_combination gate
 
-theorem native_control {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
+theorem native_control {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p} (operation : Operation)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w Variables.operations[operation.index] = 1) :

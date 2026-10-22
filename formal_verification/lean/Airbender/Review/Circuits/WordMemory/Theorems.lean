@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.WordMemory.Model
 import Airbender.Proofs.WordMemory.TraceSoundness
 import Airbender.Proofs.WordMemory.RowClaims
@@ -11,7 +13,7 @@ variable [MemoryPlatform SailRV32.exception]
     Public initialization, modeled tables and platform conditions are listed in
     `Model.lean`; bounds and successful reads/accesses are derived internally. -/
 theorem soundness {p : Nat} [Fact p.Prime]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
     InterfaceAssumptions trace initial cells program →
     Properties.Soundness (circuitModel trace initial cells program).relation spec :=

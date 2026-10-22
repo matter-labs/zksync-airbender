@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.Bigint.Additive
 import Airbender.Proofs.Bigint.Control
 
@@ -8,7 +9,7 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 set_option warningAsError true
 
-theorem selected_operations {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
+theorem selected_operations {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p} (chosen : Fin 7)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w Variables.operations[chosen] = 1) :

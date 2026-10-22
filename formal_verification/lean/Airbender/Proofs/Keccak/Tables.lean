@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Keccak.ImportedFixed
 
 namespace Airbender.Keccak.Proofs
@@ -27,7 +28,7 @@ private theorem xor_rows {control : Fin 4096 → Vector Nat 6} (index : Fin 1249
 
 /-- The selected XOR region enforces byte bounds and exact XOR, through Clean's
     actual membership relation. No honest witness generator is assumed. -/
-theorem xor_lookup {p : Nat} [Fact p.Prime] (hp : 256 ≤ p)
+theorem xor_lookup {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 256)
     {control : Fin 4096 → Vector Nat 6} {entry : Vector (Expression (ZMod p)) 8}
     {env : Environment (ZMod p)}
     (h : (Lookup.mk (setupTable control).toRaw entry).Contains env)

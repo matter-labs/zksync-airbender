@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.RegisterRetirement
 import Airbender.Proofs.UnifiedReduced.StoreRetirement
 import Airbender.Proofs.UnifiedReduced.ROMSoundness
@@ -9,7 +11,7 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
 theorem word_register_retirement [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 524288 < p)
+    (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {cells : List Cell} {w : Nat → ZMod p} {epoch : Nat}
     {before after : State} {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output} {entry : ProgramEntry}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -60,7 +62,7 @@ theorem word_register_retirement [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatf
     simpa only [same] using normal
 
 theorem word_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     (accepted : Accepted trace)
@@ -92,7 +94,7 @@ theorem word_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPla
   rw [encoding]; cases mode : input.store <;> simp [Airbender.WordMemory.execution, Airbender.WordMemory.instruction, Trace.instructionClause, Option.get_some, mode, instructionClause]
 
 theorem word_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (accepted : Accepted trace) (decoded : Decoded trace program)
     {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ (ROMView.data initial trace).rows)

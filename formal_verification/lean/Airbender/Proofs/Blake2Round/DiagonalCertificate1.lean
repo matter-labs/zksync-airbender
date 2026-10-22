@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2Round.DiagonalBase
 import Airbender.Proofs.Blake2Round.NativeDiagonalFacts
 import Airbender.Proofs.Blake2Round.NativeDiagonalQueries1
@@ -10,7 +11,7 @@ set_option maxHeartbeats 2000000
 
 /-- Native acceptance constructs the shared G frame certificate. -/
 theorem diagonal_g_holds_1 {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1) {w : Nat → ZMod p}
+    (compatible : SerializedInverse.Scale64 p) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (diagonalGAssignment 1 w))

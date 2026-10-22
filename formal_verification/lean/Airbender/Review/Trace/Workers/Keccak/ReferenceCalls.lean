@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Keccak.ReferenceCalls
 
 namespace Airbender.Keccak.Call
@@ -7,8 +9,8 @@ open Trace Reference.RiscV.Sail
     reference micro-calls in actual Sail states. Its schedule derives supported
     controls; initialized matching derives canonical lanes and pointer ABI.
     Mixed caller fetch/PC retirement and participation remain separate claims. -/
-theorem execution_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem execution_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {data : Delegation.MemoryData p} {initial : State} {domain : List Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : NativeCallInputs data initial domain)
     (tables : data.setup = Delegation.modeledSetup Controller.rows)

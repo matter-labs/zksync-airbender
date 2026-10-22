@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.Workers.Keccak.Theorems
 import Airbender.Proofs.Keccak.NativeExecution
 import Airbender.Proofs.Keccak.PermutationBinding
@@ -18,15 +20,15 @@ import Airbender.Proofs.BabyBear
 namespace Airbender.Keccak
 
 
-theorem call_control_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+theorem call_control_soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells) :
     CallControl data :=
   Proofs.call_control hp accepted inputs.toBoundaryInputs
 
 
-theorem Native.call_execution [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem Native.call_execution [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells)
     (tables : data.setup = Delegation.modeledSetup Controller.rows)
@@ -36,14 +38,14 @@ theorem Native.call_execution [Fact p.Prime] (hp : 16777216 ≤ p)
   Proofs.call_execution hp inverse accepted inputs.toBoundaryInputs tables aligned
 
 
-theorem call_pointer_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+theorem call_pointer_soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells) :
     CallPointer data initial :=
   Proofs.call_pointer hp accepted inputs.toBoundaryInputs
 
 
-theorem Memory.native_value_bounds [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+theorem Memory.native_value_bounds [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {control : Fin 4096 → Vector Nat 6}
     (accepted : Delegation.MemoryAccepted data) (inputs : Memory.Inputs data before cells control) :
@@ -53,8 +55,8 @@ theorem Memory.native_value_bounds [Fact p.Prime] (hp : 2 * Trace.timestampBase 
   Memory.Proofs.value_bounds hp accepted inputs
 
 
-theorem local_checks {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem local_checks {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setup)) : LocalChecks w :=
@@ -67,7 +69,7 @@ theorem babyBear_local_checks {setup : Table (ZMod babyBearModulus) (fields 8)}
   local_checks (by decide) (by decide) holds
 
 
-theorem theta_column_soundness {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem theta_column_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     {state : Vector Nat 25} {d : Vector Nat 5} {column : Fin 5}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
@@ -76,7 +78,7 @@ theorem theta_column_soundness {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   Proofs.theta_column hp holds interface
 
 
-theorem chi_row_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem chi_row_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {first second : Nat → ZMod p}
     {state : Vector Nat 25} {row : Fin 5}
     (firstHolds : FlatOperation.ConstraintsHoldFlat (Verification.environment first)
@@ -87,7 +89,7 @@ theorem chi_row_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   Proofs.chi_row hp firstHolds secondHolds mapping
 
 
-theorem iota_column_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem iota_column_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     {state : Vector Nat 25} {column : Fin 5} {round : Fin 25}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
@@ -96,7 +98,7 @@ theorem iota_column_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   Proofs.iota_column hp holds mapping
 
 
-theorem mix_columns_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem mix_columns_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {first second : Nat → ZMod p}
     {c : Vector Nat 5} {round : Fin 32}
     (firstHolds : FlatOperation.ConstraintsHoldFlat (Verification.environment first)
@@ -107,7 +109,7 @@ theorem mix_columns_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   Proofs.mixed_columns hp firstHolds secondHolds mapping
 
 
-theorem theta_rho_column_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem theta_rho_column_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {theta rho : Nat → ZMod p}
     {state : Vector Nat 25} {d : Vector Nat 5} {column : Fin 5} {round : Fin 24}
     (thetaHolds : FlatOperation.ConstraintsHoldFlat (Verification.environment theta)
@@ -118,8 +120,8 @@ theorem theta_rho_column_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   Proofs.theta_rho_column hp thetaHolds rhoHolds mapping
 
 
-theorem address_checks {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem address_checks {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (rowsBounded : ∀ key : Fin 4096, ∀ i : Fin 6, (control key)[i] < 31)
     (pointerBounded : (statePointer w).Bounded)
@@ -128,14 +130,14 @@ theorem address_checks {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p)
   Proofs.addresses hp inverse rowsBounded pointerBounded holds
 
 
-theorem fixed_lookup_checks {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem fixed_lookup_checks {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control))) : ByteLookupChecks control w :=
   Proofs.byte_lookup_checks hp holds
 
 
-theorem control_updates {p : Nat} [Fact p.Prime] (hp : 4096 ≤ p)
+theorem control_updates {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 4096)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setup)) : ControlUpdateChecks w :=

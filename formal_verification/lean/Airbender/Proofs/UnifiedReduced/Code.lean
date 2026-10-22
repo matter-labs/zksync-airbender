@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.WordROM
 import Airbender.Proofs.UnifiedReduced.Decoder
 import Airbender.Proofs.Trace.CodeHistory
@@ -8,7 +9,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
-theorem native_rom_unchanged [Fact p.Prime] (hp : 131072 < p)
+theorem native_rom_unchanged [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072)
     {trace : UnifiedTrace p} (accepted : Accepted trace)
     {event : MemoryAccess} (member : event ∈ trace.nativeEvents)
     (pc : BitVec 32) (inROM : pc.toNat < ROM.limit)
@@ -45,7 +46,7 @@ theorem native_rom_unchanged [Fact p.Prime] (hp : 131072 < p)
       dsimp [Word.ofBitVec, limbBase, ROM.limit] at outside inROM
       omega
 
-theorem source_after_history [Fact p.Prime] (hp : 131072 < p)
+theorem source_after_history [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072)
     {trace : UnifiedTrace p} (accepted : Accepted trace)
     {initial before : State} {cells : List Cell} {events : List MemoryAccess}
     (past : SailHistory cells events initial before)

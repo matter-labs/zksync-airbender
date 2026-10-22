@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.Families.SubwordMemory.Execution
 import Airbender.Proofs.SubwordMemory.Execution
 import Airbender.Proofs.Trace.CompositionCore
@@ -10,7 +12,7 @@ variable [MemoryPlatform SailRV32.exception]
 set_option backward.isDefEq.respectTransparency false in
 set_option maxHeartbeats 2000000 in
 theorem row_ram_step {p : Nat} [Fact p.Prime]
-    (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NoWrap p 33554432) (inverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (inputs : RAMInputs trace initial cells program)
     (accepted : Accepted trace) (decoded : Decoded trace program)
@@ -65,7 +67,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Complete RAM subword traces reuse global latest-write/read consistency,
     native clocks and the same Sail composition used by the other families. -/
 theorem ram_trace_execution {p : Nat} [Fact p.Prime]
-    (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NoWrap p 33554432) (inverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (inputs : RAMInputs trace initial cells program)
     (accepted : Accepted trace) (decoded : Decoded trace program) :

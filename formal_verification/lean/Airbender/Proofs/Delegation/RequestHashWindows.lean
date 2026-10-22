@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.Delegation.RequestHashWindows
 import Airbender.Proofs.Delegation.RequestWindows
 import Airbender.Proofs.Blake2G.Windows
@@ -9,9 +11,9 @@ open Trace Reference.RiscV.Sail
 variable {Kind : Type} [CircuitLayout Kind]
 set_option warningAsError true
 
-theorem bind_hash_window [Fact p.Prime] (hp : 16777216 ≤ p)
-    (wordInverse : 64 * (-31457280 : ZMod p) = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem bind_hash_window [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (wordInverse : SerializedInverse.Scale64 p)
+    (byteInverse : SerializedInverse.Scale256 p)
     {callers : List (Trace.Row p Kind)} {workers : MemoryData p} {before : State} {cells : List Cell}
     {span : HashSpan} {lower upper : Nat} (accepted : MemoryAccepted workers)
     (inputs : span.RequestWindowInputs workers before cells lower upper)

@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Trace.Workers.Blake2G.Call
 import Airbender.Proofs.Blake2G.Control
 
@@ -7,7 +8,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
-theorem forced_control_step {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem forced_control_step {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {w : Nat → ZMod p} (reduced : Bool) (i : Nat) (bound : i < callCount reduced)
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable Control.controllerRows)))

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.FullCalls
 import Airbender.Proofs.Blake2G.ReferenceCalls
 import Airbender.Proofs.Blake2Round.ReferenceCalls
@@ -10,8 +12,8 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 1600000
 
-theorem hash_span_call [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem hash_span_call [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {workers : Delegation.MemoryData p} {initial before after : State} {domain historyCells : List Cell}
     {span : Delegation.Caller.HashSpan} {events : List MemoryAccess}
     (accepted : Delegation.MemoryAccepted workers)
@@ -26,8 +28,8 @@ theorem hash_span_call [Fact p.Prime] (hp : 16777216 ≤ p)
       cell.addressCode = port.address.code row.assignment ∧
         cell.read before = .ok (readToken row.assignment port).word.toBitVec before) :
     FullCall row.family before after := by
-  have rotationInverse : 64 * (-31457280 : ZMod p) = 1 := by linear_combination clockInverse
-  have byteInverse : 256 * (-7864320 : ZMod p) = 1 := by linear_combination clockInverse
+  have rotationInverse : SerializedInverse.Scale64 p := by linear_combination clockInverse
+  have byteInverse : SerializedInverse.Scale256 p := by linear_combination clockInverse
   have family := protocol.family row member
   cases span with
   | blakeG reduced =>
@@ -58,8 +60,8 @@ theorem hash_span_call [Fact p.Prime] (hp : 16777216 ≤ p)
       (publicABI.toBoundaryInputs (by norm_num [timestampBase]; omega) accepted)
       protocol.tables ram member history permutation observed
 
-theorem computed_window_call [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem computed_window_call [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {initial before after : State} {ca oa : List (BitVec 32)}
     {cells historyCells : List Cell} {program : List UnifiedReduced.ProgramEntry}
     {window : HashWindow} {events : List MemoryAccess}
@@ -75,7 +77,7 @@ theorem computed_window_call [Fact p.Prime] (hp : 16777216 ≤ p)
       cell.addressCode = port.address.code row.assignment ∧
         cell.read before = .ok (readToken row.assignment port).word.toBitVec before) :
     FullCall row.family before after := by
-  have rotationInverse : 64 * (-31457280 : ZMod p) = 1 := by linear_combination clockInverse
+  have rotationInverse : SerializedInverse.Scale64 p := by linear_combination clockInverse
   have floor := hash_control_preparation_after_initial scope.preparation
   have duration := scope.duration
   have projection := mixed_projected_window (by omega) clockInverse rotationInverse accepted inputs first last

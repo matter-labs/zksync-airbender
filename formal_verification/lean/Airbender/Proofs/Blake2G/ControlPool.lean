@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2G.BoundaryInputs
 import Airbender.Proofs.Blake2G.CallControl
 import Airbender.Proofs.Delegation.IndexedPaths
@@ -35,7 +36,7 @@ theorem control_edges {data : Delegation.MemoryData p}
     simp [Delegation.Row.memorySteps, Delegation.Row.ports, importedConstraintsMemoryPorts,
       readToken, MemoryAddress.code, Cell.addressCode, pairCode, Nat.pair_eq_pair]
 
-private theorem pool_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+private theorem pool_path [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
     (accepted : Delegation.MemoryAccepted data) (inputs : ControlPoolInputs data initial cells reduced) :
     ∃ source : MemoryToken p, ∃ path : List (MemoryToken p),
@@ -68,7 +69,7 @@ private theorem pool_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   exact ⟨source, path, length, head, initialWord, ordered, matching, sink, sinkMember,
     sinkAddress.trans sourceCode, last⟩
 
-private theorem pool_scheduled_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+private theorem pool_scheduled_path [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
     (accepted : Delegation.MemoryAccepted data) (inputs : ControlPoolInputs data initial cells reduced) :
     ∃ path : List (MemoryToken p), path.length = data.rows.length + 1 ∧
@@ -111,7 +112,7 @@ private theorem pool_scheduled_path [Fact p.Prime] (hp : 2 * timestampBase + 4 <
   exact ⟨path, length, ordered, matching,
     Delegation.Proofs.indexed_path_words head (controlAt reduced) initialWord advances, terminal⟩
 
-theorem pool_ordered_controls [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem pool_ordered_controls [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
     (accepted : Delegation.MemoryAccepted data) (inputs : ControlPoolInputs data initial cells reduced) :
     ∃ ordered : List (Delegation.Row p), ordered.Perm data.rows ∧

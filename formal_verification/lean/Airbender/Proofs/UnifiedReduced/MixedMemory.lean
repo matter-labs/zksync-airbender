@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.MixedCycles
 import Airbender.Proofs.UnifiedReduced.MixedHistory
 import Airbender.Proofs.Delegation.SharedOperations
@@ -23,8 +25,8 @@ theorem mixed_worker_member [Fact p.Prime] {data : RequestTrace p}
   List.mem_append.mpr (Or.inr (List.mem_flatMap.mpr ⟨row, member,
     List.mem_map.mpr ⟨port, by simpa using present, rfl⟩⟩))
 
-theorem mixed_machine_time_of_program [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem mixed_machine_time_of_program [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca : List (BitVec 32)}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -36,8 +38,8 @@ theorem mixed_machine_time_of_program [Fact p.Prime] (hp : 2 * timestampBase + 4
   exact (write_time (by omega) (base := rawPair row.assignment row.columns.initialTime)
     clock.1 clock.2 (Trace.Proofs.port_offset row port present)).2
 
-theorem mixed_machine_time [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem mixed_machine_time [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
@@ -46,7 +48,7 @@ theorem mixed_machine_time [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (timeOfPair (writeToken row.columns row.assignment port).time).value = (port.event row.columns row.assignment).1 :=
   mixed_machine_time_of_program hp inverse accepted inputs.publicProgram member present
 
-theorem ordinary_zero_preserving_of_program [Fact p.Prime] (hp : 524288 < p)
+theorem ordinary_zero_preserving_of_program [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {oa : List (BitVec 32)}
     (accepted : MixedMemoryAccepted data program) (ordinaryProgram : Mixed.programImage before oa = some program)
@@ -67,7 +69,7 @@ theorem ordinary_zero_preserving_of_program [Fact p.Prime] (hp : 524288 < p)
       exact UnifiedReduced.Proofs.row_zero_preserving hp core (accepted.active _ member) fetched
     · exact UnifiedReduced.Proofs.custom_row_zero_preserving hp core custom query
 
-theorem ordinary_zero_preserving [Fact p.Prime] (hp : 524288 < p)
+theorem ordinary_zero_preserving [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
@@ -75,8 +77,8 @@ theorem ordinary_zero_preserving [Fact p.Prime] (hp : 524288 < p)
     RowZeroPreserving row :=
   ordinary_zero_preserving_of_program hp accepted inputs.ordinaryProgram member ordinary
 
-theorem mixed_zero_rules_of_program [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem mixed_zero_rules_of_program [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -110,16 +112,16 @@ theorem mixed_zero_rules_of_program [Fact p.Prime] (hp : 2 * timestampBase + 4 <
     obtain ⟨port, portMember, rfl⟩ := List.mem_map.mp step
     exact False.elim (Delegation.Proofs.port_not_zero row (by simpa using portMember) same)
 
-theorem mixed_zero_rules [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem mixed_zero_rules [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
     (requests : RequestBinding data before) : Transfer.CellWriteRules (mixedData data) (Cell.register 0).addressCode 0 :=
   mixed_zero_rules_of_program hp inverse accepted inputs.publicProgram inputs.ordinaryProgram requests
 
-theorem mixed_write_rules [Fact p.Prime] (hp : 8388608 ≤ p)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem mixed_write_rules [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells) :

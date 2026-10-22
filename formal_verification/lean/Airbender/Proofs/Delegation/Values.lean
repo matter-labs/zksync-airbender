@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Delegation.History
 import Airbender.Proofs.Trace.TransferBounds
 import Airbender.Proofs.Trace.Values
@@ -27,7 +28,7 @@ theorem transfer_write_rules {data : MemoryData p} (rules : WriteBoundsFromReads
     simp only [Row.writeToken, port_offset row sourceMember, port_offset row portMember]
   rw [sameTime]
 
-theorem produced_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem produced_value_bounds [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     (rules : WriteBoundsFromReads data) :
@@ -35,7 +36,7 @@ theorem produced_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   Trace.Proofs.Transfer.produced_bounds_of_seed (transfer_facts hp accepted inputs) inputs.words
     (transfer_write_rules rules)
 
-theorem read_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem read_value_bounds [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     (rules : WriteBoundsFromReads data) {row : Row p} (member : row ∈ data.rows)
@@ -45,7 +46,7 @@ theorem read_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   exact List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨_,
     List.mem_flatMap.mpr ⟨row, member, List.mem_map.mpr ⟨port, by simpa using present, rfl⟩⟩, rfl⟩))
 
-theorem write_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem write_value_bounds [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     (rules : WriteBoundsFromReads data) {row : Row p} (member : row ∈ data.rows)
@@ -54,7 +55,7 @@ theorem write_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   exact List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨_,
     List.mem_flatMap.mpr ⟨row, member, List.mem_map.mpr ⟨port, by simpa using present, rfl⟩⟩, rfl⟩))
 
-theorem terminal_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem terminal_value_bounds [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     (rules : WriteBoundsFromReads data) {token : MemoryToken p} (member : token ∈ data.terminal) :

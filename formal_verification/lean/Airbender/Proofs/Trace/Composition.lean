@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.CompositionCore
 import Airbender.Proofs.Trace.Arithmetic
 import Airbender.Proofs.Trace.WordMemory
@@ -15,7 +17,7 @@ set_option backward.isDefEq.respectTransparency false in
     Decoder fields select the clause; all read/range/effect facts are derived
     by the existing family proofs. No expected instruction effect is assumed. -/
 theorem row_instruction_step (profile : ISAProfile) {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
-    (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    (hp : FieldCapacity.NoWrap p ROM.limit) (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -90,7 +92,7 @@ set_option backward.isDefEq.respectTransparency false in
     preserved public bytes. Original Sail stepping is supplied by the native
     family proofs, not by a desired-read or desired-result premise. -/
 theorem row_execution_step (profile : ISAProfile) {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
-    (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    (hp : FieldCapacity.NoWrap p ROM.limit) (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -128,7 +130,7 @@ set_option backward.isDefEq.respectTransparency false in
     from the public state unchanged; subsequent steps reuse the existing
     history through the actual retired Sail control-register states. -/
 theorem rows_execution_trace (profile : ISAProfile) {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
-    (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    (hp : FieldCapacity.NoWrap p ROM.limit) (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -170,7 +172,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Whole selected-trace soundness, from the public initial state through
     every native instruction row to the actual terminal PC and cell reads. -/
 theorem restricted_trace_execution (profile : ISAProfile) {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
-    (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NoWrap p ROM.limit) (inverse : SerializedInverse.Clock p)
     {trace : Data p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (inputs : ExecutionBoundary trace initial cells program)
     (loads : profile = .sail → NoDiscardedLoads program)

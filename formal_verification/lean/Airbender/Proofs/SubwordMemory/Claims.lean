@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.SubwordMemory.Theorems
 import Airbender.Review.Trace.Families.SubwordMemory.Theorems
 import Airbender.Proofs.SubwordMemory.RowClaims
@@ -10,7 +11,7 @@ namespace Airbender.SubwordMemory
 open _root_.Sail.ArchSem
 variable [MemoryPlatform SailRV32.exception]
 omit [MemoryPlatform SailRV32.exception] in
-theorem fetched {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+theorem fetched {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImage before addresses = some program)

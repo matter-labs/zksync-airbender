@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.Code
 import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.Trace.NativeSailHistory
@@ -8,8 +10,8 @@ open Arithmetic Reference.RiscV.Sail Reference.Sail
 
 /-- Every native transfer into the ROM address space is a readonly refresh.
     Actual SW writes are excluded by the imported equations and public domain. -/
-theorem native_rom_unchanged [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem native_rom_unchanged [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)
@@ -89,8 +91,8 @@ theorem sail_history_code_frame {cells : List Cell} {events : List MemoryAccess}
         dsimp [ROM.limit] at inROM rom
         omega
 
-theorem native_history_code_frame [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem native_history_code_frame [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial before after : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -136,7 +138,7 @@ theorem entry_source_after_history {Kind : Type}
 /-- The complete public ROM table remains a byte-read interface in later
     states. Active queries identify cells in the public aligned domain; native
     histories preserve those bytes. No per-row expected table value is supplied. -/
-theorem rom_reads_after_history [Fact p.Prime] (hp : ROM.limit < p)
+theorem rom_reads_after_history [Fact p.Prime] (hp : FieldCapacity.NoWrap p ROM.limit)
     {initial before : State} {cells : List Cell} {tokens : List (MemoryToken p)}
     (image : initialImage initial cells = some tokens)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
@@ -153,8 +155,8 @@ theorem rom_reads_after_history [Fact p.Prime] (hp : ROM.limit < p)
   exact sail_history_code_frame history unchanged address.toBitVec inROM
     (aligned _ member) bytes
 
-theorem rom_reads_after_native_history [Fact p.Prime] (hp : ROM.limit < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem rom_reads_after_native_history [Fact p.Prime] (hp : FieldCapacity.NoWrap p ROM.limit)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial before : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)

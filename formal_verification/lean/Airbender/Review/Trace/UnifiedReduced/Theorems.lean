@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.MixedComposition
 import Airbender.Proofs.UnifiedReduced.MixedCycleComposition
 import Airbender.Proofs.UnifiedReduced.Composition
@@ -33,8 +35,8 @@ namespace Airbender.UnifiedReduced
     this registry. -/
 theorem Mixed.execution_soundness [Fact p.Prime]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     {trace : Trace.UnifiedTrace p} {initial : Reference.RiscV.Sail.State}
     {cells : List Trace.Cell} {program : List ProgramEntry}
     (inputs : Mixed.Inputs trace initial cells program)
@@ -50,8 +52,8 @@ theorem Mixed.execution_soundness [Fact p.Prime]
     modeled tables and logical matching. No terminal-PC normalization is needed. -/
 theorem execution_soundness [Fact p.Prime]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     {trace : Trace.UnifiedTrace p} {initial : Reference.RiscV.Sail.State}
     {cells : List Trace.Cell} {program : List ProgramEntry}
     (inputs : ExecutionInputs trace initial cells program)
@@ -79,8 +81,8 @@ theorem Caller.mixed_memory_soundness
     Worker boundaries, all ranges and intermediate controls are derived.
     This is a memory-effect claim; PC retirement, arbitrary mixed-ISA span
     segmentation and unissued-worker exclusion remain separate. -/
-theorem Caller.shared_span_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.shared_span_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {cells : List Trace.Cell} {span : Delegation.Caller.HashSpan}
     (accepted : Caller.MixedMemoryAccepted data [])
@@ -91,8 +93,8 @@ theorem Caller.shared_span_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
 /-- Unified caller spans match the complete native worker rows between the
     same instruction-boundary cuts. Counts and unique native slots are derived;
     zero-clock surplus effects stay before the cut rather than being excluded. -/
-theorem Caller.request_window_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.request_window_soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     (accepted : Caller.RequestChecks data) (inputs : Caller.RequestInputs data before addresses)
     {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0) (pastZero : 2 ≤ lower) :
@@ -102,10 +104,10 @@ theorem Caller.request_window_soundness [Fact p.Prime] (hp : 2 * Trace.timestamp
 /-- Unified caller requests and the complete hash reference bind the same native
     window. Public worker initialization, mode/count ABI and worker-only matching
     remain visible; caller control preparation and joint retirement are separate. -/
-theorem Caller.request_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (wordInverse : 64 * (-31457280 : ZMod p) = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem Caller.request_hash_window_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (wordInverse : SerializedInverse.Scale64 p)
+    (byteInverse : SerializedInverse.Scale256 p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {cells : List Trace.Cell} {span : Delegation.Caller.HashSpan} {lower upper : Nat}
     (accepted : Caller.RequestChecks data) (workers : Delegation.MemoryAccepted data.workers)
@@ -122,9 +124,9 @@ theorem Caller.request_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p
     in one initialized architectural history. Actual cut states, canonical words,
     retained timestamps and request slots are derived from joint matching.
     This is memory transport; whole caller retirement and hash ABI remain separate. -/
-theorem Caller.mixed_window_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Caller.mixed_window_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     (accepted : Caller.MixedMemoryAccepted data program)
@@ -138,8 +140,8 @@ theorem Caller.mixed_window_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
     actual joint cut states. Shared matching derives worker boundaries, entry
     controls and round masks. Public mode/count, prefix scope and modeled tables
     remain explicit; ordinary control preparation and ISA retirement are separate. -/
-theorem Caller.joint_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.joint_hash_window_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {cells : List Trace.Cell} {span : Delegation.Caller.HashSpan} {lower upper : Nat}
     (accepted : Caller.MixedMemoryAccepted data [])
@@ -151,9 +153,9 @@ theorem Caller.joint_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
 /-- Projected worker memory retains the joint states and native timestamps.
     The empty ordinary registry derives caller-only rows; no independent worker
     matching or boundary values are supplied. -/
-theorem Caller.window_projection_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Caller.window_projection_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     (accepted : Caller.MixedMemoryAccepted data []) (inputs : Caller.MixedMemoryInputs data [] before ca oa cells)
     {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0) (positive : 2 ≤ lower) (ordered : lower ≤ upper) :
@@ -163,8 +165,8 @@ theorem Caller.window_projection_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
 /-- Accepted state matching counts every instruction between the public cuts.
     The four-tick duration and request matching derive a caller-only region
     without supplying selectors or an instruction schedule. -/
-theorem Caller.window_schedule_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.window_schedule_soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     (accepted : Caller.RequestChecks data) (inputs : Caller.RequestInputs data before addresses)
     {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0) (positive : 2 ≤ lower) (ordered : lower ≤ upper)
@@ -177,9 +179,9 @@ theorem Caller.window_schedule_soundness [Fact p.Prime] (hp : 2 * Trace.timestam
 /-- Caller regions within mixed history derive worker matching and retained
     boundary images at the actual cut states. Earlier ordinary effects remain
     in the joint prefix; complete hash entry protocols and retirement are separate. -/
-theorem Caller.mixed_window_projection_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Caller.mixed_window_projection_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     (accepted : Caller.MixedMemoryAccepted data program)
@@ -197,9 +199,9 @@ theorem Caller.mixed_window_projection_soundness [Fact p.Prime] (hp : 8388608 �
     Public literal, arithmetic or sequential registries admit successive preparations.
     Native PC/clock matching identifies the literal row; its timestamp survives. Program and final-cycle scope
     remain explicit, with no desired control read or row selector as an input. -/
-theorem Caller.control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Caller.control_preparation_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {cut : Nat} {register : BitVec 5} {literal : Caller.ControlLiteral}
@@ -212,9 +214,9 @@ theorem Caller.control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
 
 /-- Two prepared controls use the same actual states and intervening native
     history. Decoding, matching and public preparation cuts derive both controls. -/
-theorem Caller.control_preparation_window_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Caller.control_preparation_window_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {lower upper : Nat} {firstRegister lastRegister : BitVec 5}
@@ -231,9 +233,9 @@ theorem Caller.control_preparation_window_soundness [Fact p.Prime] (hp : 8388608
 
 /-- Two native windows and their intervening gap form one actual memory execution
     from public initialization. Every cut state and retained boundary is derived. -/
-theorem Caller.mixed_window_chain_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Caller.mixed_window_chain_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {a b c d : Nat} (accepted : Caller.MixedMemoryAccepted data program)
@@ -246,9 +248,9 @@ theorem Caller.mixed_window_chain_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
 /-- An ordered finite list of native windows and gaps executes continuously
     from public initialization. Matching derives every actual boundary and clock;
     instruction retirement and protocol shape remain separate. -/
-theorem Caller.mixed_window_sequence_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Caller.mixed_window_sequence_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {cut : Nat} {windows : List (Nat × Nat)}
@@ -263,8 +265,8 @@ theorem Caller.mixed_window_sequence_soundness [Fact p.Prime] (hp : 8388608 ≤ 
     caller scheduling, worker boundaries and native reads. Other nonround workers
     may precede or follow the homogeneous selected span. Public span ABI,
     program/domain and modeled tables remain explicit; no worker masks are supplied. -/
-theorem Caller.prepared_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.prepared_hash_window_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
     {span : Delegation.Caller.HashSpan} {lower upper : Nat}
@@ -277,8 +279,8 @@ theorem Caller.prepared_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ 
 /-- Two complete prepared G/Keccak references compose through one continuous
     history, including the intervening preparation and other worker effects.
     Public mode/count/duration and nonround worker scope remain explicit. -/
-theorem Caller.prepared_hash_chain_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.prepared_hash_chain_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
     {firstSpan secondSpan : Delegation.Caller.HashSpan} {a b c d : Nat}
@@ -292,8 +294,8 @@ theorem Caller.prepared_hash_chain_soundness [Fact p.Prime] (hp : 16777216 ≤ p
 /-- A nonempty ordered list of complete prepared G/Keccak references shares one
     continuous actual memory history. Each span retains its public preparation,
     mode/count/duration and nonround scope; all intermediate states are derived. -/
-theorem Caller.prepared_hash_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.prepared_hash_sequence_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
     {first : Caller.HashWindow} {rest : List Caller.HashWindow}
@@ -308,8 +310,8 @@ theorem Caller.prepared_hash_sequence_soundness [Fact p.Prime] (hp : 16777216 �
 /-- Public LUI preparation and raw joint matching derive exclusive masks within
     one caller region. Its local ten-position bound remains explicit; earlier
     workers, including other families, remain outside the selected region. -/
-theorem Caller.prepared_round_region_masks_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.prepared_round_region_masks_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
     {regions : List Caller.RoundRegion} {region : Caller.RoundRegion}
@@ -324,8 +326,8 @@ theorem Caller.prepared_round_region_masks_soundness [Fact p.Prime] (hp : 838860
     actual memory execution. Every extended-round worker must belong to an
     explicit prepared controller region; raw matching derives its mask first.
     Public preparation/protocol shape stays visible, with whole retirement separate. -/
-theorem Caller.prepared_protocol_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.prepared_protocol_sequence_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
     {regions : List Caller.RoundRegion} {first : Caller.HashWindow} {rest : List Caller.HashWindow}
@@ -338,8 +340,8 @@ theorem Caller.prepared_protocol_sequence_soundness [Fact p.Prime] (hp : 1677721
 
 /-- Public LUI preparation and native matching derive all extended-BLAKE masks
     before Sail transport. The public suffix duration and ten-position ABI remain explicit. -/
-theorem Caller.prepared_round_masks_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.prepared_round_masks_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
     {flags : Fin 8} {lower : Nat}
@@ -350,8 +352,8 @@ theorem Caller.prepared_round_masks_soundness [Fact p.Prime] (hp : 8388608 ≤ p
 
 /-- Complete extended-BLAKE compression reaches the actual prepared mixed-history
     cut states. Controls, masks, caller selectors and worker boundaries are derived. -/
-theorem Caller.prepared_round_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.prepared_round_window_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
     {flags : Fin 8} {lower upper : Nat}
@@ -403,7 +405,7 @@ theorem Caller.prepared_round_cycles_soundness
 /-- Public sequential code identifies a caller region; native matching derives
     its worker family, exact counts and slots without a supplied worker duration. -/
 theorem Caller.program_window_schedule_soundness [Fact p.Prime]
-    (hp : 2 * Trace.timestampBase + 4 < p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)}
     {family : Delegation.Family} {lower upper : Nat}
@@ -420,8 +422,8 @@ theorem Caller.program_window_schedule_soundness [Fact p.Prime]
 /-- Public sequential/comparison decoding and native state matching derive RV32
     program addresses from clocks, including comparison PC wraparound. Public
     code alignment, modeled setup and comparison field compatibility stay explicit. -/
-theorem Caller.wrapped_program_address_soundness [Fact p.Prime] (hp : 4194304 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.wrapped_program_address_soundness [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before state : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry}
     (setup : data.machine.rom = Setup.table state) (accepted : Caller.MixedMemoryAccepted data program)
@@ -435,7 +437,7 @@ theorem Caller.wrapped_program_address_soundness [Fact p.Prime] (hp : 4194304 �
 /-- Public code and an extent of at most forty ticks derive this prepared
     controller's worker family, ten-position bound and exact four-tick duration. -/
 theorem Caller.program_round_region_soundness [Fact p.Prime]
-    (hp : 2 * Trace.timestampBase + 4 < p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry} {region : Caller.RoundRegion}
     (accepted : Caller.MixedMemoryAccepted data program) (publicProgram : Caller.RequestInputs data before ca)
@@ -448,7 +450,7 @@ theorem Caller.program_round_region_soundness [Fact p.Prime]
     worker. Membership is equivalent to live invocation; zero-clock surplus
     workers remain outside these prepared regions, with all their effects retained. -/
 theorem Caller.program_round_coverage_soundness [Fact p.Prime]
-    (hp : 2 * Trace.timestampBase + 4 < p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry} {regions : List Caller.RoundRegion}
     (accepted : Caller.MixedMemoryAccepted data program) (publicProgram : Caller.RequestInputs data before ca)
@@ -460,8 +462,8 @@ theorem Caller.program_round_coverage_soundness [Fact p.Prime]
 /-- Public code coverage and LUI preparation derive exclusive masks for every
     issued extended-round worker from raw matching. Global worker coverage and
     mask behavior of zero-clock surplus round workers remain separate. -/
-theorem Caller.program_round_live_masks_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.program_round_live_masks_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
     {regions : List Caller.RoundRegion}
@@ -479,7 +481,7 @@ theorem Caller.program_round_live_masks_soundness [Fact p.Prime] (hp : 8388608 �
     no zero-clock extended-round worker is present. This is a proved boundary,
     not a nonzero-invocation assumption or a general exclusion of surplus workers. -/
 theorem Caller.program_round_global_coverage_boundary_soundness [Fact p.Prime]
-    (hp : 2 * Trace.timestampBase + 4 < p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry} {regions : List Caller.RoundRegion}
     (accepted : Caller.MixedMemoryAccepted data program) (publicProgram : Caller.RequestInputs data before ca)
@@ -496,8 +498,8 @@ theorem Caller.program_round_global_coverage_boundary_soundness [Fact p.Prime]
 /-- Public caller regions derive selected span and controller families/counts
     before all three references compose in one continuous prepared history.
     Global controller coverage, public preparation/extents and matching stay explicit. -/
-theorem Caller.program_prepared_protocol_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.program_prepared_protocol_sequence_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
     {regions : List Caller.RoundRegion} {first : Caller.HashWindow} {rest : List Caller.HashWindow}
@@ -510,8 +512,8 @@ theorem Caller.program_prepared_protocol_sequence_soundness [Fact p.Prime] (hp :
 
 /-- Public modular code regions and accepted matching derive selected callers,
     worker families, exact counts and slots through comparison PC wraparound. -/
-theorem Caller.wrapped_program_window_schedule_soundness [Fact p.Prime] (hp : 4194304 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.wrapped_program_window_schedule_soundness [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before state : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)}
     {family : Delegation.Family} {lower upper : Nat}
@@ -528,8 +530,8 @@ theorem Caller.wrapped_program_window_schedule_soundness [Fact p.Prime] (hp : 41
 
 /-- Modular public code and an extent of at most forty ticks derive local
     round-controller family/count/duration before the existing mask transport. -/
-theorem Caller.wrapped_program_round_region_soundness [Fact p.Prime] (hp : 4194304 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.wrapped_program_round_region_soundness [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)}
     {program : List UnifiedReduced.ProgramEntry} {region : Caller.RoundRegion}
     (setup : data.machine.rom = Setup.table before)
@@ -542,8 +544,8 @@ theorem Caller.wrapped_program_round_region_soundness [Fact p.Prime] (hp : 41943
 /-- Complete references compose continuously after selected span/controller shape
     is derived from modular public regions. Global round-worker coverage remains
     explicit; unissued effects are retained, with whole caller retirement separate. -/
-theorem Caller.wrapped_program_prepared_protocol_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.wrapped_program_prepared_protocol_sequence_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
     {regions : List Caller.RoundRegion} {first : Caller.HashWindow} {rest : List Caller.HashWindow}
@@ -558,7 +560,7 @@ theorem Caller.wrapped_program_prepared_protocol_sequence_soundness [Fact p.Prim
     worker. Membership is equivalent to live invocation; zero-clock surplus
     workers remain outside these prepared regions, with all their effects retained. -/
 theorem Caller.wrapped_program_round_coverage_soundness [Fact p.Prime]
-    (hp : 4194304 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry} {regions : List Caller.RoundRegion}
     (setup : data.machine.rom = Setup.table before)
@@ -571,8 +573,8 @@ theorem Caller.wrapped_program_round_coverage_soundness [Fact p.Prime]
 /-- Modular public code coverage and LUI preparation derive exclusive masks for every
     issued extended-round worker from raw matching. Global worker coverage and
     mask behavior of zero-clock surplus round workers remain separate. -/
-theorem Caller.wrapped_program_round_live_masks_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.wrapped_program_round_live_masks_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
     {regions : List Caller.RoundRegion}
@@ -590,7 +592,7 @@ theorem Caller.wrapped_program_round_live_masks_soundness [Fact p.Prime] (hp : 8
     no zero-clock extended-round worker is present. This is a proved boundary,
     not a nonzero-invocation assumption or a general exclusion of surplus workers. -/
 theorem Caller.wrapped_program_round_global_coverage_boundary_soundness [Fact p.Prime]
-    (hp : 4194304 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry} {regions : List Caller.RoundRegion}
     (setup : data.machine.rom = Setup.table before)
@@ -609,7 +611,7 @@ theorem Caller.wrapped_program_round_global_coverage_boundary_soundness [Fact p.
     Native clocks and architectural matching derive their origin and word bounds;
     all unissued writes and their later prefix effects remain admitted. -/
 theorem Caller.unissued_worker_reads_soundness [Fact p.Prime]
-    (hp : 2 * Trace.timestampBase + 4 < p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca : List (BitVec 32)} {cells : List Trace.Cell}
     (accepted : Caller.MixedMemoryAccepted data program) (publicProgram : Caller.RequestInputs data before ca)
@@ -623,7 +625,7 @@ theorem Caller.unissued_worker_reads_soundness [Fact p.Prime]
     an unissued extended-round worker. No supported-control, exclusive-mask or
     nonzero-invocation premise supplies the missing global coverage boundary. -/
 theorem Caller.unissued_round_control_soundness [Fact p.Prime]
-    (hp : 2 * Trace.timestampBase + 4 < p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca : List (BitVec 32)} {cells : List Trace.Cell}
     (accepted : Caller.MixedMemoryAccepted data program) (publicProgram : Caller.RequestInputs data before ca)
@@ -637,7 +639,7 @@ theorem Caller.unissued_round_control_soundness [Fact p.Prime]
     invocation clocks across all four families, including zero. The unissued
     sublist has at most one occurrence; its effects remain in the actual history. -/
 theorem Caller.worker_invocation_uniqueness_soundness [Fact p.Prime]
-    (hp : 2 * Trace.timestampBase + 4 < p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca : List (BitVec 32)} {cells : List Trace.Cell}
     (accepted : Caller.MixedMemoryAccepted data program) (publicProgram : Caller.RequestInputs data before ca)
@@ -662,8 +664,8 @@ theorem Caller.all_worker_execution_soundness
     Native constraints and matching derive its canonical cut token and timestamp;
     the same initialized history supplies the actual cut state. Earlier worker
     effects remain, with modeled tables and round ABI explicit. -/
-theorem Caller.pc_relative_control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Caller.pc_relative_control_preparation_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p) (rotationInverse : SerializedInverse.Scale64 p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {cut : Nat} {register : BitVec 5} {immediate : BitVec 20}
@@ -677,8 +679,8 @@ theorem Caller.pc_relative_control_preparation_soundness [Fact p.Prime] (hp : 83
 /-- Public register preparation instructions derive the actual protocol
     entry control and retain its native timestamp in the initialized history.
     Placement/dataflow conditions concern decoded code, with no supplied control read. -/
-theorem Caller.hash_control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Caller.hash_control_preparation_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p) (rotationInverse : SerializedInverse.Scale64 p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {cut : Nat} {span : Delegation.Caller.HashSpan}
@@ -691,8 +693,8 @@ theorem Caller.hash_control_preparation_soundness [Fact p.Prime] (hp : 8388608 �
 /-- Public register preparation reaches a complete selected G or
     Keccak reference at the actual joint cut states. Counts/duration, family,
     domain, modeled tables and logical matching stay explicit. -/
-theorem Caller.computed_prepared_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.computed_prepared_hash_window_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {span : Delegation.Caller.HashSpan} {lower upper : Nat}
@@ -705,8 +707,8 @@ theorem Caller.computed_prepared_hash_window_soundness [Fact p.Prime] (hp : 1677
 /-- A nonempty ordered list may mix all public preparation forms. Every gap
     and complete G/Keccak reference shares one continuously initialized history;
     intermediate states and protocol entry reads are derived. -/
-theorem Caller.computed_prepared_hash_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.computed_prepared_hash_sequence_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {first : Caller.HashWindow} {rest : List Caller.HashWindow}
@@ -721,8 +723,8 @@ theorem Caller.computed_prepared_hash_sequence_soundness [Fact p.Prime] (hp : 16
 /-- Literal or AUIPC preparation and public modular code derive the selected
     caller/worker shape and exact native request slots, even for an empty region.
     No complete reference duration or worker-count premise is needed here. -/
-theorem Caller.hash_prepared_public_window_schedule_soundness [Fact p.Prime] (hp : 4194304 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.hash_prepared_public_window_schedule_soundness [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)}
     {span : Delegation.Caller.HashSpan} {lower upper : Nat}
@@ -741,8 +743,8 @@ theorem Caller.hash_prepared_public_window_schedule_soundness [Fact p.Prime] (hp
     count and slots from public modular regions, then use public register
     preparation at the actual joint states. Public duration and nonround scope,
     domain, setup/tables and logical matching remain explicit. -/
-theorem Caller.wrapped_program_computed_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.wrapped_program_computed_hash_window_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {window : Caller.HashWindow}
@@ -757,8 +759,8 @@ theorem Caller.wrapped_program_computed_hash_window_soundness [Fact p.Prime] (hp
 /-- A nonempty ordered list may mix all public preparation forms. Public
     modular regions derive all selected shapes; existing composition retains
     every gap and reference in one continuously initialized history. -/
-theorem Caller.wrapped_program_computed_hash_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.wrapped_program_computed_hash_sequence_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {first : Caller.HashWindow} {rest : List Caller.HashWindow}
@@ -772,8 +774,8 @@ theorem Caller.wrapped_program_computed_hash_sequence_soundness [Fact p.Prime] (
 /-- Literal or AUIPC preparation supplies the actual regional round-zero token.
     Raw initialized matching derives every selected round mask. Earlier workers
     remain in the prefix and global round coverage is not assumed. -/
-theorem Caller.computed_round_region_masks_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.computed_round_region_masks_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {region : Caller.RoundRegion}
@@ -786,8 +788,8 @@ theorem Caller.computed_round_region_masks_soundness [Fact p.Prime] (hp : 838860
 
 /-- Public modular code and a forty-tick extent derive controller shape; either
     public preparation source and raw matching then derive its round masks. -/
-theorem Caller.wrapped_program_computed_round_region_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.wrapped_program_computed_round_region_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {region : Caller.RoundRegion}
@@ -803,8 +805,8 @@ theorem Caller.wrapped_program_computed_round_region_soundness [Fact p.Prime] (h
 /-- Global source-aware mask transport retains the existing explicit coverage
     of every round worker by a prepared region, including its unissued boundary.
     No mask or control read is supplied. Domain/setup/tables remain explicit. -/
-theorem Caller.computed_protocol_memory_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.computed_protocol_memory_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {regions : List Caller.RoundRegion}
@@ -817,8 +819,8 @@ theorem Caller.computed_protocol_memory_soundness [Fact p.Prime] (hp : 8388608 �
     membership and every issued mask with either preparation source. Full
     coverage is equivalent to absence of zero-clock round workers; it is not
     assumed, and the unissued boundary remains explicit. -/
-theorem Caller.wrapped_program_computed_round_coverage_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.wrapped_program_computed_round_coverage_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {regions : List Caller.RoundRegion}
@@ -843,8 +845,8 @@ theorem Caller.wrapped_program_computed_round_coverage_soundness [Fact p.Prime] 
 /-- Complete G, extended-BLAKE and Keccak references may mix all public
     preparation forms. Every gap and boundary state comes from one initialized history.
     Raw regional matching derives masks; full round-worker coverage stays explicit. -/
-theorem Caller.computed_prepared_protocol_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.computed_prepared_protocol_sequence_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {regions : List Caller.RoundRegion} {first : Caller.HashWindow} {rest : List Caller.HashWindow}
@@ -859,8 +861,8 @@ theorem Caller.computed_prepared_protocol_sequence_soundness [Fact p.Prime] (hp 
     reference and controller. Each preparation source reaches complete G,
     extended-BLAKE and Keccak references in one continuously initialized history.
     Domain/setup/tables and full round-worker coverage remain explicit. -/
-theorem Caller.wrapped_program_computed_protocol_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.wrapped_program_computed_protocol_sequence_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {regions : List Caller.RoundRegion} {first : Caller.HashWindow} {rest : List Caller.HashWindow}
@@ -876,9 +878,9 @@ theorem Caller.wrapped_program_computed_protocol_sequence_soundness [Fact p.Prim
     cycles are worker-free, with all earlier transfers retained. The existing
     public cell domain supplies uniqueness, and only public constants occur in
     the value equation. Full Sail retirement remains separate. -/
-theorem Caller.literal_addi_hash_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Caller.literal_addi_hash_preparation_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {cut : Nat} {span : Delegation.Caller.HashSpan} {source : BitVec 5}
@@ -899,9 +901,9 @@ theorem Caller.literal_addi_hash_preparation_soundness [Fact p.Prime] (hp : 8388
     at cut minus two. Earlier issued/unissued effects and aliases are retained.
     No source read, operand bound, selector or desired result is supplied.
     Unrestricted public dataflow and complete Sail retirement remain separate. -/
-theorem Caller.register_immediate_control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Caller.register_immediate_control_preparation_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {cut : Nat} {source register : BitVec 5} {immediate : BitVec 12}
@@ -916,9 +918,9 @@ theorem Caller.register_immediate_control_preparation_soundness [Fact p.Prime] (
     result through initialized matching, including changes of register and
     aliases. No intermediate state, expected operand or bound is supplied.
     Only selected preparation cycles are worker-free; earlier effects remain. -/
-theorem Caller.register_chain_control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Caller.register_chain_control_preparation_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {cut : Nat} {register : BitVec 5} {value : BitVec 32}
@@ -932,9 +934,9 @@ theorem Caller.register_chain_control_preparation_soundness [Fact p.Prime] (hp :
 /-- The same public chain binds a protocol entry constant, feeding every
     existing selected-reference window/list interface before regional masks and
     Sail transport. The public cell domain supplies seed uniqueness. -/
-theorem Caller.register_chain_hash_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Caller.register_chain_hash_preparation_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {cut : Nat} {span : Delegation.Caller.HashSpan} {value : BitVec 32}
@@ -949,9 +951,9 @@ theorem Caller.register_chain_hash_preparation_soundness [Fact p.Prime] (hp : 83
 /-- Public ADDIs to other GPRs may intervene between dataflow writes, including
     readonly refreshes of the tracked register. Initialized matching derives its
     value and actual token timestamp, retaining every gap write and prior effect. -/
-theorem Caller.register_dataflow_control_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Caller.register_dataflow_control_preparation_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {cut : Nat} {register : BitVec 5} {value : BitVec 32}
@@ -965,9 +967,9 @@ theorem Caller.register_dataflow_control_preparation_soundness [Fact p.Prime] (h
 /-- A final public ADDI binds the derived dataflow value to a protocol constant
     and restores the canonical cut-minus-two output timestamp. The same source
     feeds all existing selected-reference windows/lists before regional masks. -/
-theorem Caller.register_dataflow_hash_preparation_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Caller.register_dataflow_hash_preparation_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
     {cut : Nat} {span : Delegation.Caller.HashSpan} {source : BitVec 5} {value : BitVec 32} {immediate : BitVec 12}
@@ -984,9 +986,9 @@ theorem Caller.register_dataflow_hash_preparation_soundness [Fact p.Prime] (hp :
 /-- Public caller code and initialized matching derive the actual canonical
     bigint return bit and its retained worker timestamp. Incoming control
     validity and whole custom-CSR retirement remain separate. -/
-theorem Caller.bigint_control_boundary_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Caller.bigint_control_boundary_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : Caller.RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {cut : Nat}
     (accepted : Caller.MixedMemoryAccepted data program)
@@ -999,8 +1001,8 @@ theorem Caller.bigint_control_boundary_soundness [Fact p.Prime] (hp : 8388608 �
 /-- Public CSR occurrence coverage and ordered complete-protocol windows derive
     an exact partition of all issued hash requests. Zero-clock workers stay as
     explicit residuals; bigint callers and ordinary instructions may lie in gaps. -/
-theorem Caller.hash_segmentation_soundness [Fact p.Prime] (hp : 4194304 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.hash_segmentation_soundness [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)}
     {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry} {windows : List Caller.HashWindow} {cut : Nat}
     (accepted : Caller.MixedMemoryAccepted data program)
@@ -1013,8 +1015,8 @@ theorem Caller.hash_segmentation_soundness [Fact p.Prime] (hp : 4194304 ≤ p)
 /-- Every issued hash request belongs to exactly one complete selected reference
     in the same initialized history. Public code/protocol scope, modeled tables
     and the existing global extended-round mask boundary remain explicit. -/
-theorem Caller.segmented_hash_sequence_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.segmented_hash_sequence_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.ProgramEntry}
     {regions : List Caller.RoundRegion} {first : Caller.HashWindow} {rest : List Caller.HashWindow}
