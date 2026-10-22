@@ -135,9 +135,7 @@ L1 wrap. One profile-A instance continues through another layer. For the
 committed `basic_fibonacci` input, the chain is two A instances, one A
 instance, then one C instance. At most eight feeder layers are allowed.
 
-Artifacts retain schema 5. Multi-layer feeder artifacts from the previous C-only chain
-must be regenerated from a `recursion-unified` checkpoint. The resulting
-`l1-feeder` artifact is the input of the L1 wrap.
+Artifacts use schema 5. The `l1-feeder` artifact is the input of the L1 wrap.
 
 The committed reference can be regenerated in a fresh process with the ignored
 `l1_reference::generate_l1_reference_from_recursion_unified` test, which

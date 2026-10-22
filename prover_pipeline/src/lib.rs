@@ -252,8 +252,6 @@ pub struct ProofArtifact {
 }
 
 pub const ARTIFACT_SCHEMA_VERSION: u32 = 5;
-/// The last schema the pre-feeder targets are still imported from.
-pub const LEGACY_ARTIFACT_SCHEMA_VERSION: u32 = 4;
 /// The feeder chain must reach one instance within this many layers.
 pub const MAX_FEEDER_LAYERS: u32 = 8;
 /// The cycle budget of the 2^21 L1 wrap program: the domain of the wrap
@@ -2473,9 +2471,7 @@ fn admit_continuation(
     target: ProofTarget,
 ) -> Result<(), String> {
     validate_continuation_request(artifact, target)?;
-    if artifact.schema_version == LEGACY_ARTIFACT_SCHEMA_VERSION
-        || artifact.target >= ProofTarget::L1Feeder
-    {
+    if artifact.target >= ProofTarget::L1Feeder {
         verify_artifact(artifact, source)?;
     }
     Ok(())

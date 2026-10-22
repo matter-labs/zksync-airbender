@@ -567,22 +567,25 @@ fn expected_chain_derives_a_prefix_and_the_last_proof_profile() {
 }
 
 #[test]
-fn stale_schema_feeder_artifacts_are_rejected_and_pre_feeder_ones_accepted() {
-    let mut legacy = artifact(ProofTarget::RecursionUnified, 3);
-    legacy.schema_version = LEGACY_ARTIFACT_SCHEMA_VERSION;
-    validate_artifact_envelope(&legacy).unwrap();
-    let mut stale = feeder_artifact(ProofTarget::L1Feeder, 4, 1);
-    stale.schema_version = LEGACY_ARTIFACT_SCHEMA_VERSION;
-    assert!(validate_artifact_envelope(&stale)
-        .unwrap_err()
-        .starts_with("stale L1Feeder proof artifact"));
-    let mut unknown = artifact(ProofTarget::RecursionUnified, 3);
-    unknown.schema_version = ARTIFACT_SCHEMA_VERSION + 1;
-    assert!(validate_artifact_envelope(&unknown).is_err());
-    assert_eq!(
-        artifact(ProofTarget::Base, 1).schema_version,
-        ARTIFACT_SCHEMA_VERSION
-    );
+fn only_current_artifact_schema_is_admitted() {
+    for current in [
+        artifact(ProofTarget::Base, 1),
+        artifact(ProofTarget::RecursionUnified, 3),
+        feeder_artifact(ProofTarget::L1Feeder, 4, 1),
+    ] {
+        validate_artifact_envelope(&current).unwrap();
+        assert_eq!(current.schema_version, ARTIFACT_SCHEMA_VERSION);
+        for version in [ARTIFACT_SCHEMA_VERSION - 1, ARTIFACT_SCHEMA_VERSION + 1] {
+            let mut unsupported = current.clone();
+            unsupported.schema_version = version;
+            assert_eq!(
+                validate_artifact_envelope(&unsupported).unwrap_err(),
+                format!(
+                    "unsupported proof artifact schema_version {version} (expected {ARTIFACT_SCHEMA_VERSION})"
+                )
+            );
+        }
+    }
 }
 
 #[test]

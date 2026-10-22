@@ -375,11 +375,14 @@ fn l1_bundle_requires_wrap_version() {
 }
 
 #[test]
-fn l1_bundle_rejects_2p22_version() {
+fn l1_bundle_rejects_unknown_wrap_version() {
     let mut json = serde_json::to_value(L1Bundle::from_result(result())).unwrap();
-    json["wrap"] = "2p22".into();
+    json["wrap"] = "unknown_wrap".into();
     let err = serde_json::from_value::<L1Bundle>(json).unwrap_err();
-    assert!(err.to_string().contains(RETIRED_2P22_WRAP), "{err}");
+    assert!(
+        err.to_string().contains("unknown variant `unknown_wrap`"),
+        "{err}"
+    );
 }
 
 #[test]

@@ -871,10 +871,10 @@ fn feeder_negative_controls() {
     let source = source(&input);
     verify_artifact(&artifact, &source).unwrap();
     let mut stale = artifact.clone();
-    stale.schema_version = LEGACY_ARTIFACT_SCHEMA_VERSION;
+    stale.schema_version = ARTIFACT_SCHEMA_VERSION - 1;
     assert!(verify_artifact(&stale, &source)
         .unwrap_err()
-        .contains("stale"));
+        .contains("unsupported proof artifact schema_version"));
     let mut off_by_one = artifact.clone();
     off_by_one.feeder_layers += 1;
     assert!(verify_artifact(&off_by_one, &source).is_err());

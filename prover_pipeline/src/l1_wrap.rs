@@ -6,35 +6,10 @@ pub(super) const L1_WRAP_KIND: ExecutionKind = ExecutionKind::L1Wrap21;
 
 /// The wrap circuit an L1 bundle was proven in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(try_from = "SerializedL1WrapVersion")]
 pub enum L1WrapVersion {
     /// `ExecutionKind::L1Wrap21`: 2^21 trace, 512 KiB wrap ROM.
     #[serde(rename = "2p21")]
     Wrap2p21,
-}
-
-/// Every wrap version name a bundle may carry, including the retired 2^22
-/// wrap, so that an old bundle or checkpoint fails by name before any setup.
-#[derive(Deserialize)]
-enum SerializedL1WrapVersion {
-    #[serde(rename = "2p22")]
-    Retired2p22,
-    #[serde(rename = "2p21")]
-    Wrap2p21,
-}
-
-pub(super) const RETIRED_2P22_WRAP: &str =
-    "the L1 bundle was proven in the retired 2^22 wrap (\"2p22\"); this build proves only the 2^21 wrap (\"2p21\")";
-
-impl TryFrom<SerializedL1WrapVersion> for L1WrapVersion {
-    type Error = &'static str;
-
-    fn try_from(version: SerializedL1WrapVersion) -> Result<Self, Self::Error> {
-        match version {
-            SerializedL1WrapVersion::Retired2p22 => Err(RETIRED_2P22_WRAP),
-            SerializedL1WrapVersion::Wrap2p21 => Ok(Self::Wrap2p21),
-        }
-    }
 }
 
 impl L1WrapVersion {
@@ -290,20 +265,11 @@ pub(super) fn expected_setup_cap_size(target: ProofTarget) -> usize {
 }
 
 pub(super) fn validate_artifact_envelope(artifact: &ProofArtifact) -> Result<(), String> {
-    match artifact.schema_version {
-        ARTIFACT_SCHEMA_VERSION => {}
-        LEGACY_ARTIFACT_SCHEMA_VERSION if artifact.target < ProofTarget::L1Feeder => {}
-        LEGACY_ARTIFACT_SCHEMA_VERSION => {
-            return Err(format!(
-                "stale {:?} proof artifact: schema_version {LEGACY_ARTIFACT_SCHEMA_VERSION} feeder artifacts predate the 2^22 feeder chain (expected {ARTIFACT_SCHEMA_VERSION})",
-                artifact.target
-            ))
-        }
-        version => {
-            return Err(format!(
-                "unsupported proof artifact schema_version {version} (expected {ARTIFACT_SCHEMA_VERSION})"
-            ))
-        }
+    if artifact.schema_version != ARTIFACT_SCHEMA_VERSION {
+        return Err(format!(
+            "unsupported proof artifact schema_version {} (expected {ARTIFACT_SCHEMA_VERSION})",
+            artifact.schema_version
+        ));
     }
     match (artifact.target, &artifact.l1) {
         (ProofTarget::L1, Some(bundle)) => bundle.validate()?,
