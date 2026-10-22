@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "inspection_date": "2026-10-22",
+  "inspected_checkout": "9683fe67d16aabadd31140a062082e79c7bccf43",
+  "scope": "Current source reinspection and drift guard only; historical findings remain historical, not claims of current Rust rejection. No Rust production source was modified. Initial PC/clock constants are also in setup source coverage.",
+  "sources": {
+    "full_statement_verifier/src/unrolled_proof_statement.rs": {
+      "sha256": "a78adb1cd0f3df128d710c397db74858cdb8808a5f807aaa22a5c5d679dbd735",
+      "git_blob": "8b6011cc378fffde188109e0316e662dc620f762",
+      "inspected_spans": [
+        [
+          83,
+          91
+        ],
+        [
+          245,
+          262
+        ]
+      ],
+      "observation": "Reads final PC/timestamps as u32 words, absorbs them and compares accumulated products after initial/final endpoint contributions. This is canonical endpoint source evidence, not exact logical matching or cryptographic/Rust refinement.",
+      "historical_inspections": [
+        {
+          "revision": "0dc0a631349462700825f326516d36200be30edc",
+          "git_blob": "d79920d3f554a9457b9bdee4d722150cda1bde13"
+        }
+      ],
+      "changed_since_cited_inspection": true
+    },
+    "full_statement_verifier/src/unified_circuit_statement.rs": {
+      "sha256": "0beb27952c66e675b12c090d59049c98f2a9af6afc5047b501d8275dc2e7d700",
+      "git_blob": "6569e11b667436ec60cd93854350225b88aedb74",
+      "inspected_spans": [
+        [
+          81,
+          89
+        ],
+        [
+          255,
+          273
+        ]
+      ],
+      "observation": "Unified path reads/absorbs final u32 PC/timestamps and compares global products after shared initial/final endpoint contributions. Cryptographic and logical-matching boundaries remain external.",
+      "historical_inspections": [
+        {
+          "revision": "0dc0a631349462700825f326516d36200be30edc",
+          "git_blob": "57bf2f6325651f6bdb46de18f6435f6953b5fb4e"
+        }
+      ],
+      "changed_since_cited_inspection": true
+    },
+    "prover/src/definitions/mod.rs": {
+      "sha256": "0f82eb46c929e2dbd97fc6ff7a7a05b9fd4e788ee4be07e5ac2a7ee6f638d313",
+      "git_blob": "5b568c4b8a7d5698bd633e3654c35fc223e9face",
+      "inspected_spans": [
+        [
+          8,
+          12
+        ],
+        [
+          263,
+          304
+        ]
+      ],
+      "observation": "Mask/shift splits u32 PC into canonical u16 limbs, with distinct PC low/high coefficients in PC address space. Timestamp limbs use field reduction. Initial is written and final is read.",
+      "historical_inspections": [
+        {
+          "revision": "0dc0a631349462700825f326516d36200be30edc",
+          "git_blob": "0321500837083cc700bd23893a75c6b7fcbf3194"
+        }
+      ],
+      "changed_since_cited_inspection": true
+    },
+    "cs/src/definitions/constants.rs": {
+      "sha256": "c9ba599128ba98d3f6ebf8a081021a8c48a0011faeb568ca94587c1fc0d732d1",
+      "git_blob": "25d575306df03fa3869afa927abbc756c28e8f4a",
+      "inspected_spans": [
+        [
+          15,
+          35
+        ]
+      ],
+      "observation": "PC low/high challenges alias memory-value indices4/5; timestamp indices2/3 remain separate. Unchanged from cited historical inspection.",
+      "historical_inspections": [
+        {
+          "revision": "0dc0a631349462700825f326516d36200be30edc",
+          "git_blob": "25d575306df03fa3869afa927abbc756c28e8f4a"
+        }
+      ],
+      "changed_since_cited_inspection": false
+    },
+    "cs/src/gkr_compiler/memory_like_grand_product.rs": {
+      "sha256": "43f3caa9a762222220535ea2453abfd77dd2ad23e10e2cb171e1c28c58ea80ab",
+      "git_blob": "b99efc7ee516ea085c2c42399029b10fbb93f4f1",
+      "inspected_spans": [
+        [
+          138,
+          168
+        ],
+        [
+          478,
+          502
+        ],
+        [
+          731,
+          758
+        ]
+      ],
+      "observation": "PC start/end tuples retain separate U16Limbs and timestamps in PC space. Final read/write products each have an enforced MaskIntoIdentityProduct using copied native execute.",
+      "historical_inspections": [
+        {
+          "revision": "0dc0a631349462700825f326516d36200be30edc",
+          "git_blob": "6f4ae37c6c8643f5f2aac40b399502ea10699ffb"
+        }
+      ],
+      "changed_since_cited_inspection": true
+    },
+    "cs/src/gkr_compiler/family_circuit.rs": {
+      "sha256": "4ab8ec11a6f9b93fc339a209c1b58295ff8f719b4b4aec74c32a586a3cab631b",
+      "git_blob": "708f69088d9875ad6941099950b0bbab5933a6ba",
+      "inspected_spans": [
+        [
+          154,
+          158
+        ],
+        [
+          529,
+          550
+        ],
+        [
+          602,
+          610
+        ]
+      ],
+      "observation": "Native execute gates the decoder lookup and feeds raw PC/clock plus architectural RAM sets into the memory grand-product compiler. Copied execute gates final products; sampled-product equality is not deterministic tuple matching.",
+      "historical_inspections": [
+        {
+          "revision": "4a12ba264",
+          "git_blob": "df29400096c2e540edd28e2014ca1113a42acf8e"
+        }
+      ],
+      "changed_since_cited_inspection": true
+    },
+    "prover/src/gkr/sumcheck/evaluation_kernels/kernel_impls/mask_into_identity.rs": {
+      "sha256": "74f2d4737aa60f6922806166f614eb3b3ca8e4ff0bc7982dcb1bfcf17b0236b1",
+      "git_blob": "a9688b531bbb67476dc39b95f4953c3e21d3c03a",
+      "inspected_spans": [
+        [
+          29,
+          40
+        ],
+        [
+          122,
+          136
+        ],
+        [
+          165,
+          183
+        ]
+      ],
+      "observation": "Relation and evaluators implement (input-1)*mask+1. Boolean mask0 returns1, mask1 returns input. Unchanged from cited historical inspection.",
+      "historical_inspections": [
+        {
+          "revision": "4a12ba264",
+          "git_blob": "a9688b531bbb67476dc39b95f4953c3e21d3c03a"
+        }
+      ],
+      "changed_since_cited_inspection": false
+    },
+    "verifier/src/generated/add_sub_lui_auipc_mop/sec_100/gkr.rs": {
+      "sha256": "47f96d7c0d7ed9a9b2a9fb1d976c766505bd005f26910814810b320008dadaec",
+      "git_blob": "1c4cc94c026b22f7a41765126881e8d554653cd3",
+      "inspected_spans": [
+        [
+          1236,
+          1245
+        ],
+        [
+          1680,
+          1687
+        ],
+        [
+          1728,
+          1739
+        ]
+      ],
+      "observation": "Generated ADD/SUB verifier contains two MaskToIdentity gates sharing mask input0 and evaluates subtract1/multiply-mask/add1. This inspection does not assert all generated verifiers equivalent.",
+      "historical_inspections": [
+        {
+          "revision": "4a12ba264",
+          "git_blob": "66633ee6e714d7c2391109a7b562a1bf5984da6e"
+        }
+      ],
+      "changed_since_cited_inspection": true
+    }
+  },
+  "retrieved_historical_source": {
+    "revision": "1f4a8455e9f893a1ffb3d23ad79918f243b28aca",
+    "path": "full_statement_verifier/src/unrolled_proof_statement.rs",
+    "git_blob": "8b6011cc378fffde188109e0316e662dc620f762",
+    "retrieval": "git cat-file -e REV:PATH succeeded locally on 2026-10-22; former retrieval disclaimer is stale. Retrieval alone is not a new historical behavior audit."
+  }
+}
