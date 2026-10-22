@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 set -euo pipefail
 
 # These verifier binaries build on STABLE Rust (pinned to 1.97.1 by the local

@@ -145,6 +145,9 @@ jobs:
       - name: Setup
         run: |
           rustup set profile default
+          # `cargo objcopy` for the guest dumps (tools/gkr_verifier/dump_bin.sh); the guest
+          # toolchain itself is installed on demand from tools/gkr_verifier/rust-toolchain.toml.
+          cargo install cargo-binutils --version '=0.4.0' --locked
 
       - name: Build fresh verifiers
         run: |
