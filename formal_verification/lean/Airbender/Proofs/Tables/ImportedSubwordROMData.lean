@@ -24,6 +24,10 @@ theorem rom_tail_extent (byte : Bool) (lane : Fin 2) :
 
 theorem rom_early_rows (byte : Bool) (index : Fin (romCutoff byte)) :
     subwordROMRow byte index.val = subwordProgramROMRow Airbender.Trace.ROM.importedWords byte index.val := by
+  unfold subwordProgramROMRow
+  dsimp only
+  rw [subwordImportedLimbs_eq_reference byte _ (by
+    cases byte <;> simp only [Bool.false_eq_true, reduceIte, Nat.reduceDiv] <;> omega)]
   cases byte <;> fin_cases index <;> decide +kernel
 
 
