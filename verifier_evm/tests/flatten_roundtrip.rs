@@ -12,7 +12,7 @@ fn read_fixture(version: &common::Version, name: &str) -> String {
 
 #[test]
 fn flatten_and_seed_match_reference() {
-    for version in common::available_versions("calldata drift") {
+    for version in common::registered_versions() {
         let (circuit, proof, aux) = version.load();
 
         let preimage = verifier_evm::commit_seed_preimage(&circuit, &proof, &aux);
@@ -66,7 +66,7 @@ fn flatten_and_seed_match_reference() {
 
 #[test]
 fn serialized_mutation_fields_match_the_proof_and_aux() {
-    for version in common::available_versions("calldata mutation fields") {
+    for version in common::registered_versions() {
         let (circuit, proof, aux) = version.load();
         let (gkr, fields) = verifier_evm::flatten::gkr_calldata_with_fields(&circuit, &proof, &aux);
         let prover::gkr::prover::OperationMode::SingleChunk { final_pc, .. } = aux else {
@@ -105,7 +105,7 @@ fn serialized_mutation_fields_match_the_proof_and_aux() {
 
 #[test]
 fn missing_standard_layer_is_rejected() {
-    for version in common::available_versions("missing_standard_layer_is_rejected") {
+    for version in common::registered_versions() {
         common::assert_panics_with("proof is missing a standard circuit layer", || {
             let (circuit, mut proof, aux) = version.load();
             proof.sumcheck_intermediate_values.remove(&0);
@@ -116,7 +116,7 @@ fn missing_standard_layer_is_rejected() {
 
 #[test]
 fn full_trace_dimension_reducing_layer_is_rejected() {
-    for version in common::available_versions("full_trace_dimension_reducing_layer_is_rejected") {
+    for version in common::registered_versions() {
         common::assert_panics_with(
             "dimension-reducing layer must have fewer rounds than the circuit",
             || {
@@ -134,7 +134,7 @@ fn full_trace_dimension_reducing_layer_is_rejected() {
 
 #[test]
 fn missing_dimension_reducing_layer_is_rejected() {
-    for version in common::available_versions("missing_dimension_reducing_layer_is_rejected") {
+    for version in common::registered_versions() {
         common::assert_panics_with(
             "dimension-reducing layer count must match the circuit",
             || {
@@ -150,8 +150,7 @@ fn missing_dimension_reducing_layer_is_rejected() {
 
 #[test]
 fn wrong_dimension_reducing_round_sequence_is_rejected() {
-    for version in common::available_versions("wrong_dimension_reducing_round_sequence_is_rejected")
-    {
+    for version in common::registered_versions() {
         common::assert_panics_with(
             "dimension-reducing rounds must increase from the explicit output",
             || {

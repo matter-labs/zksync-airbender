@@ -1,6 +1,6 @@
 # L1Wrap 2^21 EVM harness
 
-This scaffold uses the committed 2^21 layout and `l1_wrap_2p21` prover config.
+This harness uses the committed 2^21 layout and `l1_wrap_2p21` prover config.
 Its proof and aux inputs are
 `prover/unified_circuit_proof_proth120_2p21.json` and
 `prover/unified_circuit_proof_proth120_2p21_commitment_mod_aux_data.json`.
@@ -8,11 +8,8 @@ The expected final PC comes from the committed L1Feeder verifier binary and
 must equal the proof aux final PC; the pinned inits/teardowns top bits must
 equal the proof's.
 
-Normal Rust tests print explicit `SKIP` messages for the contract and calldata
-drift checks while the proof is absent. Explicit 2p21 generation fails if
-either input is missing. A present proof with missing aux fails. If generated
-verifier sources or any versioned calldata output already exist, a missing
-proof fails instead of skipping its drift checks.
+Every registered version requires its committed proof and aux inputs. Missing
+either input fails the Rust drift checks and explicit generation.
 
 ## Merged verifiers
 

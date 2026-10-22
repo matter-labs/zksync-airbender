@@ -316,7 +316,7 @@ fn generate_contracts_into_dir() {
 
 #[test]
 fn checked_in_contracts_are_current() {
-    for version in common::available_versions("contract drift") {
+    for version in common::registered_versions() {
         for (rel, content) in generated_sources(version) {
             let path = version.contract_path(&rel);
             let checked_in = std::fs::read_to_string(&path)
@@ -405,7 +405,7 @@ fn generator_accepts_trace21_and_rejects_mismatched_config() {
 /// inside the absorb region, the five-round schedule and the 2^7 tail, in both formats.
 #[test]
 fn generator_renders_pack3() {
-    for version in common::available_versions("pack 3 render") {
+    for version in common::registered_versions() {
         let circuit = version.circuit();
         let config = version.prover_config();
         assert_eq!(config.pack_log2, 3);
@@ -451,7 +451,7 @@ fn generator_renders_pack3() {
 
 #[test]
 fn descriptor_rejects_aux_drift_and_excess_gkr_pow() {
-    for base in common::available_versions("descriptor aux drift") {
+    for base in common::registered_versions() {
         for version in [
             Version {
                 external_pow_floor: 19,
@@ -473,7 +473,7 @@ fn descriptor_rejects_aux_drift_and_excess_gkr_pow() {
 
 #[test]
 fn descriptor_rejects_aux_exit_pc_drift() {
-    for base in common::available_versions("descriptor exit PC drift") {
+    for base in common::registered_versions() {
         let version = Version {
             exit_pc: common::ExitPcSource::Frozen(0),
             ..*base
@@ -524,7 +524,7 @@ fn wrong_final_pc_controls_change_only_the_pinned_pc() {
             .map(|(a, b)| (a.to_string(), b.to_string()))
             .collect()
     }
-    for version in common::available_versions("wrong final PC controls") {
+    for version in common::registered_versions() {
         let wrong = generate_wrong_final_pc(version);
         assert_eq!(
             solidity_constant(&wrong, "__TEMPLATE_EXPECTED_FINAL_PC"),
@@ -553,7 +553,7 @@ fn wrong_final_pc_controls_change_only_the_pinned_pc() {
 /// stream after the F1 GKR section.
 #[test]
 fn f1_gkr_half_reads_calldata_only_in_the_decoder() {
-    for version in common::available_versions("F1 calldata readers") {
+    for version in common::registered_versions() {
         let source = generate_f1(version, version.final_pc(), &[]).verifier_sol;
         // opcode uses, not identifiers such as `gate_calldataload`
         let readers = |src: &str| {
@@ -596,7 +596,7 @@ fn f1_gkr_half_reads_calldata_only_in_the_decoder() {
 #[test]
 fn f1_setup_data_holds_the_frontier_cap_and_term_table() {
     use sha3::{Digest, Keccak256};
-    for version in common::available_versions("F1 setup data") {
+    for version in common::registered_versions() {
         let (_, proof, _) = version.load();
         let cap = &proof.whir_proof.setup_commitment.commitment.cap.cap;
         let qtable: Vec<u8> = generate(version, &[])
@@ -667,7 +667,7 @@ fn f1_setup_data_holds_the_frontier_cap_and_term_table() {
 /// log instead of calling the registry.
 #[test]
 fn instrumented_renders_carry_the_log() {
-    for version in common::available_versions("instrumented renders") {
+    for version in common::registered_versions() {
         for (production, instrumented) in [
             (generate(version, &[]), generate(version, &[INSTRUMENTED])),
             (
@@ -701,7 +701,7 @@ fn instrumented_renders_carry_the_log() {
 
 #[test]
 fn f1_generator_rejects_a_profile_off_the_prover_config() {
-    for version in common::available_versions("F1 profile vs config") {
+    for version in common::registered_versions() {
         let (circuit, proof, _) = version.load();
         let config = version.prover_config();
         let setup_cap = &proof.whir_proof.setup_commitment.commitment.cap.cap;
@@ -738,7 +738,7 @@ fn f1_generator_rejects_a_profile_off_the_prover_config() {
 
 #[test]
 fn f1_generator_rejects_a_frontier_off_the_setup_cap() {
-    for version in common::available_versions("F1 setup frontier binding") {
+    for version in common::registered_versions() {
         let Some((_, mut nodes)) = version.setup_frontier() else {
             continue;
         };

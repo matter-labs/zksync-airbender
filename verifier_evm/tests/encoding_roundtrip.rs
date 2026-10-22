@@ -136,7 +136,7 @@ fn e1_factorization_including_degenerate_points() {
 
 #[test]
 fn committed_f1_calldata_is_current() {
-    for version in common::available_versions("F1 calldata drift") {
+    for version in common::registered_versions() {
         let (circuit, proof, aux) = version.load();
         let f1 = encode_single_tx(
             &circuit,
@@ -184,7 +184,7 @@ fn committed_f1_calldata_is_current() {
 
 #[test]
 fn replay_reaches_the_recorded_handoff_seed() {
-    for version in common::available_versions("F1 transcript replay") {
+    for version in common::registered_versions() {
         let (circuit, proof, aux) = version.load();
         let replay = replay_gkr_points(&circuit, &proof, &aux, &version.prover_config());
         assert_eq!(
@@ -201,7 +201,7 @@ fn replay_reaches_the_recorded_handoff_seed() {
 
 #[test]
 fn f1_roundtrip_reproduces_v0() {
-    for version in common::available_versions("F1 roundtrip") {
+    for version in common::registered_versions() {
         let (circuit, proof, aux) = version.load();
         let params = version.f1_params();
         let f1 = encode_single_tx(&circuit, &proof, &aux, &version.prover_config(), &params);
@@ -268,7 +268,7 @@ const INDEPENDENT_LAYOUT_COUNTS: &[((usize, usize, usize, usize), (usize, usize,
 
 #[test]
 fn f1_decoder_rejects_malformed_streams() {
-    for version in common::available_versions("F1 malformed streams") {
+    for version in common::registered_versions() {
         let (circuit, proof, aux) = version.load();
         let params = version.f1_params();
         let f1 = encode_single_tx(&circuit, &proof, &aux, &version.prover_config(), &params);
@@ -309,7 +309,7 @@ fn f1_decoder_rejects_malformed_streams() {
 
 #[test]
 fn encoder_rejects_a_profile_the_proof_does_not_fit() {
-    for version in common::available_versions("F1 profile preflight") {
+    for version in common::registered_versions() {
         let (circuit, proof, aux) = version.load();
         let params = version.f1_params();
         let encode = |p: FormatParams| {
@@ -343,7 +343,7 @@ fn encoder_rejects_a_profile_the_proof_does_not_fit() {
 
 #[test]
 fn decoder_derives_omitted_setup_siblings_from_the_frontier() {
-    for version in common::available_versions("F1 setup frontier tails") {
+    for version in common::registered_versions() {
         let params = version.f1_params();
         if params.setup_frontier_skip() == 0 {
             continue;

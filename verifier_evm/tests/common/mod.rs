@@ -33,7 +33,6 @@ pub struct Version {
     pub data_root: &'static str,
     pub pow_cap: u32,
     pub gkr_pow_cap: u32,
-    pub allow_missing_proof: bool,
     pub mutation_fields_file: Option<&'static str>,
     pub wrong_final_pc_contract: Option<&'static str>,
     /// The inits/teardowns RAM-set base chunk indices the program is proven with (one per
@@ -58,8 +57,6 @@ pub const L1_WRAP_2P21: Version = Version {
     data_root: "debug_data/l1_wrap_2p21",
     pow_cap: 30,
     gkr_pow_cap: 25,
-    // Task 5 will export the real proof. Remove this allowance once it is committed.
-    allow_missing_proof: true,
     mutation_fields_file: Some("calldata_fields.json"),
     wrong_final_pc_contract: Some("negative/v0_wrong_final_pc/src/GkrWhirVerifier.sol"),
     inits_teardowns_top_bits: &[0, 1],
@@ -68,11 +65,11 @@ pub const L1_WRAP_2P21: Version = Version {
 };
 pub const VERSIONS: &[Version] = &[L1_WRAP_2P21];
 
-pub fn available_versions(check: &str) -> Vec<&'static Version> {
+pub fn registered_versions() -> &'static [Version] {
+    for version in VERSIONS {
+        version.require_bundle();
+    }
     VERSIONS
-        .iter()
-        .filter(|version| version.available_for_read(check))
-        .collect()
 }
 
 /// Select only writes for a harness version; normal tests cover all descriptors.
@@ -88,10 +85,7 @@ pub fn selected_versions() -> Vec<Version> {
             version.require_bundle();
             vec![*version]
         }
-        Err(std::env::VarError::NotPresent) => available_versions("artifact generation")
-            .into_iter()
-            .copied()
-            .collect(),
+        Err(std::env::VarError::NotPresent) => registered_versions().to_vec(),
         Err(error) => panic!("invalid AB_EVM_VERSION: {error}"),
     }
 }
@@ -110,60 +104,6 @@ impl Version {
             self.name,
             self.aux
         );
-    }
-
-    pub fn available_for_read(&self, check: &str) -> bool {
-        if self.allow_missing_proof
-            && !Path::new(self.proof)
-                .try_exists()
-                .expect("inspect proof path")
-        {
-            assert!(
-                self.existing_generated_output().is_none(),
-                "{}: proof is missing but generated outputs already exist; restore the proof instead of skipping drift checks",
-                self.name
-            );
-            // Direct stderr remains visible even when libtest captures successful tests.
-            use std::io::Write;
-            writeln!(std::io::stderr().lock(), "SKIP {check} [{}]: proof absent at {}; no artifact validation performed for this version", self.name, self.proof).unwrap();
-            return false;
-        }
-        self.require_bundle();
-        true
-    }
-
-    fn existing_generated_output(&self) -> Option<PathBuf> {
-        // The scaffold's registry/configs exist before the proof; generated
-        // verifier sources and calldata must never outlive an absent proof.
-        let contracts = [
-            MERGED_V0,
-            MERGED_F1,
-            F1_FRONTIER_CONTRACT,
-            F1_WRONG_FINAL_PC,
-            F1_WRONG_SETUP_CAP,
-            INSTRUMENTED_V0,
-            INSTRUMENTED_F1,
-        ];
-        for rel in contracts
-            .into_iter()
-            .chain(self.wrong_final_pc_contract)
-            .map(str::to_string)
-        {
-            let path = self.contract_path(&rel);
-            if path.try_exists().expect("inspect generated contract path") {
-                return Some(path);
-            }
-        }
-        match std::fs::read_dir(self.data_root) {
-            Ok(mut entries) => entries
-                .next()
-                .map(|entry| entry.expect("inspect generated data entry").path()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-            Err(error) => panic!(
-                "inspect generated data directory {}: {error}",
-                self.data_root
-            ),
-        }
     }
 
     /// gkr.sol consumes monomial rounds, transcript-identical to the windowed
