@@ -21,7 +21,5 @@ pub mod generator;
 pub mod seed;
 
 pub use flatten::{gkr_calldata, merged_calldata, whir_stream};
-pub use generator::{
-    emit_circuit_yul, generate_f1_verifier, generate_verifier, instrument, F1Contracts,
-};
+pub use generator::{emit_circuit_yul, generate_f1_verifier, generate_verifier, F1Contracts};
 pub use seed::{commit_seed_preimage, gkr_whir_handoff_seed, verified_mark, VerifiedMark};

@@ -3,6 +3,7 @@
 
 mod common;
 
+use common::decode::{decode_structural, DecodeHints};
 use field::{Field, Proth120};
 use verifier_evm::encoding::*;
 

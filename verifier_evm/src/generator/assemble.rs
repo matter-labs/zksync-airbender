@@ -17,7 +17,7 @@
 
 use super::preprocess::preprocess;
 use super::whir::WhirGenConfig;
-use super::{emit_circuit_yul_with_stats, f1, instrument, CircuitYulStats, F1Contracts, Lit};
+use super::{emit_circuit_yul_with_stats, f1, CircuitYulStats, F1Contracts, Lit};
 use crate::encoding::FormatParams;
 use cs::definitions::{GKRAddress, OutputType};
 use cs::gkr_compiler::GKRCircuitArtifact;
@@ -270,10 +270,7 @@ fn words_for(bytes: usize) -> Lit {
 }
 
 /// Template flag of an F1 render.
-pub const F1: &str = "F1";
-/// Template flag of the instrumented render (keccak log returned with the verified statement,
-/// no registry call).
-pub const INSTRUMENTED: &str = "INSTRUMENTED";
+const F1: &str = "F1";
 /// Template flag of an F1 render with a setup frontier.
 const F1_FRONTIER: &str = "F1_FRONTIER";
 
@@ -354,8 +351,7 @@ struct F1Render {
 /// terminal PC, and `inits_teardowns_top_bits` the RAM-set base chunk index of every
 /// inits/teardowns set the circuit has (one per `memory_layout.teardown_sets` entry, each
 /// fitting a byte) — the prover's preimage must carry exactly these values. `digest_bytes` is
-/// the Merkle commitment's digest size (25 truncated, 32 legacy). `flags` may add
-/// [`INSTRUMENTED`].
+/// the Merkle commitment's digest size (25 truncated, 32 legacy).
 #[allow(clippy::too_many_arguments)]
 pub fn generate_verifier(
     circuit: &GKRCircuitArtifact<Proth120>,
@@ -364,12 +360,7 @@ pub fn generate_verifier(
     final_pc: u32,
     inits_teardowns_top_bits: &[u32],
     digest_bytes: usize,
-    flags: &[&str],
 ) -> String {
-    assert!(
-        flags.iter().all(|f| *f == INSTRUMENTED),
-        "v0 renders take only the INSTRUMENTED flag"
-    );
     render(
         circuit,
         prover_config,
@@ -377,7 +368,7 @@ pub fn generate_verifier(
         final_pc,
         inits_teardowns_top_bits,
         digest_bytes,
-        flags,
+        &[],
         None,
     )
     .0
@@ -387,7 +378,7 @@ pub fn generate_verifier(
 /// and `setup_cap` are deployment constants. The setup cap and the GKR term table live in the
 /// `SetupFrontier` data contract at `data_address`; with a setup frontier
 /// (`params.setup_frontier_level` below the cap), `setup_frontier` gives the setup tree's nodes
-/// at that level (physical order), stored there first. `flags` may add [`INSTRUMENTED`].
+/// at that level (physical order), stored there first.
 #[allow(clippy::too_many_arguments)]
 pub fn generate_f1_verifier(
     circuit: &GKRCircuitArtifact<Proth120>,
@@ -399,12 +390,7 @@ pub fn generate_f1_verifier(
     setup_cap: &[[u32; 8]],
     setup_frontier: Option<&[[u32; 8]]>,
     data_address: &str,
-    flags: &[&str],
 ) -> F1Contracts {
-    assert!(
-        flags.iter().all(|f| *f == INSTRUMENTED),
-        "F1 renders take only the INSTRUMENTED flag"
-    );
     assert_eq!(
         params,
         &FormatParams::from_config(prover_config, params.digest_bytes)
@@ -435,7 +421,6 @@ pub fn generate_f1_verifier(
     });
     let flags: Vec<&str> = std::iter::once(F1)
         .chain(frontier.is_some().then_some(F1_FRONTIER))
-        .chain(flags.iter().copied())
         .collect();
     let decoder = f1::gkr_decoder(
         circuit,
@@ -913,11 +898,6 @@ fn render(
 
     // 4. Splice the WHIR half into the GKR contract: one Solidity source, one transaction.
     let out = build_merged(&gkr, &whir, &heap);
-    assert!(
-        heap.next <= super::instrument::LOG_PTR as u128,
-        "the heap reaches the instrumented render's log at {}",
-        super::instrument::LOG_PTR
-    );
 
     // 5. Every `__TEMPLATE_*` declaration in the merged source must have been assigned here.
     for line in out.lines() {
@@ -930,11 +910,6 @@ fn render(
             }
         }
     }
-    let out = if flags.contains(&INSTRUMENTED) {
-        instrument(&out)
-    } else {
-        out
-    };
     (out, f1_data)
 }
 

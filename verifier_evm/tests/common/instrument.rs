@@ -80,3 +80,31 @@ pub fn instrument(src: &str) -> String {
     let helpers = HELPERS.replace("__LOG__", &LOG_PTR.to_string());
     format!("{}{helpers}{}", &src[..at], &src[at..])
 }
+
+/// Add the oracle-only early return and log to an otherwise production render.
+pub fn instrument_verifier(src: &str) -> String {
+    let heap_end: usize = src
+        .lines()
+        .find_map(|line| line.strip_prefix("//   heap end: "))
+        .expect("generated verifier must document its heap end")
+        .parse()
+        .unwrap();
+    assert!(
+        heap_end <= LOG_PTR,
+        "the verifier heap reaches the oracle log"
+    );
+    let seam = "        }\n        // Report the verified statement;";
+    assert_eq!(
+        src.matches(seam).count(),
+        1,
+        "expected one verified-statement boundary"
+    );
+    let oracle_return = concat!(
+        "        // oracle render: return the statement from here (no registry call)\n",
+        "        mstore(0, publicInput)\n",
+        "        mstore(32, auxInput)\n",
+        "        mstore(64, setupCommitment)\n",
+        "        return(0, 96)\n",
+    );
+    instrument(&src.replacen(seam, &format!("{oracle_return}{seam}"), 1))
+}

@@ -17,12 +17,10 @@
 
 mod circuit_yul;
 mod f1;
-mod instrument;
 mod preprocess;
 mod whir;
 
 pub use circuit_yul::{emit_circuit_yul, emit_circuit_yul_with_stats, CircuitYulStats};
-pub use instrument::instrument;
 pub use whir::WhirGenConfig;
 // `Lit` (below) is the generated-constant value+expression pair `WhirGenConfig::memory_regions`
 // returns.
@@ -131,4 +129,4 @@ pub struct F1Contracts {
 
 // `generate_verifier` is implemented in `assemble.rs`.
 mod assemble;
-pub use assemble::{generate_f1_verifier, generate_verifier, F1, INSTRUMENTED};
+pub use assemble::{generate_f1_verifier, generate_verifier};

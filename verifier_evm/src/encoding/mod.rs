@@ -15,7 +15,6 @@
 //!   monomials, PoW nonce; then per query in draw order, per opened oracle, the leaf `FE-run`
 //!   and its path `DIGEST`s (round 0: memory then setup).
 
-mod decode;
 mod digest;
 mod gkr;
 mod params;
@@ -28,7 +27,6 @@ use std::collections::BTreeMap;
 use prover::gkr::prover::OperationMode;
 use prover::gkr::prover_config::ProverConfig;
 
-pub use decode::{decode_structural, DecodeHints, GkrLayerHint, WhirRoundHint};
 pub use digest::{digest_from_wire, digest_wire, merkle_node, merkle_reduce};
 pub use gkr::{eval_quadratic, join_round, round_constant, split_round};
 pub use params::FormatParams;

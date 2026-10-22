@@ -6,12 +6,45 @@ use field::{Field, Proth120};
 use prover::gkr::prover::OperationMode;
 use prover::gkr::prover_config::ProverConfig;
 
-use super::digest::digest_from_wire;
-use super::gkr::{eval_quadratic, join_round, round_constant};
-use super::params::FormatParams;
-use super::replay::{dim_reducing_layers, replay_gkr_points};
-use super::runs::{fe_run_len, read_fe_run, read_ts_run, ts_run_len};
-use crate::seed::{Circuit, Proof};
+use verifier_evm::encoding::{
+    digest_from_wire, eval_quadratic, fe_run_len, join_round, merkle_reduce, read_fe_run,
+    read_ts_run, replay_gkr_points, round_constant, ts_run_len, FormatParams,
+};
+use verifier_evm::seed::{Circuit, Proof};
+
+fn dim_reducing_layers(circuit: &Circuit, proof: &Proof) -> Vec<usize> {
+    proof
+        .sumcheck_intermediate_values
+        .keys()
+        .copied()
+        .filter(|layer| *layer >= circuit.layers.len())
+        .rev()
+        .collect()
+}
+
+// The v0 layer image spans every represented group offset, including zero-filled gaps.
+fn circuit_layer_width(circuit: &Circuit, proof: &Proof, layer: usize) -> usize {
+    use cs::definitions::GKRAddress;
+    let siv = &proof.sumcheck_intermediate_values[&layer];
+    siv.final_step_evaluations
+        .keys()
+        .chain(siv.extra_evaluations_from_caching_relations.keys())
+        .filter_map(|addr| match addr {
+            GKRAddress::InnerLayer { layer: l, offset } if *l == layer && layer > 0 => {
+                Some(*offset)
+            }
+            GKRAddress::BaseLayerMemory(offset) if layer == 0 => Some(*offset),
+            GKRAddress::BaseLayerWitness(offset) if layer == 0 => {
+                Some(circuit.memory_layout.total_width + *offset)
+            }
+            GKRAddress::Setup(offset) if layer == 0 => Some(
+                circuit.memory_layout.total_width + circuit.witness_layout.total_width + *offset,
+            ),
+            _ => None,
+        })
+        .max()
+        .map_or(0, |offset| offset + 1)
+}
 
 /// One GKR sumcheck layer in processing order.
 #[derive(Clone, Debug)]
@@ -92,7 +125,7 @@ impl DecodeHints {
                 let evals = if layer >= circuit.layers.len() {
                     2 * siv.final_step_evaluations.len()
                 } else {
-                    crate::flatten::circuit_layer_evals(circuit, proof, layer).len()
+                    circuit_layer_width(circuit, proof, layer)
                 };
                 GkrLayerHint {
                     z: lp.z.clone(),
@@ -190,7 +223,7 @@ fn setup_path_tails(
     let frontier = setup_frontier.expect("a setup frontier below the cap needs its nodes");
     assert_eq!(frontier.len(), 1 << params.setup_frontier_level);
     let levels: Vec<Vec<[u32; 8]>> = (0..skip)
-        .map(|j| super::digest::merkle_reduce(frontier, j, params.digest_bytes))
+        .map(|j| merkle_reduce(frontier, j, params.digest_bytes))
         .collect();
     queries
         .iter()

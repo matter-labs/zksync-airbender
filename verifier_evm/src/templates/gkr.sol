@@ -873,13 +873,6 @@ contract GkrWhirVerifier {
         publicInput := mark_word(PUBLIC_INPUT_FIRST_REGISTER)
         auxInput := mark_word(AUX_INPUT_FIRST_REGISTER)
         setupCommitment := keccak256(__TEMPLATE_WHIR_BCAP1_PTR, mul(__TEMPLATE_WHIR_CAP, 32))
-        // #if INSTRUMENTED
-        // oracle render: return the statement from here (no registry call)
-        mstore(0, publicInput)
-        mstore(32, auxInput)
-        mstore(64, setupCommitment)
-        return(0, 96)
-        // #endif
         }
         // Report the verified statement; the registry (constructor-pinned, non-zero, has code)
         // must accept — its revert aborts the verification transaction.

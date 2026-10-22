@@ -5,28 +5,28 @@
 
 mod common;
 
+use common::instrument::instrument_verifier;
 use common::{
     Version, F1_CAP_LEVEL, F1_CAP_LEVEL_DATA, F1_FRONTIER_CONTRACT, F1_WRONG_FINAL_PC,
     F1_WRONG_SETUP_CAP, F1_WRONG_SETUP_CAP_DATA, INSTRUMENTED_F1, INSTRUMENTED_V0, MERGED_F1,
     MERGED_V0,
 };
 use field::Proth120;
-use verifier_evm::generator::INSTRUMENTED;
 
 /// Where the F1 verifier reads its `SetupFrontier` data contract: the first contract the default
 /// local deployer (anvil account 0, nonce 0) creates, so a plain local deployment lands there.
 const DEFAULT_FRONTIER_ADDRESS: &str = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 
-fn generate(version: &Version, flags: &[&str]) -> String {
-    render(version, None, flags)
+fn generate(version: &Version, instrumented: bool) -> String {
+    render(version, None, instrumented)
 }
 
 // Preserve the valid proof/transcript and change only the verifier's expected PC.
 fn generate_wrong_final_pc(version: &Version) -> String {
-    render(version, Some(version.final_pc() ^ 1), &[])
+    render(version, Some(version.final_pc() ^ 1), false)
 }
 
-fn render(version: &Version, negative_test_exit_pc: Option<u32>, flags: &[&str]) -> String {
+fn render(version: &Version, negative_test_exit_pc: Option<u32>, instrumented: bool) -> String {
     version.require_bundle();
     let circuit = version.circuit();
     let config = version.prover_config();
@@ -40,8 +40,12 @@ fn render(version: &Version, negative_test_exit_pc: Option<u32>, flags: &[&str])
         negative_test_exit_pc.unwrap_or(final_pc),
         version.inits_teardowns_top_bits,
         version.digest_bytes,
-        flags,
     );
+    let out = if instrumented {
+        instrument_verifier(&out)
+    } else {
+        out
+    };
     // Check the emitted verifier's gates, not just the arguments passed to it.
     assert_eq!(
         solidity_constant(&out, "__TEMPLATE_EXTERNAL_POW_BITS"),
@@ -196,7 +200,7 @@ fn eval_expr(expr: &str) -> u32 {
         .unwrap_or_else(|_| panic!("not a literal: {expr}"))
 }
 
-fn generate_f1(version: &Version, final_pc: u32, flags: &[&str]) -> verifier_evm::F1Contracts {
+fn generate_f1(version: &Version, final_pc: u32, instrumented: bool) -> verifier_evm::F1Contracts {
     let (_, proof, _) = version.load();
     let frontier = version.setup_frontier().map(|(_, nodes)| nodes);
     generate_f1_with_setup(
@@ -204,7 +208,7 @@ fn generate_f1(version: &Version, final_pc: u32, flags: &[&str]) -> verifier_evm
         final_pc,
         &proof.whir_proof.setup_commitment.commitment.cap.cap,
         frontier.as_deref(),
-        flags,
+        instrumented,
     )
 }
 
@@ -214,7 +218,7 @@ fn generate_f1_with_setup(
     final_pc: u32,
     setup_cap: &[[u32; 8]],
     setup_frontier: Option<&[[u32; 8]]>,
-    flags: &[&str],
+    instrumented: bool,
 ) -> verifier_evm::F1Contracts {
     let circuit = version.circuit();
     let config = version.prover_config();
@@ -226,7 +230,7 @@ fn generate_f1_with_setup(
             .with_setup_frontier(config.cap_size.trailing_zeros() as usize),
     };
     let (external_pow_bits, _) = derived_pow_bits(version, &circuit, &config);
-    verifier_evm::generate_f1_verifier(
+    let mut out = verifier_evm::generate_f1_verifier(
         &circuit,
         &config,
         &params,
@@ -236,22 +240,25 @@ fn generate_f1_with_setup(
         setup_cap,
         setup_frontier,
         DEFAULT_FRONTIER_ADDRESS,
-        flags,
-    )
+    );
+    if instrumented {
+        out.verifier_sol = instrument_verifier(&out.verifier_sol);
+    }
+    out
 }
 
 /// `(relative path, source)` of every generated output of `version`.
 fn generated_sources(version: &Version) -> Vec<(String, String)> {
-    let mut out = vec![(MERGED_V0.to_string(), generate(version, &[]))];
+    let mut out = vec![(MERGED_V0.to_string(), generate(version, false))];
     if let Some(rel) = version.wrong_final_pc_contract {
         out.push((rel.to_string(), generate_wrong_final_pc(version)));
     }
-    let f1 = generate_f1(version, version.final_pc(), &[]);
+    let f1 = generate_f1(version, version.final_pc(), false);
     out.push((MERGED_F1.to_string(), f1.verifier_sol));
     out.push((F1_FRONTIER_CONTRACT.to_string(), f1.setup_frontier_sol));
     out.push((
         F1_WRONG_FINAL_PC.to_string(),
-        generate_f1(version, version.final_pc() ^ 1, &[]).verifier_sol,
+        generate_f1(version, version.final_pc() ^ 1, false).verifier_sol,
     ));
     // E8 control: the F1 verifier pinned to another setup (one bit of the first frontier node and
     // the cap it reduces to, or one bit of the cap without a frontier), so its transcript and
@@ -265,12 +272,12 @@ fn generated_sources(version: &Version) -> Vec<(String, String)> {
                 level - version.prover_config().cap_size.trailing_zeros() as usize,
                 version.digest_bytes,
             );
-            generate_f1_with_setup(version, version.final_pc(), &cap, Some(&nodes), &[])
+            generate_f1_with_setup(version, version.final_pc(), &cap, Some(&nodes), false)
         }
         None => {
             let mut cap = proof.whir_proof.setup_commitment.commitment.cap.cap.clone();
             cap[0][0] ^= 1;
-            generate_f1_with_setup(version, version.final_pc(), &cap, None, &[])
+            generate_f1_with_setup(version, version.final_pc(), &cap, None, false)
         }
     };
     out.push((F1_WRONG_SETUP_CAP.to_string(), wrong.verifier_sol));
@@ -281,18 +288,15 @@ fn generated_sources(version: &Version) -> Vec<(String, String)> {
     // Frontier-less control: the F1 verifier with full setup paths to the cap (its own calldata).
     if version.setup_frontier().is_some() {
         let cap = &proof.whir_proof.setup_commitment.commitment.cap.cap;
-        let control = generate_f1_with_setup(version, version.final_pc(), cap, None, &[]);
+        let control = generate_f1_with_setup(version, version.final_pc(), cap, None, false);
         out.push((F1_CAP_LEVEL.to_string(), control.verifier_sol));
         out.push((F1_CAP_LEVEL_DATA.to_string(), control.setup_frontier_sol));
     }
     // The oracle renders: v0 and F1 verifiers that log every transcript keccak256 result.
-    out.push((
-        INSTRUMENTED_V0.to_string(),
-        generate(version, &[INSTRUMENTED]),
-    ));
+    out.push((INSTRUMENTED_V0.to_string(), generate(version, true)));
     out.push((
         INSTRUMENTED_F1.to_string(),
-        generate_f1(version, version.final_pc(), &[INSTRUMENTED]).verifier_sol,
+        generate_f1(version, version.final_pc(), true).verifier_sol,
     ));
     out
 }
@@ -348,7 +352,6 @@ fn generator_accepts_trace21_and_rejects_mismatched_config() {
             version.final_pc(),
             version.inits_teardowns_top_bits,
             digest_bytes,
-            &[],
         )
     };
     let generate = |config: &prover::gkr::prover_config::ProverConfig| {
@@ -414,8 +417,8 @@ fn generator_renders_pack3() {
             .div_ceil(pack) as u32;
         let setup_merged = circuit.generic_lookup_tables_width.div_ceil(pack) as u32;
         let fold_offset = 96 + 32 * (merged_mw + setup_merged);
-        let v0 = generate(version, &[]);
-        let f1 = generate_f1(version, version.final_pc(), &[]).verifier_sol;
+        let v0 = generate(version, false);
+        let f1 = generate_f1(version, version.final_pc(), false).verifier_sol;
         for source in [&v0, &f1] {
             for (name, value) in [
                 ("__TEMPLATE_WHIR_PACK_LOG2", 3),
@@ -466,7 +469,7 @@ fn descriptor_rejects_aux_drift_and_excess_gkr_pow() {
                 ..*base
             },
         ] {
-            assert!(std::panic::catch_unwind(|| generate(&version, &[])).is_err());
+            assert!(std::panic::catch_unwind(|| generate(&version, false)).is_err());
         }
     }
 }
@@ -479,7 +482,7 @@ fn descriptor_rejects_aux_exit_pc_drift() {
             ..*base
         };
         common::assert_panics_with("descriptor exit PC must match proof aux", || {
-            generate(&version, &[])
+            generate(&version, false)
         });
     }
 }
@@ -504,7 +507,6 @@ fn generator_rejects_inconsistent_base_oracle_geometry() {
                 version.final_pc(),
                 version.inits_teardowns_top_bits,
                 version.digest_bytes,
-                &[],
             ))
             .is_err(),
             "inconsistent base-oracle {field} accepted"
@@ -530,14 +532,14 @@ fn wrong_final_pc_controls_change_only_the_pinned_pc() {
             solidity_constant(&wrong, "__TEMPLATE_EXPECTED_FINAL_PC"),
             version.final_pc() ^ 1
         );
-        let diff = differences(&generate(version, &[]), &wrong);
+        let diff = differences(&generate(version, false), &wrong);
         assert_eq!(diff.len(), 1);
         assert!(diff[0].0.contains("constant __TEMPLATE_EXPECTED_FINAL_PC"));
         assert!(diff[0].1.contains("constant __TEMPLATE_EXPECTED_FINAL_PC"));
 
         let diff = differences(
-            &generate_f1(version, version.final_pc(), &[]).verifier_sol,
-            &generate_f1(version, version.final_pc() ^ 1, &[]).verifier_sol,
+            &generate_f1(version, version.final_pc(), false).verifier_sol,
+            &generate_f1(version, version.final_pc() ^ 1, false).verifier_sol,
         );
         assert_eq!(
             diff.len(),
@@ -554,7 +556,7 @@ fn wrong_final_pc_controls_change_only_the_pinned_pc() {
 #[test]
 fn f1_gkr_half_reads_calldata_only_in_the_decoder() {
     for version in common::registered_versions() {
-        let source = generate_f1(version, version.final_pc(), &[]).verifier_sol;
+        let source = generate_f1(version, version.final_pc(), false).verifier_sol;
         // opcode uses, not identifiers such as `gate_calldataload`
         let readers = |src: &str| {
             ["calldataload(", "calldatacopy(", "calldatasize()"]
@@ -599,7 +601,7 @@ fn f1_setup_data_holds_the_frontier_cap_and_term_table() {
     for version in common::registered_versions() {
         let (_, proof, _) = version.load();
         let cap = &proof.whir_proof.setup_commitment.commitment.cap.cap;
-        let qtable: Vec<u8> = generate(version, &[])
+        let qtable: Vec<u8> = generate(version, false)
             .lines()
             .filter_map(|l| l.trim().strip_prefix("mstore(add(GKR_QTABLE_PTR(), "))
             .flat_map(|rest| {
@@ -614,9 +616,9 @@ fn f1_setup_data_holds_the_frontier_cap_and_term_table() {
             .collect();
         let frontier = version.setup_frontier().map(|(_, nodes)| nodes);
         for (contracts, nodes) in [
-            (generate_f1(version, version.final_pc(), &[]), frontier),
+            (generate_f1(version, version.final_pc(), false), frontier),
             (
-                generate_f1_with_setup(version, version.final_pc(), cap, None, &[]),
+                generate_f1_with_setup(version, version.final_pc(), cap, None, false),
                 None,
             ),
         ] {
@@ -669,10 +671,10 @@ fn f1_setup_data_holds_the_frontier_cap_and_term_table() {
 fn instrumented_renders_carry_the_log() {
     for version in common::registered_versions() {
         for (production, instrumented) in [
-            (generate(version, &[]), generate(version, &[INSTRUMENTED])),
+            (generate(version, false), generate(version, true)),
             (
-                generate_f1(version, version.final_pc(), &[]).verifier_sol,
-                generate_f1(version, version.final_pc(), &[INSTRUMENTED]).verifier_sol,
+                generate_f1(version, version.final_pc(), false).verifier_sol,
+                generate_f1(version, version.final_pc(), true).verifier_sol,
             ),
         ] {
             assert!(
@@ -717,7 +719,6 @@ fn f1_generator_rejects_a_profile_off_the_prover_config() {
                 setup_cap,
                 frontier.as_ref().map(|(_, nodes)| &nodes[..]),
                 DEFAULT_FRONTIER_ADDRESS,
-                &[],
             )
         };
         let mut params = version.f1_params();
@@ -758,7 +759,6 @@ fn f1_generator_rejects_a_frontier_off_the_setup_cap() {
                     &proof.whir_proof.setup_commitment.commitment.cap.cap,
                     Some(&nodes),
                     DEFAULT_FRONTIER_ADDRESS,
-                    &[],
                 )
             },
         );

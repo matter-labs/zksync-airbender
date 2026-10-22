@@ -1,6 +1,9 @@
 //! Versioned inputs shared by contract generation and proof serialization.
 #![allow(dead_code)] // Each integration-test binary uses a different subset.
 
+pub mod decode;
+pub mod instrument;
+
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
 use prover::definitions::SecurityLevel;
