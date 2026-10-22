@@ -13,6 +13,8 @@ For L1 proof references, follow REGENERATE in prover_pipeline/src/l1_reference.r
 seed, fresh-process feeder/wrap, then the feature-enabled witness producer.
 Next run that module's ignored l1_reference::export_l1_wrap_evm_fixtures and
 l1_reference::export_l1_wrap_setup_frontier tests.
+Then run the ignored verifier_evm producers: generate_contracts (also build.sh),
+flatten_calldata write_calldata_into_debug_data, and alt_whir_calldata write_alt_whir_calldata.
 EOF
 }
 

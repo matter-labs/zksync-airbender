@@ -10,8 +10,8 @@ mod test {
 
     use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 
-    /// Keep the replayed cycles and their bytecode together: the large-field proof
-    /// generator writes a different program to `unified_proth120_witness.bin`.
+    /// Keep the replayed cycles and their bytecode together so setup and witness
+    /// generation use the same program.
     fn basic_fibonacci_witness() -> (Vec<UnifiedOpcodeTracingDataWithTimestamp>, Vec<u32>) {
         use crate::tests::gkr::orchestration::common::{run_vm_and_capture, ProgramConfig};
         use crate::tests::gkr::orchestration::unified::replay_unified_cycles;
