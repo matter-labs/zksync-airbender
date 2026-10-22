@@ -1,3 +1,4 @@
+import Airbender.Proofs.Arithmetic.ExpressionRows
 import Airbender.Proofs.Blake2G.FrameNormalization
 import Airbender.Proofs.Arithmetic.FieldSliceNormalization
 
@@ -10,18 +11,42 @@ set_option maxHeartbeats 2000000
 
 def entry0 {p : Nat} [Fact p.Prime] (table : Table (ZMod p) (fields 9)) :
     Vector (Expression (ZMod p)) 9 :=
-  ((FlatOperation.lookups (mixingConstraints table)).get
-    ⟨0, by rw [mixing_lookup_count]; decide⟩).entry
+  show Vector (Expression (ZMod p)) table.toRaw.arity from
+  #v[Arithmetic.linearExpression (0) [(1, 43)],
+      Arithmetic.linearExpression (0) [(1, 41)],
+      Arithmetic.linearExpression (0) [(1, 44)],
+      Arithmetic.linearExpression (0) [],
+      Arithmetic.linearExpression (0) [],
+      Arithmetic.linearExpression (0) [],
+      Arithmetic.linearExpression (0) [],
+      Arithmetic.linearExpression (0) [],
+      Arithmetic.linearExpression (4) []]
 
 def entry1 {p : Nat} [Fact p.Prime] (table : Table (ZMod p) (fields 9)) :
     Vector (Expression (ZMod p)) 9 :=
-  ((FlatOperation.lookups (mixingConstraints table)).get
-    ⟨1, by rw [mixing_lookup_count]; decide⟩).entry
+  show Vector (Expression (ZMod p)) table.toRaw.arity from
+  #v[Arithmetic.linearExpression (0) [(-7864320, 27), (7864320, 43)],
+      Arithmetic.linearExpression (0) [(-7864320, 15), (-7864320, 19), (-7864320, 33), (-256, 37), (-512, 38), (7864320, 41)],
+      Arithmetic.linearExpression (0) [(1, 45)],
+      Arithmetic.linearExpression (0) [],
+      Arithmetic.linearExpression (0) [],
+      Arithmetic.linearExpression (0) [],
+      Arithmetic.linearExpression (0) [],
+      Arithmetic.linearExpression (0) [],
+      Arithmetic.linearExpression (4) []]
 
 def entry2 {p : Nat} [Fact p.Prime] (table : Table (ZMod p) (fields 9)) :
     Vector (Expression (ZMod p)) 9 :=
-  ((FlatOperation.lookups (mixingConstraints table)).get
-    ⟨2, by rw [mixing_lookup_count]; decide⟩).entry
+  show Vector (Expression (ZMod p)) table.toRaw.arity from
+  #v[Arithmetic.linearExpression (0) [(1, 46)],
+      Arithmetic.linearExpression (0) [(1, 42)],
+      Arithmetic.linearExpression (0) [(1, 47)],
+      Arithmetic.linearExpression (0) [],
+      Arithmetic.linearExpression (0) [],
+      Arithmetic.linearExpression (0) [],
+      Arithmetic.linearExpression (0) [],
+      Arithmetic.linearExpression (0) [],
+      Arithmetic.linearExpression (4) []]
 
 theorem lookup0_eq_mk {p : Nat} [Fact p.Prime] (table : Table (ZMod p) (fields 9)) :
     ((FlatOperation.lookups (mixingConstraints table)).get
@@ -42,8 +67,7 @@ theorem row0 {p : Nat} [Fact p.Prime] (table : Table (ZMod p) (fields 9)) (f : F
   intro lane bound
   change lane < 9 at bound
   interval_cases lane
-  all_goals simp [entry0, mixingConstraints, importedConstraints, FlatOperation.lookups,
-    Expression.eval, Verification.environment, Frame.assignment, assemble, Frame.base]
+  all_goals simp [entry0, Arithmetic.linearExpression, Expression.eval, Verification.environment, Frame.assignment, assemble, Frame.base]
 
 theorem row1 {p : Nat} [Fact p.Prime]
     (compatible : 64 * (-31457280 : ZMod p) = 1)
@@ -60,8 +84,7 @@ theorem row1 {p : Nat} [Fact p.Prime]
   intro lane bound
   change lane < 9 at bound
   interval_cases lane
-  all_goals simp [entry1, mixingConstraints, importedConstraints, FlatOperation.lookups,
-    Expression.eval, Verification.environment, Frame.assignment, assemble, Frame.base,
+  all_goals simp [entry1, Arithmetic.linearExpression, Expression.eval, Verification.environment, Frame.assignment, assemble, Frame.base,
     carryLow_as_value]
   all_goals ring_nf
   all_goals linear_combination f.addCarries[0] * scale
@@ -73,7 +96,6 @@ theorem row2 {p : Nat} [Fact p.Prime] (table : Table (ZMod p) (fields 9)) (f : F
   intro lane bound
   change lane < 9 at bound
   interval_cases lane
-  all_goals simp [entry2, mixingConstraints, importedConstraints, FlatOperation.lookups,
-    Expression.eval, Verification.environment, Frame.assignment, assemble, Frame.base]
+  all_goals simp [entry2, Arithmetic.linearExpression, Expression.eval, Verification.environment, Frame.assignment, assemble, Frame.base]
 
 end Airbender.Blake2G.Proofs.FrameQueryShapes
