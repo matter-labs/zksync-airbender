@@ -89,10 +89,9 @@ pub(super) fn circuit_tester_config() -> ProgramConfig {
     }
 }
 
-use crate::gkr::prover_config::example_configs::l1_wrap_2p21::TRACE_LEN_LOG2;
 #[cfg(test)]
 use crate::gkr::prover_config::example_configs::l1_wrap_2p21::{
-    packed_prover_config, EXTERNAL_CHALLENGES_POW_BITS,
+    packed_prover_config, EXTERNAL_CHALLENGES_POW_BITS, TRACE_LEN_LOG2,
 };
 use common_constants::rom::L1_WRAP_ROM;
 
