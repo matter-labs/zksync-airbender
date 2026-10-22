@@ -5,7 +5,7 @@ mod l1_wrap;
 mod memory;
 mod proof;
 
-#[cfg(feature = "test-support")]
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) use l1_wrap::evaluate_witness;
 
 use crate::precomputations::CpuCircuitPrecomputations;
@@ -26,7 +26,7 @@ use worker::Worker;
 
 type CpuTwiddles = <DefaultBabyBearBackend as Backend<BF, E4>>::TwiddleSet;
 
-#[cfg(feature = "test-support")]
+#[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
 pub fn expand_inits_and_teardowns<A: HostTraceAllocator>(
     trace: &InitsAndTeardownsTraceHost<A>,
