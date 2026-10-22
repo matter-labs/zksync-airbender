@@ -278,7 +278,12 @@ pub(crate) fn forward_fixture_full(context: &ProverContext) -> ForwardFixturePr 
             .start][*index as usize]
             .add_assign(&PR::ONE);
     }
-    witness[65][artifact.offset_for_decoder_table].add_assign(&PR::new((rows / 2) as u128));
+    let decoder_multiplicity_column = artifact
+        .witness_layout
+        .multiplicities_columns_for_generic_lookup
+        .start;
+    witness[decoder_multiplicity_column][artifact.offset_for_decoder_table]
+        .add_assign(&PR::new((rows / 2) as u128));
     let mut raw = TraceHolder::new_without_cosets(
         log_rows,
         cfg.log_lde_factor,

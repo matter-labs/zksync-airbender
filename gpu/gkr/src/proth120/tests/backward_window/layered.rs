@@ -316,7 +316,7 @@ fn pr_backward_layered_small() {
         flatten_claim_point(&points[&0]),
         "layer-0 point"
     );
-    assert_eq!(final_claims.len(), 134);
+    assert_eq!(final_claims.len(), claims[&0].len());
     assert_eq!(final_claims, claims[&0], "layer-0 claim map");
     println!(
         "M6_BACKWARD_LAYERED layers={} snapshots={} slab_values={compared} final_claims={}",
