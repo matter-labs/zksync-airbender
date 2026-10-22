@@ -1,4 +1,5 @@
 import Slop.Sail.PC
+import Human.Helpers.Core.Configuration
 
 /-!
 # Proof search for `MisaOnly` facts about the generated decoder
@@ -18,15 +19,17 @@ matched syntactically, `if`/`match` are split by their structure, and every join
 namespace Airbender.Reference.Sail
 open Reference.RiscV.Sail _root_.Sail.ArchSem
 
-/-- The registers that successful instruction execution writes (the PC pair and the general registers).
-    A decoder reads no state outside them: the full model's decoder reads configuration (`misa`, `vtype`,
-    the privilege level, the envcfg registers), so a decoding replays in any state that agrees on everything
-    else. -/
-def StepRegisters : List SailRV32.Register := [.PC, .nextPC, .x1, .x2, .x3, .x4, .x5, .x6, .x7, .x8, .x9, .x10, .x11, .x12, .x13, .x14, .x15, .x16, .x17, .x18, .x19, .x20, .x21, .x22, .x23, .x24, .x25, .x26, .x27, .x28, .x29, .x30, .x31]
-
-/-- States agree outside the registers a step writes. -/
+/-- States agree on every register a program never writes (`Configuration.writtenByProgram`): the
+    configuration a decoder reads (`misa`, `vtype`, `mstatus`, the privilege level, the envcfg registers …).
+    Two `Configured` states agree in this sense (`configured_same`). -/
 def ConfigSame (before state : State) : Prop :=
-  ∀ register, register ∉ StepRegisters → state.regs.get? register = before.regs.get? register
+  ∀ register, Configuration.writtenByProgram register = false →
+    state.regs.get? register = before.regs.get? register
+
+/-- Two states of the Airbender machine agree on every register a program never writes. -/
+theorem configured_same {before state : State} (hb : Configured before) (hs : Configured state) :
+    ConfigSame before state :=
+  fun register unwritten => (hs register unwritten).trans (hb register unwritten).symm
 
 /-- A property of the existing Sail interpreter: successful execution preserves state and can be
     replayed in any state with the same configuration registers (`ConfigSame`). -/
@@ -59,7 +62,8 @@ theorem misa_bind {α β : Type} (action : SailRV32.SailM α)
     exact finish state same
 
 /-- Reading a register outside the step registers is replayable: its value is fixed by `ConfigSame`. -/
-theorem read_outside (register : SailRV32.Register) (outside : register ∉ StepRegisters) :
+theorem read_outside (register : SailRV32.Register)
+    (outside : Configuration.writtenByProgram register = false) :
     MisaOnly (SailRV32.readReg register) := by
   intro before value after executed
   cases found : before.regs.get? register with

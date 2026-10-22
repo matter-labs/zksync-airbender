@@ -1,4 +1,4 @@
-import Slop.Sail.MisaWalk
+import Slop.Sail.MisaSailME
 
 namespace Airbender.Reference.Sail
 open Reference.RiscV.Sail _root_.Sail.ArchSem SailRV32
@@ -2571,6 +2571,34 @@ theorem misa_fn_architecture (priv : Privilege) : MisaOnly (SailRV32.Functions.a
 
 set_option maxHeartbeats 1000000 in
 set_option maxRecDepth 16384 in
+theorem misa_fn_encdec_nfields_pow2_forwards (arg_ : (BitVec 3)) : MisaOnly (SailRV32.Functions.encdec_nfields_pow2_forwards arg_) := by
+  unfold SailRV32.Functions.encdec_nfields_pow2_forwards
+  repeat' first
+    | (apply read_outside; decide)
+    | apply misa_pure
+    | apply misa_assert
+    | apply misa_throw
+    | (apply misa_bind <;> try intro)
+    | apply misa_ite
+    | split
+    | (exfalso; first | omega | bv_omega)
+
+set_option maxHeartbeats 1000000 in
+set_option maxRecDepth 16384 in
+theorem misa_fn_encdec_nreg_forwards (arg_ : (BitVec 5)) : MisaOnly (SailRV32.Functions.encdec_nreg_forwards arg_) := by
+  unfold SailRV32.Functions.encdec_nreg_forwards
+  repeat' first
+    | (apply read_outside; decide)
+    | apply misa_pure
+    | apply misa_assert
+    | apply misa_throw
+    | (apply misa_bind <;> try intro)
+    | apply misa_ite
+    | split
+    | (exfalso; first | omega | bv_omega)
+
+set_option maxHeartbeats 1000000 in
+set_option maxRecDepth 16384 in
 theorem misa_fn_float_load_store_width_supported (width : Nat) : MisaOnly (SailRV32.Functions.float_load_store_width_supported width) := by
   unfold SailRV32.Functions.float_load_store_width_supported
   repeat' first
@@ -2681,21 +2709,28 @@ theorem misa_fn_in32BitMode (unit_0 : Unit) : MisaOnly (SailRV32.Functions.in32B
     | split
     | (exfalso; first | omega | bv_omega)
 
+/-- `currentlyEnabled Ext_Zdinx` returns `false`: Zdinx is off in the configuration. -/
+theorem returns_ce_Zdinx :
+    Returns (fun b => b = false) (SailRV32.Functions.currentlyEnabled SailRV32.extension.Ext_Zdinx) := by
+  unfold SailRV32.Functions.currentlyEnabled
+  try dsimp only
+  refine ret_bind _ (fun _ => True) _ _ (returns_true _) (fun a _ => ret_pure _ _ ?_)
+  show (SailRV32.Functions.hartSupports .Ext_Zdinx && a) = false
+  rw [show SailRV32.Functions.hartSupports .Ext_Zdinx = false by decide +kernel, Bool.false_and]
+
 set_option maxHeartbeats 1000000 in
-set_option maxRecDepth 16384 in
-theorem misa_fn_validDoubleRegs (regs : (Vector fregidx n)) : MisaOnly (SailRV32.Functions.validDoubleRegs regs) := by
+theorem misa_fn_validDoubleRegs (regs : (Vector fregidx n)) :
+    MisaOnly (SailRV32.Functions.validDoubleRegs regs) := by
   unfold SailRV32.Functions.validDoubleRegs
-  try dsimp only [SailRV32.rv32zdinx_odd_register_reserved_behavior]
+  apply misa_sailme_run
+  refine misaE_lift_bind_returns _ _ (fun b => b = false) misa_ce_Zdinx returns_ce_Zdinx (fun b hb => ?_)
+  subst hb
+  simp only [Bool.false_and, Bool.false_eq_true, ↓reduceIte]
   repeat' first
-    | (with_reducible exact misa_ce_Zdinx)
-    | (apply read_outside; decide)
-    | apply misa_pure
-    | apply misa_assert
-    | apply misa_throw
-    | (apply misa_bind <;> try intro)
-    | apply misa_ite
-    | split
-    | (exfalso; first | omega | bv_omega)
+    | apply misaE_pure
+    | apply misaE_throw
+    | (apply misaE_bind <;> try intro)
+    | apply misaE_ite
 
 set_option maxHeartbeats 1000000 in
 set_option maxRecDepth 16384 in
