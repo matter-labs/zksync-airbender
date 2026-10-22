@@ -155,7 +155,7 @@
   |---|---|---|---|---|---|---|
   | 2 (PC) | 0 | 0 | timestamp[18:0] | timestamp[37:19] | pc[15:0] | pc[31:16] |
 
-- The **RAM** is logically represented by 2^30 bytes of word-addressed word-sized slots, initialised by the memory argument at time 0 to zero values.
+- The **RAM** is logically represented by 2³² bytes of word-addressed word-sized slots, initialised by the memory argument at time 0 to zero values.
 
   | addr_space | addr_lo | addr_hi | ts_lo | ts_hi | val_lo | val_hi |
   |---|---|---|---|---|---|---|
