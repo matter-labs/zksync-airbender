@@ -59,6 +59,16 @@ custom arithmetic uses the [pinned project definitions](vendor/airbender/00-mast
 Representation and execution lemmas live in `Proofs/Arithmetic/Word.lean` and
 `Proofs/Sail/RiscV.lean`.
 
+The Blake2 round query proofs reuse [generic row expressions](Airbender/Proofs/Blake2G/FrameQueryEntries.lean)
+and [row arithmetic](Airbender/Proofs/Blake2G/FrameQueryRows.lean). Separate
+[bindings](Airbender/Proofs/Blake2G/FrameQueryBindings.lean) check the actual imported G
+lookups; each native column and diagonal call checks its own imported expressions,
+then supplies its frame to the shared arithmetic. Existing public theorem statements
+and actual table membership obligations remain unchanged. Definition-only modules and
+family-local native effects avoid the combined delegation-operation implementation.
+The [focused boundary check](scripts/check_proof_boundaries.py) verifies these source
+import paths without compiling.
+
 ## Reproduce
 
 Run from `formal_verification/lean`:
@@ -76,6 +86,7 @@ PYTESTS
 lake env lean Airbender/Checks/Axioms.lean
 lake exe airbender_tests
 python3 scripts/check_review.py
+python3 scripts/check_proof_boundaries.py
 ```
 
 The audit lists theorem axiom dependencies. The checked claims use only standard

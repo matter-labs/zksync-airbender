@@ -25,8 +25,10 @@ theorem step_in_span [Fact p.Prime] (hp : 16777216 ≤ p)
         cell.read before = .ok (readToken row.assignment port).word.toBitVec before) :
     Executes before after := by
   obtain ⟨control, abi, binding⟩ := abi_in_span hp inverse accepted inputs tables ram member
-  have bounds := Delegation.Proofs.operation_word_bounds_at_boundary (by omega) (by linear_combination inverse)
-    accepted (operation_inputs inputs tables)
+  have memory : Keccak.Proofs.BoundaryMemoryInputs data initial domain Controller.rows :=
+    ⟨inputs.memory, inputs.family, by rw [tables]; rfl, inputs.active⟩
+  have bounds := Keccak.Memory.Proofs.value_bounds_at_boundary
+    (by norm_num [timestampBase]; omega) accepted memory
   have family := inputs.family row member
   have active := inputs.active row member
   rcases row with ⟨kind, w⟩
@@ -38,7 +40,7 @@ theorem step_in_span [Fact p.Prime] (hp : 16777216 ≤ p)
       have included : port ∈ (⟨.keccak, w⟩ : Delegation.Row p).ports := by
         change port ∈ importedConstraintsMemoryPorts
         exact present
-      exact ⟨bounds.reads _ member port included, bounds.writes _ member port included⟩)
+      exact ⟨bounds.1 _ member port included, bounds.2.1 _ member port included⟩)
     history permutation (fun port present => by
       obtain ⟨cell, code, read⟩ := observed port (by
         change port ∈ importedConstraintsMemoryPorts

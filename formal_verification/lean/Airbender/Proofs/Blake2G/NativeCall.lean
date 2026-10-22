@@ -1,5 +1,5 @@
 import Airbender.Review.Circuits.Blake2G.Call
-import Airbender.Proofs.Blake2G.NativeExecution
+import Airbender.Proofs.Blake2G.NativeEffects
 import Airbender.Proofs.Blake2G.Addresses
 import Airbender.Proofs.Delegation.NativeViews
 import Airbender.Proofs.Trace.AtomicWrites
