@@ -50,10 +50,6 @@ name = "fsv_unified_recursion_layer_sec_100"
 path = "src/bin/fsv_unified_recursion_layer_sec_100.rs"
 
 [[bin]]
-name = "fsv_unified_recursion_layer_sec_100_l1_feeder"
-path = "src/bin/fsv_unified_recursion_layer_sec_100_l1_feeder.rs"
-
-[[bin]]
 name = "fsv_unified_recursion_layer_sec_100_l1_feeder_a"
 path = "src/bin/fsv_unified_recursion_layer_sec_100_l1_feeder_a.rs"
 

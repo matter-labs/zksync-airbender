@@ -34,7 +34,6 @@ pub enum FsvProgram {
     UnrolledRecursionLayer,
     UnifiedBaseLayer,
     UnifiedRecursionLayer,
-    UnifiedRecursionLayerL1Feeder,
     UnifiedRecursionLayerL1FeederWrap,
     /// The recurrent L1 feeder verifier over proofs of the 2^23 feeder
     /// profile A.
@@ -49,7 +48,6 @@ impl FsvProgram {
             Self::UnrolledRecursionLayer => "fsv_unrolled_recursion_layer_sec_100",
             Self::UnifiedBaseLayer => "fsv_unified_base_layer_sec_100",
             Self::UnifiedRecursionLayer => "fsv_unified_recursion_layer_sec_100",
-            Self::UnifiedRecursionLayerL1Feeder => "fsv_unified_recursion_layer_sec_100_l1_feeder",
             Self::UnifiedRecursionLayerL1FeederWrap => {
                 "fsv_unified_recursion_layer_sec_100_l1_feeder_wrap"
             }
@@ -76,17 +74,12 @@ impl FsvProgram {
     pub const fn supports(self, mode: BlakeMode) -> bool {
         match (self, mode) {
             (
-                Self::UnifiedRecursionLayerL1Feeder
-                | Self::UnifiedRecursionLayerL1FeederWrap
-                | Self::UnifiedRecursionLayerL1FeederA,
+                Self::UnifiedRecursionLayerL1FeederWrap | Self::UnifiedRecursionLayerL1FeederA,
                 BlakeMode::BlakeSpecialOpcodes,
             ) => true,
-            (
-                Self::UnifiedRecursionLayerL1Feeder
-                | Self::UnifiedRecursionLayerL1FeederWrap
-                | Self::UnifiedRecursionLayerL1FeederA,
-                _,
-            ) => false,
+            (Self::UnifiedRecursionLayerL1FeederWrap | Self::UnifiedRecursionLayerL1FeederA, _) => {
+                false
+            }
             (Self::UnifiedBaseLayer | Self::UnifiedRecursionLayer, _) => true,
             (_, BlakeMode::BlakeSpecialOpcodes) => false,
             (_, _) => true,
@@ -123,13 +116,10 @@ mod tests {
         assert!(!FsvProgram::UnrolledBaseLayer.supports(BlakeMode::BlakeSpecialOpcodes));
         assert!(!FsvProgram::UnrolledRecursionLayer.supports(BlakeMode::BlakeSpecialOpcodes));
         assert!(FsvProgram::UnrolledBaseLayer.supports(BlakeMode::Compression));
-        assert!(FsvProgram::UnifiedRecursionLayerL1Feeder.supports(BlakeMode::BlakeSpecialOpcodes));
-        assert!(!FsvProgram::UnifiedRecursionLayerL1Feeder.supports(BlakeMode::Compression));
         assert!(
             FsvProgram::UnifiedRecursionLayerL1FeederWrap.supports(BlakeMode::BlakeSpecialOpcodes)
         );
         assert!(!FsvProgram::UnifiedRecursionLayerL1FeederWrap.supports(BlakeMode::Compression));
-        assert_eq!(FsvProgram::UnifiedRecursionLayerL1Feeder.rom(), REGULAR_ROM);
         assert!(FsvProgram::UnifiedRecursionLayerL1FeederA.supports(BlakeMode::BlakeSpecialOpcodes));
         assert!(!FsvProgram::UnifiedRecursionLayerL1FeederA.supports(BlakeMode::Compression));
         assert_eq!(
@@ -155,10 +145,6 @@ mod tests {
             (
                 FsvProgram::UnifiedRecursionLayer,
                 &[BlakeMode::Compression, BlakeMode::BlakeSpecialOpcodes][..],
-            ),
-            (
-                FsvProgram::UnifiedRecursionLayerL1Feeder,
-                &[BlakeMode::BlakeSpecialOpcodes][..],
             ),
             (
                 FsvProgram::UnifiedRecursionLayerL1FeederWrap,

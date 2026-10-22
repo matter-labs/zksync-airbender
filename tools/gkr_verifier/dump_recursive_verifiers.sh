@@ -71,7 +71,6 @@ for sec in $SEC_LEVELS; do
     done
 done
 
-build_variant "fsv_unified_recursion_layer_sec_100_l1_feeder" "special_opcodes_extension"
 build_variant "fsv_unified_recursion_layer_sec_100_l1_feeder_a" "special_opcodes_extension"
 
 echo "==> all recursive verifier variants built (sec: ${SEC})"

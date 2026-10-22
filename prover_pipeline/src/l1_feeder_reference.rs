@@ -819,18 +819,10 @@ fn feeder_negative_controls() {
     let manifest = load_manifest(&dir).unwrap();
     let last = load_layer(&dir, manifest.layers.len() - 1).unwrap();
     let stream = stream_of(&last);
-    let feeder = feeder_program(FsvProgram::UnifiedRecursionLayerL1Feeder);
     let wrap = feeder_program(FsvProgram::UnifiedRecursionLayerL1FeederWrap);
-    // the valid stream verifies natively and on both guest builds
+    // The valid stream verifies natively and on the wrap guest.
     let native = native_verify_unified_l1_feeder(stream.clone()).unwrap();
     assert_eq!(native, last.native_output);
-    assert_eq!(
-        ProductionFeederVerifier
-            .predict(&feeder, stream.clone())
-            .unwrap()
-            .output,
-        native
-    );
     assert_eq!(
         ProductionFeederVerifier
             .wrap_run(&wrap, stream.clone())
@@ -849,12 +841,6 @@ fn feeder_negative_controls() {
             "slot {offset}: {error}"
         );
         assert!(
-            ProductionFeederVerifier
-                .predict(&feeder, mutated.clone())
-                .is_err(),
-            "regular guest slot {offset}"
-        );
-        assert!(
             ProductionFeederVerifier.wrap_run(&wrap, mutated).is_err(),
             "wrap guest slot {offset}"
         );
@@ -867,23 +853,19 @@ fn feeder_negative_controls() {
         .contains("trailing"));
     assert!(
         ProductionFeederVerifier
-            .predict(&feeder, trailing)
+            .wrap_run(&wrap, trailing)
             .unwrap()
             .nd_words_remaining
             == 1
     );
     let truncated = stream[..stream.len() - 1].to_vec();
     assert!(native_verify_unified_l1_feeder(truncated.clone()).is_err());
-    assert!(ProductionFeederVerifier
-        .predict(&feeder, truncated)
-        .is_err());
+    assert!(ProductionFeederVerifier.wrap_run(&wrap, truncated).is_err());
     // setup cap leaf 31, one bit
     let mut leaf_flip = stream.clone();
     leaf_flip[31 * 8] ^= 1;
     assert!(native_verify_unified_l1_feeder(leaf_flip.clone()).is_err());
-    assert!(ProductionFeederVerifier
-        .predict(&feeder, leaf_flip)
-        .is_err());
+    assert!(ProductionFeederVerifier.wrap_run(&wrap, leaf_flip).is_err());
     // artifact-level rejections
     let artifact: ProofArtifact = read_typed(&dir.join("l1_feeder.json")).unwrap();
     let source = source(&input);
@@ -905,16 +887,31 @@ fn feeder_negative_controls() {
     let mut dropped_entry = artifact.clone();
     dropped_entry.chain_end_params.pop();
     assert!(verify_artifact(&dropped_entry, &source).is_err());
-    // a multi-instance layer presented as the last feeder
-    if let Some(mid) = manifest.layers.iter().find(|layer| layer.instances > 1) {
-        let fixture = load_layer(&dir, mid.layer as usize).unwrap();
-        let mut wrong_shape = artifact.clone();
-        wrong_shape.proof = fixture.proof;
-        wrong_shape.setups = fixture.setups;
-        assert!(verify_artifact(&wrong_shape, &source)
-            .unwrap_err()
-            .contains("instance"));
-    }
+    // A terminal C proof must contain exactly one instance. Keep its C
+    // setup caps so this control reaches the instance-count validation.
+    let mut wrong_shape = artifact.clone();
+    let family = UnrolledCircuitType::Unified22.get_family_idx() as u32;
+    let instances = wrong_shape.proof.riscv_proofs.get_mut(&family).unwrap();
+    assert_eq!(instances.len(), 1);
+    instances.push(instances[0].clone());
+    assert!(verify_artifact(&wrong_shape, &source)
+        .unwrap_err()
+        .contains("2 instance(s), predicted 1"));
+    // An A2 layer in the terminal C slot is rejected by the cap check
+    // before the instance count: the A profile has cap 4, C has cap 16.
+    let mid = manifest
+        .layers
+        .iter()
+        .find(|layer| layer.instances == 2)
+        .expect("the S9 chain starts with A2");
+    let fixture = load_layer(&dir, mid.layer as usize).unwrap();
+    let mut wrong_profile = artifact.clone();
+    wrong_profile.proof = fixture.proof;
+    wrong_profile.setups = fixture.setups;
+    assert_eq!(
+        verify_artifact(&wrong_profile, &source).unwrap_err(),
+        format!("setup tree cap of family {family} has 4 leafs, expected 16")
+    );
     // repeated equal recurrent entries keep the chain hash
     if artifact.feeder_layers >= 2 {
         let n = artifact.chain_end_params.len();
