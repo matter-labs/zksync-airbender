@@ -1,5 +1,7 @@
 # Native setup artifacts
 
+<!-- source-names: AIRBENDER_SETUP_JSON_FIXTURE Cargo.lock airbender_tests bigint cs execution_prover keccak manifest.json prover unified -->
+
 The Rust setup command exports the actual materialized columns, native table
 regions, decoder rows, unused setup rows and virtual 16-/19-bit range tables.
 Each document includes the circuit object used for setup and the selected
@@ -22,14 +24,16 @@ program-padding and setup builders. The default is the no-cache circuit used by
 FV. Other family names are `jump-branch`, `mul-div`, `shift-binop`, `word-memory`,
 `subword-memory` and `unified`. The four workers (`bigint`, `blake-g`, `blake-round`,
 `keccak`) and `inits-and-teardowns` take `- -` for their program-independent inputs.
-Initialization/teardown gate verification is authorized after table integration.
 
 The retained production-shape artifacts use image and text
 words `[0x13, 0x00408093, 0x6f, 0x007181b3]`, with native zero padding. Ordinary
 circuits use FullUnsigned; unified setup uses Reduced. The bigint setup is
 program-independent, as are the hash workers and initialization setup.
-`manifest.json` records native source and artifact hashes. `decoder-smoke.json` is a separate small test-shape export
-that exercises fixed tables, tagged decoder rows and both range polynomials.
+`manifest.json` records every retained artifact hash, twelve exact production
+circuit identities, the separate derived smoke identity and native source inputs.
+`decoder-smoke.json` is a native test-shape ADD/SUB-derived export that exercises
+fixed tables, tagged decoder rows and both range polynomials. Its complete circuit
+is intentionally distinct from the production ADD/SUB circuit.
 
 From the Lean directory:
 
@@ -110,3 +114,98 @@ whole overlap; all other values are compared individually. The imported-data
 semantic proofs do not establish Rust refinement, cryptographic authentication,
 F02/F04 enforcement or AIH-336's accelerated/full-proof validation. F03's
 current native exclusion is checked separately from table-content semantics.
+
+
+## Provenance and native reconstruction
+
+From the Lean directory, the inexpensive retained-data guards are:
+
+```sh
+python3 scripts/check_setup_artifacts.py --prepare-lock
+python3 scripts/check_native_evidence.py
+python3 -m unittest discover -s scripts -p test_setup_provenance.py -v
+```
+
+The setup guard checks all thirteen artifact byte hashes, geometry and embedded
+circuit hashes, then compares twelve complete production circuit objects with
+retained no-cache layouts, including initialization. Smoke has a separately
+pinned ADD/SUB base, native test constructor and derived circuit hash. Its actual
+native constructor is checked again during fresh export; Python does not invent
+or replay a mathematical replacement circuit recipe.
+
+The source inventory conservatively follows local Cargo dependencies from `cs`,
+`prover` and `execution_prover`, including optional, development, build and target
+branches. It pins every nonempty source/include file, family table driver,
+compiler, instruction-set input and active unsigned multiplication module in
+those crates, their Cargo manifests, the exporter and configuration/toolchain
+inputs. Empty files do not count as source coverage. `native-cargo.lock` retains the
+exact existing dependency selection as a tracked provenance input, with its own
+SHA256. `--prepare-lock` copies it to the ignored root `Cargo.lock` only when
+absent, or verifies an exact existing lock. It never resolves dependencies or
+overwrites a differing root lock; that mismatch needs explicit review.
+This is a conservative source inventory, not a claim that every guarded source
+is active on every platform. Real scoped native dep-info cross-checks include
+inputs; locked external dependency versions are distinct from reviewed local
+source behavior. None of these guards pins generated Sail files.
+
+`native-evidence.json` records the current eight-file source inspection with
+SHA256/Git blobs, exact inspected spans and historical inspections retained
+separately. Six current blobs differ from their older citations. The historical
+unrolled statement source at `1f4a8455e9f893a1ffb3d23ad79918f243b28aca` is locally
+retrievable; that corrects the old retrieval disclaimer without turning retrieval
+into an additional behavior audit. The guard requires deliberate reinspection
+before changed evidence pins are accepted. Hash agreement proves source identity,
+not cryptographic soundness, Rust refinement or exact logical tuple matching.
+
+For complete freshness, use the existing globally locked bounded worker for each
+native job. Keep jobs serial and preserve its time/memory limits; no broad Cargo
+or GPU build is required. Python 3.11 or later is required. Allocate one new
+external scratch directory and print the exact job inventory:
+
+```sh
+python3 scripts/check_setup_freshness.py plan --work-dir /tmp/airbender-setup-fresh
+```
+
+Each printed command is one bounded job. The first twelve deliberately run the
+exact native no-cache circuit generator tests; the next thirteen export all
+setups. Example steps (place each inside the normal bounded worker):
+
+```sh
+env -u CI python3 scripts/check_setup_freshness.py regenerate inits-and-teardowns \
+  --work-dir /tmp/airbender-setup-fresh
+env -u CI python3 scripts/check_setup_freshness.py export inits-and-teardowns \
+  --work-dir /tmp/airbender-setup-fresh
+env -u CI python3 scripts/check_setup_freshness.py export decoder-smoke \
+  --work-dir /tmp/airbender-setup-fresh
+```
+
+CI must be **absent**: `CI=false` still triggers the native skip macro and the
+driver rejects it. Commands use `--locked`, `CARGO_BUILD_JOBS=1`, one test thread
+and an exact full test name. A selected test must really execute once and pass;
+zero selected tests, ignored tests, CI skips and unchanged/missing generator
+outputs fail. Smoke exports through the existing prover roundtrip test and
+`AIRBENDER_SETUP_JSON_FIXTURE`; twelve production setups use the existing
+`execution_prover` exporter, including initialization. Program-bound families use
+the manifest words and native padding/profile builders; smoke retains its native
+four-word unpadded test program. Logs and receipts stay in the scratch directory.
+
+Every fresh setup is compared as complete parsed JSON, preserving scalar types,
+array order, physical values, native IDs/offsets, decoder masks, padding, program,
+virtual ranges and the entire circuit. `compare --fresh-dir DIRECTORY` performs
+only those thirteen comparisons and does not claim generator execution. After
+all twenty-five bounded jobs, `verify --work-dir DIRECTORY --dep-info FILE.d`
+(repeat `--dep-info` for the scoped native dependency build files) checks all
+execution receipts, complete outputs and source/include coverage. Include actual
+`cs`, `prover`, `execution_prover` and exporter dep-info; an empty or partial set
+missing those selected roots is rejected. Preserve those job logs as freshness
+evidence rather than treating successful retained-data checks as a fresh export.
+
+Focused controls reject changed source without regeneration, a changed physical
+value with unchanged geometry, initialization relation changes, smoke ID/offset/
+base drift, missing artifacts and zero/CI-skipped tests. The current initialization
+circuit uses specialized relations and has no serialized field coefficient;
+coefficient-only comparison sensitivity is exercised with an isolated native
+linear-constraint-shaped fixture, separately from its actual relation-input
+mutation. These Python controls do not run Rust or Lean. Native jobs still need
+to pass on the chosen platform; a toolchain/resource failure is an outstanding
+freshness check, not permission to skip an artifact or increase local limits.
