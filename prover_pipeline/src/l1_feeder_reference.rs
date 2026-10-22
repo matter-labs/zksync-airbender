@@ -861,9 +861,11 @@ fn feeder_negative_controls() {
     let truncated = stream[..stream.len() - 1].to_vec();
     assert!(native_verify_unified_l1_feeder(truncated.clone()).is_err());
     assert!(ProductionFeederVerifier.wrap_run(&wrap, truncated).is_err());
-    // setup cap leaf 31, one bit
+    // One bit in the final setup-cap leaf, within the stream's cap prefix.
+    use full_statement_verifier::imports::unified_reduced_machine_sec_100_l1_feeder::CAP_SIZE;
+    let cap_word = (CAP_SIZE - 1) * 8;
     let mut leaf_flip = stream.clone();
-    leaf_flip[31 * 8] ^= 1;
+    leaf_flip[cap_word] ^= 1;
     assert!(native_verify_unified_l1_feeder(leaf_flip.clone()).is_err());
     assert!(ProductionFeederVerifier.wrap_run(&wrap, leaf_flip).is_err());
     // artifact-level rejections
