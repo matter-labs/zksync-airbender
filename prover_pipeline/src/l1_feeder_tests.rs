@@ -657,6 +657,72 @@ fn l1_target_is_accepted_once_the_wrap_circuit_matches_the_wrap_program() {
     validate_continuation_targets(ProofTarget::RecursionUnified, ProofTarget::L1Feeder).unwrap();
 }
 
+// Without the GPU feature, reaching backend setup returns a distinct error and
+// cannot allocate the CPU backend's pools. Invalid input must be rejected first.
+#[cfg(not(feature = "gpu"))]
+#[test]
+fn continuation_constructor_rejects_invalid_request_before_backend_setup() {
+    let missing = ProgramSource::from_paths(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures/nonexistent-continuation-input.bin")
+            .to_string_lossy()
+            .into_owned(),
+        None,
+    );
+    assert!(!Path::new(&missing.bin_path).exists());
+    let config = ProgramProverConfig {
+        target: ProofTarget::RecursionUnified,
+        backend: ProverBackend::Gpu,
+        ..Default::default()
+    };
+    let mut unknown = artifact(ProofTarget::Base, 1);
+    unknown.schema_version = ARTIFACT_SCHEMA_VERSION + 1;
+    for (invalid, expected) in [
+        (unknown, "unsupported proof artifact schema_version"),
+        (
+            artifact(ProofTarget::RecursionUnified, 3),
+            "already at target",
+        ),
+    ] {
+        let error = ProgramProver::for_continuation(missing.clone(), config.clone(), &invalid)
+            .err()
+            .expect("invalid continuation must be rejected");
+        assert!(error.contains(expected), "{error}");
+    }
+}
+
+#[cfg(not(feature = "gpu"))]
+#[test]
+fn continuation_constructor_binds_source_before_backend_setup() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/hashed_fibonacci");
+    let source = ProgramSource::from_paths(
+        dir.join("app_plain.bin").to_string_lossy().into_owned(),
+        None,
+    );
+    let loaded = load_program(&source).unwrap();
+    let config = ProgramProverConfig {
+        target: ProofTarget::RecursionUnified,
+        backend: ProverBackend::Gpu,
+        ..Default::default()
+    };
+    let mut wrong_bin = artifact(ProofTarget::Base, 1);
+    wrong_bin.program_bin_keccak = keccak256(&loaded.bin_bytes);
+    wrong_bin.program_bin_keccak[0] ^= 1;
+    let mut wrong_text = wrong_bin.clone();
+    wrong_text.program_bin_keccak = keccak256(&loaded.bin_bytes);
+    wrong_text.program_text_keccak = keccak256(&loaded.text_bytes);
+    wrong_text.program_text_keccak[0] ^= 1;
+    for (invalid, expected) in [
+        (wrong_bin, "program_bin_keccak"),
+        (wrong_text, "program_text_keccak"),
+    ] {
+        let error = ProgramProver::for_continuation(source.clone(), config.clone(), &invalid)
+            .err()
+            .expect("source mismatch must be rejected");
+        assert!(error.contains(expected), "{error}");
+    }
+}
+
 /// A feeder artifact is admitted against the trusted chain of the supplied
 /// program before its continuation proves anything: a history that hashes
 /// consistently but is not the program's chain is rejected.

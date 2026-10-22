@@ -1591,6 +1591,8 @@ impl ProgramProver {
         config: ProgramProverConfig,
         artifact: &ProofArtifact,
     ) -> Result<Self, String> {
+        validate_continuation_request(artifact, config.target)?;
+        load_and_validate_program(&source, artifact)?;
         let blake = PipelineBlakeModes::continuing(artifact, PipelineBlakeModes::from_env)?;
         Self::with_registration(source, config, blake, Some(artifact.target))
     }
