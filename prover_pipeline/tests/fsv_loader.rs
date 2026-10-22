@@ -32,7 +32,7 @@ fn regular_fsv_loader_returns_unpadded_images() {
 #[ignore = "two production Unified23 CPU proofs; minutes and many GiB"]
 fn regular_fsv_padding_preserves_proof_bytes() {
     use cpu_execution_prover::{CpuExecutionProver, CpuExecutionProverConfiguration};
-    use execution_prover::{CommitmentMode, ExecutionKind, MachineType, ProofProfile};
+    use execution_prover::{ExecutionKind, MachineType, ProofProfile};
     use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 
     let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -74,7 +74,6 @@ fn regular_fsv_padding_preserves_proof_bytes() {
             0,
             &handle,
             QuasiUARTSource::new_with_reads(stream.clone()),
-            CommitmentMode::SeparateMemoryAndWitness,
             ProofProfile::Standard,
         );
         let artifacts = prover.program_artifacts(&handle, ProofProfile::Standard);

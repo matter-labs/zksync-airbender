@@ -74,11 +74,6 @@ where
         0,
         &handle,
         FlatResponsesSource::new_with_reads(workload.non_determinism.to_vec()),
-        execution_prover::execution_commitment_mode(
-            kind,
-            execution_prover::ProofProfile::Standard,
-            SECURITY,
-        ),
         execution_prover::ProofProfile::Standard,
     );
     (prover, handle, commitment)

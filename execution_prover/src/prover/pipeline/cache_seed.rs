@@ -17,7 +17,6 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
     external_challenges: Option<&GKRExternalChallenges<BF, E4>>,
     proof_caps: &BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
     work_requests_sender: &Sender<WorkRequest<B::Allocator, B::Precomputations>>,
-    _commitment_mode: CommitmentMode,
     profile: ProofProfile,
 ) -> CacheSeedOutcome {
     let mut pending_requests_count = 0;

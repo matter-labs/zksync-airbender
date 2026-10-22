@@ -6,7 +6,7 @@
 #![feature(allocator_api)]
 
 use cpu_execution_prover::{CpuExecutionProver, CpuExecutionProverConfiguration};
-use execution_prover::{CommitmentMode, ExecutionKind, MachineType};
+use execution_prover::{ExecutionKind, MachineType};
 use execution_prover_model::circuit_type::DelegationCircuitType;
 use full_statement_verifier::program_proof::ProgramProof;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
@@ -40,7 +40,6 @@ fn prove(
         1,
         &handle,
         QuasiUARTSource::new_with_reads(inputs),
-        CommitmentMode::SeparateMemoryAndWitness,
         execution_prover::ProofProfile::Standard,
     );
     let artifacts = prover.program_artifacts(&handle, execution_prover::ProofProfile::Standard);
@@ -192,32 +191,23 @@ fn one_setup_proves_standard_and_l1_feeder() {
         None,
         &[ProofProfile::L1Feeder],
     );
-    let prove_with = |handle: &execution_prover::BinaryHandle, commitment_mode, profile| {
+    let prove_with = |handle: &execution_prover::BinaryHandle, profile| {
         let result = prover.commit_memory_and_prove(
             1,
             handle,
             QuasiUARTSource::new_with_reads(BASIC_FIBONACCI_INPUTS.to_vec()),
-            commitment_mode,
             profile,
         );
         program_prover::assemble_program_proof(&prover.program_artifacts(handle, profile), result)
     };
 
-    let (standard_proof, standard_setups) = prove_with(
-        &standard_handle,
-        CommitmentMode::SeparateMemoryAndWitness,
-        ProofProfile::Standard,
-    );
+    let (standard_proof, standard_setups) = prove_with(&standard_handle, ProofProfile::Standard);
     let standard_output = native_verify_unified(
         build_unified_stream(&standard_setups, &standard_proof),
         true,
     );
 
-    let (feeder_proof, feeder_setups) = prove_with(
-        &feeder_handle,
-        CommitmentMode::MergedMemoryAndWitness,
-        ProofProfile::L1Feeder,
-    );
+    let (feeder_proof, feeder_setups) = prove_with(&feeder_handle, ProofProfile::L1Feeder);
     let feeder_output =
         verify_feeder_base_proof(build_unified_stream(&feeder_setups, &feeder_proof));
 

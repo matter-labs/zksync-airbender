@@ -460,11 +460,6 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
             batch_id,
             &handle,
             FlatResponsesSource::new_with_reads(nd_words),
-            execution_prover::execution_commitment_mode(
-                kind,
-                profile,
-                COMPILED_SECURITY_LEVEL.to_prover(),
-            ),
             profile,
         );
         let artifacts = self.prover.program_artifacts(&handle, profile);

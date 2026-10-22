@@ -19,7 +19,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         pow_challenge: u64,
         external_challenges: Option<GKRExternalChallenges<BF, E4>>,
         proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
-        commitment_mode: CommitmentMode,
         profile: ProofProfile,
     ) -> ExecutionProverResult {
         if let Some(cache) = cache.as_ref() {
@@ -40,31 +39,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             binary_holder.profiles.contains(&profile),
             "ProofProfile::{profile:?} was not declared for this binary"
         );
-        if profile.is_l1_feeder() {
-            assert_eq!(
-                commitment_mode,
-                CommitmentMode::MergedMemoryAndWitness,
-                "ProofProfile::{profile:?} requires CommitmentMode::MergedMemoryAndWitness"
-            );
-        }
-        if binary_holder.execution_kind.is_unified() {
-            assert_eq!(
-                commitment_mode,
-                crate::execution_commitment_mode(
-                    binary_holder.execution_kind,
-                    profile,
-                    self.configuration.security_level
-                ),
-                "requested commitment mode disagrees with the circuit profile config"
-            );
-        }
-        match commitment_mode {
-            CommitmentMode::SeparateMemoryAndWitness => {}
-            CommitmentMode::MergedMemoryAndWitness => assert!(
-                binary_holder.execution_kind.is_unified(),
-                "MergedMemoryAndWitness requires Unified execution; Unrolled is unsupported"
-            ),
-        }
+        let commitment_mode = crate::execution_commitment_mode(
+            binary_holder.execution_kind,
+            profile,
+            self.configuration.security_level,
+        );
         let (work_results_sender, work_results_receiver) = unbounded();
         let (work_requests_sender, work_requests_receiver) = unbounded();
         let work_batch = WorkBatch {
@@ -83,7 +62,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             external_challenges.as_ref(),
             &proof_caps,
             &work_requests_sender,
-            commitment_mode,
             profile,
         );
         let mut sent_requests_count = cache_seed.sent_requests_count;
@@ -232,14 +210,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 cache.simulation_result = acc.simulation_result.clone();
             }
         }
-        assemble_result(
-            acc,
-            proving,
-            pow_challenge,
-            binary_key,
-            commitment_mode,
-            profile,
-        )
+        assemble_result(acc, proving, pow_challenge, binary_key, profile)
     }
 
     /// Spawn the simulator worker plus `replay_worker_threads_count` replay
@@ -399,7 +370,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         batch_id: u64,
         handle: BinaryHandle,
         non_determinism_source: Arc<Mutex<Option<impl NonDeterminismCSRSource + Send + 'static>>>,
-        commitment_mode: CommitmentMode,
         profile: ProofProfile,
     ) -> CommitMemoryResult {
         let binary_key = handle.0;
@@ -417,7 +387,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 0,
                 None,
                 BTreeMap::new(),
-                commitment_mode,
                 profile,
             )
             .into_memory_commitment_result();
@@ -438,7 +407,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         pow_challenge: u64,
         external_challenges: GKRExternalChallenges<BF, E4>,
         proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
-        commitment_mode: CommitmentMode,
         profile: ProofProfile,
     ) -> ProveResult {
         info!("BATCH[{batch_id}] PROVER producing proofs for binary with key {binary_key:?}");
@@ -453,7 +421,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 pow_challenge,
                 Some(external_challenges),
                 proof_caps,
-                commitment_mode,
                 profile,
             )
             .into_proof_result();
@@ -474,7 +441,6 @@ fn assemble_result<A: fft::GoodAllocator>(
     proving: bool,
     pow_challenge: u64,
     binary_key: usize,
-    commitment_mode: CommitmentMode,
     profile: ProofProfile,
 ) -> ExecutionProverResult {
     let ResultAccumulator {
@@ -546,7 +512,6 @@ fn assemble_result<A: fft::GoodAllocator>(
             .map(|(i, v)| (i, v.into_values().collect_vec()))
             .collect();
         let result = CommitMemoryResult {
-            commitment_mode,
             profile,
             final_register_values,
             final_pc,
@@ -559,5 +524,71 @@ fn assemble_result<A: fft::GoodAllocator>(
             binary_handle: BinaryHandle(binary_key),
         };
         ExecutionProverResult::CommitMemory(Box::new(result))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::TestBackend;
+
+    #[test]
+    fn l1_profiles_reject_delegation_requests_with_the_resolved_mode() {
+        let mut prover = ExecutionProver::<TestBackend>::new();
+        let proof_caps = BTreeMap::new();
+        for (kind, profile) in [
+            (ExecutionKind::Unified, ProofProfile::L1FeederA),
+            (ExecutionKind::Unified22, ProofProfile::L1Feeder),
+        ] {
+            let program = vec![0x0001_2083, 0xffdf_f06f];
+            let handle = prover.add_binary(
+                kind,
+                MachineType::Reduced,
+                program.clone(),
+                program,
+                Some(32),
+                &[profile],
+            );
+            let commitment_mode = crate::execution_commitment_mode(
+                kind,
+                profile,
+                prover.configuration.security_level,
+            );
+            assert_eq!(commitment_mode, CommitmentMode::MergedMemoryAndWitness);
+            for proving in [false, true] {
+                let context = RequestContext {
+                    proving,
+                    commitment_mode,
+                    profile,
+                    batch_id: 1,
+                    binary_holder: &prover.binary_holders[&handle.0],
+                    external_challenges: None,
+                    proof_caps: &proof_caps,
+                };
+                let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    context.build_work_request(
+                        &prover,
+                        Some(InitsAndTeardownsData {
+                            circuit_type: CircuitType::Delegation(
+                                DelegationCircuitType::Blake2WithCompression,
+                            ),
+                            sequence_id: 0,
+                            inits_and_teardowns: None,
+                        }),
+                        None,
+                    );
+                }))
+                .err()
+                .expect("merged L1 profiles must reject delegation work before dispatch");
+                let message = error
+                    .downcast_ref::<&str>()
+                    .copied()
+                    .or_else(|| error.downcast_ref::<String>().map(String::as_str));
+                assert_eq!(
+                    message,
+                    Some("MergedMemoryAndWitness does not support delegation calls or circuits")
+                );
+            }
+        }
     }
 }

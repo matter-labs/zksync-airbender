@@ -8,10 +8,9 @@ use crate::upstream::{
     DefaultTreeConstructor, FinalRegisterValue, GKRProof, MerkleTreeCapVarLength,
 };
 use crate::upstream::{BF, E4};
-use crate::{CommitmentMode, ProofProfile};
+use crate::ProofProfile;
 
 pub struct CommitMemoryResult {
-    pub commitment_mode: CommitmentMode,
     pub profile: ProofProfile,
     pub final_register_values: [FinalRegisterValue; 32],
     pub final_pc: u32,

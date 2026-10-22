@@ -25,7 +25,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         memory_commitment: &CommitMemoryResult,
     ) -> ProofArtifacts {
         let CommitMemoryResult {
-            commitment_mode: _,
             profile: _,
             final_register_values,
             final_pc,
@@ -165,7 +164,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         batch_id: u64,
         handle: &BinaryHandle,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
-        commitment_mode: CommitmentMode,
         profile: ProofProfile,
     ) -> CommitMemoryResult {
         let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
@@ -174,7 +172,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             batch_id,
             *handle,
             non_determinism_source,
-            commitment_mode,
             profile,
         )
     }
@@ -198,7 +195,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             pow_challenge,
             external_challenges,
             proof_caps,
-            commit_ticket.commitment_mode,
             commit_ticket.profile,
         )
     }
@@ -208,17 +204,10 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         batch_id: u64,
         handle: &BinaryHandle,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
-        commitment_mode: CommitmentMode,
         profile: ProofProfile,
     ) -> ProveResult {
-        self.commit_memory_and_prove_with_timings(
-            batch_id,
-            handle,
-            non_determinism_source,
-            commitment_mode,
-            profile,
-        )
-        .0
+        self.commit_memory_and_prove_with_timings(batch_id, handle, non_determinism_source, profile)
+            .0
     }
 
     /// The cached commit-and-prove path with host wall times for each pass.
@@ -227,7 +216,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         batch_id: u64,
         handle: &BinaryHandle,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
-        commitment_mode: CommitmentMode,
         profile: ProofProfile,
     ) -> (ProveResult, CommitAndProveTimings) {
         let binary_key = handle.0;
@@ -240,7 +228,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             batch_id,
             *handle,
             non_determinism_source.clone(),
-            commitment_mode,
             profile,
         );
         let commit_pass = timer.elapsed();
@@ -267,7 +254,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             pow_challenge,
             external_challenges,
             proof_caps,
-            memory_commitment.commitment_mode,
             memory_commitment.profile,
         );
         let proof_pass = proof_timer.elapsed();

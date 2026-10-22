@@ -56,11 +56,6 @@ fn commit_and_prove_binary(
         0,
         &handle,
         non_determinism_source,
-        execution_prover::execution_commitment_mode(
-            execution_kind,
-            execution_prover::ProofProfile::Standard,
-            SecurityLevel::Sec100,
-        ),
         execution_prover::ProofProfile::Standard,
     )
 }
@@ -136,11 +131,6 @@ fn test_execution_prover_commit_then_prove() {
         0,
         &handle,
         commit_source,
-        execution_prover::execution_commitment_mode(
-            ExecutionKind::Unrolled,
-            execution_prover::ProofProfile::Standard,
-            SecurityLevel::Sec100,
-        ),
         execution_prover::ProofProfile::Standard,
     );
     let top_bits = memory_commitment.inits_and_teardowns_top_bits.clone();
