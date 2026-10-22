@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.PooledValues
 import Airbender.Proofs.Trace.RowHistory
 
@@ -6,7 +8,7 @@ open Arithmetic
 
 theorem pooled_row_zero_preserving {p : Nat} [Fact p.Prime]
     {arithmeticProjection : SailRV32.instruction → Option DecoderData}
-    (rules : DecoderRules arithmeticProjection) (hp : 196608 < p)
+    (rules : DecoderRules arithmeticProjection) (hp : FieldCapacity.NoWrap p 196608)
     (setup : PooledSetup p) (row : Row p PooledFamily)
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints setup))
@@ -77,7 +79,7 @@ theorem pooled_row_zero_preserving {p : Nat} [Fact p.Prime]
     families. Actual decoding supplies preprocessing and destination exclusion. -/
 theorem pooled_zero_preserving {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
-    [registry : PooledRegistry projection] (hp : 196608 < p)
+    [registry : PooledRegistry projection] (hp : FieldCapacity.NoWrap p 196608)
     {trace : PooledTrace p} (accepted : Accepted trace)
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List PooledProgramEntry} (image : programImageRunWith projection before addresses = some program)
@@ -94,7 +96,7 @@ theorem pooled_zero_preserving {p : Nat} [Fact p.Prime]
 theorem pooled_native_history {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
     [registry : PooledRegistry projection]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)

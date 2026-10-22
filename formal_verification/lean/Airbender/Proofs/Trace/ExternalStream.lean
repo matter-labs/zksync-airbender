@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Helpers.Core.ExternalStream
 import Airbender.Proofs.Trace.RowHistory
 
@@ -62,8 +64,8 @@ theorem ordered_consumption (clock : Row → Nat) {rows : List Row} {stream : Li
 variable {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime] [Trace.Proofs.ClockLaws Kind p]
 
 theorem native_consumption (read : Trace.Row p Kind → Bool)
-    (response : Trace.Row p Kind → BitVec 32) (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    (response : Trace.Row p Kind → BitVec 32) (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {stream : List (BitVec 32)} (ports : Ports Trace.Row.clock read response trace.rows stream) :
     ∃ rows, rows.Perm trace.rows ∧

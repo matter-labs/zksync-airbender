@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2Round.ArtifactChecks
 import Airbender.Review.Circuits.Blake2Round.Preparation
 import Airbender.Proofs.Constraints
@@ -77,7 +78,7 @@ private theorem read_bounds {p n : Nat} [Fact p.Prime] (w : Nat → ZMod p)
   simp only [words, Fin.getElem_fin, Vector.getElem_map]
   exact ⟨ZMod.val_lt _, ZMod.val_lt _⟩
 
-theorem chaining {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem chaining {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p} (compression : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 141 = if compression then 1 else 0) :
@@ -156,7 +157,7 @@ round_extended_word extended_word14 14 50 51
 round_extended_word extended_word15 15 46 47
 
 set_option maxHeartbeats 4000000 in
-theorem extended {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem extended {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p} (first compression : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (firstFlag : w 142 = if first then 1 else 0)
@@ -225,7 +226,7 @@ theorem message {p : Nat} [Fact p.Prime]
     Variables.messageReads, Variables.stateReads]
 
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     (setup : Table (ZMod p) (fields 6)) :
     Properties.Soundness (circuitModel setup).relation spec := by
   intro input output w ⟨h, mapping⟩

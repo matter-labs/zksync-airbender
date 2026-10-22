@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Keccak.BoundaryInputs
 import Airbender.Review.Trace.Workers.Keccak.Call
 import Airbender.Proofs.Keccak.Schedule
@@ -28,7 +29,7 @@ private theorem control_edges [Fact p.Prime] {data : Delegation.MemoryData p}
     simp [Delegation.Row.memorySteps, Delegation.Row.ports, importedConstraintsMemoryPorts,
       readToken, MemoryAddress.code, Cell.addressCode, pairCode, Nat.pair_eq_pair]
 
-private theorem forced_path [Fact p.Prime] (hp : 4096 ≤ p)
+private theorem forced_path [Fact p.Prime] (hp : FieldCapacity.AtLeast p 4096)
     {setup : Table (ZMod p) (fields 8)} {path : List (MemoryToken p)} {source : MemoryToken p}
     (size : path.length = 650) (start : path.head? = some source) (startWord : source.word = ⟨0, 0⟩)
     (steps : ∀ edge ∈ path.zip path.tail, ∃ w : Nat → ZMod p,
@@ -63,7 +64,7 @@ private theorem forced_path [Fact p.Prime] (hp : 4096 ≤ p)
       rw [write, next, high.2, ZMod.val_zero]
   exact establish i.val i.isLt
 
-private theorem call_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+private theorem call_path [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells) :
     ∃ sink ∈ data.terminal, sink.address = (Cell.register 10).addressCode ∧
@@ -114,7 +115,7 @@ private theorem call_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     forced_path (by dsimp [timestampBase] at hp; omega) length head
       sourceWord checks⟩
 
-theorem call_control [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem call_control [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells) : CallControl data := by
   obtain ⟨sink, sinkMember, address, path, length, last, _, _, schedule⟩ :=
@@ -127,7 +128,7 @@ theorem call_control [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   rw [lastToken] at result
   simpa [schedule_finish, Word.ofBitVec, limbBase] using result
 
-theorem call_schedule [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem call_schedule [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells) :
     CallSchedule data := by

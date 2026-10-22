@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Helpers.Memory.Values
 import Airbender.Proofs.Trace.MemoryOrigins
 import Airbender.Proofs.AddSub
@@ -123,8 +125,8 @@ theorem write_rules_of_sources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
 /-- Shared time induction derives read bounds from public seeds and proved
     local write preservation. Every dependency precedes the current read. -/
 theorem read_bounds_of_rules {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    [ClockLaws Kind p] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (clocks : ClockBoundary trace)
     (initial : ∀ token ∈ trace.initialMemory, token.word.Bounded)
     (rules : WriteBoundsFromReads trace) :
@@ -147,8 +149,8 @@ theorem read_bounds_of_rules {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
   exact bounded _ row member port portMember rfl
 
 theorem write_bounds_of_rules {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    [ClockLaws Kind p] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (clocks : ClockBoundary trace)
     (initial : ∀ token ∈ trace.initialMemory, token.word.Bounded)
     (rules : WriteBoundsFromReads trace) :
@@ -159,8 +161,8 @@ theorem write_bounds_of_rules {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
     read_bounds_of_rules hp inverse accepted clocks initial rules row member read readMember)
 
 theorem terminal_bounds_of_rules {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    [ClockLaws Kind p] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (clocks : ClockBoundary trace)
     (initial : ∀ token ∈ trace.initialMemory, token.word.Bounded)
     (rules : WriteBoundsFromReads trace) :
@@ -176,43 +178,43 @@ theorem terminal_bounds_of_rules {Kind : Type} [CircuitLayout Kind] [Fact p.Prim
 
 -- Compatibility with existing family proofs; the induction above is shared.
 theorem read_bounds_of_sources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    [ClockLaws Kind p] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (clocks : ClockBoundary trace)
     (initial : ∀ token ∈ trace.initialMemory, token.word.Bounded) (sources : WriteSources trace) :
     ∀ row ∈ trace.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded :=
   read_bounds_of_rules hp inverse accepted clocks initial (write_rules_of_sources sources)
 
 theorem write_bounds_of_sources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    [ClockLaws Kind p] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (clocks : ClockBoundary trace)
     (initial : ∀ token ∈ trace.initialMemory, token.word.Bounded) (sources : WriteSources trace) :
     ∀ row ∈ trace.rows, ∀ port ∈ row.ports, (writeToken row.columns row.assignment port).word.Bounded :=
   write_bounds_of_rules hp inverse accepted clocks initial (write_rules_of_sources sources)
 
 theorem terminal_bounds_of_sources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    [ClockLaws Kind p] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (clocks : ClockBoundary trace)
     (initial : ∀ token ∈ trace.initialMemory, token.word.Bounded) (sources : WriteSources trace) :
     ∀ token ∈ trace.terminalMemory, token.word.Bounded :=
   terminal_bounds_of_rules hp inverse accepted clocks initial (write_rules_of_sources sources)
 
-theorem read_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem read_bounds [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (clocks : ClockBoundary trace) (values : ValueBoundary trace) :
     ∀ row ∈ trace.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded :=
   read_bounds_of_sources hp inverse accepted clocks values.initial (write_source accepted values)
 
-theorem write_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem write_bounds [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (clocks : ClockBoundary trace) (values : ValueBoundary trace) :
     ∀ row ∈ trace.rows, ∀ port ∈ row.ports, (writeToken row.columns row.assignment port).word.Bounded :=
   write_bounds_of_sources hp inverse accepted clocks values.initial (write_source accepted values)
 
-theorem terminal_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem terminal_bounds [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (clocks : ClockBoundary trace) (values : ValueBoundary trace) :
     ∀ token ∈ trace.terminalMemory, token.word.Bounded :=
   terminal_bounds_of_sources hp inverse accepted clocks values.initial (write_source accepted values)

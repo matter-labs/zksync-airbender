@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.Blake2Round.Addresses
 import Airbender.Proofs.Blake2Round.Addresses
 import Airbender.Proofs.MemoryPorts
@@ -6,8 +8,8 @@ set_option warningAsError true
 
 namespace Airbender.Blake2Round.Addresses.Proofs
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p)
-    (compatible : 128 * (-15728640 : ZMod p) = 1) :
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (compatible : SerializedInverse.Scale128 p) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec := by
   intro input output w ⟨bounds, constraints, mapping⟩
   have alignment := Blake2Round.Proofs.pointer_alignment hp compatible constraints

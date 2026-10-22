@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Keccak.ControlUpdate
 import Airbender.Review.Trace.Workers.Keccak.Call
 import Mathlib.Tactic.IntervalCases
@@ -30,7 +31,7 @@ theorem schedule_next (i : Fin 649) :
   rw [nextStage, nextRound]
   interval_cases i.val % 27 <;> simp
 
-theorem forced_schedule_step [Fact p.Prime] (hp : 4096 ≤ p)
+theorem forced_schedule_step [Fact p.Prime] (hp : FieldCapacity.AtLeast p 4096)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p} (i : Fin 649)
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 0 = 1)

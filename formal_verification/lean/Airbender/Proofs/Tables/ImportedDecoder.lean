@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Decoder.ImportedProgram
 import Airbender.Review.Helpers.Decoder.NativeData
 import Airbender.Proofs.Trace.Program
@@ -110,7 +111,7 @@ theorem padding_row (setup : PackedSetup) (expected : Vector Nat setup.width)
     The contents and padding obligations below are discharged from each actual
     imported setup, rather than supplied by the caller as table equivalence. -/
 theorem decoder_member {Kind : Type} [DecidableEq Kind] {p : Nat} [Fact p.Prime]
-    (hp : 65536 < p) (setup : PackedSetup)
+    (hp : FieldCapacity.NoWrap p 65536) (setup : PackedSetup)
     (program : List (ProgramEntry Kind)) (family : Kind)
     (real : ∀ index : Fin setup.realRows.length,
       (∃ entry ∈ program, entry.data.family = family ∧

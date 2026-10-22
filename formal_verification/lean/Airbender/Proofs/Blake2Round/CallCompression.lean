@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2Round.StateTrace
 import Airbender.Proofs.Blake2Round.PhysicalWords
 import Airbender.Proofs.Delegation.ReverseFold
@@ -8,8 +10,8 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
-theorem call_compression [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem call_compression [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :

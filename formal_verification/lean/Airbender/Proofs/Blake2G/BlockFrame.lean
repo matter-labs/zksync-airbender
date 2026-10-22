@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2G.StateCells
 import Airbender.Proofs.Trace.MemoryFrame
 
@@ -35,7 +37,7 @@ theorem aligned_block_words_distinct (state message : BitVec 32)
   subst b
   exact distinct ((BitVec.add_left_inj (BitVec.ofNat 32 (4 * a.val))).mp same)
 
-private theorem port_code [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+private theorem port_code [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.Proofs.BoundaryInputs data initial cells)
     {row : Delegation.Row p} (member : row ∈ data.rows) (family : row.family = .blakeG)
@@ -55,8 +57,8 @@ private theorem port_code [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   rw [indirect_cell code] at code
   simpa only [word_port_address] using code.symm
 
-theorem call_block_domain [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem call_block_domain [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced) :
     ∃ statePointer messagePointer : BitVec 32,

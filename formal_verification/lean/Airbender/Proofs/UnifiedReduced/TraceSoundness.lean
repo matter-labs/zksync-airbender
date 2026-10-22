@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.UnifiedReduced.Model
 import Airbender.Proofs.UnifiedReduced.AddSub
 import Airbender.Proofs.UnifiedReduced.RegisterReads
@@ -43,7 +45,7 @@ private theorem arithmetic_selected {input : Input} {entry : ProgramEntry}
         DecoderData.mapFamily, zero, Nat.testBit, Nat.shiftRight_eq_div_pow,
         importedConstraintsDecoderColumns] using ram
 
-theorem arithmetic_soundness_from_history [Fact p.Prime] (hp : 524288 < p)
+theorem arithmetic_soundness_from_history [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {initial after : State}
     {cells : List Cell} {events : List MemoryAccess} {tokens : List (MemoryToken p)}
     {input : Input} {output : Output} {w : Nat → ZMod p} {epoch : Nat}
@@ -120,8 +122,8 @@ theorem arithmetic_soundness_from_history [Fact p.Prime] (hp : 524288 < p)
     registers := reference.2 }
   exact standard_soundness calculationSize setup input output w ⟨interfaces, core, oldMapping⟩
 
-theorem arithmetic_soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem arithmetic_soundness_from_memory [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     (inputs : NativeInputs projection trace initial cells program) (accepted : Accepted trace)
@@ -157,8 +159,8 @@ theorem arithmetic_soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase 
       (Word.mk (w 0).val (w 1).val).toBitVec) past history registersInitialized bounds words fields query
     encoding pc
 
-theorem trace_soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem trace_soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     (trace : UnifiedTrace p) (initial : State) (cells : List Cell) (program : List ProgramEntry) :
     (circuitModel trace initial cells program).SoundnessUnder
       (InterfaceAssumptions trace initial cells program) Sail.spec := by

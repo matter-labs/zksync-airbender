@@ -1,10 +1,11 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2G.ControlPool
 
 namespace Airbender.Blake2G.Proofs
 open Trace Arithmetic Reference.RiscV.Sail
 set_option warningAsError true
 
-theorem ordered_controls [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem ordered_controls [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced) :
     ∃ ordered : List (Delegation.Row p), ordered.Perm data.rows ∧

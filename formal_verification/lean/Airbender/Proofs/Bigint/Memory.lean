@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Delegation.Values
 import Airbender.Proofs.Bigint.Lookups
 import Airbender.Proofs.Bigint.AdditiveGates
@@ -52,7 +53,7 @@ private theorem empty_writes [Fact p.Prime] {w : Nat → ZMod p}
       Verification.environment, f0, f1, f2, f3, f5, f6] at low high
     exact ⟨low, high⟩
 
-theorem written_limb_bounds [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
+theorem written_limb_bounds [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setupTable)) :
     ∀ i : Fin 16, (w Variables.writtenLimbs[i]).val < limbBase := by
   rcases operation_cases h with empty | ⟨chosen, selected⟩
@@ -91,7 +92,7 @@ theorem written_limb_bounds [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod 
         ← (Additive.Proofs.native_results (by omega) .copy h selected i).1]
       exact Additive.Proofs.result_ranges h i
 
-theorem returned_control_bounds [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
+theorem returned_control_bounds [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setupTable)) :
     (w 57 = 0 ∨ w 57 = 1) ∧ w 58 = 0 := by
   have carry : w 98 = 0 ∨ w 98 = 1 := by
@@ -126,7 +127,7 @@ private theorem native_write_word (w : Nat → ZMod p) (port : MemoryPort) :
         ((port.writeValue.getD port.readValue).evaluate w)[1].val⟩ := by
   simp [Delegation.Row.writeToken, MemoryToken.word, MemoryPort.writeCode, WordColumns.code]
 
-theorem memory_write_rule [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
+theorem memory_write_rule [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536) {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (clockConstraints setupTable))
     (reads : ∀ port ∈ importedConstraintsMemoryPorts, (readToken w port).word.Bounded) :
     ∀ port ∈ importedConstraintsMemoryPorts,
@@ -191,7 +192,7 @@ theorem memory_write_rule [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
       reads importedConstraintsMemoryPorts[17] (by simp [importedConstraintsMemoryPorts])
   · simpa [native_write_word, WordColumns.evaluate, importedConstraintsMemoryPorts] using cb
 
-theorem memory_rules [Fact p.Prime] (hp : 65536 ≤ p) {data : Delegation.MemoryData p}
+theorem memory_rules [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536) {data : Delegation.MemoryData p}
     (accepted : Delegation.MemoryAccepted data)
     (families : ∀ row ∈ data.rows, row.family = .bigint)
     (table : data.setup.bigint = setupTable) : Delegation.Proofs.WriteBoundsFromReads data := by

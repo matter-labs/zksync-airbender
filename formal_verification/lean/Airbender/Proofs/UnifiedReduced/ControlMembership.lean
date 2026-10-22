@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.ControlProjection
 import Airbender.Proofs.JumpBranchSlt.ArtifactChecks
 
@@ -7,7 +8,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
-theorem control_constraints [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem control_constraints [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {before : Reference.RiscV.Sail.State} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table before)))
     (jumps : w 21 = 0 ∧ w 22 = 0) (selected : w 23 + w 24 = 1)

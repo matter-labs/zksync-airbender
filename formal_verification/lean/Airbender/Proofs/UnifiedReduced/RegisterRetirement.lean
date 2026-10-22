@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.UnifiedReduced.Control
 import Airbender.Proofs.UnifiedReduced.Retirement
 import Airbender.Proofs.UnifiedReduced.Decoder
@@ -8,7 +9,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
-theorem register_retirement [Fact p.Prime] (hp : 524288 < p)
+theorem register_retirement [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} {cells : List Cell}
     {entry : ProgramEntry} {rd : BitVec 5}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))

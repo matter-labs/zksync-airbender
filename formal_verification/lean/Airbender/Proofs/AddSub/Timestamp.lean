@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.AddSub.ArtifactChecks
 import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.Arithmetic.Lemmas
@@ -9,7 +10,7 @@ namespace Airbender.AddSub.Proofs
     These field equations hold independently of execute/selectors. Integer bounds
     and global timestamp ordering require the timestamp lookup/state interfaces. -/
 theorem timestamp_equations {p : Nat} [Fact p.Prime]
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {w : Nat → ZMod p}
+    (inverse : SerializedInverse.Clock p) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
     ∃ c : Nat, c ≤ 1 ∧ w 2 + 4 = w 21 + 524288 * c ∧ w 3 + c = w 22 := by
   have carry := Verification.assertion_of_holds h

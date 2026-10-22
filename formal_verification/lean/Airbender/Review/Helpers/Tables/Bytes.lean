@@ -15,6 +15,11 @@ def shiftBinopRow (index : Fin 524545) : Vector Nat 10 :=
   else if n < byteShiftDataRegion.offset then shiftRegionRow 5 (n - byteTruncateDataRegion.offset)
   else shiftRegionRow 6 (n - byteShiftDataRegion.offset)
 
+/-- Clean adapter over the imported setup rows assembled by `shiftBinopRow`.
+    `row` casts those natural-number entries into the selected field; `name`
+    identifies the table, and `index` is a lookup hint using the native region
+    offsets. `Spec` is membership in the actual imported rows, with its checked
+    arithmetic semantics supplied by the supporting table proofs. -/
 def shiftBinopTable {p : Nat} [Fact p.Prime] : Table (ZMod p) (fields 10) := .fromStatic {
   name := "Airbender.ShiftBinop"
   length := 524545

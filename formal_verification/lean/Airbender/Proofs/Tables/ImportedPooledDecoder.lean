@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Tables.DecoderPCLow
 import Airbender.Review.Helpers.Decoder.ImportedPooled
 import Airbender.Proofs.Tables.Decoder.AddSub
@@ -15,7 +16,7 @@ set_option Elab.async false
     guarded PC-limb bounds follow from accepted native constraints and state
     matching; no table-content equivalence, typed-query premise or decoded
     result is assumed. -/
-theorem pooled_decoded [Fact p.Prime] (hp : 4194304 ≤ p) {trace : PooledTrace p}
+theorem pooled_decoded [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p) {trace : PooledTrace p}
     (accepted : Accepted trace) (initial : trace.initial.word.lo < Arithmetic.limbBase)
     (lookups : PooledLookups trace) :
     PooledDecoded trace pooledProgram := by

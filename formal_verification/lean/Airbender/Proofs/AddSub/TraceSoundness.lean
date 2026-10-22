@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.AddSub.Model
 import Airbender.Proofs.Trace.RowContext
 import Airbender.Proofs.Trace.Arithmetic
@@ -10,7 +12,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Reuse the row calculation after deriving all of its interfaces from the
     shared initialized history and actual Sail decoder. -/
 theorem trace_soundness {p : Nat} [Fact p.Prime]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
     InterfaceAssumptions trace initial cells program →
     Properties.Soundness (circuitModel trace initial cells program).relation Sail.spec := by
@@ -80,7 +82,7 @@ theorem trace_soundness {p : Nat} [Fact p.Prime]
               | exact (ZMod.natCast_zmod_val _).symm
               | exact mapping.words.destinationIndex
               | rfl
-          have arithmeticInverse : (-30720 : ZMod p) * 65536 = 1 := by
+          have arithmeticInverse : SerializedInverse.Limb16 p := by
             calc
               (-30720 : ZMod p) * 65536 = (-3840 : ZMod p) * 524288 := by ring
               _ = 1 := inverse

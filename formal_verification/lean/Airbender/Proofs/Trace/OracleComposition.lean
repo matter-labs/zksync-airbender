@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.OracleExecution
 import Airbender.Proofs.Trace.ROMView
 import Airbender.Proofs.Trace.ExternalComposition
@@ -8,7 +10,7 @@ open Arithmetic Reference.RiscV.Sail Reference.Sail Trace.Proofs
 set_option backward.isDefEq.respectTransparency false in
 theorem row_step {p : Nat} [Fact p.Prime]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    (hp : FieldCapacity.NoWrap p ROM.limit) (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -50,7 +52,7 @@ set_option backward.isDefEq.respectTransparency false in
     advances only on actual decoder-selected external reads. -/
 theorem rows_trace {p : Nat} [Fact p.Prime]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    (hp : FieldCapacity.NoWrap p ROM.limit) (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -106,7 +108,7 @@ set_option backward.isDefEq.respectTransparency false in
     rows execute in clock order, reaching the terminal cells and read count. -/
 theorem trace_execution {p : Nat} [Fact p.Prime]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NoWrap p ROM.limit) (inverse : SerializedInverse.Clock p)
     {trace : Data p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (inputs : ExecutionBoundary trace initial cells program NonDeterminism.decoderFields)
     (accepted : Accepted trace) (decoded : Decoded trace program)

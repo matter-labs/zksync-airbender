@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.ShiftBinop.Soundness
 import Airbender.Proofs.Trace.BytePorts
 
@@ -5,7 +6,7 @@ namespace Airbender.ShiftBinop.Proofs
 open Arithmetic
 
 /-- The fixed query determines the immediate's upper sign byte. -/
-theorem binary_sign_byte {p : Nat} [Fact p.Prime] (hp : 256 < p)
+theorem binary_sign_byte {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 0 ∧ w 12 = 1) :
@@ -27,7 +28,7 @@ theorem binary_sign_byte {p : Nat} [Fact p.Prime] (hp : 256 < p)
 
 /-- Canonical output limbs follow from native byte queries and assembly;
     neither source-word mapping nor the desired instruction result is a premise. -/
-theorem binary_written_bounds {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem binary_written_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 0 ∧ w 12 = 1) (tag : Nat)
@@ -49,7 +50,7 @@ theorem binary_written_bounds {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   dsimp [limbBase]
   constructor <;> omega
 
-private theorem left_bytes_of_bounds {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+private theorem left_bytes_of_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {w : Nat → ZMod p} (small : ∀ i : Fin 4, (w (19 + i.val)).val < 256) :
     ∀ i : Fin 4, w (19 + i.val) =
       ((Trace.memoryWord (importedConstraintsMemoryPorts[0].readCode w)).extractLsb'
@@ -64,7 +65,7 @@ private theorem left_bytes_of_bounds {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
 
 /-- The source read is the Rust-packed native word, reconstructed from lookup
     bounds. This connection is shared by register and immediate binary forms. -/
-theorem binary_left_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem binary_left_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 0 ∧ w 12 = 1) (tag : Nat)
@@ -76,7 +77,7 @@ theorem binary_left_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
 
 /-- A register form's zero immediate forces a zero sign scratch byte, so the
     bounded binary operands are exactly the native rs2 register word. -/
-theorem binary_register_right_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem binary_register_right_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 0 ∧ w 12 = 1) (tag : Nat)
@@ -102,7 +103,7 @@ theorem binary_register_right_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
 
 /-- For an immediate form, the native x0 port packs to zero. Raw byte columns
     may cancel in the field; only lookup-bounded effective bytes are decoded. -/
-theorem binary_immediate_right_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem binary_immediate_right_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 0 ∧ w 12 = 1) (tag : Nat)
@@ -161,7 +162,7 @@ theorem binary_immediate_right_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   · exact high.2
 
 /-- Shift source bytes are bound in exactly the same native memory model. -/
-theorem shift_left_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem shift_left_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 1 ∧ w 12 = 0) :
@@ -172,7 +173,7 @@ theorem shift_left_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
 
 /-- Only the ranged low source bytes are used to derive the shift amount;
     the unused high source columns carry no extra range assumption. -/
-theorem shift_right_low_byte {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem shift_right_low_byte {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 1 ∧ w 12 = 0) :
@@ -190,7 +191,7 @@ theorem shift_right_low_byte {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
 /-- Every admitted shift tag writes canonical limbs before native read
     transport. REV8's unsupported nonzero table amount contributes zero;
     actual decoding and x0 history establish its architectural amount later. -/
-theorem shift_written_bounds {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem shift_written_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 1 ∧ w 12 = 0)

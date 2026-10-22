@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.AddSub.ModularExternalExecution
 import Airbender.Proofs.Trace.PooledOracleComposition
 
@@ -8,7 +9,7 @@ set_option warningAsError true
 
 set_option backward.isDefEq.respectTransparency false in
 theorem trace_execution
-    (hp : 536870912 ≤ babyBearModulus) (inverse : (-3840 : ZMod babyBearModulus) * 524288 = 1)
+    (hp : 536870912 ≤ babyBearModulus) (inverse : SerializedInverse.Clock babyBearModulus)
     {trace : PooledTrace babyBearModulus} {initial : State} {cells : List Cell} {program : List PooledProgramEntry}
     (inputs : PooledInputs trace initial cells program External.decoderFields)
     (accepted : Accepted trace) (decoded : PooledDecoded trace program)
@@ -62,7 +63,7 @@ theorem trace_execution
     inputs.image inputs.distinct consistent realized⟩
 
 theorem native_trace_execution
-    (hp : 536870912 ≤ babyBearModulus) (inverse : (-3840 : ZMod babyBearModulus) * 524288 = 1)
+    (hp : 536870912 ≤ babyBearModulus) (inverse : SerializedInverse.Clock babyBearModulus)
     {trace : PooledTrace babyBearModulus} {before : State} {cells : List Cell} {program : List PooledProgramEntry}
     (inputs : PooledBootInputs trace before cells program External.decoderFields)
     (accepted : Accepted trace) (decoded : PooledDecoded trace program)

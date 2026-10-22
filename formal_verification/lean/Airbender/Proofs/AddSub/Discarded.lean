@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.AddSub.Discarded
 import Airbender.Proofs.AddSub.PC
 import Airbender.Proofs.Sail.PC
@@ -9,7 +11,7 @@ open Airbender.Reference.Sail
 /-- Shared proof for retained RTYPE/ITYPE/SHIFTIOP and M clauses. Sail's x0 accessor
     discards the result, regardless of signs, overflow or a zero divisor. -/
 theorem discarded_soundness {p : Nat} [Fact p.Prime]
-    (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) :
+    (hp : FieldCapacity.NoWrap p 196608) (inverse : SerializedInverse.Limb16 p) :
     (Discarded.circuitModel (p := p)).SoundnessUnder
       Discarded.InterfaceAssumptions Discarded.spec := by
   rintro input finalPC w ⟨interfaces, constraints, mapping, _⟩

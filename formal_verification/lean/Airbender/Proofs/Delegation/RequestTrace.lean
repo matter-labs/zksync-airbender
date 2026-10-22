@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.Delegation.Theorems
 import Airbender.Review.Trace.Delegation.RequestTrace
 import Airbender.Proofs.Delegation.CallerPC
@@ -10,7 +12,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
-theorem caller_clock [Fact p.Prime] (hp : timestampBase < p)
+theorem caller_clock [Fact p.Prime] (hp : FieldCapacity.NoWrap p timestampBase)
     {w : Nat → ZMod p}
     (bound : (decodeTimestamp w AddSub.importedConstraintsTraceColumns.initialTime).Bounded)
     (aligned : (decodeTimestamp w AddSub.importedConstraintsTraceColumns.initialTime).lo % 4 = 0) :
@@ -56,8 +58,8 @@ theorem caller_member [Fact p.Prime] {data : RequestTrace p}
     cases equal : row.family <;> simp_all
   exact ⟨present, family⟩
 
-theorem caller_clocks_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem caller_clocks_unique [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} (accepted : RequestChecks data)
     (inputs : RequestInputs data before addresses) : (data.calls.map Requests.Request.time).Nodup := by
@@ -81,9 +83,9 @@ theorem caller_clocks_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (Trace.Proofs.write_time (by omega) (base := rawPair row.assignment AddSub.importedConstraintsTraceColumns.initialTime)
       clock.1 clock.2 (show 1 < 4 by decide)).2
 
-theorem request_binding_checks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (pcInverse : (-30720 : ZMod p) * 65536 = 1)
+theorem request_binding_checks [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (pcInverse : SerializedInverse.Limb16 p)
     {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} (accepted : RequestChecks data)
     (inputs : RequestInputs data before addresses) : RequestBinding data before := by
@@ -135,9 +137,9 @@ theorem request_binding_checks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     simpa only [Requests.fulfillment, timeOfPair, rawPair, decodeTimestamp] using (workerClocks row member).2
   · exact ⟨unique, pool.2.2⟩
 
-theorem request_binding [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (pcInverse : (-30720 : ZMod p) * 65536 = 1)
+theorem request_binding [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (pcInverse : SerializedInverse.Limb16 p)
     {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} (accepted : RequestAccepted data)
     (inputs : RequestInputs data before addresses) : RequestBinding data before :=
@@ -151,9 +153,9 @@ theorem unique_issued_worker [Fact p.Prime]
   exact Requests.Proofs.unique_fulfillment binding.fulfilled binding.invocations.1
     (List.mem_map.mpr ⟨row, member, rfl⟩)
 
-theorem request_memory_execution [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (pcInverse : (-30720 : ZMod p) * 65536 = 1)
+theorem request_memory_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (pcInverse : SerializedInverse.Limb16 p)
     {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {cells : List Trace.Cell}
     (accepted : RequestAccepted data) (inputs : RequestMemoryInputs data before addresses cells) :

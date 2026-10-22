@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.ArtifactChecks
 import Airbender.Proofs.UnifiedReduced.BinaryLookups
 import Airbender.Proofs.UnifiedReduced.ShiftLookups
@@ -53,7 +54,7 @@ theorem binary_wiring [Fact p.Prime] {setup : Table (ZMod p) (fields 10)} {w : N
     · exact g
     · exact k
 
-theorem binary_query_values [Fact p.Prime] (hp : 256 < p)
+theorem binary_query_values [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     {before : Reference.RiscV.Sail.State} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table before)))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)

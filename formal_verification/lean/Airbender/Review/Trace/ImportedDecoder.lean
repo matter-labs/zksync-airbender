@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.Soundness
 import Airbender.Review.Trace.UnifiedReduced.Theorems
 import Airbender.Proofs.Tables.ImportedPooledDecoder
@@ -33,8 +35,8 @@ namespace Airbender.UnifiedReduced
     keep their original claims; this entry explicitly selects the imported text. -/
 theorem imported_decoder_execution_soundness [Fact p.Prime]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     {trace : Trace.UnifiedTrace p} {initial : Reference.RiscV.Sail.State}
     {cells : List Trace.Cell}
     (inputs : ImportedExecutionInputs trace initial cells Trace.NativeDecoder.Proofs.unifiedProgram)

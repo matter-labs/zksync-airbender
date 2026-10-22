@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.Paths
 
 namespace Airbender.Trace.Proofs
@@ -14,8 +16,8 @@ theorem zip_fst_sublist {S T : Type} (left : List S) (right : List T) :
     | cons _ rest =>
       simpa only [List.zip_cons_cons, List.map_cons] using (ih rest).cons_cons head
 
-theorem state_clocks_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem state_clocks_unique [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (constraints : ∀ row ∈ trace.rows,
       FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) (row.constraints trace.rom))
     (states : (trace.initial :: trace.rows.map Row.finish).Perm
@@ -33,8 +35,8 @@ theorem state_clocks_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   simpa only [List.map_map, Function.comp_def, rank, Row.start, timeOfPair,
     rawPair, decodeTimestamp] using unique
 
-theorem row_clocks_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem row_clocks_unique [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     (trace.rows.map fun row => (decodeTimestamp row.assignment row.columns.initialTime).value).Nodup :=
   state_clocks_unique hp inverse accepted.constraints accepted.states boundary.initial boundary.aligned
@@ -66,8 +68,8 @@ private theorem row_slots [Fact p.Prime] [ClockLaws Kind p] (row : Row p Kind) :
 
 /-- Every actual native memory-access write time is unique across all selected
     rows, including readonly refreshes. Imported offsets are 0/1/2. -/
-theorem access_times_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem access_times_unique [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) : trace.accessTimes.Nodup := by
   let times := trace.rows.map fun row =>
     (decodeTimestamp row.assignment row.columns.initialTime).value

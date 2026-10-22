@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Delegation.NativeWindows
 import Airbender.Proofs.Delegation.Values
 import Airbender.Proofs.Delegation.SailHistory
@@ -117,7 +118,7 @@ def NativeWindow [Fact p.Prime] (data : MemoryData p) (before : State) (cells : 
         Transfer.afterSteps ⟨start, data.terminal, Transfer.afterSteps (transferData data) lower⟩ upper⟩
         atFinish cells
 
-theorem native_span_window_at_boundary [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem native_span_window_at_boundary [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     (rules : WriteBoundsFromReads data) (aligned : ∀ cell ∈ cells, cell.Aligned)
@@ -139,7 +140,7 @@ theorem native_span_window_at_boundary [Fact p.Prime] (hp : 2 * timestampBase + 
   intro row member
   exact accepted.constraints row (List.mem_of_mem_filter member)
 
-theorem native_span_window [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem native_span_window [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : State} {cells : List Cell} (inputs : MemoryInputs data before cells)
     (rules : WriteBoundsFromReads data) (aligned : ∀ cell ∈ cells, cell.Aligned)

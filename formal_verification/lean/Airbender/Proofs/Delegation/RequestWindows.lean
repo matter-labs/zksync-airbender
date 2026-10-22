@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Helpers.Delegation.RequestWindows
 import Airbender.Review.Helpers.Delegation.SpanABI
 import Airbender.Proofs.Delegation.Schedule
@@ -19,7 +21,7 @@ structure WindowFacts [Fact p.Prime] (callers : List (Trace.Row p Kind)) (worker
   aligned : ∀ caller ∈ callers, startClock caller % 4 = 0
   unique : ((callers.map fun caller => Requests.caller caller.assignment).map Requests.Request.time).Nodup
 
-theorem worker_write_time [Fact p.Prime] (hp : timestampBase < p) {worker : Delegation.Row p}
+theorem worker_write_time [Fact p.Prime] (hp : FieldCapacity.NoWrap p timestampBase) {worker : Delegation.Row p}
     (bound : (decodeTimestamp worker.assignment worker.columns.invocation).Bounded)
     (room : (decodeTimestamp worker.assignment worker.columns.invocation).lo + 2 < timestampBase) :
     worker.writeTime = (timeOfPair (Requests.fulfillment worker).time).value + 2 := by
@@ -31,7 +33,7 @@ theorem caller_window_clock {caller : Trace.Row p Kind} {lower upper : Nat}
     (lower < startClock caller + 3 ∧ startClock caller + 3 ≤ upper) ↔
       (lower ≤ startClock caller ∧ startClock caller < upper) := by omega
 
-theorem request_window [Fact p.Prime] (hp : timestampBase < p)
+theorem request_window [Fact p.Prime] (hp : FieldCapacity.NoWrap p timestampBase)
     {callers : List (Trace.Row p Kind)} {workers : MemoryData p}
     (facts : WindowFacts callers workers) {lower upper : Nat}
     (first : lower % 4 = 0) (last : upper % 4 = 0) (pastZero : 2 ≤ lower) :
@@ -121,9 +123,9 @@ theorem window_hash_calls [Fact p.Prime] {callers : List (Trace.Row p Kind)} {wo
   exact (congrArg Requests.Request.csr matched.2.1).symm.trans
     (congrArg Requests.csr (family worker matched.1))
 
-theorem request_windows [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (pcInverse : (-30720 : ZMod p) * 65536 = 1)
+theorem request_windows [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (pcInverse : SerializedInverse.Limb16 p)
     {data : RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0) (pastZero : 2 ≤ lower) :

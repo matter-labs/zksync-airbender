@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.Modular
 import Airbender.Proofs.UnifiedReduced.ModularNative
 import Airbender.Proofs.UnifiedReduced.MixedComposition
@@ -22,8 +23,8 @@ theorem custom_no_standard_clause [_root_.Sail.ArchSem.MemoryPlatform SailRV32.e
 
 set_option backward.isDefEq.respectTransparency false in
 theorem row_clause [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ babyBearModulus) (inverse : (-3840 : ZMod babyBearModulus) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod babyBearModulus) = 1)
+    (hp : 4194304 ≤ babyBearModulus) (inverse : SerializedInverse.Clock babyBearModulus)
+    (byteInverse : SerializedInverse.Scale256 babyBearModulus)
     {trace : UnifiedTrace babyBearModulus} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (accepted : Accepted trace) (inputs : Modular.Inputs trace initial cells program)
     (memory : MemoryExecution (ROMView.data initial trace) initial cells)
@@ -89,8 +90,8 @@ theorem source_after_history
 
 set_option backward.isDefEq.respectTransparency false in
 theorem row_step [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ babyBearModulus) (inverse : (-3840 : ZMod babyBearModulus) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod babyBearModulus) = 1)
+    (hp : 4194304 ≤ babyBearModulus) (inverse : SerializedInverse.Clock babyBearModulus)
+    (byteInverse : SerializedInverse.Scale256 babyBearModulus)
     {trace : UnifiedTrace babyBearModulus} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (accepted : Accepted trace) (decoded : Decoded trace program)
     (inputs : Modular.Inputs trace initial cells program)
@@ -120,8 +121,8 @@ theorem row_step [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 set_option backward.isDefEq.respectTransparency false in
 theorem trace_execution [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ babyBearModulus) (inverse : (-3840 : ZMod babyBearModulus) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod babyBearModulus) = 1)
+    (hp : 4194304 ≤ babyBearModulus) (inverse : SerializedInverse.Clock babyBearModulus)
+    (byteInverse : SerializedInverse.Scale256 babyBearModulus)
     {trace : UnifiedTrace babyBearModulus} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (inputs : Modular.Inputs trace initial cells program)
     (accepted : Accepted trace) (decoded : Decoded trace program) :

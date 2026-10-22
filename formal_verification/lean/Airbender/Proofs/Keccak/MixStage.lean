@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Keccak.Mix
 
 namespace Airbender.Keccak.Proofs.Mix
@@ -6,7 +7,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1000000
 
-theorem stage_writes [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem stage_writes [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))

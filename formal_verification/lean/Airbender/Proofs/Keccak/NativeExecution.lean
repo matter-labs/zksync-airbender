@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Keccak.NativeEffects
 import Airbender.Proofs.Keccak.MixStage
 import Airbender.Proofs.Keccak.Iota
@@ -18,8 +20,8 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1000000
 
-theorem operation_execution_at_boundary [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem operation_execution_at_boundary [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (accepted : Delegation.MemoryAccepted data)
     (inputs : Delegation.Proofs.BoundaryOperationInputs data before cells Controller.rows)
@@ -42,8 +44,8 @@ theorem operation_execution_at_boundary [Fact p.Prime] (hp : 16777216 ≤ p)
     (importedConstraints (setupTable Controller.rows)) importedConstraintsTimestampLookups)
   exact native_effects hp inverse core active reads
 
-theorem operation_execution [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem operation_execution [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (accepted : Delegation.MemoryAccepted data)
     (inputs : Delegation.OperationInputs data before cells Controller.rows)

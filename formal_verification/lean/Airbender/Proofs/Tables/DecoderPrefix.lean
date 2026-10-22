@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Decoder.NativeData
 
 namespace Airbender.Trace.NativeDecoder.Proofs
@@ -36,7 +37,7 @@ theorem fixedTags_sound (blocks : List Block) (checked : fixedTags blocks = true
       · simpa [getFromBlocks, Block.length, Block.get?, inside] using And.intro small different
       · simpa only [getFromBlocks, Block.length, if_neg inside] using ih tail (n - length)
 
-theorem fixedTags_ne_decoder {p : Nat} [Fact p.Prime] (hp : 65536 < p)
+theorem fixedTags_ne_decoder {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 65536)
     (column : Column) (checked : fixedTags column.blocks.toList = true) (n : Nat) :
     (46 : ZMod p) ≠ (signedValue ((column.get? n).getD 0) : ZMod p) := by
   have actual := fixedTags_sound _ checked n

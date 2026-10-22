@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.AddSub.ArtifactChecks
 import Airbender.Review.Helpers.Properties
 import Airbender.Review.Helpers.Core.Field
@@ -13,7 +14,7 @@ open Airbender.Arithmetic
 
 /-- The shared comparison equations force a canonical BabyBear result on every
     modular branch. No operand bounds or arithmetic-result premise is used. -/
-theorem modular_canonical_output {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+theorem modular_canonical_output {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (s10 : w 10 = 0) (s11 : w 11 = 0) (s12 : w 12 = 0)

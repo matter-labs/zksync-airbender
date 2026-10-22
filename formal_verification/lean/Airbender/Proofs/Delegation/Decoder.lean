@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Delegation.Decoder
 import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.Sail.RiscV
@@ -8,7 +9,7 @@ namespace Airbender.Delegation.Caller.Proofs
 open Trace Arithmetic
 set_option warningAsError true
 
-theorem query_csr (hp : 65536 < p) {w : Nat → ZMod p} {entry : ProgramEntry}
+theorem query_csr (hp : FieldCapacity.NoWrap p 65536) {w : Nat → ZMod p} {entry : ProgramEntry}
     (equal : nativeQuery w = query entry) :
     (Requests.caller w).csr = Requests.csr entry.data.family := by
   have field := congrArg (fun values : Vector (ZMod p) 9 => values[3]) equal
@@ -18,7 +19,7 @@ theorem query_csr (hp : 65536 < p) {w : Nat → ZMod p} {entry : ProgramEntry}
   simp [Requests.caller, AddSub.importedConstraintsDecoderColumns,
     field, ZMod.val_natCast_of_lt bound]
 
-theorem query_selected [Fact p.Prime] (hp : 65536 < p) {w : Nat → ZMod p}
+theorem query_selected [Fact p.Prime] (hp : FieldCapacity.NoWrap p 65536) {w : Nat → ZMod p}
     {entry : ProgramEntry}
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints)
     (equal : nativeQuery w = query entry) : Requests.Selected w := by
@@ -44,7 +45,7 @@ theorem public_source [Fact p.Prime] {before : Reference.RiscV.Sail.State}
   exact ⟨program.get i, List.get_mem _ _,
     Trace.Proofs.run_program_sources image _ (List.get_mem _ _), equal⟩
 
-theorem caller_binding [Fact p.Prime] (hp : 65536 < p)
+theorem caller_binding [Fact p.Prime] (hp : FieldCapacity.NoWrap p 65536)
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List ProgramEntry} {w : Nat → ZMod p}
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints)

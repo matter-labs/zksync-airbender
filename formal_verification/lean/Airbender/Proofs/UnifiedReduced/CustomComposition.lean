@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.CustomCases
 import Airbender.Proofs.UnifiedReduced.TriAddNative
 import Airbender.Proofs.UnifiedReduced.XorRotateExecution
@@ -10,9 +12,9 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
 set_option backward.isDefEq.respectTransparency false in
-theorem custom_row_clause_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem custom_row_clause_from_memory [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     (accepted : Accepted trace)
@@ -51,9 +53,9 @@ theorem custom_row_clause_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4
         words rfl position fields memory query encoding history
 
 set_option backward.isDefEq.respectTransparency false in
-theorem custom_row_clause [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem custom_row_clause [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (accepted : Accepted trace) (decoded : Decoded trace program)
     (inputs : Custom.Inputs trace initial cells program)
@@ -72,9 +74,9 @@ theorem custom_row_clause [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     member position (run_program_sources image entry present).fields query history
 
 set_option backward.isDefEq.respectTransparency false in
-theorem custom_row_step [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem custom_row_step [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (accepted : Accepted trace) (decoded : Decoded trace program)
     (inputs : Custom.Inputs trace initial cells program)
@@ -102,9 +104,9 @@ theorem custom_row_step [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       exact custom_row_clause hp clockInverse byteInverse accepted decoded inputs member position present query history
 
 set_option backward.isDefEq.respectTransparency false in
-theorem custom_trace_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem custom_trace_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (inputs : Custom.Inputs trace initial cells program)
     (accepted : Accepted trace) (decoded : Decoded trace program) :

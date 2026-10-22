@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.UnifiedReduced.Artifact
 import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.Constraints
@@ -7,7 +9,7 @@ namespace Airbender.UnifiedReduced.Proofs
 open Trace
 
 theorem timestamp_equations {p : Nat} [Fact p.Prime]
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
+    (inverse : SerializedInverse.Clock p) {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     ∃ carry : Nat, carry ≤ 1 ∧ w 2 + 4 = w 32 + 524288 * carry ∧ w 3 + carry = w 33 := by
   have carry := Verification.assertion_of_holds h
@@ -37,7 +39,7 @@ theorem final_clock_bound {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fiel
   exact ⟨low, high⟩
 
 theorem clock_advance {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (clockConstraints setup))
     (initial : (decodeTimestamp w importedConstraintsTraceColumns.initialTime).Bounded) :
@@ -51,7 +53,7 @@ theorem clock_advance {p : Nat} [Fact p.Prime]
   · simpa [decodeTimestamp, importedConstraintsTraceColumns] using high
 
 theorem clocks {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (clockConstraints setup))
     (inputs : ClockInputs importedConstraintsTraceColumns w) :

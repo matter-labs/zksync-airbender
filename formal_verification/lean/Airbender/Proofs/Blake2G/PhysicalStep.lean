@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2G.PhysicalWords
 
 namespace Airbender.Blake2G.Proofs
@@ -7,8 +9,8 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 set_option backward.isDefEq.respectTransparency false
 
-theorem physical_state_step [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem physical_state_step [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {w : Nat → ZMod p} {state message : BitVec 32} {before after : State}
     {cells : List Cell} {events : List MemoryAccess}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w)

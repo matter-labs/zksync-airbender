@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.Blake2Round.Finalization
 import Airbender.Proofs.Constraints
 import Airbender.Proofs.Blake2Round.FinalWriteback
@@ -78,8 +80,8 @@ theorem nonfinal_soundness {p : Nat} [Fact p.Prime] :
   exact chaining_preserved holds (nonfinal_flag holds mapping interface)
 
 /-- One shared soundness claim covers all full/reduced final and non-final rounds. -/
-theorem finalization_soundness {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+theorem finalization_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p) :
     (Finalization.circuitModel (p := p)).SoundnessUnder (Finalization.InterfaceAssumptions (p := p))
       Finalization.spec := by
   intro input output w ⟨interface, holds, mapping⟩

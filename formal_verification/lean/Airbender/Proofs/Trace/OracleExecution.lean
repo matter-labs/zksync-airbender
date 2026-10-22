@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.Composition
 import Airbender.Proofs.Trace.OracleConsumption
 
@@ -23,8 +25,8 @@ theorem clause_original [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
   unfold clause
   split <;> simp_all [instructionClause, Reference.RiscV.Sail.registerClause, profileClause]
 
-theorem local_read_execution [Fact p.Prime] (hp : ROM.limit < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) (epoch : Nat)
+theorem local_read_execution [Fact p.Prime] (hp : FieldCapacity.NoWrap p ROM.limit)
+    (inverse : SerializedInverse.Clock p) (epoch : Nat)
     {w : Nat → ZMod p}
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.clockConstraints)
     (initialPC : (Word.mk (w 0).val (w 1).val).Bounded)
@@ -46,7 +48,7 @@ theorem local_read_execution [Fact p.Prime] (hp : ROM.limit < p)
     (Word.mk (w 33).val (w 34).val).toBitVec) before = .ok () after at written
   let value := response (⟨.addSub, w⟩ : Row p)
   change run (SailRV32.Functions.wX_bits (.Regidx rd) value) before = .ok () after at written
-  have arithmeticInverse : (-30720 : ZMod p) * 65536 = 1 := by
+  have arithmeticInverse : SerializedInverse.Limb16 p := by
     calc
       (-30720 : ZMod p) * 65536 = (-3840 : ZMod p) * 524288 := by ring
       _ = 1 := inverse
@@ -70,8 +72,8 @@ theorem local_read_execution [Fact p.Prime] (hp : ROM.limit < p)
 /-- The native destination port supplies the entire register update. Stream
     agreement is only the external input boundary, while PC+4 is proved from
     the same imported equations as every other ADD/SUB row. -/
-theorem read_row_execution [Fact p.Prime] (hp : ROM.limit < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem read_row_execution [Fact p.Prime] (hp : FieldCapacity.NoWrap p ROM.limit)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (initialPC : trace.initial.word.Bounded)
     {w : Nat → ZMod p} (member : (⟨.addSub, w⟩ : Row p) ∈ trace.rows)
     {entry : ProgramEntry} {rd : BitVec 5}
@@ -92,7 +94,7 @@ set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
 theorem instruction_step {p : Nat} [Fact p.Prime]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    (hp : FieldCapacity.NoWrap p ROM.limit) (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.MulDiv.Trace
 import Airbender.Proofs.Trace.Values
 
@@ -29,7 +31,7 @@ theorem write_sources {p : Nat} [Fact p.Prime]
 /-- Every operand, write and terminal register has bounded limbs, derived
     from the public Sail seed and latest-write/read consistency. -/
 theorem native_value_bounds {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory) :

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2G.CallPhysical
 import Airbender.Review.Trace.Workers.Blake2G.WorkVector
 import Airbender.Proofs.Delegation.ReverseFold
@@ -39,8 +41,8 @@ theorem physical_reference_step (reduced : Bool) (call : Nat) {before after : St
   · exact congrArg Word.value (messageIndex 0).symm
   · exact congrArg Word.value (messageIndex 1).symm
 
-theorem call_workvector [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem call_workvector [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :

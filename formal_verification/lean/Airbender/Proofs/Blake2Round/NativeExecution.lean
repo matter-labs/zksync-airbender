@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.Blake2Round.Execution
 import Airbender.Proofs.Blake2Round.Row
 import Airbender.Review.Trace.Delegation.Theorems
@@ -68,8 +70,8 @@ theorem native_mapping [Fact p.Prime] (round : Fin 10) {w : Nat → ZMod p}
       Preparation.words, Mixing.extendedWrites]
   · rfl
 
-theorem native_effects [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1) (round : Fin 10) {w : Nat → ZMod p}
+theorem native_effects [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p) (round : Fin 10) {w : Nat → ZMod p}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setupTable))
     (mask : Memory.RoundMask w round)
     (reads : ∀ port ∈ importedConstraintsMemoryPorts, (readToken w port).word.Bounded) :
@@ -93,8 +95,8 @@ theorem native_effects [Fact p.Prime] (hp : 8388608 ≤ p)
     exact reads (importedConstraintsMemoryPorts[26 + i.val]'(by change 26 + i.val < 43; omega))
       (Array.getElem_mem (by change 26 + i.val < 43; omega))
 
-theorem operation_execution_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem operation_execution_at_boundary [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
     {control : Fin 4096 → Vector Nat 6}
     (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.Proofs.BoundaryOperationInputs data before cells control)
@@ -117,8 +119,8 @@ theorem operation_execution_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
     (importedConstraints setupTable) importedConstraintsTimestampLookups)
   exact ⟨round, mask, native_effects hp inverse round core mask reads⟩
 
-theorem operation_execution [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem operation_execution [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
     {control : Fin 4096 → Vector Nat 6}
     (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.OperationInputs data before cells control)

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2G.FrameQueryBindings
 import Airbender.Proofs.Blake2G.FrameQueryRows
 import Airbender.Proofs.Blake2Round.NativeDiagonalView0
@@ -12,7 +14,7 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
 theorem columns6 {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+    (compatible : SerializedInverse.Scale64 p)
     (control : Fin 512 → Vector Nat 7) (w : Nat → ZMod p) :
     (entry6 (Blake2G.setupTable control)).map
         (Expression.eval (Verification.environment (nativeDiagonalAssignment 0 w))) =
@@ -59,8 +61,8 @@ theorem columns8 {p : Nat} [Fact p.Prime]
   interval_cases lane
   all_goals simp [values8, frame, source5Values, plainPad]
 
-theorem queries {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+theorem queries {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
+    (compatible : SerializedInverse.Scale64 p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) (i : Fin 3) :

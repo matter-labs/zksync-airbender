@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.SubwordMemory.Artifact
 import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.Constraints
@@ -7,7 +9,7 @@ namespace Airbender.SubwordMemory.Proofs
 open Trace
 
 theorem timestamp_equations {p : Nat} [Fact p.Prime]
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
+    (inverse : SerializedInverse.Clock p) {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     ∃ carry : Nat, carry ≤ 1 ∧ w 2 + 4 = w 15 + 524288 * carry ∧ w 3 + carry = w 16 := by
   have carry := Verification.assertion_of_holds h
@@ -40,7 +42,7 @@ theorem final_clock_bound {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fiel
     independent of the selected byte/halfword load/store mode. Global histories supply
     `ClockInputs`; no per-read or expected execution value occurs here. -/
 theorem clocks {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (clockConstraints setup))
     (inputs : ClockInputs importedConstraintsTraceColumns w) :

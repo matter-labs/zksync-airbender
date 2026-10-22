@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.Blake2G.Row
 import Airbender.Proofs.Blake2G.Control
 import Airbender.Proofs.Blake2G.Addresses
@@ -7,8 +9,8 @@ namespace Airbender.Blake2G.Row.Proofs
 
 set_option maxHeartbeats 800000
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (compatible : SerializedInverse.Scale64 p) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec := by
   intro input output w ⟨interface, constraints, mapping⟩
   have controller := Control.Proofs.soundness (by omega) input.controller output.controller w
@@ -40,7 +42,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
 
 /-- The schedule indices used to read the message block are canonical indices,
     not silently reduced out-of-range values. -/
-theorem message_indices_exact {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem message_indices_exact {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {input : Input} {output : Output} {w : Nat → ZMod p}
     (row : (circuitModel (p := p)).relation input output w) (i : Fin 2) :
     (Fin.ofNat 16 output.controller.messageOffsets[i]).val = output.controller.messageOffsets[i] := by

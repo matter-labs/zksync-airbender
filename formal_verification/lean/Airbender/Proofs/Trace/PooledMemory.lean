@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.PooledCode
 import Airbender.Proofs.Trace.WordMemory
 import Airbender.Review.Helpers.Context.Boundary
@@ -12,7 +14,7 @@ set_option backward.isDefEq.respectTransparency false in
 theorem pooled_word_address {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
     [registry : PooledRegistry projection]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -86,7 +88,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- The same pooled grouped history realizes actual Sail word-RAM accesses.
     Canonical addresses are recovered from initialized cells, not assumed. -/
 theorem pooled_word_native_transport {p : Nat} [Fact p.Prime]
-    (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NoWrap p 33554432) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -135,7 +137,7 @@ theorem pooled_word_execution {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
     [registry : PooledRegistry projection]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -162,7 +164,7 @@ theorem pooled_word_execution {p : Nat} [Fact p.Prime]
           (retiredState after (Word.mk (w 11).val (w 12).val).toBitVec) := by
   have limbSize : limbBase < p := by dsimp [limbBase]; omega
   have romSize : ROM.limit < p := by dsimp [ROM.limit]; omega
-  have arithmeticInverse : (-30720 : ZMod p) * 65536 = 1 := by
+  have arithmeticInverse : SerializedInverse.Limb16 p := by
     calc
       (-30720 : ZMod p) * 65536 = (-3840 : ZMod p) * 524288 := by ring
       _ = 1 := inverse

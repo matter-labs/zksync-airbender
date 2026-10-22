@@ -42,10 +42,20 @@ The checked conclusions are:
 | Clock conditions from imported constraints | [`ClockLaws`](../../../Proofs/Trace/History.lean) |
 | Actual Sail interpretation | [native history transport](../../../Proofs/Trace/NativeSailHistory.lean) |
 
-This result covers the ports included by the selected model. Public initialization
-and exact matching remain conditions. Worker ROM/public-byte binding and global
-inactive-row obligations remain separate; a consistent memory history does not
-by itself validate an instruction or a caller's control word.
+The generic history result retains its public-image and domain conditions.
+The [native initialization adapters](../../Trace/Initialization.lean) derive
+computed seed correspondence, selected-domain uniqueness/alignment and coverage
+of all 32 registers from the native boundary geometry. The public Sail state,
+program/configuration and initial register profile remain inputs, with register
+boundary/teardown obligations separate from the RAM-only GKR slices. See the
+[initialization guide](../../Circuits/Initialization/README.md).
+
+Exact logical token matching remains a separate memory-argument boundary. The
+initialization GKR proofs establish encoded token products; equality of sampled
+products does not deterministically imply full token-multiset equality or prove
+cryptographic soundness. Worker ROM/public-byte binding and global inactive-row
+obligations also remain separate; a consistent memory history does not by itself
+validate an instruction or a caller's control word.
 
 Start with [InitialImage](InitialImage.lean) for actual public Sail GPR/byte reads
 and the tracked cell domain. [Initialization](Initialization.lean) describes the

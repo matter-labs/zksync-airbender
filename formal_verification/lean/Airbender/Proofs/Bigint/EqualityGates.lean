@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.Bigint.Equality
 import Airbender.Proofs.Bigint.AdditiveFields
 
@@ -10,7 +11,7 @@ set_option maxHeartbeats 4000000
 
 def carryColumn (i : Nat) : Nat := 82 + i
 
-theorem native_steps {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
+theorem native_steps {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 64 = 1) : ∀ i : Fin 16,
@@ -32,7 +33,7 @@ theorem native_steps {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   all_goals norm_num [Variables.leftLimbs, Variables.rightLimbs, carryColumn]
   all_goals linear_combination gate
 
-theorem native_results {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
+theorem native_results {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 64 = 1) : ∀ i : Fin 16,
@@ -58,7 +59,7 @@ theorem native_results {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   all_goals constructor
   all_goals first | linear_combination definition | linear_combination -write
 
-theorem native_sum {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
+theorem native_sum {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 64 = 1) : w 210 = ∑ i : Fin 16, w (67 + i.val) := by
@@ -90,7 +91,7 @@ theorem native_zero_check {p : Nat} [Fact p.Prime]
   · simp only [isZero, ↓reduceIte]
     exact zero.resolve_left isZero
 
-theorem native_control {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
+theorem native_control {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 64 = 1) : w 57 = w 212 * (1 - w 98) ∧ w 58 = 0 := by

@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Helpers.Properties
 import Mathlib.Tactic.IntervalCases
 import Airbender.Proofs.Blake2G.FrameQueryEntries
@@ -26,7 +27,7 @@ theorem row0 {p : Nat} [Fact p.Prime] (table : Table (ZMod p) (fields 9)) (f : F
   all_goals simp [entry0, Arithmetic.linearExpression, Expression.eval, Verification.environment, Frame.assignment, assemble, Frame.base]
 
 theorem row1 {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+    (compatible : SerializedInverse.Scale64 p)
     (table : Table (ZMod p) (fields 9)) (f : Frame p) :
     (entry1 table).map (Expression.eval (Verification.environment f.assignment)) =
       #v[(-7864320 : ZMod p) * (f.inputs[6] - f.dBytes[0]),

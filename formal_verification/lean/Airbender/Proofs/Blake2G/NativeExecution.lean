@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2G.NativeEffects
 import Airbender.Review.Circuits.Blake2G.Execution
 import Airbender.Proofs.Blake2G.Soundness
@@ -10,8 +12,8 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 250000
 
-theorem operation_execution_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem operation_execution_at_boundary [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
     {control : Fin 4096 → Vector Nat 6}
     (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.Proofs.BoundaryOperationInputs data before cells control)
@@ -32,8 +34,8 @@ theorem operation_execution_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
     (importedConstraints (setupTable Control.controllerRows)) importedConstraintsTimestampLookups)
   exact native_effects hp inverse core reads
 
-theorem operation_execution [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem operation_execution [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
     {control : Fin 4096 → Vector Nat 6}
     (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.OperationInputs data before cells control)

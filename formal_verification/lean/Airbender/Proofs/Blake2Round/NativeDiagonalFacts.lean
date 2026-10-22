@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2Round.NativeDiagonalAssignment
 import Airbender.Proofs.Blake2Round.NativeXorTransfer
 import Airbender.Proofs.Blake2G.QueryCarries
@@ -9,7 +11,7 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 4000000
 
 /-- All four addition carries are supplied by native carry-aware memberships. -/
-theorem native_diagonal_addition_carries {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem native_diagonal_addition_carries {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     (call : Fin 4) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) (slot : Fin 4) :
@@ -43,7 +45,7 @@ theorem native_diagonal_first_c_flags {p : Nat} [Fact p.Prime]
     Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] using asserted
 
 /-- The two final carry values are bounded by the native seven-bit carry table. -/
-theorem native_diagonal_last_c_bounds {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem native_diagonal_last_c_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     (call : Fin 4) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) (slot : Fin 2) :
@@ -60,8 +62,8 @@ theorem native_diagonal_last_c_bounds {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
 
 /-- Derive all flags from native acceptance and projected lookups. The shared
     G lemma derives the final two Boolean flags from bounded arithmetic. -/
-theorem native_diagonal_flags_complete {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) (call : Fin 4) {w : Nat → ZMod p}
+theorem native_diagonal_flags_complete {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 262144)
+    (compatible : SerializedInverse.Scale64 p) (call : Fin 4) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable))
     (queries : Blake2G.Proofs.QueryHolds (Blake2G.setupTable (fun _ => Vector.replicate 7 0))

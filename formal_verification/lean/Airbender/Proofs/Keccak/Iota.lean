@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.Keccak.Iota
 import Airbender.Proofs.Keccak.DecodeControl
 import Airbender.Proofs.Keccak.FixedLookups
@@ -21,7 +22,7 @@ private def packed {p : Nat} (w : Nat → ZMod p) (columns : Vector Nat 4) : Nat
   (w columns[0]).val + 65536 * ((w columns[1]).val +
     65536 * ((w columns[2]).val + 65536 * (w columns[3]).val))
 
-private theorem iota_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
+private theorem iota_routes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 7)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 0 = 1) (selected : w 63 = 1) (operation : Fin 5) (limb : Fin 4) :
@@ -58,7 +59,7 @@ private theorem iota_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
       r0, r1, r2, r3, r4, aColumns, bColumns, cColumns, nativeLimbs, temporary] at a b c ⊢
   all_goals exact ⟨by linear_combination a, by linear_combination b, by linear_combination c⟩
 
-private theorem iota_bytes {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+private theorem iota_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))
@@ -85,7 +86,7 @@ private theorem iota_bytes {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
       omega
     · simpa [tags] using query
 
-private theorem effective_round {p : Nat} [Fact p.Prime] (hp : 2048 ≤ p)
+private theorem effective_round {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 2048)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (column : Fin 5) (round : Fin 25)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -132,7 +133,7 @@ private theorem constant_assembly (round : Fin 32) :
       65536 * (adjustedConstant round.val / 65536 ^ 3 % 65536))) := by
   fin_cases round <;> decide +kernel
 
-private theorem control_pair {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+private theorem control_pair {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (round : Fin 32)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))
@@ -168,7 +169,7 @@ private theorem control_pair {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   have splitHigh : (w (111 + 2 * limb.val)).val = round.val + 32 * (2 * limb.val + 1) := by omega
   exact ⟨splitLow, splitHigh⟩
 
-private theorem control_bytes {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+private theorem control_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (round : Fin 32)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))
@@ -183,7 +184,7 @@ private def rhsLimb {p : Nat} (w : Nat → ZMod p) (round : Fin 32)
   if operation.val = 0 then adjustedConstant round.val / 65536 ^ limb.val % 65536
   else (w bColumns[operation][limb]).val
 
-private theorem iota_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+private theorem iota_limb {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (round : Fin 32)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))
@@ -235,7 +236,7 @@ private theorem iota_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   norm_num only [Nat.reducePow] at xor
   exact xor.symm
 
-theorem iota_written_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem iota_written_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control))) (active : w 0 = 1) (selected : w 63 = 1)
@@ -280,7 +281,7 @@ theorem iota_written_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     | simpa using c2
     | simpa using c3
 
-private theorem iota_operation {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+private theorem iota_operation {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (round : Fin 32)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))
@@ -343,7 +344,7 @@ private theorem reference_parity (state : Vector Nat 25) (column : Fin 5) :
       state[5 * column.val + 2] ^^^ state[5 * column.val + 3] ^^^ state[5 * column.val + 4] := by
   fin_cases column <;> rfl
 
-theorem iota_column {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem iota_column {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     {state : Vector Nat 25} {column : Fin 5} {round : Fin 25}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)

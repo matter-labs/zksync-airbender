@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.Workers.Keccak.Windows
 import Airbender.Proofs.Keccak.PermutationBinding
 import Airbender.Proofs.Keccak.MemorySoundness
@@ -8,8 +10,8 @@ open Trace Trace.Proofs Arithmetic Reference.RiscV.Sail Delegation.Proofs
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-theorem window_binding [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem window_binding [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {data : Delegation.MemoryData p} {before : State} {cells : List Cell} {lower upper : Nat}
     (accepted : Delegation.MemoryAccepted data) (inputs : WindowInputs data before cells lower upper)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.ControlPreparation
 import Airbender.Proofs.UnifiedReduced.MixedWindowProjection
 import Airbender.Proofs.UnifiedReduced.ZeroRegister
@@ -19,7 +21,7 @@ theorem literal_fields {literal : ControlLiteral} {register : BitVec 5} (nonzero
     UnifiedReduced.decoderFields, Trace.decoderFields, UnifiedReduced.arithmeticFields,
     Trace.arithmeticFields, DecoderData.mapFamily, customDecoderFields, nonzero]
 
-theorem literal_operands_result [Fact p.Prime] (hp : 196608 < p)
+theorem literal_operands_result [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 4 = 1) (selected : w 11 = 1)
@@ -31,8 +33,8 @@ theorem literal_operands_result [Fact p.Prime] (hp : 196608 < p)
   simpa [operands.1, operands.2.1, Word.toBitVec, Word.value] using
     immediate_add_result hp h active selected ⟨operands.2.2.1, operands.2.2.2⟩ leftBound immediate
 
-theorem preparation_cycle_row [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {data : RequestTrace p} {before : State}
+theorem preparation_cycle_row [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {data : RequestTrace p} {before : State}
     {addresses : List (BitVec 32)} {cut : Nat}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     (prefixScope : data.workers.windowRows (cut - 4) cut = [])
@@ -64,8 +66,8 @@ theorem preparation_cycle_row [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   rw [prefixScope] at prior
   cases prior
 
-theorem preparation_row [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {data : RequestTrace p} {before : State}
+theorem preparation_row [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {data : RequestTrace p} {before : State}
     {addresses : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry} {cut : Nat}
     {register : BitVec 5} {literal : ControlLiteral}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
@@ -73,8 +75,8 @@ theorem preparation_row [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     ∃ row ∈ data.machine.rows, Delegation.Caller.startClock row + 4 = cut ∧ row ∉ data.callers :=
   preparation_cycle_row hp inverse accepted inputs scope.prefixScope scope.afterInitial scope.beforeTerminal aligned
 
-theorem prefix_write_before_cut [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {data : RequestTrace p} {before : State}
+theorem prefix_write_before_cut [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {data : RequestTrace p} {before : State}
     {addresses : List (BitVec 32)} {cut : Nat}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     (prefixScope : data.workers.windowRows (cut - 4) cut = []) (aligned : cut % 4 = 0) :
@@ -108,8 +110,8 @@ theorem prefix_write_before_cut [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     rw [time]
     omega
 
-theorem prefix_write_before_preparation_cut [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {data : RequestTrace p} {before : State}
+theorem prefix_write_before_preparation_cut [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {data : RequestTrace p} {before : State}
     {addresses : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry} {cut : Nat}
     {register : BitVec 5} {literal : ControlLiteral}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
@@ -187,7 +189,7 @@ theorem sequential_fields_mask {instruction : SailRV32.instruction} {data : Deco
     all_goals dsimp at mask
     all_goals simp [← mask]
 
-theorem sequential_program_pc_advance [Fact p.Prime] (hp : 524288 < p)
+theorem sequential_program_pc_advance [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -240,7 +242,7 @@ theorem wrapped_fields_mask {instruction : SailRV32.instruction} {data : Decoder
     all_goals dsimp at mask
     all_goals simp [← mask]
 
-theorem wrapped_program_pc_advance [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem wrapped_program_pc_advance [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before state : State}
     {ca oa : List (BitVec 32)} (setup : data.machine.rom = Setup.table state)
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -306,8 +308,8 @@ theorem wrapped_program_pc_advance [Fact p.Prime] (hp : 4194304 ≤ p)
         rw [setup] at core
         exact UnifiedReduced.Proofs.comparison_pc hp core flags binary rom bounded aligned
 
-theorem wrapped_program_pc_clock [Fact p.Prime] (hp : 4194304 ≤ p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem wrapped_program_pc_clock [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before state : State}
     {ca oa : List (BitVec 32)} (setup : data.machine.rom = Setup.table state)
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -354,7 +356,7 @@ theorem wrapped_program_pc_clock [Fact p.Prime] (hp : 4194304 ≤ p)
   intro row member
   exact (establish _ row member rfl).2
 
-theorem arithmetic_program_pc_advance [Fact p.Prime] (hp : 524288 < p)
+theorem arithmetic_program_pc_advance [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -362,7 +364,7 @@ theorem arithmetic_program_pc_advance [Fact p.Prime] (hp : 524288 < p)
     ∀ row ∈ data.machine.rows, row.finish.word.value = row.start.word.value + 4 :=
   sequential_program_pc_advance hp accepted publicProgram ordinaryProgram (arithmetic_sequential_program registry)
 
-theorem literal_program_pc_advance [Fact p.Prime] (hp : 524288 < p)
+theorem literal_program_pc_advance [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -370,8 +372,8 @@ theorem literal_program_pc_advance [Fact p.Prime] (hp : 524288 < p)
     ∀ row ∈ data.machine.rows, row.finish.word.value = row.start.word.value + 4 :=
   arithmetic_program_pc_advance hp accepted publicProgram ordinaryProgram (literal_arithmetic_program registry)
 
-theorem sequential_program_pc_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem sequential_program_pc_clock [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -411,8 +413,8 @@ theorem sequential_program_pc_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 <
   intro row member
   exact establish _ row member rfl
 
-theorem arithmetic_program_pc_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem arithmetic_program_pc_clock [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -422,8 +424,8 @@ theorem arithmetic_program_pc_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 <
         data.machine.initial.word.value + Delegation.Caller.startClock row :=
   sequential_program_pc_clock hp inverse accepted publicProgram ordinaryProgram (arithmetic_sequential_program registry)
 
-theorem literal_program_pc_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem literal_program_pc_clock [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -433,7 +435,7 @@ theorem literal_program_pc_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
         data.machine.initial.word.value + Delegation.Caller.startClock row :=
   arithmetic_program_pc_clock hp inverse accepted publicProgram ordinaryProgram (literal_arithmetic_program registry)
 
-theorem caller_query_pc_word [Fact p.Prime] (hp : limbBase < p)
+theorem caller_query_pc_word [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {row : Trace.Row p UnifiedFamily} {entry : Delegation.Caller.ProgramEntry}
     (query : row.decoderQuery = Delegation.Caller.query entry) :
     row.start.word = Word.ofBitVec entry.pc := by
@@ -450,7 +452,7 @@ theorem caller_query_pc_word [Fact p.Prime] (hp : limbBase < p)
       (by rw [low, ZMod.val_natCast_of_lt (lt_trans bound.1 hp)]; rfl)
       (by rw [high, ZMod.val_natCast_of_lt (lt_trans bound.2 hp)]; rfl)
 
-theorem matched_caller_entry_family [Fact p.Prime] (hp : 2048 ≤ p)
+theorem matched_caller_entry_family [Fact p.Prime] (hp : FieldCapacity.AtLeast p 2048)
     {caller : Trace.Row p UnifiedFamily} {worker : Delegation.Row p} {entry : Delegation.Caller.ProgramEntry}
     (query : caller.decoderQuery = Delegation.Caller.query entry)
     (matched : Delegation.Requests.fulfillment worker = request caller.assignment) :
@@ -467,8 +469,8 @@ theorem matched_caller_entry_family [Fact p.Prime] (hp : 2048 ≤ p)
       cases entry.data.family <;> simp only [Delegation.Requests.csr] <;> omega
     rwa [field, ZMod.val_natCast_of_lt bound] at csr
 
-theorem program_caller_window [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem program_caller_window [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {family : Delegation.Family} {lower upper : Nat}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -520,8 +522,8 @@ theorem program_caller_window [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have family := region.callers entry (List.get_mem _ _) (by dsimp only [entry]; omega)
   exact (matched_caller_entry_family (by omega) query matched.2.1).trans family
 
-theorem wrapped_program_caller_window [Fact p.Prime] (hp : 4194304 ≤ p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem wrapped_program_caller_window [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before state : State}
     {ca oa : List (BitVec 32)} {family : Delegation.Family} {lower upper : Nat}
     (setup : data.machine.rom = Setup.table state)
@@ -577,8 +579,8 @@ theorem wrapped_program_caller_window [Fact p.Prime] (hp : 4194304 ≤ p)
   have family := region.callers entry (List.get_mem _ _) _ range.1 range.2 address
   exact (matched_caller_entry_family (by omega) query matched.2.1).trans family
 
-theorem preparation_instruction [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem preparation_instruction [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cut : Nat} {register : BitVec 5} {literal : ControlLiteral}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -637,8 +639,8 @@ theorem preparation_instruction [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     have clock : Delegation.Caller.startClock row = cut - 4 := by omega
     rwa [bits, clock] at schedule
 
-theorem literal_row_output_of_program [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem literal_row_output_of_program [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {oa : List (BitVec 32)} {cut : Nat} {register : BitVec 5} {literal : ControlLiteral}
     {ca : List (BitVec 32)}
@@ -706,8 +708,8 @@ theorem literal_row_output_of_program [Fact p.Prime] (hp : 2 * timestampBase + 4
       destinationRAM, outputLocation, outputUpper, indices.2.2]
   · simpa [write_word, importedConstraintsMemoryPorts, WordColumns.evaluate] using result
 
-theorem literal_row_output [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem literal_row_output [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {register : BitVec 5} {literal : ControlLiteral}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
@@ -720,8 +722,8 @@ theorem literal_row_output [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       (writeToken importedConstraintsTraceColumns w importedConstraintsMemoryPorts[2]).word.toBitVec = literal.value :=
   literal_row_output_of_program hp inverse accepted inputs.publicProgram inputs.ordinaryProgram scope nonzero zeroReads member ordinary last
 
-theorem preparation_output_token [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem preparation_output_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca : List (BitVec 32)} {cells : List Cell} {cut : Nat} {tokens : List (MemoryToken p)}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -776,8 +778,8 @@ theorem preparation_output_token [Fact p.Prime] (hp : 8388608 ≤ p)
         using UnifiedReduced.Proofs.destination_bounds core
     exact ⟨w, member, last, ordinary, present, timestamp, bounded⟩
 
-theorem preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem preparation_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {register : BitVec 5} {literal : ControlLiteral}
     {tokens : List (MemoryToken p)}
@@ -835,8 +837,8 @@ theorem preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
       exact equal.trans (Word.ofBitVec_value _).symm
     exact ⟨token, present, output.1, timestamp, word⟩
 
-theorem preparation_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem preparation_at_boundary [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before atCut : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {register : BitVec 5} {literal : ControlLiteral}
     {tokens : List (MemoryToken p)}
@@ -853,8 +855,8 @@ theorem preparation_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
   have bits : token.word.toBitVec = literal.value := by rw [word, Word.ofBitVec_roundtrip]
   exact ⟨bits ▸ read, token, present, address, timestamp, bits⟩
 
-theorem control_preparation [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem control_preparation [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p) (rotationInverse : SerializedInverse.Scale64 p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {register : BitVec 5} {literal : ControlLiteral}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
@@ -867,8 +869,8 @@ theorem control_preparation [Fact p.Prime] (hp : 8388608 ≤ p)
   exact ⟨start, earlier, atStart, earlierPerm, earlierHistory, boundary,
     preparation_at_boundary hp clockInverse accepted inputs scope nonzero aligned matching boundary⟩
 
-theorem control_preparation_window [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem control_preparation_window [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p) (rotationInverse : SerializedInverse.Scale64 p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {lower upper : Nat}
     {firstRegister lastRegister : BitVec 5} {firstLiteral lastLiteral : ControlLiteral}

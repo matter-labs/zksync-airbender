@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Clean.Utils.SourceSinkPath
 import Airbender.Proofs.Trace.StateClocks
 
@@ -191,8 +193,8 @@ local instance : DecidableEq (PCState.State p) := Classical.decEq _
 
 /-- Instantiate Clean's path theorem with the actual imported state columns.
     Native clock advancement proves acyclicity; no execution order is assumed. -/
-theorem state_path_checks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem state_path_checks [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (constraints : ∀ row ∈ trace.rows,
       FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) (row.constraints trace.rom))
     (states : (trace.initial :: trace.rows.map Row.finish).Perm
@@ -220,8 +222,8 @@ theorem state_path_checks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     exact increases edge (permutation.mem_iff.mp member))
   exact ⟨path, head, last, permutation, clocksUnique⟩
 
-theorem native_state_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem native_state_path [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     ∃ path, StatePath trace path :=
   state_path_checks hp inverse accepted.constraints accepted.states boundary.initial boundary.aligned

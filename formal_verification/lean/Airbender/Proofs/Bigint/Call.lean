@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.Bigint.Call
 import Airbender.Proofs.ExternalBoundary.BigintABI
 
@@ -24,7 +25,7 @@ theorem operation {w : Nat → ZMod p} {command : ExternalBoundary.BigintABI.Com
   · exact effects.2.1 selected
   · simpa [Operation, Native.additiveInput, carry] using effects.1 .copy selected
 
-theorem incoming_carry [Fact p.Prime] (hp : 256 ≤ p)
+theorem incoming_carry [Fact p.Prime] (hp : FieldCapacity.AtLeast p 256)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setup)) {command : ExternalBoundary.BigintABI.Command}

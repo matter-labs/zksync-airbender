@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.Blake2G.Execution
 import Airbender.Proofs.Blake2G.Soundness
 
@@ -13,8 +15,8 @@ theorem native_mapping {p : Nat} (w : Nat → ZMod p) : WordMapping (input w) (o
     Delegation.Row.writeToken, importedConstraintsMemoryPorts, MemoryPort.readCode,
     MemoryPort.writeCode, WordColumns.code]
 
-theorem native_effects [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1) {w : Nat → ZMod p}
+theorem native_effects [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p) {w : Nat → ZMod p}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable Control.controllerRows)))
     (reads : ∀ port ∈ importedConstraintsMemoryPorts, (readToken w port).word.Bounded) :

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.StateClocks
 
 namespace Airbender.Trace.Proofs
@@ -24,8 +26,8 @@ theorem sum_indicators {S : Type} (rows : List S) (selected : S → Bool) :
     simp only [List.map_cons, List.sum_cons, List.countP_cons, ih]
     split <;> omega
 
-theorem native_window_count [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem native_window_count [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (constraints : ∀ row ∈ trace.rows,
       FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) (row.constraints trace.rom))
     (states : (trace.initial :: trace.rows.map Row.finish).Perm
@@ -73,8 +75,8 @@ theorem native_window_count [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   change trace.rows.countP selected = _
   omega
 
-theorem native_suffix_count [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem native_suffix_count [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (constraints : ∀ row ∈ trace.rows,
       FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) (row.constraints trace.rom))
     (states : (trace.initial :: trace.rows.map Row.finish).Perm

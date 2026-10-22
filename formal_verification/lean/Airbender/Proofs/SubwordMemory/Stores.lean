@@ -1,10 +1,11 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.SubwordMemory
 
 namespace Airbender.SubwordMemory.Proofs
 open Airbender.Arithmetic Airbender.Verification
 
 /-- The unconditional clearing lookup preserves the old, unselected byte. -/
-theorem clearing_data {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem clearing_data {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {program : Nat → BitVec 32} {w : Nat → ZMod p} {old : Word}
     (highByte highHalf : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (environment w) (importedConstraints (subwordTable program)))
@@ -26,7 +27,7 @@ theorem clearing_data {p : Nat} [Fact p.Prime] (hp : 262144 < p)
 
 /-- Byte stores take the source's low byte; halfword stores use the disabled
     table row, forcing zero contribution and preservation of the opposite half. -/
-theorem store_contribution {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem store_contribution {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {program : Nat → BitVec 32} {w : Nat → ZMod p} {source : Word}
     (byte highByte : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (environment w) (importedConstraints (subwordTable program)))
@@ -56,7 +57,7 @@ theorem store_contribution {p : Nat} [Fact p.Prime] (hp : 262144 < p)
 /-- The two store queries determine both new limbs and their bounds. In a byte
     store the selected half is cleared and filled; in a halfword store it is
     replaced by rs2's low half. The opposite half stays equal to the old cell. -/
-theorem store_data {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem store_data {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {program : Nat → BitVec 32} {w : Nat → ZMod p} {source old : Word}
     (byte highByte highHalf : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (environment w) (importedConstraints (subwordTable program)))
@@ -115,7 +116,7 @@ theorem store_data {p : Nat} [Fact p.Prime] (hp : 262144 < p)
 
 set_option maxRecDepth 2048 in
 /-- The proved merge changes exactly the selected byte window. -/
-theorem store_byte_encoding {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem store_byte_encoding {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {program : Nat → BitVec 32} {w : Nat → ZMod p} {source old : Word}
     (byte highByte highHalf : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (environment w) (importedConstraints (subwordTable program)))

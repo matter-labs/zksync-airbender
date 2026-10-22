@@ -2,6 +2,13 @@ import Airbender.Review.Circuits.AddSub.Artifact
 import Airbender.Review.Circuits.AddSub.Reference
 import Airbender.Review.Helpers.Properties
 
+/-!
+Original pure instructions with destination x0 are preprocessed to a zero-operand
+ADD/NOP row. This model retains their original Sail operand reads and PC
+retirement. Loads discarded at x0 have separate memory and exception behavior;
+they are outside this pure-instruction claim.
+-/
+
 namespace Airbender.AddSub.Discarded
 open Airbender.Arithmetic
 open Airbender.Reference.RiscV
@@ -35,20 +42,72 @@ def execution (instruction : Instruction) : SailRV32.SailM SailRV32.ExecutionRes
 abbrev spec (input : Input) (finalPC : Word) : Prop :=
   Sail.stepSpec input.before (execution input.instruction) Sail.zeroRegister ⟨⟨0, 0⟩, finalPC⟩
 
+/-- Physical low/high limb columns of one preprocessed word. -/
+structure WordColumns where
+  lo : Nat
+  hi : Nat
+
+/-- ADD is the first selector in the imported ADD/SUB selector interval. -/
+structure SelectorColumns where
+  add : Nat
+  last : Nat
+
+/-- Imported witness columns used by the discarded-destination adapter.
+    PC columns retain the shared `PCMapping` interpretation. -/
+structure RowColumns where
+  execution : Nat
+  destination : Nat
+  left : WordColumns
+  right : WordColumns
+  immediate : WordColumns
+  selectors : SelectorColumns
+
+/-- Exact native column IDs; original Sail operands are not these zeroed words. -/
+def nativeColumns : RowColumns where
+  execution := 4
+  destination := 7
+  left := ⟨25, 26⟩
+  right := ⟨29, 30⟩
+  immediate := ⟨8, 9⟩
+  selectors := ⟨10, 18⟩
+
+/-- The native row participates in execution. -/
+abbrev ExecutionSelected {p : Nat} (w : Nat → ZMod p) : Prop :=
+  w nativeColumns.execution = 1
+
+/-- The decoded destination is the architectural zero register. -/
+abbrev DestinationIsZero {p : Nat} (w : Nat → ZMod p) : Prop :=
+  w nativeColumns.destination = 0
+
+/-- NOP preprocessing selects ADD and clears the other ADD/SUB selectors. -/
+abbrev AddNopSelected {p : Nat} (w : Nat → ZMod p) : Prop :=
+  ∀ k, nativeColumns.selectors.add ≤ k → k ≤ nativeColumns.selectors.last →
+    w k = if k = nativeColumns.selectors.add then 1 else 0
+
+/-- Both source words and the immediate are zero after preprocessing. -/
+abbrev ZeroOperandPreprocessing {p : Nat} (w : Nat → ZMod p) : Prop :=
+  w nativeColumns.left.lo = 0 ∧ w nativeColumns.left.hi = 0 ∧
+  w nativeColumns.right.lo = 0 ∧ w nativeColumns.right.hi = 0 ∧
+  w nativeColumns.immediate.lo = 0 ∧ w nativeColumns.immediate.hi = 0
+
+/-- Bind the architectural PC transition and the native x0 destination. -/
+abbrev RowMapping {p : Nat} (input : Input) (finalPC : Word) (w : Nat → ZMod p) : Prop :=
+  PCMapping input.pc finalPC w ∧ DestinationIsZero w
+
 /-- All pure x0 writes become NOP in `Instruction::pure_from_imm`; the ADD/SUB
     decoder selects zero-operand ADD. Only PC is an architectural output here. -/
 def circuitModel {p : Nat} [Fact p.Prime] :
     Verification.CircuitModel Input Word (Nat → ZMod p) where
   satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints
-  represents := fun input finalPC w => PCMapping input.pc finalPC w ∧ w 7 = 0
+  represents := RowMapping
 
 /-- Decoder/state obligations. Original operand reads must succeed even though
     preprocessing discarded their values. No operand bounds or result assumption. -/
 structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (input : Input)
     (_finalPC : Word) (w : Nat → ZMod p) : Prop where
-  active : w 4 = 1
-  selection : ∀ k, 10 ≤ k → k ≤ 18 → w k = if k = 10 then 1 else 0
-  preprocessing : w 25 = 0 ∧ w 26 = 0 ∧ w 29 = 0 ∧ w 30 = 0 ∧ w 8 = 0 ∧ w 9 = 0
+  active : ExecutionSelected w
+  selection : AddNopSelected w
+  preprocessing : ZeroOperandPreprocessing w
   initialPCBounds : input.pc.Bounded
   reads : match input.instruction with
     | .register _ rs1 rs2 | .multiply _ rs1 rs2 | .divide _ rs1 rs2 | .remainder _ rs1 rs2 => ∃ left right,

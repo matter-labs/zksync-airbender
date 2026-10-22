@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Keccak.Atomic
 import Airbender.Proofs.Keccak.MemorySoundness
 import Airbender.Proofs.Delegation.NativeViews
@@ -63,8 +65,8 @@ theorem native_lane_observations {p : Nat} {w : Nat → ZMod p} {before after : 
         Delegation.Row.ports, wordPort, importedConstraintsMemoryPorts] using
         (congrArg₂ (fun a b : Nat => a + 4294967296 * b) low.2 high.2).symm
 
-theorem call_lane_observations [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem call_lane_observations [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells)
     (tables : data.setup = Delegation.modeledSetup Controller.rows)

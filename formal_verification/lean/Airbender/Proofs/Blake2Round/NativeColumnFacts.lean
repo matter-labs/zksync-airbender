@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2Round.NativeXorTransfer
 import Airbender.Proofs.Blake2Round.ArtifactChecks
 import Airbender.Proofs.Constraints
@@ -11,7 +12,7 @@ set_option maxHeartbeats 4000000
 export NativeLayout (columnCarryColumns columnBooleanColumns)
 
 /-- Actual carry-aware memberships bound each of the four native carries. -/
-theorem native_column_carries {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem native_column_carries {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     (call : Fin 4) {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) (slot : Fin 4) :

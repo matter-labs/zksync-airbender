@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Keccak.Tables
 import Airbender.Proofs.Keccak.Tags
 
@@ -25,7 +26,7 @@ theorem byte_query_shape {p : Nat} [Fact p.Prime]
 
 /-- Theta mode routes all five eight-byte operations through the modeled XOR
     table. Membership derives both source ranges, result ranges and exact XOR. -/
-theorem theta_byte_relations {p : Nat} [Fact p.Prime] (hp : 256 ≤ p)
+theorem theta_byte_relations {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 256)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable (p := p) control)))

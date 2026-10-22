@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Delegation.Memory
 import Airbender.Proofs.Trace.TransferHistory
 
@@ -9,7 +10,7 @@ def transferInputs {data : MemoryData p} {before : Reference.RiscV.Sail.State} {
     (inputs : BoundaryInputs data before cells) : Trace.Proofs.Transfer.BoundaryInputs (transferData data) before cells :=
   inputs.toNativeInputs.toBoundaryInputs
 
-theorem transfer_facts [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem transfer_facts [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     Trace.Proofs.Transfer.Facts (transferData data) :=
@@ -29,7 +30,7 @@ theorem event_clock_order (data : MemoryData p) {first last : MemoryAccess}
     (earlier : last.1 < first.1) : eventClock data last < eventClock data first :=
   Trace.Proofs.Transfer.event_clock_order (transferData data) lastBound earlier
 
-theorem initialized_cell [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem initialized_cell [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {edge : MemoryToken p × MemoryToken p} (member : edge ∈ data.steps) :
@@ -41,7 +42,7 @@ theorem zero_event_seed {data : MemoryData p} {event : MemoryAccess}
     ∃ source ∈ data.initial, event = (0, source.address, 0, source.value) :=
   Trace.Proofs.Transfer.zero_event_seed (data := transferData data) member zero
 
-theorem raw_cell_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem raw_cell_history [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     (address : Nat) : ∃ history : TimestampSortedMemoryAccessList,
@@ -53,7 +54,7 @@ theorem raw_seed_bound {data : MemoryData p} {event : MemoryAccess}
     (member : event ∈ rawEvents data) : event.1 = 0 → event.2.1 < memoryEpoch data :=
   Trace.Proofs.Transfer.raw_seed_bound (data := transferData data) member
 
-theorem raw_events_nodup [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem raw_events_nodup [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     (rawEvents data).Nodup :=
@@ -66,7 +67,7 @@ theorem event_clock_injective [Fact p.Prime] {data : MemoryData p}
     first = last :=
   Trace.Proofs.Transfer.event_clock_injective (transferInputs inputs) firstMember lastMember equal
 
-theorem labeled_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem labeled_history [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     ∃ history : TimestampSortedMemoryAccessList, history.val.Perm (labeledEvents data) ∧

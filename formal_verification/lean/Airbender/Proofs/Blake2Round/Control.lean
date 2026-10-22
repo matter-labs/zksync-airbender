@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2Round.ArtifactChecks
 import Airbender.Review.Circuits.Blake2Round.Control
 import Airbender.Proofs.Constraints
@@ -24,7 +25,7 @@ theorem control_bits {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 6)
 
 /-- Read/write control arithmetic uses only imported assertions. No exclusive
     round-mask, pointer, memory or XOR-table premise is needed. -/
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 8192 ≤ p)
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8192)
     (setup : Table (ZMod p) (fields 6)) :
     Properties.Soundness (circuitModel setup).relation spec := by
   intro input output w ⟨h, mapping⟩

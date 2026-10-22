@@ -1,9 +1,10 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Context.PCState.Model
 import Mathlib.Tactic.NormNum
 
 namespace Airbender.PCState.Proofs
 
-theorem encoded_bounds {p : Nat} (hp : Arithmetic.limbBase < p) (pc : BitVec 32) :
+theorem encoded_bounds {p : Nat} (hp : FieldCapacity.NoWrap p Arithmetic.limbBase) (pc : BitVec 32) :
     (encode (p := p) pc).1.val < Arithmetic.limbBase ∧
       (encode (p := p) pc).2.val < Arithmetic.limbBase := by
   have size := pc.isLt
@@ -20,7 +21,7 @@ theorem encoded_bounds {p : Nat} (hp : Arithmetic.limbBase < p) (pc : BitVec 32)
 
 /-- The bounded low limb excludes unsupported decoder padding. Membership then
     bounds the high limb without a separate high-limb range query. -/
-theorem decoder_high_bound {p n : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+theorem decoder_high_bound {p n : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     {program : Vector (Option (BitVec 32)) n} {pc : ZMod p × ZMod p}
     (member : (decoderTable program).Contains #[] pc)
     (lowBound : pc.1.val < Arithmetic.limbBase) : pc.2.val < Arithmetic.limbBase := by
@@ -45,7 +46,7 @@ theorem decoder_high_bound {p n : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase 
 
 /-- Membership transfer needs no temporal-order theorem: every outgoing tuple
     matches either a decoder input or the bounded terminal boundary. -/
-theorem outgoing_bounds {p n : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+theorem outgoing_bounds {p n : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     {context : Context p n} (interface : Interface context) {pc : ZMod p × ZMod p}
     (outgoing : Outgoing context pc) (lowBound : pc.1.val < Arithmetic.limbBase) :
     pc.1.val < Arithmetic.limbBase ∧ pc.2.val < Arithmetic.limbBase := by

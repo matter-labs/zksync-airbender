@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.SailHistory
 import Airbender.Proofs.Trace.MemoryHistory
 import Airbender.Proofs.Trace.Addresses
@@ -105,8 +107,8 @@ theorem native_history_parts [Fact p.Prime] {trace : Data p Kind}
     obtain ⟨edge, _, rfl⟩ := List.mem_map.mp member
     exact Nat.le_add_right _ _
 
-theorem native_event_cells [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem native_event_cells [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : State} {cells : List Cell} (image : initialImage before cells = some trace.initialMemory) :
     ∀ event ∈ trace.nativeEvents, ∃ cell ∈ cells, cell.addressCode = event.2.1 := by
@@ -125,8 +127,8 @@ theorem native_event_cells [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 /-- Realize exactly the accepted native transfers. The remaining x0 condition
     is internal: it must be discharged using the bound decoder before publishing
     restricted-ISA trace soundness. No read-value or result premise is introduced. -/
-theorem native_sail_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem native_sail_history [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : State} {cells : List Cell} (image : initialImage before cells = some trace.initialMemory)
     (domain : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)

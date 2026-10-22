@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.MulDiv.Decoder
 import Airbender.Proofs.MulDiv.Trace
 import Airbender.Proofs.Trace.PortReads
@@ -9,7 +10,7 @@ abbrev nativeEvents (epoch : Nat) (w : Nat → ZMod p) :=
   Trace.nativeRowEvents epoch importedConstraintsTraceColumns importedConstraintsMemoryPorts w
 
 /-- The imported query identifies all three direct-register port addresses. -/
-theorem register_addresses {p : Nat} (hp : limbBase < p)
+theorem register_addresses {p : Nat} (hp : FieldCapacity.NoWrap p limbBase)
     {w : Nat → ZMod p} {entry : ProgramEntry} (query : decoderQuery w = entry.query) :
     ∀ i : Fin 3, (importedConstraintsMemoryPorts[i]).address.code w =
       (Cell.register (#v[entry.data.rs1, entry.data.rs2, entry.data.rd])[i]).addressCode := by
@@ -21,7 +22,7 @@ theorem register_addresses {p : Nat} (hp : limbBase < p)
 
 /-- A complete native row history supplies Sail's actual pre-state reads.
     The first two ports refresh clocks, including when either aliases rd. -/
-theorem register_reads {p : Nat} (hp : limbBase < p)
+theorem register_reads {p : Nat} (hp : FieldCapacity.NoWrap p limbBase)
     {w : Nat → ZMod p} {entry : ProgramEntry} {cells : List Cell} (epoch : Nat)
     {before after : State} (query : decoderQuery w = entry.query)
     (history : Trace.SailHistory cells (nativeEvents epoch w).reverse before after) :
@@ -36,7 +37,7 @@ theorem register_reads {p : Nat} (hp : limbBase < p)
 
 /-- The destination port performs the actual Sail write. No expected result is
     supplied: its value comes from the imported witness's destination columns. -/
-theorem register_write {p : Nat} (hp : limbBase < p)
+theorem register_write {p : Nat} (hp : FieldCapacity.NoWrap p limbBase)
     {w : Nat → ZMod p} {entry : ProgramEntry} {cells : List Cell} (epoch : Nat)
     {before after : State} (query : decoderQuery w = entry.query)
     (history : Trace.SailHistory cells (nativeEvents epoch w).reverse before after) :
@@ -48,7 +49,7 @@ theorem register_write {p : Nat} (hp : limbBase < p)
 
 /-- Actual decoder membership identifies every native access as a GPR port.
     Hence these traces cannot overwrite any fetched program byte. -/
-theorem native_register_addresses {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem native_register_addresses {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {trace : NativeTrace p} {program : List ProgramEntry} (decoded : Decoded trace program)
     {event : MemoryAccess} (member : event ∈ trace.nativeEvents) :
     ∃ index : BitVec 5, event.2.1 = (Cell.register index).addressCode := by

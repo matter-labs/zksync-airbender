@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2Round.NativeColumnRows1Part0
 import Airbender.Proofs.Blake2Round.NativeColumnRows1Part1
 import Airbender.Proofs.Blake2Round.NativeColumnRows1Part2
@@ -10,7 +11,7 @@ set_option warningAsError true
 set_option Elab.async false
 
 /-- Project one native column call into the unchanged G arithmetic queries. -/
-theorem native_column_queries_1 {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem native_column_queries_1 {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) (i : Fin 18) :

@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Context.Model
 import Airbender.Proofs.Arithmetic.Lemmas
 import Airbender.Proofs.Tables.ImportedRanges
@@ -18,7 +19,7 @@ theorem range_contains {p : Nat} [Fact p.Prime] {entry : Expression (ZMod p)}
 
 /-- Lift the two limb equations separately: the full 38-bit clock need not fit
     in the outer field. Final-limb bounds prevent high-limb overflow. -/
-theorem increment {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem increment {p : Nat} [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {initial final : Timestamp} (initialBound : initial.Bounded) (finalBound : final.Bounded)
     {carry : Nat} (bit : carry ≤ 1)
     (low : (initial.lo : ZMod p) + 4 = final.lo + timestampBase * carry)
@@ -39,7 +40,7 @@ theorem increment {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 /-- Exactly the two expressions emitted by Rust's
     `compile_timestamp_comparison_range_checks`. Bounds turn the borrowed
     subtraction into strict previous-write order. -/
-theorem comparison_of_room {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem comparison_of_room {p : Nat} [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {initial previous : Timestamp} (initialBound : initial.Bounded)
     (previousBound : previous.Bounded) {offset carry : Nat} (offsetBound : offset < 4)
     (currentLow : initial.lo + offset < timestampBase) (bit : carry ≤ 1)
@@ -82,7 +83,7 @@ theorem comparison_of_room {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 
     · have strict : previous.hi < initial.hi := by omega
       omega
 
-theorem comparison {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem comparison {p : Nat} [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {initial previous : Timestamp} (initialBound : initial.Bounded)
     (previousBound : previous.Bounded) {offset carry : Nat} (offsetBound : offset < 4)
     (aligned : initial.lo % 4 = 0) (bit : carry ≤ 1)
@@ -94,7 +95,7 @@ theorem comparison {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   norm_num [timestampBase] at bound ⊢
   omega
 
-theorem native_port_order_of_room {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem native_port_order_of_room {p : Nat} [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {initial previous : Timestamp} (ib : initial.Bounded) (pb : previous.Bounded)
     {offset : Nat} (ob : offset < 4) (room : initial.lo + offset < timestampBase)
     {borrow : ZMod p} (bit : borrow * (borrow - 1) = 0)
@@ -108,7 +109,7 @@ theorem native_port_order_of_room {p : Nat} [Fact p.Prime] (hp : 2 * timestampBa
 theorem distinct_slots {initial : Timestamp} {left right : Nat} (different : left ≠ right) :
     initial.value + left ≠ initial.value + right := by omega
 
-theorem native_port_order {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem native_port_order {p : Nat} [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {initial previous : Timestamp} (ib : initial.Bounded) (pb : previous.Bounded)
     {offset : Nat} (ob : offset < 4) (aligned : initial.lo % 4 = 0)
     {borrow : ZMod p} (bit : borrow * (borrow - 1) = 0)
@@ -121,7 +122,7 @@ theorem native_port_order {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 <
 
 /-- Reusable native-clock consequence. A family only extracts these field
     equations, Boolean borrows and lookup bounds from its own imported object. -/
-theorem clock_effects {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem clock_effects {p : Nat} [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {columns : TraceColumns} {w : Nat → ZMod p} (inputs : ClockInputs columns w)
     (finalBound : (decodeTimestamp w columns.finalTime).Bounded)
     (equations : ∃ carry : Nat, carry ≤ 1 ∧

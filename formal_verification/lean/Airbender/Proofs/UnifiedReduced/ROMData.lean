@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.ROMTransfers
 import Airbender.Review.Helpers.UnifiedReduced.NativeROM
 import Airbender.Proofs.UnifiedReduced.History
@@ -8,7 +10,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
-theorem accepted [Fact p.Prime] (hp : 131072 < p)
+theorem accepted [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072)
     (before : State) {trace : UnifiedTrace p} (native : Accepted trace) : Accepted (data before trace) := by
   have transfers : ∀ r ∈ trace.rows,
       (row before r).reads = r.reads.map (Trace.ROMView.token before) ∧
@@ -53,7 +55,7 @@ theorem decoded [Fact p.Prime] (before : State)
   obtain ⟨original, inRows, rfl⟩ := List.mem_map.mp member
   simpa using native original inRows
 
-theorem boot_inputs [Fact p.Prime] (hp : 4 < p)
+theorem boot_inputs [Fact p.Prime] (hp : FieldCapacity.NoWrap p 4)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     (inputs : BootInputsWith projection trace initial cells program) :
@@ -78,8 +80,8 @@ theorem boot_inputs [Fact p.Prime] (hp : 4 < p)
     obtain ⟨native, present, rfl⟩ := List.mem_map.mp member
     simpa only [Trace.ROMView.token_time] using clocks.memory native present
 
-theorem memory_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem memory_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (native : Accepted trace) (inputs : BootInputs trace initial cells program)
     (membership : Decoded trace program) : MemoryExecution (data initial trace) initial cells :=

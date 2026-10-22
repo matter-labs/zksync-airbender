@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2G.ReferenceCalls
 
 namespace Airbender.Blake2G.Call
@@ -9,8 +11,8 @@ open Trace Reference.RiscV.Sail
     are derived from accepted initialized history and the existing span profile.
     This is worker reference execution; mixed caller fetch/PC retirement and
     global worker participation are separate composition claims. -/
-theorem execution_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem execution_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : State} {domain : List Cell} {reduced : Bool}
     (accepted : Delegation.MemoryAccepted data) (inputs : NativeCallInputs data initial domain reduced)
     (aligned : ∀ cell ∈ domain, cell.Aligned)

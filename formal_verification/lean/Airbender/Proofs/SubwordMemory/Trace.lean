@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Helpers.Context.Registries.SubwordMemory
 import Airbender.Proofs.SubwordMemory.Timestamp
 import Airbender.Proofs.SubwordMemory.Decoder
@@ -40,7 +42,7 @@ instance nativeClockLaws [Fact p.Prime] : Trace.Proofs.ClockLaws TraceKind p whe
   offsets _ := rfl
   effects hp inverse _ _ h inputs := clocks hp inverse h inputs
 
-theorem incoming_pc_bounds {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+theorem incoming_pc_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     {trace : NativeTrace p} {program : List ProgramEntry} (decoded : Decoded trace program) :
     ∀ row ∈ trace.rows, row.start.word.Bounded := by
   intro row member
@@ -61,7 +63,7 @@ theorem outgoing_pc_bounds {p : Nat} [Fact p.Prime]
 
 /-- Readonly ports refresh x0. Public decoding excludes load writes to x0,
     and the native RAM tag separates stores from every register address. -/
-theorem row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+theorem row_zero_preserving {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     (row : Row p TraceKind) (setup : Table (ZMod p) (fields 9))
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) (importedConstraints setup))
     {before : Reference.RiscV.Sail.State} {entry : ProgramEntry}
@@ -93,7 +95,7 @@ theorem row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase <
     · have selected : row.assignment 10 = 1 := by simpa only [store, if_true] using flag
       simp [selected, ZMod.val_one] at address
 
-theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     {trace : NativeTrace p} (accepted : Accepted trace)
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImage before addresses = some program) (decoded : Decoded trace program) :
@@ -108,7 +110,7 @@ theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
 /-- Public initialization and native latest-write matching derive exact x0
     tokens; no zero-read compatibility premise is added to the circuit. -/
 theorem native_zero_reads {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)
@@ -126,7 +128,7 @@ theorem native_zero_reads {p : Nat} [Fact p.Prime]
     grouped Sail histories in native instruction order. ROM shadow transport
     needs its separate public-image binding before complete ISA composition. -/
 theorem decoded_native_history {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)

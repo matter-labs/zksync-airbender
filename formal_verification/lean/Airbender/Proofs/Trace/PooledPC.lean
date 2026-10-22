@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Trace.PooledProgram
 import Airbender.Proofs.Trace.PC
 
@@ -7,7 +8,7 @@ open Arithmetic
 /-- Actual decoder membership gives canonical incoming PCs. Logical state
     matching supplies outgoing bounds; the unresolved terminal condition is
     explicit and is not inferred from the jump family's local constraints. -/
-theorem pooled_pc_bounds {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem pooled_pc_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {trace : PooledTrace p} (accepted : Accepted trace) {program : List PooledProgramEntry}
     (decoded : PooledDecoded trace program) (terminal : trace.terminal.word.Bounded) :
     ∀ row ∈ trace.rows, row.start.word.Bounded ∧ row.finish.word.Bounded := by
@@ -22,7 +23,7 @@ theorem pooled_pc_bounds {p : Nat} [Fact p.Prime] (hp : limbBase < p)
 
 /-- Public instruction addresses are aligned. Their actual decoder queries
     transfer alignment to the native low PC limb without a per-row premise. -/
-theorem pooled_pc_alignment {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem pooled_pc_alignment {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {trace : PooledTrace p} {program : List PooledProgramEntry}
     (decoded : PooledDecoded trace program)
     (code : ∀ entry ∈ program, entry.pc.toNat % 4 = 0) :

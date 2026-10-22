@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Context.ExternalBoundary.BigintABI
 import Airbender.Proofs.Bigint.Control
 
@@ -40,7 +41,7 @@ theorem mask_injective : Function.Injective Bigint.Control.mask := by
   have same := bits i bound
   cases ha : a[i] <;> cases hb : b[i] <;> simp_all
 
-theorem native_bits [Fact p.Prime] (hp : 256 ≤ p)
+theorem native_bits [Fact p.Prime] (hp : FieldCapacity.AtLeast p 256)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (Bigint.importedConstraints setup)) {command : Command} (binding : Binding w command) :
@@ -52,7 +53,7 @@ theorem native_bits [Fact p.Prime] (hp : 256 ≤ p)
   apply mask_injective
   exact checked.1.symm.trans (congrArg Word.lo binding)
 
-theorem selected [Fact p.Prime] (hp : 256 ≤ p)
+theorem selected [Fact p.Prime] (hp : FieldCapacity.AtLeast p 256)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (Bigint.importedConstraints setup)) {command : Command} (binding : Binding w command) :

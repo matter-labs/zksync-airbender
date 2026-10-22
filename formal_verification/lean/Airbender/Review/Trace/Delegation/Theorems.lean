@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Delegation.Requests
 import Airbender.Proofs.Delegation.Memory
 import Airbender.Proofs.Delegation.Operations
@@ -11,7 +13,7 @@ namespace Airbender.Delegation
     is physical word alignment of the public cell domain. No read, result or
     range premise is supplied; modeled table conditions are only needed for
     the additional operation/word-bound claims below. -/
-theorem native_memory_execution [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+theorem native_memory_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     (inputs : MemoryInputs data before cells) (aligned : ∀ cell ∈ cells, cell.Aligned) :
@@ -22,8 +24,8 @@ theorem native_memory_execution [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4
     preserve canonical RV32 words, and logical matching supplies every later
     read. `inputs` lists modeled tables and the remaining caller/padding rules;
     no family restriction, read-value or limb-range premise is supplied. -/
-theorem operation_memory_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem operation_memory_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {control : Fin 4096 → Vector Nat 6}
     (accepted : MemoryAccepted data) (inputs : OperationInputs data before cells control) :
@@ -35,7 +37,7 @@ theorem operation_memory_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
     clock/address bounds, strict per-cell order and Clean memory consistency.
     The public inputs are actual Sail initialization, a distinct cell domain and
     native timestamp-offset room. No prior-clock, read-value or address-range premise. -/
-theorem memory_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+theorem memory_soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     (inputs : MemoryInputs data before cells) : MemorySoundness data :=

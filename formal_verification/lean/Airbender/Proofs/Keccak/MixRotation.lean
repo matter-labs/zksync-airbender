@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Keccak.MixOperations
 import Airbender.Proofs.Arithmetic.RotationAssembly
 
@@ -7,7 +8,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
-theorem mix_rotation_parts {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem mix_rotation_parts {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))
@@ -38,7 +39,7 @@ theorem mix_rotation_parts {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
       omega
     · simpa [tags] using query
 
-theorem mix_rotated_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem mix_rotated_limb {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))
@@ -85,7 +86,7 @@ theorem mix_rotated_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   rw [ZMod.val_natCast_of_lt small] at value
   exact value.symm.trans (by rw [current.2, prior.1])
 
-theorem mix_rotation_operation {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem mix_rotation_operation {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))

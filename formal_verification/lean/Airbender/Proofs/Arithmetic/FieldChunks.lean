@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Arithmetic.Chunks
 
 set_option warningAsError true
@@ -7,7 +8,7 @@ namespace Airbender.Arithmetic
 /-- Bounded chunks recover the canonical value from a field equation. This
     also handles rechunking when no inverse occurs in the imported equation. -/
 theorem value_of_chunks {p radix capacity : Nat} [Fact p.Prime]
-    (hp : radix * capacity ≤ p) {x low high : ZMod p}
+    (hp : FieldCapacity.AtLeast p (radix * capacity)) {x low high : ZMod p}
     (lowBound : low.val < radix) (highBound : high.val < capacity)
     (equation : x = low + radix * high) :
     x.val = low.val + radix * high.val := by

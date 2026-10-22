@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Tables.ShiftCharacterization
 import Airbender.Review.Helpers.Tables.Bytes
 
@@ -8,7 +9,7 @@ def byteOperation {n : Nat} (tag : Nat) (a b : BitVec n) : BitVec n :=
   if tag = 4 then a ^^^ b else if tag = 6 then a ||| b else a &&& b
 
 /-- Read a native Clean membership witness with a canonical, selected table tag. -/
-theorem tagged_lookup_row {p : Nat} [Fact p.Prime] (hp : 256 < p)
+theorem tagged_lookup_row {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     {entry : Vector (Expression (ZMod p)) 10} {env : Environment (ZMod p)}
     (h : (shiftBinopLookup entry).Contains env) (tag : Nat) (small : tag < 256)
     (selected : entry[9].eval env = (tag : ZMod p)) :
@@ -75,7 +76,7 @@ private theorem binary_rows (index : Fin 524545) (tag : Nat)
 
 /-- A selected binary tag in the native Clean table forces two bytes and their
     exact bitwise result. Other tagged regions cannot satisfy this query. -/
-theorem binary_lookup {p : Nat} [Fact p.Prime] (hp : 256 < p)
+theorem binary_lookup {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     {entry : Vector (Expression (ZMod p)) 10} {env : Environment (ZMod p)}
     (h : (shiftBinopLookup entry).Contains env) (tag : Nat)
     (ht : tag = 4 ∨ tag = 6 ∨ tag = 7)

@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Memory.ImportedImage
 import Airbender.Review.Circuits.WordMemory.Tables.Setup
 import Airbender.Proofs.Tables.ImportedROMProgram
@@ -70,7 +71,7 @@ theorem imported_member {p : Nat} [Fact p.Prime] {query : Vector (ZMod p) 9}
     refine ⟨⟨n, bound⟩, ?_⟩
     exact equal.trans (by simpa only [importedRow, dif_neg zero] using imported_word_cast_row (p := p) n bound)
 
-theorem imported_bounds {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem imported_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {query : Vector (ZMod p) 9} (member : (importedTable (p := p)).Contains #[] query) :
     query[1].val < 65536 ∧ query[2].val < 65536 := by
   rcases imported_member member with rfl | ⟨index, rfl⟩
@@ -83,7 +84,7 @@ theorem imported_bounds {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
       ZMod.val_natCast_of_lt (show selectedWord index.val % 65536 < p by omega),
       ZMod.val_natCast_of_lt (show selectedWord index.val / 65536 < p by omega)] using And.intro low high
 
-theorem imported_disabled {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem imported_disabled {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {query : Vector (ZMod p) 9} (member : (importedTable (p := p)).Contains #[] query)
     (inactive : query[8] = 0) : query[1] = 0 ∧ query[2] = 0 := by
   rcases imported_member member with rfl | ⟨index, rfl⟩
@@ -95,7 +96,7 @@ theorem imported_disabled {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
 
 /-- A native accepted word-ROM query reads the public image. All lookup outputs
     and addresses are recovered from actual imported rows. -/
-theorem imported_reads {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem imported_reads {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {before : Reference.RiscV.Sail.State} (image : ImportedImage before) :
     Reads before (importedTable (p := p)) := by
   intro address lo hi bounded high member

@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Arithmetic.Word
 import Mathlib.Data.Nat.Bitwise
 
@@ -12,7 +13,7 @@ theorem bytes_value (x : BitVec 32) :
   norm_num only [Nat.reducePow, Nat.div_one] at *
   omega
 
-theorem byte_pair_value {p : Nat} [Fact p.Prime] (hp : 65536 < p)
+theorem byte_pair_value {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 65536)
     (a b c : ZMod p) (ha : a.val < 256) (hb : b.val < 256)
     (equation : a + 256 * b = c) : c.val = a.val + 256 * b.val := by
   rw [← equation, ZMod.val_add, ZMod.val_mul]

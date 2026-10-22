@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Helpers.Memory.History
 import Airbender.Proofs.Trace.OfflineMemory
 
@@ -68,8 +70,8 @@ theorem below_epoch [Fact p.Prime] {trace : Data p Kind} {source : MemoryToken p
   unfold Data.memoryEpoch
   omega
 
-private theorem event_times [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+private theorem event_times [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     trace.nativeEvents.map Prod.fst = trace.accessTimes.map (trace.memoryEpoch + ·) := by
   simp only [MemoryAccess, Data.nativeEvents, Data.memorySteps, List.map_flatMap,
@@ -86,8 +88,8 @@ private theorem event_times [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     inputs.initial inputs.aligned (port_offset row port actual)).2
   exact congrArg (trace.memoryEpoch + ·) canonical
 
-theorem memory_event_times_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem memory_event_times_unique [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     (trace.memoryEvents.map Prod.fst).Nodup := by
@@ -149,8 +151,8 @@ private theorem retime_cell [Fact p.Prime] {trace : Data p Kind} {source : Memor
   have mapped := consistent.1.map (retime clock)
   simpa [retime, clock, transferEvent, List.map_map, Function.comp_def] using mapped
 
-theorem native_memory_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem native_memory_history [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     ∃ history, MemoryHistory trace history := by

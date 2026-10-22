@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.PCRelativePreparation
 import Airbender.Proofs.UnifiedReduced.ControlPreparation
 
@@ -14,7 +16,7 @@ theorem auipc_fields {register : BitVec 5} {immediate : BitVec 20} (nonzero : re
   simp [Mixed.decoderFields, UnifiedReduced.decoderFields, Trace.decoderFields,
     UnifiedReduced.arithmeticFields, Trace.arithmeticFields, DecoderData.mapFamily, nonzero]
 
-theorem auipc_result [Fact p.Prime] (hp : 196608 < p)
+theorem auipc_result [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 4 = 1) (selected : w 13 = 1)
@@ -51,8 +53,8 @@ theorem auipc_result [Fact p.Prime] (hp : 196608 < p)
     (UnifiedReduced.Proofs.destination_bounds h) (Nat.le_trans carry (by decide)) (Nat.le_trans overflow (by decide))
     (by simpa only [Nat.cast_zero] using loEq) (by simpa only [Nat.cast_zero] using hiEq)
 
-theorem pc_relative_preparation_entry [Fact p.Prime] (hp : 4194304 ≤ p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem pc_relative_preparation_entry [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cut : Nat} {register : BitVec 5} {immediate : BitVec 20}
     (setup : data.machine.rom = Setup.table before)
@@ -74,8 +76,8 @@ theorem pc_relative_preparation_entry [Fact p.Prime] (hp : 4194304 ≤ p)
     simpa only [bits, clock, wrappedProgramAddress] using schedule
   exact ⟨address, scope.atCut entry present address⟩
 
-theorem auipc_row_output [Fact p.Prime] (hp : 4194304 ≤ p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem auipc_row_output [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cut : Nat} {register : BitVec 5} {immediate : BitVec 20}
     (setup : data.machine.rom = Setup.table before)
@@ -123,8 +125,8 @@ theorem auipc_row_output [Fact p.Prime] (hp : 4194304 ≤ p)
       destinationRAM, location, top, target]
   · simpa [write_word, importedConstraintsMemoryPorts, WordColumns.evaluate, pcRelativeControl] using result
 
-theorem pc_relative_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem pc_relative_preparation_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {register : BitVec 5} {immediate : BitVec 20}
     {tokens : List (MemoryToken p)}
@@ -148,8 +150,8 @@ theorem pc_relative_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
     exact equal.trans (Word.ofBitVec_value _).symm
   exact ⟨token, present, output.1, timestamp, word⟩
 
-theorem pc_relative_preparation_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem pc_relative_preparation_at_boundary [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before atCut : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {register : BitVec 5} {immediate : BitVec 20}
     {tokens : List (MemoryToken p)}
@@ -166,8 +168,8 @@ theorem pc_relative_preparation_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
   have bits : token.word.toBitVec = pcRelativeControl data cut immediate := by rw [word, Word.ofBitVec_roundtrip]
   exact ⟨bits ▸ read, token, present, address, timestamp, word⟩
 
-theorem pc_relative_control_preparation [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem pc_relative_control_preparation [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p) (rotationInverse : SerializedInverse.Scale64 p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat} {register : BitVec 5} {immediate : BitVec 20}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)

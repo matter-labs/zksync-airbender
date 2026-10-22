@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.MixedNativeROM
 
 namespace Airbender.UnifiedReduced.Caller.NativeROM
@@ -6,7 +7,7 @@ open Trace Reference.RiscV.Sail
 /-- Native mixed acceptance survives public-ROM interpretation when the explicit
     F04 RAM-port contract binds every worker. Caller requests, multiplicity and
     the imported worker assignments are preserved; no new acceptance is assumed. -/
-theorem acceptance_soundness [Fact p.Prime] (hp : 131072 < p) (initial : State)
+theorem acceptance_soundness [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072) (initial : State)
     {native : RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     (accepted : MixedMemoryAccepted native program)
     (ram : ExternalBoundary.WorkerRAM.Binding native.workers.rows) :
@@ -16,7 +17,7 @@ theorem acceptance_soundness [Fact p.Prime] (hp : 131072 < p) (initial : State)
 /-- Public native boot data derives the physical shared initialization and
     program inputs. The original row reads and all worker outputs remain absent
     from this interface; the F04 restriction is separate from boot data. -/
-theorem initialization_soundness [Fact p.Prime] (hp : 4 < p)
+theorem initialization_soundness [Fact p.Prime] (hp : FieldCapacity.NoWrap p 4)
     {native : RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {initial : State} {cells : List Cell} (boot : Inputs native program initial cells) :
     ∃ ca oa, MixedMemoryInputs (view initial native) program initial ca oa cells :=

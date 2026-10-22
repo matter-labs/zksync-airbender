@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Delegation.Values
 import Airbender.Proofs.Keccak.Theta
 import Airbender.Proofs.Keccak.Chi
@@ -11,7 +12,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
-theorem written_limb_bounds [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem written_limb_bounds [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control))) (active : w 0 = 1)
@@ -33,7 +34,7 @@ theorem written_limb_bounds [Fact p.Prime] (hp : 1048576 ≤ p)
     · exact chi_written_bounds hp false h active selected reads
     · exact chi_written_bounds hp true h active selected reads
 
-theorem returned_control_bounds [Fact p.Prime] (hp : 4096 ≤ p)
+theorem returned_control_bounds [Fact p.Prime] (hp : FieldCapacity.AtLeast p 4096)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 0 = 1) : (w 5).val < limbBase ∧ (w 6).val < limbBase := by
@@ -53,7 +54,7 @@ private theorem native_write_word (w : Nat → ZMod p) (port : MemoryPort) :
         ((port.writeValue.getD port.readValue).evaluate w)[1].val⟩ := by
   simp [Delegation.Row.writeToken, MemoryToken.word, MemoryPort.writeCode, WordColumns.code]
 
-theorem memory_write_rule [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem memory_write_rule [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (clockConstraints (setupTable control))) (active : w 0 = 1)

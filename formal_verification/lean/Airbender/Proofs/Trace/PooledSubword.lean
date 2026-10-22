@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.PooledCode
 import Airbender.Proofs.SubwordMemory.Execution
 
@@ -9,7 +11,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- The same initialized pooled domain supplies the canonical subword RAM
     port, for loads and stores. No per-row address bound is assumed. -/
 theorem pooled_subword_cell {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell} (image : initialImage initial cells = some trace.initialMemory)
     {w : Nat → ZMod p} (member : (⟨.subwordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows)
@@ -39,7 +41,7 @@ set_option backward.isDefEq.respectTransparency false in
 theorem pooled_subword_address {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
     [registry : PooledRegistry projection]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell} (image : initialImage initial cells = some trace.initialMemory)
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
@@ -80,7 +82,7 @@ set_option backward.isDefEq.respectTransparency false in
 theorem pooled_subword_execution {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
     [registry : PooledRegistry projection] [MemoryPlatform SailRV32.exception]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)

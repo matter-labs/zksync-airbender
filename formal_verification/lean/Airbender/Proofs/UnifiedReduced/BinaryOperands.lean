@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.Binary
 import Airbender.Proofs.Arithmetic.WordBytes
 import Airbender.Proofs.Sail.Bytes
@@ -9,7 +11,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
-theorem binary_sign_byte [Fact p.Prime] (hp : 256 < p)
+theorem binary_sign_byte [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     {initial : State} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table initial)))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
@@ -32,8 +34,8 @@ theorem binary_sign_byte [Fact p.Prime] (hp : 256 < p)
     (by simpa [Expression.eval, Verification.environment] using tag)
   simpa [Expression.eval, Verification.environment, key, value] using sign
 
-theorem binary_left_bytes [Fact p.Prime] (hp : 65536 < p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1) {initial : State} {w : Nat → ZMod p}
+theorem binary_left_bytes [Fact p.Prime] (hp : FieldCapacity.NoWrap p 65536)
+    (inverse : SerializedInverse.Scale256 p) {initial : State} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table initial)))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (tag : Nat) (valid : tag = 4 ∨ tag = 6 ∨ tag = 7) (funct3 : w 10 = (Setup.binaryTag tag : ZMod p)) :
@@ -46,8 +48,8 @@ theorem binary_left_bytes [Fact p.Prime] (hp : 65536 < p)
     (by change w 75 + 256 * (-7864320 * (w 37 - w 75)) = w 37
         linear_combination (w 37 - w 75) * inverse)
 
-theorem binary_register_bytes [Fact p.Prime] (hp : 65536 < p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1) {initial : State} {w : Nat → ZMod p}
+theorem binary_register_bytes [Fact p.Prime] (hp : FieldCapacity.NoWrap p 65536)
+    (inverse : SerializedInverse.Scale256 p) {initial : State} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table initial)))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (load : w 28 = 0) (immediate : w 8 = 0 ∧ w 9 = 0)
@@ -69,8 +71,8 @@ theorem binary_register_bytes [Fact p.Prime] (hp : 65536 < p)
         linear_combination (w 43 - w 77) * inverse)
   simpa only [zero, add_zero] using bytes
 
-theorem binary_immediate_bytes [Fact p.Prime] (hp : 65536 < p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1) {initial : State} {w : Nat → ZMod p}
+theorem binary_immediate_bytes [Fact p.Prime] (hp : FieldCapacity.NoWrap p 65536)
+    (inverse : SerializedInverse.Scale256 p) {initial : State} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table initial)))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (load : w 28 = 0) (imm : BitVec 12)

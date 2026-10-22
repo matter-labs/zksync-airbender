@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.Binary
 import Airbender.Proofs.UnifiedReduced.XorRotateLookups
 
@@ -7,7 +8,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
-theorem xorrot_query_values [Fact p.Prime] (hp : 256 < p)
+theorem xorrot_query_values [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     {before : Reference.RiscV.Sail.State} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table before)))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.JumpBranchSlt.Composition
 import Airbender.Proofs.Trace.PooledPC
 import Airbender.Proofs.Trace.Arithmetic
@@ -16,7 +18,7 @@ set_option backward.isDefEq.respectTransparency false in
 theorem pooled_muldiv_execution {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
     [registry : PooledRegistry projection]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -49,7 +51,7 @@ theorem pooled_muldiv_execution {p : Nat} [Fact p.Prime]
       simp [ProgramEntry.mapFamily, DecoderData.mapFamily, mode, pooledArithmeticFamily] at family
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
   · rw [mapped_query] at query
-    have arithmeticInverse : (-30720 : ZMod p) * 65536 = 1 := by
+    have arithmeticInverse : SerializedInverse.Limb16 p := by
       calc
         (-30720 : ZMod p) * 65536 = (-3840 : ZMod p) * 524288 := by ring
         _ = 1 := inverse
@@ -64,7 +66,7 @@ set_option backward.isDefEq.respectTransparency false in
 theorem pooled_shift_execution {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
     [registry : PooledRegistry projection]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -98,7 +100,7 @@ theorem pooled_shift_execution {p : Nat} [Fact p.Prime]
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
   · rw [mapped_query] at query
-    have arithmeticInverse : (-30720 : ZMod p) * 65536 = 1 := by
+    have arithmeticInverse : SerializedInverse.Limb16 p := by
       calc
         (-30720 : ZMod p) * 65536 = (-3840 : ZMod p) * 524288 := by ring
         _ = 1 := inverse
@@ -111,7 +113,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Arithmetic retirement uses both operands from the same pooled history.
     Original Sail decoding fixes the immediate and preprocessing. -/
 theorem pooled_arithmetic_execution {p : Nat} [Fact p.Prime]
-    (profile : ISAProfile) (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (profile : ISAProfile) (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -169,7 +171,7 @@ omit [MemoryPlatform SailRV32.exception] in
 theorem pooled_control_bounds {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
     [registry : PooledRegistry projection]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -207,7 +209,7 @@ set_option backward.isDefEq.respectTransparency false in
 theorem pooled_control_execution {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
     [registry : PooledRegistry projection]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)

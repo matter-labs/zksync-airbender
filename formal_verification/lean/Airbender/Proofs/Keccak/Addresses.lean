@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.Keccak.Addresses
 import Airbender.Proofs.Keccak.Controller
 import Airbender.Proofs.ScaledMemoryPorts
@@ -8,8 +10,8 @@ set_option warningAsError true
 set_option maxHeartbeats 800000
 set_option maxRecDepth 16384
 
-theorem addresses {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem addresses {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (rowsBounded : ∀ key : Fin 4096, ∀ i : Fin 6, (control key)[i] < 31)
     (pointerBounded : (statePointer w).Bounded)

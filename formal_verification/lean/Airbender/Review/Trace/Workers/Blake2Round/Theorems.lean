@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2Round.Windows
 import Airbender.Proofs.Blake2Round.CompressionBinding
 import Airbender.Proofs.Blake2Round.NativeExecution
@@ -9,8 +11,8 @@ namespace Airbender.Blake2Round.Native
     Other delegation families may share the history; source/pointer ranges and
     reads are derived internally. The exclusive round mask remains a visible
     caller condition in `OperationInputs`; full compression/caller ABI is separate. -/
-theorem operation_execution [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem operation_execution [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {control : Fin 4096 → Vector Nat 6}
     (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.OperationInputs data before cells control)
@@ -24,8 +26,8 @@ theorem operation_execution [Fact p.Prime] (hp : 8388608 ≤ p)
     actual Sail RAM. `WordMapping` identifies successful initial/final block
     reads; all word bounds and intermediate reads are proved from matching.
     `CallInputs` retains the public request span and modeled-table boundary. -/
-theorem compression_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem compression_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {flags : Fin 8} (accepted : Delegation.MemoryAccepted data)
     (inputs : CallInputs data initial cells flags) (aligned : ∀ cell ∈ cells, cell.Aligned) :
@@ -39,8 +41,8 @@ theorem compression_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
 /-- The complete extended-BLAKE reference binds actual boundary reads and the
     final Sail state with retained seed timestamps. Round masks, request modes
     and intermediate states follow from accepted history and the public ABI. -/
-theorem compression_boundary_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem compression_boundary_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {flags : Fin 8} (accepted : Delegation.MemoryAccepted data)
     (inputs : NativeCallInputs data initial cells flags) (aligned : ∀ cell ∈ cells, cell.Aligned) :
@@ -54,8 +56,8 @@ theorem compression_boundary_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
 /-- The first complete compression reaches its reference on actual cut states
     from a retained native boundary. Initialized history derives every round mask
     within the explicit ten-position pool and every intermediate value. -/
-theorem window_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem window_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {flags : Fin 8} {lower upper : Nat} (accepted : Delegation.MemoryAccepted data)
     (inputs : WindowInputs data before cells flags lower upper) (aligned : ∀ cell ∈ cells, cell.Aligned) :

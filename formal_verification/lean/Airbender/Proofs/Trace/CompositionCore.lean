@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.Execution
 import Airbender.Proofs.Trace.Retirement
 import Airbender.Proofs.Trace.RowHistory
@@ -33,8 +35,8 @@ private theorem path_edge_chain {α : Type} {path : List α} {first last : α}
 
 /-- The sorted native rows connect both public endpoints and every adjacent
     instruction boundary. This is derived from the complete state path. -/
-theorem ordered_row_boundaries {Kind : Type} [CircuitLayout Kind] [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem ordered_row_boundaries {Kind : Type} [CircuitLayout Kind] [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {rows : List (Row p Kind)} (permutation : rows.Perm trace.rows)
     (ordered : rows.Pairwise (fun a b => rowClock b < rowClock a)) :
@@ -159,7 +161,7 @@ set_option backward.isDefEq.respectTransparency false in
     preserves its realized cells and exposes the native terminal PC/last writes. -/
 theorem native_trace_postconditions {Kind Family : Type} [CircuitLayout Kind]
     {p : Nat} [Fact p.Prime] [ClockLaws Kind p]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : Data p Kind} (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial nativeAfter : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory) (distinct : cells.Nodup)

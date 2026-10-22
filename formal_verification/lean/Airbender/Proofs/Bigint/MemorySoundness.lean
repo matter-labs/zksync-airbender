@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.Bigint.Memory
 import Airbender.Proofs.Bigint.Memory
 import Airbender.Proofs.Bigint.Addresses
@@ -7,8 +9,8 @@ open Trace Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-theorem addresses_soundness [Fact p.Prime] (hp : 2097152 ≤ p)
-    (inverse : 32 * (-62914560 : ZMod p) = 1) (data : Delegation.MemoryData p)
+theorem addresses_soundness [Fact p.Prime] (hp : FieldCapacity.AtLeast p 2097152)
+    (inverse : SerializedInverse.Scale32 p) (data : Delegation.MemoryData p)
     (before : Reference.RiscV.Sail.State) (cells : List Cell) :
     (circuitModel data).SoundnessUnder (InterfaceAssumptions data before cells) Addresses.spec := by
   intro input output w ⟨inputs, accepted, mapping⟩
@@ -33,7 +35,7 @@ theorem addresses_soundness [Fact p.Prime] (hp : 2097152 ≤ p)
     (importedConstraints setupTable) importedConstraintsTimestampLookups)
   exact Addresses.Proofs.soundness hp inverse input output w ⟨localBounds, core, mapping.words⟩
 
-theorem value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem value_bounds [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : Inputs data before cells) :
     (∀ row ∈ data.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded) ∧

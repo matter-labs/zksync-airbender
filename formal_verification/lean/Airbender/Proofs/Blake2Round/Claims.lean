@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.Workers.Blake2Round.Theorems
 import Airbender.Proofs.Blake2Round.NativeExecution
 import Airbender.Proofs.Blake2Round.CallExecution
@@ -17,8 +19,8 @@ import Airbender.Proofs.BabyBear
 namespace Airbender.Blake2Round.Row
 
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (compatible : SerializedInverse.Scale64 p) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec := Proofs.soundness hp compatible
 
 theorem babyBear_soundness :
@@ -30,7 +32,7 @@ end Airbender.Blake2Round.Row
 namespace Airbender.Blake2Round.Control
 
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 8192 ≤ p)
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8192)
     (setup : Table (ZMod p) (fields 6)) :
     Properties.Soundness (circuitModel setup).relation spec := Proofs.soundness hp setup
 
@@ -42,7 +44,7 @@ end Airbender.Blake2Round.Control
 namespace Airbender.Blake2Round.Preparation
 
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     (setup : Table (ZMod p) (fields 6)) :
     Properties.Soundness (circuitModel setup).relation spec := Proofs.soundness hp setup
 
@@ -65,8 +67,8 @@ end Airbender.Blake2Round.Schedule
 namespace Airbender.Blake2Round.Mixing
 
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 262144)
+    (compatible : SerializedInverse.Scale64 p) :
     (circuitModel (p := p)).SoundnessUnder (InterfaceAssumptions (p := p)) spec :=
   Proofs.mixing_soundness hp compatible
 
@@ -80,8 +82,8 @@ end Airbender.Blake2Round.Mixing
 namespace Airbender.Blake2Round.Finalization
 
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p) :
     (circuitModel (p := p)).SoundnessUnder (InterfaceAssumptions (p := p)) spec :=
   Proofs.finalization_soundness hp compatible
 
@@ -103,8 +105,8 @@ end Airbender.Blake2Round.Finalization
 namespace Airbender.Blake2Round.Addresses
 
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p)
-    (compatible : 128 * (-15728640 : ZMod p) = 1) :
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (compatible : SerializedInverse.Scale128 p) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec := Proofs.soundness hp compatible
 
 theorem babyBear_soundness :
@@ -116,8 +118,8 @@ end Airbender.Blake2Round.Addresses
 namespace Airbender.Blake2Round.Memory
 
 
-theorem soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) (data : Delegation.MemoryData p)
+theorem soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (compatible : SerializedInverse.Scale64 p) (data : Delegation.MemoryData p)
     (before : Reference.RiscV.Sail.State) (cells : List Trace.Cell) :
     (circuitModel data).SoundnessUnder (InterfaceAssumptions data before cells) Row.spec :=
   Proofs.soundness hp compatible data before cells
@@ -132,8 +134,8 @@ end Airbender.Blake2Round.Memory
 namespace Airbender.Blake2Round.Native
 
 
-theorem call_execution [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem call_execution [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {flags : Fin 8} (accepted : Delegation.MemoryAccepted data)
     (inputs : CallInputs data initial cells flags) (aligned : ∀ cell ∈ cells, cell.Aligned) :

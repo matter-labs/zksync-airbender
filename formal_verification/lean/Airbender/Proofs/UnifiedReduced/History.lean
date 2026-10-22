@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.Positions
 import Airbender.Review.Trace.UnifiedReduced.Memory
 import Airbender.Proofs.UnifiedReduced.ZeroRegister
@@ -9,7 +11,7 @@ open Trace Trace.Proofs
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-theorem zero_preserving [Fact p.Prime] (hp : 524288 < p) {trace : UnifiedTrace p}
+theorem zero_preserving [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288) {trace : UnifiedTrace p}
     (accepted : Accepted trace) {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImage before addresses = some program) (decoded : Decoded trace program) :
@@ -25,8 +27,8 @@ theorem zero_preserving [Fact p.Prime] (hp : 524288 < p) {trace : UnifiedTrace p
     exact row_zero_preserving hp core (accepted.active _ member)
       (fetched hp image core (decoded _ member))
 
-theorem memory_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : UnifiedTrace p}
+theorem memory_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : UnifiedTrace p}
     (accepted : Accepted trace) {before : Reference.RiscV.Sail.State}
     {cells : List Cell} {program : List ProgramEntry}
     (inputs : NativeInputs decoderFields trace before cells program) (decoded : Decoded trace program) :
@@ -36,8 +38,8 @@ theorem memory_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   exact native_row_history hp inverse accepted inputs.clocks inputs.image inputs.distinct inputs.aligned
     (zero_writes_of_preserving hp inverse accepted inputs.clocks inputs.image zero)
 
-theorem row_position [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : UnifiedTrace p}
+theorem row_position [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : UnifiedTrace p}
     (accepted : Accepted trace) {initial : Reference.RiscV.Sail.State}
     {cells : List Cell} {program : List ProgramEntry}
     (inputs : NativeInputs decoderFields trace initial cells program) (decoded : Decoded trace program)
@@ -49,8 +51,8 @@ theorem row_position [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   row_position_from_memory hp inverse accepted inputs.clocks
     (memory_execution hp inverse accepted inputs decoded) position
 
-theorem row_position_exists [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : UnifiedTrace p}
+theorem row_position_exists [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : UnifiedTrace p}
     (accepted : Accepted trace) {initial : Reference.RiscV.Sail.State}
     {cells : List Cell} {program : List ProgramEntry}
     (inputs : NativeInputs decoderFields trace initial cells program) (decoded : Decoded trace program)

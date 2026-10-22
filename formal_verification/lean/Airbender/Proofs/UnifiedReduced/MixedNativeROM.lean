@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.UnifiedReduced.MixedNativeROM
 import Airbender.Proofs.UnifiedReduced.ROMData
 import Airbender.Proofs.UnifiedReduced.MixedMemory
@@ -36,7 +37,7 @@ theorem calls [Fact p.Prime] (initial : State) (native : RequestTrace p) :
     (view initial native).calls = native.calls := by
   simp only [RequestTrace.calls, callers, List.map_map, Function.comp_def, request]
 
-theorem caller_row [Fact p.Prime] (hp : 18 < p) (initial : State)
+theorem caller_row [Fact p.Prime] (hp : FieldCapacity.NoWrap p 18) (initial : State)
     (native : Trace.Row p UnifiedFamily) (setup : Table (ZMod p) (fields 10))
     (active : native.assignment 4 = 1)
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment native.assignment) (native.constraints setup))
@@ -54,7 +55,7 @@ theorem zip_maps (items : List α) (left : α → β) (right : α → γ) :
     (items.map left).zip (items.map right) = items.map (fun item => (left item, right item)) := by
   induction items <;> simp_all
 
-theorem machine_steps [Fact p.Prime] (hp : 131072 < p) (initial : State)
+theorem machine_steps [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072) (initial : State)
     (native : Trace.Row p UnifiedFamily) (setup : Table (ZMod p) (fields 10))
     (active : native.assignment 4 = 1)
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment native.assignment) (native.constraints setup)) :
@@ -88,7 +89,7 @@ theorem machine_steps [Fact p.Prime] (hp : 131072 < p) (initial : State)
           (Prod.map (Trace.ROMView.token initial) (Trace.ROMView.token initial)) := List.zip_map
       _ = _ := by rw [Trace.Row.reads, Trace.Row.writes, zip_maps]; rfl
 
-theorem steps [Fact p.Prime] (hp : 131072 < p) (initial : State)
+theorem steps [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072) (initial : State)
     {native : RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     (accepted : MixedMemoryAccepted native program)
     (ram : ExternalBoundary.WorkerRAM.Binding native.workers.rows) :
@@ -102,7 +103,7 @@ theorem steps [Fact p.Prime] (hp : 131072 < p) (initial : State)
   intro row member
   exact machine_steps hp initial row native.machine.rom (accepted.active row member) (accepted.constraints row member)
 
-theorem accepted [Fact p.Prime] (hp : 131072 < p) (initial : State)
+theorem accepted [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072) (initial : State)
     {native : RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     (nativeAccepted : MixedMemoryAccepted native program)
     (ram : ExternalBoundary.WorkerRAM.Binding native.workers.rows) :
@@ -143,7 +144,7 @@ theorem accepted [Fact p.Prime] (hp : 131072 < p) (initial : State)
     rw [reads, writes]
     simpa only [List.map_append, List.map_map, Function.comp_def] using matching
 
-theorem inputs [Fact p.Prime] (hp : 4 < p)
+theorem inputs [Fact p.Prime] (hp : FieldCapacity.NoWrap p 4)
     {native : RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
     {initial : State} {cells : List Cell} (boot : Inputs native program initial cells) :
     ∃ ca oa, MixedMemoryInputs (view initial native) program initial ca oa cells := by

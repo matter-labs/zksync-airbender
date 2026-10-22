@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.NonDeterminism
 import Airbender.Proofs.Trace.ExternalStream
 
@@ -28,8 +30,8 @@ theorem ordered_consumption {rows : List (Row p)} {stream : List (BitVec 32)}
 
 /-- Imported clocks and logical matching derive the order. The stream boundary
     is then a chronological prefix, regardless of physical row storage order. -/
-theorem native_consumption (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem native_consumption (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {stream : List (BitVec 32)} (ports : StreamPorts trace stream) :
     ∃ rows, rows.Perm trace.rows ∧

@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Tables.DecoderPrefix
 import Airbender.Proofs.Tables.SelectedDecoderProgram
 import Airbender.Review.Helpers.Decoder.SetupData.MulDiv
@@ -59,7 +60,7 @@ private theorem unsupported_row (index : Fin mulDivSetup.realRows.length) (outsi
 
 /-- The actual setup supplies the former table-content contract. Public typed
     PC encoding and lookup authentication retain their distinct boundaries. -/
-theorem lookup_sound [Fact p.Prime] (hp : 65536 < p) (query : Vector (ZMod p) 9)
+theorem lookup_sound [Fact p.Prime] (hp : FieldCapacity.NoWrap p 65536) (query : Vector (ZMod p) 9)
     (typed : query[0].val < 65536)
     (holds : mulDivSetup.lookup query) :
     (decoderTable pooledProgram .mulDiv).Contains #[] query := by

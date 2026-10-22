@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Trace.PooledNonDeterminism
 import Airbender.Proofs.Trace.NonDeterminism
 import Airbender.Proofs.Trace.PooledProgram
@@ -68,7 +69,7 @@ private theorem restricted_read {instruction : SailRV32.instruction} {data : Dec
   · obtain ⟨rs1, _, rfl, rfl⟩ := h
     simp [NonDeterminism.instructionRead, Nat.testBit, Nat.shiftRight_eq_div_pow]
 
-private theorem addsub_read_flag {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+private theorem addsub_read_flag {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {trace : PooledTrace p} (accepted : Accepted trace) {w : Nat → ZMod p}
     (member : (⟨.addSub, w⟩ : Row p PooledFamily) ∈ trace.rows)
     {entry : PooledProgramEntry} (small : entry.data.mask < 512)
@@ -83,7 +84,7 @@ private theorem addsub_read_flag {p : Nat} [Fact p.Prime] (hp : limbBase < p)
   simp only [isRead, NonDeterminism.isRead, selected]
   cases entry.data.mask.testBit 8 <;> simp
 
-theorem read_classification {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem read_classification {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {trace : PooledTrace p} (accepted : Accepted trace) {row : Row p PooledFamily}
     (member : row ∈ trace.rows) {entry : PooledProgramEntry}
     (fields : Pooled.decoderFields entry.instruction = some entry.data)
@@ -122,7 +123,7 @@ theorem read_classification {p : Nat} [Fact p.Prime] (hp : limbBase < p)
         simpa [Nat.testBit, Nat.shiftRight_eq_div_pow, quotient] using selected
       | wordMemory | jumpBranchSlt | mulDiv | shiftBinop | subwordMemory => rfl
 
-theorem decoder_soundness {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem decoder_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {trace : PooledTrace p} (accepted : Accepted trace)
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List PooledProgramEntry} (image : Pooled.programImage before addresses = some program)

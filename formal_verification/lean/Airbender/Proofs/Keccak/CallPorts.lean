@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Trace.Workers.Keccak.Call
 import Airbender.Proofs.Keccak.ControllerLayout
 import Airbender.Review.Circuits.Keccak.Execution
@@ -103,7 +104,7 @@ theorem scheduled_indices_injective [Fact p.Prime] {w : Nat → ZMod p}
     simpa only [Vector.getElem_toList, Fin.getElem_fin] using ((selected a).symm.trans (same.trans (selected b)))
   exact Fin.ext (distinct.getElem_inj_iff.mp entries)
 
-private theorem low_address_value [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
+private theorem low_address_value [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536) {w : Nat → ZMod p}
     (effects : Native.RowEffects w) (i : Fin 12) :
     (w 13 + 8 * w (7 + i.val / 2) + (4 * (i.val % 2) : Nat)).val =
       (w 13).val + 8 * (w (7 + i.val / 2)).val + 4 * (i.val % 2) := by
@@ -116,7 +117,7 @@ private theorem low_address_value [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat →
   dsimp [Arithmetic.limbBase] at room
   omega
 
-private theorem port_code [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
+private theorem port_code [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536) {w : Nat → ZMod p}
     (effects : Native.RowEffects w) (i : Fin 14) :
     importedConstraintsMemoryPorts[i.val].address.code w =
       if i.val < 2 then Nat.pair 0 (Nat.pair (10 + i.val) 0)
@@ -140,7 +141,7 @@ private theorem port_code [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
     | simpa using low_address_value hp effects (10 : Fin 12)
     | simpa using low_address_value hp effects (11 : Fin 12)
 
-theorem scheduled_ports_distinct [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
+theorem scheduled_ports_distinct [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536) {w : Nat → ZMod p}
     (i : Fin 649) (effects : Native.RowEffects w) (active : w Variables.execute = 1)
     (control : (w Variables.controlReadLo).val = (scheduleControl ⟨i.val, by omega⟩).packed) :
     Function.Injective (fun port : Fin 14 => importedConstraintsMemoryPorts[port.val].address.code w) := by

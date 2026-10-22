@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Delegation.History
 import Airbender.Proofs.Delegation.Atomic
 import Airbender.Proofs.Delegation.SailHistory
@@ -7,7 +8,7 @@ namespace Airbender.Delegation.Proofs
 open Trace Trace.Proofs Reference.RiscV.Sail
 set_option warningAsError true
 
-theorem raw_address_clocks_distinct [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem raw_address_clocks_distinct [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     ((rawEvents data).map fun event => (event.1, event.2.1)).Nodup :=
@@ -29,7 +30,7 @@ private theorem row_events_sublist {data : MemoryData p} {row : Row p}
   apply List.Sublist.trans ?_ (List.sublist_append_right _ _)
   exact member_flatMap_sublist (fun r : Row p => r.memorySteps.map transferEvent) member
 
-theorem row_addresses_distinct [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem row_addresses_distinct [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {row : Row p} (member : row ∈ data.rows) :
@@ -49,7 +50,7 @@ theorem row_addresses_distinct [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   rw [times] at unique
   exact unique.of_map _
 
-theorem row_atomic_observations [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem row_atomic_observations [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {initial before after : State} {cells : List Cell} (inputs : BoundaryInputs data initial cells)
     {row : Row p} (member : row ∈ data.rows) {events : List MemoryAccess}
@@ -81,7 +82,7 @@ theorem row_atomic_observations [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     exact ⟨port, by simpa only [Array.mem_toList_iff] using portMember, rfl⟩
   exact observations _ present
 
-theorem grouped_atomic_observations [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem grouped_atomic_observations [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {initial after : State} {cells : List Cell} (inputs : BoundaryInputs data initial cells)
     {ordered : List (Row p)} (permutation : ordered.Perm data.rows)
