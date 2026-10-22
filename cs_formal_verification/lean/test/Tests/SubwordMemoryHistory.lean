@@ -98,7 +98,7 @@ private theorem decoded : Airbender.SubwordMemory.Decoded trace [entry] := by
   exact ⟨⟨0, by decide⟩, by decide⟩
 
 set_option backward.isDefEq.respectTransparency false in
-private theorem configuration : FlatMemoryConfiguration before := by
+private theorem configuration : Configured before := by
   constructor
   · simp [before, dataState, initial, wordWriteState, Std.ExtDHashMap.get?_insert]
   · simp [before, dataState, initial, wordWriteState, Std.ExtDHashMap.get?_insert]

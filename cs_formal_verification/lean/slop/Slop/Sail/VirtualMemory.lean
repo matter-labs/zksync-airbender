@@ -1,3 +1,4 @@
+import Slop.Sail.Configured
 import Slop.Sail.CheckedMemory
 import Slop.Sail.FlatMemory
 
@@ -6,7 +7,7 @@ open Airbender.Reference.Sail
 open _root_.Sail.ArchSem
 
 private theorem configured_translation
-    {before : State} (configuration : FlatMemoryConfiguration before)
+    {before : State} (configuration : Configured before)
     (address : BitVec 32) (access : SailRV32.MemoryAccessType SailRV32.mem_payload)
     (ordinary : access = .Load .Data ∨ access = .Store .Data ∨ access = .InstructionFetch ()) :
     run (SailRV32.Functions.translateAddr (.Virtaddr address) access .Machine) before =
@@ -20,7 +21,7 @@ private theorem configured_translation
 set_option backward.isDefEq.respectTransparency false in
 theorem physical_memory_read {size : Nat} {before : State} {address : BitVec 32} {value : BitVec (8 * size)}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
+    (configuration : Configured before) (aligned : address.toNat % size = 0)
     (ordinary : OrdinaryWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) size address.toNat).run before = .ok value before) :
     run (SailRV32.Functions.mem_read (.Load .Data) .PBMT_PMA .Machine
@@ -34,7 +35,7 @@ set_option backward.isDefEq.respectTransparency false in
 theorem physical_memory_write
     {size : Nat} {before after : State} {address : BitVec 32}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
+    (configuration : Configured before) (aligned : address.toNat % size = 0)
     (ordinary : OrdinaryWordAddress address) (value : BitVec (8 * size))
     (write : run (writeMemory (size := size) address value) before = .ok () after) :
     run (SailRV32.Functions.mem_write_value (.Physaddr (address.setWidth 34)) size value
@@ -49,7 +50,7 @@ set_option backward.isDefEq.respectTransparency false in
 theorem translated_memory_read
     {size : Nat} {before : State} {address : BitVec 32} {value : BitVec (8 * size)}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
+    (configuration : Configured before) (aligned : address.toNat % size = 0)
     (ordinary : OrdinaryWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) size address.toNat).run before = .ok value before) :
     run (SailRV32.Functions.translate_and_read_value (.Virtaddr address) size (.Load .Data)
@@ -121,7 +122,7 @@ set_option maxRecDepth 4096 in
 theorem virtual_address_memory_read
     {size : Nat} {before : State} {address : BitVec 32} {value : BitVec (8 * size)}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
+    (configuration : Configured before) (aligned : address.toNat % size = 0)
     (ordinary : OrdinaryWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) size address.toNat).run before = .ok value before) :
     run (SailRV32.Functions.vmem_read_addr (.Virtaddr address) size (.Load .Data)
@@ -153,7 +154,7 @@ set_option maxRecDepth 4096 in
 theorem virtual_address_memory_write
     {size : Nat} {before after : State} {address : BitVec 32}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
+    (configuration : Configured before) (aligned : address.toNat % size = 0)
     (ordinary : OrdinaryWordAddress address) (value : BitVec (8 * size))
     (write : run (writeMemory (size := size) address value) before = .ok () after) :
     run (SailRV32.Functions.vmem_write_addr (.Virtaddr address) size value (.Store .Data)
@@ -187,7 +188,7 @@ theorem virtual_address_memory_write
     rfl
 
 private theorem effective_memory_address {before : State} {source : BitVec 32}
-    (configuration : FlatMemoryConfiguration before) (index : SailRV32.regidx) (offset : BitVec 32) (size : Nat)
+    (configuration : Configured before) (index : SailRV32.regidx) (offset : BitVec 32) (size : Nat)
     (access : SailRV32.MemoryAccessType SailRV32.mem_payload)
     (read : run (SailRV32.Functions.rX_bits index) before = .ok source before) :
     run (SailRV32.Functions.get_transformed_data_addr index offset access
@@ -211,7 +212,7 @@ set_option maxRecDepth 4096 in
 theorem virtual_memory_read
     {size : Nat} {before : State} {source : BitVec 32} {value : BitVec (8 * size)}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
-    (configuration : FlatMemoryConfiguration before) (index : SailRV32.regidx) (offset : BitVec 32)
+    (configuration : Configured before) (index : SailRV32.regidx) (offset : BitVec 32)
     (registerRead : run (SailRV32.Functions.rX_bits index) before = .ok source before)
     (aligned : (source + offset).toNat % size = 0) (ordinary : OrdinaryWordAddress (source + offset))
     (read : (readBytes (ue := SailRV32.exception) size (source + offset).toNat).run before = .ok value before) :
@@ -236,7 +237,7 @@ set_option maxRecDepth 4096 in
 theorem virtual_memory_write
     {size : Nat} {before after : State} {source : BitVec 32}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
-    (configuration : FlatMemoryConfiguration before) (index : SailRV32.regidx) (offset : BitVec 32)
+    (configuration : Configured before) (index : SailRV32.regidx) (offset : BitVec 32)
     (registerRead : run (SailRV32.Functions.rX_bits index) before = .ok source before)
     (aligned : (source + offset).toNat % size = 0) (ordinary : OrdinaryWordAddress (source + offset)) (value : BitVec (8 * size))
     (write : run (writeMemory (size := size) (source + offset) value) before = .ok () after) :
@@ -260,7 +261,7 @@ set_option backward.isDefEq.respectTransparency false in
 theorem physical_memory_read_error {size : Nat} {before after : State} {address : BitVec 32}
     {error : _root_.Sail.Error SailRV32.exception}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
+    (configuration : Configured before) (aligned : address.toNat % size = 0)
     (ordinary : OrdinaryWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) size address.toNat).run before = .error error after) :
     run (SailRV32.Functions.mem_read (.Load .Data) .PBMT_PMA .Machine
@@ -274,7 +275,7 @@ theorem translated_memory_read_error
     {size : Nat} {before after : State} {address : BitVec 32}
     {error : _root_.Sail.Error SailRV32.exception}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
+    (configuration : Configured before) (aligned : address.toNat % size = 0)
     (ordinary : OrdinaryWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) size address.toNat).run before = .error error after) :
     run (SailRV32.Functions.translate_and_read_value (.Virtaddr address) size (.Load .Data)
@@ -290,7 +291,7 @@ theorem virtual_address_memory_read_error
     {size : Nat} {before after : State} {address : BitVec 32}
     {error : _root_.Sail.Error SailRV32.exception}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
+    (configuration : Configured before) (aligned : address.toNat % size = 0)
     (ordinary : OrdinaryWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) size address.toNat).run before = .error error after) :
     run (SailRV32.Functions.vmem_read_addr (.Virtaddr address) size (.Load .Data)
@@ -320,7 +321,7 @@ theorem virtual_memory_read_error
     {size : Nat} {before after : State}
     {error : _root_.Sail.Error SailRV32.exception} {source : BitVec 32}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
-    (configuration : FlatMemoryConfiguration before) (index : SailRV32.regidx) (offset : BitVec 32)
+    (configuration : Configured before) (index : SailRV32.regidx) (offset : BitVec 32)
     (registerRead : run (SailRV32.Functions.rX_bits index) before = .ok source before)
     (aligned : (source + offset).toNat % size = 0) (ordinary : OrdinaryWordAddress (source + offset))
     (read : (readBytes (ue := SailRV32.exception) size (source + offset).toNat).run before = .error error after) :
@@ -340,7 +341,7 @@ theorem virtual_memory_read_error
     | rw [run_bind_of_error _ _ _ _ _ memory]
 
 theorem physical_word_read {before : State} {address value : BitVec 32}
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (configuration : Configured before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) 4 address.toNat).run before = .ok value before) :
     run (SailRV32.Functions.mem_read (.Load .Data) .PBMT_PMA .Machine
@@ -350,7 +351,7 @@ theorem physical_word_read {before : State} {address value : BitVec 32}
 
 theorem physical_word_write
     {before : State} {address : BitVec 32}
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (configuration : Configured before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address) (value : BitVec 32) :
     run (SailRV32.Functions.mem_write_value (.Physaddr (address.setWidth 34)) 4 value
       .Machine (.Store .Data) .PBMT_PMA false false false) before =
@@ -359,7 +360,7 @@ theorem physical_word_write
 
 theorem translated_word_read
     {before : State} {address value : BitVec 32}
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (configuration : Configured before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) 4 address.toNat).run before = .ok value before) :
     run (SailRV32.Functions.translate_and_read_value (.Virtaddr address) 4 (.Load .Data)
@@ -373,7 +374,7 @@ theorem word_page_split (address : BitVec 32) (aligned : address.toNat % 4 = 0) 
 
 theorem virtual_address_word_read
     {before : State} {address value : BitVec 32}
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (configuration : Configured before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) 4 address.toNat).run before = .ok value before) :
     run (SailRV32.Functions.vmem_read_addr (.Virtaddr address) 4 (.Load .Data)
@@ -382,7 +383,7 @@ theorem virtual_address_word_read
 
 theorem virtual_address_word_write
     {before : State} {address : BitVec 32}
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (configuration : Configured before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address) (value : BitVec 32) :
     run (SailRV32.Functions.vmem_write_addr (.Virtaddr address) 4 value (.Store .Data)
       ⟨.Machine, 0, false⟩ false false false) before =
@@ -391,7 +392,7 @@ theorem virtual_address_word_write
 
 theorem virtual_word_read
     {before : State} {source value : BitVec 32}
-    (configuration : FlatMemoryConfiguration before) (index : SailRV32.regidx) (offset : BitVec 32)
+    (configuration : Configured before) (index : SailRV32.regidx) (offset : BitVec 32)
     (registerRead : run (SailRV32.Functions.rX_bits index) before = .ok source before)
     (aligned : (source + offset).toNat % 4 = 0) (ordinary : OrdinaryWordAddress (source + offset))
     (read : (readBytes (ue := SailRV32.exception) 4 (source + offset).toNat).run before =
@@ -402,7 +403,7 @@ theorem virtual_word_read
 
 theorem virtual_word_write
     {before : State} {source : BitVec 32}
-    (configuration : FlatMemoryConfiguration before) (index : SailRV32.regidx) (offset : BitVec 32)
+    (configuration : Configured before) (index : SailRV32.regidx) (offset : BitVec 32)
     (registerRead : run (SailRV32.Functions.rX_bits index) before = .ok source before)
     (aligned : (source + offset).toNat % 4 = 0) (ordinary : OrdinaryWordAddress (source + offset))
     (value : BitVec 32) :
@@ -412,7 +413,7 @@ theorem virtual_word_write
 
 theorem physical_word_read_error {before after : State} {address : BitVec 32}
     {error : _root_.Sail.Error SailRV32.exception}
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (configuration : Configured before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) 4 address.toNat).run before = .error error after) :
     run (SailRV32.Functions.mem_read (.Load .Data) .PBMT_PMA .Machine
@@ -423,7 +424,7 @@ theorem physical_word_read_error {before after : State} {address : BitVec 32}
 theorem translated_word_read_error
     {before after : State} {address : BitVec 32}
     {error : _root_.Sail.Error SailRV32.exception}
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (configuration : Configured before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) 4 address.toNat).run before = .error error after) :
     run (SailRV32.Functions.translate_and_read_value (.Virtaddr address) 4 (.Load .Data)
@@ -434,7 +435,7 @@ theorem translated_word_read_error
 theorem virtual_address_word_read_error
     {before after : State} {address : BitVec 32}
     {error : _root_.Sail.Error SailRV32.exception}
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (configuration : Configured before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) 4 address.toNat).run before = .error error after) :
     run (SailRV32.Functions.vmem_read_addr (.Virtaddr address) 4 (.Load .Data)
@@ -444,7 +445,7 @@ theorem virtual_address_word_read_error
 theorem virtual_word_read_error
     {before after : State} {source : BitVec 32}
     {error : _root_.Sail.Error SailRV32.exception}
-    (configuration : FlatMemoryConfiguration before) (index : SailRV32.regidx) (offset : BitVec 32)
+    (configuration : Configured before) (index : SailRV32.regidx) (offset : BitVec 32)
     (registerRead : run (SailRV32.Functions.rX_bits index) before = .ok source before)
     (aligned : (source + offset).toNat % 4 = 0) (ordinary : OrdinaryWordAddress (source + offset))
     (read : (readBytes (ue := SailRV32.exception) 4 (source + offset).toNat).run before =

@@ -100,7 +100,7 @@ theorem row_soundness_from_history [Fact p.Prime]
     (query : decoderQuery w = entry.query)
     (encoding : entry.instruction = if input.store then .STORE (input.encodedImmediate, input.rs2, input.rs1, 4)
       else .LOAD (input.encodedImmediate, input.rs1, input.rd, false, 4))
-    (configuration : FlatMemoryConfiguration initial)
+    (configuration : Configured initial)
     (aligned : ∀ address, Cell.ram address ∈ cells → address.toNat % 4 = 0)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
     (destination : input.store = false → input.rd ≠ zeroRegister)
@@ -329,7 +329,7 @@ theorem row_soundness_from_memory [Fact p.Prime]
       else .LOAD (input.encodedImmediate, input.rs1, input.rd, false, 4))
     (memory : MemoryExecution trace initial cells)
     (initialization : NativeInputs projection trace initial cells program)
-    (configuration : FlatMemoryConfiguration initial)
+    (configuration : Configured initial)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
     (destination : input.store = false → input.rd ≠ zeroRegister)
     (copiedWord : output.data.toBitVec = input.readData.toBitVec) :
@@ -360,7 +360,7 @@ theorem row_soundness [Fact p.Prime]
     (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ trace.rows)
     (mapping : TraceMapping trace initial cells program input output w)
     (initialization : NativeInputs decoderFields trace initial cells program)
-    (configuration : FlatMemoryConfiguration initial)
+    (configuration : Configured initial)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
     (destination : input.store = false → input.rd ≠ zeroRegister)
     (copiedWord : output.data.toBitVec = input.readData.toBitVec) :

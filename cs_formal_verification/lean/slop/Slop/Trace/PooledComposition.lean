@@ -22,7 +22,7 @@ theorem pooled_row_step {p : Nat} [Fact p.Prime]
     (registers : ∀ index, Cell.register index ∈ cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (memoryConfiguration : FlatMemoryConfiguration initial)
+    (memoryConfiguration : Configured initial)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
     (programImage : pooledProgramImage initial addresses = some program)
     (decoded : PooledDecoded trace program)

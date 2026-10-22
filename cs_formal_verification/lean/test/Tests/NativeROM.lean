@@ -77,7 +77,7 @@ private theorem profile : InitialProfile before cells := by
     change 4194304 ≤ 0 at bound
     omega
 
-private theorem configuration : FlatMemoryConfiguration before := by
+private theorem configuration : Configured before := by
   have written : run (SailRV32.Functions.wX_bits (.Regidx 1) 0)
       Tests.TraceExecution.before = .ok ()
         { Tests.TraceExecution.before with regs := Tests.TraceExecution.before.regs.insert .x1 0 } := by

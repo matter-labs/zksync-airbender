@@ -67,7 +67,7 @@ theorem word_execution_from_memory [Fact p.Prime]
     {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ (ROMView.data initial trace).rows)
     {before after : State} {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output} {entry : ProgramEntry}
     (boot : BootInputsWith projection trace initial cells program)
-    (configuration : FlatMemoryConfiguration initial)
+    (configuration : Configured initial)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
     (destination : input.store = false → input.rd ≠ zeroRegister)
     (words : WordMemory.WordMapping input output w)

@@ -77,7 +77,7 @@ private theorem decoded : Decoded trace [entry] := by
   change ∃ i : Fin 1, Tests.TraceZeroRegister.row.decoderQuery = _
   exact ⟨0, by decide⟩
 
-private theorem configuration : FlatMemoryConfiguration before := by
+private theorem configuration : Configured before := by
   have written : run (SailRV32.Functions.wX_bits (.Regidx 1) 4194304)
       Tests.TraceExecution.before = .ok ()
         { Tests.TraceExecution.before with regs := Tests.TraceExecution.before.regs.insert .x1 4194304 } := by

@@ -1613,7 +1613,7 @@ private theorem memoryInputs (store : Bool) : UnifiedReduced.Caller.MixedMemoryI
     rfl
 
 set_option backward.isDefEq.respectTransparency false in
-private theorem memoryConfiguration (store : Bool) : FlatMemoryConfiguration (memoryBefore store) := by
+private theorem memoryConfiguration (store : Bool) : Configured (memoryBefore store) := by
   constructor
   · simp [memoryBefore, Std.ExtDHashMap.get?_insert]
   · simp [memoryBefore, Std.ExtDHashMap.get?_insert]

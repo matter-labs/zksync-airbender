@@ -120,7 +120,7 @@ private theorem program_image : programImage before [0, 4] =
   rfl
 
 set_option backward.isDefEq.respectTransparency false in
-theorem configuration : FlatMemoryConfiguration before := by
+theorem configuration : Configured before := by
   constructor
   · simp [before, Std.ExtDHashMap.get?_insert]
   · simp [before, Std.ExtDHashMap.get?_insert]

@@ -114,7 +114,7 @@ theorem local_word_transport {p : Nat} [Fact p.Prime]
       (Word.mk (w (if store then 25 else 19)).val (w (if store then 26 else 20)).val).toBitVec =
         (Word.mk (w 17).val (w 18).val).toBitVec + (Word.mk (w 8).val (w 9).val).toBitVec ∧
       Cell.ram (Word.mk (w (if store then 25 else 19)).val (w (if store then 26 else 20)).val).toBitVec ∈ cells)
-    {before after : State} (configuration : FlatMemoryConfiguration before)
+    {before after : State} (configuration : Configured before)
     (history : SailHistory cells (rowEvents epoch (⟨.wordMemory, w⟩ : Row p)).reverse before after)
     (native : if store then
       run (writeMemory (size := 4) (Word.mk (w 25).val (w 26).val).toBitVec
@@ -181,7 +181,7 @@ theorem word_row_transport [Fact p.Prime]
     (store : Bool) (selected : w 10 = if store then 1 else 0)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
     (query : (⟨.wordMemory, w⟩ : Row p).decoderQuery = entry.query)
-    {before after : State} (configuration : FlatMemoryConfiguration before)
+    {before after : State} (configuration : Configured before)
     (history : SailHistory cells
       (rowEvents trace.memoryEpoch (⟨.wordMemory, w⟩ : Row p)).reverse before after) :
     let immediate := (Word.mk (w 8).val (w 9).val).toBitVec
@@ -263,7 +263,7 @@ theorem word_row_store_execution [Fact p.Prime]
     (query : (⟨.wordMemory, w⟩ : Row p).decoderQuery = entry.query)
     {imm : BitVec 12} {rs1 rs2 : BitVec 5}
     (instruction : entry.instruction = .STORE (imm, .Regidx rs2, .Regidx rs1, 4))
-    {before after : State} (configuration : FlatMemoryConfiguration before)
+    {before after : State} (configuration : Configured before)
     (history : SailHistory cells
       (rowEvents trace.memoryEpoch (⟨.wordMemory, w⟩ : Row p)).reverse before after) :
     run (SailRV32.Functions.execute_STORE imm (.Regidx rs2) (.Regidx rs1) 4) before =
@@ -301,7 +301,7 @@ theorem local_word_load_execution {p : Nat} [Fact p.Prime]
     (address : (Word.mk (w 19).val (w 20).val).Bounded ∧
       (Word.mk (w 19).val (w 20).val).toBitVec = (Word.mk (w 17).val (w 18).val).toBitVec +
         (Word.mk (w 8).val (w 9).val).toBitVec ∧ Cell.ram (Word.mk (w 19).val (w 20).val).toBitVec ∈ cells)
-    {before after : State} (configuration : FlatMemoryConfiguration before)
+    {before after : State} (configuration : Configured before)
     (romReads : ROM.Reads before setup)
     (history : SailHistory cells (rowEvents epoch (⟨.wordMemory, w⟩ : Row p)).reverse before after)
     (native : (readBytes (ue := SailRV32.exception) 4
@@ -375,7 +375,7 @@ theorem word_row_load_execution [Fact p.Prime]
     (setup : trace.rom = ROM.table cells trace.initialMemory)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial)
+    (configuration : Configured initial)
     {w : Nat → ZMod p} (member : (⟨.wordMemory, w⟩ : Row p) ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
     (family : entry.data.family = .wordMemory)
@@ -431,7 +431,7 @@ theorem word_row_store_step [Fact p.Prime]
     (setup : trace.rom = ROM.table cells trace.initialMemory)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
+    (configuration : Configured initial) (initialPC : trace.initial.word.Bounded)
     {w : Nat → ZMod p} (member : (⟨.wordMemory, w⟩ : Row p) ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
     (query : (⟨.wordMemory, w⟩ : Row p).decoderQuery = entry.query)
@@ -471,7 +471,7 @@ theorem word_row_load_step [Fact p.Prime]
     (setup : trace.rom = ROM.table cells trace.initialMemory)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
+    (configuration : Configured initial) (initialPC : trace.initial.word.Bounded)
     {w : Nat → ZMod p} (member : (⟨.wordMemory, w⟩ : Row p) ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
     (family : entry.data.family = .wordMemory)
@@ -514,7 +514,7 @@ theorem word_rebased_store_step [Fact p.Prime]
     (setup : trace.rom = ROM.table cells trace.initialMemory)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
+    (configuration : Configured initial) (initialPC : trace.initial.word.Bounded)
     {w : Nat → ZMod p} (member : (⟨.wordMemory, w⟩ : Row p) ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
     (query : (⟨.wordMemory, w⟩ : Row p).decoderQuery = entry.query)
@@ -552,7 +552,7 @@ theorem word_rebased_load_step [Fact p.Prime]
     (setup : trace.rom = ROM.table cells trace.initialMemory)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
+    (configuration : Configured initial) (initialPC : trace.initial.word.Bounded)
     {w : Nat → ZMod p} (member : (⟨.wordMemory, w⟩ : Row p) ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
     (family : entry.data.family = .wordMemory)

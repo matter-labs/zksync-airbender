@@ -161,7 +161,7 @@ private theorem profile : InitialProfile before cells := by
     change 4194304 ≤ 0 at bound
     omega
 
-private theorem configuration : FlatMemoryConfiguration before := by
+private theorem configuration : Configured before := by
   constructor
   · simpa [before, Std.ExtDHashMap.get?_insert] using Tests.TraceExecution.configuration.privilege
   · simpa [before, Std.ExtDHashMap.get?_insert] using Tests.TraceExecution.configuration.status

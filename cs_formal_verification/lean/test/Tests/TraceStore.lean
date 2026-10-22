@@ -64,7 +64,7 @@ private def before : Reference.RiscV.Sail.State :=
       |>.insert 65532 0x23 |>.insert 65533 0xa2 |>.insert 65534 0x20 |>.insert 65535 0 }
 
 set_option backward.isDefEq.respectTransparency false in
-private theorem configuration : Reference.RiscV.Sail.FlatMemoryConfiguration before := by
+private theorem configuration : Reference.RiscV.Sail.Configured before := by
   constructor
   · simp [before, Std.ExtDHashMap.get?_insert]
   · simp [before, Std.ExtDHashMap.get?_insert]

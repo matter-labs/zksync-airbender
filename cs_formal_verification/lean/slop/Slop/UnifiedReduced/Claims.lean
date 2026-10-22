@@ -404,7 +404,7 @@ theorem Caller.ram_cycle_soundness
     (accepted : Caller.MixedMemoryAccepted data program)
     (inputs : Caller.MixedMemoryInputs data program initial ca oa cells)
     (started : 0 < (Trace.timeOfPair data.machine.initial.timestamp).value)
-    (configuration : Reference.RiscV.Sail.FlatMemoryConfiguration initial)
+    (configuration : Reference.RiscV.Sail.Configured initial)
     (ordinary : ∀ address, Trace.Cell.ram address ∈ cells → Reference.RiscV.Sail.OrdinaryWordAddress address)
     (ram : ∀ address, Trace.Cell.ram address ∈ cells → 4194304 ≤ address.toNat)
     {w : Nat → ZMod babyBearModulus} {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output}

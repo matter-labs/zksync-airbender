@@ -142,7 +142,7 @@ theorem pooled_word_execution {p : Nat} [Fact p.Prime]
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial)
+    (configuration : Configured initial)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
     (programImage : programImageRunWith projection initial addresses = some program)
     (decoded : PooledDecoded trace program)

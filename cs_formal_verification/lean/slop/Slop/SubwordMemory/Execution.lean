@@ -68,7 +68,7 @@ theorem local_execution {p : Nat} [Fact p.Prime]
     (addressCode :
       let port := if store then importedConstraintsMemoryPorts[2] else importedConstraintsMemoryPorts[1]
       port.address.code w = (Cell.ram (port.address.word w).toBitVec).addressCode)
-    {before after : State} (configuration : FlatMemoryConfiguration before)
+    {before after : State} (configuration : Configured before)
     (romReads : ∀ cell : Word, cell.Bounded → cell.hi < 64 → Cell.ram cell.toBitVec ∈ cells →
       (readBytes (ue := SailRV32.exception) 4 cell.toBitVec.toNat).run
         (Trace.retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
@@ -265,7 +265,7 @@ theorem row_ram_execution {p : Nat} [Fact p.Prime]
     {program : Nat → BitVec 32} (setup : trace.rom = Verification.subwordTable program)
     (ramDomain : ∀ address, Cell.ram address ∈ cells → ROM.limit ≤ address.toNat)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial)
+    (configuration : Configured initial)
     {w : Nat → ZMod p} (member : (⟨.subwordMemory, w⟩ : Row p TraceKind) ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
     (query : decoderQuery w = entry.query)

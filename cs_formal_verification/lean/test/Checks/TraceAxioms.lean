@@ -150,7 +150,7 @@ import Slop.SubwordMemory.MemoryAccess
 #print axioms Tests.SailPhysicalMemory.upper_word_roundtrip
 #print axioms Tests.SailPhysicalMemory.little_endian_bytes
 #print axioms Tests.SailPhysicalMemory.missing_fourth_byte
-#print axioms Airbender.Reference.RiscV.Sail.FlatMemoryConfiguration
+#print axioms Airbender.Reference.RiscV.Sail.Configured
 #print axioms Airbender.Reference.RiscV.Sail.configuration_register_frame
 #print axioms Airbender.Reference.RiscV.Sail.configured_word_permission
 #print axioms Airbender.Reference.RiscV.Sail.word_address_announcement

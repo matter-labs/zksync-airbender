@@ -86,8 +86,8 @@ theorem history_address_member {cells : List Cell} {events : List MemoryAccess}
     · exact ih earlier
 
 theorem history_configuration {cells : List Cell} {events : List MemoryAccess} {before after : State}
-    (history : SailHistory cells events before after) (configuration : FlatMemoryConfiguration before) :
-    FlatMemoryConfiguration after := by
+    (history : SailHistory cells events before after) (configuration : Configured before) :
+    Configured after := by
   induction history with
   | nil => exact configuration
   | cons past cell member address read write ih =>

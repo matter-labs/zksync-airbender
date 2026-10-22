@@ -15,7 +15,7 @@ theorem row_step {p : Nat} [Fact p.Prime]
     (registers : ∀ index, Cell.register index ∈ cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
+    (configuration : Configured initial) (initialPC : trace.initial.word.Bounded)
     {program : List ProgramEntry}
     (sources : ∀ entry ∈ program, entry.Source initial NonDeterminism.decoderFields)
     (code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0)
@@ -56,7 +56,7 @@ theorem rows_trace {p : Nat} [Fact p.Prime]
     (registers : ∀ index, Cell.register index ∈ cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
+    (configuration : Configured initial) (initialPC : trace.initial.word.Bounded)
     {program : List ProgramEntry} (sources : ∀ entry ∈ program, entry.Source initial NonDeterminism.decoderFields)
     (code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0)
     (decoded : Decoded trace program) {stream : List (BitVec 32)} (ports : StreamPorts trace stream)

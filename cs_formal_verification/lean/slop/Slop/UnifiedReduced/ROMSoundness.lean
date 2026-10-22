@@ -23,7 +23,7 @@ theorem soundness_from_memory [Fact p.Prime]
     (query : decoderQuery w = entry.query)
     (encoding : entry.instruction = if input.store then .STORE (input.encodedImmediate, input.rs2, input.rs1, 4)
       else .LOAD (input.encodedImmediate, input.rs1, input.rd, false, 4))
-    (configuration : FlatMemoryConfiguration initial)
+    (configuration : Configured initial)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
     (destination : input.store = false → input.rd ≠ zeroRegister) :
     Airbender.WordMemory.spec input output := by

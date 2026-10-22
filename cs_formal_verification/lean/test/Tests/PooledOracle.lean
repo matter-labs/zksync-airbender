@@ -342,7 +342,7 @@ theorem external_read_retirement  (second : Bool) :
     (ports (readRow second) member) past current
   cases second <;> exact ⟨rowBefore, rowAfter, original, selected, executed⟩
 
-private theorem configuration : FlatMemoryConfiguration before := by
+private theorem configuration : Configured before := by
   have base := Tests.TraceExecution.configuration
   exact {
     privilege := by simpa [before, Std.ExtDHashMap.get?_insert] using base.privilege

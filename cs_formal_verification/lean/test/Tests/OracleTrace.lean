@@ -88,7 +88,7 @@ private theorem image : initialImage before cells = some seed := by
     List.mapM_nil, zero_registers, bind, Option.bind]
   rfl
 
-private theorem configuration : FlatMemoryConfiguration before := by
+private theorem configuration : Configured before := by
   have written : run (SailRV32.Functions.wX_bits (.Regidx 1) 0)
       Tests.TraceExecution.before = .ok ()
         { Tests.TraceExecution.before with regs := Tests.TraceExecution.before.regs.insert .x1 0 } := by

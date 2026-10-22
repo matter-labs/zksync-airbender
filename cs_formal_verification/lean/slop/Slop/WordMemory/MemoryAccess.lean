@@ -8,7 +8,7 @@ open _root_.Sail.ArchSem
 /-- The existing family transport interface follows from public configuration
     and the effective address domain, without assuming a virtual access result. -/
 theorem memory_access  {input : Input}
-    (configuration : Sail.FlatMemoryConfiguration input.before)
+    (configuration : Sail.Configured input.before)
     (aligned : (input.source.toBitVec + input.immediate.toBitVec).toNat % 4 = 0)
     (ordinary : Sail.OrdinaryWordAddress (input.source.toBitVec + input.immediate.toBitVec)) :
     MemoryAccess input := by

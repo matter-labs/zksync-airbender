@@ -60,9 +60,9 @@ theorem cell_write_same {before : State} {cell : Cell} {value : BitVec 32}
     rw [write_word_state, written_word_same read]
 
 /-- Every native history write preserves the public Machine configuration. -/
-theorem cell_write_configuration {before after : State} (configuration : FlatMemoryConfiguration before)
+theorem cell_write_configuration {before after : State} (configuration : Configured before)
     {cell : Cell} {value : BitVec 32}
-    (write : run (cell.write value) before = .ok () after) : FlatMemoryConfiguration after := by
+    (write : run (cell.write value) before = .ok () after) : Configured after := by
   cases cell with
   | register index => exact configuration_gpr_write configuration index value write
   | ram address =>

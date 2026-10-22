@@ -99,7 +99,7 @@ theorem instruction_step {p : Nat} [Fact p.Prime]
     (registers : ∀ index, Cell.register index ∈ cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
-    (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
+    (configuration : Configured initial) (initialPC : trace.initial.word.Bounded)
     {row : Row p} (member : row ∈ trace.rows) {entry : ProgramEntry}
     (fields : NonDeterminism.decoderFields entry.instruction = some entry.data)
     (family : entry.data.family = row.family) (query : row.decoderQuery = entry.query)

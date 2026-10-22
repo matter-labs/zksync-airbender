@@ -274,8 +274,8 @@ theorem retired_state_image {cells : List Cell} {tokens : List (MemoryToken p)}
   initial_image_control (initial_image_control image .nextPC (.inr rfl) pc) .PC (.inl rfl) pc
 
 theorem retired_state_configuration {before : State}
-    (configuration : FlatMemoryConfiguration before) (pc : BitVec 32) :
-    FlatMemoryConfiguration (retiredState before pc) :=
+    (configuration : Configured before) (pc : BitVec 32) :
+    Configured (retiredState before pc) :=
   configuration_pc_write (configuration_next_pc_write configuration pc) pc
 
 /-- An actual native destination write determines the complete projected Sail

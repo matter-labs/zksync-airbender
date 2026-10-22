@@ -163,7 +163,7 @@ private theorem public_inputs (store : Bool) :
   · exact boundary store
 
 set_option backward.isDefEq.respectTransparency false in
-private theorem configuration (store : Bool) : FlatMemoryConfiguration (before store) := by
+private theorem configuration (store : Bool) : Configured (before store) := by
   constructor
   · simp [before, Std.ExtDHashMap.get?_insert]
   · simp [before, Std.ExtDHashMap.get?_insert]

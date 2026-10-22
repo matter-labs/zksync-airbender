@@ -1,3 +1,4 @@
+import Slop.Sail.Configured
 import Slop.Sail.PhysicalMemory
 import Slop.Sail.RegisterState
 
@@ -9,8 +10,8 @@ private theorem native_unit_bind {α : Type} (next : Unit → SailRV32.SailM α)
     ((FreeM.pure () : SailRV32.SailM Unit) >>= next) = next () := rfl
 
 theorem configuration_register_frame {before after : State}
-    (registers : after.regs = before.regs) (configuration : FlatMemoryConfiguration before) :
-    FlatMemoryConfiguration after := by
+    (registers : after.regs = before.regs) (configuration : Configured before) :
+    Configured after := by
   cases configuration
   constructor <;> simp_all only
 
@@ -19,10 +20,10 @@ private def configurationKeys : List SailRV32.Register :=
     .pma_regions, .mhartid, .htif_tohost_base]
 
 set_option backward.isDefEq.respectTransparency false in
-private theorem configuration_insert {before : State} (configuration : FlatMemoryConfiguration before)
+private theorem configuration_insert {before : State} (configuration : Configured before)
     (key : SailRV32.Register) (value : SailRV32.RegisterType key)
     (outside : key ∉ configurationKeys) :
-    FlatMemoryConfiguration { before with regs := before.regs.insert key value } := by
+    Configured { before with regs := before.regs.insert key value } := by
   have distinct (other : SailRV32.Register) (member : other ∈ configurationKeys) : key ≠ other := by
     intro same
     exact outside (same ▸ member)
@@ -40,28 +41,28 @@ private theorem configuration_insert {before : State} (configuration : FlatMemor
   constructor <;> simp_all [Std.ExtDHashMap.get?_insert]
 
 /-- Native RAM writes leave every configuration register unchanged. -/
-theorem configuration_word_write {before : State} (configuration : FlatMemoryConfiguration before)
+theorem configuration_word_write {before : State} (configuration : Configured before)
     (address : Nat) (value : BitVec 32) :
-    FlatMemoryConfiguration (wordWriteState before address value) :=
+    Configured (wordWriteState before address value) :=
   configuration_register_frame (before := before) (after := wordWriteState before address value)
     rfl configuration
 
-theorem configuration_pc_write {before : State} (configuration : FlatMemoryConfiguration before)
+theorem configuration_pc_write {before : State} (configuration : Configured before)
     (value : BitVec 32) :
-    FlatMemoryConfiguration { before with regs := before.regs.insert .PC value } :=
+    Configured { before with regs := before.regs.insert .PC value } :=
   configuration_insert configuration .PC value (by decide)
 
-theorem configuration_next_pc_write {before : State} (configuration : FlatMemoryConfiguration before)
+theorem configuration_next_pc_write {before : State} (configuration : Configured before)
     (value : BitVec 32) :
-    FlatMemoryConfiguration { before with regs := before.regs.insert .nextPC value } :=
+    Configured { before with regs := before.regs.insert .nextPC value } :=
   configuration_insert configuration .nextPC value (by decide)
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxHeartbeats 2000000 in
-theorem configuration_gpr_write {before after : State} (configuration : FlatMemoryConfiguration before)
+theorem configuration_gpr_write {before after : State} (configuration : Configured before)
     (index : BitVec 5) (value : BitVec 32)
     (write : run (SailRV32.Functions.wX_bits (.Regidx index) value) before = .ok () after) :
-    FlatMemoryConfiguration after := by
+    Configured after := by
   have primitive (key : SailRV32.Register) (data : SailRV32.RegisterType key) :
       run (do SailRV32.writeReg key data; pure ()) before =
         .ok () { before with regs := before.regs.insert key data } := rfl
@@ -78,7 +79,7 @@ theorem configuration_gpr_write {before after : State} (configuration : FlatMemo
 
 theorem configured_memory_permission {size : Nat} {before : State} {address : BitVec 32}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
+    (configuration : Configured before) (aligned : address.toNat % size = 0)
     (access : SailRV32.MemoryAccessType SailRV32.mem_payload)
     (ordinary : access = .Load .Data ∨ access = .Store .Data ∨ access = .InstructionFetch ()) :
     run (SailRV32.Functions.check_pma_with_pmp_priority access .PBMT_PMA .Machine
@@ -91,7 +92,7 @@ theorem configured_memory_permission {size : Nat} {before : State} {address : Bi
   rfl
 
 theorem configured_word_permission {before : State} {address : BitVec 32}
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (configuration : Configured before) (aligned : address.toNat % 4 = 0)
     (access : SailRV32.MemoryAccessType SailRV32.mem_payload)
     (ordinary : access = .Load .Data ∨ access = .Store .Data ∨ access = .InstructionFetch ()) :
     run (SailRV32.Functions.check_pma_with_pmp_priority access .PBMT_PMA .Machine
@@ -117,7 +118,7 @@ set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 4096 in
 theorem checked_memory_read {size : Nat} {before : State} {address : BitVec 32} {value : BitVec (8 * size)}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
+    (configuration : Configured before) (aligned : address.toNat % size = 0)
     (ordinary : OrdinaryWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) size address.toNat).run before = .ok value before) :
     run (SailRV32.Functions.checked_mem_read (.Load .Data) .PBMT_PMA .Machine
@@ -154,7 +155,7 @@ theorem checked_memory_read {size : Nat} {before : State} {address : BitVec 32} 
     rfl
 
 theorem checked_word_read {before : State} {address value : BitVec 32}
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (configuration : Configured before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) 4 address.toNat).run before = .ok value before) :
     run (SailRV32.Functions.checked_mem_read (.Load .Data) .PBMT_PMA .Machine
@@ -167,7 +168,7 @@ set_option maxRecDepth 4096 in
 theorem checked_memory_read_error {size : Nat} {before after : State} {address : BitVec 32}
     {error : _root_.Sail.Error SailRV32.exception}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
+    (configuration : Configured before) (aligned : address.toNat % size = 0)
     (ordinary : OrdinaryWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) size address.toNat).run before = .error error after) :
     run (SailRV32.Functions.checked_mem_read (.Load .Data) .PBMT_PMA .Machine
@@ -203,7 +204,7 @@ theorem checked_memory_read_error {size : Nat} {before after : State} {address :
 
 theorem checked_word_read_error {before after : State} {address : BitVec 32}
     {error : _root_.Sail.Error SailRV32.exception}
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (configuration : Configured before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) 4 address.toNat).run before = .error error after) :
     run (SailRV32.Functions.checked_mem_read (.Load .Data) .PBMT_PMA .Machine
@@ -215,7 +216,7 @@ set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 4096 in
 theorem checked_memory_write  {size : Nat} {before after : State} {address : BitVec 32}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
+    (configuration : Configured before) (aligned : address.toNat % size = 0)
     (ordinary : OrdinaryWordAddress address) (value : BitVec (8 * size))
     (write : run (writeMemory (size := size) address value) before = .ok () after) :
     run (SailRV32.Functions.checked_mem_write (.Physaddr (address.setWidth 34)) size value
@@ -251,7 +252,7 @@ theorem checked_memory_write  {size : Nat} {before after : State} {address : Bit
     rfl
 
 theorem checked_word_write  {before : State} {address : BitVec 32}
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (configuration : Configured before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address) (value : BitVec 32) :
     run (SailRV32.Functions.checked_mem_write (.Physaddr (address.setWidth 34)) 4 value
       (.Store .Data) .PBMT_PMA .Machine () false false false) before =
@@ -262,7 +263,7 @@ set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 4096 in
 theorem checked_memory_announcement {size : Nat} {before : State} {address : BitVec 32}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
+    (configuration : Configured before) (aligned : address.toNat % size = 0)
     (ordinary : OrdinaryWordAddress address) :
     run (SailRV32.Functions.mem_write_ea (.Physaddr (address.setWidth 34)) size .Machine
       (.Store .Data) .PBMT_PMA false false false) before = .ok (.Ok ()) before := by
@@ -296,7 +297,7 @@ theorem checked_memory_announcement {size : Nat} {before : State} {address : Bit
     rfl
 
 theorem checked_word_announcement {before : State} {address : BitVec 32}
-    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (configuration : Configured before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address) :
     run (SailRV32.Functions.mem_write_ea (.Physaddr (address.setWidth 34)) 4 .Machine
       (.Store .Data) .PBMT_PMA false false false) before = .ok (.Ok ()) before :=

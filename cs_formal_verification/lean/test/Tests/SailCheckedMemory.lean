@@ -21,7 +21,7 @@ private def configured : State :=
       |>.insert .mhartid 7 |>.insert .htif_tohost_base none }
 
 set_option backward.isDefEq.respectTransparency false in
-private theorem configuration : FlatMemoryConfiguration configured := by
+private theorem configuration : Configured configured := by
   constructor
   · simp [configured, Std.ExtDHashMap.get?_insert]
   · simp [configured, Std.ExtDHashMap.get?_insert]
@@ -136,12 +136,12 @@ theorem store_announcement :
 
 theorem gpr_keeps_configuration : ∃ after,
     Sail.run (SailRV32.Functions.wX_bits (.Regidx 31) 0xabcdef12) configured = .ok () after ∧
-      FlatMemoryConfiguration after := by
+      Configured after := by
   obtain ⟨after, write, _⟩ := gpr_write_memory 31 0xabcdef12 configured
   exact ⟨after, write, configuration_gpr_write configuration 31 0xabcdef12 write⟩
 
 theorem ram_and_pc_keep_configuration :
-    FlatMemoryConfiguration {
+    Configured {
       (wordWriteState configured 4194304 0x12345678) with
       regs := configured.regs.insert .nextPC 65536 |>.insert .PC 65536 } := by
   exact configuration_pc_write (configuration_next_pc_write
