@@ -20,7 +20,7 @@ mod upstream {
     pub use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 }
 
-use crate::upstream::build_unrolled_stream;
+use crate::upstream::{build_unrolled_stream, SecurityLevel};
 use gpu_execution_prover::{
     ExecutionKind, ExecutionProver, ExecutionProverConfiguration, MachineType,
 };
@@ -191,19 +191,36 @@ fn prove_on_gpu(
     text_section: Vec<u32>,
     reads: Vec<u32>,
 ) -> (crate::upstream::ProgramProof, crate::upstream::Setups) {
-    let handle = prover.add_binary(kind, machine, binary_image, text_section, None);
-    prove_registered_on_gpu(prover, &handle, reads)
+    let handle = prover.add_binary(
+        kind,
+        machine,
+        binary_image,
+        text_section,
+        None,
+        &[execution_prover::ProofProfile::Standard],
+    );
+    prove_registered_on_gpu(prover, &handle, kind, reads)
 }
 
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 fn prove_registered_on_gpu(
     prover: &mut ExecutionProver,
     handle: &gpu_execution_prover::BinaryHandle,
+    kind: ExecutionKind,
     reads: Vec<u32>,
 ) -> (crate::upstream::ProgramProof, crate::upstream::Setups) {
-    let result =
-        prover.commit_memory_and_prove(0, handle, FlatResponsesSource::new_with_reads(reads));
-    let artifacts = prover.program_artifacts(handle);
+    let result = prover.commit_memory_and_prove(
+        0,
+        handle,
+        FlatResponsesSource::new_with_reads(reads),
+        execution_prover::execution_commitment_mode(
+            kind,
+            execution_prover::ProofProfile::Standard,
+            SecurityLevel::Sec100,
+        ),
+        execution_prover::ProofProfile::Standard,
+    );
+    let artifacts = prover.program_artifacts(handle, execution_prover::ProofProfile::Standard);
     assemble_program_proof(&artifacts, result)
 }
 
@@ -806,6 +823,7 @@ fn test_generate_sec100_cost_model_fixtures() {
         base_binary,
         base_text,
         None,
+        &[execution_prover::ProofProfile::Standard],
     );
     let fsv_dir = artifact_root().join("tools/gkr_verifier");
     let (binary, text) = load_fsv_program(
@@ -819,6 +837,7 @@ fn test_generate_sec100_cost_model_fixtures() {
         binary,
         text,
         None,
+        &[execution_prover::ProofProfile::Standard],
     );
     let (binary, text) = load_fsv_program(
         &fsv_dir,
@@ -831,6 +850,7 @@ fn test_generate_sec100_cost_model_fixtures() {
         binary,
         text,
         None,
+        &[execution_prover::ProofProfile::Standard],
     );
 
     let mut last_chain = None;
@@ -841,7 +861,8 @@ fn test_generate_sec100_cost_model_fixtures() {
             format!("_{id}")
         };
         let names = ["base", "recursion0", "recursion1"].map(|name| format!("{name}{suffix}"));
-        let (base_proof, base_setups) = prove_registered_on_gpu(&mut prover, &guest, witness);
+        let (base_proof, base_setups) =
+            prove_registered_on_gpu(&mut prover, &guest, ExecutionKind::Unrolled, witness);
         native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
         write_cost_model_fixture(&fixture_dir, &names[0], &base_proof, &base_setups);
         let base_end_params = compute_end_params(&base_setups, base_proof.final_pc);
@@ -849,6 +870,7 @@ fn test_generate_sec100_cost_model_fixtures() {
         let (mut recursion0_proof, recursion0_setups) = prove_registered_on_gpu(
             &mut prover,
             &base_verifier,
+            ExecutionKind::Unrolled,
             build_unrolled_stream(&base_setups, &base_proof),
         );
         recursion0_proof.set_recursion_chain(&chain);
@@ -868,6 +890,7 @@ fn test_generate_sec100_cost_model_fixtures() {
         let (mut recursion1_proof, recursion1_setups) = prove_registered_on_gpu(
             &mut prover,
             &recursion_verifier,
+            ExecutionKind::Unrolled,
             build_unrolled_stream(&recursion0_setups, &recursion0_proof),
         );
         recursion1_proof.set_recursion_chain(&chain);
