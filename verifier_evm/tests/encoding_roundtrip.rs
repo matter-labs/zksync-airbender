@@ -240,31 +240,18 @@ fn f1_roundtrip_reproduces_v0() {
             params.explicit_output_log2,
             params.setup_frontier_level,
         );
-        let (_, pinned) = INDEPENDENT_LAYOUT_COUNTS
-            .iter()
-            .find(|(p, _)| *p == profile)
-            .unwrap_or_else(|| {
-                panic!(
-                    "no independent layout-model counts for profile {profile:?}: rerun the w7ba C1 \
-                     model on the new fixtures and add its row"
-                )
-            });
-        assert_eq!((f1.gkr_bytes, f1.bytes.len(), digests), *pinned);
+        assert_eq!(profile, COMMITTED_F1_PROFILE);
+        assert_eq!(
+            (f1.gkr_bytes, f1.bytes.len(), digests),
+            COMMITTED_F1_LAYOUT_COUNTS
+        );
     }
 }
 
-/// F1 byte counts of the committed proof, per profile
-/// `(pack_log2, digest_bytes, explicit_output_log2, setup_frontier_level)`:
-/// `(gkr_bytes, total bytes, wire digests)`. The roundtrip checks above also bind the
-/// decoded v0 streams and account for every F1 byte.
-const INDEPENDENT_LAYOUT_COUNTS: &[((usize, usize, usize, usize), (usize, usize, usize))] = &[
-    ((4, 32, 4, 3), (21_523, 88_043, 1_597)),
-    ((4, 32, 4, 9), (21_523, 85_355, 1_513)),
-    ((4, 25, 2, 3), (20_270, 74_799, 1_597)),
-    ((4, 25, 2, 9), (20_270, 72_699, 1_513)),
-    ((3, 25, 2, 3), (20_270, 69_571, 1_384)),
-    ((3, 25, 2, 9), (20_270, 67_771, 1_312)),
-];
+/// `(pack_log2, digest_bytes, explicit_output_log2, setup_frontier_level)` for the
+/// committed wrap, and its `(gkr_bytes, total bytes, wire digests)`.
+const COMMITTED_F1_PROFILE: (usize, usize, usize, usize) = (3, 25, 2, 9);
+const COMMITTED_F1_LAYOUT_COUNTS: (usize, usize, usize) = (20_270, 67_771, 1_312);
 
 #[test]
 fn f1_decoder_rejects_malformed_streams() {

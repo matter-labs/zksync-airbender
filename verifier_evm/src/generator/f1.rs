@@ -115,16 +115,6 @@ pub(crate) fn calldata_to_v0_memory(src: &str, v0_bytes: usize) -> String {
     out
 }
 
-/// 32-byte `[u32; 8]` digest words as the preimage stores them: each word little-endian.
-#[allow(dead_code)]
-fn le_words_literal(d: &[u32; 8]) -> String {
-    let bytes: Vec<u8> = d.iter().flat_map(|w| w.to_le_bytes()).collect();
-    format!(
-        "0x{}",
-        bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
-    )
-}
-
 /// The decoder for `circuit` under `params`: `f1_decode()` checks the section length and every
 /// run's zero padding and writes the v0 GKR calldata image at [`V0_PTR`]: the preimage, the
 /// nonces and every run's lanes; an E1 run leaves only its bit offset in its first round slot.
