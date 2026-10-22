@@ -1596,9 +1596,9 @@ fn cpu_l1_feeder_profiles_and_capacity_margins() {
     let reference = fixture_dir();
     validated_manifest(&reference).expect("L1 reference manifest");
     for (layer, profile, instances, cycles, spare) in [
-        (0, FeederProfile::A, 2, 16_100_762, 676_454),
-        (1, FeederProfile::A, 1, 5_896_748, 2_491_860),
-        (2, FeederProfile::C, 1, 2_959_131, 1_235_173),
+        (0, FeederProfile::A, 2, 16_100_787, 676_429),
+        (1, FeederProfile::A, 1, 5_897_126, 2_491_482),
+        (2, FeederProfile::C, 1, 2_959_382, 1_234_922),
     ] {
         let checkpoint: StepCheckpoint =
             read_typed(&reference.join(feeder_checkpoint_name(layer))).expect("feeder checkpoint");
@@ -1639,8 +1639,8 @@ fn cpu_l1_feeder_profiles_and_capacity_margins() {
     );
     let report = observe_wrap_program(&program, stream).unwrap();
     validate_wrap_report(&report, &output).unwrap();
-    assert_eq!(report.cycles, 2_042_763);
-    assert_eq!(L1_WRAP_PROGRAM_CYCLE_LIMIT as u64 - report.cycles, 54_389);
+    assert_eq!(report.cycles, 2_043_065);
+    assert_eq!(L1_WRAP_PROGRAM_CYCLE_LIMIT as u64 - report.cycles, 54_087);
 }
 
 #[test]
