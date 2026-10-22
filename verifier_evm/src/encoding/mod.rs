@@ -1,7 +1,7 @@
 //! Calldata format F1 for the single-transaction L1 wrap verifier
-//! (`orange/.agents/specs/2026-10-15-w7b-gas-levers-design.md` §2): a re-encoding of the v0
-//! streams (`crate::flatten`) whose omitted values the verifier recomputes, so it absorbs the
-//! v0 bytes unchanged.
+//! as a re-encoding of the v0 streams (`crate::flatten`). The verifier recomputes omitted
+//! values and absorbs the v0 bytes unchanged. See `verifier_evm/gkr_transcript_reference.md`
+//! for the transcript order and committed encoding checks.
 //!
 //! Single-tx layout: `GKR section ‖ WHIR section`, in transcript order.
 //! - GKR: registers (32 × LE u32), `TS-run` of the 32 register timestamps and the final
