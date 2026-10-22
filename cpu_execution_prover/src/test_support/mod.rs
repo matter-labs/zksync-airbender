@@ -28,9 +28,6 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use worker::Worker;
 
-#[doc(hidden)]
-pub use crate::jobs::expand_inits_and_teardowns;
-
 const FIXTURE_BATCH_ID: u64 = 0;
 
 type Callback = Box<dyn for<'a> FnOnce(L1WrapFixture<'a>) -> Box<dyn Any + Send> + Send>;

@@ -9,16 +9,6 @@ type ProofArtifacts = (
 );
 
 impl<B: ExecutionBackend> ExecutionProver<B> {
-    /// The external challenges `prove` derives from `commitment`; a parity seam for tests.
-    #[doc(hidden)]
-    pub fn external_challenges(
-        &self,
-        commitment: &CommitMemoryResult,
-    ) -> GKRExternalChallenges<BF, E4> {
-        self.derive_proof_artifacts(commitment.binary_handle.0, commitment)
-            .1
-    }
-
     fn derive_proof_artifacts(
         &self,
         binary_key: usize,
