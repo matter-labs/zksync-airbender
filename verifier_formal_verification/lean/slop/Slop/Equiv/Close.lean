@@ -56,7 +56,7 @@ macro "close_row" : tactic => `(tactic| (
     instruction.UTYPE.injEq, instruction.JAL.injEq, instruction.JALR.injEq, instruction.BTYPE.injEq,
     instruction.ITYPE.injEq, instruction.SHIFTIOP.injEq, instruction.RTYPE.injEq, instruction.LOAD.injEq,
     instruction.STORE.injEq, instruction.MUL.injEq, instruction.DIV.injEq, instruction.REM.injEq,
-    instruction.ZIMOP_MOP_RR.injEq, instruction.CSRReg.injEq, Airbender.csrToSail, RV.DelegationKind.csr,
+    instruction.ZIMOP_MOP_RR.injEq, instruction.ZIMOP_MOP_R.injEq, instruction.REV8.injEq, instruction.CSRReg.injEq, Airbender.csrToSail, RV.DelegationKind.csr,
     Airbender.mopIndex,
     Prod.mk.injEq, and_true, true_and]
   and_intros

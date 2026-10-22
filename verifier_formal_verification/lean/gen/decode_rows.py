@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate lean/slop/Slop/Equiv/Dec*.lean: one lemma per row of our encoding table `RV.decode`
 (human/Human/RV32.lean) saying Sail's decoder gives `toSail` of our instruction for every word of the row.
-Rows not listed: the `none` rows and the lenient encodings (see `Airbender.ExtraEncoding`). Run from lean/."""
+Rows not listed: the `none` rows. Run from lean/."""
 import os
 ROWS = [
  [

@@ -262,10 +262,10 @@ theorem exec_store (s : State) n rs2 rs1 off (ha : aligned (s.getReg rs1 + off) 
   · rfl
   · rename_i h; exact absurd ⟨ha, hw⟩ h
 
-/-- A field operation (`mop.rr.N`) with `rd ≠ x0`; `mopVal` stays folded. -/
-theorem exec_mop (s : State) op rd rs1 rs2 (hrd : ¬ rd = 0) :
-    exec s (.mop op rd rs1 rs2) = some (s.setReg rd (mopVal op (s.getReg rs1) (s.getReg rs2) (s.getReg rd))).nextInstr := by
-  simp only [exec, hrd, ↓reduceIte]
+/-- A field operation (`mop.rr.N`); `mopVal` stays folded. -/
+theorem exec_mop (s : State) op rd rs1 rs2 :
+    exec s (.mop op rd rs1 rs2) = some (s.setReg rd (mopVal op (s.getReg rs1) (s.getReg rs2) (s.getReg rd))).nextInstr :=
+  rfl
 
 end RV
 

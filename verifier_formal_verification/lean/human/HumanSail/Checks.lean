@@ -43,11 +43,17 @@ def MachineChecks : Prop :=
   nextPC 0x00052583 = some 4 ∧         -- lw a1, 0(a0)
   nextPC 0x00200033 = some 4 ∧         -- add x0, x0, x2 (Zihintntl NTL hint in Sail)
   nextPC 0x00056013 = some 4 ∧         -- ori x0, a0, 0 (Zicbop prefetch in Sail)
-  -- Airbender's extra encodings
-  nextPC 0x40b52533 = some 4 ∧         -- slt with funct7 = 0100000
-  nextPC 0x00051067 = some 0x400004 ∧  -- jalr x0, 0(a0) with funct3 = 1
+  -- Airbender: a load into x0 only advances the PC
   nextPC 0x00152003 = some 4 ∧         -- lw x0, 1(a0): misaligned, but rd = x0
+  -- Zbb/Zbkb rev8, Airbender's mop.r.N (xor-rotate), mop.rr.N and mop.r.N into x0 (no-ops)
+  nextPC 0x6985d513 = some 4 ∧         -- rev8 a0, a1
+  nextPC 0xc1c5c573 = some 4 ∧         -- mop.r.16 a0, a1
+  nextPC 0x82b54073 = some 4 ∧         -- mop.rr.0 x0, a0, a1
+  nextPC 0xcdc5c073 = some 4 ∧         -- mop.r.28 x0, a1 (Zicfiss's encoding; Zicfiss is off)
   -- no step: not in Airbender, traps, the abort
+  nextPC 0x40b52533 = none ∧           -- slt with funct7 = 0100000 (Airbender decodes funct7 exactly)
+  nextPC 0x85d5c573 = none ∧           -- mop.r.5 a0, a1 (only 16, 12, 8, 7 into a register)
+  nextPC 0x00051067 = none ∧           -- jalr x0, 0(a0) with funct3 = 1
   nextPC 0x02b51533 = none ∧           -- mulh
   nextPC 0x02b54533 = none ∧           -- div
   nextPC 0x0ff0000f = none ∧           -- fence

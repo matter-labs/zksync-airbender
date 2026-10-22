@@ -8,12 +8,6 @@ open Sail Sail.ArchSem SailRV32 SailRV32.Functions Human
 
 namespace Slop.Equiv
 
-/-- Any Sail computation that the oracle evaluates (fixed registers only): the same result on every Airbender
-state, state unchanged. -/
-theorem oracle_run {α : Type} {σ : SailState} (hs : Airbender.Configured σ) (m : SailM α) (a : α)
-    (h : runOracle knownDemo (fun _ => none) m = some a) : runSail m σ = .ok a σ :=
-  runOracle_sound knownDemo (fun _ => none) σ h (known_sys hs) (fun _ _ h => by simp at h)
-
 theorem run_readReg_bind {β : Type} (r : Register) (f : RegisterType r → SailM β) (σ : SailState) {res}
     (h : runSail (f (σ.regs r)) σ = res) : runSail (readReg r >>= f) σ = res := by
   rw [Slop.runF_bind, Slop.runF_readReg]; exact h

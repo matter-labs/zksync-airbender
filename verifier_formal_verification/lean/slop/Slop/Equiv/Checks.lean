@@ -29,15 +29,24 @@ theorem checks3 :
     nextPC 0x00056013 = some 4         -- ori x0, a0, 0 (Zicbop prefetch in Sail)
     := by decide +kernel
 
-/-- Airbender's extra encodings. -/
+/-- Airbender: a load into x0 only advances the PC. -/
 theorem checks4 :
-    nextPC 0x40b52533 = some 4 ∧         -- slt with funct7 = 0100000
-    nextPC 0x00051067 = some 0x400004 ∧  -- jalr x0, 0(a0) with funct3 = 1
     nextPC 0x00152003 = some 4         -- lw x0, 1(a0): misaligned, but rd = x0
     := by decide +kernel
 
-/-- No step: not in Airbender, traps, the abort. -/
+/-- Zbb/Zbkb rev8, Airbender's mop.r.N (xor-rotate), mop.rr.N and mop.r.N into x0 (no-ops). -/
 theorem checks5 :
+    nextPC 0x6985d513 = some 4 ∧         -- rev8 a0, a1
+    nextPC 0xc1c5c573 = some 4 ∧         -- mop.r.16 a0, a1
+    nextPC 0x82b54073 = some 4 ∧         -- mop.rr.0 x0, a0, a1
+    nextPC 0xcdc5c073 = some 4         -- mop.r.28 x0, a1 (Zicfiss's encoding; Zicfiss is off)
+    := by decide +kernel
+
+/-- No step: not in Airbender, traps, the abort. -/
+theorem checks6 :
+    nextPC 0x40b52533 = none ∧           -- slt with funct7 = 0100000 (Airbender decodes funct7 exactly)
+    nextPC 0x85d5c573 = none ∧           -- mop.r.5 a0, a1 (only 16, 12, 8, 7 into a register)
+    nextPC 0x00051067 = none ∧           -- jalr x0, 0(a0) with funct3 = 1
     nextPC 0x02b51533 = none ∧           -- mulh
     nextPC 0x02b54533 = none ∧           -- div
     nextPC 0x0ff0000f = none ∧           -- fence
@@ -50,7 +59,7 @@ theorem checks5 :
     := by decide +kernel
 
 /-- CSR 0x7c0: input read, write (no effect), and the rejected forms. -/
-theorem checks6 :
+theorem checks7 :
     readNext 0x7c001573 [0x1234] = some (4, 0x1234, []) ∧  -- csrrw a0, 0x7c0, x0
     readNext 0x7c001573 [] = none ∧                         -- … with the input used up
     readNext 0x7c002573 [0x1234] = none ∧                   -- csrrs a0, 0x7c0, x0
@@ -62,7 +71,7 @@ theorem checks6 :
     := by decide +kernel
 
 /-- Delegation calls: run by `RV.Delegation`, rejected on bad arguments. -/
-theorem checks7 :
+theorem checks8 :
     nextPC 0x7c701073 = none ∧           -- Blake2s round with x12 = 0
     nextPC 0x7c801073 = none ∧           -- Blake2s G with x10 not 64-aligned
     (step ⟨(testState 0x7c701073).set .x12 0x90000#32, []⟩).isNone = true  -- x10 not 128-aligned, x11 in ROM
@@ -70,10 +79,10 @@ theorem checks7 :
 
 theorem machine_checks : MachineChecks := by
   exact ⟨checks1.1, checks1.2, checks2.1, checks2.2, checks3.1, checks3.2.1, checks3.2.2.1, checks3.2.2.2.1,
-    checks3.2.2.2.2.1, checks3.2.2.2.2.2, checks4.1, checks4.2.1, checks4.2.2, checks5.1, checks5.2.1,
-    checks5.2.2.1, checks5.2.2.2.1, checks5.2.2.2.2.1, checks5.2.2.2.2.2.1, checks5.2.2.2.2.2.2.1,
-    checks5.2.2.2.2.2.2.2.1, checks5.2.2.2.2.2.2.2.2, checks6.1, checks6.2.1, checks6.2.2.1, checks6.2.2.2.1,
-    checks6.2.2.2.2.1, checks6.2.2.2.2.2.1, checks6.2.2.2.2.2.2.1, checks6.2.2.2.2.2.2.2, checks7.1, checks7.2.1,
-    checks7.2.2⟩
+    checks3.2.2.2.2.1, checks3.2.2.2.2.2, checks4, checks5.1, checks5.2.1, checks5.2.2.1, checks5.2.2.2, checks6.1,
+    checks6.2.1, checks6.2.2.1, checks6.2.2.2.1, checks6.2.2.2.2.1, checks6.2.2.2.2.2.1, checks6.2.2.2.2.2.2.1,
+    checks6.2.2.2.2.2.2.2.1, checks6.2.2.2.2.2.2.2.2.1, checks6.2.2.2.2.2.2.2.2.2.1, checks6.2.2.2.2.2.2.2.2.2.2.1,
+    checks6.2.2.2.2.2.2.2.2.2.2.2, checks7.1, checks7.2.1, checks7.2.2.1, checks7.2.2.2.1, checks7.2.2.2.2.1,
+    checks7.2.2.2.2.2.1, checks7.2.2.2.2.2.2.1, checks7.2.2.2.2.2.2.2, checks8.1, checks8.2.1, checks8.2.2⟩
 
 end Airbender

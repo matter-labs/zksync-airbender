@@ -2,7 +2,9 @@ import Human.Delegations
 
 /-! # RV32IM as Airbender runs it — our own spec, meant to be read
 
-One instruction = at most one register or memory write, plus the PC update.
+RV32IM without the signed M operations, plus Zbb/Zbkb `rev8`, Airbender's Zimop operations (`mop.rr.N`: field
+arithmetic; `mop.r.N`: xor-rotate) and its CSR rows. One instruction = at most one register or memory write, plus the
+PC update.
 No next state (`step = none`, i.e. unprovable in Airbender) for: anything outside Airbender's RV32IM subset
 (signed MULH/MULHSU/DIV/REM, FENCE, ECALL, CSRs other than the input read below, …), misaligned or out-of-range
 loads/stores, misaligned jump targets, fetch outside ROM.
@@ -12,8 +14,11 @@ the theorems hold for every such list. `csrrw rd, 0x7c0, x0` (rd ≠ x0) reads t
 state. Delegations (precompiles): `csrrw x0, <csr>, x0` for the CSRs of `Human/Delegations.lean`. These are the
 CSR rows of Airbender's ISA table, and the only ones: other CSRs, other forms (csrrs, csrrc, immediates; the
 transpiler is more lenient) and other shapes have no next state.
-Differences from standard RV32IM follow Airbender's ISA table (spec/top-down/00 master.md, "Supported
-instruction set"); each is marked `-- Airbender:` below. -/
+Differences from standard RV32IM follow Airbender's ISA table (`spec/top-down/00 master.md` on `mb_gkr_compiler`,
+"Instructions and profiles") and its decoder (`riscv_transpiler/src/ir/simple_instruction_set.rs` on
+`av_gkr_compiler` @ 807c2143d): every instruction any of Airbender's machine configurations accepts; each difference
+is marked `-- Airbender:` below. An instruction into `x0` that Airbender decodes as a no-op (`mop.rr.N`, `mop.r.N`,
+`rev8`) only advances the PC here too. -/
 
 namespace RV
 
@@ -59,6 +64,9 @@ def mopVal : FieldOp → (a b old : Word) → Word
       BitVec.ofNat 32 ((a.toNat % BabyBearP * (b.toNat % BabyBearP) * RINV + old.toNat % BabyBearP) % BabyBearP)
   | .triAdd, a, b, old => a + b + old
 
+/-- Zbb/Zbkb `rev8`: the bytes of a word in reverse order. -/
+def rev8 (a : Word) : Word := a.extractLsb' 0 8 ++ a.extractLsb' 8 8 ++ a.extractLsb' 16 8 ++ a.extractLsb' 24 8
+
 /-- The branch conditions. -/
 inductive Cond | eq | ne | lt | ge | ltu | geu
 
@@ -82,6 +90,8 @@ inductive Instr
   | opImm  (op : Op) (rd rs1 : Reg) (imm : Word)
   | op     (op : Op) (rd rs1 rs2 : Reg)
   | mop    (op : FieldOp) (rd rs1 rs2 : Reg)   -- Airbender: field operations (`mop.rr.N`)
+  | rev8   (rd rs1 : Reg)                      -- Zbb/Zbkb: byte reverse
+  | xorRot (n : BitVec 5) (rd rs1 : Reg)       -- Airbender: `mop.r.N`: `rd := (rd ^^^ rs1)` rotated right by N
   | inputRead (rd : Reg)                      -- Airbender: `csrrw rd, 0x7c0, x0`: `rd` := the next input word
   | inputWrite (src : Reg)                    -- Airbender: `csrrw x0, 0x7c0, rs1`: no effect
   | delegate (k : DelegationKind)             -- Airbender: `csrrw x0, <csr>, x0`: a delegation call
@@ -112,8 +122,9 @@ def exec (s : State) : Instr → Option State
       else none
   | .opImm op rd rs1 imm   => some (s.setReg rd (alu op (s.getReg rs1) imm)).nextInstr
   | .op op rd rs1 rs2      => some (s.setReg rd (alu op (s.getReg rs1) (s.getReg rs2))).nextInstr
-  | .mop op rd rs1 rs2     =>                       -- Airbender: `rd = x0` is not allowed (the circuit requires it)
-      if rd = 0 then none else some (s.setReg rd (mopVal op (s.getReg rs1) (s.getReg rs2) (s.getReg rd))).nextInstr
+  | .mop op rd rs1 rs2     => some (s.setReg rd (mopVal op (s.getReg rs1) (s.getReg rs2) (s.getReg rd))).nextInstr
+  | .rev8 rd rs1           => some (s.setReg rd (rev8 (s.getReg rs1))).nextInstr
+  | .xorRot n rd rs1       => some (s.setReg rd ((s.getReg rd ^^^ s.getReg rs1).rotateRight n.toNat)).nextInstr
   | .inputRead rd          =>
       match s.input with
       | w :: rest => some { (s.setReg rd w).nextInstr with input := rest }
@@ -130,7 +141,14 @@ def decodeCsr (csr : BitVec 12) (rs1 rd : Reg) : Option Instr :=
   else if rs1 = 0 ∧ rd = 0 then (DelegationKind.ofCsr csr).map .delegate
   else none
 
-/-- Standard RV32IM encodings (unprivileged spec, ch. 2 and 13). -/
+/-- Airbender: `mop.r.N rd, rs1` (Zimop: bits 31, 29–28, 25–22 are 1, 00, 0111; N from bits 30, 27–26, 21–20) is
+`xorRot N` for N = 16, 12, 8, 7, and for any N with `rd = x0` (then a no-op). -/
+def decodeMopR (word : Word) (rd rs1 : Reg) : Option Instr :=
+  let n : BitVec 5 := word.extractLsb' 30 1 ++ word.extractLsb' 26 2 ++ word.extractLsb' 20 2
+  if word.extractLsb' 31 1 = 1 ∧ word.extractLsb' 28 2 = 0 ∧ word.extractLsb' 22 4 = 0b0111 ∧
+      (n = 16 ∨ n = 12 ∨ n = 8 ∨ n = 7 ∨ rd = 0) then some (.xorRot n rd rs1) else none
+
+/-- Standard RV32IM encodings (unprivileged spec, ch. 2 and 13), plus `rev8` (Zbb/Zbkb). -/
 def decode (word : Word) : Option Instr :=
   let opcode := (word.extractLsb' 0 7).toNat
   let funct3 := (word.extractLsb' 12 3).toNat
@@ -151,7 +169,7 @@ def decode (word : Word) : Option Instr :=
   | 0x37, _, _    => some (.lui rd immU)
   | 0x17, _, _    => some (.auipc rd immU)
   | 0x6f, _, _    => some (.jal rd immJ)
-  | 0x67, _, _    => some (.jalr rd rs1 immI)          -- Airbender: any funct3
+  | 0x67, 0, _    => some (.jalr rd rs1 immI)
   | 0x63, 0, _    => some (.branch .eq  rs1 rs2 immB)
   | 0x63, 1, _    => some (.branch .ne  rs1 rs2 immB)
   | 0x63, 4, _    => some (.branch .lt  rs1 rs2 immB)
@@ -175,6 +193,7 @@ def decode (word : Word) : Option Instr :=
   | 0x13, 1, 0x00 => some (.opImm .sll  rd rs1 shamt)
   | 0x13, 5, 0x00 => some (.opImm .srl  rd rs1 shamt)
   | 0x13, 5, 0x20 => some (.opImm .sra  rd rs1 shamt)
+  | 0x13, 5, 0x34 => if rs2 = 24 then some (.rev8 rd rs1) else none   -- rev8 (funct12 0x698)
   | 0x33, 0, 0x00 => some (.op .add    rd rs1 rs2)
   | 0x33, 0, 0x20 => some (.op .sub    rd rs1 rs2)
   | 0x33, 0, 0x01 => some (.op .mul    rd rs1 rs2)
@@ -183,18 +202,18 @@ def decode (word : Word) : Option Instr :=
   | 0x33, 5, 0x00 => some (.op .srl    rd rs1 rs2)
   | 0x33, 5, 0x20 => some (.op .sra    rd rs1 rs2)
   | 0x33, 5, 0x01 => some (.op .divu   rd rs1 rs2)
-  | 0x33, 7, 0x01 => some (.op .remu   rd rs1 rs2)
-  | 0x33, _, 0x01 => none                               -- Airbender: no MULH, MULHSU, DIV, REM
-  | 0x33, 2, _    => some (.op .slt    rd rs1 rs2)      -- Airbender: SLT, SLTU, XOR, OR, AND accept any funct7
-  | 0x33, 3, _    => some (.op .sltu   rd rs1 rs2)
-  | 0x33, 4, _    => some (.op .xor    rd rs1 rs2)
-  | 0x33, 6, _    => some (.op .or     rd rs1 rs2)
-  | 0x33, 7, _    => some (.op .and    rd rs1 rs2)
+  | 0x33, 7, 0x01 => some (.op .remu   rd rs1 rs2)   -- Airbender: no MULH, MULHSU, DIV, REM
+  | 0x33, 2, 0x00 => some (.op .slt    rd rs1 rs2)
+  | 0x33, 3, 0x00 => some (.op .sltu   rd rs1 rs2)
+  | 0x33, 4, 0x00 => some (.op .xor    rd rs1 rs2)
+  | 0x33, 6, 0x00 => some (.op .or     rd rs1 rs2)
+  | 0x33, 7, 0x00 => some (.op .and    rd rs1 rs2)
   | 0x73, 4, 0x41 => some (.mop .add    rd rs1 rs2)      -- Airbender: mop.rr.0 … mop.rr.4 (Zimop encodings)
   | 0x73, 4, 0x43 => some (.mop .sub    rd rs1 rs2)
   | 0x73, 4, 0x45 => some (.mop .mul    rd rs1 rs2)
   | 0x73, 4, 0x47 => some (.mop .fma    rd rs1 rs2)
   | 0x73, 4, 0x61 => some (.mop .triAdd rd rs1 rs2)
+  | 0x73, 4, _    => decodeMopR word rd rs1             -- Airbender: mop.r.N (Zimop encodings)
   | 0x73, 1, _    => decodeCsr csr rs1 rd               -- Zicsr: csrrw
   | _, _, _       => none
 

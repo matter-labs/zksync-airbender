@@ -38,9 +38,9 @@
   `csrrw rd, 0x7c0, x0` (read), `csrrw x0, 0x7c0, rs1` (no-op write), `csrrw x0, <delegation csr>, x0`; anything
   else has no next state. A read with no answers left is stuck (the theorems give enough).
 - Delegations: one call per instruction (generic `Effect`: words written + one register, then pc + 4): Blake2s
-  round (0x7c7), G (0x7c8), u256 bigint (0x7ca), Keccak special5 (0x7cb); Keccak-f1600 in three circuits
-  (0x7cc-0x7ce) modelled but not decoded (newer than the ISA table). Control-word layouts are from source (the
-  table does not give them). Run lengths (7/10, 56/80, 649) are a static check on the image (`Accepted`, part of
+  round (0x7c7), G (0x7c8), u256 bigint (0x7ca), Keccak special5 (0x7cb), Keccak-f1600 in three circuits
+  (0x7cc-0x7ce). Control-word layouts are from source (the table does not give them). Run lengths (7/10, 56/80, 649,
+  and the 361-call Keccak-f1600 pattern) are a static check on the image (`Accepted`, part of
   `ProgramCorrect`); jumping into the middle of a run is not modelled as rejected. Complete runs vs the standard
   operation (Blake2s rounds, Keccak-f[1600]) are proven (`Human/DelegationRuns.lean`); `run_image`
   (`verify.sh --sanity`) also runs them on sample inputs.

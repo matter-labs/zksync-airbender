@@ -9,8 +9,9 @@ control register; a complete run (the decoder accepts these words only in runs o
 end) performs the whole operation. Each call is described as an `Effect` (words written, one
 register); anything the precompile rejects has no next state.
 
-Following Airbender's ISA table (zksync-airbender `spec/top-down/00 master.md`); the bit layouts of the control
-words, which the table does not give, are from the sources named at each definition (marked "from source").
+Following Airbender's ISA table (zksync-airbender `spec/top-down/00 master.md`) and decoder (`av_gkr_compiler`); the
+bit layouts of the control words, which the table does not give, are from the sources named at each definition (marked
+"from source").
 
 Direction of trust: a model that rejects what a circuit accepts would make "no run reaches X" claims vacuous, so where
 a circuit is known to accept more than the VM (bigint, `G`, Keccak special5 controls: see each definition) the
@@ -21,8 +22,9 @@ different) and the Blake2s round mask being one-hot (the round circuit does not 
 namespace RV
 open Spec
 
-/-- The precompiles and their CSRs (`ofCsr`; proofs use it only through `RV.ofCsr_csr`). The last three (Keccak-f1600 in three circuits, CSRs `0x7cc` … `0x7ce`) are
-newer than the ISA table: modelled and decoded from source (`common_constants/src/delegation_types/keccak_f1600.rs`). -/
+/-- The precompiles and their CSRs (`ofCsr`; proofs use it only through `RV.ofCsr_csr`). Keccak-f1600 in three
+circuits: CSRs `0x7cc` … `0x7ce` (`common_constants/src/delegation_types/keccak_f1600.rs`). `blakeG` (`0x7c8`) is not
+in the ISA table, but Airbender's unified-machine setup still accepts it. -/
 inductive DelegationKind | blakeRound | blakeG | bigint | keccak | keccakThetaRho | keccakParity | keccakChi5
 
 def DelegationKind.csr : DelegationKind → BitVec 12
@@ -254,8 +256,8 @@ the pieces of a run). A run of 649 from `x10 = 0` is Keccak-f[1600] on the lanes
 def keccakSpecial5 (x10 x11 : Word) (mem : Word → BitVec 8) : Option Effect :=
   keccakCall (fun op _ _ => op < 7) special5Step special5Next x10 x11 mem
 
-/-- Keccak-f1600 in three circuits (CSRs `0x7cd` column parity: op 0, `0x7cc` θ+ρ: op 3, `0x7ce` χ: op 5; newer
-than the ISA table). From source (`common_constants/src/delegation_types/keccak_f1600.rs`,
+/-- Keccak-f1600 in three circuits (CSRs `0x7cd` column parity: op 0, `0x7cc` θ+ρ: op 3, `0x7ce` χ: op 5). From
+source (`common_constants/src/delegation_types/keccak_f1600.rs`,
 `riscv_transpiler/src/vm/delegations/keccak_f1600.rs`): per round 5 parity, 5 θ+ρ (column `x`), 5 χ (row `x`) calls,
 then one parity call (`r = 24`, `x = 0`): 361 calls from `x10 = 0` are Keccak-f[1600] (`KeccakF1600Run` in
 `DelegationRuns`). -/
@@ -301,11 +303,23 @@ def imageWords : List (BitVec 8) → List Word
   | b0 :: b1 :: b2 :: b3 :: rest => (b3 ++ b2 ++ b1 ++ b0) :: imageWords rest
   | _ => []
 
-/-- The decoder accepts the binary: every maximal run of one delegation word has an accepted length. (Keccak-f1600's
-words are not constrained here: its runs are a sequence pattern, 24 × (5 parity, 5 θ+ρ, 5 χ) then 1 parity, that
-the ISA table does not list yet.) -/
+/-- The Keccak-f1600 words (`csrrw x0, 0x7cc … 0x7ce, x0`). -/
+def isF1600Word (w : Word) : Bool := w == 0x7cc01073 || w == 0x7cd01073 || w == 0x7ce01073
+
+/-- A Keccak-f1600 run (ISA table: "exact runs of 361 consecutive calls"): 24 × (5 parity `0x7cd`, 5 θ+ρ `0x7cc`,
+5 χ `0x7ce`), then 1 parity. -/
+def f1600Run : List Word :=
+  (List.replicate 24
+    (List.replicate 5 0x7cd01073 ++ List.replicate 5 0x7cc01073 ++ List.replicate 5 0x7ce01073)).flatten ++
+  [0x7cd01073]
+
+/-- The decoder accepts the binary: every maximal run of one delegation word has an accepted length, and every
+maximal run of Keccak-f1600 words is one Keccak-f1600 run. -/
 def Accepted (bytes : Array (BitVec 8)) : Prop :=
-  ∀ run ∈ (imageWords bytes.toList).splitBy (· == ·), ∀ lengths ∈ run.head?.bind callRun, run.length ∈ lengths
+  (∀ run ∈ (imageWords bytes.toList).splitBy (· == ·),
+    ∀ lengths ∈ run.head?.bind callRun, run.length ∈ lengths) ∧
+  ∀ run ∈ (imageWords bytes.toList).splitBy (fun a b => isF1600Word a && isF1600Word b),
+    run.head?.any isF1600Word → run = f1600Run
 
 instance : DecidablePred Accepted := fun _ => by unfold Accepted; infer_instance
 

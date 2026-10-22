@@ -6,7 +6,7 @@ import Slop.Equiv.Hints
 (`Bits w lo n k` hypotheses), clause by clause, without ever simplifying the rest of the chain:
 * a clause whose guard is false (decided from the known bits, `Slice.lean`) is skipped: by `run_ite_false`, the
   clause is `pure none >>= jp`, i.e. the rest of the chain;
-* `currentlyEnabled X` is answered once per extension by a closed kernel computation (`en_run`, valid on every
+* `currentlyEnabled X` is answered once per extension by a closed kernel computation (`oracle_run`, valid on every
   `Configured` state);
 * it stops at the first clause whose guard is true, leaving that clause's body as the goal.
 Each step looks only at the head of the goal and at one guard, so a walk costs the same per clause however long
@@ -67,11 +67,21 @@ theorem known_sys {σ : SailState} (hs : Airbender.Configured σ) : ∀ r v, kno
     cases h
     exact hs r (by simpa using hv)
 
-/-- `currentlyEnabled X` on any Airbender state, from one closed computation. -/
-theorem en_run {σ : SailState} (hs : Airbender.Configured σ) (X : extension) (b : Bool)
-    (h : runOracle knownDemo (fun _ => none) (currentlyEnabled X) = some b) :
-    runSail (currentlyEnabled X) σ = .ok b σ :=
+/-- Any Sail computation that the oracle evaluates (fixed registers only: `currentlyEnabled X`, `readReg
+cur_privilege`, …): the same result on every Airbender state, state unchanged. -/
+theorem oracle_run {α : Type} {σ : SailState} (hs : Airbender.Configured σ) (m : SailM α) (v : α)
+    (h : runOracle knownDemo (fun _ => none) m = some v) : runSail m σ = .ok v σ :=
   runOracle_sound knownDemo (fun _ => none) σ h (known_sys hs) (fun _ _ h => by simp at h)
+
+/-- A value of an enumeration type from its constructor index. -/
+theorem some_of_idx {α : Type} (f : α → Nat) (hf : ∀ x y, f x = f y → x = y) {p : Option α} {v : α}
+    (h : p.map f = some (f v)) : p = some v := by
+  cases p with
+  | none => cases h
+  | some x => simp only [Option.map_some, Option.some.injEq] at h; rw [hf _ _ h]
+
+theorem privilege_idx_inj : ∀ x y : Privilege, x.ctorIdx = y.ctorIdx → x = y := by
+  intro x y h; cases x <;> cases y <;> first | rfl | cases h
 
 theorem and_false_r {x y : Bool} (h : y = false) : (x && y) = false := by subst h; simp
 theorem and_false_l {x y : Bool} (h : x = false) : (x && y) = false := by subst h; simp
@@ -395,8 +405,31 @@ partial def walkLoop (ctx : Ctx) (g0 : MVarId) : MetaM (MVarId × Nat) := do
             let some v := res | throwError "walk_decoder: cannot evaluate {m'}"
             pure v
         ctx.cache.modify (·.insert key (b, pb))
-        let hm ← g.withContext (mkAppM ``en_run #[ctx.hs, X, toExpr b, pb])
+        let hm ← g.withContext (mkAppM ``oracle_run #[ctx.hs, m', toExpr b, pb])
         g ← g.withContext (step1 g ``run_bind_ok #[none, none, m', f, σ, toExpr b, r, hm])
+      else if m'.isAppOf ``readReg then
+        -- a register a program cannot change, of an enumeration type (the privilege): its value from the
+        -- configured registers (`oracle_run`), found by deciding its constructor index in the kernel
+        let (v, pv) ← g.withContext do
+          let p ← mkAppM ``runOracle #[mkConst ``knownDemo, ← mkFunUnit, m']
+          let α := (← inferType p).appArg!
+          let ty ← whnf α
+          let some (tn, inj) := [(``Privilege, ``privilege_idx_inj)].find? (ty.isConstOf ·.1)
+            | throwError "walk_decoder: cannot evaluate {m'}"
+          let .inductInfo ii ← getConstInfo tn | throwError "walk_decoder: cannot evaluate {m'}"
+          let idx := mkConst (tn ++ `ctorIdx)
+          let mut res : Option (Expr × Expr) := none
+          for c in ii.ctors do
+            let v := mkConst c
+            let pm ← mkAppOptM ``Option.map #[α, mkConst ``Nat, idx, p]
+            try
+              let h ← kernelDecide (← mkEq pm (← mkAppM ``Option.some #[mkApp idx v]))
+              res := some (v, ← mkAppOptM ``some_of_idx #[α, idx, mkConst inj, p, v, h]); break
+            catch _ => pure ()
+          let some r := res | throwError "walk_decoder: cannot evaluate {m'}"
+          pure r
+        let hm ← g.withContext (mkAppM ``oracle_run #[ctx.hs, m', v, pv])
+        g ← g.withContext (step1 g ``run_bind_ok #[none, none, m', f, σ, v, r, hm])
       else
         -- a small helper (e.g. `encdec_reg_backwards x`): reduce it to `pure a` if it is one
         let (mSub, pSub) ← g.withContext (substKnown ctx.facts m')
@@ -408,9 +441,8 @@ partial def walkLoop (ctx : Ctx) (g0 : MVarId) : MetaM (MVarId × Nat) := do
             let p ← mkExpectedTypeHint (← mkEqRefl mSub) (← mkEq mSub pa)
             match pSub with | some ps => mkEqTrans ps p | none => pure p
           g ← g.withContext (step1 g ``run_eq_pure_bind #[none, none, m', a, f, σ, r, hm])
-        else
+        else if let some (_, mname, lem) := hintHelpers.find? (fun (h, _, _) => m'.isAppOf h) then
           -- a hint field decoder, valid by a guard we are inside of
-          let some (_, mname, lem) := hintHelpers.find? (fun (h, _, _) => m'.isAppOf h) | break
           let x := m'.appArg!
           let mut pm : Option Expr := none
           for h in ctx.hyps do
@@ -423,6 +455,13 @@ partial def walkLoop (ctx : Ctx) (g0 : MVarId) : MetaM (MVarId × Nat) := do
           let g1 ← g.withContext (step1 g ``run_bind_pure_ex #[none, none, m', f, σ, r, hm])
           let (_, g2) ← g1.intro1
           g := g2
+        else
+          -- another Sail function: unfold it and walk on inside
+          let some md ← delta? m' | break
+          let md ← whnfCore md
+          unless md.isAppOfArity ``Bind.bind 6 || md.isAppOfArity ``Pure.pure 4 || md.isAppOfArity ``ite 5 do break
+          g ← g.replaceTargetDefEq (← g.withContext do
+            mkEq (← mkAppM ``runSail #[← mkAppM ``Bind.bind #[md, f], σ]) r)
     else break
   return (g, skipped)
 
@@ -447,12 +486,14 @@ partial def bodyNone (ctx : Ctx) (g : MVarId) (M σ r G : Expr) : MetaM (Option 
       g2.withContext do
         let (M2, _, _) ← splitGoal g2
         let M2 ← whnfCore M2
-        unless M2.isAppOfArity ``Pure.pure 4 do return false
+        unless M2.isAppOfArity ``Pure.pure 4 do
+          logInfo m!"bodyNone stopped at {M2}"
+          return false
         let pf ← mkAppM ``runF_pure #[M2.getArg! 3, σ]
         unless ← isDefEq (← inferType pf) (← g2.getType) do return false
         g2.assign pf
         return true
-    catch _ => return false
+    catch e => logInfo m!"bodyNone error: {e.toMessageData}"; return false
   unless ok do return none
   return some (← step1 g ``run_ite_undec #[none, none, G, body, jp, σ, r, hbMv])
 end

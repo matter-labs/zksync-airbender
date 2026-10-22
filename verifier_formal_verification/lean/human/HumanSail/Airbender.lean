@@ -7,10 +7,10 @@ The Sail model is riscv/sail-riscv, turned into Lean by `sail/regen.sh` (pins: `
 `sail/config/airbender-base.json`: the stock RV32 config without timer or interrupt devices and with the few
 extensions off that change how base RV32I behaves (`sail/README.md`). The other extensions stay on, but Airbender's
 decoder (`RV.decode`, below) rejects their instructions. Everything Airbender does differently from that model is in
-this file, marked `-- Airbender:`, following Airbender's ISA table (zksync-airbender `spec/top-down/00 master.md`,
-"Supported instruction set"). Airbender's instruction formats are our own table `RV.decode`; their effect is
-Sail's `execute`. The machine adds one thing Sail does not have: the program's input (Airbender's non-determinism
-source, CSR `0x7c0`): the words not yet read (a list; a read with none left has no next state).
+this file, marked `-- Airbender:`, following Airbender's ISA table and decoder (as cited in `Human/RV32.lean`).
+Airbender's instruction formats are our own table `RV.decode`; their effect is Sail's `execute`. The machine adds one
+thing Sail does not have: the program's input (Airbender's non-determinism source, CSR `0x7c0`): the words not yet read
+(a list; a read with none left has no next state).
 
 Our own fast spec `RV.step` (`Human/RV32.lean`), which the program proofs run on, follows this machine:
 stated in `HumanSail/Theorems.lean`, proven in `slop/Slop/Equiv/`. -/
@@ -128,6 +128,8 @@ noncomputable def toSail : RV.Instr → instruction
   | .op .remu rd rs1 rs2     => .REM (.Regidx rs2, .Regidx rs1, .Regidx rd, true)
   | .op op rd rs1 rs2        => .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, sailAluOp op)
   | .mop op rd rs1 rs2       => .ZIMOP_MOP_RR (mopIndex op, .Regidx rs2, .Regidx rs1, .Regidx rd)
+  | .rev8 rd rs1             => .REV8 (.Regidx rs1, .Regidx rd)
+  | .xorRot n rd rs1         => .ZIMOP_MOP_R (n, .Regidx rs1, .Regidx rd)
   | .inputRead rd            => csrToSail 0x7c0 0 rd
   | .inputWrite src          => csrToSail 0x7c0 src 0
   | .delegate k              => csrToSail k.csr 0 0
@@ -136,7 +138,7 @@ noncomputable def toSail : RV.Instr → instruction
 
 /-! Airbender's decoder is our encoding table `RV.decode` (`Human/RV32.lean`, with its `-- Airbender:` rows), each
 instruction then run as Sail's `toSail` of it. `HumanSail/Theorems.lean` states that Sail's own decoder gives the
-same instruction for every word of that table, except the extra encodings Airbender accepts (`ExtraEncoding`). -/
+same instruction for every word of that table. -/
 
 /-- Airbender's `csrrw rd, 0x7c0, rs1`: a read of the next input word `next` (rs1 = x0, rd ≠ x0), a write (no
 effect: rs1 ≠ x0, rd = x0), or rejected. -/
@@ -147,8 +149,8 @@ noncomputable def nonDeterminism (next : BitVec 32) (rs1 rd : regidx) : SailM Ex
   else if rs1 != zreg && rd == zreg then pure RETIRE_SUCCESS
   else pure (.Illegal_Instruction ())
 
-/-- Execute one instruction (`next`: the next input word): as Sail does, except loads into x0, the field operations
-and CSR 0x7c0. -/
+/-- Execute one instruction (`next`: the next input word): as Sail does, except loads into x0, the field operations,
+`mop.r.N` and CSR 0x7c0. -/
 noncomputable def execute (next : BitVec 32) (instr : instruction) : SailM ExecutionResult :=
   match instr with
   | .CSRReg (csr, rs1, rd, .CSRRW) =>                  -- Airbender: CSR 0x7c0 is the non-determinism source
@@ -157,14 +159,19 @@ noncomputable def execute (next : BitVec 32) (instr : instruction) : SailM Execu
   | .LOAD (_, _, rd, _, _) => if rd == zreg then pure RETIRE_SUCCESS  -- Airbender: a load into x0 only
                               else SailRV32.Functions.execute instr   --   advances the PC (no memory access)
   | .ZIMOP_MOP_RR (n, rs2, rs1, rd) =>                 -- Airbender: `mop.rr.0 … 4` are field operations
-      match mopOfIndex n with                          --   (`RV.mopVal`; Sail's Zimop writes 0), and need rd ≠ x0
-      | some op => if rd == zreg then pure (.Illegal_Instruction ()) else do
+      match mopOfIndex n with                          --   (`RV.mopVal`; Sail's Zimop writes 0)
+      | some op => do
           let a ← rX_bits rs1
           let b ← rX_bits rs2
           let old ← rX_bits rd
           wX_bits rd (RV.mopVal op a b old)
           pure RETIRE_SUCCESS
       | none => SailRV32.Functions.execute instr
+  | .ZIMOP_MOP_R (n, rs1, rd) => do                    -- Airbender: `mop.r.N` is `rd := (rd ^^^ rs1)` rotated right
+      let a ← rX_bits rs1                              --   by N (`RV.Instr.xorRot`; Sail's Zimop writes 0)
+      let old ← rX_bits rd
+      wX_bits rd ((old ^^^ a).rotateRight n.toNat)
+      pure RETIRE_SUCCESS
   | _ => SailRV32.Functions.execute instr
 
 /-- Register `i` of a Sail state, read the way Sail's instructions read it (x0 reads as 0). -/

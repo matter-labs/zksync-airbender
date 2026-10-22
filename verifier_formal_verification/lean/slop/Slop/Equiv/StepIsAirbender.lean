@@ -45,6 +45,8 @@ theorem step_sail (s t : RV.State) (σ : SailState) (h : Airbender.AgreeSail s �
       · exact kind_shift h ha' h2 _ _ _ _ ho hdec hex
     | op o rd rs1 rs2 => exact kind_op h ha' h2 _ _ _ _ hs hdec hex
     | mop o rd rs1 rs2 => exact kind_mop h ha' h2 _ _ _ _ hdec hex
+    | rev8 rd rs1 => exact kind_rev8 h ha' h2 _ _ hdec hex
+    | xorRot n rd rs1 => exact kind_xorrot h ha' h2 _ _ _ hdec hex
     | inputRead rd => simp [RV.Instr.readsInput] at hr
     | inputWrite src => exact kind_write h ha' h2 _ hdec hex
     | delegate k => exact absurd hdec (hnd _)

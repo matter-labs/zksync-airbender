@@ -19,7 +19,7 @@ def Shape : Instr → Prop
       ((o = .sll ∨ o = .srl ∨ o = .sra) ∧ ∃ sh : BitVec 5, imm = sh.zeroExtend 32)
   | .op o _ _ _ => (o = .add ∨ o = .sub ∨ o = .sll ∨ o = .slt ∨ o = .sltu ∨ o = .xor ∨ o = .srl ∨ o = .sra ∨
       o = .or ∨ o = .and) ∨ (o = .mul ∨ o = .mulhu ∨ o = .divu ∨ o = .remu)
-  | .mop .. => True
+  | .mop .. | .rev8 .. | .xorRot .. => True
   | .inputRead rd => rd ≠ 0
   | .inputWrite src => src ≠ 0
   | .delegate _ => True
@@ -28,7 +28,7 @@ theorem decode_shape {w : Word} {i : Instr} (h : decode w = some i) : Shape i :=
   unfold decode at h
   simp only at h
   split at h
-  all_goals (try simp only [decodeCsr] at h)
+  all_goals (try simp only [decodeCsr, decodeMopR] at h)
   all_goals (try split_ifs at h)
   all_goals first
     | (cases h; done)

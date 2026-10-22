@@ -19,8 +19,8 @@ input; the verifier's two-to-one Blake2s hash) — a wrong root fails the run.
 ## What a human reads (`lean/human/`, ~200 lines)
 - `Human/State.lean` — the machine state (registers, PC, byte memory, the non-determinism input).
 - `Human/Delegations.lean` — Airbender's delegations (precompiles), one call per instruction: Blake2s round (`0x7c7`)
-  and `G` (`0x7c8`), u256 bigint (`0x7ca`), Keccak special5 (`0x7cb`) and Keccak-f1600 (`0x7cc` … `0x7ce`, not yet in
-  the ISA table); `Accepted`: the decoder's run lengths. Built from `Human/Blake2s.lean` (Blake2s constants, `G`, one
+  and `G` (`0x7c8`), u256 bigint (`0x7ca`), Keccak special5 (`0x7cb`) and Keccak-f1600 (`0x7cc` … `0x7ce`);
+  `Accepted`: the decoder's run lengths (and the 361-call Keccak-f1600 pattern). Built from `Human/Blake2s.lean` (Blake2s constants, `G`, one
   round) and `Human/Keccak.lean` (Keccak-f[1600], FIPS 202).
 - `Human/DelegationRuns.lean` — what a run of calls computes, stated with those standard definitions: 7 (10) round
   calls = the 7-round (RFC 7693 10-round) Blake2s compression, or `hash2` (its 10-round version) in compression mode;

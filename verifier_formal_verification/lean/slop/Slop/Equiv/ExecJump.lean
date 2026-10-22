@@ -58,7 +58,7 @@ theorem exec_jalr (σ : SailState) (hs : Airbender.Configured σ) (rd rs1 : BitV
     runSail (Airbender.execute next (Airbender.toSail (.jalr rd rs1 (x.signExtend 32)))) σ =
       .ok RETIRE_SUCCESS (xset (σ.set .nextPC ((xget σ rs1 + x.signExtend 32) &&& ~~~1)) rd (σ.regs .nextPC)) := by
   have hx := sext_n x (by decide) (by decide)
-  have hz : runSail (currentlyEnabled .Ext_Zicfilp) σ = .ok false σ := en_run hs _ _ (by decide +kernel)
+  have hz : runSail (currentlyEnabled .Ext_Zicfilp) σ = .ok false σ := oracle_run hs _ _ (by decide +kernel)
   simp only [Airbender.toSail, Airbender.execute, execute, execute_JALR, Slop.runF_bind, update_elp_state, hz,
     get_next_pc, rX_run, hx, clear_bit0, Bool.false_eq_true, ↓reduceIte, Slop.runF_pure]
   rw [Slop.runF_readReg]; dsimp only

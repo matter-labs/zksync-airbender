@@ -34,7 +34,7 @@ theorem jump_to_run (σ : SailState) (hs : Airbender.Configured σ) (t : BitVec 
     runSail (jump_to t) σ = .ok RETIRE_SUCCESS (σ.set .nextPC t) := by
   unfold jump_to SailME.run
   simp only [ext_control_check_pc, me_run_lift_bind, me_run_ite, bit0_of_aligned t ht, bit1_of_aligned t ht]
-  have hz : runSail (currentlyEnabled .Ext_Zca) σ = .ok false σ := en_run hs _ _ (by decide +kernel)
+  have hz : runSail (currentlyEnabled .Ext_Zca) σ = .ok false σ := oracle_run hs _ _ (by decide +kernel)
   simp only [Bool.false_and, Bool.false_eq_true, ↓reduceIte, Slop.runF_bind, hz, set_next_pc, Slop.runF_writeReg,
     Slop.runF_pure, PreSail.assert, me_run_pure]
   rw [show runSail (FreeM.pure () : SailM Unit) σ = .ok () σ from rfl]
