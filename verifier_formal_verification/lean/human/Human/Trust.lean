@@ -7,8 +7,8 @@ definition from `slop/`; `human/` imports only these libraries; every proof uses
 `sorry` anywhere, enforced by the build).
 
 1. **Lean**: the Lean 4 kernel (the toolchain pinned in `lean-toolchain`) and its three standard axioms `propext`,
-   `Classical.choice`, `Quot.sound`. `backup-check.sh` re-checks every declaration with a second kernel, rarely (major
-   milestones only).
+   `Classical.choice`, `Quot.sound`. `backup-check.sh` re-checks every declaration with a second kernel, by hand every
+   few months at most.
 2. **Mathlib** (pinned in `lakefile.toml`): `ZMod`, `Fin` vectors, finite sums, `AdjoinRoot`, used to state the
    field arithmetic of the specs.
 3. **The Sail RISC-V model** (`SailRV32`, generated from the official `sail-riscv` at the commit pinned in

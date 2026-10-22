@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Backup checker (rare; not part of verify.sh): replay every declaration of human/ and slop/ through a second, fresh
 # Lean kernel with `leanchecker`, which ships with the toolchain pinned in lean/lean-toolchain. It catches anything a
-# tactic or metaprogram might have added without the kernel. Slow (tens of minutes): run it only at major
-# milestones, e.g. before tagging or publishing a result, not per commit.
+# tactic or metaprogram might have added without the kernel. Very slow (hours; `verify.sh` takes about 15 min): run
+# it by hand every few months at most, never per commit or as part of another check.
 #   ./backup-check.sh           # our modules, on top of their (trusted) imports
 #   ./backup-check.sh --fresh   # also replay all imports, Mathlib and Sail included (much longer)
 #

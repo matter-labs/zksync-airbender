@@ -77,8 +77,8 @@ checks that the statements are well-formed, not that they are proven. Keep `veri
 
 `backup-check.sh` replays every declaration of `human/` and `slop/` through a second, fresh kernel with `leanchecker`,
 which ships with the pinned toolchain (`--fresh` also replays Mathlib and Sail). It guards against tactics or other
-metaprograms that might add declarations without the kernel. It takes tens of minutes, so it is not part of
-`verify.sh` and not run per commit: run it only at major milestones, such as before tagging or publishing a result.
+metaprograms that might add declarations without the kernel. It takes hours (`verify.sh`: about 15 min), so it is
+not part of `verify.sh` and never run per commit: run it by hand every few months at most.
 
 `leanchecker` selects modules by name prefix (`Human` means every `Human.*` module) and replays each selected module
 with its own copy of the imported environment, in parallel and without a limit. Given a root module or a batch, it
