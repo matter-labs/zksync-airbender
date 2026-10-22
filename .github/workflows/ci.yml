@@ -161,6 +161,30 @@ jobs:
             exit 1
           fi
 
+  evm_verifier:
+    name: evm_verifier
+    runs-on: [matterlabs-ci-runner-c3d]
+    timeout-minutes: 30
+    env:
+      RUST_MIN_STACK: 1073741824
+    steps:
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+      - name: Setup
+        run: rustup set profile minimal
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
+        with:
+          version: v1.8.5
+      - name: EVM verifier Foundry tests
+        # Forge installs the solc version pinned in merged/foundry.toml.
+        # Preserve forge failures through the script's output filters.
+        run: bash -o pipefail verifier_evm/generated_contracts/run_merged.sh --no-gas
+      - name: Fail if the generated contract or calldata changed
+        run: git diff --exit-code -- verifier_evm/
+
   cli_smoke_verify:
     name: cli_smoke_verify
     runs-on: [matterlabs-ci-runner-high-performance]
@@ -209,6 +233,7 @@ jobs:
       - warnings
       - circuits_generated
       - check_verifiers
+      - evm_verifier
       - cli_smoke_verify
     steps:
       - name: Decide on PR checks
