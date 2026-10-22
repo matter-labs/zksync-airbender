@@ -5,7 +5,6 @@ pub use ::setups;
 
 pub mod proof_assembly;
 pub mod unified;
-pub mod unified_transition;
 pub mod unrolled;
 
 pub use proof_assembly::{assemble_program_proof, program_setups};
