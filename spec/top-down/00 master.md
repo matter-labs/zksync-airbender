@@ -4,10 +4,9 @@
 
 ## 1. The Airbender Machine
 
-> TODO: add new keccak primitives (+update circuits and profiles)
 ### What Airbender proves
 
-- **AirBender** is a cryptographic proof system capable of proving the execution of any program compatible with its supported RISC-V RV32IM subset, selected Zicsr CSRRW-based machine-interface operations (external nondeterminism-oracle access and the internal precompile-delegation bus), and Airbender-defined Zimop operations, up to nearly 2^36 cycles of runtime (2 cycles are reserved for machine operations).
+- **AirBender** is a cryptographic proof system capable of proving the execution of any program compatible with its supported RISC-V RV32IM subset, selected Zicsr CSRRW-based machine-interface operations (external nondeterminism-oracle access and the internal precompile-delegation bus), the Zbb REV8 instruction, and Airbender-defined Zimop operations, up to nearly 2^36 cycles of runtime (2 cycles are reserved for machine operations).
 
 - **Program Execution** is the timed sequential execution of RISCV operations (cycles) found in the program binary. At any point in time, RISCV instructions are loaded from the binary address stored in the program counter (PC) and then executed.
 
@@ -22,7 +21,7 @@
 
 ### Instructions and profiles
 
-- The **Instruction Set Architecture** of the machine is a subset of RISC-V RV32IM+Zicsr+Zimop, with the deviations and Airbender-defined operations listed below. The various instructions are collected into instruction families, each represented by a circuit or "circuit family". Support for signed M-extension operations has been removed for performance and development purposes, but can be added back if needed.
+- The **Instruction Set Architecture** of the machine is a subset of RISC-V RV32IM+Zbb+Zicsr+Zimop, with the deviations and Airbender-defined operations listed below. The various instructions are collected into instruction families, each represented by a circuit or "circuit family". Support for signed M-extension operations has been removed for performance and development purposes, but can be added back if needed.
 
   | Instruction | Definition or distinction† |
   |---|---|
@@ -55,6 +54,7 @@
   | SLLI rd, rs1, shamt | RISC-V |
   | SRLI rd, rs1, shamt | RISC-V |
   | SRAI rd, rs1, shamt | RISC-V |
+  | REV8 rd, rs1 | RISC-V |
   | LB rd, imm12(rs1) | RISC-V, but loads from distinct ROM and RAM regions; when rd = x0 only pc advances by 4. |
   | LBU rd, imm12(rs1) | RISC-V, but loads from distinct ROM and RAM regions; when rd = x0 only pc advances by 4. |
   | LH rd, imm12(rs1) | RISC-V, but loads from distinct ROM and RAM regions; requires 2-byte alignment unless rd = x0, when only pc advances by 4. |
@@ -79,9 +79,11 @@
   | CSRRW rd, 0x7C0, x0 | Airbender nondeterminism read‡: rd ← arbitrary prover-supplied 32-bit witness value |
   | CSRRW x0, 0x7C0, rs1 | Airbender nondeterminism write‡: no-op; during witness generation, the simulator passes the current value of source register rs1 to application-defined logic as an unproven hint |
   | CSRRW x0, 0x7C7, x0 | Airbender BLAKE2s round precompile-delegation request‡: when fulfilled, x10 points to the 128-byte-aligned input/output state h[0..7] followed by the work state v[0..15]; x11 points to the 64-byte-aligned message block m[0..15]; x12 selects the round, 7- or 10-round schedule, and mode. Direct-block mode compresses m into h using the counter and final-block values in v. Two-to-one mode compresses either h ‖ m[0..7] or m[0..7] ‖ h, into h; 10-round mode gives BLAKE2s-256 of the concatenation, while 7-round mode is Airbender's BLAKE3-inspired reduced-round variant. Each instruction performs one round; a complete run updates h and v in place. (Airbender Decoder preprocessing accepts this instruction only in exact runs of 7 or 10 consecutive copies.) |
-  | CSRRW x0, 0x7C8, x0 | Airbender BLAKE2s G-function precompile-delegation request‡: when fulfilled, x10 points to 64-byte-aligned v[0..15], the sixteen-word local work vector persisted by Airbender, while x11 points to 64-byte-aligned m[0..15], the sixteen-word message-block vector. x12 selects either the standard 10-round schedule or Airbender's first-7-round variant and the current G-function index. Each instruction performs one G function; a complete run updates v in place. (Airbender Decoder preprocessing accepts this instruction only in exact runs of 56 or 80 consecutive copies.) |
   | CSRRW x0, 0x7CA, x0 | Airbender controlled 256-bit arithmetic precompile-delegation request‡: when fulfilled, x10 and x11 point to 32-byte-aligned little-endian 256-bit RAM operands a and b, while x12 selects ADD ((a + b + κ) mod 2²⁵⁶), SUB ((a − b − κ) mod 2²⁵⁶), SUB_NEGATE ((b − a − κ) mod 2²⁵⁶), MUL_LOW (the low 256 bits of a × b), MUL_HIGH (the high 256 bits), EQ (preserves a and tests a = b), or MEMCOPY ((b + κ) mod 2²⁵⁶), where κ is x12's carry/borrow input bit. The 256-bit result overwrites a at the address in x10; x12 is overwritten with a 0/1 result: carry for ADD and MEMCOPY, borrow for SUB and SUB_NEGATE, overflow for MUL_LOW, equality for EQ, and 0 for MUL_HIGH. |
   | CSRRW x0, 0x7CB, x0 | Airbender Keccak-f[1600] precompile-delegation request‡: when fulfilled, x11 points to a 256-byte-aligned RAM region containing twenty-five little-endian 64-bit state lanes followed by six scratch lanes, while x10 holds the mode, iteration, and round control. Its seven modes decompose each round into a deferred ι/column-parity step, two D-mixing steps, a θ column update, a ρ rotation with implicit π indexing, and two χ half-row steps. Each instruction performs one such micro-operation, updates the selected lanes, and advances x10. A complete run performs the standard 24-round Keccak-f[1600] permutation in place. (Airbender Decoder preprocessing accepts this instruction only in exact runs of 649 consecutive copies.) |
+  | CSRRW x0, 0x7CC, x0 | Airbender Keccak-f[1600] θ/ρ precompile-delegation request‡: when fulfilled, x11 points to a 256-byte-aligned RAM region containing twenty-five little-endian 64-bit state lanes followed by five column-parity scratch lanes, while x10 holds the column index and round control. Each instruction combines the neighbouring column parities and applies them directly to the five lanes of the selected column, performs their ρ rotations with implicit π indexing, and advances x10. A complete run of the three Keccak instructions performs the standard 24-round Keccak-f[1600] permutation in place. (Airbender Decoder preprocessing accepts the three instructions at CSRs 0x7CC–0x7CE only in exact runs of 361 consecutive calls: 24 repetitions of five column-parity calls, five θ/ρ calls, and five χ calls, followed by one final column-parity call.) |
+  | CSRRW x0, 0x7CD, x0 | Airbender Keccak-f[1600] column-parity precompile-delegation request‡: when fulfilled, x11 points to a 256-byte-aligned RAM region containing twenty-five little-endian 64-bit state lanes followed by five column-parity scratch lanes, while x10 holds the column index and round control. Each instruction applies the preceding round's deferred ι when required, computes and stores the selected column's parity, and advances x10. A complete run of the three Keccak instructions performs the standard 24-round Keccak-f[1600] permutation in place. (Airbender Decoder preprocessing accepts the three instructions at CSRs 0x7CC–0x7CE only in exact runs of 361 consecutive calls: 24 repetitions of five column-parity calls, five θ/ρ calls, and five χ calls, followed by one final column-parity call.) |
+  | CSRRW x0, 0x7CE, x0 | Airbender Keccak-f[1600] χ precompile-delegation request‡: when fulfilled, x11 points to a 256-byte-aligned RAM region containing twenty-five little-endian 64-bit state lanes followed by five column-parity scratch lanes, while x10 holds the row index and round control. Each instruction applies χ to all five lanes of the selected row, updates those lanes in place, and advances x10. A complete run of the three Keccak instructions performs the standard 24-round Keccak-f[1600] permutation in place. (Airbender Decoder preprocessing accepts the three instructions at CSRs 0x7CC–0x7CE only in exact runs of 361 consecutive calls: 24 repetitions of five column-parity calls, five θ/ρ calls, and five χ calls, followed by one final column-parity call.) |
 
     *† RISC-V instructions retain their standard pc update unless stated otherwise. Custom instructions advance pc by 4 (mod 2³²) unless stated otherwise. In instruction syntax, rd, rs1, and rs2 are 5-bit register indices. In definitions, rs1 and rs2 denote the corresponding 32-bit register values, rd denotes the destination register, and rd_old denotes its preceding 32-bit value. For modular MOPs, p = 0x78000001 = 2³¹ − 2²⁷ + 1 is the BabyBear modulus, R = 2³² is the Montgomery radix, and R⁻¹ is its inverse modulo p.*
 
@@ -93,24 +95,26 @@
   |---|---|
   | add_sub_lui_auipc_mop | ADD + ADDI + LUI + SUB + AUIPC + MOP.RR.0 + MOP.RR.1 + MOP.RR.2 + MOP.RR.3 + nondeterminism read/write CSRRW + delegation-request CSRRW |
   | jump_branch_slt | JAL + JALR + BEQ + BNE + BLT + BGE + BLTU + BGEU + SLT + SLTI + SLTU + SLTIU |
-  | shift_binary | AND + ANDI + OR + ORI + XOR + XORI + SLL + SLLI + SRL + SRLI + SRA + SRAI |
+  | shift_binary | AND + ANDI + OR + ORI + XOR + XORI + SLL + SLLI + SRL + SRLI + SRA + SRAI + REV8 |
   | load_store_word_only | LW + SW |
   | load_store_subword_only | LB + LBU + LH + LHU + SB + SH |
   | mul_div_unsigned | MUL + MULHU + DIVU + REMU |
   | unified_reduced_machine | Combines add_sub_lui_auipc_mop + jump_branch_slt + shift_binary + load_store_word_only; adds MOP.RR.4 + MOP.R.16 + MOP.R.12 + MOP.R.8 + MOP.R.7. For every address in its verifier-bound 4-byte-aligned RAM windows, it embeds the same Write-Set initialisation and Read-Set teardown tuples as inits_and_teardowns, closing the global RAM access history inline. |
   | inits_and_teardowns | For every 4-byte-aligned address < 2³⁰, contributes the Write-Set initialisation tuple (1 (RAM), address[15:0], address[31:16], 0, 0, 0, 0) and Read-Set teardown tuple (1 (RAM), address[15:0], address[31:16], ts_final[18:0], ts_final[37:19], val_final[15:0], val_final[31:16]). The addresses are split across 16 fixed contiguous windows; together with execution reads and writes, these tuples close the global RAM access history between the zero-initialised and final RAM states. |
   | blake2_with_compression | Fulfills BLAKE2s round and compression delegation requests |
-  | blake2_g_function | Fulfills BLAKE2s G-function delegation requests |
   | bigint_with_control | Fulfills controlled 256-bit arithmetic delegation requests |
   | keccak_special5 | Fulfills Keccak-f[1600] special5 micro-operation delegation requests |
+  | keccak_theta_rho | Fulfills Keccak-f[1600] θ/ρ column-update delegation requests |
+  | keccak_column_parity | Fulfills Keccak-f[1600] column-parity and deferred ι delegation requests |
+  | keccak_chi5 | Fulfills Keccak-f[1600] χ row-update delegation requests |
 
 - **Profiles** are collections of circuits and chunking metadata that can be used to prove RISCV programs more efficiently, according to the concrete needs of different Prover and Verifier infrastructures and processes (such as chunk sizes). The Prover selects a proving profile, and organises execution cycles and proving chunks accordingly. The circuits found in each profile are non-overlapping in terms of the machine operations they constrain, and typically target efficient execution of a reduced instruction set.
 
   | Profile | Circuit composition and supported operations† |
   |---|---|
-  | Reduced unrolled | add_sub_lui_auipc_mop + jump_branch_slt + shift_binary + load_store_word_only + inits_and_teardowns + blake2_with_compression + blake2_g_function |
-  | Full unrolled | Inherits Reduced unrolled; adds load_store_subword_only + mul_div_unsigned + bigint_with_control + keccak_special5 |
-  | Reduced unified | unified_reduced_machine + blake2_with_compression + blake2_g_function + bigint_with_control + keccak_special5 |
+  | Reduced unrolled | add_sub_lui_auipc_mop + jump_branch_slt + shift_binary + load_store_word_only + inits_and_teardowns + blake2_with_compression |
+  | Full unrolled | Inherits Reduced unrolled; adds load_store_subword_only + mul_div_unsigned + bigint_with_control + keccak_special5 + keccak_theta_rho + keccak_column_parity + keccak_chi5 |
+  | Reduced unified | unified_reduced_machine + blake2_with_compression |
 
   *† Circuits whose operations do not occur during execution may be omitted from the proof.*
 
@@ -151,7 +155,7 @@
   |---|---|---|---|---|---|---|
   | 2 (PC) | 0 | 0 | timestamp[18:0] | timestamp[37:19] | pc[15:0] | pc[31:16] |
 
-- The **RAM** is logically represented by 2^32 bytes of word-addressed word-sized slots, initialised by the memory argument at time 0 to zero values.
+- The **RAM** is logically represented by 2^30 bytes of word-addressed word-sized slots, initialised by the memory argument at time 0 to zero values.
 
   | addr_space | addr_lo | addr_hi | ts_lo | ts_hi | val_lo | val_hi |
   |---|---|---|---|---|---|---|
@@ -166,7 +170,7 @@
   |---|---|---|---|---|---|---|
   | 0 (REG) | register_index[15:0] | register_index[31:16] | timestamp[18:0] | timestamp[37:19] | value[15:0] | value[31:16] |
 
-- **Timestamps** are 38-bit values used by the memory argument to enforce consistency of memory updates over time. Initialisation of the argument's memory locations is at a fixed time of 0, and initialisation of the program counter state is at a fixed time of 4, preventing conflicting reads and writes between machine initialisation and execution. Time is always monotonically increased by 4 during each cycle for any non-delegation memory access, allowing for up to 4 unique memory accesses to the same address during any execution cycle. Accesses to provably distinct memory cells may share a timestamp, including accesses performed by delegated precompile fulfillments rather than literal machine cycles. The combination of timed program counter accesses and program counter updates constrained by circuits guarantees the uniqueness of each cycle and the absence of missing or illicit cycles (to be explained in detail later).
+- **Timestamps** are 38-bit values used by the memory argument to enforce consistency of memory updates over time. Initialisation of the argument's memory locations is at a fixed time of 0, and initialisation of the program counter state is at a fixed time of 4, preventing conflicting reads and writes between machine initialisation and execution. Cycle time increases by 4 at each cycle, and each non-delegation memory access writes at the cycle timestamp plus its assigned intra-cycle offset, strictly after that location’s preceding timestamp. This allows for up to 4 unique memory accesses to the same address during any execution cycle. Accesses to provably distinct memory cells may share a timestamp, including accesses performed by delegated precompile fulfillments rather than literal machine cycles. The combination of timed program counter accesses and program counter updates constrained by circuits guarantees the uniqueness of each cycle and the absence of missing or illicit cycles (to be explained in detail later).
 
 ### Initial and final machine state
 
