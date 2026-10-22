@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 use unified_reduced_machine_proth120::l1_wrap_2p21::{LAYOUT_JSON, TRACE_LEN_LOG2};
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 
-const REGENERATE: &str = "RUST_MIN_STACK=1073741824 cargo test -p cpu_execution_prover --release --test l1_reference generate_l1_witness_reference -- --exact --ignored --nocapture --test-threads=1";
+const REGENERATE: &str = "RUST_MIN_STACK=1073741824 cargo test -p cpu_execution_prover --features test-support --release --test l1_reference generate_l1_witness_reference -- --exact --ignored --nocapture --test-threads=1";
 const EDGE_ROWS: usize = 64;
 const DIGESTS: &str = "witness_digests.json";
 const EDGES: &str = "witness_edges.json";

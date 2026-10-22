@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 const REGENERATE: &str = concat!(
     "RUST_MIN_STACK=1073741824 cargo test -p prover_pipeline --release --lib l1_reference::generate_l1_reference_seed -- --exact --ignored --nocapture --test-threads=1 && ",
     "RUST_MIN_STACK=1073741824 cargo test -p prover_pipeline --release --lib l1_reference::generate_l1_reference_from_recursion_unified -- --exact --ignored --nocapture --test-threads=1 && ",
-    "RUST_MIN_STACK=1073741824 cargo test -p cpu_execution_prover --release --test l1_reference generate_l1_witness_reference -- --exact --ignored --nocapture --test-threads=1"
+    "RUST_MIN_STACK=1073741824 cargo test -p cpu_execution_prover --features test-support --release --test l1_reference generate_l1_witness_reference -- --exact --ignored --nocapture --test-threads=1"
 );
 static MAX_STAGE_VMHWM: AtomicU64 = AtomicU64::new(0);
 

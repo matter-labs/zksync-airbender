@@ -40,6 +40,7 @@ verifier_common = { workspace = true }
 [features]
 default = ["deterministic_pow"]
 deterministic_pow = ["prover/deterministic_pow"]
+test-support = []
 verifiers = ["full_statement_verifier/verifiers"]
 
 [[test]]
@@ -52,7 +53,7 @@ required-features = ["deterministic_pow"]
 
 [[test]]
 name = "l1_reference"
-required-features = ["deterministic_pow"]
+required-features = ["deterministic_pow", "test-support"]
 
 # The JIT simulator exists on x86-64 only (`riscv_transpiler::jit` gates it on the target
 # architecture as well): the feature only adds its assembler dependencies elsewhere.
