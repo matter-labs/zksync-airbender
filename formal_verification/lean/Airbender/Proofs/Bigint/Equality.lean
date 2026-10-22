@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Bigint.EqualityGates
 import Airbender.Proofs.Arithmetic.Digits
 
@@ -21,7 +22,7 @@ theorem carry_bounded {p : Nat} [Fact p.Prime]
   · have bounded := boolean_val (Additive.Proofs.carry_bits h ⟨i - 1, by omega⟩)
     simpa [carry, first, carryColumn, show 83 + (i - 1) = 82 + i by omega] using bounded
 
-theorem result_ranges {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
+theorem result_ranges {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 64 = 1) : ∀ i : Fin 16, (w (67 + i.val)).val < limbBase := by
@@ -30,7 +31,7 @@ theorem result_ranges {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   rw [(native_results hp h selected i).1] at ranged
   exact ranged
 
-theorem natural_steps {p : Nat} [Fact p.Prime] (hp : 131072 ≤ p)
+theorem natural_steps {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 131072)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p} {input : Input} {output : Output}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (mapping : Mapping input output w) (bounds : InterfaceAssumptions input output w) :
@@ -50,7 +51,7 @@ theorem natural_steps {p : Nat} [Fact p.Prime] (hp : 131072 ≤ p)
     show 82 + (i.val + 1) = 83 + i.val by omega]
   split_ifs with first <;> simpa [first, carryColumn, limbBase] using gate
 
-theorem sum_zero_iff {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem sum_zero_iff {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 64 = 1) : w 210 = 0 ↔ ∀ i : Fin 16, (w (67 + i.val)).val = 0 := by
@@ -66,7 +67,7 @@ theorem sum_zero_iff {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   rw [native_sum (by omega) h selected]
   exact field_sum_zero (by change total < p; omega)
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     (setup : Table (ZMod p) (fields 3)) :
     (circuitModel setup).SoundnessUnder InterfaceAssumptions spec := by
   intro input output w ⟨bounds, h, mapping⟩

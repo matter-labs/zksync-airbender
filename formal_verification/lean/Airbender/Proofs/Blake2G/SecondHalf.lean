@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2G.AssemblyDefinitions
 import Airbender.Proofs.Blake2G.Mixing
 
@@ -7,8 +9,8 @@ open Arithmetic
 
 set_option maxHeartbeats 1200000
 
-private theorem second_xors_of_queries {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+private theorem second_xors_of_queries {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : QueryHolds (setupTable control) w) :
     chunkXor 8 (w 47) (w 69) (w 71) ∧
@@ -38,8 +40,8 @@ private theorem second_xors_of_queries {p : Nat} [Fact p.Prime] (hp : 65536 ≤ 
   rw [hiQuery] at q13
   exact ⟨q10, q11, q12, q13⟩
 
-private theorem second_xors {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+private theorem second_xors {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (mixingConstraints (setupTable control))) :
@@ -50,8 +52,8 @@ private theorem second_xors {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   exact second_xors_of_queries hp compatible (query_holds_of_holds h)
 
 /-- The second addition's byte decomposition follows from the actual queries. -/
-theorem second_byte_splits_of_queries {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+theorem second_byte_splits_of_queries {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : QueryHolds (setupTable control) w) :
     (secondAlo w).val = (w 69).val + 256 * ((-7864320 : ZMod p) * (secondAlo w - w 69)).val ∧
@@ -61,8 +63,8 @@ theorem second_byte_splits_of_queries {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p
   exact ⟨value_of_scaled_chunks hp inv q10.2.1 q11.2.1,
     value_of_scaled_chunks hp inv q12.2.1 q13.2.1⟩
 
-theorem second_byte_splits {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+theorem second_byte_splits {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (mixingConstraints (setupTable control))) :
@@ -71,8 +73,8 @@ theorem second_byte_splits {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   exact second_byte_splits_of_queries hp compatible (query_holds_of_holds h)
 
 /-- The second four byte queries force Clean's XOR/rotate-8 operation. -/
-theorem second_rotation_of_queries {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+theorem second_rotation_of_queries {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : QueryHolds (setupTable control) w) :
     let a : Word := ⟨(secondAlo w).val, (secondAhi w).val⟩
@@ -110,8 +112,8 @@ theorem second_rotation_of_queries {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   rw [rotation]
   ring
 
-theorem second_rotation {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+theorem second_rotation {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (mixingConstraints (setupTable control))) :
@@ -123,8 +125,8 @@ theorem second_rotation {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
 
 /-- The second a += b + message operation. Its inputs are the intermediates
     already recovered by the first-half proofs. -/
-theorem second_addition {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+theorem second_addition {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 262144)
+    (compatible : SerializedInverse.Scale64 p)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (mixingConstraints (setupTable control)))
@@ -159,12 +161,12 @@ theorem second_addition {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
     leftBound rightBound messageBound outputBound (by omega) (by omega) low high
 
 private theorem inverse128 {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1) :
-    128 * (-15728640 : ZMod p) = 1 := by
+    (compatible : SerializedInverse.Scale64 p) :
+    SerializedInverse.Scale128 p := by
   linear_combination compatible
 
-private theorem second_b_xors_of_queries {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+private theorem second_b_xors_of_queries {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : QueryHolds (setupTable control) w) :
     chunkXor 7 (w 59 + 16 * w 62) (w 77) (w 79) ∧
@@ -192,8 +194,8 @@ private theorem second_b_xors_of_queries {p : Nat} [Fact p.Prime] (hp : 65536 �
   rw [hiQuery] at q17
   exact ⟨q14, q15, q16, q17⟩
 
-private theorem second_b_xors {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+private theorem second_b_xors {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (mixingConstraints (setupTable control))) :
@@ -204,8 +206,8 @@ private theorem second_b_xors {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   exact second_b_xors_of_queries hp compatible (query_holds_of_holds h)
 
 /-- The final c word is ranged by the rotate-7 queries. -/
-theorem second_c_splits_of_queries {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+theorem second_c_splits_of_queries {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : QueryHolds (setupTable control) w) :
     (secondClo w).val = (w 77).val + 128 * ((-15728640 : ZMod p) * (secondClo w - w 77)).val ∧
@@ -215,8 +217,8 @@ theorem second_c_splits_of_queries {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   exact ⟨value_of_scaled_chunks hp inv q14.2.1 q15.2.1,
     value_of_scaled_chunks hp inv q16.2.1 q17.2.1⟩
 
-theorem second_c_splits {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+theorem second_c_splits {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (mixingConstraints (setupTable control))) :
@@ -225,8 +227,8 @@ theorem second_c_splits {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   exact second_c_splits_of_queries hp compatible (query_holds_of_holds h)
 
 /-- The last four imported queries force Clean's XOR/rotate-7 operation. -/
-theorem second_rotation7_of_queries {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+theorem second_rotation7_of_queries {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : QueryHolds (setupTable control) w) :
     let b : Word := ⟨(w 59).val + 16 * (w 62).val + 128 * (w 63).val,
@@ -284,8 +286,8 @@ theorem second_rotation7_of_queries {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   rw [rotation]
   ring
 
-theorem second_rotation7 {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+theorem second_rotation7 {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (mixingConstraints (setupTable control))) :
@@ -297,8 +299,8 @@ theorem second_rotation7 {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   exact second_rotation7_of_queries hp compatible (query_holds_of_holds h)
 
 /-- The final c += d addition, ranged by the last XOR queries. -/
-theorem second_c_addition {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+theorem second_c_addition {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 262144)
+    (compatible : SerializedInverse.Scale64 p)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (mixingConstraints (setupTable control))) :
@@ -333,8 +335,8 @@ theorem second_c_addition {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
 
 /-- All eight output limbs are tied to the recovered mixing intermediates by
     the imported zero assertions, not by a witness-generation equation. -/
-theorem mixing_outputs {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+theorem mixing_outputs {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (mixingConstraints (setupTable control))) :

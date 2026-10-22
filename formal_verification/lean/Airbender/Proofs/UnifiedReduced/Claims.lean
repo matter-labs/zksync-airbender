@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.Theorems
 import Airbender.Proofs.UnifiedReduced.Delegation
 import Airbender.Proofs.UnifiedReduced.RequestTrace
@@ -37,8 +39,8 @@ namespace Airbender.UnifiedReduced
 
 
 theorem Mixed.native_memory_execution [Fact p.Prime]
-    (hp : 2 * Trace.timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {trace : Trace.UnifiedTrace p} {initial : Reference.RiscV.Sail.State}
     {cells : List Trace.Cell} {program : List ProgramEntry}
     (inputs : Trace.NativeInputs Mixed.decoderFields trace initial cells program)
@@ -48,8 +50,8 @@ theorem Mixed.native_memory_execution [Fact p.Prime]
 
 
 theorem custom_native_memory_execution [Fact p.Prime]
-    (hp : 2 * Trace.timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {trace : Trace.UnifiedTrace p} {initial : Reference.RiscV.Sail.State}
     {cells : List Trace.Cell} {program : List ProgramEntry}
     (inputs : Trace.NativeInputs customDecoderFields trace initial cells program)
@@ -59,9 +61,9 @@ theorem custom_native_memory_execution [Fact p.Prime]
 
 
 theorem XorRotate.soundness [Fact p.Prime]
-    (hp : 2 * Trace.timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List ProgramEntry) :
     (XorRotate.circuitModel trace initial cells program).SoundnessUnder
@@ -76,9 +78,9 @@ theorem XorRotate.babyBear_soundness (trace : Trace.UnifiedTrace babyBearModulus
 
 
 theorem Custom.execution_soundness [Fact p.Prime]
-    (hp : 2 * Trace.timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     {trace : Trace.UnifiedTrace p} {initial : Reference.RiscV.Sail.State}
     {cells : List Trace.Cell} {program : List ProgramEntry}
     (inputs : Custom.Inputs trace initial cells program)
@@ -95,8 +97,8 @@ theorem Custom.babyBear_execution_soundness
   Custom.execution_soundness (by decide) (by decide) (by decide) inputs accepted decoded
 
 
-theorem Control.Branch.soundness [Fact p.Prime] (hp : 4194304 ≤ p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Control.Branch.soundness [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (inverse : SerializedInverse.Clock p)
     (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List ProgramEntry) :
     (Control.Branch.circuitModel trace initial cells program).SoundnessUnder
@@ -104,8 +106,8 @@ theorem Control.Branch.soundness [Fact p.Prime] (hp : 4194304 ≤ p)
   Control.Branch.Proofs.soundness hp inverse trace initial cells program
 
 
-theorem Control.Comparison.soundness [Fact p.Prime] (hp : 4194304 ≤ p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Control.Comparison.soundness [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (inverse : SerializedInverse.Clock p)
     (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List ProgramEntry) :
     (Control.Comparison.circuitModel trace initial cells program).SoundnessUnder
@@ -114,7 +116,7 @@ theorem Control.Comparison.soundness [Fact p.Prime] (hp : 4194304 ≤ p)
 
 
 theorem native_rom_memory_execution [Fact p.Prime]
-    (hp : 2 * Trace.timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : Trace.UnifiedTrace p} {initial : Reference.RiscV.Sail.State}
     {cells : List Trace.Cell} {program : List ProgramEntry}
     (accepted : Trace.Accepted trace) (inputs : BootInputs trace initial cells program)
@@ -124,7 +126,7 @@ theorem native_rom_memory_execution [Fact p.Prime]
 
 theorem WordMemory.NativeROM.soundness [Fact p.Prime]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List ProgramEntry) :
     (WordMemory.NativeROM.circuitModel trace initial cells program).SoundnessUnder
@@ -133,16 +135,16 @@ theorem WordMemory.NativeROM.soundness [Fact p.Prime]
 
 
 theorem WordMemory.soundness [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 2 * Trace.timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (inverse : SerializedInverse.Clock p)
     (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List ProgramEntry) :
     (WordMemory.circuitModel trace initial cells program).SoundnessUnder
       (WordMemory.InterfaceAssumptions trace initial cells program) Airbender.WordMemory.spec :=
   WordMemory.Proofs.soundness hp inverse trace initial cells program
 
-theorem Binary.soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem Binary.soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List ProgramEntry) :
     (Binary.circuitModel trace initial cells program).SoundnessUnder
@@ -150,8 +152,8 @@ theorem Binary.soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
   Binary.Proofs.soundness hp clockInverse byteInverse trace initial cells program
 
 
-theorem Jump.soundness [Fact p.Prime] (hp : 4194304 ≤ p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Jump.soundness [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (inverse : SerializedInverse.Clock p)
     (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List ProgramEntry) :
     (Jump.circuitModel trace initial cells program).SoundnessUnder
@@ -159,9 +161,9 @@ theorem Jump.soundness [Fact p.Prime] (hp : 4194304 ≤ p)
   Jump.Proofs.soundness hp inverse trace initial cells program
 
 
-theorem Shift.soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem Shift.soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List ProgramEntry) :
     (Shift.circuitModel trace initial cells program).SoundnessUnder
@@ -172,7 +174,7 @@ open Airbender.Reference.RiscV
 
 
 theorem native_clocks {p : Nat} [Fact p.Prime]
-    (hp : 2 * Trace.timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : Trace.UnifiedTrace p} (accepted : Trace.Accepted trace)
     (boundary : Trace.ClockBoundary trace) :
     ∀ row ∈ trace.rows, Trace.ClockEffects row.columns row.assignment :=
@@ -180,7 +182,7 @@ theorem native_clocks {p : Nat} [Fact p.Prime]
 
 
 theorem native_value_bounds {p : Nat} [Fact p.Prime]
-    (hp : 2 * Trace.timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : Trace.UnifiedTrace p} (accepted : Trace.Accepted trace)
     (clocks : Trace.ClockBoundary trace)
     {before : Sail.State} {cells : List Trace.Cell}
@@ -194,7 +196,7 @@ theorem native_value_bounds {p : Nat} [Fact p.Prime]
 
 
 theorem native_memory_history {p : Nat} [Fact p.Prime]
-    (hp : 2 * Trace.timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : Trace.UnifiedTrace p} (accepted : Trace.Accepted trace)
     (clocks : Trace.ClockBoundary trace)
     {before : Sail.State} {cells : List Trace.Cell}
@@ -204,7 +206,7 @@ theorem native_memory_history {p : Nat} [Fact p.Prime]
 
 
 theorem native_memory_execution [Fact p.Prime]
-    (hp : 2 * Trace.timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : Trace.UnifiedTrace p} (accepted : Trace.Accepted trace)
     {initial : Sail.State} {cells : List Trace.Cell} {program : List ProgramEntry}
     (inputs : Trace.NativeInputs decoderFields trace initial cells program)
@@ -212,7 +214,7 @@ theorem native_memory_execution [Fact p.Prime]
   Proofs.memory_execution hp inverse accepted inputs decoded
 
 
-theorem fetched {p : Nat} [Fact p.Prime] (hp : 524288 < p)
+theorem fetched {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     {before : Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImage before addresses = some program)
@@ -221,8 +223,8 @@ theorem fetched {p : Nat} [Fact p.Prime] (hp : 524288 < p)
   Proofs.fetched hp image accepted membership
 
 
-theorem soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
+    (inverse : SerializedInverse.Clock p)
     (trace : Trace.UnifiedTrace p) (initial : Sail.State) (cells : List Trace.Cell)
     (program : List ProgramEntry) :
     (circuitModel trace initial cells program).SoundnessUnder
@@ -236,8 +238,8 @@ theorem babyBear_soundness (trace : Trace.UnifiedTrace babyBearModulus)
   soundness (by decide) (by decide) trace initial cells program
 
 
-theorem TriAdd.soundness {p : Nat} [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem TriAdd.soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
+    (inverse : SerializedInverse.Clock p)
     (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List ProgramEntry) :
     (TriAdd.circuitModel trace initial cells program).SoundnessUnder
@@ -251,7 +253,7 @@ theorem TriAdd.babyBear_soundness (trace : Trace.UnifiedTrace babyBearModulus)
   TriAdd.soundness (by decide) (by decide) trace initial cells program
 
 
-theorem Caller.soundness [Fact p.Prime] (hp : 524288 < p)
+theorem Caller.soundness [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List Caller.ProgramEntry}
@@ -261,8 +263,8 @@ theorem Caller.soundness [Fact p.Prime] (hp : 524288 < p)
   Caller.Proofs.caller_binding hp constraints image member
 
 
-theorem Caller.request_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem Caller.request_soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     (accepted : Caller.RequestChecks data) (inputs : Caller.RequestInputs data before addresses) :
     Caller.RequestBinding data before := Caller.Proofs.request_binding hp inverse accepted inputs

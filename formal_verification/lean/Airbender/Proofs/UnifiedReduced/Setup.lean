@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.Tables.FixedCharacterization
 import Airbender.Proofs.Tables.ShiftCharacterization
 import Airbender.Review.Circuits.UnifiedReduced.Tables.Setup
@@ -40,7 +41,7 @@ theorem row_tag_bound (before : Reference.RiscV.Sail.State) (i : Fin 2097537) :
               omega
   · change 34 < 55; decide
 
-theorem lookup_row [Fact p.Prime] (hp : 55 ≤ p)
+theorem lookup_row [Fact p.Prime] (hp : FieldCapacity.AtLeast p 55)
     {before : Reference.RiscV.Sail.State} {entry : Vector (Expression (ZMod p)) 10}
     {env : Environment (ZMod p)} (holds : (Lookup.mk (table before).toRaw entry).Contains env)
     (tag : Nat) (small : tag < 55) (selected : entry[9].eval env = (tag : ZMod p)) :

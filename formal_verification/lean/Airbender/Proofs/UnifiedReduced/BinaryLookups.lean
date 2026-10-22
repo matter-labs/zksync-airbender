@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.Setup
 
 namespace Airbender.UnifiedReduced.Setup.Proofs
@@ -6,7 +7,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1000000
 
-theorem wide_lookup [Fact p.Prime] (hp : 256 < p)
+theorem wide_lookup [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     {before : Reference.RiscV.Sail.State} {entry : Vector (Expression (ZMod p)) 10}
     {env : Environment (ZMod p)} (holds : (Lookup.mk (table before).toRaw entry).Contains env)
     (tag : Nat) (valid : tag = 4 ∨ tag = 6 ∨ tag = 7)

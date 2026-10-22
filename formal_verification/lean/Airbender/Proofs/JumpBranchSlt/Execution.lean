@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.JumpBranchSlt.Values
 import Airbender.Proofs.JumpBranchSlt.PortReads
 import Airbender.Proofs.JumpBranchSlt.JumpSoundness
@@ -12,7 +14,7 @@ set_option maxHeartbeats 2000000 in
     retirement. Register ranges/reads, selectors and PC reads are derived.
     Canonical termination and Machine/MLPE configuration remain boundaries. -/
 theorem local_jump_execution {p : Nat} [Fact p.Prime]
-    (hp : 4194304 ≤ p)
+    (hp : FieldCapacity.NativeRomCapacity p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (active : w 4 = 1) {initial : State} {cells : List Cell} (epoch : Nat)
@@ -163,7 +165,7 @@ theorem local_jump_execution {p : Nat} [Fact p.Prime]
     Trace.Proofs.retired_state_overwrite] using normal
 
 theorem jump_rebased_step {p : Nat} [Fact p.Prime]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.ROMView
 import Airbender.Proofs.Trace.PooledComposition
 
@@ -124,7 +126,7 @@ theorem row_holds {p : Nat} [Fact p.Prime] (before : State)
 
 set_option maxRecDepth 16384 in
 set_option maxHeartbeats 1000000 in
-theorem row_transfers {p : Nat} [Fact p.Prime] (hp : 131072 < p)
+theorem row_transfers {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072)
     (before : State) (native : Row p PooledFamily) (setup : PooledSetup p)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment native.assignment) (native.constraints setup))
     (bounds : ∀ port ∈ native.ports, (port.address.word native.assignment).Bounded) :
@@ -191,7 +193,7 @@ def data {p : Nat} [Fact p.Prime] (before : State) (native : PooledTrace p) : Po
                 terminalMemory := native.terminalMemory.map (token before) }
 
 theorem accepted {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     (before : State) {trace : PooledTrace p} {cells : List Cell}
     (native : Accepted trace) (clocks : ClockBoundary trace)
     (seed : trace.initialMemory = nativeBootImage cells) : Accepted (data before trace) := by
@@ -258,7 +260,7 @@ theorem data_clocks {p : Nat} [Fact p.Prime] (before : State)
 
 /-- The public byte view discharges physical initialization; only proven unused
     ROM columns/intermediates change. All native trace outputs stay fixed. -/
-theorem execution_boundary {p : Nat} [Fact p.Prime] (hp : 4 < p)
+theorem execution_boundary {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 4)
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
     {trace : PooledTrace p} {before : State} {cells : List Cell} {program : List PooledProgramEntry}
     (inputs : PooledBootInputs trace before cells program projection) :
@@ -287,7 +289,7 @@ theorem execution_boundary {p : Nat} [Fact p.Prime] (hp : 4 < p)
 /-- Lift pooled physical execution back to the unchanged native trace. -/
 theorem trace_execution [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     {p : Nat} [Fact p.Prime]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} {before : State} {cells : List Cell} {program : List PooledProgramEntry}
     (inputs : PooledBootInputs trace before cells program)
     (native : Accepted trace) (membership : PooledDecoded trace program) :

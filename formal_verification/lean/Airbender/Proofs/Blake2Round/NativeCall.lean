@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.Blake2Round.Call
 import Airbender.Proofs.Blake2Round.NativeExecution
 import Airbender.Proofs.Delegation.NativeViews
@@ -102,7 +104,7 @@ theorem write_projection {w : Nat → ZMod p} {round : Fin 10}
       ((cells (Native.input round w))[i].addressCode, (results (Native.input round w) (Native.output w))[i])
   exact congrArg₂ Prod.mk (codes i).symm (results_projection round w i).symm
 
-theorem executes [Fact p.Prime] (hp : 8388608 ≤ p) (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem executes [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p) (inverse : SerializedInverse.Scale64 p)
     {w : Nat → ZMod p} {round : Fin 10} {before after : State}
     {domain : List Cell} {events : List MemoryAccess}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setupTable))

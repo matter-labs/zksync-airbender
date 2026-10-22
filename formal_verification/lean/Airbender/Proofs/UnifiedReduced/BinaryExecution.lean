@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.RegisterRetirement
 import Airbender.Proofs.UnifiedReduced.BinarySoundness
 import Airbender.Proofs.UnifiedReduced.ShiftSoundness
@@ -27,7 +29,7 @@ theorem binary_metadata {input : Binary.Input} {entry : ProgramEntry} (shift : B
   all_goals exact ⟨rfl, rfl⟩
 
 
-theorem binary_register_retirement [Fact p.Prime] (hp : 524288 < p)
+theorem binary_register_retirement [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {cells : List Cell} {w : Nat → ZMod p}
     {input : Binary.Input} {entry : ProgramEntry} (shift : Bool)
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -44,8 +46,8 @@ theorem binary_register_retirement [Fact p.Prime] (hp : 524288 < p)
   exact register_retirement hp core fields query mask metadata.2 epoch history spec
 
 theorem binary_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1) (shift : Bool)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p) (shift : Bool)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     (accepted : Accepted trace)
@@ -87,8 +89,8 @@ theorem binary_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryP
   all_goals rfl
 
 theorem binary_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1) (shift : Bool)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p) (shift : Bool)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (accepted : Accepted trace) (decoded : Decoded trace program)
     {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ trace.rows)

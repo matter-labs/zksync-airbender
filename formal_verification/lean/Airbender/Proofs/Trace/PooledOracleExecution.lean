@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.PooledOracleDecoder
 import Airbender.Proofs.Trace.PooledComposition
 import Airbender.Proofs.Trace.OracleExecution
@@ -9,7 +11,7 @@ variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
 theorem addsub_execution {p : Nat} [Fact p.Prime]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -131,7 +133,7 @@ theorem addsub_execution {p : Nat} [Fact p.Prime]
 
 set_option backward.isDefEq.respectTransparency false in
 theorem row_step {p : Nat} [Fact p.Prime]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)

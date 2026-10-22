@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Properties
 import Clean.Utils.Bits
 import Mathlib.Tactic.FinCases
@@ -5,7 +6,7 @@ import Mathlib.Tactic.IntervalCases
 
 namespace Airbender.Trace.Proofs
 
-theorem unpack_decoder_bits_general {p n : Nat} [Fact p.Prime] (hp : 2 ^ n < p)
+theorem unpack_decoder_bits_general {p n : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p (2 ^ n))
     {bits : Fin n → ZMod p} {mask : Nat} (small : mask < 2 ^ n)
     (boolean : ∀ i, bits i = 0 ∨ bits i = 1)
     (packed : (∑ i : Fin n, (2 ^ i.val : Nat) * bits i) = (mask : ZMod p)) :
@@ -25,7 +26,7 @@ theorem unpack_decoder_bits_general {p n : Nat} [Fact p.Prime] (hp : 2 ^ n < p)
     Fin.getElem_fin, Vector.getElem_mapRange,
     ZMod.val_natCast_of_lt (small.trans hp)] using bit.symm
 
-theorem unpack_decoder_bits {p : Nat} [Fact p.Prime] (hp : 512 < p)
+theorem unpack_decoder_bits {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 512)
     {bits : Fin 9 → ZMod p} {mask : Nat} (small : mask < 512)
     (boolean : ∀ i, bits i = 0 ∨ bits i = 1)
     (packed : (∑ i : Fin 9, (2 ^ i.val : Nat) * bits i) = (mask : ZMod p)) :
@@ -34,7 +35,7 @@ theorem unpack_decoder_bits {p : Nat} [Fact p.Prime] (hp : 512 < p)
 
 /-- Narrower families reuse the same packing proof by padding unused bits with
     zero. No enumeration of instruction masks is needed. -/
-theorem unpack_decoder_bits_of_width {p n : Nat} [Fact p.Prime] (hp : 512 < p)
+theorem unpack_decoder_bits_of_width {p n : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 512)
     (width : n ≤ 9) {bits : Fin n → ZMod p} {mask : Nat} (small : mask < 512)
     (boolean : ∀ i, bits i = 0 ∨ bits i = 1)
     (packed : (∑ i : Fin n, (2 ^ i.val : Nat) * bits i) = (mask : ZMod p)) :

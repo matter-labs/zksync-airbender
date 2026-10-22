@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2G.PhysicalPorts
 import Airbender.Proofs.Blake2G.CallHistory
 import Airbender.Proofs.Blake2G.PointerHistory
@@ -25,8 +27,8 @@ private theorem first_round_coverage (reduced «block» : Bool) (word : Fin 16) 
         (Control.step (scheduledController reduced call.val (by have := call.isLt; cases reduced <;> simp only [callCount, Bool.false_eq_true, ↓reduceIte] <;> omega))).messageOffsets[Fin.ofNat 2 (port.val - 4)] = word.val := by decide +kernel
   exact finite reduced «block» word
 
-theorem call_block_cells [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem call_block_cells [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced) :
     ∃ statePointer messagePointer : BitVec 32,

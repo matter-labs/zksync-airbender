@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Keccak.Tables
 
 namespace Airbender.Keccak.Proofs
@@ -54,7 +55,7 @@ private theorem fixed_rows {control : Fin 4096 → Vector Nat 6}
 
 /-- All non-controller regions have bounded, exact outputs. This includes the
     actual round constants from Clean and both pieces of every rotation query. -/
-theorem fixed_lookup {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem fixed_lookup {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {entry : Vector (Expression (ZMod p)) 8}
     {env : Environment (ZMod p)}
     (h : (Lookup.mk (setupTable control).toRaw entry).Contains env)

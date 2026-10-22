@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.MixedRetirement
 import Airbender.Proofs.UnifiedReduced.ControlExecution
 
@@ -16,7 +17,7 @@ theorem comparison_fields {input : Control.Comparison.Input} {entry : UnifiedRed
   · rw [encoding] at custom
     cases operation : input.opcode <;> simp [Control.Comparison.instruction, JumpBranchSlt.Comparison.instruction, customDecoderFields, operation] at custom
 
-theorem comparison_ordinary [Fact p.Prime] (hp : 524288 < p)
+theorem comparison_ordinary [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {data : RequestTrace p} {w : Nat → ZMod p} {input : Control.Comparison.Input} {entry : UnifiedReduced.ProgramEntry}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints data.machine.rom))
     (fields : UnifiedReduced.decoderFields entry.instruction = some entry.data)

@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Keccak.Tags
 import Airbender.Proofs.Keccak.ControlUpdate
 
@@ -8,7 +9,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
-theorem decoded_control {p : Nat} [Fact p.Prime] (hp : 2048 ≤ p)
+theorem decoded_control {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 2048)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p} (s : ControlState)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 0 = 1) (input : (w 3).val = s.packed) :
@@ -68,7 +69,7 @@ theorem control_state_eq_of_packed {left right : ControlState} (same : left.pack
   have mode : lm.val = rm.val := by omega
   rw [Fin.ext mode, Fin.ext iteration, Fin.ext round]
 
-theorem next_control {p : Nat} [Fact p.Prime] (hp : 4096 ≤ p)
+theorem next_control {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 4096)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p} (s : ControlState)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 0 = 1) (input : (w 3).val = s.packed) : (w 5).val = s.nextPacked := by

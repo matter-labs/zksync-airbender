@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2Round.NativeCall
 import Airbender.Proofs.Blake2Round.CallExecution
 import Airbender.Proofs.Blake2Round.PointerHistory
@@ -23,8 +25,8 @@ theorem native_core [Fact p.Prime]
   exact Verification.holds_of_sublist holds
     (List.sublist_append_left (importedConstraints setupTable) importedConstraintsTimestampLookups)
 
-theorem pointer_conditions [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem pointer_conditions [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : State} {domain : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data)
     (inputs : Blake2Round.Proofs.BoundaryCallInputs data initial domain flags)
@@ -59,7 +61,7 @@ theorem pointer_conditions [Fact p.Prime] (hp : 8388608 ≤ p)
     Delegation.Proofs.port_initialized_cell clockBound accepted inputs.memory member (portMember i) (codes i).symm
   have stateBound : (Native.input round w).statePointer.Bounded := bounds.reads _ member _ (portMember 0)
   have messageBound : (Native.input round w).messagePointer.Bounded := bounds.reads _ member _ (portMember 25)
-  have compatible : 128 * (-15728640 : ZMod p) = 1 := by linear_combination inverse
+  have compatible : SerializedInverse.Scale128 p := by linear_combination inverse
   have alignment := Blake2Round.Proofs.pointer_alignment (p := p) (setup := setupTable) (w := w) hp compatible core
   have mapping := Native.Proofs.native_mapping round core
   refine ⟨⟨ram _ (by simpa [cells, Fin.getElem_fin] using tracked 1),
@@ -87,7 +89,7 @@ theorem pointer_conditions [Fact p.Prime] (hp : 8388608 ≤ p)
     have impossible := congrArg Fin.val (unique.get_inj_iff.mp same)
     norm_num at impossible
 
-theorem derived_control [Fact p.Prime] (hp : 8388608 ≤ p)
+theorem derived_control [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
     {data : Delegation.MemoryData p} {initial : State} {domain : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data)
     (inputs : Blake2Round.Proofs.BoundaryCallInputs data initial domain flags)
@@ -133,8 +135,8 @@ theorem derived_control [Fact p.Prime] (hp : 8388608 ≤ p)
   · rw [modes.1]
     simpa only [decide_eq_true_eq] using indexBound
 
-theorem abi_in_span [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem abi_in_span [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : State} {domain : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data)
     (inputs : Blake2Round.Proofs.BoundaryCallInputs data initial domain flags)

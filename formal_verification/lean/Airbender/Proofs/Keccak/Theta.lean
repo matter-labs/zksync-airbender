@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.Keccak.Theta
 import Airbender.Proofs.Keccak.Lookups
 import Airbender.Proofs.Arithmetic.ByteAssembly
@@ -8,7 +9,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
-private theorem theta_rotations {p : Nat} [Fact p.Prime] (hp : 7 < p)
+private theorem theta_rotations {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 7)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 0 = 1) (theta : w 66 = 1) : ∀ i : Fin 5, w (80 + i.val) = 0 := by
@@ -21,7 +22,7 @@ private theorem theta_rotations {p : Nat} [Fact p.Prime] (hp : 7 < p)
 
 private def limbOffsets : Vector Nat 4 := #v[0, 1, 4, 5]
 
-private theorem theta_limb_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
+private theorem theta_limb_routes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 7)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 0 = 1) (theta : w 66 = 1) (operation : Fin 5) (limb : Fin 4) :
@@ -60,7 +61,7 @@ private theorem theta_limb_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
       m0, m1, m2, theta, m4, m5, m6, r0, r1, r2, r3, r4, limbOffsets] at a b c ⊢
   all_goals exact ⟨by linear_combination a, by linear_combination b, by linear_combination c⟩
 
-private theorem theta_bytes {p : Nat} [Fact p.Prime] (hp : 256 ≤ p)
+private theorem theta_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 256)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))
@@ -79,7 +80,7 @@ private theorem theta_bytes {p : Nat} [Fact p.Prime] (hp : 256 ≤ p)
 
 
 /-- Every observed input/output limb is forced by its two native byte queries. -/
-theorem theta_limb_xors {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem theta_limb_xors {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))
@@ -120,7 +121,7 @@ theorem theta_limb_xors {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
 
 /-- Assemble the five written state lanes, deriving all six read-lane bounds
     and all five result bounds from the actual byte queries. -/
-theorem theta_lane_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem theta_lane_xor {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))
@@ -147,7 +148,7 @@ theorem theta_lane_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   rw [l0.2.2.2, l1.2.2.2, l2.2.2.2, l3.2.2.2]
   exact xor.symm
 
-theorem theta_written_bounds {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem theta_written_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control))) (active : w 0 = 1) (selected : w 66 = 1)
@@ -192,7 +193,7 @@ theorem theta_reference_column (state : Vector Nat 25) (d : Vector Nat 5)
       state[5 * column.val + i.val] ^^^ d[column] := by
   fin_cases column <;> fin_cases i <;> rfl
 
-theorem theta_column {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem theta_column {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     {state : Vector Nat 25} {d : Vector Nat 5} {column : Fin 5}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)

@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.MixedRetirement
 import Airbender.Proofs.UnifiedReduced.BinaryExecution
 
@@ -19,7 +20,7 @@ theorem binary_fields {input : Binary.Input} {entry : UnifiedReduced.ProgramEntr
     all_goals rw [← encoding] at custom
     all_goals simp [customDecoderFields] at custom
 
-theorem binary_ordinary [Fact p.Prime] (hp : 524288 < p)
+theorem binary_ordinary [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {data : RequestTrace p} {w : Nat → ZMod p} {input : Binary.Input} {entry : UnifiedReduced.ProgramEntry}
     (shift : Bool)
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints data.machine.rom))

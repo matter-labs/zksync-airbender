@@ -61,6 +61,12 @@ structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : UnifiedTrace p)
     (initial : State) (cells : List Cell) (program : List ProgramEntry)
     (input : Input) (_output : Output) (_w : Nat → ZMod p) : Prop where
   initialization : NativeInputs decoderFields trace initial cells program
+  /-- Coverage for the original sources in an arbitrary tracked-cell domain,
+      including sources erased by x0 preprocessing; this states no register values.
+      The [native initialization adapter](../../../Proofs/Initialization/UnifiedInputs.lean)
+      derives all-register coverage from its computed domain via the
+      [domain theorem](../../../Proofs/ExternalBoundary/Initialization.lean).
+      Public register values/profile and teardown remain separate boundaries. -/
   registersInitialized : ∀ index,
     input.rs1 = .Regidx index ∨ input.rs2 = .Regidx index → Cell.register index ∈ cells
 

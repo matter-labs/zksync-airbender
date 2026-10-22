@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.UnissuedWorkers
 import Airbender.Proofs.UnifiedReduced.MixedMemory
 import Airbender.Proofs.UnifiedReduced.RequestWindows
@@ -20,8 +22,8 @@ private theorem first_machine_port (row : Trace.Row p UnifiedFamily) :
 /-- The mandatory offset-zero access has a strictly earlier read. Native
     four-alignment therefore places every machine row at clock four or later,
     even when no positive public initial-clock premise is supplied. -/
-theorem machine_native_clock_positive [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem machine_native_clock_positive [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -43,8 +45,8 @@ theorem machine_native_clock_positive [Fact p.Prime] (hp : 2 * timestampBase + 4
 
 /-- Every produced architectural token is at clock two or later. The mandatory
     first machine access and native alignment derive positive machine clocks. -/
-theorem mixed_write_floor [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem mixed_write_floor [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -88,8 +90,8 @@ theorem mixed_write_floor [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     change 2 ≤ row.writeTime
     omega
 
-theorem unissued_initial_reads [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem unissued_initial_reads [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -123,8 +125,8 @@ theorem unissued_initial_reads [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     rw [current] at upper
     omega
 
-theorem unissued_round_initial_control [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem unissued_round_initial_control [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -192,8 +194,8 @@ private theorem pointer_steps_sublist (workers : List (Delegation.Row p)) :
 /-- Every family transfers x10 at its invocation plus two. Initialized memory
     uniqueness therefore distinguishes all worker clocks, including unissued
     clocks, without assuming any operation mask or valid control. -/
-theorem worker_invocation_uniqueness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem worker_invocation_uniqueness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)

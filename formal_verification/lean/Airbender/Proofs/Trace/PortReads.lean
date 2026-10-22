@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.RowHistory
 
 namespace Airbender.Trace.Proofs
@@ -81,7 +83,7 @@ theorem row_history_write {cells : List Cell} {row : Row p} (epoch : Nat)
 
 /-- Both selected circuit families use their first native port for rs1.
     Decoder membership identifies its actual Sail register index. -/
-theorem row_history_source_read (hp : Arithmetic.limbBase < p)
+theorem row_history_source_read (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     {cells : List Cell} {row : Row p} (epoch : Nat) {before after : State}
     (history : SailHistory cells (rowEvents epoch row).reverse before after)
     {entry : ProgramEntry} (query : row.decoderQuery = entry.query)
@@ -116,8 +118,8 @@ theorem row_history_source_read (hp : Arithmetic.limbBase < p)
 /-- A native RAM address is canonical because its token comes from the public
     initial image. This derives the actual Sail byte address and domain member. -/
 theorem row_ram_cell {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    [ClockLaws Kind p] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -140,8 +142,8 @@ theorem row_ram_cell {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
     rw [same]
     exact ⟨belongs, equal⟩
 
-theorem row_history_ram_read [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem row_history_ram_read [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -155,8 +157,8 @@ theorem row_history_ram_read [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   row_history_read trace.memoryEpoch history present
     (row_ram_cell hp inverse accepted boundary image member present ram).2
 
-theorem row_history_ram_write [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem row_history_ram_write [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -172,7 +174,7 @@ theorem row_history_ram_write [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 /-- The second SW port reads rs2; the final LW port reads rd before its update.
     Both identities follow from native equations and the same decoder query. -/
-theorem word_history_register_read [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+theorem word_history_register_read [Fact p.Prime] (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     {rom : Table (ZMod p) (fields 9)} {w : Nat → ZMod p} (store : Bool)
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (WordMemory.importedConstraints rom))
@@ -210,7 +212,7 @@ theorem word_history_register_read [Fact p.Prime] (hp : Arithmetic.limbBase < p)
       memoryWord, Nat.unpair_pair, Cell.read] using read
 
 /-- Native LW's final write is the actual decoded destination-register update. -/
-theorem word_history_load_write [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+theorem word_history_load_write [Fact p.Prime] (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     {rom : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (WordMemory.importedConstraints rom)) (selected : w 10 = 0)
@@ -235,7 +237,7 @@ theorem word_history_load_write [Fact p.Prime] (hp : Arithmetic.limbBase < p)
 
 /-- Arithmetic rs2 and destination effects use the same native-port semantics
     as LW/SW. The public decoder query supplies the actual register indices. -/
-theorem addsub_history_registers (hp : Arithmetic.limbBase < p)
+theorem addsub_history_registers (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     {w : Nat → ZMod p} {entry : ProgramEntry}
     (query : (⟨.addSub, w⟩ : Row p).decoderQuery = entry.query)
     {cells : List Cell} (epoch : Nat) {before after : State}

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Helpers.Delegation.Schedule
 import Airbender.Proofs.Delegation.RequestTrace
 
@@ -6,7 +8,7 @@ open Trace Arithmetic
 set_option warningAsError true
 
 theorem worker_slot_of_clock [Fact p.Prime] {Kind : Type} [CircuitLayout Kind]
-    (hp : timestampBase < p) {caller : Trace.Row p Kind} {worker : Delegation.Row p}
+    (hp : FieldCapacity.NoWrap p timestampBase) {caller : Trace.Row p Kind} {worker : Delegation.Row p}
     (issued : (timeOfPair (Requests.caller caller.assignment).time).value = startClock caller + 1)
     (advance : finishClock caller = startClock caller + 4)
     (bound : (decodeTimestamp worker.assignment worker.columns.invocation).Bounded)
@@ -24,8 +26,8 @@ theorem worker_slot_of_clock [Fact p.Prime] {Kind : Type} [CircuitLayout Kind]
     (decodeTimestamp worker.assignment worker.columns.invocation).value + port.clock.offset at written
   rw [written, offset, invocation]
 
-theorem issued_worker_slot [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem issued_worker_slot [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     (binding : RequestBinding data before)
@@ -47,8 +49,8 @@ theorem issued_worker_slot [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       (accepted.constraints caller included) clock.1)
     (binding.clocks worker present) (binding.clockRoom worker present) same
 
-theorem worker_schedule [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem worker_schedule [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     (binding : RequestBinding data before) : WorkerSchedule data := by

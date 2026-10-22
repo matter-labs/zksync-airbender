@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.Families.ShiftBinop.Execution
 import Airbender.Proofs.ShiftBinop.Execution
 import Airbender.Proofs.Trace.CompositionCore
@@ -13,7 +15,7 @@ set_option maxHeartbeats 2000000 in
 /-- Original Sail clause dispatch from the same local proof; shared by family
     and pooled histories. No separate instruction behavior is defined. -/
 theorem local_instruction_execution {p : Nat} [Fact p.Prime]
-    (hp : 536870912 ≤ p) (inverse : (-30720 : ZMod p) * 65536 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Limb16 p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (active : w 4 = 1) {initial : State} {cells : List Cell} (epoch : Nat)
@@ -72,8 +74,8 @@ set_option maxHeartbeats 2000000 in
 /-- Public decoding supplies the actual clause. Native histories supply its
     operands and preserve the original decoder's public ISA configuration. -/
 theorem row_rebased_step {p : Nat} [Fact p.Prime]
-    (hp : 536870912 ≤ p) (inverse : (-30720 : ZMod p) * 65536 = 1)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Limb16 p)
+    (clockInverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (inputs : ExecutionBoundary trace initial cells program)
     (accepted : Accepted trace) (decoded : Decoded trace program)
@@ -123,8 +125,8 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Complete instruction traces reuse the shared composition theorem and the
     derived native order/history. Terminal GPR reads are actual Sail reads. -/
 theorem native_trace_execution {p : Nat} [Fact p.Prime]
-    (hp : 536870912 ≤ p) (inverse : (-30720 : ZMod p) * 65536 = 1)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Limb16 p)
+    (clockInverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (inputs : ExecutionBoundary trace initial cells program)
     (accepted : Accepted trace) (decoded : Decoded trace program) :

@@ -42,7 +42,8 @@ private theorem interfaces (instruction : AddSub.Discarded.Instruction)
     AddSub.Discarded.InterfaceAssumptions (input instruction) ⟨0, 1⟩ row := by
   constructor
   · rfl
-  · intro k lower upper
+  · change ∀ k, 10 ≤ k → k ≤ 18 → row k = if k = 10 then 1 else 0
+    intro k lower upper
     interval_cases k <;> rfl
   · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
   · change Arithmetic.Word.Bounded ⟨65532, 0⟩

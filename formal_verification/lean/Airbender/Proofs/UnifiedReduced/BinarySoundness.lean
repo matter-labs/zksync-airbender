@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.UnifiedReduced.Binary
 import Airbender.Proofs.UnifiedReduced.BinaryOperands
 import Airbender.Proofs.UnifiedReduced.BinaryResult
@@ -34,8 +36,8 @@ private theorem decoded_metadata {input : Input} {entry : ProgramEntry}
     zero, Setup.binaryTag] at fields ⊢
   all_goals exact fields.symm
 
-theorem soundness_from_history [Fact p.Prime] (hp : 524288 < p)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem soundness_from_history [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
+    (byteInverse : SerializedInverse.Scale256 p)
     {setup : Table (ZMod p) (fields 10)} {initial : State} {cells : List Cell}
     {input : Input} {output : Output} {w : Nat → ZMod p} {after : State} {epoch : Nat}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -151,9 +153,9 @@ theorem soundness_from_history [Fact p.Prime] (hp : 524288 < p)
   exact retire_binary input output binary leftRead rightRead immediateValue pcRead successor.2.2 result
 
 
-theorem soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem soundness_from_memory [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     (inputs : NativeInputs projection trace initial cells program) (accepted : Accepted trace)
@@ -180,9 +182,9 @@ theorem soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   exact soundness_from_history (by dsimp [timestampBase] at hp; omega) byteInverse core
     (accepted.active _ member) setup history bounded words source.fields query encoding pcRead
 
-theorem soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     (trace : UnifiedTrace p) (initial : State) (cells : List Cell) (program : List ProgramEntry) :
     (circuitModel trace initial cells program).SoundnessUnder
       (InterfaceAssumptions trace initial cells program) ShiftBinop.spec := by

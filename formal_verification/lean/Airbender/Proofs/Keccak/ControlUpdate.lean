@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.Keccak.ControlUpdate
 import Airbender.Proofs.Keccak.Controls
 import Airbender.Proofs.Arithmetic.OneHot
@@ -9,7 +10,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
-private theorem selected_update {p : Nat} [Fact p.Prime] (hp : 4096 ≤ p)
+private theorem selected_update {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 4096)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (mode : Fin 7) (iteration : Fin 5)
@@ -51,7 +52,7 @@ private theorem selected_update {p : Nat} [Fact p.Prime] (hp : 4096 ≤ p)
 
 /-- The local controller progression is a consequence of imported equations,
     for any fixed setup, independently of the controller table's supplied rows. -/
-theorem control_update_checks {p : Nat} [Fact p.Prime] (hp : 4096 ≤ p)
+theorem control_update_checks {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 4096)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     ControlUpdateChecks w := by

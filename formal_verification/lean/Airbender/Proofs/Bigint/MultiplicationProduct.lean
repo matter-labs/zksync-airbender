@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Bigint.MultiplicationColumns
 import Airbender.Proofs.Bigint.MultiplicationFields
 
@@ -27,7 +28,7 @@ theorem outgoing_value (w : Nat → ZMod p) (i : Fin 32) :
   · have bound : ¬ i.val + 1 < 32 := by omega
     simp [outgoing, carryValue, last, bound]
 
-theorem carry_value_bound {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
+theorem carry_value_bound {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) (i : Nat) : carryValue w i < 8192 := by
   unfold carryValue

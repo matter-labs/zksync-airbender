@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.MixedMemory
 import Airbender.Proofs.UnifiedReduced.ArithmeticExecution
 import Airbender.Proofs.UnifiedReduced.UnissuedWorkers
@@ -17,7 +18,7 @@ theorem arithmetic_fields {input : Input} {entry : UnifiedReduced.ProgramEntry}
   · rw [encoding] at custom
     cases op : input.row.opcode <;> simp [arithmeticInstruction, Sail.instruction, customDecoderFields, op] at custom
 
-theorem ordinary_of_decoder_mask [Fact p.Prime] (hp : 524288 < p)
+theorem ordinary_of_decoder_mask [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {data : RequestTrace p} {w : Nat → ZMod p} {entry : UnifiedReduced.ProgramEntry}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints data.machine.rom))
     (fields : UnifiedReduced.decoderFields entry.instruction = some entry.data)
@@ -31,7 +32,7 @@ theorem ordinary_of_decoder_mask [Fact p.Prime] (hp : 524288 < p)
   change w importedConstraintsDecoderColumns.flags[7] = 1 at selected
   exact zero_ne_one (disabled.symm.trans selected)
 
-theorem arithmetic_ordinary [Fact p.Prime] (hp : 524288 < p)
+theorem arithmetic_ordinary [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {data : RequestTrace p} {w : Nat → ZMod p} {input : Input} {entry : UnifiedReduced.ProgramEntry}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints data.machine.rom))
     (fields : UnifiedReduced.decoderFields entry.instruction = some entry.data)

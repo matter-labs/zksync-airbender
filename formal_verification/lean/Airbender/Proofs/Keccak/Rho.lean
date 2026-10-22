@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Keccak.RhoRotation
 import Airbender.Proofs.Keccak.Theta
 import Airbender.Proofs.Keccak.Lanes
@@ -25,7 +26,7 @@ theorem rho_preserved {p : Nat} [Fact p.Prime]
     Verification.environment, selected, writeLaneLimbs, readLaneLimbs] at equation ⊢
   all_goals linear_combination -equation
 
-theorem rho_written_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem rho_written_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control))) (active : w 0 = 1) (selected : w 67 = 1)
@@ -53,7 +54,7 @@ theorem rho_written_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     rw [value]
     exact rotated_lane_limb_bound bounds Rho.rotations[s.iteration][op] limb
 
-theorem theta_rho_column {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem theta_rho_column {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {theta rho : Nat → ZMod p}
     {state : Vector Nat 25} {d : Vector Nat 5} {column : Fin 5} {round : Fin 24}
     (thetaHolds : FlatOperation.ConstraintsHoldFlat (Verification.environment theta)

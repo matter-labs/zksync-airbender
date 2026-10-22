@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.SharedSpans
 import Airbender.Proofs.UnifiedReduced.WorkerProjection
 import Airbender.Proofs.Delegation.SpanBinding
@@ -62,8 +64,8 @@ theorem projected_shared_terminal [Fact p.Prime] {data : RequestTrace p}
     obtain ⟨cell, present, same, read⟩ := mapping.finalCells token projected
     exact ⟨cell, List.mem_of_mem_filter present, same, read⟩
 
-theorem shared_span_effects [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem shared_span_effects [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)} {cells : List Cell}
     {span : Delegation.Caller.HashSpan} (accepted : MixedMemoryAccepted data [])
     (inputs : SharedSpanInputs data before addresses cells span) : SharedSpanEffects data before cells span := by

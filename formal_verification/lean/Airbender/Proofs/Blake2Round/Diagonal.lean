@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2Round.Mixing
 import Airbender.Proofs.Blake2Round.DiagonalCertificate0
 import Airbender.Proofs.Blake2Round.DiagonalCertificate1
@@ -15,7 +17,7 @@ set_option maxHeartbeats 20000000 in
     Serialized coefficient compatibility is checked, rather than assuming a
     compiler correspondence or the desired mixing result. -/
 theorem diagonal_g_holds {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1) (call : Fin 4) {w : Nat → ZMod p}
+    (compatible : SerializedInverse.Scale64 p) (call : Fin 4) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (diagonalGAssignment call w))
@@ -41,8 +43,8 @@ private theorem diagonal_input_wiring {p : Nat} [Fact p.Prime]
 
 /-- The two diagonal addition-input bounds come from column queries, not
     another interface assumption. Only the two selected message bounds remain. -/
-theorem diagonal_g_input_bounds {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) (call : Fin 4)
+theorem diagonal_g_input_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p) (call : Fin 4)
     {w : Nat → ZMod p} {input : Blake2G.Input} {output : Blake2G.Words}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable))
@@ -56,8 +58,8 @@ theorem diagonal_g_input_bounds {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     wires.2.2.1, wires.2.2.2]
   exact ⟨a.1, c.2.2.1⟩
 
-theorem diagonal_g_soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) (call : Fin 4)
+theorem diagonal_g_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 262144)
+    (compatible : SerializedInverse.Scale64 p) (call : Fin 4)
     {w : Nat → ZMod p} {input : Blake2G.Input} {output : Blake2G.Words}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable))
@@ -70,8 +72,8 @@ theorem diagonal_g_soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
       ⟨⟨bounds.1, bounds.2, messageXBound, messageYBound⟩,
         diagonal_g_holds compatible call h, mapping⟩
 
-theorem diagonal_g_output_bounds {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) (call : Fin 4)
+theorem diagonal_g_output_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p) (call : Fin 4)
     {w : Nat → ZMod p} {input : Blake2G.Input} {output : Blake2G.Words}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable))

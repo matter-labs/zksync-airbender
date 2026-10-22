@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Delegation.SpanBinding
 import Airbender.Proofs.Delegation.HashWindowTransport
 import Airbender.Proofs.Blake2G.StateCells
@@ -9,8 +11,8 @@ open Trace Trace.Proofs Arithmetic Reference.RiscV.Sail
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-theorem hash_span_at_target [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem hash_span_at_target [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {workers : MemoryData p} {before after : State} {cells : List Cell} {span : HashSpan}
     (accepted : MemoryAccepted workers) (inputs : BoundaryMemoryInputs workers before cells)
     (protocol : HashSpan.Protocol workers before span)
@@ -19,8 +21,8 @@ theorem hash_span_at_target [Fact p.Prime] (hp : 16777216 ≤ p)
     (target : Delegation.TraceMapping workers before after cells)
     (addresses : (workers.terminal.map MemoryToken.address).Perm (cells.map Cell.addressCode)) :
     span.Result workers before after cells := by
-  have rotationInverse : 64 * (-31457280 : ZMod p) = 1 := by linear_combination clockInverse
-  have byteInverse : 256 * (-7864320 : ZMod p) = 1 := by linear_combination clockInverse
+  have rotationInverse : SerializedInverse.Scale64 p := by linear_combination clockInverse
+  have byteInverse : SerializedInverse.Scale256 p := by linear_combination clockInverse
   cases span with
   | blakeG reduced =>
     have publicABI : Blake2G.NativeCallInputs workers before cells reduced := by

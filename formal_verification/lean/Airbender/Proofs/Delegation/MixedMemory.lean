@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Delegation.MixedClocks
 import Airbender.Proofs.Delegation.SharedOperations
 import Airbender.Proofs.Trace.PooledHistory
@@ -33,8 +35,8 @@ theorem mixed_ordinary_source [Fact p.Prime]
   obtain ⟨entry, present, family, query⟩ := decoder_member (accepted.ordinaryDecoded row member ordinary)
   exact ⟨entry, present, run_program_sources inputs.ordinaryProgram entry present, family, query⟩
 
-theorem mixed_machine_time [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem mixed_machine_time [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List PooledProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
@@ -47,8 +49,8 @@ theorem mixed_machine_time [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   exact (write_time (by omega) (base := rawPair row.assignment row.columns.initialTime)
     clock.1 clock.2 (Trace.Proofs.port_offset row port present)).2
 
-theorem mixed_zero_rules [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem mixed_zero_rules [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List PooledProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
@@ -87,9 +89,9 @@ theorem mixed_zero_rules [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     obtain ⟨port, portMember, rfl⟩ := List.mem_map.mp step
     exact False.elim (Delegation.Proofs.port_not_zero row (by simpa using portMember) same)
 
-theorem mixed_write_rules [Fact p.Prime] (hp : 33554432 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem mixed_write_rules [Fact p.Prime] (hp : FieldCapacity.NoWrap p 33554432)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : RequestTrace p} {program : List PooledProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)

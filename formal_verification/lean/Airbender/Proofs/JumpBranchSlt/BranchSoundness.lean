@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.JumpBranchSlt.BranchRowModel
 import Airbender.Proofs.JumpBranchSlt.Branch
 import Airbender.Proofs.Sail.ControlFlow
@@ -16,7 +17,7 @@ private def nativeCondition (op : SailRV32.bop) (left right : BitVec 32) : Bool 
   | .BLTU => SailRV32.Functions.zopz0zI_u left right
   | .BGEU => SailRV32.Functions.zopz0zKzJ_u left right
 
-private theorem resolved_native {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+private theorem resolved_native {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {input : Branch.Input} {output : Sail.Output} {w : Nat → ZMod p}
     (interface : Branch.RowInterfaces input output w)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
@@ -39,7 +40,7 @@ private theorem resolved_native {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
 
 /-- All six branches: imported resolution and PC equations establish the actual
     Sail register/PC transition, including taken targets and not-taken PC+4. -/
-theorem branch_soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) :
+theorem branch_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p) :
     Branch.rowCircuitModel.SoundnessUnder (Branch.RowInterfaces (p := p)) Branch.spec := by
   intro input output w ⟨interface, h, mapping⟩
   let taken := nativeCondition input.opcode input.left.toBitVec input.right.toBitVec

@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.JumpBranchSlt
 import Airbender.Proofs.Arithmetic.Comparison
 
@@ -6,7 +7,7 @@ open Airbender.Arithmetic
 
 /-- The imported signed-resolution query agrees with native signed bitvector
     ordering. The same borrow and packed-key proof serves both immediate forms. -/
-theorem signed_resolution {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem signed_resolution {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {w : Nat → ZMod p} {left right : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 13 = 1) (other : w 11 = 0 ∧ w 12 = 0 ∧ w 14 = 0)
@@ -68,7 +69,7 @@ theorem signed_resolution {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
       leftBit, sign, borrowBit, borrow, lp, rp, lpos, rpos, lt,
       Word.signed_lt_iff leftBound rightBound]
 
-theorem signed_destination {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem signed_destination {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {w : Nat → ZMod p} {left right output : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 13 = 1) (other : w 11 = 0 ∧ w 12 = 0 ∧ w 14 = 0)

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.RegisterRetirement
 import Airbender.Proofs.UnifiedReduced.BranchSoundness
 import Airbender.Proofs.UnifiedReduced.ComparisonSoundness
@@ -20,7 +22,7 @@ theorem branch_metadata {input : Control.Branch.Input} {entry : ProgramEntry}
     JumpBranchSlt.decoderFields, ShiftBinop.decoderFields, jumpFields, DecoderData.mapFamily] at fields
   rw [← fields]; exact ⟨rfl, rfl⟩
 
-theorem branch_register_retirement [Fact p.Prime] (hp : 524288 < p)
+theorem branch_register_retirement [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {cells : List Cell} {w : Nat → ZMod p}
     {input : Control.Branch.Input} {entry : ProgramEntry}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -36,7 +38,7 @@ theorem branch_register_retirement [Fact p.Prime] (hp : 524288 < p)
   exact register_retirement hp core fields query (by rw [metadata.1]; decide) metadata.2 epoch history spec
 
 theorem branch_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     (accepted : Accepted trace)
@@ -72,7 +74,7 @@ theorem branch_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryP
   rw [encoding]; rfl
 
 theorem branch_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (accepted : Accepted trace) (decoded : Decoded trace program)
     (inputs : Control.Inputs trace initial cells program)
@@ -107,7 +109,7 @@ theorem comparison_metadata {input : Control.Comparison.Input} {entry : ProgramE
   all_goals rw [← fields]
   all_goals exact ⟨rfl, rfl⟩
 
-theorem comparison_register_retirement [Fact p.Prime] (hp : 524288 < p)
+theorem comparison_register_retirement [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {cells : List Cell} {w : Nat → ZMod p}
     {input : Control.Comparison.Input} {entry : ProgramEntry}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -123,7 +125,7 @@ theorem comparison_register_retirement [Fact p.Prime] (hp : 524288 < p)
   exact register_retirement hp core fields query (by rw [metadata.1]; decide) metadata.2 epoch history spec
 
 theorem comparison_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     (accepted : Accepted trace)
@@ -158,7 +160,7 @@ theorem comparison_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.Mem
   rw [encoding]; cases op : input.opcode <;> simp [Control.Comparison.instruction, instructionClause, Reference.RiscV.Sail.registerClause, JumpBranchSlt.Comparison.execution, JumpBranchSlt.Comparison.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, op, Option.get_some]
 
 theorem comparison_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (accepted : Accepted trace) (decoded : Decoded trace program)
     (inputs : Control.Inputs trace initial cells program)
@@ -193,7 +195,7 @@ theorem jump_metadata {input : Jump.Input} {entry : ProgramEntry}
   all_goals rw [← fields]
   all_goals simp [zero, JumpBranchSlt.Jump.Instruction.indirect, zeroRegister]
 
-theorem jump_register_retirement [Fact p.Prime] (hp : 524288 < p)
+theorem jump_register_retirement [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {cells : List Cell} {w : Nat → ZMod p}
     {input : Jump.Input} {entry : ProgramEntry}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -211,7 +213,7 @@ theorem jump_register_retirement [Fact p.Prime] (hp : 524288 < p)
   exact register_retirement hp core fields query mask metadata.2 epoch history spec
 
 theorem jump_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     (accepted : Accepted trace)
@@ -251,7 +253,7 @@ theorem jump_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPla
   rw [encoding]; cases op : input.instruction <;> simp [Jump.instruction, instructionClause, Reference.RiscV.Sail.registerClause, JumpBranchSlt.Jump.execution, JumpBranchSlt.Jump.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, op, Option.get_some]
 
 theorem jump_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (accepted : Accepted trace) (decoded : Decoded trace program)
     {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ trace.rows)

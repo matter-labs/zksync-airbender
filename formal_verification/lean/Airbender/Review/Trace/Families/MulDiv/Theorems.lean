@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.MulDiv
 import Airbender.Proofs.MulDiv.Soundness
 import Airbender.Proofs.MulDiv.Product
@@ -16,8 +18,8 @@ namespace Airbender.MulDiv
     derived; public initialization and logical matching/membership remain explicit. -/
 theorem trace_soundness {p : Nat} [Fact p.Prime]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 536870912 ≤ p) (inverse : (-30720 : ZMod p) * 65536 = 1)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Limb16 p)
+    (clockInverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {program : List ProgramEntry} (inputs : ExecutionBoundary trace initial cells program)
     (accepted : Trace.Accepted trace) (decoded : Decoded trace program) :

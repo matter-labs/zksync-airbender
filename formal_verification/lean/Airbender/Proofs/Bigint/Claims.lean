@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Bigint.Control
 import Airbender.Proofs.Bigint.SetupSoundness
 import Airbender.Proofs.Bigint.Multiplication
@@ -7,7 +8,7 @@ import Airbender.Review.Trace.Workers.Bigint.Theorems
 
 namespace Airbender.Bigint.Control
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 256 ≤ p)
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 256)
     (setup : Table (ZMod p) (fields 3)) :
     Properties.Soundness (circuitModel setup).relation spec := Proofs.soundness hp setup
 
@@ -18,14 +19,14 @@ end Airbender.Bigint.Control
 
 namespace Airbender.Bigint.Additive
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 131072 ≤ p)
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 131072)
     (setup : Table (ZMod p) (fields 3)) :
     (circuitModel setup).SoundnessUnder InterfaceAssumptions spec := Proofs.soundness hp setup
 
 theorem babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 3)) :
     (circuitModel setup).SoundnessUnder InterfaceAssumptions spec := soundness (by decide) setup
 
-theorem modeled_soundness {p : Nat} [Fact p.Prime] (hp : 131072 ≤ p) :
+theorem modeled_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 131072) :
     Properties.Soundness (circuitModel (setupTable (p := p))).relation spec := Proofs.modeled_soundness hp
 
 theorem modeled_babyBear_soundness :
@@ -36,14 +37,14 @@ end Airbender.Bigint.Additive
 
 namespace Airbender.Bigint.Equality
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     (setup : Table (ZMod p) (fields 3)) :
     (circuitModel setup).SoundnessUnder InterfaceAssumptions spec := Proofs.soundness hp setup
 
 theorem babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 3)) :
     (circuitModel setup).SoundnessUnder InterfaceAssumptions spec := soundness (by decide) setup
 
-theorem modeled_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p) :
+theorem modeled_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576) :
     Properties.Soundness (circuitModel (setupTable (p := p))).relation spec := Proofs.modeled_soundness hp
 
 theorem modeled_babyBear_soundness :
@@ -69,7 +70,7 @@ end Airbender.Bigint.Addresses
 
 namespace Airbender.Bigint.Memory
 
-theorem native_value_bounds [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+theorem native_value_bounds [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : Inputs data before cells) :
     (∀ row ∈ data.rows, ∀ port ∈ row.ports, (Trace.readToken row.assignment port).word.Bounded) ∧

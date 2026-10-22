@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2Round.NativeMembership
 import Airbender.Proofs.Blake2Round.NativeGAssignment
 import Airbender.Proofs.Blake2Round.GQueryTable
@@ -20,7 +21,7 @@ def plainPad {p : Nat} (row : Vector (ZMod p) 6) : Vector (ZMod p) 9 :=
 def carryPad {p : Nat} (kind : Fin 2) (row : Vector (ZMod p) 6) : Vector (ZMod p) 9 :=
   #v[row[0], row[1], row[3], 0, 0, 0, 0, 0, ((#v[4, 19][kind] : Nat) : ZMod p)]
 
-private theorem plain_payload {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+private theorem plain_payload {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {source : Vector (Expression (ZMod p)) 6} {env : Environment (ZMod p)}
     (kind : Fin 3) (member : (Lookup.mk setupTable.toRaw source).Contains env)
     (selected : source[5].eval env = ((plainTags[kind] : Nat) : ZMod p)) :
@@ -33,7 +34,7 @@ private theorem plain_payload {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
       plainXorRow plainBase[kind] plainTags[kind] n := by fin_cases kind <;> rfl
   exact ⟨n, bound, reference ▸ row⟩
 
-private theorem carry_payload {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+private theorem carry_payload {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {source : Vector (Expression (ZMod p)) 6} {env : Environment (ZMod p)}
     (kind : Fin 2) (member : (Lookup.mk setupTable.toRaw source).Contains env)
     (selected : source[5].eval env = ((carryTags[kind] : Nat) : ZMod p)) :
@@ -47,7 +48,7 @@ private theorem carry_payload {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
   exact ⟨n, bound, reference ▸ row⟩
 
 /-- The carry limit follows from the actual extra input column of membership. -/
-theorem carry_value_bound {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem carry_value_bound {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {source : Vector (Expression (ZMod p)) 6} {env : Environment (ZMod p)}
     (kind : Fin 2) (member : (Lookup.mk setupTable.toRaw source).Contains env)
     (selected : source[5].eval env = ((carryTags[kind] : Nat) : ZMod p)) :
@@ -62,7 +63,7 @@ theorem carry_value_bound {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
   exact small
 
 /-- Reuse an ordinary G lookup through the native plain six-column region. -/
-theorem plain_membership {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem plain_membership {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     (control : Fin 512 → Vector Nat 7)
     {source : Vector (Expression (ZMod p)) 6} {target : Vector (Expression (ZMod p)) 9}
     {sourceEnv targetEnv : Environment (ZMod p)}
@@ -78,7 +79,7 @@ theorem plain_membership {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
     fin_cases kind <;> simp [plainPad, plainXorRow, plainBase, plainTags, plainGKind, gTags]
 
 /-- Forgetting the bounded carry column recovers the unchanged G XOR query. -/
-theorem carry_membership {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem carry_membership {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     (control : Fin 512 → Vector Nat 7)
     {source : Vector (Expression (ZMod p)) 6} {target : Vector (Expression (ZMod p)) 9}
     {sourceEnv targetEnv : Environment (ZMod p)}

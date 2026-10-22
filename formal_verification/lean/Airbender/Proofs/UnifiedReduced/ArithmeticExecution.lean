@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.Execution
 import Airbender.Proofs.UnifiedReduced.TraceSoundness
 import Airbender.Proofs.UnifiedReduced.RegisterRetirement
@@ -13,7 +15,7 @@ theorem arithmetic_clause [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception
   cases op : input.row.opcode <;> simp [arithmeticInstruction, instructionClause, Reference.RiscV.Sail.registerClause, Sail.execution, Sail.instruction, Option.get_some, op]
 
 theorem arithmetic_register_retirement [Fact p.Prime]
-    (hp : 524288 < p) {setup : Table (ZMod p) (fields 10)}
+    (hp : FieldCapacity.NoWrap p 524288) {setup : Table (ZMod p) (fields 10)}
     {cells : List Cell} {w : Nat → ZMod p} {entry : ProgramEntry} {input : Input}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (fields : decoderFields entry.instruction = some entry.data)
@@ -36,7 +38,7 @@ theorem arithmetic_register_retirement [Fact p.Prime]
   exact register_retirement hp core fields query metadata.1 metadata.2 epoch history spec
 
 theorem arithmetic_retirement [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 524288 < p) {setup : Table (ZMod p) (fields 10)}
+    (hp : FieldCapacity.NoWrap p 524288) {setup : Table (ZMod p) (fields 10)}
     {cells : List Cell} {w : Nat → ZMod p} {entry : ProgramEntry} {input : Input}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (fields : decoderFields entry.instruction = some entry.data)
@@ -53,7 +55,7 @@ theorem arithmetic_retirement [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform
   exact arithmetic_clause input
 
 theorem arithmetic_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     (accepted : Accepted trace)
@@ -85,7 +87,7 @@ theorem arithmetic_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.Mem
   exact arithmetic_retirement (by omega) core fields query encoding trace.memoryEpoch history spec
 
 theorem arithmetic_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (accepted : Accepted trace) (decoded : Decoded trace program)
     (inputs : NativeInputs decoderFields trace initial cells program)

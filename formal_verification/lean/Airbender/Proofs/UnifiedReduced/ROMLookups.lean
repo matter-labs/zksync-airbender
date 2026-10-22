@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.Setup
 import Airbender.Proofs.Arithmetic.Word
 
@@ -39,7 +40,7 @@ theorem rom_region {before : Reference.RiscV.Sail.State} {i : Fin 2097537}
     refine ⟨⟨i.val - 1048961, by omega⟩, ?_⟩
     simp only [row, dif_neg fixed]
 
-theorem rom_lookup [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem rom_lookup [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {before : Reference.RiscV.Sail.State} {entry : Vector (Expression (ZMod p)) 10}
     {env : Environment (ZMod p)}
     (holds : (Lookup.mk (table before).toRaw entry).Contains env)

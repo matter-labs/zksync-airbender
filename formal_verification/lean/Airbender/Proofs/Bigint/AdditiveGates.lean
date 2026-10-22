@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Bigint.AdditiveFields
 
 namespace Airbender.Bigint.Additive.Proofs
@@ -9,7 +10,7 @@ set_option warningAsError true
 
 def carryColumn (i : Nat) : Nat := if i = 0 then 65 else 82 + i
 
-theorem native_steps {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
+theorem native_steps {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p} (operation : Operation)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w Variables.operations[operation.index] = 1) :
@@ -42,7 +43,7 @@ theorem native_steps {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   all_goals norm_num [Variables.leftLimbs, Variables.rightLimbs, carryColumn]
   all_goals linear_combination gate
 
-theorem native_results {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
+theorem native_results {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p} (operation : Operation)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w Variables.operations[operation.index] = 1) :
@@ -69,7 +70,7 @@ theorem native_results {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
   all_goals constructor
   all_goals first | linear_combination definition | linear_combination -write
 
-theorem returned_control {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
+theorem returned_control {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p} (operation : Operation)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w Variables.operations[operation.index] = 1) : w 57 = w 98 ∧ w 58 = 0 := by

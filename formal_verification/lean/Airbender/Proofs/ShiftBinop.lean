@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.ShiftBinop.ArtifactChecks
 import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.Arithmetic.Word
@@ -32,8 +34,8 @@ theorem local_ranges {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
 
 /-- Shared two-limb increment. Final-PC bounds follow from the imported range
     queries; only initial bounds remain external. No 32-bit overflow. -/
-theorem pc_successor {p : Nat} [Fact p.Prime] (hp : 196608 < p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1)
+theorem pc_successor {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
+    (inverse : SerializedInverse.Limb16 p)
     {w : Nat → ZMod p} {initial final : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (mapping : w 0 = (initial.lo : ZMod p) ∧ w 1 = (initial.hi : ZMod p) ∧

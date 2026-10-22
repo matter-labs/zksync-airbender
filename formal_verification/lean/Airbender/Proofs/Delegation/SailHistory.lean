@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Delegation.History
 
 namespace Airbender.Delegation.Proofs
@@ -40,7 +41,7 @@ theorem labeled_events_split (data : MemoryData p) : labeledEvents data =
       ((data.steps.map transferEvent).map (relabelMemoryEvent (eventClock data))) :=
   Trace.Proofs.Transfer.labeled_events_split (transferData data)
 
-theorem native_sail_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem native_sail_history [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :

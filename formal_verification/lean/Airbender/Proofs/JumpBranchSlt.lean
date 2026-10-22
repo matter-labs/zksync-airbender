@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.JumpBranchSlt.Artifact
 import Airbender.Proofs.JumpBranchSlt.ArtifactChecks
 import Airbender.Review.Helpers.Properties
@@ -47,7 +49,7 @@ theorem local_ranges {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
   exact ⟨a, b, c, d⟩
 
 /-- Values forced by the four imported fixed-table queries. -/
-theorem lookup_values {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem lookup_values {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
     w 41 = (if (w 34 + w 35).val = 0 then 1 else 0) ∧
@@ -70,7 +72,7 @@ theorem lookup_values {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
 
 /-- Decode the packed resolution key once for unsigned, signed and branch cases.
     Bounds prevent field aliasing; the returned bits retain native lookup meanings. -/
-theorem resolution_key {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem resolution_key {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (funct3Bound : (w 10).val ≤ 7) (rightHi : (w 43).val < 65536) :
@@ -115,7 +117,7 @@ theorem resolution_key {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   refine ⟨packed, key, ?_, ?_, ?_, ?_, ?_, borrowBound⟩ <;> dsimp [packed] <;> omega
 
 /-- Unsigned resolution selects the already-constrained subtraction borrow. -/
-theorem unsigned_resolution {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem unsigned_resolution {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 13 = 1) (funct3 : w 10 = 3)
@@ -142,7 +144,7 @@ theorem unsigned_resolution {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
 
 /-- Reuse the same four-tick carry algebra as ADD/SUB, with this artifact's roles. -/
 theorem timestamp_equations {p : Nat} [Fact p.Prime]
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {w : Nat → ZMod p}
+    (inverse : SerializedInverse.Clock p) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
     ∃ c : Nat, c ≤ 1 ∧ w 2 + 4 = w 18 + 524288 * c ∧ w 3 + c = w 19 := by
   have carry := Verification.assertion_of_holds h
@@ -193,7 +195,7 @@ theorem subtraction_equations {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
   · linear_combination high - ((c : ZMod p) + w 35 + w 27 - w 23 - 65536 * b) * selection
 
 /-- The comparison branch computes the unsigned borrow, reused by destination proofs. -/
-theorem unsigned_borrow {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+theorem unsigned_borrow {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
     {w : Nat → ZMod p} {left right : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 13 = 1) (other : w 11 = 0 ∧ w 12 = 0 ∧ w 14 = 0)
@@ -244,7 +246,7 @@ theorem comparison_destination {p : Nat} [Fact p.Prime]
 
 /-- Local unsigned destination correctness, including the actual resolution query.
     PC/register effects are composed separately; operand bounds remain interfaces. -/
-theorem unsigned_destination {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem unsigned_destination {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {w : Nat → ZMod p} {left right output : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 13 = 1) (other : w 11 = 0 ∧ w 12 = 0 ∧ w 14 = 0)

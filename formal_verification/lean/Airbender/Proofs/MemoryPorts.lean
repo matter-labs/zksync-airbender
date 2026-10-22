@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Memory.IndirectPorts
 import Airbender.Proofs.Arithmetic.Word
 
@@ -32,7 +33,7 @@ theorem block64_offset_bound {low index : Nat} (bound : low < limbBase)
 
 /-- Interpret the imported low-limb address formula as native word addition,
     after excluding carry and field wrap. Shared by indirect-memory families. -/
-theorem IndirectPort.word_address {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem IndirectPort.word_address {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {port : IndirectPort} {w : Nat → ZMod p} {base : Word} {index column : Nat}
     (scale : port.scale = 4) (constant : port.constant = 0)
     (variableOffset : port.offsetColumn = some column)
@@ -60,7 +61,7 @@ theorem IndirectPort.word_address {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
 
 /-- Constant-offset ports use the same native word interpretation. The proof
     needs no offset witness and explicitly excludes low-limb carry. -/
-theorem IndirectPort.constant_address {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem IndirectPort.constant_address {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {port : IndirectPort} {w : Nat → ZMod p} {base : Word}
     (fixed : port.offsetColumn = none)
     (mapping : base = ⟨(w port.baseColumns[0]).val, (w port.baseColumns[1]).val⟩)

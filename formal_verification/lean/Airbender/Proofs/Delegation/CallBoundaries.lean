@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Delegation.CallHistory
 import Airbender.Proofs.Delegation.AtomicHistory
 
@@ -76,7 +77,7 @@ private theorem boundary_reads {rows : List α} {cells : List Cell} {initial : S
   have index : rows.length - (rows.length - i) = i := by omega
   simpa only [index] using result
 
-theorem grouped_atomic_boundaries [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem grouped_atomic_boundaries [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {initial after : State} {cells : List Cell} (inputs : BoundaryInputs data initial cells)
     {ordered : List (Row p)} (permutation : ordered.Perm data.rows)

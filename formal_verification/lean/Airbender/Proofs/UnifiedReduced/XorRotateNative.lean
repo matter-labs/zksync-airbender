@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.UnifiedReduced.XorRotate
 import Airbender.Proofs.UnifiedReduced.XorRotateArithmetic
 import Airbender.Proofs.UnifiedReduced.TriAddNative
@@ -26,8 +28,8 @@ theorem xorrot_metadata {entry : ProgramEntry} {input : XorRotate.Input}
       exact result.2
     · simpa [zeroRegister] using zero
 
-theorem xorrot_soundness_from_history [Fact p.Prime] (hp : 524288 < p)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem xorrot_soundness_from_history [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
+    (byteInverse : SerializedInverse.Scale256 p)
     {setup : Table (ZMod p) (fields 10)} {initial : State} {cells : List Cell}
     {input : XorRotate.Input} {output : Output} {w : Nat → ZMod p} {after : State} {epoch : Nat}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -115,9 +117,9 @@ theorem xorrot_soundness_from_history [Fact p.Prime] (hp : 524288 < p)
     rfl
 
 
-theorem xorrot_soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem xorrot_soundness_from_memory [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     (inputs : NativeInputs projection trace initial cells program) (accepted : Accepted trace)
@@ -142,9 +144,9 @@ theorem xorrot_soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 
   exact xorrot_soundness_from_history (by dsimp [timestampBase] at hp; omega) byteInverse
     core (accepted.active _ member) setup history words fields query encoding pcRead
 
-theorem native_xorrot_soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem native_xorrot_soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     (trace : UnifiedTrace p) (initial : State) (cells : List Cell) (program : List ProgramEntry) :
     (XorRotate.circuitModel trace initial cells program).SoundnessUnder
       (XorRotate.InterfaceAssumptions trace initial cells program) XorRotate.spec := by

@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.ArtifactChecks
 import Airbender.Review.Circuits.UnifiedReduced.Artifact
 import Airbender.Review.Helpers.Properties
@@ -34,7 +35,7 @@ open scoped BigOperators
 
 /-- Active family dispatch has at most one selected sub-operation. The additional
     Family-2 rd-is-zero marker is excluded because it may accompany that operation. -/
-theorem dispatch_count {p : Nat} [Fact p.Prime] (hp : 18 < p)
+theorem dispatch_count {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 18)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 4 = 1) :
@@ -52,7 +53,7 @@ theorem dispatch_count {p : Nat} [Fact p.Prime] (hp : 18 < p)
   linear_combination -definition
 
 /-- A selected operation excludes every other dispatch bit on an active row. -/
-theorem dispatch_exclusive {p : Nat} [Fact p.Prime] (hp : 18 < p)
+theorem dispatch_exclusive {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 18)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 4 = 1) (selected : Fin 18)
@@ -96,7 +97,7 @@ theorem pc_bounds {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
 
 /-- Ordinary active rows use the shared PC increment. JAL/JALR/SLT/BRANCH use
     their own gated path; rd-is-zero is intentionally absent from this exclusion. -/
-theorem pc_successor {p : Nat} [Fact p.Prime] (hp : 131072 < p)
+theorem pc_successor {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} {initial final : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 4 = 1) (outsideFamily2 : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)

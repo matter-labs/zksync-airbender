@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.JumpBranchSlt.ComparisonRowModel
 import Airbender.Proofs.JumpBranchSlt
 import Mathlib.Tactic.LinearCombination
@@ -23,7 +24,7 @@ theorem pc_carries {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
 
 /-- Selected comparison rows advance PC by four, including 32-bit wraparound.
     Alignment prevents the cleanup lookup from rounding the successor down. -/
-theorem comparison_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem comparison_pc {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {input : Comparison.Input} {output : Airbender.Reference.RiscV.Sail.Output} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (mapping : Comparison.RowWordMapping input output w)

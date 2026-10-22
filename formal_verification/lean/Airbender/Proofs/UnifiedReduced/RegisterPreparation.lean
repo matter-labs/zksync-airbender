@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.RegisterPreparation
 import Airbender.Proofs.UnifiedReduced.PCRelativePreparation
 import Airbender.Proofs.UnifiedReduced.WorkerExecution
@@ -19,8 +21,8 @@ theorem register_immediate_fields {source register : BitVec 5} {immediate : BitV
     UnifiedReduced.arithmeticFields, Trace.arithmeticFields, DecoderData.mapFamily, nonzero]
 
 /-- Native decoding and public modular clocks identify the actual ADDI metadata. -/
-theorem register_immediate_preparation_entry [Fact p.Prime] (hp : 4194304 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem register_immediate_preparation_entry [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cut : Nat} {source register : BitVec 5} {immediate : BitVec 12}
     (setup : data.machine.rom = Setup.table before)
@@ -51,8 +53,8 @@ theorem register_immediate_preparation_entry [Fact p.Prime] (hp : 4194304 ≤ p)
 
 /-- Public ADDI decoding identifies the actual destination port independently
     of operand values, bounds and arithmetic results. -/
-theorem register_immediate_row_destination [Fact p.Prime] (hp : 4194304 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem register_immediate_row_destination [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cut : Nat} {source register : BitVec 5} {immediate : BitVec 12}
     (setup : data.machine.rom = Setup.table before)
@@ -79,8 +81,8 @@ theorem register_immediate_row_destination [Fact p.Prime] (hp : 4194304 ≤ p)
   simp [writeToken, MemoryAddress.code, importedConstraintsMemoryPorts, Cell.addressCode, pairCode,
     destinationRAM, location, high, index]
 
-theorem register_immediate_row_output [Fact p.Prime] (hp : 4194304 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem register_immediate_row_output [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cut : Nat} {source register : BitVec 5} {immediate : BitVec 12}
     (setup : data.machine.rom = Setup.table before)
@@ -145,8 +147,8 @@ theorem register_immediate_row_output [Fact p.Prime] (hp : 4194304 ≤ p)
 
 /-- The actual first native read consumes a unique retained token at the
     preceding instruction boundary. No expected address or value is supplied. -/
-theorem first_port_prefix_token [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem first_port_prefix_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca : List (BitVec 32)} {cells : List Cell} {cut : Nat}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -204,8 +206,8 @@ theorem first_port_prefix_token [Fact p.Prime] (hp : 8388608 ≤ p)
 /-- The actual first ADDI read consumes the retained source token at the
     preceding instruction cut. This raw matching lemma is shared by finite
     public dataflow proofs and does not require Sail states or round masks. -/
-theorem register_immediate_source_word_of_value [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem register_immediate_source_word_of_value [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat}
     {source register : BitVec 5} {value : BitVec 32} {immediate : BitVec 12}
@@ -239,8 +241,8 @@ theorem register_immediate_source_word_of_value [Fact p.Prime] (hp : 8388608 ≤
   have equal := List.inj_on_of_nodup_map unique inStart present (sourceAddress.trans address.symm)
   exact congrArg MemoryToken.word equal |>.trans word
 
-theorem register_immediate_preparation_token_of_value [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem register_immediate_preparation_token_of_value [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat}
     {source register : BitVec 5} {value : BitVec 32} {immediate : BitVec 12}
@@ -282,8 +284,8 @@ theorem register_immediate_preparation_token_of_value [Fact p.Prime] (hp : 83886
   rw [Word.toBitVec_toNat bound] at equal
   exact equal.trans (Word.ofBitVec_value _).symm
 
-theorem register_immediate_source_word [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem register_immediate_source_word [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat}
     {source register : BitVec 5} {value : BitVec 32} {immediate : BitVec 12}
@@ -309,8 +311,8 @@ theorem register_immediate_source_word [Fact p.Prime] (hp : 8388608 ≤ p)
       obtain ⟨token, present, address, _, word⟩ := seedToken start matching
       exact ⟨token, present, address, word⟩) nonzero aligned member ordinary last
 
-theorem register_immediate_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem register_immediate_preparation_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat}
     {source register : BitVec 5} {value : BitVec 32} {immediate : BitVec 12}
@@ -339,8 +341,8 @@ theorem register_immediate_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
       exact ⟨token, present, address, word⟩) nonzero aligned matching
 
 /-- Legacy literal→ADDI source interface, sharing the raw token proof. -/
-theorem literal_addi_source_word [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem literal_addi_source_word [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat}
     {source register : BitVec 5} {literal : ControlLiteral} {immediate : BitVec 12}
@@ -361,8 +363,8 @@ theorem literal_addi_source_word [Fact p.Prime] (hp : 8388608 ≤ p)
     nonzero aligned member ordinary last
 
 /-- Legacy literal→ADDI token interface, sharing the public-chain derivation. -/
-theorem literal_addi_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem literal_addi_preparation_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat}
     {source register : BitVec 5} {literal : ControlLiteral} {immediate : BitVec 12}
@@ -384,9 +386,9 @@ theorem literal_addi_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
       scope.seed scope.sourceNonzero (by have floor := scope.seed.afterInitial; omega) matching)
     nonzero aligned matching
 
-theorem register_immediate_control_preparation [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem register_immediate_control_preparation [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {cut : Nat}
     {source register : BitVec 5} {immediate : BitVec 12}

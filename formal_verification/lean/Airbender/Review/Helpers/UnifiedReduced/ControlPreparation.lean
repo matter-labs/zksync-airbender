@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.UnifiedReduced.Windows
 
 namespace Airbender.UnifiedReduced.Caller
@@ -99,7 +100,7 @@ inductive PreparationProgram [Fact p.Prime] (data : RequestTrace p)
           data.machine.initial.word.value + (cut - 4) →
         entry.instruction = literal.instruction register)
 
-  | wrappedSequential (minimum : 4194304 ≤ p) (state : State)
+  | wrappedSequential (minimum : FieldCapacity.NativeRomCapacity p) (state : State)
       (setup : data.machine.rom = Setup.table state) (entries : WrappedSequentialProgram program)
       (atCut : ∀ entry ∈ program,
         entry.pc = data.machine.initial.word.toBitVec +

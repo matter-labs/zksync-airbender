@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.ShiftBinop.Theorems
 import Airbender.Review.Trace.Families.ShiftBinop.Theorems
 import Airbender.Proofs.ShiftBinop
@@ -12,7 +13,7 @@ import Airbender.Proofs.BabyBear
 namespace Airbender.ShiftBinop
 
 
-theorem fetched {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+theorem fetched {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     {w : Nat → ZMod p} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImage before addresses = some program)

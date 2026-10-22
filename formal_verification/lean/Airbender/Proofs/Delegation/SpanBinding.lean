@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.Delegation.SharedSpans
 import Airbender.Proofs.Blake2G.WorkVectorBinding
 import Airbender.Proofs.Blake2Round.CompressionBinding
@@ -9,7 +11,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
-theorem span_keccak_control_cell [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem span_keccak_control_cell [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {workers : MemoryData p} {before : State} {cells : List Cell}
     (accepted : MemoryAccepted workers) (inputs : MemoryInputs workers before cells)
     (protocol : HashSpan.Protocol workers before .keccak) : Cell.register 10 ∈ cells := by
@@ -31,16 +33,16 @@ theorem span_keccak_control_cell [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have equal := cell_address_injective code
   exact equal ▸ present
 
-theorem hash_span_binding [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem hash_span_binding [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {workers : MemoryData p} {before : State} {cells : List Cell} {span : HashSpan}
     (accepted : MemoryAccepted workers) (inputs : MemoryInputs workers before cells)
     (protocol : HashSpan.Protocol workers before span)
     (active : ∀ row ∈ workers.rows, row.assignment row.columns.execute = 1)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ after, span.Result workers before after cells := by
-  have rotationInverse : 64 * (-31457280 : ZMod p) = 1 := by linear_combination clockInverse
-  have byteInverse : 256 * (-7864320 : ZMod p) = 1 := by linear_combination clockInverse
+  have rotationInverse : SerializedInverse.Scale64 p := by linear_combination clockInverse
+  have byteInverse : SerializedInverse.Scale256 p := by linear_combination clockInverse
   cases span with
   | blakeG reduced =>
     have abi : Blake2G.CallInputs workers before cells reduced := by

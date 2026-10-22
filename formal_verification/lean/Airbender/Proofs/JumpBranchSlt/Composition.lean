@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.Families.JumpBranchSlt.Execution
 import Airbender.Proofs.JumpBranchSlt.Execution
 import Airbender.Proofs.JumpBranchSlt.BranchExecution
@@ -15,7 +17,7 @@ set_option backward.isDefEq.respectTransparency false in
 set_option maxHeartbeats 2000000 in
 /-- Actual Sail clause dispatch is shared by family and pooled histories. -/
 theorem local_instruction_execution {p : Nat} [Fact p.Prime]
-    (hp : 4194304 ≤ p) {w : Nat → ZMod p}
+    (hp : FieldCapacity.NativeRomCapacity p) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (active : w 4 = 1) {initial : State} {cells : List Cell} (epoch : Nat)
     {entry : ProgramEntry} (source : entry.SourceWith initial decoderFields)
@@ -80,7 +82,7 @@ theorem local_instruction_execution {p : Nat} [Fact p.Prime]
 
 
 theorem row_rebased_step {p : Nat} [Fact p.Prime]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (inputs : ExecutionBoundary trace initial cells program)
     (accepted : Accepted trace) (decoded : Decoded trace program)
@@ -132,7 +134,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Complete instruction traces reuse the shared composition theorem and the
     derived native order/history. Terminal GPR reads are actual Sail reads. -/
 theorem native_trace_execution {p : Nat} [Fact p.Prime]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (inputs : ExecutionBoundary trace initial cells program)
     (accepted : Accepted trace) (decoded : Decoded trace program) :

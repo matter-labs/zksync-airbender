@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2G.Windows
 import Airbender.Proofs.Blake2G.WorkVectorBinding
 import Airbender.Proofs.Blake2G.NativeExecution
@@ -12,8 +14,8 @@ namespace Airbender.Blake2G
     state to every native access and terminal token. Message preservation,
     intermediate states, ranges and frames are proved internally. Caller
     request binding and modeled-table fidelity remain separate boundaries. -/
-theorem Native.workvector_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Native.workvector_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {reduced : Bool} (accepted : Delegation.MemoryAccepted data)
     (inputs : CallInputs data initial cells reduced) (aligned : ∀ cell ∈ cells, cell.Aligned) :
@@ -27,8 +29,8 @@ theorem Native.workvector_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
 /-- The complete G reference binds actual boundary reads and the final Sail state,
     retaining native seed timestamps. Controls, pointers and intermediate states
     follow from accepted history and the public complete-span ABI. -/
-theorem Native.workvector_boundary_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Native.workvector_boundary_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {reduced : Bool} (accepted : Delegation.MemoryAccepted data)
     (inputs : NativeCallInputs data initial cells reduced) (aligned : ∀ cell ∈ cells, cell.Aligned) :
@@ -42,8 +44,8 @@ theorem Native.workvector_boundary_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
 /-- A complete G-worker span selected after whole preceding spans reaches
     the pinned work-vector reference in its actual native-clock cut states.
     Matching derives the entry control, boundary values and intermediate states. -/
-theorem Native.window_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Native.window_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {reduced : Bool} {lower upper : Nat} (accepted : Delegation.MemoryAccepted data)
     (inputs : WindowInputs data before cells reduced lower upper)
@@ -60,8 +62,8 @@ namespace Airbender.Blake2G.Native
     shared operation/history helpers derive every operand bound. The remaining
     inputs are public state/alignment, modeled tables and caller/padding rules.
     Request/controller ABI and whole compression remain separate. -/
-theorem operation_execution [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem operation_execution [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {control : Fin 4096 → Vector Nat 6}
     (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.OperationInputs data before cells control)

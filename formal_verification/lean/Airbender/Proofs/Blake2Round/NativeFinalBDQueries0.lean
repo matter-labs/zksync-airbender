@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2Round.NativeFinalQueryBase
 
 namespace Airbender.Blake2Round.Proofs
@@ -10,7 +11,7 @@ set_option maxHeartbeats 8000000
 /-- The native b/d queries expose the width change as an expression. No
     separately allocated split witness or extra constraint is required. -/
 theorem native_bd_queries_0 {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+    (compatible : SerializedInverse.Scale64 p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :
@@ -59,7 +60,7 @@ theorem native_bd_queries_0 {p : Nat} [Fact p.Prime]
 /-- The native b/d queries expose the width change as an expression. No
     separately allocated split witness or extra constraint is required. -/
 theorem native_bd_queries_1 {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+    (compatible : SerializedInverse.Scale64 p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :
@@ -108,7 +109,7 @@ theorem native_bd_queries_1 {p : Nat} [Fact p.Prime]
 /-- The native b/d queries expose the width change as an expression. No
     separately allocated split witness or extra constraint is required. -/
 theorem native_bd_queries_2 {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+    (compatible : SerializedInverse.Scale64 p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :
@@ -157,7 +158,7 @@ theorem native_bd_queries_2 {p : Nat} [Fact p.Prime]
 /-- The native b/d queries expose the width change as an expression. No
     separately allocated split witness or extra constraint is required. -/
 theorem native_bd_queries_3 {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+    (compatible : SerializedInverse.Scale64 p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :

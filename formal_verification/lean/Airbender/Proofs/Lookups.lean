@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Tables.Lookups
 import Airbender.Proofs.Tables.PairCharacterization
 import Airbender.Review.Circuits.JumpBranchSlt.Tables.Control
@@ -5,7 +6,7 @@ import Airbender.Review.Circuits.JumpBranchSlt.Tables.Control
 namespace Airbender.Verification
 
 theorem pair_value_of_row {p bound : Nat} [Fact p.Prime]
-    {value : Nat → Nat} {key result : ZMod p} (hp : bound ≤ p)
+    {value : Nat → Nat} {key result : ZMod p} (hp : FieldCapacity.AtLeast p bound)
     (h : ∃ i : Fin bound, (key, result) = ((i.val : ZMod p), (value i.val : ZMod p))) :
     key.val < bound ∧ result = (value key.val : ZMod p) := by
   obtain ⟨i, row⟩ := h
@@ -14,7 +15,7 @@ theorem pair_value_of_row {p bound : Nat} [Fact p.Prime]
     rw [hk, ZMod.val_natCast, Nat.mod_eq_of_lt (lt_of_lt_of_le i.isLt hp)]
   exact ⟨hv ▸ i.isLt, by simpa only [hv] using hr⟩
 
-theorem regIsZero_value {p : Nat} [Fact p.Prime] (hp : 131072 ≤ p)
+theorem regIsZero_value {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 131072)
     {key value : Expression (ZMod p)} {env : Environment (ZMod p)}
     (h : (pairLookup regIsZeroTable key value).Contains env) :
     (key.eval env).val < 131072 ∧
@@ -27,7 +28,7 @@ theorem regIsZero_value {p : Nat} [Fact p.Prime] (hp : 131072 ≤ p)
   have result := pair_value_of_row (value := fun n => if n = 0 then 1 else 0) hp rows
   simpa using result
 
-theorem u16Sign_value {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem u16Sign_value {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {key value : Expression (ZMod p)} {env : Environment (ZMod p)}
     (h : (pairLookup u16SignTable key value).Contains env) :
     (key.eval env).val < 65536 ∧
@@ -39,7 +40,7 @@ theorem u16Sign_value {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     ((i.val : ZMod p), ((i.val / 32768 : Nat) : ZMod p)) at rows
   exact pair_value_of_row (value := fun n => n / 32768) hp rows
 
-theorem conditional_value {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem conditional_value {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {key value : Expression (ZMod p)} {env : Environment (ZMod p)}
     (h : (pairLookup conditionalTable key value).Contains env) :
     (key.eval env).val < 4194304 ∧
@@ -51,7 +52,7 @@ theorem conditional_value {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     ((i.val : ZMod p), (conditionalValue i.val : ZMod p)) at rows
   exact pair_value_of_row hp rows
 
-theorem u16LowByte_value {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem u16LowByte_value {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {key value : Expression (ZMod p)} {env : Environment (ZMod p)}
     (h : (pairLookup u16LowByteTable key value).Contains env) :
     (key.eval env).val < 65536 ∧
@@ -63,7 +64,7 @@ theorem u16LowByte_value {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     ((i.val : ZMod p), ((i.val % 256 : Nat) : ZMod p)) at rows
   exact pair_value_of_row (value := fun n => n % 256) hp rows
 
-theorem jumpCleanup_value {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem jumpCleanup_value {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {key bit1 cleaned : Expression (ZMod p)} {env : Environment (ZMod p)}
     (h : (jumpCleanup key bit1 cleaned).Contains env) :
     (key.eval env).val < 65536 ∧

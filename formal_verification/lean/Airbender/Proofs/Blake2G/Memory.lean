@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Delegation.Values
 import Airbender.Proofs.Blake2G.Soundness
 import Airbender.Proofs.Blake2G.Control
@@ -13,8 +15,8 @@ private theorem native_write_word (w : Nat → ZMod p) (port : MemoryPort) :
         ((port.writeValue.getD port.readValue).evaluate w)[1].val⟩ := by
   simp [Delegation.Row.writeToken, MemoryToken.word, MemoryPort.writeCode, WordColumns.code]
 
-theorem memory_write_rule [Fact p.Prime] (hp : 4194304 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1) {w : Nat → ZMod p}
+theorem memory_write_rule [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (inverse : SerializedInverse.Scale64 p) {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (clockConstraints (setupTable Control.controllerRows)))
     (reads : ∀ port ∈ importedConstraintsMemoryPorts, (readToken w port).word.Bounded) :
@@ -57,8 +59,8 @@ theorem memory_write_rule [Fact p.Prime] (hp : 4194304 ≤ p)
          Variables.controlWriteHi, high] using
          (And.intro cb cbHigh))
 
-theorem memory_rules [Fact p.Prime] (hp : 4194304 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p}
+theorem memory_rules [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (inverse : SerializedInverse.Scale64 p) {data : Delegation.MemoryData p}
     (accepted : Delegation.MemoryAccepted data)
     (families : ∀ row ∈ data.rows, row.family = .blakeG)
     (table : data.setup.blakeG = setupTable Control.controllerRows) :

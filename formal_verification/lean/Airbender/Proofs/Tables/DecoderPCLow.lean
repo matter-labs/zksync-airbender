@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Trace.PC
 import Airbender.Review.Helpers.Decoder.PooledProgram
 import Airbender.Proofs.JumpBranchSlt.PCState
@@ -14,7 +15,7 @@ set_option Elab.async false
 
 /-- The guarded decoder limb is independently ranged on every native outgoing
     PC. This uses the low limb only and preserves the noncanonical high-PC case. -/
-theorem pooled_final_pc_low [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem pooled_final_pc_low [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     (row : Row p PooledFamily) (setup : PooledSetup p)
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints setup)) : row.finish.word.lo < limbBase := by
@@ -54,7 +55,7 @@ theorem pooled_final_pc_low [Fact p.Prime] (hp : 4194304 ≤ p)
 /-- Accepted raw state matching transports the independently ranged outgoing
     limbs and the public initial PC to every incoming decoder query. Filler
     exclusion therefore needs no per-row typed-limb assumption. -/
-theorem pooled_query_pc_low [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem pooled_query_pc_low [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {trace : PooledTrace p} (accepted : Accepted trace)
     (initial : trace.initial.word.lo < limbBase) :
     ∀ row ∈ trace.rows, row.decoderQuery[0].val < 65536 := by

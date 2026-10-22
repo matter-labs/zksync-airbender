@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2Round.ImportedXor
 
 namespace Airbender.Blake2Round.Proofs
@@ -17,7 +18,7 @@ theorem region_tag (kind : Fin 6) (n : Nat) :
     (referenceRegionRow kind n)[5] = nativeTags[kind] := by
   fin_cases kind <;> rfl
 
-private theorem tag_bound {p : Nat} (hp : 512 ≤ p) (kind : Fin 6) : nativeTags[kind] < p := by
+private theorem tag_bound {p : Nat} (hp : FieldCapacity.AtLeast p 512) (kind : Fin 6) : nativeTags[kind] < p := by
   fin_cases kind <;> dsimp [nativeTags] <;> omega
 
 /-- Every satisfying native entry belongs to one actual imported region. -/
@@ -45,7 +46,7 @@ theorem any_region {p : Nat} [Fact p.Prime]
 
 /-- A native discriminator selects its own imported region. Bounds and every
     physical column come from membership, without a table-equivalence premise. -/
-theorem selected_region {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem selected_region {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {entry : Vector (Expression (ZMod p)) 6} {env : Environment (ZMod p)}
     (kind : Fin 6) (member : (Lookup.mk setupTable.toRaw entry).Contains env)
     (selected : entry[5].eval env = ((nativeTags[kind] : Nat) : ZMod p)) :

@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2Round.Control
 import Airbender.Review.Circuits.Blake2Round.Memory
 
@@ -12,7 +13,7 @@ private def packedBits {p : Nat} (w : Nat → ZMod p) : Nat := (w 139).val + 2 *
     64 * (w 145).val + 128 * (w 146).val + 256 * (w 147).val +
     512 * (w 148).val + 1024 * (w 149).val + 2048 * (w 150).val + 4096 * (w 151).val
 
-private theorem control_encoding [Fact p.Prime] (hp : 8192 ≤ p)
+private theorem control_encoding [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8192)
     {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     packedBits w = (w Variables.controlReadHi).val := by
@@ -44,7 +45,7 @@ private theorem control_encoding [Fact p.Prime] (hp : 8192 ≤ p)
   have bound : packedBits w < p := by dsimp [packedBits]; omega
   rw [← field, ZMod.val_natCast_of_lt bound]
 
-theorem exclusive_mask [Fact p.Prime] (hp : 8192 ≤ p)
+theorem exclusive_mask [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8192)
     {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (flags : Fin 8) (round : Fin 10)
@@ -85,7 +86,7 @@ theorem exclusive_mask [Fact p.Prime] (hp : 8192 ≤ p)
   all_goals simp only [ite_true, ite_false, ZMod.val_one, ZMod.val_zero]
   all_goals omega
 
-theorem control_flags [Fact p.Prime] (hp : 8192 ≤ p)
+theorem control_flags [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8192)
     {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (flags : Fin 8) (round : Fin 10)
@@ -107,7 +108,7 @@ theorem control_flags [Fact p.Prime] (hp : 8192 ≤ p)
 /-- Imported control assertions characterize the exclusive-mask boundary exactly.
     The high control limb may encode no round or several rounds; neither case is
     silently restricted to the supported ABI. -/
-theorem exclusive_mask_iff [Fact p.Prime] (hp : 8192 ≤ p)
+theorem exclusive_mask_iff [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8192)
     {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (round : Fin 10) :

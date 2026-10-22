@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.AddSub.NonDeterminism
 import Airbender.Proofs.AddSub.PC
 import Airbender.Proofs.Sail.PC
@@ -7,7 +9,7 @@ namespace Airbender.AddSub.Proofs
 open Arithmetic Reference.RiscV Reference.Sail
 
 theorem nondeterminism_write_soundness {p : Nat} [Fact p.Prime]
-    (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) :
+    (hp : FieldCapacity.NoWrap p 196608) (inverse : SerializedInverse.Limb16 p) :
     (NonDeterminism.writeModel (p := p)).SoundnessUnder
       NonDeterminism.WriteInterfaces NonDeterminism.writeSpec := by
   rintro input finalPC w ⟨interfaces, constraints, mapping, _⟩
@@ -17,7 +19,7 @@ theorem nondeterminism_write_soundness {p : Nat} [Fact p.Prime]
 /-- Reuse the same imported output ranges, PC proof and native retirement rule.
     Stream agreement comes only from the explicitly named external port mapping. -/
 theorem nondeterminism_read_soundness {p : Nat} [Fact p.Prime]
-    (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) :
+    (hp : FieldCapacity.NoWrap p 196608) (inverse : SerializedInverse.Limb16 p) :
     (NonDeterminism.readModel (p := p)).SoundnessUnder
       NonDeterminism.ReadInterfaces NonDeterminism.readSpec := by
   rintro input output w ⟨interfaces, constraints, mapping⟩

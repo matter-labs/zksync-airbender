@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Helpers.Delegation.Operations
 import Airbender.Proofs.Bigint.Memory
 import Airbender.Proofs.Blake2G.Memory
@@ -8,8 +10,8 @@ namespace Airbender.Delegation.Proofs
 open Trace
 set_option warningAsError true
 
-theorem operation_rules_of_queries [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem operation_rules_of_queries [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : MemoryData p} {control : Fin 4096 → Vector Nat 6}
     (constraints : ∀ row ∈ data.rows,
       FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) (row.constraints data.setup))
@@ -31,16 +33,16 @@ theorem operation_rules_of_queries [Fact p.Prime] (hp : 8388608 ≤ p)
     · exact Keccak.Proofs.memory_write_rule (by omega) h
         (keccakActive ⟨.keccak, w⟩ member rfl) reads
 
-theorem operation_rules [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem operation_rules [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
     {control : Fin 4096 → Vector Nat 6}
     (accepted : MemoryAccepted data) (inputs : OperationInputs data before cells control) :
     WriteBoundsFromReads data :=
   operation_rules_of_queries hp inverse accepted.constraints inputs.tables inputs.rounds inputs.keccakActive
 
-theorem operation_word_bounds_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem operation_word_bounds_at_boundary [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
     {control : Fin 4096 → Vector Nat 6}
     (accepted : MemoryAccepted data) (inputs : BoundaryOperationInputs data before cells control) :
@@ -51,8 +53,8 @@ theorem operation_word_bounds_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
     fun _ member _ present => write_value_bounds size accepted inputs.publicState rules member present,
     fun _ present => terminal_value_bounds size accepted inputs.publicState rules present⟩
 
-theorem operation_word_bounds [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem operation_word_bounds [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
     {control : Fin 4096 → Vector Nat 6}
     (accepted : MemoryAccepted data) (inputs : OperationInputs data before cells control) :

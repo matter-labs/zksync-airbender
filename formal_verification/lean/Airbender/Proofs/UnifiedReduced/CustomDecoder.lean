@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.Code
 
 namespace Airbender.UnifiedReduced.Proofs
@@ -91,7 +92,7 @@ theorem custom_field_nonzero {instruction : SailRV32.instruction}
         exact nonzero
   | _ => cases fields
 
-theorem custom_fetched {p : Nat} [Fact p.Prime] (hp : 524288 < p)
+theorem custom_fetched {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     {before : State} {addresses : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry}
     (image : customProgramImage before addresses = some program)
@@ -106,7 +107,7 @@ theorem custom_fetched {p : Nat} [Fact p.Prime] (hp : 524288 < p)
   have bounds := custom_field_bounds source.fields
   exact ⟨entry, source, query, decoder_selectors hp h bounds.2.1 query⟩
 
-theorem custom_source_after_history [Fact p.Prime] (hp : 131072 < p)
+theorem custom_source_after_history [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072)
     {trace : UnifiedTrace p} (accepted : Accepted trace)
     {initial before : State} {cells : List Cell} {events : List MemoryAccess}
     (past : SailHistory cells events initial before)

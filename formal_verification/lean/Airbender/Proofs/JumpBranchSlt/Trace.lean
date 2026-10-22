@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Helpers.Context.Registries.JumpBranchSlt
 import Airbender.Proofs.JumpBranchSlt.Timestamp
 import Airbender.Proofs.JumpBranchSlt.Decoder
@@ -46,7 +48,7 @@ instance [Fact p.Prime] : Trace.Proofs.ClockLaws TraceKind p where
 
 /-- Public decoder membership supplies every incoming PC's canonical limbs.
     It supplies no bound on the unmatched terminal PC. -/
-theorem incoming_pc_bounds {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+theorem incoming_pc_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     {trace : NativeTrace p} {program : List ProgramEntry} (decoded : Decoded trace program) :
     ∀ row ∈ trace.rows, row.start.word.Bounded := by
   intro row member
@@ -58,7 +60,7 @@ theorem incoming_pc_bounds {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < 
 
 /-- Matching discharges all outgoing PC bounds when the external termination
     boundary is canonical. This boundary is not derived from this JSON artifact. -/
-theorem trace_pc_bounds {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+theorem trace_pc_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     {trace : NativeTrace p} (accepted : Accepted trace) {program : List ProgramEntry}
     (decoded : Decoded trace program) (terminal : trace.terminal.word.Bounded) :
     ∀ row ∈ trace.rows, row.start.word.Bounded ∧ row.finish.word.Bounded := by
@@ -68,7 +70,7 @@ theorem trace_pc_bounds {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
 
 /-- The cleanup query enforces a four-byte aligned outgoing low limb for every
     mode. It does not bound the outgoing high limb. -/
-theorem outgoing_pc_aligned {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem outgoing_pc_aligned {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
     (w 16).val % 4 = 0 := by
@@ -81,7 +83,7 @@ theorem outgoing_pc_aligned {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
 
 /-- Public initial alignment and native matching discharge every row's PC
     alignment; only the actual public initial state is a boundary condition. -/
-theorem trace_pc_alignment {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem trace_pc_alignment {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {trace : NativeTrace p} (accepted : Accepted trace)
     (initial : trace.initial.word.lo % 4 = 0) :
     (∀ row ∈ trace.rows, row.start.word.lo % 4 = 0 ∧ row.finish.word.lo % 4 = 0) ∧
@@ -122,7 +124,7 @@ private theorem zero_destination {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
 
 /-- The public image, actual Sail decoding and imported equations discharge the
     shared local x0 law; no x0 read/write value is supplied as a premise. -/
-theorem row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+theorem row_zero_preserving {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     (row : Row p TraceKind)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) importedConstraints)
     {before : Reference.RiscV.Sail.State} (fetch : Fetched row.assignment before) :
@@ -149,7 +151,7 @@ theorem row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase <
     simp [writeToken, MemoryPort.writeCode, pairCode, low, high]
     rfl
 
-theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     {trace : NativeTrace p} (accepted : Accepted trace)
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List ProgramEntry} (image : programImage before addresses = some program)
@@ -162,7 +164,7 @@ theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
 /-- Complete native histories realized by actual Sail cell reads/writes, grouped
     in the derived instruction order. ISA clause execution is the next layer. -/
 theorem decoded_native_history {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)

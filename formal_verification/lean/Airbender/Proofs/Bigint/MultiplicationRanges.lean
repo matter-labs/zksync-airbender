@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Bigint.Lookups
 import Airbender.Proofs.Bigint.AdditiveFields
 
@@ -20,7 +21,7 @@ private theorem range_rows (index : Fin 1390592) {tag : Nat}
   all_goals omega
 
 /-- Interpret the five carry-range tags using actual Clean membership witnesses. -/
-theorem range_values {p tag : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem range_values {p tag : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     (tags : 22 ≤ tag ∧ tag ≤ 26)
     {entry : Vector (Expression (ZMod p)) 3} {env : Environment (ZMod p)}
     (h : (Lookup.mk setupTable.toRaw entry).Contains env)
@@ -36,7 +37,7 @@ theorem range_values {p tag : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   exact bounds
 
 /-- Native low-byte outputs are the remainders of the actual source limbs. -/
-theorem source_low_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
+theorem source_low_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :
     ∀ i : Fin 16,
@@ -94,7 +95,7 @@ private def carryTag (i : Fin 31) : Nat :=
 
 /-- Every multiplication carry is below 8192, derived from all 29 native
     carry queries (two queries range two carries each). -/
-theorem carry_ranges {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
+theorem carry_ranges {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :
     ∀ i : Fin 31, (carry w i).val < rangeLimit (carryTag i) := by
@@ -114,7 +115,7 @@ theorem carry_ranges {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZM
     | (convert ranges.1 using 1; congr 1; ring)
     | (convert ranges.2 using 1; congr 1; ring)
 
-theorem carry_bounded {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
+theorem carry_bounded {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) : ∀ i : Fin 31, (carry w i).val < 8192 := by
   intro i

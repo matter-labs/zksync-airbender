@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Keccak.Tables
 import Airbender.Proofs.Keccak.Controls
 
@@ -27,7 +28,7 @@ private theorem controller_region {control : Fin 4096 → Vector Nat 6}
 
 /-- Native membership selects one supplied controller row. No schedule, honest
     witness generation or desired lane indices are premises. -/
-theorem controller_lookup {p : Nat} [Fact p.Prime] (hp : 4096 ≤ p)
+theorem controller_lookup {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 4096)
     {control : Fin 4096 → Vector Nat 6} {entry : Vector (Expression (ZMod p)) 8}
     {env : Environment (ZMod p)}
     (h : (Lookup.mk (setupTable control).toRaw entry).Contains env)
@@ -64,7 +65,7 @@ theorem controller_lookup {p : Nat} [Fact p.Prime] (hp : 4096 ≤ p)
 
 /-- The exact packed input and six offset columns come from the controller
     query in the original artifact. Setup correspondence with Rust is separate. -/
-theorem controller_columns {p : Nat} [Fact p.Prime] (hp : 4096 ≤ p)
+theorem controller_columns {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 4096)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control))) :
@@ -83,7 +84,7 @@ theorem controller_columns {p : Nat} [Fact p.Prime] (hp : 4096 ≤ p)
 
 /-- Row-domain bounds supply the setup's range guarantees; they are not an
     assumption on the witness's six indices. The packed key is also decoded. -/
-theorem controller_indices {p : Nat} [Fact p.Prime] (hp : 4096 ≤ p)
+theorem controller_indices {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 4096)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (rowsBounded : ∀ key : Fin 4096, ∀ i : Fin 6, (control key)[i] < 31)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)

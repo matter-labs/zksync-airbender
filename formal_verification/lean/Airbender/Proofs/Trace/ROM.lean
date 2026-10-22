@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Memory.ROM
 import Airbender.Proofs.Trace.InitialImage
 
@@ -55,7 +56,7 @@ theorem member {p : Nat} [Fact p.Prime] {before : Reference.RiscV.Sail.State}
         · rw [← mapped, source, Trace.Proofs.initial_token_word]
       · simp [low] at mapped
 
-theorem bounds {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} {tokens : List (MemoryToken p)}
     (image : initialImage before cells = some tokens) {query : Vector (ZMod p) 9}
     (contains : (table cells tokens).Contains #[] query) :
@@ -68,7 +69,7 @@ theorem bounds {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     rw [ZMod.val_natCast_of_lt (lt_trans bound.1 hp), ZMod.val_natCast_of_lt (lt_trans bound.2 hp)]
     exact bound
 
-theorem disabled {p : Nat} [Fact p.Prime] (hp : 34 < p)
+theorem disabled {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 34)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} {tokens : List (MemoryToken p)}
     (image : initialImage before cells = some tokens) {query : Vector (ZMod p) 9}
     (contains : (table cells tokens).Contains #[] query) (inactive : query[8] = 0) :
@@ -83,7 +84,7 @@ theorem disabled {p : Nat} [Fact p.Prime] (hp : 34 < p)
     rw [nonzero, ZMod.val_zero] at value
     contradiction
 
-theorem value_boundary {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem value_boundary {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {trace : Data p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)
     (setup : trace.rom = table cells trace.initialMemory) : ValueBoundary trace := by
@@ -98,7 +99,7 @@ theorem value_boundary {p : Nat} [Fact p.Prime] (hp : limbBase < p)
 
 /-- A ROM query reads the bytes of its public Sail cell, rather than a separately
     supplied expected value. Canonical addresses exclude field-wrap aliases. -/
-theorem read_source {p : Nat} [Fact p.Prime] (hp : limit < p)
+theorem read_source {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limit)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} {tokens : List (MemoryToken p)}
     (image : initialImage before cells = some tokens) (address : Word) (lo hi : ZMod p)
     (bounded : address.Bounded) (low : address.hi < 64)
@@ -144,7 +145,7 @@ theorem read_source {p : Nat} [Fact p.Prime] (hp : limit < p)
     rw [word, Word.ofBitVec_roundtrip, sameAddress]
     exact ⟨sourceMember, bytes⟩
 
-theorem read {p : Nat} [Fact p.Prime] (hp : limit < p)
+theorem read {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limit)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} {tokens : List (MemoryToken p)}
     (image : initialImage before cells = some tokens) (address : Word) (lo hi : ZMod p)
     (bounded : address.Bounded) (low : address.hi < 64)

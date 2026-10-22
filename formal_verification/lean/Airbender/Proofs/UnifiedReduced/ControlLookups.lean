@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.ShiftLookups
 import Airbender.Proofs.Lookups
 
@@ -84,7 +85,7 @@ theorem control_region {before : Reference.RiscV.Sail.State} {i : Fin 2097537} {
       show ¬i.val < 524545 by omega]
     all_goals split_ifs <;> simp_all <;> omega
 
-theorem zero_lookup [Fact p.Prime] (hp : 55 ≤ p)
+theorem zero_lookup [Fact p.Prime] (hp : FieldCapacity.AtLeast p 55)
     {before : Reference.RiscV.Sail.State} {entry : Vector (Expression (ZMod p)) 10}
     {env : Environment (ZMod p)} (holds : (Lookup.mk (table before).toRaw entry).Contains env)
     (selected : entry[9].eval env = 1) :
@@ -101,7 +102,7 @@ theorem zero_lookup [Fact p.Prime] (hp : 55 ≤ p)
   · simpa [layout] using columns 0 (by decide)
   · simpa [layout] using columns 1 (by decide)
 
-theorem sign_lookup [Fact p.Prime] (hp : 55 ≤ p)
+theorem sign_lookup [Fact p.Prime] (hp : FieldCapacity.AtLeast p 55)
     {before : Reference.RiscV.Sail.State} {entry : Vector (Expression (ZMod p)) 10}
     {env : Environment (ZMod p)} (holds : (Lookup.mk (table before).toRaw entry).Contains env)
     (selected : entry[9].eval env = 5) :
@@ -118,7 +119,7 @@ theorem sign_lookup [Fact p.Prime] (hp : 55 ≤ p)
   · simpa [layout] using columns 0 (by decide)
   · simpa [layout] using columns 1 (by decide)
 
-theorem cleanup_lookup [Fact p.Prime] (hp : 55 ≤ p)
+theorem cleanup_lookup [Fact p.Prime] (hp : FieldCapacity.AtLeast p 55)
     {before : Reference.RiscV.Sail.State} {entry : Vector (Expression (ZMod p)) 10}
     {env : Environment (ZMod p)} (holds : (Lookup.mk (table before).toRaw entry).Contains env)
     (selected : entry[9].eval env = 2) :
@@ -137,7 +138,7 @@ theorem cleanup_lookup [Fact p.Prime] (hp : 55 ≤ p)
     · simpa [layout] using columns 1 (by decide)
     · simpa [layout] using columns 2 (by decide)
 
-theorem conditional_lookup [Fact p.Prime] (hp : 128 ≤ p)
+theorem conditional_lookup [Fact p.Prime] (hp : FieldCapacity.AtLeast p 128)
     {before : Reference.RiscV.Sail.State} {entry : Vector (Expression (ZMod p)) 10}
     {env : Environment (ZMod p)} (holds : (Lookup.mk (table before).toRaw entry).Contains env)
     (selected : entry[9].eval env = 51) :

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Delegation.Values
 import Airbender.Proofs.Blake2Round.Row
 import Airbender.Proofs.Blake2Round.PhaseProjection
@@ -39,8 +41,8 @@ private theorem diagonal_update_bounded (output : Fin 4 → Blake2G.Words)
     | exact b2.1 | exact b2.2.1 | exact b2.2.2.1 | exact b2.2.2.2
     | exact b3.1 | exact b3.2.1 | exact b3.2.2.1 | exact b3.2.2.2
 
-theorem extended_write_bounds [Fact p.Prime] (hp : 65536 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1) {w : Nat → ZMod p}
+theorem extended_write_bounds [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (inverse : SerializedInverse.Scale64 p) {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :
     ∀ i : Fin 16, (Preparation.words w Mixing.extendedWrites)[i].Bounded := by
@@ -59,8 +61,8 @@ private theorem native_write_word (w : Nat → ZMod p) (port : MemoryPort) :
         ((port.writeValue.getD port.readValue).evaluate w)[1].val⟩ := by
   simp [Delegation.Row.writeToken, MemoryToken.word, MemoryPort.writeCode, WordColumns.code]
 
-theorem state_write_bounds [Fact p.Prime] (hp : 65536 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1) {w : Nat → ZMod p}
+theorem state_write_bounds [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (inverse : SerializedInverse.Scale64 p) {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) (final : w 152 = 0 ∨ w 152 = 1)
     (reads : ∀ i : Fin 8, (Preparation.words w Variables.stateReads)[i].Bounded) :
@@ -104,8 +106,8 @@ theorem final_flag_boolean [Fact p.Prime] {w : Nat → ZMod p}
   all_goals norm_num [Fin.ext_iff] at equation
   all_goals first | exact Or.inl equation | exact Or.inr (by linear_combination -equation)
 
-theorem memory_write_rule [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1) {w : Nat → ZMod p}
+theorem memory_write_rule [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p) {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (clockConstraints setupTable)) (round : Fin 10)
     (mask : ∀ i : Fin 10, w Variables.roundBits[i] = if i = round then 1 else 0)
@@ -213,8 +215,8 @@ theorem memory_write_rule [Fact p.Prime] (hp : 8388608 ≤ p)
   · simpa [native_write_word, importedConstraintsMemoryPorts, WordColumns.evaluate] using controlBound
 
 
-theorem memory_rules [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p}
+theorem memory_rules [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p) {data : Delegation.MemoryData p}
     (accepted : Delegation.MemoryAccepted data)
     (families : ∀ row ∈ data.rows, row.family = .blakeRound)
     (table : data.setup.blakeRound = setupTable)

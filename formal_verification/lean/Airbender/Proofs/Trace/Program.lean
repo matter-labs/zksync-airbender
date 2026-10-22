@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Decoder.Program
 import Airbender.Proofs.Trace.InitialImage
 import Airbender.Proofs.Trace.DecoderBits
@@ -152,7 +153,7 @@ theorem decoder_member {Kind : Type} [DecidableEq Kind]
   obtain ⟨present, selected⟩ := List.mem_filter.mp present
   exact ⟨_, present, by simpa using selected, equal⟩
 
-theorem word_of_pc_query {p : Nat} (hp : limbBase < p) {lo hi : ZMod p} {pc : BitVec 32}
+theorem word_of_pc_query {p : Nat} (hp : FieldCapacity.NoWrap p limbBase) {lo hi : ZMod p} {pc : BitVec 32}
     (low : lo = ((Word.ofBitVec pc).lo : ZMod p))
     (high : hi = ((Word.ofBitVec pc).hi : ZMod p)) :
     (⟨lo.val, hi.val⟩ : Word) = Word.ofBitVec pc := by
@@ -161,7 +162,7 @@ theorem word_of_pc_query {p : Nat} (hp : limbBase < p) {lo hi : ZMod p} {pc : Bi
     ZMod.val_natCast_of_lt (lt_trans bound.2 hp)]
 
 /-- The native fetch query fixes both canonical PC limbs, for any family. -/
-theorem native_query_pc_word {Kind : Type} {p : Nat} (hp : limbBase < p)
+theorem native_query_pc_word {Kind : Type} {p : Nat} (hp : FieldCapacity.NoWrap p limbBase)
     {columns : TraceColumns} {decoder : DecoderColumns} {w : Nat → ZMod p}
     {entry : ProgramEntry Kind}
     (equal : nativeDecoderQuery columns decoder w = entry.query) :
@@ -173,13 +174,13 @@ theorem native_query_pc_word {Kind : Type} {p : Nat} (hp : limbBase < p)
   change w columns.initialPC[1] = ((Word.ofBitVec entry.pc).hi : ZMod p) at high
   exact word_of_pc_query hp low high
 
-theorem query_pc {p : Nat} (hp : limbBase < p) {row : Row p} {entry : ProgramEntry}
+theorem query_pc {p : Nat} (hp : FieldCapacity.NoWrap p limbBase) {row : Row p} {entry : ProgramEntry}
     (equal : row.decoderQuery = entry.query) : row.start.word.toBitVec = entry.pc := by
   have word : row.start.word = Word.ofBitVec entry.pc := native_query_pc_word hp equal
   rw [word, Word.ofBitVec_roundtrip]
 
 /-- The same imported query fixes immediate limbs for every circuit family. -/
-theorem native_query_immediate_word {Kind : Type} {p : Nat} (hp : limbBase < p)
+theorem native_query_immediate_word {Kind : Type} {p : Nat} (hp : FieldCapacity.NoWrap p limbBase)
     {columns : TraceColumns} {decoder : DecoderColumns} {w : Nat → ZMod p}
     {entry : ProgramEntry Kind} (bound : entry.data.immediate.Bounded)
     (equal : nativeDecoderQuery columns decoder w = entry.query) :
@@ -192,7 +193,7 @@ theorem native_query_immediate_word {Kind : Type} {p : Nat} (hp : limbBase < p)
   rw [low, high, ZMod.val_natCast_of_lt (lt_trans bound.1 hp),
     ZMod.val_natCast_of_lt (lt_trans bound.2 hp)]
 
-theorem query_immediate {p : Nat} (hp : limbBase < p) {row : Row p} {entry : ProgramEntry}
+theorem query_immediate {p : Nat} (hp : FieldCapacity.NoWrap p limbBase) {row : Row p} {entry : ProgramEntry}
     (fields : decoderFields entry.instruction = some entry.data)
     (equal : row.decoderQuery = entry.query) : row.decoderImmediate.Bounded := by
   have bound := (decoder_field_bounds fields).1
@@ -200,7 +201,7 @@ theorem query_immediate {p : Nat} (hp : limbBase < p) {row : Row p} {entry : Pro
   exact word ▸ bound
 
 /-- Canonical register indices from any family's imported nine-column query. -/
-theorem native_query_indices {Kind : Type} {p : Nat} (hp : limbBase < p)
+theorem native_query_indices {Kind : Type} {p : Nat} (hp : FieldCapacity.NoWrap p limbBase)
     {columns : TraceColumns} {decoder : DecoderColumns} {w : Nat → ZMod p}
     {entry : ProgramEntry Kind}
     (equal : nativeDecoderQuery columns decoder w = entry.query) :
@@ -215,19 +216,19 @@ theorem native_query_indices {Kind : Type} {p : Nat} (hp : limbBase < p)
     scalar (congrArg (fun q : Vector (ZMod p) 9 => q[4]) equal)⟩
 
 /-- All three native register indices are fixed by the same decoder query. -/
-theorem query_register_indices {p : Nat} (hp : limbBase < p) {row : Row p} {entry : ProgramEntry}
+theorem query_register_indices {p : Nat} (hp : FieldCapacity.NoWrap p limbBase) {row : Row p} {entry : ProgramEntry}
     (equal : row.decoderQuery = entry.query) :
     (row.assignment row.decoderColumns.rs1).val = entry.data.rs1.toNat ∧
     (row.assignment row.decoderColumns.rs2).val = entry.data.rs2.toNat ∧
     (row.assignment row.decoderColumns.rd).val = entry.data.rd.toNat :=
   native_query_indices hp equal
 
-theorem query_immediate_value {p : Nat} (hp : limbBase < p) {row : Row p} {entry : ProgramEntry}
+theorem query_immediate_value {p : Nat} (hp : FieldCapacity.NoWrap p limbBase) {row : Row p} {entry : ProgramEntry}
     (fields : decoderFields entry.instruction = some entry.data)
     (equal : row.decoderQuery = entry.query) : row.decoderImmediate = entry.data.immediate :=
   native_query_immediate_word hp (decoder_field_bounds fields).1 equal
 
-theorem row_query_selectors_of_bound {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem row_query_selectors_of_bound {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {row : Row p} (setup : Table (ZMod p) (fields 9))
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints setup))
@@ -274,7 +275,7 @@ theorem row_query_selectors_of_bound {p : Nat} [Fact p.Prime] (hp : limbBase < p
         rw [← value]
         exact one
 
-theorem query_selectors_of_bound {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem query_selectors_of_bound {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {trace : Data p} (accepted : Accepted trace) {row : Row p} (member : row ∈ trace.rows)
     {entry : ProgramEntry} (small : entry.data.mask < 512)
     (equal : row.decoderQuery = entry.query) :
@@ -282,7 +283,7 @@ theorem query_selectors_of_bound {p : Nat} [Fact p.Prime] (hp : limbBase < p)
       row.assignment row.decoderColumns.flags[i] = if entry.data.mask.testBit i.val then 1 else 0 :=
   row_query_selectors_of_bound hp trace.rom (accepted.constraints row member) small equal
 
-theorem query_selectors {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem query_selectors {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {trace : Data p} (accepted : Accepted trace) {row : Row p} (member : row ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
     (equal : row.decoderQuery = entry.query) :
@@ -292,7 +293,7 @@ theorem query_selectors {p : Nat} [Fact p.Prime] (hp : limbBase < p)
 
 /-- Fetch and the Sail decoder are shared; the chosen projection only controls
     native metadata. Boolean packing recovers every selector for any nine-bit mask. -/
-theorem decoder_soundness_with {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem decoder_soundness_with {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {projection : SailRV32.instruction → Option DecoderData}
     (maskBound : ∀ instruction data, projection instruction = some data → data.mask < 512)
     {trace : Data p} (accepted : Accepted trace) {before : Reference.RiscV.Sail.State}
@@ -306,7 +307,7 @@ theorem decoder_soundness_with {p : Nat} [Fact p.Prime] (hp : limbBase < p)
   exact ⟨entry, source, family, equal, query_pc hp equal,
     query_selectors_of_bound hp accepted member (maskBound _ _ source.fields) equal⟩
 
-theorem decoder_soundness {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem decoder_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {trace : Data p} (accepted : Accepted trace) {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImage before addresses = some program) (decoded : Decoded trace program) :
@@ -317,7 +318,7 @@ theorem decoder_soundness {p : Nat} [Fact p.Prime] (hp : limbBase < p)
   exact ⟨entry, source, family, equal, query_pc hp equal,
     query_selectors hp accepted member source.fields equal⟩
 
-theorem decoder_immediate_bounds {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem decoder_immediate_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {trace : Data p} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImage before addresses = some program) (decoded : Decoded trace program) :

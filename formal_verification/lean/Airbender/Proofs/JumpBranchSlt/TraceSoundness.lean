@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.JumpBranchSlt.Branch
 import Airbender.Review.Circuits.JumpBranchSlt.Jump
 import Airbender.Proofs.Trace.RowContext
@@ -23,7 +25,7 @@ private theorem original_source {p : Nat} [Fact p.Prime]
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
 
-private theorem register_effects {p : Nat} [Fact p.Prime] (hp : 32 ≤ p)
+private theorem register_effects {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 32)
     {cells : List Cell} (epoch : Nat) {w : Nat → ZMod p} {rd : BitVec 5}
     (rdColumn : w 7 = (rd.toNat : ZMod p)) (output : Output)
     (outputLo : output.destination.lo = (w 30).val)
@@ -45,7 +47,7 @@ private theorem register_effects {p : Nat} [Fact p.Prime] (hp : 32 ≤ p)
 
 set_option backward.isDefEq.respectTransparency false in
 theorem pooled_comparison_soundness {p : Nat} [Fact p.Prime]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
     Comparison.InterfaceAssumptions trace initial cells program →
     Properties.Soundness (Comparison.circuitModel trace initial cells program).relation Comparison.spec := by
@@ -107,7 +109,7 @@ theorem pooled_comparison_soundness {p : Nat} [Fact p.Prime]
 
 set_option backward.isDefEq.respectTransparency false in
 theorem pooled_branch_soundness {p : Nat} [Fact p.Prime]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
     Branch.InterfaceAssumptions trace initial cells program →
     Properties.Soundness (Branch.circuitModel trace initial cells program).relation Branch.spec := by
@@ -155,7 +157,7 @@ theorem pooled_branch_soundness {p : Nat} [Fact p.Prime]
 
 set_option backward.isDefEq.respectTransparency false in
 theorem pooled_jump_soundness {p : Nat} [Fact p.Prime]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
     (Jump.circuitModel trace initial cells program).SoundnessUnder
       (Jump.InterfaceAssumptions trace initial cells program) Jump.spec := by

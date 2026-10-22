@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.UnifiedReduced.Decoder
 import Airbender.Proofs.UnifiedReduced
 import Airbender.Proofs.Trace.Program
@@ -55,7 +56,7 @@ theorem decoder_field_bounds {instruction : SailRV32.instruction}
         dsimp [binaryFields, Trace.DecoderData.mapFamily]
         split_ifs <;> omega
 
-theorem decoder_selectors {p : Nat} [Fact p.Prime] (hp : 524288 < p)
+theorem decoder_selectors {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} {entry : ProgramEntry}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (small : entry.data.mask < 524288) (query : decoderQuery w = entry.query) :
@@ -71,7 +72,7 @@ theorem decoder_selectors {p : Nat} [Fact p.Prime] (hp : 524288 < p)
   exact Trace.Proofs.unpack_decoder_bits_general (by simpa using hp)
     (by simpa using small) boolean packed
 
-theorem fetched {p : Nat} [Fact p.Prime] (hp : 524288 < p)
+theorem fetched {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImage before addresses = some program)

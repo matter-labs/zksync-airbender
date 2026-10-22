@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.Setup
 
 namespace Airbender.UnifiedReduced.Setup.Proofs
@@ -46,7 +47,7 @@ theorem rotate_region {before : Reference.RiscV.Sail.State} {i : Fin 2097537} {t
       rfl
     omega
 
-theorem rotate_lookup [Fact p.Prime] (hp : 256 < p)
+theorem rotate_lookup [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     {before : Reference.RiscV.Sail.State} {entry : Vector (Expression (ZMod p)) 10}
     {env : Environment (ZMod p)} (holds : (Lookup.mk (table before).toRaw entry).Contains env)
     (tag : Nat) (lower : 47 ≤ tag) (upper : tag < 51)

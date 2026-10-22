@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2G.SerializedField
 import Airbender.Review.Circuits.Blake2G.Model
 import Airbender.Proofs.Blake2G.Assembly
@@ -29,8 +31,8 @@ theorem reference_components (a b c d mx my : Nat) :
   exact ⟨True.intro, True.intro, True.intro, True.intro⟩
 
 
-theorem mixing_soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+theorem mixing_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 262144)
+    (compatible : SerializedInverse.Scale64 p)
     (control : Fin 512 → Vector Nat 7) :
     (mixingModel (p := p) control).SoundnessUnder (InterfaceAssumptions (p := p)) spec := by
   intro input output w ⟨interface, holds, mapping⟩
@@ -74,8 +76,8 @@ theorem mixing_soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
     cFinal.trans native.2.2.1.symm, dFinal.trans native.2.2.2.symm⟩
 
 /-- XOR queries range all four outputs, independently of input-word bounds. -/
-theorem mixing_output_bounds {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+theorem mixing_output_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
+    (compatible : SerializedInverse.Scale64 p)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (mixingConstraints (setupTable control))) :
@@ -91,8 +93,8 @@ theorem mixing_output_bounds {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
 
 /-- The standalone circuit implies the reusable arithmetic fragment; its public
     soundness statement and interface requirements are unchanged. -/
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 262144)
+    (compatible : SerializedInverse.Scale64 p)
     (control : Fin 512 → Vector Nat 7) :
     (circuitModel (p := p) control).SoundnessUnder (InterfaceAssumptions (p := p)) spec := by
   intro input output w ⟨interface, holds, mapping⟩

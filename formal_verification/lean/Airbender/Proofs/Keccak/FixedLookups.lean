@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Keccak.FixedTables
 import Airbender.Proofs.Keccak.Lookups
 
@@ -8,7 +9,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1200000
 
-private theorem byte_tag_not_controller {p : Nat} [Fact p.Prime] (hp : 41 ≤ p)
+private theorem byte_tag_not_controller {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 41)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (i : Fin 40) : (byteTag setup w i).val ≠ 37 := by
@@ -38,7 +39,7 @@ private theorem byte_tag_not_controller {p : Nat} [Fact p.Prime] (hp : 41 ≤ p)
 
 /-- Every byte query, in every active mode and in padding, is interpreted by
     Clean's native membership. Controller rows cannot masquerade as byte rows. -/
-theorem byte_lookup_checks {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem byte_lookup_checks {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control))) : ByteLookupChecks control w := by

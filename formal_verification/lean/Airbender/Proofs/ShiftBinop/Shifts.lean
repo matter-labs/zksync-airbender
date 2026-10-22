@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.ShiftBinop.ArtifactChecks
 import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.ShiftBinop.Arithmetic
@@ -22,7 +23,7 @@ private theorem shift_wiring {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
   all_goals linear_combination equation
 
 /-- The same selected shift queries also range every byte of the source word. -/
-theorem shift_source_bounds {p : Nat} [Fact p.Prime] (hp : 256 < p)
+theorem shift_source_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 1 ∧ w 12 = 0) :
@@ -42,7 +43,7 @@ theorem shift_source_bounds {p : Nat} [Fact p.Prime] (hp : 256 < p)
 
 /-- The selected imported query truncates rs2's first byte, without an assumed
     bound on that byte or on its truncation scratch variable. -/
-theorem shift_amount {p : Nat} [Fact p.Prime] (hp : 256 < p) {w : Nat → ZMod p}
+theorem shift_amount {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 1 ∧ w 12 = 0) :
     (w 25).val < 256 ∧ (w 26).val < 256 ∧ (w 35).val = (w 25).val % 32 := by
@@ -66,7 +67,7 @@ theorem shift_amount {p : Nat} [Fact p.Prime] (hp : 256 < p) {w : Nat → ZMod p
 set_option maxHeartbeats 1000000 in
 /-- Each selected shift query forces its four canonical contribution bytes,
     the shared amount and the operation tag. All wiring comes from JSON equations. -/
-theorem shift_bytes {p : Nat} [Fact p.Prime] (hp : 256 < p) {w : Nat → ZMod p}
+theorem shift_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 1 ∧ w 12 = 0) :
     (w 35 + w 8).val < 32 ∧ (w 10).val < 8 ∧
@@ -104,7 +105,7 @@ theorem shift_bytes {p : Nat} [Fact p.Prime] (hp : 256 < p) {w : Nat → ZMod p}
       all_goals simpa [Expression.eval, Verification.environment, a, b, c, d, position, wire] using output
   exact ⟨(values 0).1, (values 0).2.1, fun i j => (values i).2.2 j⟩
 
-private theorem packed_contributions {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+private theorem packed_contributions {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     (w : Nat → ZMod p) (start : Nat) (target : ZMod p)
     (bounds : ∀ i : Fin 4, ∀ j : Fin 2, (w (start + 4 * i.val + j.val)).val < 256)
     (equation : w start + 256 * w (start + 1) + w (start + 4) + 256 * w (start + 5) +
@@ -137,7 +138,7 @@ private theorem packed_contributions {p : Nat} [Fact p.Prime] (hp : 262144 < p)
 
 /-- Selected byte contributions assemble as natural sums before instruction
     interpretation. The field bound excludes carry wrap between those sums. -/
-theorem shift_output_sums {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem shift_output_sums {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 1 ∧ w 12 = 0) :
@@ -170,7 +171,7 @@ theorem shift_output_sums {p : Nat} [Fact p.Prime] (hp : 262144 < p)
 /-- Imported shift lookups and assembly equations force the native shifted word.
     The decoder supplies the operation code; source-byte mapping supplies only
     the operand, and no result or scratch bounds are assumed. -/
-theorem shift_destination_limbs {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem shift_destination_limbs {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {w : Nat → ZMod p} (x : BitVec 32)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 1 ∧ w 12 = 0)
@@ -239,7 +240,7 @@ theorem shift_destination_limbs {p : Nat} [Fact p.Prime] (hp : 262144 < p)
 /-- Imported shift lookups and assembly equations force the native shifted word.
     The decoder supplies the operation code; source-byte mapping supplies only
     the operand, and no result or scratch bounds are assumed. -/
-theorem shift_destination {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem shift_destination {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {w : Nat → ZMod p} (x : BitVec 32)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 1 ∧ w 12 = 0)

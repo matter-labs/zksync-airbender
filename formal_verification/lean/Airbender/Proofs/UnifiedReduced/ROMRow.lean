@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.ROMView
 import Airbender.Proofs.UnifiedReduced
 import Airbender.Review.Helpers.UnifiedReduced.Registry
@@ -30,7 +31,7 @@ set_option maxHeartbeats 1600000
   intro i _
   fin_cases i <;> rfl
 
-theorem row_holds [Fact p.Prime] (hp : 18 < p)
+theorem row_holds [Fact p.Prime] (hp : FieldCapacity.NoWrap p 18)
     (before : Reference.RiscV.Sail.State) (native : Trace.Row p UnifiedFamily)
     (setup : Table (ZMod p) (fields 10))
     (active : native.assignment 4 = 1)

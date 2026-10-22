@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.ControlQueries
 import Airbender.Proofs.JumpBranchSlt.Jump
 
@@ -16,7 +17,7 @@ theorem control_intermediate_bounds [Fact p.Prime]
   have raw := Verification.range16_bound (Verification.lookup_of_holds holds ⟨5, by rw [lookup_count]; decide⟩)
   simpa [Expression.eval, Verification.environment, Word.Bounded] using And.intro (And.intro low high) raw
 
-theorem jump_link [Fact p.Prime] (hp : 196608 < p)
+theorem jump_link [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 21 + w 22 = 1) (other : w 23 = 0 ∧ w 24 = 0)
@@ -69,7 +70,7 @@ theorem jump_link [Fact p.Prime] (hp : 196608 < p)
     have hi : w 51 = 0 := by simpa [masked] using zeroHigh
     simp [one, lo, hi, Word.toBitVec, Word.value]
 
-theorem comparison_pc [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem comparison_pc [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {before : Reference.RiscV.Sail.State} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table before)))
     (selected : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 1 ∧ w 24 = 0)
@@ -112,7 +113,7 @@ theorem comparison_pc [Fact p.Prime] (hp : 4194304 ≤ p)
     (by simpa [finalLo] using lowEq) (by simpa using highEq)
   simpa [Word.toBitVec, Word.value, limbBase] using result
 
-theorem jump_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem jump_pc {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {before : Reference.RiscV.Sail.State} {w : Nat → ZMod p} {base offset final : Word} (indirect : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table before)))
     (selected : w 21 = (if indirect then 0 else 1) ∧ w 22 = (if indirect then 1 else 0))

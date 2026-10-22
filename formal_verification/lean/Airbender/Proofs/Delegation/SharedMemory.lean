@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Delegation.SharedClocks
 import Airbender.Proofs.Trace.TransferValues
 import Airbender.Proofs.Trace.TransferTerminal
@@ -44,8 +46,8 @@ private theorem shared_zero_closed [Fact p.Prime]
     obtain ⟨port, present, rfl⟩ := List.mem_map.mp step
     exact False.elim (Delegation.Proofs.port_not_zero row (by simpa using present) same)
 
-theorem shared_source_values [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem shared_source_values [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)} {cells : List Cell}
     (accepted : SharedMemoryAccepted data) (inputs : SharedMemoryInputs data before addresses cells)
     (requests : RequestBinding data before) :
@@ -66,9 +68,9 @@ theorem shared_source_values [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     exact ⟨AddSub.importedConstraintsMemoryPorts[0], by simp [architecturalPorts], rfl⟩
   exact reads _ step (requests.callers row member).1.sourceAddress
 
-theorem shared_memory_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (pcInverse : (-30720 : ZMod p) * 65536 = 1)
+theorem shared_memory_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (clockInverse : SerializedInverse.Clock p)
+    (pcInverse : SerializedInverse.Limb16 p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)} {cells : List Cell}
     (accepted : SharedMemoryAccepted data) (inputs : SharedMemoryInputs data before addresses cells) :
     SharedMemoryEffects data before cells := by

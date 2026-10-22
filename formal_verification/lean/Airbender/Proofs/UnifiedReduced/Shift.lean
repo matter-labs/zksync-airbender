@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.Binary
 import Airbender.Proofs.Arithmetic.WordBytes
 import Airbender.Proofs.Arithmetic.ShiftAssembly
@@ -29,7 +31,7 @@ private theorem shift_wiring [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
       selected.1, selected.2, other.1, other.2.1, other.2.2.1, other.2.2.2, leftByte] at equation ⊢
     all_goals linear_combination equation
 
-theorem shift_query_values [Fact p.Prime] (hp : 256 < p)
+theorem shift_query_values [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     {initial : Reference.RiscV.Sail.State} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table initial)))
     (selected : w 26 = 1 ∧ w 27 = 0) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0) :
@@ -66,8 +68,8 @@ theorem shift_query_values [Fact p.Prime] (hp : 256 < p)
          all_goals simpa [Expression.eval, Verification.environment, a, b, c, d, position, wire, leftByte] using output)
   exact ⟨(values 0).1, (values 0).2.1, fun i => (values i).2.2.1, fun i j => (values i).2.2.2 j⟩
 
-theorem shift_left_bytes [Fact p.Prime] (hp : 65536 < p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem shift_left_bytes [Fact p.Prime] (hp : FieldCapacity.NoWrap p 65536)
+    (inverse : SerializedInverse.Scale256 p)
     {initial : Reference.RiscV.Sail.State} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table initial)))
     (selected : w 26 = 1 ∧ w 27 = 0) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0) :
@@ -79,7 +81,7 @@ theorem shift_left_bytes [Fact p.Prime] (hp : 65536 < p)
     (by change w 75 + 256 * (-7864320 * (w 37 - w 75)) = w 37
         linear_combination (w 37 - w 75) * inverse)
 
-theorem shift_amount [Fact p.Prime] (hp : 256 < p)
+theorem shift_amount [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     {initial : Reference.RiscV.Sail.State} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table initial)))
     (selected : w 26 = 1 ∧ w 27 = 0) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
@@ -102,7 +104,7 @@ theorem shift_amount [Fact p.Prime] (hp : 256 < p)
     (by simpa [Expression.eval, Verification.environment] using tag)
   simpa [Expression.eval, Verification.environment, first, second, amount] using result
 
-theorem shift_destination [Fact p.Prime] (hp : 262144 < p)
+theorem shift_destination [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {initial : Reference.RiscV.Sail.State} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table initial)))
     (selected : w 26 = 1 ∧ w 27 = 0) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)

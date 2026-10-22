@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.MulDiv.Theorems
 import Airbender.Review.Trace.Families.MulDiv.Theorems
 import Airbender.Proofs.MulDiv
@@ -13,7 +14,7 @@ import Airbender.Proofs.MulDiv.RowClaims
 namespace Airbender.MulDiv
 
 
-theorem fetched {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+theorem fetched {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     {w : Nat → ZMod p} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImage before addresses = some program)

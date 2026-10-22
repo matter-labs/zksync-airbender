@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Delegation.Memory
 import Airbender.Proofs.Bigint.Timestamp
 import Airbender.Proofs.Blake2G.Timestamp
@@ -68,7 +69,7 @@ theorem clock_room_of_invocation_slots [Fact p.Prime]
   dsimp [timestampBase] at bound ⊢
   omega
 
-theorem writes_bounded [Fact p.Prime] (hp : timestampBase < p)
+theorem writes_bounded [Fact p.Prime] (hp : FieldCapacity.NoWrap p timestampBase)
     {data : MemoryData p} (_accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {row : Row p} (member : row ∈ data.rows) {port : MemoryPort} (present : port ∈ row.ports) :
@@ -80,7 +81,7 @@ theorem writes_bounded [Fact p.Prime] (hp : timestampBase < p)
   rw [port_offset row present]
   exact inputs.clockRoom row member
 
-private theorem produced_bounded [Fact p.Prime] (hp : timestampBase < p)
+private theorem produced_bounded [Fact p.Prime] (hp : FieldCapacity.NoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     ∀ token ∈ data.initial ++ data.steps.map Prod.snd, (timeOfPair token.time).Bounded := by
@@ -92,7 +93,7 @@ private theorem produced_bounded [Fact p.Prime] (hp : timestampBase < p)
     obtain ⟨port, present, rfl⟩ := List.mem_map.mp step
     exact (writes_bounded hp accepted inputs rowMember (by simpa using present)).1
 
-theorem memory_clocks [Fact p.Prime] (hp : timestampBase < p)
+theorem memory_clocks [Fact p.Prime] (hp : FieldCapacity.NoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     ∀ edge ∈ data.steps,
@@ -105,7 +106,7 @@ theorem memory_clocks [Fact p.Prime] (hp : timestampBase < p)
   · exact produced_bounded hp accepted inputs edge.2
       (List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨edge, member, rfl⟩)))
 
-theorem memory_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem memory_order [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     ∀ edge ∈ data.steps, (timeOfPair edge.1.time).value < (timeOfPair edge.2.time).value := by
@@ -132,7 +133,7 @@ theorem preserved_addresses {data : MemoryData p} :
   obtain ⟨port, _, rfl⟩ := List.mem_map.mp step
   rfl
 
-theorem address_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem address_bounds [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {row : Row p} (member : row ∈ data.rows) {port : MemoryPort} (present : port ∈ row.ports) :
@@ -147,7 +148,7 @@ theorem address_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   rw [Trace.Proofs.address_word same.symm]
   exact Trace.Proofs.cell_address_bound cell
 
-theorem memory_effects [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem memory_effects [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     MemoryEffects data := by
@@ -164,7 +165,7 @@ theorem memory_effects [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   intro edge edgeMember
   exact ordered edge (List.mem_of_mem_filter (permutation.mem_iff.mp edgeMember))
 
-theorem cell_histories [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem cell_histories [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     ∀ source ∈ data.initial, ∃ history : TimestampSortedMemoryAccessList,
@@ -176,7 +177,7 @@ theorem cell_histories [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (memory_effects hp accepted inputs).paths source member
   exact Trace.Proofs.cell_history_of_path data.steps source path head ordered permutation
 
-theorem memory_soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem memory_soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     MemorySoundness data :=

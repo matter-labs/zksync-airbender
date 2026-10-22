@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.WordMemory.Model
 import Airbender.Proofs.Trace.RowContext
 import Airbender.Proofs.Trace.PooledMemory
@@ -11,7 +13,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Reuse pooled LW/SW execution and native transfer proofs at this row's
     represented position. No operand bound, read value or access result is assumed. -/
 theorem trace_soundness {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
     InterfaceAssumptions trace initial cells program →
     Properties.Soundness (circuitModel trace initial cells program).relation spec := by

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2Round.NativeMixingMappings
 import Airbender.Proofs.Blake2Round.NativeWriteback
 import Airbender.Review.Circuits.Blake2Round.Mixing
@@ -44,8 +46,8 @@ private theorem diagonal_messages {p : Nat} {w : Nat → ZMod p}
 
 /-- Soundness of all eight mixing calls and the allocated 16-word writeback,
     with only the stated initial addition-input and selected-message bounds. -/
-theorem mixing_soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+theorem mixing_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 262144)
+    (compatible : SerializedInverse.Scale64 p) :
     (Mixing.circuitModel (p := p)).SoundnessUnder (Mixing.InterfaceAssumptions (p := p)) Mixing.spec := by
   intro input output w ⟨interface, holds, mapping⟩
   have columns := phase_reference 0 input.state input.message (columnOutputs w) (fun call =>

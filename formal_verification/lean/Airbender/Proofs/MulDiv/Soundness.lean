@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.MulDiv.RowModel
 import Airbender.Proofs.MulDiv.Product
 import Airbender.Proofs.Sail.PC
@@ -16,8 +18,8 @@ private def result (operation : Operation) (left right : Nat) : Nat :=
   | .divu => if right = 0 then 4294967295 else left / right
   | .remu => if right = 0 then left else left % right
 
-private theorem division_destination {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1) {w : Nat → ZMod p}
+private theorem division_destination {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeWordCapacity p)
+    (inverse : SerializedInverse.Limb16 p) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (remainder : Bool)
     (selected : w 12 = (if remainder then 0 else 1) ∧ w 13 = (if remainder then 1 else 0))
@@ -38,8 +40,8 @@ private theorem division_destination {p : Nat} [Fact p.Prime] (hp : 536870912 �
   · have value := division_nonzero hp inverse h remainder selected other leftBound zero
     simp only [if_neg zero, Word.toBitVec, value]
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1) :
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeWordCapacity p)
+    (inverse : SerializedInverse.Limb16 p) :
     rowCircuitModel.SoundnessUnder (RowInterfaces (p := p)) spec := by
   intro input output w ⟨interface, h, mapping⟩
   have leftBound : (w 20).val < limbBase ∧ (w 21).val < limbBase := by

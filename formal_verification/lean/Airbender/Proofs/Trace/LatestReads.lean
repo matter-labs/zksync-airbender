@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.MemoryPaths
 import Airbender.Proofs.Trace.MemoryOrigins
 
@@ -35,8 +37,8 @@ theorem consecutive_ranks {S : Type} (rank : S → Nat) {path : List S}
           omega
         · exact ih firstOrder.2 later inRest
 
-theorem latest_reads [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem latest_reads [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     ∀ row ∈ trace.rows, ∀ port ∈ row.ports, LatestRead trace row port := by

@@ -68,6 +68,11 @@ def circuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
 structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : State) (cells : List Cell) (program : List PooledProgramEntry) : Prop
     extends PooledHistoryInputs trace initial cells program where
+  /-- Coverage of the arbitrary tracked-cell domain, rather than register values.
+      The [native initialization adapter](../../../Proofs/Initialization/PooledInputs.lean)
+      derives this from its computed domain using the
+      [all-registers theorem](../../../Proofs/ExternalBoundary/Initialization.lean).
+      Public register values/profile and teardown remain separate boundaries. -/
   registersInitialized : ∀ index, Cell.register index ∈ cells
 
 end Airbender.AddSub

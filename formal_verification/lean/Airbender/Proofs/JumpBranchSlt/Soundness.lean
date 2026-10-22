@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.JumpBranchSlt.PC
 import Airbender.Proofs.JumpBranchSlt.Signed
 import Airbender.Proofs.Sail.PC
@@ -8,7 +9,7 @@ open Airbender.Reference.RiscV
 open Airbender.Reference.Sail
 
 /-- One circuit contract for the four actual Sail comparison clauses. -/
-theorem comparison_soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) :
+theorem comparison_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p) :
     Comparison.rowCircuitModel.SoundnessUnder (Comparison.RowInterfaces (p := p)) Comparison.spec := by
   intro input output w ⟨interface, h, mapping⟩
   have bitResult : output.destination.toBitVec = match input.opcode with

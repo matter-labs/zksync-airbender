@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.AddSub.ModularNative
 import Airbender.Proofs.Trace.PooledComposition
 import Airbender.Proofs.Trace.PooledROMView
@@ -11,7 +12,7 @@ set_option backward.isDefEq.respectTransparency false
 set_option maxHeartbeats 2000000
 
 theorem addsub_execution
-    (hp : 536870912 ≤ babyBearModulus) (inverse : (-3840 : ZMod babyBearModulus) * 524288 = 1)
+    (hp : 536870912 ≤ babyBearModulus) (inverse : SerializedInverse.Clock babyBearModulus)
     {trace : PooledTrace babyBearModulus} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -85,7 +86,7 @@ theorem addsub_execution
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
 
 theorem row_step
-    (hp : 536870912 ≤ babyBearModulus) (inverse : (-3840 : ZMod babyBearModulus) * 524288 = 1)
+    (hp : 536870912 ≤ babyBearModulus) (inverse : SerializedInverse.Clock babyBearModulus)
     {trace : PooledTrace babyBearModulus} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -152,7 +153,7 @@ theorem row_step
       exact ⟨original, clause_original selected, checked⟩
 
 theorem trace_execution
-    (hp : 536870912 ≤ babyBearModulus) (inverse : (-3840 : ZMod babyBearModulus) * 524288 = 1)
+    (hp : 536870912 ≤ babyBearModulus) (inverse : SerializedInverse.Clock babyBearModulus)
     {trace : PooledTrace babyBearModulus} {initial : State} {cells : List Cell} {program : List PooledProgramEntry}
     (inputs : PooledInputs trace initial cells program Pooled.decoderFields)
     (accepted : Accepted trace) (decoded : PooledDecoded trace program) :

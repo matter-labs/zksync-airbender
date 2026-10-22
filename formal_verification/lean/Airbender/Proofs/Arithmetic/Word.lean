@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Core.Word
 import Airbender.Proofs.Arithmetic.Lemmas
 import Mathlib.Data.Nat.Basic
@@ -70,7 +71,7 @@ theorem Word.toBitVec_add_of_value {initial final : Word} {increment : Nat}
 
 /-- Shared lifting of a small word increment with no high-limb wrap carry. -/
 theorem Word.increment_of_limbs {p : Nat} [Fact p.Prime]
-    (hp : 131072 < p) {initial final : Word} {increment carry : Nat}
+    (hp : FieldCapacity.NoWrap p 131072) {initial final : Word} {increment carry : Nat}
     (incrementBound : increment ≤ limbBase) (carryBound : carry ≤ 1)
     (initialBounds : initial.Bounded) (finalBounds : final.Bounded)
     (low : (initial.lo : ZMod p) + increment = final.lo + 65536 * carry)
@@ -94,7 +95,7 @@ theorem Word.increment_of_limbs {p : Nat} [Fact p.Prime]
   exact ⟨value, value ▸ Word.value_lt finalBounds, Word.toBitVec_add_of_value value⟩
 
 /-- Addition with a low carry and a high wrap carry, reusable across circuit families. -/
-theorem Word.add_of_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+theorem Word.add_of_limbs {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
     {left right immediate output : Word} {carry wrap : Nat}
     (leftBound : left.Bounded) (rightBound : right.Bounded)
     (immediateBound : immediate.Bounded) (outputBound : output.Bounded)
@@ -118,7 +119,7 @@ theorem Word.add_of_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p)
   omega
 
 /-- Subtraction with two borrow bits, reusable across circuit families. -/
-theorem Word.sub_of_limbs {p : Nat} [Fact p.Prime] (hp : 131072 < p)
+theorem Word.sub_of_limbs {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072)
     {left right output : Word} {borrow wrap : Nat}
     (leftBound : left.Bounded) (rightBound : right.Bounded) (outputBound : output.Bounded)
     (borrowBound : borrow ≤ 1) (wrapBound : wrap ≤ 1)
@@ -140,7 +141,7 @@ theorem Word.sub_of_limbs {p : Nat} [Fact p.Prime] (hp : 131072 < p)
 
 /-- A range-checked subtraction remainder makes the final borrow exactly the
     unsigned comparison. Shared by modular reduction and comparison circuits. -/
-theorem Word.borrow_iff {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+theorem Word.borrow_iff {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
     {left right remainder : Word} {carry borrow : Nat}
     (leftBound : left.Bounded) (rightBound : right.Bounded)
     (remainderBound : remainder.Bounded) (carryBound : carry ≤ 1) (borrowBound : borrow ≤ 1)
@@ -159,7 +160,7 @@ theorem Word.borrow_iff {p : Nat} [Fact p.Prime] (hp : 196608 < p)
   omega
 
 /-- A forced final subtraction borrow proves strict comparison. -/
-theorem Word.lt_of_borrow {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+theorem Word.lt_of_borrow {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
     {output modulus remainder : Word} {carry : Nat}
     (outputBound : output.Bounded) (modulusBound : modulus.Bounded)
     (remainderBound : remainder.Bounded) (carryBound : carry ≤ 1)

@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Trace.Delegation.Execution
 import Airbender.Proofs.Trace.MemoryFrame
 import Airbender.Proofs.Trace.AccessExecution
@@ -8,7 +9,7 @@ namespace Airbender.Delegation.Proofs
 open Trace Trace.Proofs Reference.RiscV.Sail
 set_option warningAsError true
 
-theorem raw_time_injective [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem raw_time_injective [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {first last : MemoryAccess} (firstMember : first ∈ rawEvents data)
@@ -16,7 +17,7 @@ theorem raw_time_injective [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (time : first.1 = last.1) : first = last :=
   Trace.Proofs.Transfer.raw_time_injective (transfer_facts hp accepted inputs) (transferInputs inputs) firstMember lastMember address time
 
-theorem event_clock_le [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem event_clock_le [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {first last : MemoryAccess} (firstMember : first ∈ rawEvents data)
@@ -24,7 +25,7 @@ theorem event_clock_le [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (time : last.1 ≤ first.1) : eventClock data last ≤ eventClock data first :=
   Trace.Proofs.Transfer.event_clock_le (transfer_facts hp accepted inputs) (transferInputs inputs) firstMember lastMember address time
 
-theorem terminal_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem terminal_path [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {sink : MemoryToken p} (member : sink ∈ data.terminal) :
@@ -34,7 +35,7 @@ theorem terminal_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
         (path.zip path.tail).Perm (data.steps.filter fun edge => edge.1.address = sink.address) :=
   Trace.Proofs.Transfer.terminal_path (transfer_facts hp accepted inputs) (transferInputs inputs) member
 
-theorem terminal_latest_value [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem terminal_latest_value [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {history : TimestampSortedMemoryAccessList} (bound : history.val.Perm (labeledEvents data))
@@ -42,7 +43,7 @@ theorem terminal_latest_value [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     MemoryAccessList.lastWriteValue history.val history.property sink.address = sink.value :=
   Trace.Proofs.Transfer.terminal_latest_value (transfer_facts hp accepted inputs) (transferInputs inputs) bound member
 
-theorem terminal_sail_reads [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem terminal_sail_reads [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before after : State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {history : TimestampSortedMemoryAccessList} (bound : history.val.Perm (labeledEvents data))
@@ -51,7 +52,7 @@ theorem terminal_sail_reads [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       cell.read after = .ok (memoryWord sink.value) after :=
   Trace.Proofs.Transfer.terminal_sail_reads_at_boundary (transfer_facts hp accepted inputs) (transferInputs inputs) bound realized
 
-theorem native_memory_execution [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+theorem native_memory_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     (inputs : BoundaryInputs data before cells) (aligned : ∀ cell ∈ cells, cell.Aligned) :

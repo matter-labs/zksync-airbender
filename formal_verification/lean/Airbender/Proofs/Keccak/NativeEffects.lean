@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Keccak.MixStage
 import Airbender.Proofs.Keccak.Iota
 import Airbender.Review.Circuits.Keccak.Execution
@@ -38,8 +40,8 @@ private theorem read_limbs {p : Nat} {w : Nat → ZMod p}
   all_goals fin_cases limb
   all_goals first | simpa [readLaneLimbs] using low.1 | simpa [readLaneLimbs] using low.2 | simpa [readLaneLimbs] using high.1 | simpa [readLaneLimbs] using high.2
 
-theorem native_effects [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1) {w : Nat → ZMod p}
+theorem native_effects [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p) {w : Nat → ZMod p}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable Controller.rows)))
     (active : w Variables.execute = 1)

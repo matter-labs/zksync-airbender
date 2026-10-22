@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Delegation.AtomicHistory
 import Airbender.Proofs.Arithmetic.Word
 
@@ -73,7 +74,7 @@ theorem indirect_word_observations {p : Nat} {w : Nat → ZMod p}
   · exact readValue.trans (Word.toBitVec_toNat reads)
   · exact writtenValue.trans (Word.toBitVec_toNat writes)
 
-theorem initialized_indirect_cell_at_boundary [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem initialized_indirect_cell_at_boundary [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {initial : State} {cells : List Cell} (inputs : BoundaryInputs data initial cells)
     {row : Row p} (member : row ∈ data.rows) {port : MemoryPort} (present : port ∈ row.ports)
@@ -90,7 +91,7 @@ theorem initialized_indirect_cell_at_boundary [Fact p.Prime] (hp : 2 * timestamp
   have same := indirect_cell code
   exact same ▸ tracked
 
-theorem initialized_indirect_cell [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem initialized_indirect_cell [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {initial : State} {cells : List Cell} (inputs : MemoryInputs data initial cells)
     {row : Row p} (member : row ∈ data.rows) {port : MemoryPort} (present : port ∈ row.ports)

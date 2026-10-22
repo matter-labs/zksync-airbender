@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Bigint.AdditiveFields
 
 namespace Airbender.Bigint.Multiplication.Proofs
@@ -6,7 +7,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 4000000
 
-theorem merged_product {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
+theorem merged_product {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 62 = 1 ∨ w 63 = 1) :
@@ -33,7 +34,7 @@ theorem merged_product {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
 
 /-- Selected multiplication ranges all 32 product limbs, including the low half
     that shares its range query with the additive branches. -/
-theorem product_ranges {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
+theorem product_ranges {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 62 = 1 ∨ w 63 = 1) :

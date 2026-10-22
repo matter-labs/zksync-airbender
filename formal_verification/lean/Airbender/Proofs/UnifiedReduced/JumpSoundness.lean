@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.UnifiedReduced.Jump
 import Airbender.Proofs.UnifiedReduced.JumpArithmetic
 import Airbender.Proofs.UnifiedReduced.RegisterReads
@@ -30,7 +32,7 @@ private theorem decoded_metadata {input : Input} {entry : ProgramEntry}
     jumpFields, DecoderData.mapFamily, metadata, JumpBranchSlt.Jump.Instruction.indirect,
     zeroRegister, zero] using fields.symm
 
-theorem soundness_from_history [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem soundness_from_history [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {setup : Table (ZMod p) (fields 10)} {initial : State} {cells : List Cell} {events : List MemoryAccess}
     {input : Input} {output : Output} {w : Nat → ZMod p} {after : State} {epoch : Nat}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -158,8 +160,8 @@ theorem soundness_from_history [Fact p.Prime] (hp : 4194304 ≤ p)
       simpa [retiredState, Std.ExtDHashMap.get?_insert] using csrs.2.2.trans securityRead
   exact retire_jump input output link target.1 target.2 extension sourceRead pcRead misaRead landingPad
 
-theorem soundness_from_memory [Fact p.Prime] (hp : 4194304 ≤ p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem soundness_from_memory [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     (inputs : NativeInputs projection trace initial cells program) (accepted : Accepted trace)
@@ -194,8 +196,8 @@ theorem soundness_from_memory [Fact p.Prime] (hp : 4194304 ≤ p)
     (by simpa [words.pc, Row.start, Row.columns, CircuitLayout.columns, PCState.State.word,
       rawPair, importedConstraintsTraceColumns, initialPC] using past) history leftRange words source query encoding codeAligned isa landingPad pcRead
 
-theorem soundness [Fact p.Prime] (hp : 4194304 ≤ p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem soundness [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (inverse : SerializedInverse.Clock p)
     (trace : UnifiedTrace p) (initial : State) (cells : List Cell) (program : List ProgramEntry) :
     (circuitModel trace initial cells program).SoundnessUnder
       (InterfaceAssumptions trace initial cells program) JumpBranchSlt.Jump.spec := by

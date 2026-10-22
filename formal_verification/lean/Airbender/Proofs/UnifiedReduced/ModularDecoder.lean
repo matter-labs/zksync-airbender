@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Helpers.UnifiedReduced.Modular
 import Airbender.Proofs.AddSub.ModularDecoder
 import Airbender.Proofs.UnifiedReduced.MixedHistory
@@ -67,7 +69,7 @@ theorem mop_metadata {entry : ProgramEntry} (opcode : AddSub.Modular.Opcode) (rs
   cases opcode <;> simpa [mopDecoderFields, AddSub.Modular.instruction,
     AddSub.Modular.Opcode.mop, AddSub.Modular.opcodeOfMop] using fields.symm
 
-theorem zero_preserving [Fact p.Prime] (hp : 524288 < p) {trace : UnifiedTrace p}
+theorem zero_preserving [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288) {trace : UnifiedTrace p}
     (accepted : Accepted trace) {initial : State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : Modular.programImage initial addresses = some program) (decoded : Decoded trace program) :
     ZeroPreserving trace := by
@@ -90,8 +92,8 @@ theorem zero_preserving [Fact p.Prime] (hp : 524288 < p) {trace : UnifiedTrace p
         query (UnifiedReduced.Proofs.decoder_selectors hp core (mop_bounds modular).2.1 query)
         (fun zero => Or.inl (mop_zero_cases modular zero))
 
-theorem memory_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : UnifiedTrace p}
+theorem memory_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : UnifiedTrace p}
     (accepted : Accepted trace) {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (inputs : NativeInputs Modular.decoderFields trace initial cells program)
     (decoded : Decoded trace program) : MemoryExecution trace initial cells := by

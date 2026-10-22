@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.PooledOracleExecution
 import Airbender.Proofs.Trace.PooledROMView
 import Airbender.Proofs.Trace.ExternalComposition
@@ -51,7 +53,7 @@ variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 set_option backward.isDefEq.respectTransparency false in
 theorem trace_execution {p : Nat} [Fact p.Prime]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} {initial : State} {cells : List Cell} {program : List PooledProgramEntry}
     (inputs : PooledInputs trace initial cells program Pooled.decoderFields)
     (accepted : Accepted trace) (decoded : PooledDecoded trace program)
@@ -105,7 +107,7 @@ theorem trace_execution {p : Nat} [Fact p.Prime]
     inputs.image inputs.distinct consistent realized⟩
 
 theorem native_trace_execution {p : Nat} [Fact p.Prime]
-    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeWordCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} {before : State} {cells : List Cell} {program : List PooledProgramEntry}
     (inputs : PooledBootInputs trace before cells program Pooled.decoderFields)
     (accepted : Accepted trace) (decoded : PooledDecoded trace program)

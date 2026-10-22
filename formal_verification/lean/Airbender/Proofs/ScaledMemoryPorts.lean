@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.MemoryPorts
 
 namespace Airbender.Verification
@@ -6,7 +7,7 @@ set_option warningAsError true
 
 /-- A variable-index port may also add a fixed byte offset. This covers both
     words of a 64-bit lane and reuses the shared native word interpretation. -/
-theorem IndirectPort.scaled_address {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem IndirectPort.scaled_address {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {port : IndirectPort} {w : Nat → ZMod p} {base : Word} {index column : Nat}
     (variableOffset : port.offsetColumn = some column)
     (mapping : base = ⟨(w port.baseColumns[0]).val, (w port.baseColumns[1]).val⟩)

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.Blake2G.Call
 import Airbender.Proofs.Blake2G.NativeEffects
 import Airbender.Proofs.Blake2G.Addresses
@@ -85,7 +87,7 @@ theorem controller_words (w : Nat → ZMod p) :
   simp [readToken, MemoryPort.readCode, Delegation.Row.writeToken, MemoryPort.writeCode,
     MemoryToken.word, WordColumns.code, importedConstraintsMemoryPorts]
 
-theorem controller_write [Fact p.Prime] (hp : 512 ≤ p) {w : Nat → ZMod p} {register : Fin 256}
+theorem controller_write [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512) {w : Nat → ZMod p} {register : Fin 256}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable Control.controllerRows)))
     (active : w 0 = 1)
@@ -131,7 +133,7 @@ theorem write_projection {w : Nat → ZMod p} {register : Fin 256}
         (results (nativeArguments register w) (Native.output w))[i])
   exact congrArg₂ Prod.mk (codes i).symm (results_projection control i).symm
 
-theorem executes [Fact p.Prime] (hp : 8388608 ≤ p) (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem executes [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p) (inverse : SerializedInverse.Scale64 p)
     {w : Nat → ZMod p} {register : Fin 256} {before after : State}
     {domain : List Cell} {events : List MemoryAccess}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w)

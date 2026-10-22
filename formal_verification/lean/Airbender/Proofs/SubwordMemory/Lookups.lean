@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Tables.SubwordCharacterization
 import Airbender.Review.Helpers.Tables.Subword
 import Airbender.Proofs.Arithmetic.Word
@@ -20,7 +21,7 @@ set_option maxRecDepth 4096 in
 set_option maxHeartbeats 800000 in
 /-- Read the fixed RAM-load regions of the native Clean setup table. Other
     regions, including caller-selected ROM words, cannot satisfy these tags. -/
-theorem subword_ram_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem subword_ram_values {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (byte : Bool)
     (h : (subwordTable program).Contains #[] entry)
     (selected : entry[8] = ((if byte then 43 else 42 : Nat) : ZMod p)) :
@@ -74,7 +75,7 @@ set_option maxRecDepth 4096 in
 set_option maxHeartbeats 800000 in
 /-- Read the fixed byte-store regions of the native Clean setup table. Other
     regions, including caller-selected ROM words, cannot satisfy these tags. -/
-theorem subword_store_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem subword_store_values {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (clear : Bool)
     (h : (subwordTable program).Contains #[] entry)
     (selected : entry[8] = ((if clear then 30 else 29 : Nat) : ZMod p)) :
@@ -125,7 +126,7 @@ theorem subword_store_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
          | (rw [Vector.getElem_map, subwordDataRow_high]; exact Nat.cast_zero))
 
 /-- The disabled store query has a unique zero row in this setup. -/
-theorem subword_zero_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem subword_zero_values {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9}
     (h : (subwordTable program).Contains #[] entry) (selected : entry[8] = 0) :
     entry[0] = 0 ∧ entry[1] = 0 ∧ entry[2] = 0 := by
@@ -163,7 +164,7 @@ theorem subword_store_contribution_bound (clear : Bool) (key : Nat) :
   all_goals split_ifs <;> omega
 
 /-- A bounded packed input selects the unique fixed store-table contribution. -/
-theorem subword_store_entry {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem subword_store_entry {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (clear : Bool) (key : Nat)
     (bound : key < 131072) (h : (subwordTable program).Contains #[] entry)
     (tag : entry[8] = ((if clear then 30 else 29 : Nat) : ZMod p))
@@ -233,7 +234,7 @@ theorem subword_load_extension (byte : Bool) (key : Nat) :
 
 /-- RAM-load membership forces bounded output limbs and Sail's byte/halfword
     extension. The key is read canonically from the imported lookup. -/
-theorem subword_ram_extension {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem subword_ram_extension {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (byte : Bool)
     (h : (subwordTable program).Contains #[] entry)
     (selected : entry[8] = ((if byte then 43 else 42 : Nat) : ZMod p)) :

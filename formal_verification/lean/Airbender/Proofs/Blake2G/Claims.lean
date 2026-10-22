@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.Blake2G.Theorems
 import Airbender.Review.Trace.Workers.Blake2G.Theorems
 import Airbender.Proofs.Blake2G.WorkVectorBinding
@@ -16,8 +18,8 @@ import Airbender.Proofs.BabyBear
 namespace Airbender.Blake2G
 
 
-theorem Native.call_blocks_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Native.call_blocks_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {reduced : Bool} (accepted : Delegation.MemoryAccepted data)
     (inputs : CallInputs data initial cells reduced) :
@@ -28,7 +30,7 @@ theorem Native.call_blocks_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
 
 
 
-theorem call_control_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+theorem call_control_soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {reduced : Bool} (accepted : Delegation.MemoryAccepted data)
     (inputs : CallInputs data initial cells reduced) : CallSchedule data reduced := by
@@ -40,8 +42,8 @@ theorem call_control_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 
   exact ⟨ordered, matching, clocks, controls, sink, member, address, final.trans reset⟩
 
 
-theorem Native.call_execution [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem Native.call_execution [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {reduced : Bool} (accepted : Delegation.MemoryAccepted data)
     (inputs : CallInputs data initial cells reduced) (aligned : ∀ cell ∈ cells, cell.Aligned) :
@@ -61,8 +63,8 @@ theorem Native.call_execution [Fact p.Prime] (hp : 8388608 ≤ p)
 namespace Row
 
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (compatible : SerializedInverse.Scale64 p) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec :=
   Proofs.soundness hp compatible
 
@@ -75,7 +77,7 @@ end Row
 namespace Control
 
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 512 ≤ p) :
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512) :
     Properties.Soundness (circuitModel (p := p)).relation spec :=
   Proofs.soundness hp
 
@@ -88,8 +90,8 @@ end Control
 namespace Addresses
 
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (compatible : SerializedInverse.Scale64 p) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec :=
   Proofs.soundness hp compatible
 
@@ -102,8 +104,8 @@ end Addresses
 namespace State
 
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 262144)
+    (compatible : SerializedInverse.Scale64 p) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec :=
   Proofs.soundness hp compatible
 
@@ -116,8 +118,8 @@ end State
 namespace Memory
 
 
-theorem soundness [Fact p.Prime] (hp : 4194304 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1) (data : Delegation.MemoryData p)
+theorem soundness [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (inverse : SerializedInverse.Scale64 p) (data : Delegation.MemoryData p)
     (before : Reference.RiscV.Sail.State) (cells : List Trace.Cell) :
     (circuitModel data).SoundnessUnder (InterfaceAssumptions data before cells) Blake2G.spec :=
   Proofs.soundness hp inverse data before cells

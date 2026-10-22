@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.JumpBranchSlt.PC
 
 namespace Airbender.JumpBranchSlt.Proofs
@@ -5,7 +6,7 @@ open Airbender.Arithmetic
 
 /-- JAL and JALR share the saved PC+4 word and destination mask. The mask's
     meaning as rd=x0 is a decoder obligation; its Booleanity is imported. -/
-theorem jump_link {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem jump_link {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {w : Nat → ZMod p} {initial : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 + w 12 = 1) (other : w 13 = 0 ∧ w 14 = 0)
@@ -69,7 +70,7 @@ theorem jump_link {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
 /-- Local JAL/JALR targets: `base` is PC for JAL, rs1 for JALR. The bit-1
     assertion enforces four-byte alignment; JALR may clear an odd sum's bit 0.
     Bounds, direct-offset parity and selector identity remain interfaces. -/
-theorem jump_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem jump_pc {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {w : Nat → ZMod p} {base offset final : Word} (indirect : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = (if indirect then 0 else 1) ∧ w 12 = (if indirect then 1 else 0))

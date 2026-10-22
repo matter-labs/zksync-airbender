@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.Decoder
 import Airbender.Proofs.UnifiedReduced.Trace
 import Airbender.Proofs.Trace.ZeroRegister
@@ -80,7 +81,7 @@ theorem decoder_zero_cases {instruction : SailRV32.instruction} {data : DecoderD
         subst data
         exact False.elim (binary_nonzero third zero)
 
-theorem zero_operands_result [Fact p.Prime] (hp : 196608 < p)
+theorem zero_operands_result [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 4 = 1) (selected : w 11 = 1)
@@ -120,7 +121,7 @@ theorem zero_operands_result [Fact p.Prime] (hp : 196608 < p)
     (destination_bounds h) (Nat.le_trans carry (by decide)) (Nat.le_trans overflow (by decide))
     (by simpa only [Nat.cast_zero] using loEq) (by simpa only [Nat.cast_zero] using hiEq)
 
-theorem row_zero_preserving_of_metadata [Fact p.Prime] (hp : 524288 < p)
+theorem row_zero_preserving_of_metadata [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 4 = 1) {entry : ProgramEntry} (query : decoderQuery w = entry.query)
@@ -251,7 +252,7 @@ theorem row_zero_preserving_of_metadata [Fact p.Prime] (hp : 524288 < p)
     · have ram : w 29 = 1 := by simpa [store, importedConstraintsDecoderColumns] using flags 18
       exact False.elim (zero_ne_one (noRAM.symm.trans ram))
 
-theorem row_zero_preserving [Fact p.Prime] (hp : 524288 < p)
+theorem row_zero_preserving [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 4 = 1) {before : Reference.RiscV.Sail.State} (fetch : Fetched w before) :

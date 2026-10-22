@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.Delegation.ReferenceCalls
 import Airbender.Proofs.Blake2G.CallABI
 import Airbender.Proofs.Blake2G.CallGroups
@@ -9,8 +11,8 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 800000
 
-theorem step_in_span [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem step_in_span [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial before after : State} {domain : List Cell}
     {events : List MemoryAccess} {historyCells : List Cell} {reduced : Bool}
     (accepted : Delegation.MemoryAccepted data)
@@ -50,8 +52,8 @@ theorem step_in_span [Fact p.Prime] (hp : 8388608 ≤ p)
       exact ⟨cell, code, read⟩)
   exact full
 
-theorem reference_call_in_span [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem reference_call_in_span [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial finalState : State} {domain : List Cell}
     {events : List MemoryAccess} {reduced : Bool}
     (accepted : Delegation.MemoryAccepted data)
@@ -67,8 +69,8 @@ theorem reference_call_in_span [Fact p.Prime] (hp : 8388608 ≤ p)
   obtain ⟨cell, _, code, read, _⟩ := observed port present
   exact ⟨cell, code, read⟩
 
-theorem span_reference [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem span_reference [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : State} {domain : List Cell} {reduced : Bool}
     (accepted : Delegation.MemoryAccepted data)
     (inputs : Blake2G.Proofs.BoundaryCallInputs data initial domain reduced)

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.SubwordMemory.RowModel
 import Airbender.Proofs.SubwordMemory.Data
 import Airbender.Proofs.SubwordMemory.Stores
@@ -8,8 +10,8 @@ open _root_.Sail.ArchSem
 
 variable [MemoryPlatform SailRV32.exception]
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1) (program : Nat → BitVec 32) :
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 33554432)
+    (inverse : SerializedInverse.Limb16 p) (program : Nat → BitVec 32) :
     (rowCircuitModel (p := p) program).SoundnessUnder (RowInterfaces program) spec := by
   intro input output w ⟨interface, h, mapping⟩
   let highByte := decide (w 35 = 1)

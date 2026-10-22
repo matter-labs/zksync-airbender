@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Helpers.Context.Registries.MulDiv
 import Airbender.Proofs.MulDiv.Timestamp
 import Airbender.Proofs.MulDiv.Decoder
@@ -40,7 +42,7 @@ instance nativeClockLaws [Fact p.Prime] : Trace.Proofs.ClockLaws TraceKind p whe
   offsets _ := rfl
   effects hp inverse _ _ h inputs := clocks hp inverse h inputs
 
-theorem incoming_pc_bounds {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+theorem incoming_pc_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     {trace : NativeTrace p} {program : List ProgramEntry} (decoded : Decoded trace program) :
     ∀ row ∈ trace.rows, row.start.word.Bounded := by
   intro row member
@@ -72,7 +74,7 @@ theorem decoder_nonzero_destination {instruction : SailRV32.instruction}
 
 /-- Readonly x0 accesses refresh zero, and actual decoding rejects x0
     destinations. No x0 read/write compatibility premise is supplied. -/
-theorem row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+theorem row_zero_preserving {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     (row : Row p TraceKind) {before : Reference.RiscV.Sail.State} {entry : ProgramEntry}
     (source : entry.SourceWith before decoderFields) (query : decoderQuery row.assignment = entry.query) :
     Trace.Proofs.RowZeroPreserving row := by
@@ -92,7 +94,7 @@ theorem row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase <
       exact index.symm.trans nativeZero
     exact (decoder_nonzero_destination source.fields zero).elim
 
-theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p Arithmetic.limbBase)
     {trace : NativeTrace p}
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List ProgramEntry} (image : programImage before addresses = some program)
@@ -104,7 +106,7 @@ theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
 /-- Actual public initialization and native matching produce complete Sail
     register histories, grouped in the clock-derived instruction order. -/
 theorem decoded_native_history {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)

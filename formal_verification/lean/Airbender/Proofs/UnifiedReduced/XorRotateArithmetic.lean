@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.XorRotateQueries
 import Airbender.Proofs.UnifiedReduced.BinaryOperands
 import Airbender.Proofs.Arithmetic.WordRotation
@@ -9,7 +11,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
-theorem xorrot_destination [Fact p.Prime] (hp : 262144 < p)
+theorem xorrot_destination [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {before : Reference.RiscV.Sail.State} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table before)))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
@@ -74,8 +76,8 @@ theorem xorrot_destination [Fact p.Prime] (hp : 262144 < p)
   rw [← encoding]
   exact Nat.mod_eq_of_lt target.isLt
 
-theorem xorrot_operand_bytes [Fact p.Prime] (hp : 65536 < p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem xorrot_operand_bytes [Fact p.Prime] (hp : FieldCapacity.NoWrap p 65536)
+    (inverse : SerializedInverse.Scale256 p)
     {before : Reference.RiscV.Sail.State} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table before)))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)

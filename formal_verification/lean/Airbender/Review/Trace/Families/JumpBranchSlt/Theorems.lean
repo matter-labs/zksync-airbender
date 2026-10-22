@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.JumpBranchSlt.RowClaims
 import Airbender.Proofs.JumpBranchSlt.TraceSoundness
 import Airbender.Proofs.JumpBranchSlt.BranchSoundness
@@ -18,7 +20,7 @@ namespace Airbender.JumpBranchSlt
     are the explicit boundaries in `ExecutionBoundary`, `Accepted` and `Decoded`. -/
 theorem trace_soundness {p : Nat} [Fact p.Prime]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : NativeTrace p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {program : List ProgramEntry} (inputs : ExecutionBoundary trace initial cells program)
     (accepted : Trace.Accepted trace) (decoded : Decoded trace program) :

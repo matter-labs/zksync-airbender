@@ -1,10 +1,11 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Context.ExternalBoundary.Decoder
 
 namespace Airbender.ExternalBoundary.Decoder.Proofs
 open Trace
 set_option warningAsError true
 
-theorem typed_limb_ne_filler [Fact p.Prime] (hp : 65536 < p) (limb : Fin 65536) :
+theorem typed_limb_ne_filler [Fact p.Prime] (hp : FieldCapacity.NoWrap p 65536) (limb : Fin 65536) :
     (limb.val : ZMod p) ≠ -1 := by
   obtain ⟨n, rfl⟩ : ∃ n, p = n + 1 := ⟨p - 1, by omega⟩
   intro equal
@@ -13,7 +14,7 @@ theorem typed_limb_ne_filler [Fact p.Prime] (hp : 65536 < p) (limb : Fin 65536) 
   omega
 
 theorem decoded {Kind : Type} [DecidableEq Kind] [CircuitLayout Kind] [Fact p.Prime]
-    (hp : 65536 < p) {trace : Data p Kind} {program : List (ProgramEntry Kind)}
+    (hp : FieldCapacity.NoWrap p 65536) {trace : Data p Kind} {program : List (ProgramEntry Kind)}
     {rows : Rows p Kind} {column : Fin 9} (binding : Binding trace program rows column) :
     ∀ row ∈ trace.rows, (decoderTable program row.family).Contains #[] row.decoderQuery := by
   intro row member

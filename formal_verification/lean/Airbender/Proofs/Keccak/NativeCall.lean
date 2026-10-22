@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Keccak.Call
 import Airbender.Proofs.Delegation.NativeViews
 import Airbender.Proofs.Trace.AtomicWrites
@@ -89,7 +91,7 @@ theorem written_halves {w : Nat → ZMod p}
   · exact low_half _ _
   · exact high_half (bounds _ (Array.getElem_mem (by change 2 + 2 * lane.val < 14; omega)))
 
-theorem controller_write [Fact p.Prime] (hp : 4096 ≤ p)
+theorem controller_write [Fact p.Prime] (hp : FieldCapacity.AtLeast p 4096)
     {w : Nat → ZMod p} {control : ControlState}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable Controller.rows))) (active : w 0 = 1)
@@ -102,7 +104,7 @@ theorem controller_write [Fact p.Prime] (hp : 4096 ≤ p)
   have high := Keccak.Proofs.control_high_zero (p := p) (setup := setupTable Controller.rows) (w := w) core
   rw [(controller_words w).2, next, high.2, ZMod.val_zero]
 
-theorem addresses_of_effects [Fact p.Prime] (hp : 4096 ≤ p)
+theorem addresses_of_effects [Fact p.Prime] (hp : FieldCapacity.AtLeast p 4096)
     {w : Nat → ZMod p} {control : ControlState}
     (effects : Native.RowEffects w) (active : w 0 = 1) (read : (w 3).val = control.packed) :
     ∀ i : Fin 12, importedConstraintsIndirectPorts[i].address w =
@@ -216,7 +218,7 @@ theorem write_projection {w : Nat → ZMod p} {control : ControlState}
         (results (nativeArguments control w) (Native.writtenLanes w))[i])
   exact congrArg₂ Prod.mk (codes i).symm (results_projection bounds binding i).symm
 
-theorem executes [Fact p.Prime] (hp : 16777216 ≤ p) (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem executes [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p) (inverse : SerializedInverse.Scale256 p)
     {w : Nat → ZMod p} {control : ControlState} {before after : State}
     {domain : List Cell} {events : List MemoryAccess}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w)

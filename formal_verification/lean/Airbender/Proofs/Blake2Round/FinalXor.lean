@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2G.Soundness
 import Airbender.Proofs.Arithmetic.FieldChunks
 import Mathlib.Tactic.ReduceModChar
@@ -13,7 +14,7 @@ set_option maxHeartbeats 4000000
 
 /-- Two native chunk XORs imply XOR of the canonical sixteen-bit limbs. -/
 theorem xor_limb_chunks {p width remaining : Nat} [Fact p.Prime]
-    (hp : 65536 ≤ p) (capacity : 2 ^ width * 2 ^ remaining = 65536)
+    (hp : FieldCapacity.AtLeast p 65536) (capacity : 2 ^ width * 2 ^ remaining = 65536)
     {x y z xl xh yl yh zl zh : ZMod p}
     (low : chunkXor width xl yl zl) (high : chunkXor remaining xh yh zh)
     (xChunks : x = xl + (2 ^ width : Nat) * xh)

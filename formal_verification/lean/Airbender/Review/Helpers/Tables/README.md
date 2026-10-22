@@ -11,6 +11,15 @@ controllers live in each circuit's `Tables/` directory. The checked connections
 cover keys, outputs, padding, discriminators and disabled queries, with the
 original field and inverse conditions.
 
+For shift/binop data, [setup JSON](../../../../artifacts/setup/shift-binop.json)
+feeds physical-column imports such as [Shift/Column0](Shift/Column0.lean).
+[Region assembly](ShiftData.lean) retains the native regions and exported offsets;
+[Bytes](Bytes.lean) selects their combined rows and wraps them in Clean's table
+interface. That wrapper supplies field casts, table identity, index hints and
+membership over the imported rows. The checked mathematical semantics live in
+[ShiftCharacterization](../../../Proofs/Tables/ShiftCharacterization.lean) and its
+imported-row proofs; the wrapper supplies no replacement table recipe.
+
 Program-dependent compatibility views retain arbitrary public programs.
 [Imported word ROM](../../Circuits/WordMemory/ImportedROM.lean),
 [imported subword setup](../../Circuits/SubwordMemory/ImportedSetup.lean) and

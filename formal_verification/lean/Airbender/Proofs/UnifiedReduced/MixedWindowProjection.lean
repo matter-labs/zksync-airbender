@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.MixedWindowProjection
 import Airbender.Proofs.Trace.WindowCounts
 import Airbender.Proofs.UnifiedReduced.WindowProjection
@@ -6,8 +8,8 @@ namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Trace.Proofs Reference.RiscV.Sail
 set_option warningAsError true
 
-theorem machine_window_count [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {data : RequestTrace p} {before : State}
+theorem machine_window_count [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {data : RequestTrace p} {before : State}
     {addresses : List (BitVec 32)} (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0) (ordered : lower ≤ upper)
     (afterInitial : (timeOfPair data.machine.initial.timestamp).value ≤ lower)
@@ -24,8 +26,8 @@ theorem window_callers_filter [Fact p.Prime] (data : RequestTrace p) (lower uppe
   intro row _
   exact Bool.and_comm _ _
 
-theorem caller_window_schedule [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {data : RequestTrace p} {before : State}
+theorem caller_window_schedule [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {data : RequestTrace p} {before : State}
     {addresses : List (BitVec 32)} (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     {lower upper : Nat} (first : lower % 4 = 0) (last : upper % 4 = 0) (positive : 2 ≤ lower) (ordered : lower ≤ upper)
     (afterInitial : (timeOfPair data.machine.initial.timestamp).value ≤ lower)
@@ -131,8 +133,8 @@ theorem mixed_worker_window_at_states [Fact p.Prime]
   · intro token member
     exact native_boundary_read finishProjected member
 
-theorem mixed_projected_window [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem mixed_projected_window [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p) (rotationInverse : SerializedInverse.Scale64 p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)

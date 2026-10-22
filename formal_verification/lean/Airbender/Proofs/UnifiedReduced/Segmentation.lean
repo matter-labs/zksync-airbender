@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.Segmentation
 import Airbender.Proofs.UnifiedReduced.ComputedRoundRegions
 
@@ -72,8 +74,8 @@ theorem disjoint_filter_flatMap_count {α β : Type} [BEq α] [LawfulBEq α] (ro
       rw [zero]
       simp [chosen]
 
-theorem program_hash_worker_coverage [Fact p.Prime] (hp : 4194304 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem program_hash_worker_coverage [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)}
     {program : List UnifiedReduced.ProgramEntry} {windows : List HashWindow}
     (setup : data.machine.rom = Setup.table before)
@@ -184,8 +186,8 @@ theorem hash_worker_partition [Fact p.Prime]
     rw [List.count_eq_zero.mpr member, List.count_eq_zero.mpr absent]
     split <;> rfl
 
-theorem program_hash_segmentation [Fact p.Prime] (hp : 4194304 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem program_hash_segmentation [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {windows : List HashWindow} {cut : Nat}
     (accepted : MixedMemoryAccepted data program)
@@ -260,8 +262,8 @@ theorem program_hash_segmentation [Fact p.Prime] (hp : 4194304 ≤ p)
       exact (relation.mp ⟨window, included, inside⟩) zero
 
 
-theorem segmented_hash_sequence [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem segmented_hash_sequence [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion} {first : HashWindow} {rest : List HashWindow}
     (accepted : MixedMemoryAccepted data program)

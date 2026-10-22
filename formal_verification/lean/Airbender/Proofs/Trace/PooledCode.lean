@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.PooledHistory
 import Airbender.Proofs.Trace.CodeHistory
 
@@ -9,7 +11,7 @@ set_option backward.isDefEq.respectTransparency false in
     address it; word/subword stores are excluded by their imported equations.
     Address bounds come from the globally initialized history. -/
 theorem pooled_native_rom_unchanged {p : Nat} [Fact p.Prime]
-    (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NoWrap p 33554432) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -129,7 +131,7 @@ theorem pooled_native_rom_unchanged {p : Nat} [Fact p.Prime]
     history. This is the code/configuration frame needed by Sail composition. -/
 theorem pooled_source_after_history {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
-    (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NoWrap p 33554432) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -150,7 +152,7 @@ theorem pooled_source_after_history {p : Nat} [Fact p.Prime]
 /-- Modeled word-ROM reads retain their public-byte meaning after mixed
     register/RAM writes. No expected lookup result is an input. -/
 theorem pooled_rom_reads_after_history {p : Nat} [Fact p.Prime]
-    (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NoWrap p 33554432) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -169,7 +171,7 @@ theorem pooled_rom_reads_after_history {p : Nat} [Fact p.Prime]
 /-- Subword ROM tables use words constructed from the same public bytes as
     fetch. Earlier pooled writes preserve those bytes; no expected read is assumed. -/
 theorem pooled_subword_rom_reads {p : Nat} [Fact p.Prime]
-    (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.NoWrap p 33554432) (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)

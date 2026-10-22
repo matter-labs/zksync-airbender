@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Tables.ShiftCharacterization
 import Airbender.Proofs.ByteTables
 import Airbender.Proofs.Arithmetic.Bytes
@@ -6,7 +7,7 @@ import Mathlib.Tactic.IntervalCases
 namespace Airbender.Verification
 
 /-- The native sign query extends its input byte, including the zero case. -/
-theorem binary_sign_lookup {p : Nat} [Fact p.Prime] (hp : 256 < p)
+theorem binary_sign_lookup {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     {entry : Vector (Expression (ZMod p)) 10} {env : Environment (ZMod p)}
     (h : (shiftBinopLookup entry).Contains env)
     (selected : entry[9].eval env = 3) :
@@ -55,7 +56,7 @@ private theorem truncation_rows (i : Fin 524545)
   apply tuple
 
 /-- The native truncation query enforces the low five bits of its first byte. -/
-theorem truncation_lookup {p : Nat} [Fact p.Prime] (hp : 256 < p)
+theorem truncation_lookup {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     {entry : Vector (Expression (ZMod p)) 10} {env : Environment (ZMod p)}
     (h : (shiftBinopLookup entry).Contains env)
     (selected : entry[9].eval env = 8) :
@@ -104,7 +105,7 @@ private theorem shift_rows (i : Fin 524545) (selected : (shiftBinopRow i)[9] = 9
 
 /-- Four canonical output bytes are forced by the selected native shift row.
     Table provenance remains the same explicit external binding as for binops. -/
-theorem shift_lookup {p : Nat} [Fact p.Prime] (hp : 256 < p)
+theorem shift_lookup {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     {entry : Vector (Expression (ZMod p)) 10} {env : Environment (ZMod p)}
     (h : (shiftBinopLookup entry).Contains env)
     (selected : entry[9].eval env = 9) :

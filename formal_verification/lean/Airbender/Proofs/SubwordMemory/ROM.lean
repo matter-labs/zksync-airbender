@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Tables.SubwordCharacterization
 import Airbender.Proofs.SubwordMemory.Lookups
 
@@ -85,7 +86,7 @@ private theorem mapped_field {p : Nat} {entry : Vector (ZMod p) 9} {row : Vector
 
 set_option maxRecDepth 4096 in
 set_option maxHeartbeats 800000 in
-private theorem rom_values_reference {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
+private theorem rom_values_reference {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 33554432)
     {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (byte : Bool)
     (h : ∃ i : Fin 13238273, entry =
       (referenceSubwordRow program i).map (fun n : Nat => (n : ZMod p)))
@@ -122,7 +123,7 @@ private theorem rom_values_reference {p : Nat} [Fact p.Prime] (hp : 33554432 < p
     · exact mapped_field shape ⟨2, by decide⟩
 
 set_option maxRecDepth 4096 in
-private theorem rom_values {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
+private theorem rom_values {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 33554432)
     {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (byte : Bool)
     (h : (subwordTable program).Contains #[] entry)
     (selected : entry[8] = ((if byte then 45 else 44 : Nat) : ZMod p)) :
@@ -137,7 +138,7 @@ private theorem rom_values {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
 
 /-- Every modeled ROM row returns canonical result limbs, independently of
     address/key reconstruction. This supplies native history's write bounds. -/
-theorem subword_rom_bounds {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
+theorem subword_rom_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 33554432)
     {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (byte : Bool)
     (h : (subwordTable program).Contains #[] entry)
     (selected : entry[8] = ((if byte then 45 else 44 : Nat) : ZMod p)) :
@@ -193,7 +194,7 @@ private theorem rom_decode (byte signed highHalf highByte : Bool) {cell : Word} 
 set_option maxRecDepth 4096 in
 /-- ROM membership fixes the actual program slice and Sail's extension. The
     key bound accounts for the four packed address/sign/position fields. -/
-theorem subword_rom_result {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
+theorem subword_rom_result {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 33554432)
     {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} {cell : Word}
     (byte signed highByte highHalf : Bool)
     (h : (subwordTable program).Contains #[] entry)

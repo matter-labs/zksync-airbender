@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Keccak.Controls
 namespace Airbender.Keccak.Proofs
 open Arithmetic
@@ -36,7 +37,7 @@ theorem tag_polynomial {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 
   all_goals ring
 
 /-- One selected active operation excludes every other mode. -/
-theorem selected_modes {p : Nat} [Fact p.Prime] (hp : 7 < p)
+theorem selected_modes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 7)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 0 = 1) (mode : Fin 7) (selected : w Variables.modeColumns[mode] = 1) :
@@ -57,7 +58,7 @@ theorem selected_modes {p : Nat} [Fact p.Prime] (hp : 7 < p)
     rw [zero] at cast
     simpa only [Nat.cast_zero] using cast.symm
 
-theorem selected_tags {p : Nat} [Fact p.Prime] (hp : 41 ≤ p)
+theorem selected_tags {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 41)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 0 = 1) (mode : Fin 7) (selected : w Variables.modeColumns[mode] = 1) :
@@ -75,7 +76,7 @@ theorem selected_tags {p : Nat} [Fact p.Prime] (hp : 41 ≤ p)
 
 /-- Inactive rows route every byte query to the setup's zero entry. Contents
     and padding are still enforced only by the supplied lookup relation. -/
-theorem inactive_tags {p : Nat} [Fact p.Prime] (hp : 7 < p)
+theorem inactive_tags {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 7)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (inactive : w 0 = 0) : ∀ i : Fin 40, byteTag setup w i = 0 := by

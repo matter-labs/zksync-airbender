@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Keccak.NativeCall
 import Airbender.Proofs.Keccak.CallExecution
 
@@ -18,7 +20,7 @@ theorem schedule_supported (i : Fin 649) : Supported (scheduleControl ⟨i.val, 
       change i.val / 27 < 24
       omega
 
-theorem derived_control [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem derived_control [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {domain : List Cell}
     (accepted : Delegation.MemoryAccepted data)
     (inputs : Keccak.Proofs.BoundaryCallInputs data initial domain)
@@ -83,8 +85,8 @@ theorem pointer_ram {w : Nat → ZMod p} (effects : Native.RowEffects w)
   norm_num [ROM.limit] at below access
   omega
 
-theorem abi_in_span [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem abi_in_span [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {data : Delegation.MemoryData p} {initial : State} {domain : List Cell}
     (accepted : Delegation.MemoryAccepted data)
     (inputs : Keccak.Proofs.BoundaryCallInputs data initial domain)

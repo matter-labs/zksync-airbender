@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2G.FrameQueryShapes
 import Airbender.Proofs.Blake2Round.NativeDiagonalAssignment
 import Airbender.Proofs.Blake2Round.NativeXorTransfer
@@ -141,7 +143,7 @@ theorem columns0 {p : Nat} [Fact p.Prime]
     NativeLayout.Location.read]
 
 theorem columns1 {p : Nat} [Fact p.Prime]
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+    (compatible : SerializedInverse.Scale64 p)
     (control : Fin 512 → Vector Nat 7) (w : Nat → ZMod p) :
     (entry1 (Blake2G.setupTable control)).map
         (Expression.eval (Verification.environment (nativeDiagonalAssignment 0 w))) =
@@ -174,8 +176,8 @@ theorem columns2 {p : Nat} [Fact p.Prime]
     NativeLayout.Location.read]
 
 /-- Transfer the first three native diagonal queries through checked row interfaces. -/
-theorem native_diagonal_head0_queries {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+theorem native_diagonal_head0_queries {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
+    (compatible : SerializedInverse.Scale64 p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) (i : Fin 3) :

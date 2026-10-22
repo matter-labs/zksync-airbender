@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2G.Frame
 import Airbender.Proofs.Blake2G.Soundness
 
@@ -28,8 +30,8 @@ theorem Frame.mapping {p : Nat} (frame : Frame p) :
   constructor <;> rfl
 
 /-- Reuse the existing arithmetic and pinned reference proof unchanged. -/
-theorem Frame.Certificate.soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) {frame : Frame p}
+theorem Frame.Certificate.soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 262144)
+    (compatible : SerializedInverse.Scale64 p) {frame : Frame p}
     (control : Fin 512 → Vector Nat 7)
     (certificate : frame.Certificate (setupTable control))
     (interface : InterfaceAssumptions frame.input frame.output frame.assignment) :

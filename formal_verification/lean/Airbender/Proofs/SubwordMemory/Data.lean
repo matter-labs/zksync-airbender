@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.SubwordMemory
 import Airbender.Proofs.SubwordMemory.ROM
 
@@ -6,7 +7,7 @@ open Airbender.Arithmetic Airbender.Verification
 
 /-- Eliminate the packed RAM key using bounded input limbs and the imported
     selectors. The resulting operation is Sail's own extension of a word slice. -/
-theorem ram_load_data {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem ram_load_data {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {program : Nat → BitVec 32} {w : Nat → ZMod p} {readData : Word}
     (byte signed highByte highHalf : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (environment w) (importedConstraints (subwordTable program)))
@@ -67,7 +68,7 @@ theorem ram_load_data {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     exact ext.2
 
 /-- Imported ROM packing refers to the independent program image. -/
-theorem rom_load_data {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
+theorem rom_load_data {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 33554432)
     {program : Nat → BitVec 32} {w : Nat → ZMod p} {cell : Word}
     (byte signed highByte highHalf : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (environment w) (importedConstraints (subwordTable program)))

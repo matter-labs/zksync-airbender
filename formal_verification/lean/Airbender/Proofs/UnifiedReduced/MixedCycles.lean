@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.MixedCalls
 import Airbender.Proofs.Trace.HistoryWindow
 
@@ -11,16 +13,16 @@ def machineEvents (row : Trace.Row p UnifiedFamily) : List MemoryAccess :=
   (machinePorts row).toList.map fun port =>
     transferEvent (readToken row.assignment port, writeToken row.columns row.assignment port)
 
-theorem machine_clocks_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem machine_clocks_unique [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses) :
     (data.machine.rows.map Delegation.Caller.startClock).Nodup := by
   exact state_clocks_unique hp inverse
     accepted.constraints accepted.states inputs.initialClock inputs.initialAligned
 
-theorem machine_clock_facts [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem machine_clock_facts [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     {row : Trace.Row p UnifiedFamily} (member : row ∈ data.machine.rows) :
@@ -31,8 +33,8 @@ theorem machine_clock_facts [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   refine ⟨?_, ClockLaws.advance hp inverse data.machine.rom row (accepted.constraints row member) clock.1⟩
   simpa [Delegation.Caller.startClock, Trace.Row.clock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using clock.2
 
-theorem machine_event_time [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem machine_event_time [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     {row : Trace.Row p UnifiedFamily} (member : row ∈ data.machine.rows)
@@ -54,8 +56,8 @@ theorem machine_event_time [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     clock.1 clock.2 (by omega : port.clock.offset < 4)).2
   exact ⟨port.clock.offset, bound, by simpa only [transferEvent, Delegation.Caller.startClock, Trace.Row.clock, writeToken, decodeTimestamp, timeOfPair, rawPair] using congrArg (fun n => n + 1) time⟩
 
-theorem machine_event_window [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem machine_event_window [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     {row other : Trace.Row p UnifiedFamily} (member : row ∈ data.machine.rows) (included : other ∈ data.machine.rows)
@@ -72,8 +74,8 @@ theorem machine_event_window [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     subst other
     omega
 
-theorem worker_event_window [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem worker_event_window [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     (requests : RequestBinding data before)
@@ -123,8 +125,8 @@ theorem worker_event_window [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       have issued := of_decide_eq_true (List.mem_filter.mp actual).2
       exact False.elim (issued ((congrArg Delegation.Requests.Request.time same).symm.trans zero))
 
-theorem machine_window_group [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem machine_window_group [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     {row : Trace.Row p UnifiedFamily} (member : row ∈ data.machine.rows) :
@@ -159,8 +161,8 @@ theorem machine_window_group [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       (filter_flatMap _ _ _).symm
     _ = machineEvents row := by rw [selected]; simp
 
-theorem worker_window_group [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem worker_window_group [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     (requests : RequestBinding data before)
@@ -200,8 +202,8 @@ theorem worker_window_group [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       _ = data.workers.rows.flatMap (fun _ => []) := List.flatMap_congr removed
       _ = [] := by simp
 
-theorem cycle_window_permutation [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem cycle_window_permutation [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     (requests : RequestBinding data before)
@@ -223,8 +225,8 @@ theorem cycle_window_permutation [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   simpa only [RequestTrace.cycleSteps, List.map_append, List.map_flatMap, List.map_map,
     Function.comp_def, machineEvents] using projected
 
-theorem machine_clock_floor [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem machine_clock_floor [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     {row : Trace.Row p UnifiedFamily} (member : row ∈ data.machine.rows) :
@@ -250,8 +252,8 @@ theorem machine_clock_floor [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
         omega
   exact reaches _ row member rfl
 
-theorem mixed_cycle_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem mixed_cycle_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {initial : State} {addresses : List (BitVec 32)} {cells : List Cell}
     (accepted : RequestChecks data) (inputs : RequestInputs data initial addresses)
     (requests : RequestBinding data initial)
@@ -352,8 +354,8 @@ theorem caller_cycle_worker_history [Fact p.Prime]
   rw [actual, List.filter_append, callerRemoved, workerKept, List.nil_append] at projection
   exact ⟨worker, included, same, projection, history_without_zero history⟩
 
-theorem ordinary_cycle_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem ordinary_cycle_history [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {initial before after : State} {cells : List Cell} {addresses : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data initial addresses)
     {row : Trace.Row p UnifiedFamily} (member : row ∈ data.machine.rows) (ordinary : row ∉ data.callers)

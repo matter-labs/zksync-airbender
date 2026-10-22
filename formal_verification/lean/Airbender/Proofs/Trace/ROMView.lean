@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.WordMemory
 import Airbender.Proofs.Trace.Initialization
 import Airbender.Proofs.Trace.Addresses
@@ -113,7 +115,7 @@ theorem row_holds {p : Nat} [Fact p.Prime]
 
 set_option maxRecDepth 16384 in
 set_option maxHeartbeats 1000000 in
-theorem row_transfers {p : Nat} [Fact p.Prime] (hp : 131072 < p)
+theorem row_transfers {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072)
     (before : Reference.RiscV.Sail.State) (native : Row p) (rom : Table (ZMod p) (fields 9))
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment native.assignment)
       (native.constraints rom))
@@ -183,7 +185,7 @@ def data {p : Nat} [Fact p.Prime] (before : Reference.RiscV.Sail.State)
     initialMemory := native.initialMemory.map (token before)
     terminalMemory := native.terminalMemory.map (token before) }
 
-theorem native_clocks {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime] (hp : 4 < p)
+theorem native_clocks {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 4)
     {trace : Data p Kind} {cells : List Cell}
     (seed : trace.initialMemory = nativeBootImage cells)
     (initial : trace.initial = PCState.boundary 0 (4, 0)) : ClockBoundary trace := by
@@ -202,8 +204,8 @@ theorem native_clocks {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime
     simp [Cell.initialToken, timeOfPair, Timestamp.Bounded, timestampBase]
 
 theorem native_addresses {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime]
-    [Proofs.ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    [Proofs.ClockLaws Kind p] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (clocks : ClockBoundary trace) {cells : List Cell}
     (seed : trace.initialMemory = nativeBootImage cells) :
     ∀ native ∈ trace.rows, ∀ port ∈ native.ports,
@@ -219,8 +221,8 @@ theorem native_addresses {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Pr
   rw [Proofs.address_word equal.symm]
   exact Proofs.cell_address_bound cell
 
-theorem accepted {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem accepted {p : Nat} [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     (before : Reference.RiscV.Sail.State) {trace : Data p} {cells : List Cell}
     (native : Accepted trace) (clocks : ClockBoundary trace)
     (seed : trace.initialMemory = nativeBootImage cells) : Accepted (data before trace) := by
@@ -333,7 +335,7 @@ theorem data_clocks {p : Nat} [Fact p.Prime] (before : Reference.RiscV.Sail.Stat
   obtain ⟨native, present, rfl⟩ := List.mem_map.mp member
   simpa only [token_time] using clocks.memory native present
 
-theorem execution_boundary {p : Nat} [Fact p.Prime] (hp : 4 < p)
+theorem execution_boundary {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 4)
     {trace : Data p} {before : Reference.RiscV.Sail.State}
     {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option DecoderData}

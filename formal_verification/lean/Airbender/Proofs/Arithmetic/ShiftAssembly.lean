@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.ShiftBinop.Arithmetic
 
 namespace Airbender.Verification
@@ -33,7 +34,7 @@ theorem shift_assembly (tag : Nat) (valid : tag = 1 ∨ tag = 2 ∨ tag = 3 ∨ 
   rw [value, ← combined]
   exact Nat.mod_eq_of_lt (shiftOperation tag x amount).isLt
 
-theorem sum_byte_pairs [Fact p.Prime] (hp : 262144 < p)
+theorem sum_byte_pairs [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     (bytes : Fin 4 → Fin 2 → ZMod p) (target : ZMod p)
     (small : ∀ i j, (bytes i j).val < 256)
     (equation : bytes 0 0 + 256 * bytes 0 1 + bytes 1 0 + 256 * bytes 1 1 +

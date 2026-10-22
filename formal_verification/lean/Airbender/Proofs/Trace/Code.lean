@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.Addresses
 import Airbender.Proofs.Trace.ROM
 import Airbender.Proofs.WordMemory
@@ -9,8 +11,8 @@ open Reference.RiscV.Sail
 
 /-- The native writable port of a selected SW addresses RAM. Its bounds come
     from the public cell image, and the ROM exclusion from imported equations. -/
-theorem native_store_address [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem native_store_address [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)
@@ -37,8 +39,8 @@ theorem native_store_address [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 /-- The public ROM word domain is aligned and ends before RAM. The native SW
     projection preserves its actual Sail byte reads; no expected read is assumed. -/
-theorem native_store_code_frame [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem native_store_code_frame [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)

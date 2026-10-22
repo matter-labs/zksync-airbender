@@ -1,10 +1,11 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Bigint.Lookups
 import Airbender.Proofs.Bigint.Additive
 import Airbender.Proofs.Bigint.Equality
 
 namespace Airbender.Bigint.Proofs
 
-theorem mapped_source_ranges {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem mapped_source_ranges {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {left right : Vector Nat 16} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setupTable))
     (leftMap : ∀ i : Fin 16, left[i] = (w Variables.leftLimbs[i]).val)
@@ -19,7 +20,7 @@ end Airbender.Bigint.Proofs
 
 namespace Airbender.Bigint.Additive.Proofs
 
-theorem modeled_soundness {p : Nat} [Fact p.Prime] (hp : 131072 ≤ p) :
+theorem modeled_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 131072) :
     Properties.Soundness (circuitModel (setupTable (p := p))).relation spec := by
   intro input output w ⟨h, mapping⟩
   exact soundness hp setupTable input output w
@@ -29,7 +30,7 @@ end Airbender.Bigint.Additive.Proofs
 
 namespace Airbender.Bigint.Equality.Proofs
 
-theorem modeled_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p) :
+theorem modeled_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576) :
     Properties.Soundness (circuitModel (setupTable (p := p))).relation spec := by
   intro input output w ⟨h, mapping⟩
   exact soundness hp setupTable input output w

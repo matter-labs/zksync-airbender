@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Bigint.AdditiveGates
 import Airbender.Proofs.Arithmetic.CarryChain
 
@@ -19,7 +20,7 @@ theorem value_limbSum (limbs : Vector Nat 16) :
   apply Fin.ext
   simp
 
-theorem natural_steps {p : Nat} [Fact p.Prime] (hp : 131072 ≤ p)
+theorem natural_steps {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 131072)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p} {input : Input} {output : Output}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (mapping : Mapping input output w) (bounds : InterfaceAssumptions input output w) :
@@ -59,7 +60,7 @@ theorem natural_steps {p : Nat} [Fact p.Prime] (hp : 131072 ≤ p)
       (by simpa using gates)
     simpa using lifted
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 131072 ≤ p)
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 131072)
     (setup : Table (ZMod p) (fields 3)) :
     (circuitModel setup).SoundnessUnder InterfaceAssumptions spec := by
   intro input output w ⟨bounds, h, mapping⟩

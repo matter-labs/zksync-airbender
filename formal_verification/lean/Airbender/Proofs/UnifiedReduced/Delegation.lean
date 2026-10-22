@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.UnifiedReduced.Delegation
 import Airbender.Proofs.UnifiedReduced.Decoder
 import Airbender.Proofs.Delegation.CallerPC
@@ -8,7 +9,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
-theorem caller_selectors [Fact p.Prime] (hp : 524288 < p)
+theorem caller_selectors [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} {entry : ProgramEntry}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (query : decoderQuery w = Delegation.Caller.query entry) :
@@ -41,7 +42,7 @@ theorem caller_zeroes [Fact p.Prime] {setup : Table (ZMod p) (fields 10)} {w : N
     Verification.environment, selected] at eq6 eq7 eq8 eq9 eq10 eq11
   exact ⟨eq6, eq7, eq8, eq9, eq10, eq11⟩
 
-theorem caller_binding [Fact p.Prime] (hp : 524288 < p)
+theorem caller_binding [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     {before : State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))

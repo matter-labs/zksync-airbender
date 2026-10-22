@@ -1,10 +1,11 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Memory.Ports
 
 namespace Airbender.Trace.Proofs
 
 /-- Bounded byte packing has no base-field wrap. The bounds are proof inputs
     supplied by circuit lookups; the native port metadata supplies only wiring. -/
-theorem packed_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem packed_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {low high : ZMod p} (lo : low.val < 256) (hi : high.val < 256) :
     (low + 256 * high).val = low.val + 256 * high.val := by
   have bound : low.val + 256 * high.val < p := by omega
@@ -13,7 +14,7 @@ theorem packed_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   rw [encoded, ZMod.val_natCast, Nat.mod_eq_of_lt bound]
 
 set_option backward.isDefEq.respectTransparency false in
-theorem byte_port_code {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem byte_port_code {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {w : Nat → ZMod p} (columns : Vector Nat 4)
     (bounds : ∀ i : Fin 4, (w columns[i]).val < 256) :
     (WordColumns.u8 columns).code w =

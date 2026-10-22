@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.AddSub.RowModel
 import Airbender.Proofs.Arithmetic.Lemmas
 import Airbender.Proofs.Arithmetic.Word
@@ -70,7 +72,7 @@ theorem written_limb_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
 
 /-- The native zero-operand ADD preprocessing writes the zero word. This
     calculation uses the same imported equations, carry bits and output ranges. -/
-theorem zero_operands_result {p : Nat} [Fact p.Prime] (hp : 196608 < p) {w : Nat → ZMod p}
+theorem zero_operands_result {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 10 = 1) (others : ∀ k, 11 ≤ k → k ≤ 16 → w k = 0)
     (operands : w 25 = 0 ∧ w 26 = 0 ∧ w 29 = 0 ∧ w 30 = 0 ∧ w 8 = 0 ∧ w 9 = 0) :
@@ -112,7 +114,7 @@ theorem output_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
 
 /-- Shared limb calculation for the standard arithmetic clauses, independent
     of artifact placement and selector gates. Sail supplies the instruction meaning. -/
-theorem result_of_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+theorem result_of_limbs {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
     {input : Sail.Input} {output : Sail.Output} {c d : Nat}
     (nonzero : input.rd ≠ Sail.zeroRegister) (preprocessing : Preprocessing input)
     (bounds : InputBounds input.row) (pcBounds : input.row.pc.Bounded)
@@ -158,7 +160,7 @@ theorem result_of_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p)
 
 /-- A calculation lemma derived from the imported constraints, not an ISA spec. -/
 theorem result_word {p : Nat} [Fact p.Prime]
-    (hp : 196608 < p) {input : Sail.Input} {output : Sail.Output} {w : Nat → ZMod p}
+    (hp : FieldCapacity.NoWrap p 196608) {input : Sail.Input} {output : Sail.Output} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (dc : DecoderContract input w) (nonzero : input.rd ≠ Sail.zeroRegister) (bounds : InputBounds input.row) (pcBounds : input.row.pc.Bounded)
     (mapping : RowWordMapping input output w) :
@@ -174,7 +176,7 @@ theorem result_word {p : Nat} [Fact p.Prime]
 
 /-- Combined destination/PC soundness for the decoded four-byte Sail path. -/
 theorem soundness {p : Nat} [Fact p.Prime]
-    (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) :
+    (hp : FieldCapacity.NoWrap p 196608) (inverse : SerializedInverse.Limb16 p) :
     (rowCircuitModel (p := p)).SoundnessUnder RowInterfaces Sail.spec := by
   rintro input output w ⟨assumptions, constraints, mapping⟩
   have pc := pc_successor hp inverse constraints

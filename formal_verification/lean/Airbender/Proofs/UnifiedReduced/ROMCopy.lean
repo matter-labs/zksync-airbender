@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.ROMValue
 import Airbender.Proofs.UnifiedReduced.ROMRow
 
@@ -21,7 +22,7 @@ private theorem public_word {before : Reference.RiscV.Sail.State} {lo hi : Nat}
   | ok value state => exact Word.ofBitVec_roundtrip value
   | error error state => rfl
 
-theorem row_word_copy [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem row_word_copy [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {before : Reference.RiscV.Sail.State} {w : Nat → ZMod p} (store : Bool)
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table before)))
     (active : w 4 = 1) (load : w 28 = if store then 0 else 1)

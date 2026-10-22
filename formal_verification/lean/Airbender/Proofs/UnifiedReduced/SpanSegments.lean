@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.SharedSpans
 import Airbender.Proofs.Trace.TransferSplit
 import Airbender.Proofs.Delegation.SpanSegments
@@ -7,8 +9,8 @@ open Trace Arithmetic Trace.Proofs Reference.RiscV.Sail
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-private theorem shared_span_facts [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+private theorem shared_span_facts [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)} {cells : List Cell}
     {span : Delegation.Caller.HashSpan} (accepted : MixedMemoryAccepted data [])
     (inputs : SharedSpanInputs data before addresses cells span) :
@@ -29,8 +31,8 @@ private theorem shared_span_facts [Fact p.Prime] (hp : 16777216 ≤ p)
     rfl
   exact ⟨facts, zero⟩
 
-theorem shared_span_cut [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem shared_span_cut [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)} {cells : List Cell}
     {span : Delegation.Caller.HashSpan} (accepted : MixedMemoryAccepted data [])
     (inputs : SharedSpanInputs data before addresses cells span) (cutoff : Nat) :
@@ -45,8 +47,8 @@ theorem shared_span_cut [Fact p.Prime] (hp : 16777216 ≤ p)
   obtain ⟨facts, zero⟩ := shared_span_facts hp clockInverse accepted inputs
   exact Transfer.split_sail_state facts ⟨inputs.initialization, inputs.distinct⟩ inputs.aligned zero cutoff
 
-theorem shared_span_execution_cut [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem shared_span_execution_cut [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)} {cells : List Cell}
     {span : Delegation.Caller.HashSpan} (accepted : MixedMemoryAccepted data [])
     (inputs : SharedSpanInputs data before addresses cells span) (cutoff : Nat) :
@@ -65,8 +67,8 @@ theorem shared_span_execution_cut [Fact p.Prime] (hp : 16777216 ≤ p)
   obtain ⟨facts, zero⟩ := shared_span_facts hp clockInverse accepted inputs
   exact Transfer.split_sail_execution facts ⟨inputs.initialization, inputs.distinct⟩ inputs.aligned zero cutoff
 
-theorem shared_span_worker_window [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem shared_span_worker_window [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)} {cells : List Cell}
     {span : Delegation.Caller.HashSpan} (accepted : MixedMemoryAccepted data [])
     (inputs : SharedSpanInputs data before addresses cells span) (lower upper : Nat) :

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.RegisterChains
 import Airbender.Proofs.UnifiedReduced.RegisterPreparation
 
@@ -20,8 +22,8 @@ theorem public_register_preparation_after_initial [Fact p.Prime]
 /-- Induction over public dataflow derives each real source token before using
     native arithmetic for the next ADDI. No intermediate values are assumed from
     witness reads, and no Sail transport or worker round mask is needed. -/
-theorem public_register_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem public_register_preparation_token [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     {cut : Nat} {register : BitVec 5} {value : BitVec 32}
@@ -51,8 +53,8 @@ theorem public_register_preparation_token [Fact p.Prime] (hp : 8388608 ≤ p)
       initialization scope uniqueSeeds floor
       (fun _ prefixMatching => ih sourceNonzero (by omega) prefixMatching) nonzero aligned matching
 
-theorem public_register_preparation_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem public_register_preparation_at_boundary [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before atCut : State}
     {ca oa : List (BitVec 32)} {cells : List Cell} {tokens : List (MemoryToken p)}
     {cut : Nat} {register : BitVec 5} {value : BitVec 32}
@@ -75,9 +77,9 @@ theorem public_register_preparation_at_boundary [Fact p.Prime] (hp : 8388608 ≤
   have bits : token.word.toBitVec = value := by rw [word, Word.ofBitVec_roundtrip]
   exact ⟨bits ▸ read, token, present, address, time, word⟩
 
-theorem public_register_control_preparation [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
+theorem public_register_control_preparation [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
+    (rotationInverse : SerializedInverse.Scale64 p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     {cut : Nat} {register : BitVec 5} {value : BitVec 32}

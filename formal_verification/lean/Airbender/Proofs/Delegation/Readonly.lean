@@ -1,10 +1,11 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Delegation.History
 
 namespace Airbender.Delegation.Proofs
 open Trace Arithmetic Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 
-theorem port_initialized_cell [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem port_initialized_cell [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} {initial : State} {cells : List Cell}
     (accepted : MemoryAccepted data) (inputs : BoundaryInputs data initial cells)
     {row : Row p} (member : row ∈ data.rows) {port : MemoryPort} (present : port ∈ row.ports)
@@ -37,7 +38,7 @@ theorem path_word_constant {path : List (MemoryToken p)} {source : MemoryToken p
           (fun edge member => copies edge (List.mem_cons_of_mem _ member)) token member
         exact result.trans next.symm
 
-theorem readonly_cell [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem readonly_cell [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : MemoryData p} {initial : State} {cells : List Cell} {cell : Cell} {value : BitVec 32}
     (accepted : MemoryAccepted data) (inputs : BoundaryInputs data initial cells)
     (tracked : cell ∈ cells) (read : cell.read initial = .ok value initial)

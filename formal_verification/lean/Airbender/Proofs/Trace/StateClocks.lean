@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.History
 
 namespace Airbender.Trace.Proofs
@@ -5,7 +7,7 @@ variable {Kind : Type} [CircuitLayout Kind]
 set_option warningAsError true
 
 theorem state_clock_inputs [Fact p.Prime] [ClockLaws Kind p]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : Data p Kind}
     (constraints : ∀ row ∈ trace.rows,
       FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) (row.constraints trace.rom))
@@ -40,7 +42,7 @@ theorem state_clock_inputs [Fact p.Prime] [ClockLaws Kind p]
 /-- Native constraints and state matching place every row clock between the
     supplied initial and terminal clocks, even when rows are unordered. -/
 theorem state_clock_interval [Fact p.Prime] [ClockLaws Kind p]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : Data p Kind}
     (constraints : ∀ row ∈ trace.rows,
       FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) (row.constraints trace.rom))

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.Workers.Blake2Round.Windows
 import Airbender.Proofs.Blake2Round.ControlPool
 import Airbender.Proofs.Blake2Round.CompressionBinding
@@ -9,8 +11,8 @@ open Trace Trace.Proofs Arithmetic Reference.RiscV.Sail Delegation.Proofs
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-theorem window_binding [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem window_binding [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {before : State} {cells : List Cell}
     {flags : Fin 8} {lower upper : Nat} (accepted : Delegation.MemoryAccepted data)
     (inputs : WindowInputs data before cells flags lower upper)

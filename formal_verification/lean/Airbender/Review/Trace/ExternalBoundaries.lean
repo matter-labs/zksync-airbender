@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.ExternalBoundary.Initialization
 import Airbender.Proofs.ExternalBoundary.Decoder
 import Airbender.Proofs.ExternalBoundary.Requests
@@ -19,7 +20,7 @@ theorem initialization_soundness (selection : Initialization.Selection geometry)
 /-- Conditional public-program membership under a corrected decoder setup.
     AIH-336 remains open until the implementation enforces this interface. -/
 theorem decoder_soundness {Kind : Type} [DecidableEq Kind] [CircuitLayout Kind] [Fact p.Prime]
-    (hp : 65536 < p) {trace : Data p Kind} {program : List (ProgramEntry Kind)}
+    (hp : FieldCapacity.NoWrap p 65536) {trace : Data p Kind} {program : List (ProgramEntry Kind)}
     {rows : Decoder.Rows p Kind} {column : Fin 9}
     (temporary : Decoder.Binding trace program rows column) :
     ∀ row ∈ trace.rows, (decoderTable program row.family).Contains #[] row.decoderQuery :=
@@ -36,7 +37,7 @@ theorem participation_soundness [Fact p.Prime] {data : UnifiedReduced.Caller.Req
 /-- Conditional native branch selection under full x12 control validation.
     F02 and full custom-CSR execution remain open; no valid-control premise is
     inserted into the existing general native soundness theorem. -/
-theorem bigint_control_soundness [Fact p.Prime] (hp : 256 ≤ p)
+theorem bigint_control_soundness [Fact p.Prime] (hp : FieldCapacity.AtLeast p 256)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (Bigint.importedConstraints setup)) {command : BigintABI.Command}

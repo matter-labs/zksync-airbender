@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Bigint.ImportedSetup
 import Airbender.Proofs.Bigint.ArtifactChecks
 import Airbender.Review.Circuits.Bigint.Tables.Setup
@@ -20,7 +21,7 @@ private theorem low_byte_rows (index : Fin 1390592) (selected : (setupRow index)
   omega
 
 /-- Decode a native membership witness into its natural setup row. -/
-theorem fixed_row_values {p tag : Nat} [Fact p.Prime] (hp : 65536 ≤ p) (tagBound : tag < p)
+theorem fixed_row_values {p tag : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536) (tagBound : tag < p)
     {entry : Vector (Expression (ZMod p)) 3} {env : Environment (ZMod p)}
     (h : (Lookup.mk setupTable.toRaw entry).Contains env)
     (selected : entry[(2 : Nat)].eval env = (tag : ZMod p)) :
@@ -54,7 +55,7 @@ theorem fixed_row_values {p tag : Nat} [Fact p.Prime] (hp : 65536 ≤ p) (tagBou
 
 /-- Project tag 41 into U16GetLowByte rows and reuse the shared row-value
     theorem for its range and low byte. Clean supplies native membership. -/
-theorem low_byte_value {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+theorem low_byte_value {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536)
     {entry : Vector (Expression (ZMod p)) 3} {env : Environment (ZMod p)}
     (h : (Lookup.mk setupTable.toRaw entry).Contains env)
     (selected : entry[(2 : Nat)].eval env = 41) :
@@ -66,7 +67,7 @@ theorem low_byte_value {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   refine ⟨⟨(setupRow i).1, keyBound⟩, Prod.ext key ?_⟩
   simpa only [lowValue] using low
 
-theorem source_ranges {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p) {w : Nat → ZMod p}
+theorem source_ranges {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 65536) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) :
     ∀ i : Fin 16, (w Variables.leftLimbs[i]).val < Arithmetic.limbBase ∧

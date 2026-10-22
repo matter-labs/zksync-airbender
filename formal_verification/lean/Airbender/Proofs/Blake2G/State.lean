@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.Blake2G.State
 import Airbender.Proofs.Blake2G.Soundness
 import Airbender.Proofs.Blake2G.Control
@@ -49,7 +51,7 @@ theorem reference_untouched (state : Vector Nat 16) (a b c d i : Fin 16) (mx my 
     Ne.symm different.1, Ne.symm different.2.1,
     Ne.symm different.2.2.1, Ne.symm different.2.2.2, ↓reduceIte]
 
-theorem selected_distinct {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem selected_distinct {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {input : Input} {output : Output} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable Control.controllerRows)))
@@ -78,8 +80,8 @@ theorem selected_distinct {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
   intro left right different same
   exact different (congrArg Fin.val same)
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 262144)
+    (compatible : SerializedInverse.Scale64 p) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec := by
   intro input output w relation
   obtain ⟨interface, constraints, mapping⟩ := relation

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.NativeSailHistory
 
 namespace Airbender.Trace.Proofs
@@ -34,7 +36,7 @@ private theorem initial_zero_value {p : Nat} {before : Reference.RiscV.Sail.Stat
 /-- Public Sail initialization and actual prior-write matching root all x0 reads.
     Each family discharges the local preservation law from its imported circuit. -/
 theorem zero_reads_of_preserving [Fact p.Prime] [ClockLaws Kind p]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : Data p Kind} (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)
@@ -63,7 +65,7 @@ theorem zero_reads_of_preserving [Fact p.Prime] [ClockLaws Kind p]
   exact propagated _ row member port present rfl
 
 theorem zero_writes_of_preserving [Fact p.Prime] [ClockLaws Kind p]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : Data p Kind} (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)

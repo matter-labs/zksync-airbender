@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.ComputedRoundRegions
 import Airbender.Proofs.UnifiedReduced.ComputedHashWindows
 import Airbender.Proofs.Blake2Round.ControlPool
@@ -26,8 +28,8 @@ theorem literal_computed_protocol_window_inputs [Fact p.Prime]
     (scope : PreparedProtocolWindowInputs data program window) : ComputedProtocolWindowInputs data program window :=
   ⟨scope.family, .literal scope.preparation, scope.calls, scope.duration, scope.beforeTerminal⟩
 
-theorem computed_round_region_masks [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem computed_round_region_masks [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {region : RoundRegion}
     (accepted : MixedMemoryAccepted data program)
@@ -86,8 +88,8 @@ theorem computed_round_region_masks [Fact p.Prime] (hp : 8388608 ≤ p)
     · simp [address, Cell.addressCode, Delegation.Caller.HashSpan.controlRegister]
   exact Blake2Round.Proofs.matching_masks size selected pool
 
-theorem wrapped_program_computed_round_region_inputs [Fact p.Prime] (hp : 4194304 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem wrapped_program_computed_round_region_inputs [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)}
     {program : List UnifiedReduced.ProgramEntry} {region : RoundRegion}
     (setup : data.machine.rom = Setup.table before)
@@ -109,8 +111,8 @@ theorem wrapped_program_computed_round_region_inputs [Fact p.Prime] (hp : 419430
     have extent := scope.extent
     omega
 
-theorem wrapped_program_computed_round_region_masks [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem wrapped_program_computed_round_region_masks [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {region : RoundRegion}
     (accepted : MixedMemoryAccepted data program)
@@ -123,8 +125,8 @@ theorem wrapped_program_computed_round_region_masks [Fact p.Prime] (hp : 8388608
     inputs.publicProgram inputs.ordinaryProgram registry scope
   exact ⟨shape, computed_round_region_masks hp clockInverse accepted inputs shape⟩
 
-theorem computed_protocol_memory_inputs [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem computed_protocol_memory_inputs [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion}
     (accepted : MixedMemoryAccepted data program)
@@ -137,8 +139,8 @@ theorem computed_protocol_memory_inputs [Fact p.Prime] (hp : 8388608 ≤ p)
   exact computed_round_region_masks hp clockInverse accepted inputs.toProtocolContextInputs
     (inputs.scopes region included) row inside
 
-theorem computed_round_worker_coverage [Fact p.Prime] (hp : 4194304 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem computed_round_worker_coverage [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)}
     {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion}
     (setup : data.machine.rom = Setup.table before)
@@ -197,8 +199,8 @@ theorem computed_round_worker_coverage [Fact p.Prime] (hp : 4194304 ≤ p)
         (unique selected ⟨List.mem_of_mem_filter selectedMatch.1, selectedMatch.2.1⟩).symm
     exact ⟨region, included, equal.symm ▸ selectedMatch.1⟩
 
-theorem computed_protocol_reference_at_states [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem computed_protocol_reference_at_states [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before atStart atFinish : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion} {window : HashWindow}
     {start finish : List (MemoryToken p)} {spanEvents : List MemoryAccess}
@@ -234,8 +236,8 @@ theorem computed_protocol_reference_at_states [Fact p.Prime] (hp : 16777216 ≤ 
     (fun row member => accepted.workerActive row (List.mem_of_mem_filter member))
     (fun cell member => inputs.aligned cell (List.mem_of_mem_filter member)) target terminal.1.addresses
 
-theorem computed_protocol_sequence_at_segments [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem computed_protocol_sequence_at_segments [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion} {windows : List HashWindow}
     (accepted : MixedMemoryAccepted data program)
@@ -265,8 +267,8 @@ theorem computed_protocol_sequence_at_segments [Fact p.Prime] (hp : 16777216 ≤
       exact .cons ⟨requests, (Delegation.Caller.Proofs.window_call_count requests).trans scope.calls, result⟩
         (ih (fun next member => scopes next (List.mem_cons_of_mem _ member)) restOrder tail)
 
-theorem computed_protocol_sequence [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem computed_protocol_sequence [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion} {first : HashWindow} {rest : List HashWindow}
     (accepted : MixedMemoryAccepted data program)
@@ -274,7 +276,7 @@ theorem computed_protocol_sequence [Fact p.Prime] (hp : 16777216 ≤ p)
     (scopes : ∀ window ∈ first :: rest, ComputedProtocolWindowInputs data program window)
     (ordered : WindowsOrdered first.lower ((first :: rest).map HashWindow.interval)) :
     PreparedHashSequenceResult data before cells first rest := by
-  have rotationInverse : 64 * (-31457280 : ZMod p) = 1 := by linear_combination clockInverse
+  have rotationInverse : SerializedInverse.Scale64 p := by linear_combination clockInverse
   have aligned : first.lower % 4 = 0 := ordered.2.2.1
   have floor := hash_control_preparation_after_initial (scopes first (List.mem_cons_self ..)).preparation
   have memory := computed_protocol_memory_inputs (by omega) clockInverse accepted inputs
@@ -282,8 +284,8 @@ theorem computed_protocol_sequence [Fact p.Prime] (hp : 16777216 ≤ p)
     aligned (by omega) ordered
   exact ⟨sequence, actual, computed_protocol_sequence_at_segments hp clockInverse accepted inputs scopes ordered actual.segments⟩
 
-theorem wrapped_program_computed_round_worker_coverage [Fact p.Prime] (hp : 4194304 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem wrapped_program_computed_round_worker_coverage [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)}
     {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion}
     (setup : data.machine.rom = Setup.table before)
@@ -296,8 +298,8 @@ theorem wrapped_program_computed_round_worker_coverage [Fact p.Prime] (hp : 4194
   exact wrapped_program_computed_round_region_inputs hp clockInverse setup accepted publicProgram ordinaryProgram
     registry (scopes region member)
 
-theorem wrapped_program_computed_round_live_masks [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem wrapped_program_computed_round_live_masks [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion}
     (accepted : MixedMemoryAccepted data program)
@@ -314,8 +316,8 @@ theorem wrapped_program_computed_round_live_masks [Fact p.Prime] (hp : 8388608 �
   exact (wrapped_program_computed_round_region_masks hp clockInverse accepted inputs registry
     (scopes region included)).2 worker inside
 
-theorem wrapped_program_computed_protocol_inputs [Fact p.Prime] (hp : 4194304 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem wrapped_program_computed_protocol_inputs [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion}
     (accepted : MixedMemoryAccepted data program)
@@ -326,8 +328,8 @@ theorem wrapped_program_computed_protocol_inputs [Fact p.Prime] (hp : 4194304 �
   exact wrapped_program_computed_round_region_inputs hp clockInverse inputs.setup accepted inputs.publicProgram
     inputs.ordinaryProgram inputs.registry (inputs.scopes region member)
 
-theorem wrapped_program_computed_protocol_window_inputs [Fact p.Prime] (hp : 4194304 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem wrapped_program_computed_protocol_window_inputs [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)}
     {program : List UnifiedReduced.ProgramEntry} {window : HashWindow}
     (setup : data.machine.rom = Setup.table before)
@@ -342,8 +344,8 @@ theorem wrapped_program_computed_protocol_window_inputs [Fact p.Prime] (hp : 419
   rw [← schedule.workerCount, schedule.machineCount, scope.duration]
   omega
 
-theorem wrapped_program_computed_protocol_sequence [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem wrapped_program_computed_protocol_sequence [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     {program : List UnifiedReduced.ProgramEntry} {regions : List RoundRegion} {first : HashWindow} {rest : List HashWindow}
     (accepted : MixedMemoryAccepted data program)

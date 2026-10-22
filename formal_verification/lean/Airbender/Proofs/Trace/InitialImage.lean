@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Memory.InitialImage
 import Airbender.Proofs.Arithmetic.Word
 import Airbender.Proofs.Sail.PC
@@ -214,7 +215,7 @@ theorem initial_state_source {before : Reference.RiscV.Sail.State}
     exact ⟨pc, rfl, by simpa [read] using initial.symm⟩
 
 theorem initial_pc_bound {before : Reference.RiscV.Sail.State}
-    {timestamp : ZMod p × ZMod p} {state : PCState.State p} (hp : limbBase < p)
+    {timestamp : ZMod p × ZMod p} {state : PCState.State p} (hp : FieldCapacity.NoWrap p limbBase)
     (initial : initialState before timestamp = some state) : state.word.Bounded := by
   obtain ⟨pc, _, rfl⟩ := initial_state_source initial
   exact PCState.Proofs.encoded_bounds hp pc
@@ -222,7 +223,7 @@ theorem initial_pc_bound {before : Reference.RiscV.Sail.State}
 /-- The public constructor supplies the actual Sail PC read, not merely
     bounds for the native encoding. -/
 theorem initial_state_pc {before : Reference.RiscV.Sail.State}
-    {timestamp : ZMod p × ZMod p} {state : PCState.State p} (hp : limbBase < p)
+    {timestamp : ZMod p × ZMod p} {state : PCState.State p} (hp : FieldCapacity.NoWrap p limbBase)
     (initial : initialState before timestamp = some state) :
     run (SailRV32.Functions.get_arch_pc ()) before = .ok state.word.toBitVec before := by
   obtain ⟨pc, read, rfl⟩ := initial_state_source initial

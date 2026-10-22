@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Bigint.ArtifactChecks
 import Airbender.Review.Circuits.Bigint.Control
 import Airbender.Proofs.Constraints
@@ -22,7 +23,7 @@ theorem control_bits {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 3)
     mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] at flag ⊢
   all_goals exact flag
 
-theorem opcode_exclusivity {p : Nat} [Fact p.Prime] (hp : 8 ≤ p)
+theorem opcode_exclusivity {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 8)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     (∑ i : Fin 7, (w Variables.operations[i]).val) ≤ 1 := by
@@ -53,7 +54,7 @@ theorem mask_bounded (bits : Vector Bool 8) : mask bits < 256 := by
 
 /-- The same native field sum is interpreted as a byte only after proving its
     natural bound; neither the incoming high limb nor setup rows are constrained. -/
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 256 ≤ p)
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 256)
     (setup : Table (ZMod p) (fields 3)) :
     Properties.Soundness (circuitModel setup).relation spec := by
   intro input output w ⟨h, mapping⟩

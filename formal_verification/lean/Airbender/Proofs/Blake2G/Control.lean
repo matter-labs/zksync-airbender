@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2G.ImportedController
 import Airbender.Review.Circuits.Blake2G.Control
 import Airbender.Proofs.Blake2G
@@ -51,7 +52,7 @@ theorem message_offsets_bounded (input : Input) (i : Fin 2) : (step input).messa
   rw [controller_input] at bound
   fin_cases i <;> simpa [Output.row] using bound
 
-theorem control_columns {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem control_columns {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable controllerRows))) :
@@ -97,7 +98,7 @@ private theorem output_eq_of_row {left right : Output}
 
 /-- The actual imported controller lookup selects the complete modeled row.
     Canonical input decoding prevents execute/key aliasing in the field. -/
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 512 ≤ p) :
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512) :
     Properties.Soundness (circuitModel (p := p)).relation spec := by
   intro input output w relation
   obtain ⟨constraints, mapping⟩ := relation

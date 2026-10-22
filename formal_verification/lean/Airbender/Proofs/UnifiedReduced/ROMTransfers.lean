@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.ROMRow
 import Airbender.Proofs.UnifiedReduced.WordROM
 
@@ -7,7 +8,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
-theorem row_transfers [Fact p.Prime] (hp : 131072 < p)
+theorem row_transfers [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072)
     (before : Reference.RiscV.Sail.State) (native : Trace.Row p UnifiedFamily)
     (setup : Table (ZMod p) (fields 10)) (active : native.assignment 4 = 1)
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment native.assignment)

@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.TriAddCalculation
 import Airbender.Proofs.UnifiedReduced
 import Airbender.Proofs.Sail.PC
@@ -10,7 +11,7 @@ open Airbender.Arithmetic
 set_option maxRecDepth 8192
 set_option maxHeartbeats 1200000
 
-private theorem triadd_result {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+private theorem triadd_result {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
     {setup : Table (ZMod p) (fields 10)} {input : TriAdd.Input} {output : Sail.Output}
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -98,7 +99,7 @@ private theorem triadd_destination {input : TriAdd.Input} {output : Word}
       rfl
     exact ⟨after, executed.trans projected, projected⟩
 
-theorem triadd_soundness {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+theorem triadd_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
     (setup : Table (ZMod p) (fields 10)) :
     (TriAdd.Calculation.circuitModel setup).SoundnessUnder TriAdd.Calculation.InterfaceAssumptions TriAdd.spec := by
   rintro input output w ⟨interfaces, constraints, mapping⟩

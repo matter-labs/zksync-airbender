@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.PortReads
 import Airbender.Proofs.Trace.ROM
 import Airbender.Proofs.Trace.PC
@@ -12,8 +14,8 @@ open Arithmetic Reference.RiscV Reference.RiscV.Sail Reference.Sail
 
 /-- Both arithmetic operands and the immediate are bounded by the accepted
     history and actual decoder metadata; they are no longer per-row premises. -/
-theorem arithmetic_row_ranges [Fact p.Prime] (hp : ROM.limit < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem arithmetic_row_ranges [Fact p.Prime] (hp : FieldCapacity.NoWrap p ROM.limit)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -38,7 +40,7 @@ theorem arithmetic_row_ranges [Fact p.Prime] (hp : ROM.limit < p)
 
 /-- Decoder-selected x0 ports read the native Sail zero register. The derived
     limb bounds recover the full zero-word preprocessing, not just its bits. -/
-theorem local_arithmetic_zero_source [Fact p.Prime] (hp : ROM.limit < p)
+theorem local_arithmetic_zero_source [Fact p.Prime] (hp : FieldCapacity.NoWrap p ROM.limit)
     {cells : List Cell} (epoch : Nat) {w : Nat → ZMod p}
     (bounds : (Word.mk (w 25).val (w 26).val).Bounded ∧
       (Word.mk (w 29).val (w 30).val).Bounded)
@@ -64,8 +66,8 @@ theorem local_arithmetic_zero_source [Fact p.Prime] (hp : ROM.limit < p)
     change EStateM.Result.ok (0 : BitVec 32) before = .ok _ before at right
     exact Word.eq_zero_of_bounded bounds.2 (EStateM.Result.ok.inj right).1.symm
 
-theorem arithmetic_zero_source [Fact p.Prime] (hp : ROM.limit < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem arithmetic_zero_source [Fact p.Prime] (hp : FieldCapacity.NoWrap p ROM.limit)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -93,7 +95,7 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Discharge the arithmetic family's interfaces from the actual decoded
     constructor, public initialization and grouped native transfers. Original
     sources erased by x0 preprocessing are read from the initialized history. -/
-theorem local_arithmetic_interface [Fact p.Prime] (hp : ROM.limit < p)
+theorem local_arithmetic_interface [Fact p.Prime] (hp : FieldCapacity.NoWrap p ROM.limit)
     {initial : State} {cells : List Cell} {seed : List (MemoryToken p)}
     (image : initialImage initial cells = some seed) (setup : Table (ZMod p) (fields 9)) (epoch : Nat)
     {w : Nat → ZMod p}
@@ -177,8 +179,8 @@ theorem local_arithmetic_interface [Fact p.Prime] (hp : ROM.limit < p)
     exact canonical.symm ▸ Word.ofBitVec_bound entry.pc
   · exact reference.2
 
-theorem arithmetic_row_interface [Fact p.Prime] (hp : ROM.limit < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem arithmetic_row_interface [Fact p.Prime] (hp : FieldCapacity.NoWrap p ROM.limit)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -212,8 +214,8 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Every selected arithmetic constructor executes to the native row update
     through Sail's own preparation and retirement. Operand/read/selector/range
     contracts are conclusions of the accepted trace, not additional premises. -/
-theorem local_arithmetic_execution [Fact p.Prime] (hp : ROM.limit < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem local_arithmetic_execution [Fact p.Prime] (hp : FieldCapacity.NoWrap p ROM.limit)
+    (inverse : SerializedInverse.Clock p)
     {initial : State} {cells : List Cell} {seed : List (MemoryToken p)}
     (image : initialImage initial cells = some seed) (setup : Table (ZMod p) (fields 9)) (epoch : Nat)
     {w : Nat → ZMod p}
@@ -267,7 +269,7 @@ theorem local_arithmetic_execution [Fact p.Prime] (hp : ROM.limit < p)
     fields query opcode rs1 rs2 rd immediate upper sources encoding past history pc
   have core := Verification.holds_of_sublist h
     (List.sublist_append_left AddSub.importedConstraints AddSub.importedConstraintsTimestampLookups)
-  have addressInverse : (-30720 : ZMod p) * 65536 = 1 := by
+  have addressInverse : SerializedInverse.Limb16 p := by
     calc
       (-30720 : ZMod p) * 65536 = (-3840 : ZMod p) * 524288 := by ring
       _ = 1 := inverse
@@ -280,8 +282,8 @@ theorem local_arithmetic_execution [Fact p.Prime] (hp : ROM.limit < p)
   rw [same] at normal
   exact normal
 
-theorem arithmetic_row_execution [Fact p.Prime] (hp : ROM.limit < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem arithmetic_row_execution [Fact p.Prime] (hp : FieldCapacity.NoWrap p ROM.limit)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -317,8 +319,8 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Transport the native row through its actual Sail boundary state. The PC
     read is derived from that state, and repeated retirement collapses to the
     new native PC. Complete path composition supplies the boundary ordering. -/
-theorem arithmetic_rebased_step [Fact p.Prime] (hp : ROM.limit < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem arithmetic_rebased_step [Fact p.Prime] (hp : FieldCapacity.NoWrap p ROM.limit)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -365,8 +367,8 @@ set_option backward.isDefEq.respectTransparency false in
     traces. All read/range facts stay in proof machinery. -/
 theorem local_arithmetic_instruction_execution {p : Nat} [Fact p.Prime]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (profile : ISAProfile) (hp : ROM.limit < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (profile : ISAProfile) (hp : FieldCapacity.NoWrap p ROM.limit)
+    (inverse : SerializedInverse.Clock p)
     {initial : State} {cells : List Cell} {seed : List (MemoryToken p)}
     (image : initialImage initial cells = some seed) (setup : Table (ZMod p) (fields 9)) (epoch : Nat)
     (registers : ∀ index, Cell.register index ∈ cells)

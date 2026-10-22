@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Sail.Decoder
 import Airbender.Review.Circuits.JumpBranchSlt.Decoder
 import Airbender.Proofs.Trace.Program
@@ -25,7 +26,7 @@ theorem decoder_field_bounds {instruction : SailRV32.instruction}
          · dsimp
            first | decide | (rename_i op; cases op <;> decide))
 
-theorem decoder_selectors {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem decoder_selectors {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {w : Nat → ZMod p} {entry : ProgramEntry}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (small : entry.data.mask < 32) (query : decoderQuery w = entry.query) :
@@ -43,7 +44,7 @@ theorem decoder_selectors {p : Nat} [Fact p.Prime] (hp : limbBase < p)
 
 /-- Actual public fetch/decoding plus the imported Boolean equations fixes all
     native fields and selectors. No desired decoder result is an assumption. -/
-theorem fetched {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem fetched {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {w : Nat → ZMod p} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImage before addresses = some program)

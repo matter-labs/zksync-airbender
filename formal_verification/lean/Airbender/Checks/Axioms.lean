@@ -1,3 +1,4 @@
+import Airbender.Proofs.SerializedInverse
 import Airbender.Proofs.Blake2G.FrameQueryRowsPart0
 import Airbender.Proofs.Blake2G.FrameQueryRowsPart1
 import Airbender.Proofs.Blake2G.FrameQueryRowsPart2
@@ -5223,3 +5224,20 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Blake2Round.Proofs.NativeDiagonalView3.query14_column
 #print axioms Airbender.Blake2Round.Proofs.NativeDiagonalView3.query15_column
 #print axioms Airbender.Blake2Round.Proofs.NativeDiagonalView3.frame_eq
+
+#print axioms Airbender.SerializedInverse.scale64_field
+#print axioms Airbender.SerializedInverse.clock_scale64
+#print axioms Airbender.SerializedInverse.clock_field
+#print axioms Airbender.SerializedInverse.limb16_scale64
+#print axioms Airbender.SerializedInverse.limb16_field
+#print axioms Airbender.SerializedInverse.scale32_scale64
+#print axioms Airbender.SerializedInverse.scale32_field
+#print axioms Airbender.SerializedInverse.scale128_scale64
+#print axioms Airbender.SerializedInverse.scale128_field
+#print axioms Airbender.SerializedInverse.scale256_scale64
+#print axioms Airbender.SerializedInverse.scale256_field
+#print axioms Airbender.SerializedInverse.scale512_scale64
+#print axioms Airbender.SerializedInverse.scale512_field
+#print axioms Airbender.SerializedInverse.scale4096_scale64
+#print axioms Airbender.SerializedInverse.scale4096_field
+#print axioms Airbender.SerializedInverse.scale64_scale256

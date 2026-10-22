@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Helpers.Context.Model
 import Airbender.Proofs.WordMemory.ArtifactChecks
 import Airbender.Proofs.Trace.Rows
@@ -13,8 +15,8 @@ class ClockLaws (Kind : Type) [CircuitLayout Kind] (p : Nat) [Fact p.Prime] : Pr
   finalBound : ∀ (rom : CircuitLayout.Setup (Kind := Kind) p) (row : Row p Kind),
     FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints rom) → (decodeTimestamp row.assignment row.columns.finalTime).Bounded
-  advance : ∀ (_ : 2 * timestampBase + 4 < p)
-    (_ : (-3840 : ZMod p) * 524288 = 1) (rom : CircuitLayout.Setup (Kind := Kind) p)
+  advance : ∀ (_ : FieldCapacity.ClockNoWrap p timestampBase)
+    (_ : SerializedInverse.Clock p) (rom : CircuitLayout.Setup (Kind := Kind) p)
     (row : Row p Kind),
     FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints rom) → (decodeTimestamp row.assignment row.columns.initialTime).Bounded →
@@ -22,8 +24,8 @@ class ClockLaws (Kind : Type) [CircuitLayout Kind] (p : Nat) [Fact p.Prime] : Pr
       (decodeTimestamp row.assignment row.columns.initialTime).value + 4
   portsClocks : ∀ row : Row p Kind, row.ports.map MemoryPort.clock = row.columns.ports
   offsets : ∀ row : Row p Kind, row.ports.toList.map (fun port => port.clock.offset) = [0, 1, 2]
-  effects : ∀ (_ : 2 * timestampBase + 4 < p)
-    (_ : (-3840 : ZMod p) * 524288 = 1) (rom : CircuitLayout.Setup (Kind := Kind) p)
+  effects : ∀ (_ : FieldCapacity.ClockNoWrap p timestampBase)
+    (_ : SerializedInverse.Clock p) (rom : CircuitLayout.Setup (Kind := Kind) p)
     (row : Row p Kind),
     FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints rom) → ClockInputs row.columns row.assignment →
@@ -64,8 +66,8 @@ private theorem row_final_bound [Fact p.Prime] [ClockLaws Kind p]
       (row.constraints rom)) : (decodeTimestamp row.assignment row.columns.finalTime).Bounded :=
   ClockLaws.finalBound rom row h
 
-private theorem row_advance [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1)
+private theorem row_advance [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p)
     (rom : CircuitLayout.Setup (Kind := Kind) p) (row : Row p Kind)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints rom)) (bound : (decodeTimestamp row.assignment row.columns.initialTime).Bounded) :
@@ -86,7 +88,7 @@ theorem port_offset [Fact p.Prime] [ClockLaws Kind p] (row : Row p Kind)
 
 /-- Native write-clock limbs stay bounded: alignment prevents an in-cycle offset
     from crossing the 19-bit low-limb boundary. -/
-theorem write_time_of_room [Fact p.Prime] (hp : timestampBase < p) {base : ZMod p × ZMod p}
+theorem write_time_of_room [Fact p.Prime] (hp : FieldCapacity.NoWrap p timestampBase) {base : ZMod p × ZMod p}
     (bound : (timeOfPair base).Bounded) {offset : Nat}
     (lowBound : base.1.val + offset < timestampBase) :
     (timeOfPair (base.1 + (offset : ZMod p), base.2)).Bounded ∧
@@ -102,7 +104,7 @@ theorem write_time_of_room [Fact p.Prime] (hp : timestampBase < p) {base : ZMod 
   · simp only [timeOfPair, Timestamp.value, canonical]
     omega
 
-theorem write_time [Fact p.Prime] (hp : timestampBase < p) {base : ZMod p × ZMod p}
+theorem write_time [Fact p.Prime] (hp : FieldCapacity.NoWrap p timestampBase) {base : ZMod p × ZMod p}
     (bound : (timeOfPair base).Bounded) (aligned : (timeOfPair base).lo % 4 = 0)
     {offset : Nat} (ob : offset < 4) :
     (timeOfPair (base.1 + (offset : ZMod p), base.2)).Bounded ∧
@@ -127,8 +129,8 @@ private theorem clock_matching [Fact p.Prime] {trace : Data p Kind} (accepted : 
 
 /-- Discharge the row-level clock interface from actual native tuple matching.
     Public initial clock conditions replace every per-row bound/alignment premise. -/
-theorem clock_inputs [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem clock_inputs [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     ∀ row ∈ trace.rows, ClockInputs row.columns row.assignment := by
   have matching := clock_matching accepted
@@ -173,8 +175,8 @@ theorem clock_inputs [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   · obtain ⟨writer, writerMember, tokenMember⟩ := List.mem_flatMap.mp written
     exact writeBounds writer writerMember token tokenMember
 
-theorem trace_clocks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem trace_clocks [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     ∀ row ∈ trace.rows, ClockEffects row.columns row.assignment := by
   intro row member
@@ -182,8 +184,8 @@ theorem trace_clocks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have h := accepted.constraints row member
   exact ClockLaws.effects hp inverse trace.rom row h inputs
 
-theorem trace_terminal_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem trace_terminal_clock [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     (timeOfPair trace.terminal.timestamp).value =
       (timeOfPair trace.initial.timestamp).value + 4 * trace.rows.length := by

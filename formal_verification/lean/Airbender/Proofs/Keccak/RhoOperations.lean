@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.Keccak.Rho
 import Airbender.Proofs.Keccak.DecodeControl
 import Airbender.Proofs.Keccak.FixedLookups
@@ -13,7 +14,7 @@ abbrev rotations := rhoRotations
 
 def limbOffset : Vector Nat 4 := #v[0, 1, 4, 5]
 
-theorem rho_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
+theorem rho_routes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 7)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p} (column : Fin 5)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 0 = 1) (selected : w 67 = 1)
@@ -57,7 +58,7 @@ theorem rho_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
     r0, r1, r2, r3, r4, rotations, rhoRotations, limbOffset, rotationSource, rotationPrevious] at a c ⊢
   all_goals exact ⟨by linear_combination a, by linear_combination c⟩
 
-theorem rho_rotation_parts {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem rho_rotation_parts {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control))) (active : w 0 = 1) (selected : w 67 = 1)

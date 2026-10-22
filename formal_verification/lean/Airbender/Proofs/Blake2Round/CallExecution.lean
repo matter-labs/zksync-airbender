@@ -1,10 +1,12 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2Round.CallHistory
 import Airbender.Proofs.Blake2Round.NativeExecution
 
 namespace Airbender.Blake2Round.Proofs
 set_option warningAsError true
 
-theorem call_operation_inputs [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+theorem call_operation_inputs [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {flags : Fin 8} (accepted : Delegation.MemoryAccepted data)
     (inputs : BoundaryCallInputs data initial cells flags) :
@@ -16,8 +18,8 @@ theorem call_operation_inputs [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 <
     rw [inputs.family row member] at keccak
     cases keccak
 
-theorem call_execution [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem call_execution [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {flags : Fin 8} (accepted : Delegation.MemoryAccepted data)
     (inputs : BoundaryCallInputs data initial cells flags) (aligned : ∀ cell ∈ cells, cell.Aligned) :

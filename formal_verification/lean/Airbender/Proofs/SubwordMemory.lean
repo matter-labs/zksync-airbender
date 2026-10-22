@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.SubwordMemory.Lookups
 import Airbender.Review.Circuits.SubwordMemory.Artifact
 import Airbender.Proofs.SubwordMemory.ArtifactChecks
@@ -37,8 +39,8 @@ theorem local_ranges {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 9)
     And.intro a (And.intro b (And.intro c (And.intro d e)))
 
 /-- Final-PC bounds follow fsetup the imported lookups; initial bounds remain explicit. -/
-theorem pc_successor {p : Nat} [Fact p.Prime] (hp : 196608 < p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1)
+theorem pc_successor {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
+    (inverse : SerializedInverse.Limb16 p)
     {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p} {initial final : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (mapping : w 0 = (initial.lo : ZMod p) ∧ w 1 = (initial.hi : ZMod p) ∧
@@ -83,7 +85,7 @@ theorem register_address {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (field
   all_goals constructor <;> first | linear_combination lo | exact hi
 
 /-- The local queries force a canonical, word-aligned low address. -/
-theorem aligned_address {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem aligned_address {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p} (store : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 10 = if store then 1 else 0) :
@@ -119,8 +121,8 @@ theorem halfword_aligned {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (field
 
 /-- Address addition recovers the word cell and its unique byte offset. The
     selected high address remains a memory-interface bound; the low bound is local. -/
-theorem effective_address {p : Nat} [Fact p.Prime] (hp : 262144 < p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1)
+theorem effective_address {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
+    (inverse : SerializedInverse.Limb16 p)
     {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p} (store : Bool)
     {source immediate cell : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -201,7 +203,7 @@ theorem effective_address {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     omega
 
 /-- The ranged subtraction classifies the selected address, and forbids ROM stores. -/
-theorem rom_selection {p : Nat} [Fact p.Prime] (hp : 131072 < p)
+theorem rom_selection {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072)
     {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p} (store : Bool) {address : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 10 = if store then 1 else 0)
@@ -346,7 +348,7 @@ theorem store_query {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 9)}
 
 /-- Both RAM-load modes derive result-limb bounds from the fixed setup table.
     No output-range assumption or witness-generation premise is needed. -/
-theorem ram_output_bounds {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem ram_output_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     {program : Nat → BitVec 32} {w : Nat → ZMod p} (byte : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (Verification.subwordTable program)))

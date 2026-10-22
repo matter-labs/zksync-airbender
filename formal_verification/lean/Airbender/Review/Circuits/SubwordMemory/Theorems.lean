@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.SubwordMemory.RowClaims
 import Airbender.Proofs.SubwordMemory.TraceSoundness
 import Airbender.Proofs.BabyBear
@@ -9,8 +11,8 @@ variable [MemoryPlatform SailRV32.exception]
 
 /-- Original Sail subword loads/stores, aligned cell address, merged/register
     writes and PC effects. Shared history supplies all local ranges and reads. -/
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeWordCapacity p)
+    (clockInverse : SerializedInverse.Clock p)
     (trace : Trace.PooledTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List Trace.PooledProgramEntry) :
     InterfaceAssumptions trace initial cells program →

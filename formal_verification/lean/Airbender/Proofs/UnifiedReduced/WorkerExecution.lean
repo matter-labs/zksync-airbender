@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.UnissuedWorkers
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
@@ -8,8 +10,8 @@ set_option maxHeartbeats 2400000
 
 /-- Full invocation uniqueness also groups the zero-clock worker. Strict native
     order places machine events after that group, without a boot-clock premise. -/
-theorem all_worker_clock_group [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem all_worker_clock_group [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
     {ca : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -63,8 +65,8 @@ theorem all_worker_clock_group [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 /-- Every worker has actual call states; an unissued worker starts directly at
     the public initial state. This needs only the architectural seed and alignment,
     with no operation masks, valid bigint control or positive invocation premise. -/
-theorem all_worker_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem all_worker_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before after : State}
     {ca : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
@@ -144,8 +146,8 @@ theorem all_worker_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 /-- Native memory order supplies positive row clocks, so cycle grouping needs no
     separately supplied positive initial clock. Unissued effects remain earlier. -/
-theorem native_cycle_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem native_cycle_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before after : State}
     {ca : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)

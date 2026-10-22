@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Keccak.RhoOperations
 
 namespace Airbender.Keccak.Proofs.Rho
@@ -23,7 +24,7 @@ theorem rho_packed {p : Nat} (w : Nat → ZMod p) (operation : Fin 5) :
   rw [rho_limbs_at, rho_limbs_at, rho_limbs_at, rho_limbs_at]
   rfl
 
-theorem rho_rotated_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem rho_rotated_limb {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (column : Fin 5)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control))) (active : w 0 = 1) (selected : w 67 = 1)
@@ -71,7 +72,7 @@ theorem rho_rotated_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   rw [ZMod.val_natCast_of_lt small] at value
   exact value.symm.trans (by rw [current.2, prior.1]; rfl)
 
-theorem rho_rotated_lane {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem rho_rotated_lane {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (column : Fin 5)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control))) (active : w 0 = 1) (selected : w 67 = 1)

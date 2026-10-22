@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.Keccak.Chi
 import Airbender.Proofs.Keccak.FixedLookups
 import Airbender.Proofs.Arithmetic.BitwiseAssembly
@@ -27,7 +28,7 @@ private def packed {p : Nat} (w : Nat → ZMod p) (columns : Vector Nat 4) : Nat
   (w columns[0]).val + 65536 * ((w columns[1]).val +
     65536 * ((w columns[2]).val + 65536 * (w columns[3]).val))
 
-private theorem chi_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
+private theorem chi_routes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 7)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p} (second : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 0 = 1) (selected : w Variables.modeColumns[chiMode second] = 1)
@@ -69,7 +70,7 @@ private theorem chi_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
     r0, r1, r2, r3, r4, aColumns, bColumns, cColumns, nativeLimbs, temporary] at a b c ⊢
   all_goals exact ⟨by linear_combination a, by linear_combination b, by linear_combination c⟩
 
-private theorem chi_bytes {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+private theorem chi_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))
@@ -99,7 +100,7 @@ private theorem chi_bytes {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
       omega
     · simpa [tags] using query
 
-private theorem chi_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+private theorem chi_limb {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))
@@ -141,7 +142,7 @@ private theorem chi_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     norm_num only [Nat.reducePow] at value
     exact value.symm
 
-private theorem chi_operation {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+private theorem chi_operation {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))
@@ -230,7 +231,7 @@ private theorem first_scratch_copy {p : Nat} [Fact p.Prime]
   change laneValue w 57 = laneValue w 15
   simp only [laneValue, Nat.reduceAdd, ← l0, ← l1, ← l2, ← l3]
 
-theorem chi_written_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem chi_written_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))
@@ -270,7 +271,7 @@ theorem chi_written_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     | simpa [targets] using c1
     | simpa [targets] using c2
 
-theorem chi_first {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem chi_first {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control))) (active : w 0 = 1) (selected : w 68 = 1) :
@@ -288,7 +289,7 @@ theorem chi_first {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   rw [o3] at o4
   exact ⟨o2, o4, o0, first_scratch_copy h selected, first_preserved h selected⟩
 
-theorem chi_second {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem chi_second {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control))) (active : w 0 = 1) (selected : w 69 = 1) :
@@ -312,7 +313,7 @@ private theorem chi_reference_row (state : Vector Nat 25) (row column : Fin 5) :
           state[5 * ((column.val + 2) % 5) + row.val]) := by
   fin_cases row <;> fin_cases column <;> rfl
 
-theorem chi_row {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+theorem chi_row {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {first second : Nat → ZMod p}
     {state : Vector Nat 25} {row : Fin 5}
     (firstHolds : FlatOperation.ConstraintsHoldFlat (Verification.environment first)

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.Blake2G.Artifact
 import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.Constraints
@@ -37,8 +39,8 @@ theorem control_high_zero {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fiel
   simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment] using And.intro read write
 
-private theorem aligned_of_scaled_bound {p : Nat} [Fact p.Prime] (_hp : 4194304 ≤ p)
-    {x : ZMod p} (inverse : 64 * (-31457280 : ZMod p) = 1)
+private theorem aligned_of_scaled_bound {p : Nat} [Fact p.Prime] (_hp : FieldCapacity.NativeRomCapacity p)
+    {x : ZMod p} (inverse : SerializedInverse.Scale64 p)
     (bound : ((-31457280 : ZMod p) * x).val < Trace.timestampBase) : x.val % 64 = 0 := by
   have characteristic : (babyBearModulus : ZMod p) = 0 := by
     unfold babyBearModulus
@@ -51,8 +53,8 @@ private theorem aligned_of_scaled_bound {p : Nat} [Fact p.Prime] (_hp : 4194304 
 
 /-- The two imported scaled-range queries force both ABI pointers to be 64-byte aligned.
     The serialized inverse identity is an artifact/field compatibility premise. -/
-theorem pointer_alignment {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem pointer_alignment {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     (w Variables.statePointerLo).val % 64 = 0 ∧

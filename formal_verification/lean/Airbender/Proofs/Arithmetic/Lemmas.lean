@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Mathlib.Data.ZMod.Basic
 import Mathlib.Algebra.Order.BigOperators.Group.Finset
 import Mathlib.Algebra.BigOperators.Ring.Finset
@@ -60,7 +61,7 @@ theorem sum_le_one_exclusive {n : Nat} {f : Fin n → Nat}
 
 /-- A Boolean field sum of fewer than p Boolean terms has at most one set bit.
     The size bound prevents a wrapped sum from masquerading as zero or one. -/
-theorem boolean_sum_le_one {p n : Nat} [Fact p.Prime] (hn : n < p)
+theorem boolean_sum_le_one {p n : Nat} [Fact p.Prime] (hn : FieldCapacity.NoWrap p n)
     {bits : Fin n → ZMod p} {total : ZMod p}
     (boolean : ∀ i, bits i = 0 ∨ bits i = 1) (one : total = 0 ∨ total = 1)
     (sum : (∑ i, bits i) = total) : (∑ i, (bits i).val) ≤ 1 := by
@@ -77,7 +78,7 @@ theorem boolean_sum_le_one {p n : Nat} [Fact p.Prime] (hn : n < p)
 
 /-- A ranged subtraction and a carry bit classify a 16-bit limb against a
     threshold. Shared by the memory families' ROM/RAM selection. -/
-theorem range_separator {p high threshold : Nat} [Fact p.Prime] (hp : 131072 < p)
+theorem range_separator {p high threshold : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072)
     {residue flag : ZMod p} (highBound : high < 65536) (thresholdBound : threshold ≤ 65536)
     (residueBound : residue.val < 65536) (bit : flag = 0 ∨ flag = 1)
     (equation : residue + threshold = (high : ZMod p) + 65536 * flag) :

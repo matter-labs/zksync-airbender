@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.Blake2G.Addresses
 import Airbender.Proofs.Blake2G.Control
 import Airbender.Proofs.MemoryPorts
@@ -6,8 +8,8 @@ namespace Airbender.Blake2G.Addresses.Proofs
 
 set_option maxHeartbeats 800000
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (compatible : SerializedInverse.Scale64 p) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec := by
   intro input output w relation
   obtain ⟨bounds, constraints, mapping⟩ := relation

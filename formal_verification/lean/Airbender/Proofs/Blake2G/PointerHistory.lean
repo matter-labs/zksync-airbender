@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2G.CallHistory
 import Airbender.Proofs.Delegation.Readonly
 import Airbender.Review.Circuits.Blake2G.Execution
@@ -29,7 +30,7 @@ private theorem pointer_copies {data : Delegation.MemoryData p}
       | rfl
       | (fin_cases index <;> simp [readToken, MemoryAddress.code, Cell.addressCode] at address)
 
-private theorem pointer_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+private theorem pointer_history [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced)
     (index : Fin 2) :
@@ -69,7 +70,7 @@ private theorem pointer_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     exact ⟨_, by simpa only [Array.mem_toList_iff] using portMember, rfl⟩
   exact constant.1 _ included (by fin_cases index <;> rfl)
 
-theorem call_pointers [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem call_pointers [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced) :
     ∃ state message, (Cell.register 10).read initial = .ok state initial ∧

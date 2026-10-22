@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.SubwordMemory.PortReads
 import Airbender.Proofs.Trace.Addresses
 import Airbender.Proofs.SubwordMemory.MemoryAccess
@@ -40,8 +42,8 @@ theorem ordinary_cell_offset {address : BitVec 32} (aligned : address.toNat % 4 
 
 /-- Registry-independent address equations. Initialized history supplies the
     three canonical words and cell membership; this lemma supplies alignment. -/
-theorem local_address {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem local_address {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 33554432)
+    (inverse : SerializedInverse.Clock p)
     {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p} {cells : List Cell}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (store : Bool) (selected : w 10 = if store then 1 else 0)
@@ -58,7 +60,7 @@ theorem local_address {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
       ((Word.mk (w 19).val (w 20).val).toBitVec +
         (Word.mk (w 8).val (w 9).val).toBitVec).toNat % 4 = offset ∧
       Cell.ram cell.toBitVec ∈ cells := by
-  have addressInverse : (-30720 : ZMod p) * 65536 = 1 := by
+  have addressInverse : SerializedInverse.Limb16 p := by
     calc
       (-30720 : ZMod p) * 65536 = (-3840 : ZMod p) * 524288 := by ring
       _ = 1 := inverse
@@ -71,8 +73,8 @@ theorem local_address {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
 
 /-- Public initialization and latest-write history supply operand/address bounds.
     Imported address equations then identify the aligned cell and byte offset. -/
-theorem native_address {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : NativeTrace p}
+theorem native_address {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 33554432)
+    (inverse : SerializedInverse.Clock p) {trace : NativeTrace p}
     (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)

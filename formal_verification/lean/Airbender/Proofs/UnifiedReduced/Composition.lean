@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.RowExecution
 import Airbender.Proofs.UnifiedReduced.Code
 import Airbender.Proofs.Trace.PositionComposition
@@ -10,8 +12,8 @@ set_option maxHeartbeats 2000000
 
 set_option backward.isDefEq.respectTransparency false in
 theorem row_step [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (accepted : Accepted trace) (decoded : Decoded trace program)
     (inputs : ExecutionInputs trace initial cells program)
@@ -44,8 +46,8 @@ theorem row_step [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exc
 
 set_option backward.isDefEq.respectTransparency false in
 theorem trace_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (inputs : ExecutionInputs trace initial cells program)
     (accepted : Accepted trace) (decoded : Decoded trace program) :

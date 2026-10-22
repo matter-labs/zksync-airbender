@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.Initialization.Theorems
 import Airbender.Review.Trace.Soundness
 import Airbender.Proofs.Initialization.PooledInputs
@@ -39,8 +41,8 @@ theorem standalone_execution {base : PooledTrace babyBearModulus}
 /-- The inline RAM boundary has its own native geometry, witness columns and
     output mapping. The same computed-token bridge supplies existing execution. -/
 theorem unified_boundary_execution {p : Nat} [Fact p.Prime]
-    (hp : 4194304 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1) {base : UnifiedTrace p}
+    (hp : FieldCapacity.NativeRomCapacity p) (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p) {base : UnifiedTrace p}
     (windows : Windows unified.layout) (embed : ZMod p →+* E)
     (additive : E) (weights : Fin 6 → E) (raw : Raw p)
     (wires : Wires E) (terminalRegisters : List (MemoryToken p))

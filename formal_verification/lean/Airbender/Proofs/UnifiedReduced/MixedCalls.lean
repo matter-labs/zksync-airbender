@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.UnifiedReduced.MixedMemoryClocks
 import Airbender.Proofs.Delegation.CallHistory
 import Airbender.Proofs.Delegation.Atomic
@@ -11,7 +13,7 @@ set_option maxHeartbeats 2400000
 def workerClock (worker : Delegation.Row p) :=
   (decodeTimestamp worker.assignment worker.columns.invocation).value + 3
 
-theorem worker_event_clock [Fact p.Prime] (hp : timestampBase < p)
+theorem worker_event_clock [Fact p.Prime] (hp : FieldCapacity.NoWrap p timestampBase)
     {data : RequestTrace p} {before : State} (requests : RequestBinding data before)
     {worker : Delegation.Row p} (member : worker ∈ data.workers.rows)
     {event : MemoryAccess} (present : event ∈ worker.memorySteps.map transferEvent) :
@@ -45,8 +47,8 @@ theorem live_worker_slot [Fact p.Prime]
   subst actual
   exact ⟨caller, included, matched.2.1, matched.2.2⟩
 
-theorem live_worker_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem live_worker_clock [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     (requests : RequestBinding data before)
@@ -93,8 +95,8 @@ theorem worker_clock_injective [Fact p.Prime]
   exact List.inj_on_of_nodup_map unique (List.mem_filter.mpr ⟨fm, decide_eq_true fl⟩)
     (List.mem_filter.mpr ⟨lm, decide_eq_true ll⟩) equal
 
-theorem machine_event_separate [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem machine_event_separate [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     {row : Trace.Row p UnifiedFamily} (member : row ∈ data.machine.rows)
@@ -128,8 +130,8 @@ theorem filter_flatMap (rows : List α) (predicate : α → Bool) (f : α → Li
   | nil => rfl
   | cons row rest ih => cases result : predicate row <;> simp [result, ih]
 
-theorem worker_clock_group [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem worker_clock_group [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)}
     (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
     (requests : RequestBinding data before)
@@ -194,8 +196,8 @@ theorem worker_clock_group [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     exact liveOnly
   exact (actual ▸ projected).trans workers
 
-theorem mixed_access_keys_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem mixed_access_keys_unique [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {initial : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
@@ -208,8 +210,8 @@ theorem mixed_access_keys_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     List.sublist_append_right _ _
   exact rawUnique.sublist (nativeSub.map (fun event => (event.1, event.2.1)))
 
-theorem worker_addresses_distinct [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem worker_addresses_distinct [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {initial : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
@@ -233,8 +235,8 @@ theorem worker_addresses_distinct [Fact p.Prime] (hp : 2 * timestampBase + 4 < p
   rw [constant] at unique
   exact unique.of_map _
 
-theorem mixed_worker_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem mixed_worker_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {initial : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)

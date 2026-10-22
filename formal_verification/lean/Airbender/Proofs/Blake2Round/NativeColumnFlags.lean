@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2Round.NativeColumnFacts
 import Airbender.Proofs.Blake2Round.NativeGAssignment
 import Airbender.Proofs.Blake2G.FrameCarries
@@ -8,7 +9,7 @@ set_option Elab.async false
 set_option maxRecDepth 16384
 set_option maxHeartbeats 4000000
 
-theorem native_column_flags_complete {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem native_column_flags_complete {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     (call : Fin 4) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) (k : Fin 12) :

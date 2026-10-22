@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.Pooled
 import Airbender.Proofs.Trace.PooledProgram
 import Airbender.Proofs.Trace.ROM
@@ -9,7 +11,7 @@ import Airbender.Proofs.SubwordMemory.Values
 namespace Airbender.Trace.Proofs
 open Arithmetic
 
-theorem pooled_row_write_rule {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
+theorem pooled_row_write_rule {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 33554432)
     {trace : PooledTrace p} {row : Row p PooledFamily}
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints trace.rom))
@@ -92,7 +94,7 @@ theorem pooled_row_write_rule {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     by the shared chronological induction, including cross-family dependencies. -/
 theorem pooled_write_rules {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
-    [registry : PooledRegistry projection] (hp : 33554432 < p)
+    [registry : PooledRegistry projection] (hp : FieldCapacity.NoWrap p 33554432)
     {trace : PooledTrace p} (accepted : Accepted trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)
@@ -111,8 +113,8 @@ theorem pooled_write_rules {p : Nat} [Fact p.Prime]
     terminal word bound. No family supplies a separate operand-bound premise. -/
 theorem pooled_value_bounds {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
-    [registry : PooledRegistry projection] (hp : 33554432 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    [registry : PooledRegistry projection] (hp : FieldCapacity.NoWrap p 33554432)
+    (inverse : SerializedInverse.Clock p)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)

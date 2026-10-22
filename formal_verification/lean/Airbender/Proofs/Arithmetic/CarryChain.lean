@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Arithmetic.Lemmas
 
 namespace Airbender.Arithmetic
@@ -22,7 +23,7 @@ theorem carry_chain {radix length : Nat} {left right result carry : Nat → Nat}
     omega
 
 theorem bounded_carry_step {F : Type} [CommRing F] {p radix a b r c d : Nat} [CharP F p]
-    (hp : 2 * radix ≤ p) (ha : a < radix) (hb : b < radix) (hr : r < radix)
+    (hp : FieldCapacity.AtLeast p (2 * radix)) (ha : a < radix) (hb : b < radix) (hr : r < radix)
     (hc : c ≤ 1) (hd : d ≤ 1)
     (field : (a : F) + b + c = r + (radix : F) * d) : a + b + c = r + radix * d := by
   have bound : radix * d ≤ radix := by simpa using Nat.mul_le_mul_left radix hd

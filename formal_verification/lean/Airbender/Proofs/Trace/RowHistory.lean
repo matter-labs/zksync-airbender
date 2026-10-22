@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Trace.ZeroRegister
 
 namespace Airbender.Trace.Proofs
@@ -7,8 +9,8 @@ open Reference.RiscV.Sail
 
 abbrev rowClock (row : Row p Kind) : Nat := row.clock
 
-theorem native_events_projection [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem native_events_projection [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     trace.nativeEvents = trace.rows.flatMap (rowEvents trace.memoryEpoch) := by
   simp only [Data.nativeEvents, Data.memorySteps, List.map_flatMap]
@@ -53,8 +55,8 @@ private theorem row_events_sorted [Fact p.Prime] [ClockLaws Kind p]
   omega
 
 
-private theorem row_events_separated [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+private theorem row_events_separated [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {first last : Row p Kind} (firstMember : first ∈ trace.rows) (lastMember : last ∈ trace.rows)
     (ordered : rowClock last < rowClock first)
@@ -76,8 +78,8 @@ private theorem row_events_separated [Fact p.Prime] (hp : 2 * timestampBase + 4 
 
 /-- Strict clocks give an instruction ordering, and each instruction's three
     accesses stay together. Neither witness row order nor expected reads are used. -/
-theorem native_row_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem native_row_order [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     ∃ rows : List (Row p Kind), rows.Perm trace.rows ∧
       rows.Pairwise (fun a b => rowClock b < rowClock a) ∧
@@ -110,8 +112,8 @@ theorem native_row_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 /-- The grouped instruction order is the complete native PC/timestamp path,
     including its public initial and terminal states. -/
-theorem ordered_row_state_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+theorem ordered_row_state_path [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    [ClockLaws Kind p] (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {rows : List (Row p Kind)} (permutation : rows.Perm trace.rows)
     (ordered : rows.Pairwise (fun a b => rowClock b < rowClock a)) :
@@ -142,8 +144,8 @@ theorem ordered_row_state_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 /-- Shared realization and instruction grouping for any certified three-port
     family. The local x0 law is discharged by the caller's artifact/decoder proof. -/
 theorem native_row_history [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) [ClockLaws Kind p]
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    (hp : FieldCapacity.ClockNoWrap p timestampBase) [ClockLaws Kind p]
+    (inverse : SerializedInverse.Clock p) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)
@@ -221,8 +223,8 @@ theorem sail_history_row_reads {cells : List Cell} {a b c : MemoryAccess}
 /-- Group the already-derived Sail transfers into complete instruction rows.
     Initial state, public bytes and native logical matching remain the inputs. -/
 theorem decoded_row_history [Fact p.Prime]
-    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)

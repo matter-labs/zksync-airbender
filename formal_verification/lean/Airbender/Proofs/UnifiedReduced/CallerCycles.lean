@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.UnifiedReduced.CallerCycles
 import Airbender.Proofs.UnifiedReduced.MixedFetch
 import Airbender.Proofs.UnifiedReduced.UnissuedWorkers
@@ -10,7 +12,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
-theorem caller_worker_family [Fact p.Prime] (hp : 2048 ≤ p)
+theorem caller_worker_family [Fact p.Prime] (hp : FieldCapacity.AtLeast p 2048)
     {row : Trace.Row p UnifiedFamily} {entry : Delegation.Caller.ProgramEntry} {worker : Delegation.Row p}
     (query : row.decoderQuery = Delegation.Caller.query entry)
     (matched : Delegation.Requests.fulfillment worker = request row.assignment) :
@@ -62,8 +64,8 @@ theorem caller_pc_retirement [Fact p.Prime] {data : RequestTrace p} {initial aft
     rw [same] at native
     simpa only [initialPC, finalPC] using native
 
-theorem caller_cycle_observations [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem caller_cycle_observations [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {initial before after : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)

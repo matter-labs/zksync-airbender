@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2G.NativeCall
 import Airbender.Proofs.Blake2G.BlockFrame
 
@@ -13,8 +15,8 @@ theorem scheduled_counter (reduced : Bool) (i : Nat) :
   have bound := Nat.mod_lt i (show 0 < callCount reduced by cases reduced <;> decide)
   cases reduced <;> dsimp [controllerAt, controlAt, callCount] at * <;> split_ifs <;> omega
 
-theorem abi_in_span [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem abi_in_span [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : State} {domain : List Cell} {reduced : Bool}
     (accepted : Delegation.MemoryAccepted data)
     (inputs : Blake2G.Proofs.BoundaryCallInputs data initial domain reduced)

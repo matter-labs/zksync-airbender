@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Trace.Workers.Keccak.Call
 import Airbender.Review.Circuits.Keccak.Memory
 import Airbender.Review.Trace.Workers.Keccak.BoundaryCall
@@ -40,7 +41,7 @@ def Memory.Inputs.toBoundaryInputs [Fact p.Prime] {data : Delegation.MemoryData 
 
 def NativeCallInputs.toBoundaryInputs [Fact p.Prime] {data : Delegation.MemoryData p}
     {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
-    (inputs : NativeCallInputs data initial cells) (hp : 2 * Trace.timestampBase + 4 < p)
+    (inputs : NativeCallInputs data initial cells) (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     (accepted : Delegation.MemoryAccepted data) : Proofs.BoundaryCallInputs data initial cells := by
   have memory := inputs.memory.toBoundaryInputs
   have nonempty : data.rows ≠ [] := by

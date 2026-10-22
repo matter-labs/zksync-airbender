@@ -1,9 +1,10 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Arithmetic.Bytes
 
 namespace Airbender.Arithmetic
 set_option warningAsError true
 
-theorem Word.byte_fields {p : Nat} [Fact p.Prime] (hp : 65536 < p)
+theorem Word.byte_fields {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 65536)
     (lo hi : ZMod p) (bytes : Fin 4 → ZMod p)
     (bounded : ∀ i, (bytes i).val < 256)
     (low : bytes ⟨0, by decide⟩ + 256 * bytes ⟨1, by decide⟩ = lo) (high : bytes ⟨2, by decide⟩ + 256 * bytes ⟨3, by decide⟩ = hi) :

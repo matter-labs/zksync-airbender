@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2Round.NativeDiagonalRows0Part1
 
 namespace Airbender.Blake2Round.Proofs
@@ -5,8 +7,8 @@ set_option warningAsError true
 set_option Elab.async false
 
 /-- Project one native diagonal call into the unchanged G arithmetic queries. -/
-theorem native_diagonal_queries_0_part_1 {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
-    (compatible : 64 * (-31457280 : ZMod p) = 1)
+theorem native_diagonal_queries_0_part_1 {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
+    (compatible : SerializedInverse.Scale64 p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable)) (i : Fin 3) :

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Helpers.Context.PaddingBoundary.Theorems
 import Airbender.Proofs.UnifiedReduced.PaddingBoundary
 import Airbender.Review.Trace.Families.AddSub.Theorems
@@ -40,8 +42,8 @@ namespace Airbender.UnifiedReduced
     profiles, modeled tables and existing field/inverse conditions are unchanged. -/
 theorem Mixed.padded_execution_soundness [Fact p.Prime]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    (hp : 4194304 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    (hp : FieldCapacity.NativeRomCapacity p) (clockInverse : SerializedInverse.Clock p)
+    (byteInverse : SerializedInverse.Scale256 p)
     {trace : Trace.UnifiedTrace p} {initial : Reference.RiscV.Sail.State}
     {cells : List Trace.Cell} {program : List ProgramEntry}
     (inputs : Mixed.Inputs (PaddingBoundary.active trace) initial cells program)

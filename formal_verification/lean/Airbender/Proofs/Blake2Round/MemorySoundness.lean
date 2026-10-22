@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2Round.Memory
 
 namespace Airbender.Blake2Round.Memory.Proofs
@@ -6,8 +8,8 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1000000
 
-theorem soundness [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1) (data : Delegation.MemoryData p)
+theorem soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p) (data : Delegation.MemoryData p)
     (before : Reference.RiscV.Sail.State) (cells : List Cell) :
     (circuitModel data).SoundnessUnder (InterfaceAssumptions data before cells) Row.spec := by
   intro input output w ⟨interface, holds, mapping⟩

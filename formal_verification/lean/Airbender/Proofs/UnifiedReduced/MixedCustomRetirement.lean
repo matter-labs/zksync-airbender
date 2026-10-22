@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.MixedRetirement
 import Airbender.Proofs.UnifiedReduced.CustomComposition
 
@@ -18,7 +19,7 @@ theorem custom_fields_of_clause {instruction : SailRV32.instruction} {data : Dec
     | _ => simp [Custom.clauseFor] at supported
   · exact custom
 
-theorem custom_ordinary [Fact p.Prime] (hp : 524288 < p)
+theorem custom_ordinary [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {data : RequestTrace p} {w : Nat → ZMod p} {entry : UnifiedReduced.ProgramEntry}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints data.machine.rom))
     (fields : customDecoderFields entry.instruction = some entry.data) (query : decoderQuery w = entry.query) :

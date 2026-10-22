@@ -42,9 +42,9 @@ Temporary assumptions do not close implementation bugs. Separately scoped work:
 
 ## Validation
 
-- Library, both executables and all 137 concrete test modules pass.
+- All 1,659 source modules, the library, both executables and all 137 concrete test modules pass.
 - Importer regressions pass.
-- Axiom audit: 4,363 roots, 149 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
+- Axiom audit: 4,379 roots, 149 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
 - All 166 public Review theorem roots are audited; review/reference checks pass.
 - No handwritten project diagnostics, `sorry` or project axioms.
 

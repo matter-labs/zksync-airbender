@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.Delegation.SharedMemory
 import Airbender.Proofs.Delegation.RequestTrace
 import Airbender.Proofs.Trace.TransferHistory
@@ -21,8 +23,8 @@ def sharedInputs [Fact p.Prime] {data : RequestTrace p} {before : Reference.Risc
     (inputs : SharedMemoryInputs data before addresses cells) : Transfer.Inputs (sharedData data) before cells :=
   ⟨inputs.initialization, inputs.distinct⟩
 
-theorem shared_write_clocks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem shared_write_clocks [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {cells : List Cell}
     (accepted : SharedMemoryAccepted data) (inputs : SharedMemoryInputs data before addresses cells)
@@ -50,8 +52,8 @@ theorem shared_write_clocks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     exact (write_time_of_room (by omega) (base := rawPair row.assignment row.columns.invocation) (requests.clocks row member)
       (by simpa only [offset, decodeTimestamp, rawPair] using room)).1
 
-theorem shared_memory_clocks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem shared_memory_clocks [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {cells : List Cell}
     (accepted : SharedMemoryAccepted data) (inputs : SharedMemoryInputs data before addresses cells)
@@ -70,8 +72,8 @@ theorem shared_memory_clocks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       (List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨edge, member, rfl⟩)))),
     shared_write_clocks hp inverse accepted inputs requests edge member⟩
 
-theorem shared_memory_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem shared_memory_order [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {cells : List Cell}
     (accepted : SharedMemoryAccepted data) (inputs : SharedMemoryInputs data before addresses cells)
@@ -138,8 +140,8 @@ theorem shared_memory_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       (base := rawPair row.assignment row.columns.invocation)
       (requests.clocks row rowMember) room).2.symm
 
-theorem shared_memory_facts [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem shared_memory_facts [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {cells : List Cell}
     (accepted : SharedMemoryAccepted data) (inputs : SharedMemoryInputs data before addresses cells)

@@ -1,10 +1,11 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2Round.ControlPool
 
 namespace Airbender.Blake2Round.Proofs
 open Trace Arithmetic Reference.RiscV.Sail
 set_option warningAsError true
 
-def BoundaryCallInputs.toControlPoolInputs [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+def BoundaryCallInputs.toControlPoolInputs [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
     (inputs : BoundaryCallInputs data initial cells flags) (accepted : Delegation.MemoryAccepted data) :
     ControlPoolInputs data initial cells flags := by
@@ -18,7 +19,7 @@ def BoundaryCallInputs.toControlPoolInputs [Fact p.Prime] (hp : 2 * timestampBas
     (cell := .register 12) (by rfl)
   exact ⟨inputs.memory, inputs.tables, inputs.family, tracked, inputs.controlStart, count.2⟩
 
-theorem call_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem call_order [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags) :
     ∃ ordered : List (Delegation.Row p), ordered.Perm data.rows ∧
@@ -27,7 +28,7 @@ theorem call_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
         (timeOfPair (b.writeToken importedConstraintsMemoryPorts[42]).time).value) :=
   pool_order hp accepted (inputs.toControlPoolInputs hp accepted)
 
-theorem ordered_controls [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem ordered_controls [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags) :
     ∃ ordered : List (Delegation.Row p), ordered.Perm data.rows ∧
@@ -41,20 +42,20 @@ theorem ordered_controls [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
         sink.word = controlAt flags data.rows.length :=
   pool_ordered_controls hp accepted (inputs.toControlPoolInputs hp accepted)
 
-theorem call_rounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem call_rounds [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags) :
     ∀ row ∈ data.rows, ∃ round : Fin 10, Memory.RoundMask row.assignment round ∧
       (row.assignment Variables.controlReadHi).val = flags.val + 8 * 2 ^ round.val :=
   pool_rounds hp accepted (inputs.toControlPoolInputs hp accepted)
 
-theorem call_masks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem call_masks [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags) :
     CallMasks data :=
   pool_masks hp accepted (inputs.toControlPoolInputs hp accepted)
 
-theorem call_modes [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem call_modes [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags) :
     CallModes data flags :=

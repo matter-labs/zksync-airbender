@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.WordMemory.Artifact
 import Airbender.Proofs.WordMemory.ArtifactChecks
 import Airbender.Review.Helpers.Properties
@@ -32,8 +34,8 @@ theorem local_ranges {p : Nat} [Fact p.Prime] {rom : Table (ZMod p) (fields 9)}
   simpa [Expression.eval, Verification.environment] using And.intro a (And.intro b c)
 
 /-- Final-PC bounds follow from the imported lookups; initial bounds remain explicit. -/
-theorem pc_successor {p : Nat} [Fact p.Prime] (hp : 196608 < p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1)
+theorem pc_successor {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
+    (inverse : SerializedInverse.Limb16 p)
     {rom : Table (ZMod p) (fields 9)} {w : Nat → ZMod p} {initial final : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints rom))
     (mapping : w 0 = (initial.lo : ZMod p) ∧ w 1 = (initial.hi : ZMod p) ∧
@@ -64,8 +66,8 @@ theorem pc_successor {p : Nat} [Fact p.Prime] (hp : 196608 < p)
 
 /-- The selected RAM address is rs1 plus the preprocessed immediate, modulo 2^32.
     Source, immediate and memory-address bounds remain explicit interfaces. -/
-theorem effective_address {p : Nat} [Fact p.Prime] (hp : 196608 < p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1)
+theorem effective_address {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
+    (inverse : SerializedInverse.Limb16 p)
     {rom : Table (ZMod p) (fields 9)} {w : Nat → ZMod p} (store : Bool)
     {source immediate address : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints rom))
@@ -119,7 +121,7 @@ theorem register_address {p : Nat} [Fact p.Prime] {rom : Table (ZMod p) (fields 
   all_goals constructor <;> first | linear_combination lo | exact hi
 
 /-- The ranged subtraction classifies the selected address, and forbids ROM stores. -/
-theorem rom_selection {p : Nat} [Fact p.Prime] (hp : 131072 < p)
+theorem rom_selection {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 131072)
     {rom : Table (ZMod p) (fields 9)} {w : Nat → ZMod p} (store : Bool) {address : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints rom))
     (selected : w 10 = if store then 1 else 0)

@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.Delegation.MixedMemory
 import Airbender.Proofs.Delegation.RequestTrace
 import Airbender.Proofs.Trace.TransferHistory
@@ -37,8 +39,8 @@ theorem machine_port_native (row : Trace.Row p PooledFamily)
     all_goals simp [Trace.Row.ports, family, CircuitLayout.ports, AddSub.importedConstraintsMemoryPorts]
   next => exact member
 
-theorem mixed_write_clocks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem mixed_write_clocks [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List PooledProgramEntry} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
@@ -59,8 +61,8 @@ theorem mixed_write_clocks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     exact (write_time_of_room (by omega) (base := rawPair row.assignment row.columns.invocation) (requests.clocks row member)
       (by simpa only [offset, decodeTimestamp, rawPair] using requests.clockRoom row member)).1
 
-theorem mixed_memory_clocks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem mixed_memory_clocks [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List PooledProgramEntry} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
@@ -78,8 +80,8 @@ theorem mixed_memory_clocks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨edge, member, rfl⟩)))),
     mixed_write_clocks hp inverse accepted inputs requests edge member⟩
 
-theorem mixed_memory_facts [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem mixed_memory_facts [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List PooledProgramEntry} {before : Reference.RiscV.Sail.State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)

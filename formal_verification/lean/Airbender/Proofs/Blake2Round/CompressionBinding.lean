@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2Round.CallCompression
 
 namespace Airbender.Blake2Round.Proofs
@@ -25,8 +27,8 @@ theorem block_at {state : State} {cells : List Cell} {pointer : BitVec 32} {n of
       (pointer + BitVec.ofNat 32 (4 * (offset + i.val)))))
   · exact encoded_read (readable _ (tracked i))
 
-theorem compression_binding_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem compression_binding_at_boundary [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
@@ -63,8 +65,8 @@ theorem compression_binding_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
     block_at extendedTracked initialReadable, block_at messageTracked initialReadable,
     block_at stateTracked afterReadable, block_at extendedTracked afterReadable⟩
 
-theorem compression_binding [Fact p.Prime] (hp : 8388608 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1)
+theorem compression_binding [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (inverse : SerializedInverse.Scale64 p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :

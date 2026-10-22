@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.MulDiv
 import Airbender.Proofs.Arithmetic.Multiplication
 
@@ -32,8 +34,8 @@ private theorem product_wiring {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
 /-- Exact integer product, proved by lifting each bounded byte column separately.
     Selector order is MUL, MULHU, DIVU, REMU. The dividend/input limb bounds
     remain a register interface; no product, quotient or remainder is assumed. -/
-theorem product_with_remainder {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1) {w : Nat → ZMod p}
+theorem product_with_remainder {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeWordCapacity p)
+    (inverse : SerializedInverse.Limb16 p) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (operation : Fin 4)
     (selected : ∀ i : Fin 4, w (10 + i.val) = if i = operation then 1 else 0)
@@ -132,8 +134,8 @@ theorem product_with_remainder {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
 
 /-- The division comparison equations force a strict remainder bound when the
     divisor is nonzero. Reuse the shared two-limb borrow theorem. -/
-theorem remainder_lt_divisor {p : Nat} [Fact p.Prime] (hp : 196608 < p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1) {w : Nat → ZMod p}
+theorem remainder_lt_divisor {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 196608)
+    (inverse : SerializedInverse.Limb16 p) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (remainder : Bool)
     (selected : w 12 = (if remainder then 0 else 1) ∧ w 13 = (if remainder then 1 else 0))
@@ -207,8 +209,8 @@ theorem remainder_lt_divisor {p : Nat} [Fact p.Prime] (hp : 196608 < p)
 
 /-- Nonzero unsigned division is uniquely fixed by the exact product relation
     and strict remainder bound, using Lean's natural division uniqueness theorem. -/
-theorem division_nonzero {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1) {w : Nat → ZMod p}
+theorem division_nonzero {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeWordCapacity p)
+    (inverse : SerializedInverse.Limb16 p) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (remainder : Bool)
     (selected : w 12 = (if remainder then 0 else 1) ∧ w 13 = (if remainder then 1 else 0))
@@ -260,8 +262,8 @@ theorem division_nonzero {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
 
 /-- MUL/MULHU select the low/high half of the exact product. The low half's
     range makes this decomposition unique, without assuming the output. -/
-theorem multiplication_result {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1) {w : Nat → ZMod p}
+theorem multiplication_result {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NativeWordCapacity p)
+    (inverse : SerializedInverse.Limb16 p) {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (high : Bool)
     (selected : ∀ i : Fin 4, w (10 + i.val) = if i = (if high then 1 else 0) then 1 else 0)

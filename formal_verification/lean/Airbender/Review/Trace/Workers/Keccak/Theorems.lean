@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Keccak.Windows
 import Airbender.Proofs.Keccak.PermutationBinding
 import Airbender.Proofs.Keccak.NativeExecution
@@ -6,8 +8,8 @@ namespace Airbender.Keccak
 
 /-- The same complete reference at a native cut. Seed timestamps are retained;
     initialized matching derives reads, ranges, schedules and actual lane states. -/
-theorem Native.permutation_boundary_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem Native.permutation_boundary_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : NativeCallInputs data initial cells)
     (tables : data.setup = Delegation.modeledSetup Controller.rows)
@@ -23,8 +25,8 @@ theorem Native.permutation_boundary_soundness [Fact p.Prime] (hp : 16777216 ≤ 
     initial/final lane reads; matching derives all ranges, scratch behavior
     and intermediate states. Caller request matching and modeled-table fidelity
     remain explicit boundaries of `CallInputs` and `tables`. -/
-theorem Native.permutation_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem Native.permutation_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells)
     (tables : data.setup = Delegation.modeledSetup Controller.rows)
@@ -38,8 +40,8 @@ theorem Native.permutation_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
     actual initialized Sail transfers in a mixed delegation pool. All seven lane modes
     use the existing Clean references on native observations. No pointer/read/range/result
     premise is supplied. Caller request binding is handled by separate claims. -/
-theorem Native.operation_execution [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem Native.operation_execution [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     (accepted : Delegation.MemoryAccepted data)
     (inputs : Delegation.OperationInputs data before cells Controller.rows)
@@ -51,8 +53,8 @@ theorem Native.operation_execution [Fact p.Prime] (hp : 16777216 ≤ p)
 /-- The first complete Keccak span reaches the full reference on its actual
     cut states from a retained native boundary. Later workers may remain outside
     the window; intermediate values and terminal agreement are derived. -/
-theorem Native.window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+theorem Native.window_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
+    (inverse : SerializedInverse.Scale256 p)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {lower upper : Nat} (accepted : Delegation.MemoryAccepted data)
     (inputs : WindowInputs data before cells lower upper) (aligned : ∀ cell ∈ cells, cell.Aligned) :

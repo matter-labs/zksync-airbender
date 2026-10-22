@@ -1,3 +1,5 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2G.Addresses
 import Airbender.Review.Circuits.Blake2G.Execution
 import Airbender.Proofs.Delegation.NativeViews
@@ -22,8 +24,8 @@ def addressInput (w : Nat → ZMod p) (controlBound : (w Variables.controlReadLo
   ⟨⟨⟨(w Variables.controlReadLo).val, controlBound⟩, true⟩,
     Native.statePointer w, Native.messagePointer w⟩
 
-theorem native_addresses [Fact p.Prime] (hp : 4194304 ≤ p)
-    (inverse : 64 * (-31457280 : ZMod p) = 1) {w : Nat → ZMod p}
+theorem native_addresses [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
+    (inverse : SerializedInverse.Scale64 p) {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable Control.controllerRows)))
     (active : w Variables.execute = 1)

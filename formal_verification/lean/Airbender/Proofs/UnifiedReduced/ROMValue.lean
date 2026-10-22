@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.UnifiedReduced.WordROM
 
 namespace Airbender.UnifiedReduced.Proofs
@@ -6,7 +7,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1000000
 
-theorem word_rom_value [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem word_rom_value [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     {initial : Reference.RiscV.Sail.State} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table initial)))
     (active : w 4 = 1) (load : w 28 = 1) (rom : w 54 = 1) :

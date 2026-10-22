@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.AddSub.ModularExternalDecoder
 import Airbender.Proofs.AddSub.ModularNative
 import Airbender.Proofs.Trace.PooledComposition
@@ -10,7 +11,7 @@ variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
 theorem addsub_execution
-    (hp : 536870912 ≤ babyBearModulus) (inverse : (-3840 : ZMod babyBearModulus) * 524288 = 1)
+    (hp : 536870912 ≤ babyBearModulus) (inverse : SerializedInverse.Clock babyBearModulus)
     {trace : PooledTrace babyBearModulus} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
@@ -159,7 +160,7 @@ theorem addsub_execution
 
 set_option backward.isDefEq.respectTransparency false in
 theorem row_step
-    (hp : 536870912 ≤ babyBearModulus) (inverse : (-3840 : ZMod babyBearModulus) * 524288 = 1)
+    (hp : 536870912 ≤ babyBearModulus) (inverse : SerializedInverse.Clock babyBearModulus)
     {trace : PooledTrace babyBearModulus} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)

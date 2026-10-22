@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Trace.NonDeterminism
 import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.Trace.ZeroRegister
@@ -69,7 +70,7 @@ theorem load_nonzero {instruction : SailRV32.instruction} {data : DecoderData}
   all_goals cases family
 
 /-- The native read tag is fixed by the same packed selector query. -/
-theorem read_flag {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem read_flag {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {trace : Data p} (accepted : Accepted trace) {row : Row p} (member : row ∈ trace.rows)
     {entry : ProgramEntry} (small : entry.data.mask < 512)
     (query : row.decoderQuery = entry.query) :
@@ -96,7 +97,7 @@ def decoderRules : Trace.Proofs.DecoderRules NonDeterminism.decoderFields where
 
 /-- Fetch, actual Sail decoding, all native indices/immediates and the nine
     Boolean selector bits are checked with the same shared decoder machinery. -/
-theorem decoder_soundness {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem decoder_soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     {trace : Data p} (accepted : Accepted trace) {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImageWith NonDeterminism.decoderFields before addresses = some program)

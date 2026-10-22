@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2Round.NativeFinalLayout
 import Airbender.Proofs.Blake2Round.NativeFinalGates
 import Airbender.Proofs.Blake2Round.Lookups
@@ -42,7 +43,7 @@ def bdHighB {p : Nat} [Fact p.Prime] (w : Nat → ZMod p) (limb : Fin 8) : ZMod 
 def bdHighD {p : Nat} [Fact p.Prime] (w : Nat → ZMod p) (limb : Fin 8) : ZMod p :=
   (-7864320 : ZMod p) * (bdD w limb - bdLowD w limb)
 
-theorem final_query {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
+theorem final_query {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {w : Nat → ZMod p} (limb : Fin 16) (stage : Fin 4) (kind : Fin 3)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setupTable))

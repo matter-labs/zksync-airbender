@@ -1,3 +1,4 @@
+import Airbender.Review.Helpers.Core.FieldCapacity
 import Clean.Specs.BLAKE3
 import Airbender.Proofs.Arithmetic.Lemmas
 import Airbender.Proofs.Arithmetic.Word
@@ -23,7 +24,7 @@ theorem rotate_right_of_chunks {width low high : Nat} (widthBound : width < 32)
 /-- A bounded scaled remainder reconstructs the canonical field value. Chunk
     widths may differ; the combined range must fit below the characteristic. -/
 theorem value_of_scaled_chunks {p radix capacity : Nat} [Fact p.Prime]
-    (hp : radix * capacity ≤ p) {x low inverse : ZMod p}
+    (hp : FieldCapacity.AtLeast p (radix * capacity)) {x low inverse : ZMod p}
     (compatible : (radix : ZMod p) * inverse = 1)
     (lowBound : low.val < radix) (highBound : (inverse * (x - low)).val < capacity) :
     x.val = low.val + radix * (inverse * (x - low)).val := by
@@ -44,7 +45,7 @@ theorem value_of_scaled_chunks {p radix capacity : Nat} [Fact p.Prime]
 /-- Reconstruct three chunks of possibly different widths, using the same
     scaled-remainder rule as the two-chunk case. -/
 theorem value_of_three_chunks {p lowRadix middleRadix capacity : Nat} [Fact p.Prime]
-    (hp : lowRadix * middleRadix * capacity ≤ p) {x low middle inverse : ZMod p}
+    (hp : FieldCapacity.AtLeast p (lowRadix * middleRadix * capacity)) {x low middle inverse : ZMod p}
     (compatible : ((lowRadix * middleRadix : Nat) : ZMod p) * inverse = 1)
     (lowBound : low.val < lowRadix) (middleBound : middle.val < middleRadix)
     (highBound : (inverse * (x - (low + lowRadix * middle))).val < capacity) :
@@ -71,7 +72,7 @@ theorem value_of_three_chunks {p lowRadix middleRadix capacity : Nat} [Fact p.Pr
 /-- A range query on an inverse-scaled value makes its canonical value a
     multiple of the scale. Shared by delegation-pointer alignment proofs. -/
 theorem value_of_scaled_range {p radix capacity : Nat} [Fact p.Prime]
-    (hp : radix * capacity ≤ p) (positive : 0 < radix) {x inverse : ZMod p}
+    (hp : FieldCapacity.AtLeast p (radix * capacity)) (positive : 0 < radix) {x inverse : ZMod p}
     (compatible : (radix : ZMod p) * inverse = 1)
     (bound : (inverse * x).val < capacity) : x.val = radix * (inverse * x).val := by
   have value := value_of_scaled_chunks hp compatible
@@ -80,7 +81,7 @@ theorem value_of_scaled_range {p radix capacity : Nat} [Fact p.Prime]
 
 /-- Two carry bits initially encode 0..3. The bounded limb equations exclude 3
     before reusing the shared addition proof and Clean's modular addition. -/
-theorem Word.add32_of_limbs {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
+theorem Word.add32_of_limbs {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 262144)
     {left right message output : Word} {carry wrap : Nat}
     (leftBound : left.Bounded) (rightBound : right.Bounded)
     (messageBound : message.Bounded) (outputBound : output.Bounded)
