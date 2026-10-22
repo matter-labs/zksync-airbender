@@ -129,7 +129,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
         assert!(poly_size.is_power_of_two());
         assert!(poly_size > 2);
         let size_after_one_fold = poly_size / 4;
-        let buffer_size = size_after_one_fold * 2; // coarse
+        // Successive folded layers occupy disjoint, geometrically shrinking
+        // regions: poly_size / 2 + poly_size / 4 + ... < poly_size.
+        let buffer_size = size_after_one_fold * 4;
         let continuous_buffer = Box::new_uninit_slice(buffer_size);
         Self {
             continuous_buffer,
@@ -144,13 +146,18 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
 
     #[track_caller]
     pub fn pointer_for_sumcheck_continuation(&mut self, step: usize) -> (*mut E, *mut E) {
-        // LSB folds run in place at the buffer FRONT: each round reads the
-        // previous layer's adjacent pairs (2i, 2i+1) and writes the halved
-        // layer at i, so every read stays ahead of every write (also across
-        // ascending parallel chunks) and one front region serves all rounds
+        // Keep the previous layer immutable while folding. Parallel chunks
+        // may finish in any order, and kernels may read an index repeatedly.
         assert!(step >= 2);
-        let start = self.continuous_buffer.as_mut_ptr().cast::<E>();
-        (start, start)
+        unsafe {
+            let mut input = self.continuous_buffer.as_mut_ptr().cast::<E>();
+            let mut input_size = self.size_after_one_fold * 2;
+            for _ in 2..step {
+                input = input.add(input_size);
+                input_size /= 2;
+            }
+            (input, input.add(input_size))
+        }
     }
 }
 
@@ -261,5 +268,74 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
             self.get_at_index(2 * index),
             self.get_at_index(2 * index + 1),
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use field::Proth120;
+
+    #[test]
+    fn extension_folds_allow_reverse_chunk_order() {
+        type P = Proth120;
+        const POLY_SIZE: usize = 256;
+        let mut buffer =
+            ExtensionFieldPolyIntermediateFoldingStorage::<P, P>::new_for_extension_poly_size(
+                POLY_SIZE,
+            );
+        let mut expected: Vec<_> = (0..POLY_SIZE / 2)
+            .map(|i| P::from_u32_with_reduction((i * i + 7) as u32))
+            .collect();
+        // Materialize the first fold, as round 1 does before continuation.
+        unsafe {
+            buffer
+                .pointer_for_sumcheck_after_one_fold()
+                .copy_from_nonoverlapping(expected.as_ptr(), expected.len());
+        }
+        for step in 2..POLY_SIZE.ilog2() as usize {
+            let challenge = P::from_u32_with_reduction(step as u32 + 11);
+            expected = expected
+                .chunks_exact(2)
+                .map(|pair| {
+                    let mut value = pair[1];
+                    value.sub_assign(&pair[0]);
+                    value.mul_assign(&challenge);
+                    value.add_assign(&pair[0]);
+                    value
+                })
+                .collect();
+            let (previous_layer_start, this_layer_start) =
+                buffer.pointer_for_sumcheck_continuation(step);
+            let source = ExtensionFieldPolyContinuingSource::<P, P> {
+                previous_layer_start,
+                this_layer_start,
+                this_layer_size: expected.len(),
+                next_layer_size: expected.len() / 2,
+                folding_challenge: challenge,
+                first_access: true,
+                _marker: core::marker::PhantomData,
+            };
+            // Complete higher chunks first: a legal worker ordering, forced
+            // serially to expose overwritten inputs without a data race in
+            // the test itself or a dependency on OS scheduling.
+            let chunk_size = expected.len().div_ceil(4);
+            let starts: Vec<_> = (0..expected.len()).step_by(chunk_size).collect();
+            for start in starts.into_iter().rev() {
+                for i in start..(start + chunk_size).min(expected.len()) {
+                    assert_eq!(
+                        source.get_at_index(i).value,
+                        expected[i],
+                        "step {step}, index {i}"
+                    );
+                    assert_eq!(
+                        source.get_at_index(i).value,
+                        expected[i],
+                        "repeated read at step {step}, index {i}"
+                    );
+                }
+            }
+            assert_eq!(source.current_values(), expected);
+        }
     }
 }
