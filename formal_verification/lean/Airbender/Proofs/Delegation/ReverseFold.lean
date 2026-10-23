@@ -1,5 +1,5 @@
 import Batteries.Data.Fin.Fold
-import Mathlib.Tactic
+import Lean.Elab.Tactic.Omega
 
 namespace Airbender.Delegation.Proofs
 set_option warningAsError true
