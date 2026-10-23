@@ -460,7 +460,6 @@ pub fn verify_unified_circuit_recursion_layer_sec_100_l1_feeder<
         verify_full_statement_for_unified_circuit_without_delegations::<
             I,
             E,
-            false,
             REDUCED_ROUNDS,
             { feeder::CAP_SIZE },
             { address_high_bits_shift(feeder::TRACE_LEN_LOG2) },
@@ -488,7 +487,6 @@ pub fn verify_unified_circuit_recursion_layer_sec_100_l1_feeder_a<
         verify_full_statement_for_unified_circuit_without_delegations::<
             I,
             E,
-            false,
             REDUCED_ROUNDS,
             { feeder::CAP_SIZE },
             { address_high_bits_shift(feeder::TRACE_LEN_LOG2) },
@@ -583,14 +581,11 @@ const _: () = assert!(crate::definitions::DELEGATION_TYPES.len() == NUM_DELEGATI
 /// # Safety
 ///
 /// As [`verify_full_statement_for_unified_circuit`].
-#[allow(invalid_value)]
 #[inline(never)]
-#[allow(clippy::uninit_assumed_init)]
 #[allow(clippy::manual_memcpy)]
 pub unsafe fn verify_full_statement_for_unified_circuit_without_delegations<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
-    const BASE_LAYER: bool,
     const REDUCED_ROUNDS: bool,
     const UCAP: usize,
     const ADDRESS_HIGH_BITS_SHIFT: u32,
@@ -609,16 +604,7 @@ where
 {
     let mut transcript = Blake2sBufferingTranscript::<REDUCED_ROUNDS>::new();
 
-    let mut registers_buffer = MaybeUninit::<[u32; 32 + 2 * 32]>::uninit().assume_init();
-
-    for reg_idx in 0..32 {
-        let value = nd_source.read_word();
-        let timestamp_low = nd_source.read_word();
-        let timestamp_high = nd_source.read_word();
-        registers_buffer[reg_idx * 3] = value;
-        registers_buffer[reg_idx * 3 + 1] = timestamp_low;
-        registers_buffer[reg_idx * 3 + 2] = timestamp_high;
-    }
+    let registers_buffer: [u32; 32 + 2 * 32] = core::array::from_fn(|_| nd_source.read_word());
 
     assert_eq!(registers_buffer[0], 0);
 
@@ -748,7 +734,7 @@ where
 
     assert_eq!(read_set_product_accumulator, write_set_product_accumulator);
 
-    let mut output: [u32; 16] = MaybeUninit::uninit().assume_init();
+    let mut output = [0u32; 16];
     for i in 0..8 {
         output[i] = registers_buffer[(10 + i) * 3];
     }
@@ -762,65 +748,40 @@ where
     result_hasher.absorb(MerkleTreeCap::flatten_single(unified_circuit_setup));
     let end_params_output = result_hasher.finalize_reset();
 
-    if BASE_LAYER {
-        let mut all_zeroes = true;
-        for i in 8..16 {
-            let value = registers_buffer[(10 + i) * 3];
-            all_zeroes &= value == 0;
-        }
-        assert!(all_zeroes);
+    let aux_registers: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] =
+        core::array::from_fn(|i| registers_buffer[(18 + i) * 3]);
 
-        let mut buffer = [0u32; 16];
-        for i in 0..8 {
-            buffer[8 + i] = end_params_output.0[i];
-        }
-        result_hasher.absorb(&buffer);
-        let recursion_chain_output = result_hasher.finalize_reset();
+    let preimage: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS * 2] =
+        core::array::from_fn(|_| nd_source.read_word());
+    result_hasher.absorb(&preimage);
+    let preimage_hash = result_hasher.finalize_reset();
+    let mut equal = true;
+    for i in 0..8 {
+        equal &= preimage_hash.0[i] == aux_registers[i];
+    }
+    assert!(equal);
+
+    let mut equal = true;
+    for i in 0..8 {
+        equal &= preimage[i + 8] == end_params_output.0[i];
+    }
+
+    if equal {
         for i in 8..16 {
-            output[i] = recursion_chain_output.0[i - 8];
+            output[i] = aux_registers[i - 8];
         }
     } else {
-        let mut aux_registers: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] =
-            MaybeUninit::uninit().assume_init();
+        let input: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS * 2] = core::array::from_fn(|i| {
+            if i < BLAKE2S_DIGEST_SIZE_U32_WORDS {
+                aux_registers[i]
+            } else {
+                end_params_output.0[i - BLAKE2S_DIGEST_SIZE_U32_WORDS]
+            }
+        });
+        result_hasher.absorb(&input);
+        let new_output_registers = result_hasher.finalize_reset();
         for i in 8..16 {
-            let value = registers_buffer[(10 + i) * 3];
-            aux_registers[i - 8] = value;
-        }
-
-        let mut preimage: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS * 2] =
-            MaybeUninit::uninit().assume_init();
-        for i in 0..BLAKE2S_DIGEST_SIZE_U32_WORDS * 2 {
-            preimage[i] = nd_source.read_word();
-        }
-        result_hasher.absorb(&preimage);
-        let preimage_hash = result_hasher.finalize_reset();
-        let mut equal = true;
-        for i in 0..8 {
-            equal &= preimage_hash.0[i] == aux_registers[i];
-        }
-        assert!(equal);
-
-        let mut equal = true;
-        for i in 0..8 {
-            equal &= preimage[i + 8] == end_params_output.0[i];
-        }
-
-        if equal {
-            for i in 8..16 {
-                output[i] = aux_registers[i - 8];
-            }
-        } else {
-            let mut input: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS * 2] =
-                MaybeUninit::uninit().assume_init();
-            for i in 0..8 {
-                input[i] = aux_registers[i];
-                input[i + 8] = end_params_output.0[i];
-            }
-            result_hasher.absorb(&input);
-            let new_output_registers = result_hasher.finalize_reset();
-            for i in 8..16 {
-                output[i] = new_output_registers.0[i - 8];
-            }
+            output[i] = new_output_registers.0[i - 8];
         }
     }
 
