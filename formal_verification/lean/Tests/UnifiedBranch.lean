@@ -1,3 +1,4 @@
+import Tests.Platform
 import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Proofs.BabyBear
 
@@ -9,6 +10,8 @@ open Sail.ArchSem
 set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2800000
+
+local instance : Sail.ArchSem.MemoryPlatform SailRV32.exception := Tests.upstreamPlatform
 
 private def assignment (taken : Bool) : Nat → ZMod babyBearModulus
   | 4 | 24 | 25 | 57 | 85 | 88 | 90 | 130 | 131 | 132 | 133 => 1

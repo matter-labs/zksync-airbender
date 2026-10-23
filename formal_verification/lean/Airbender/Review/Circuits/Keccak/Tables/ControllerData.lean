@@ -1,10 +1,4 @@
-import Airbender.Import.SetupEmbed
+import Airbender.Data.Setup.Keccak.Controller
 
-namespace Airbender.Keccak
-set_option maxRecDepth 32768
-set_option maxHeartbeats 1000000
-
-/- All physical controller columns, including the key and native discriminator. -/
-import_setup_region controllerData from "artifacts/setup/keccak.json" native_table_id 37
-
-end Airbender.Keccak
+/-! Native controller region 37, including its source bytes and metadata, is
+imported through the data boundary. Existing declaration names remain available. -/

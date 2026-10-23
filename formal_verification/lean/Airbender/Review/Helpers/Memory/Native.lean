@@ -42,7 +42,7 @@ end ROMView
 /-- Native zero-initialized execution. Program/ROM bytes come from the public
     Sail image, separately from zero-valued native ROM permutation slots.
     Logical matching and decoder membership remain separate theorem premises. -/
-structure NativeBootBoundary {p : Nat} [Fact p.Prime] (trace : Data p)
+structure NativeBootBoundary [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] {p : Nat} [Fact p.Prime] (trace : Data p)
     (before : Reference.RiscV.Sail.State) (cells : List Cell) (program : List ProgramEntry)
     (projection : SailRV32.instruction → Option DecoderData := decoderFields) : Prop
     extends PublicBoundary before cells program projection where

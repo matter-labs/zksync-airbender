@@ -335,7 +335,7 @@ theorem data_clocks {p : Nat} [Fact p.Prime] (before : Reference.RiscV.Sail.Stat
   obtain ⟨native, present, rfl⟩ := List.mem_map.mp member
   simpa only [token_time] using clocks.memory native present
 
-theorem execution_boundary {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 4)
+theorem execution_boundary [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 4)
     {trace : Data p} {before : Reference.RiscV.Sail.State}
     {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option DecoderData}

@@ -1,6 +1,8 @@
+import Tests.Platform
 import Airbender.Proofs.Sail.VirtualMemory
 
 namespace Tests.SailCheckedMemory
+local instance : _root_.Sail.ArchSem.MemoryPlatform SailRV32.exception := Tests.upstreamPlatform
 open Airbender.Reference Airbender.Reference.RiscV.Sail
 open _root_.Sail.ArchSem
 set_option warningAsError true

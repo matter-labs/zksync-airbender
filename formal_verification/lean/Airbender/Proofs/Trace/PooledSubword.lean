@@ -4,10 +4,12 @@ import Airbender.Proofs.Trace.PooledCode
 import Airbender.Proofs.SubwordMemory.Execution
 
 namespace Airbender.Trace.Proofs
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 open Arithmetic Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
 
 set_option backward.isDefEq.respectTransparency false in
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- The same initialized pooled domain supplies the canonical subword RAM
     port, for loads and stores. No per-row address bound is assumed. -/
 theorem pooled_subword_cell {p : Nat} [Fact p.Prime]
@@ -36,6 +38,7 @@ theorem pooled_subword_cell {p : Nat} [Fact p.Prime]
     simp [SubwordMemory.importedConstraintsMemoryPorts, MemoryAddress.code, pairCode, selected, ZMod.val_one]
 
 set_option backward.isDefEq.respectTransparency false in
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- Shared history supplies the subword address operands and containing-cell
     bounds. The imported equations recover the exact aligned cell and offset. -/
 theorem pooled_subword_address {p : Nat} [Fact p.Prime]
@@ -77,6 +80,7 @@ theorem pooled_subword_address {p : Nat} [Fact p.Prime]
 
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- All six subword instructions retire through original Sail on the pooled
     state. Global history discharges ranges/reads; ROM rows use public byte words. -/
 theorem pooled_subword_execution {p : Nat} [Fact p.Prime]
@@ -89,7 +93,7 @@ theorem pooled_subword_execution {p : Nat} [Fact p.Prime]
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable (ROM.words initial))
     (aligned : ∀ cell ∈ cells, cell.Aligned)
-    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address)
     (configuration : FlatMemoryConfiguration initial)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
     (programImage : programImageRunWith projection initial addresses = some program)

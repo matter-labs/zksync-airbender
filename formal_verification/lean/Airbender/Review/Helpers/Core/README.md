@@ -38,5 +38,5 @@ stream ordering and port predicates; decoder-specific CSR forms live in
 [Decoder](../Decoder/README.md).
 
 These modules contain no accepted native trace or whole-execution contract.
-Review [`properties`](../Properties.lean) independently. Pins and generation
+Review [properties](../Properties.lean) independently. Pins and generation
 fidelity remain recorded in the [trust document](../../../../TRUST_AND_REVIEW.md).

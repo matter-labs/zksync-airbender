@@ -148,6 +148,11 @@ private theorem ordinary_domain : ∀ address,
   unfold Reference.RiscV.Sail.OrdinaryWordAddress
   decide
 
+private theorem platform_domain [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∀ address,
+    Cell.ram address ∈ [.register 1, .register 2, .ram 4259840] →
+      Reference.RiscV.Sail.PlatformWordAddress address :=
+  fun address member => Reference.RiscV.Sail.ordinaryWordAddress_for (ordinary_domain address member)
+
 private def entry : ProgramEntry :=
   ⟨65532, 0x0020a223, .STORE (4, .Regidx 2, .Regidx 1, 4),
     ⟨.wordMemory, 1, 2, 0, ⟨4, 0⟩, 1, 0⟩⟩
@@ -230,7 +235,7 @@ theorem actual_virtual_store [Sail.ArchSem.MemoryPlatform SailRV32.exception] : 
         .ok (.Ok true) after := by
   obtain ⟨after, history⟩ := grouped_native_store
   have transport := Proofs.word_row_transport (by decide) (by decide) accepted boundary
-    public_initial_image rfl aligned_domain ordinary_domain
+    public_initial_image rfl aligned_domain platform_domain
     (w := assignment) (List.mem_singleton_self row) true rfl
     (entry := entry) rfl (by decide) configuration history
   norm_num [entry, assignment, ZMod.val_ofNat, babyBearModulus] at transport
@@ -243,7 +248,7 @@ theorem actual_sail_store [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃
       before = .ok SailRV32.Functions.RETIRE_SUCCESS after := by
   obtain ⟨after, history⟩ := grouped_native_store
   exact ⟨after, history, Proofs.word_row_store_execution (by decide) (by decide)
-    accepted boundary public_initial_image rfl aligned_domain ordinary_domain
+    accepted boundary public_initial_image rfl aligned_domain platform_domain
     (w := assignment) (List.mem_singleton_self row)
     (entry := entry) rfl (by decide) rfl configuration history⟩
 
@@ -257,7 +262,7 @@ theorem actual_store_step [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃
         { after with regs := after.regs.insert .nextPC (65536 : BitVec 32) |>.insert .PC 65536 } := by
   obtain ⟨after, history⟩ := grouped_native_store
   refine ⟨after, history, Proofs.word_row_store_step (by decide) (by decide)
-    accepted boundary public_initial_image rfl aligned_domain ordinary_domain configuration
+    accepted boundary public_initial_image rfl aligned_domain platform_domain configuration
     (by change (Word.mk 65532 0).Bounded; constructor <;> decide)
     (w := assignment) (List.mem_singleton_self row) (entry := entry) rfl (by decide) rfl
     (SailHistory.nil before) history ?_⟩
@@ -440,7 +445,7 @@ theorem per_circuit_store_soundness [Sail.ArchSem.MemoryPlatform SailRV32.except
       decide
   have assumptions : WordMemory.InterfaceAssumptions pooled before
       [.register 1, .register 2, .ram 4259840] pooledProgram :=
-    ⟨⟨pooledInputs, rfl, rfl⟩, ordinary_domain, configuration⟩
+    ⟨⟨pooledInputs, rfl, rfl⟩, platform_domain, configuration⟩
   have core := Verification.holds_of_sublist local_satisfies
     (List.sublist_append_left (WordMemory.importedConstraints rom) WordMemory.importedConstraintsTimestampLookups)
   have relation : (WordMemory.circuitModel pooled before [.register 1, .register 2, .ram 4259840]
@@ -576,6 +581,10 @@ private theorem loadOrdinary : ∀ address, Cell.ram address ∈ loadCells →
   unfold Reference.RiscV.Sail.OrdinaryWordAddress
   decide
 
+private theorem loadPlatform [Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+    ∀ address, Cell.ram address ∈ loadCells → Reference.RiscV.Sail.PlatformWordAddress address :=
+  fun address member => Reference.RiscV.Sail.ordinaryWordAddress_for (loadOrdinary address member)
+
 theorem grouped : ∃ after, SailHistory loadCells
     (Trace.rowEvents loadTrace.memoryEpoch loadRow).reverse loadState after := by
   obtain ⟨_, rows, after, _, permutation, _, execution, _⟩ :=
@@ -593,7 +602,7 @@ theorem actual_sail_load [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ 
       loadState = .ok SailRV32.Functions.RETIRE_SUCCESS after := by
   obtain ⟨after, history⟩ := grouped
   exact ⟨after, history, Proofs.word_row_load_execution (by decide) (by decide)
-    accepted loadBoundary public_image rfl loadAligned loadOrdinary
+    accepted loadBoundary public_image rfl loadAligned loadPlatform
     (Reference.RiscV.Sail.configuration_word_write configuration 65532 0x0040a083)
     (w := loadAssignment) (List.mem_singleton_self loadRow)
     (entry := loadEntry) rfl rfl (by decide) rfl
@@ -621,7 +630,7 @@ theorem actual_load_step [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ 
         { after with regs := after.regs.insert .nextPC (65536 : BitVec 32) |>.insert .PC 65536 } := by
   obtain ⟨after, history⟩ := grouped
   refine ⟨after, history, Proofs.word_row_load_step (by decide) (by decide)
-    accepted loadBoundary public_image rfl loadAligned loadOrdinary
+    accepted loadBoundary public_image rfl loadAligned loadPlatform
     (Reference.RiscV.Sail.configuration_word_write configuration 65532 0x0040a083)
     (Proofs.initial_pc_bound (by decide) public_pc)
     (w := loadAssignment) (List.mem_singleton_self loadRow)

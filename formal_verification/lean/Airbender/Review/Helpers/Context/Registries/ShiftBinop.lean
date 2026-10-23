@@ -1,5 +1,5 @@
 import Airbender.Review.Circuits.ShiftBinop.Decoder
-import Airbender.Review.Helpers.Context.Model
+import Airbender.Review.Helpers.Context.Registries.FixedFamily
 
 namespace Airbender.ShiftBinop
 
@@ -7,11 +7,9 @@ inductive TraceKind where
   | shiftBinop
   deriving DecidableEq
 
-instance : Trace.CircuitLayout TraceKind where
-  columns _ := importedConstraintsTraceColumns
-  ports _ := importedConstraintsMemoryPorts
-  decoderColumns _ := importedConstraintsDecoderColumns
-  constraints _ _ := clockConstraints
+instance : Trace.CircuitLayout TraceKind :=
+  Trace.CircuitLayout.fixedFamily importedConstraintsTraceColumns
+    importedConstraintsMemoryPorts importedConstraintsDecoderColumns (@clockConstraints)
 
 abbrev NativeTrace (p : Nat) [Fact p.Prime] := Trace.Data p TraceKind
 

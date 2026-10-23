@@ -5,8 +5,10 @@ import Airbender.Proofs.Trace.Addresses
 import Airbender.Proofs.SubwordMemory.MemoryAccess
 
 namespace Airbender.SubwordMemory.Proofs
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 open Arithmetic Trace Reference.RiscV.Sail
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- A native aligned cell and its offset recover Sail's containing word. -/
 theorem aligned_cell_index {cell : Word} (bound : cell.Bounded)
     (aligned : cell.value % 4 = 0) {offset : Nat} (small : offset < 4) :
@@ -23,23 +25,30 @@ theorem aligned_cell_index {cell : Word} (bound : cell.Bounded)
 
 /-- The public ordinary-cell domain also covers its byte/halfword offsets. -/
 theorem ordinary_cell_offset {address : BitVec 32} (aligned : address.toNat % 4 = 0)
-    (ordinary : OrdinaryWordAddress address) {offset : Nat} (small : offset < 4) :
-    OrdinaryWordAddress (address + BitVec.ofNat 32 offset) := by
+    (ordinary : PlatformWordAddress address) {offset : Nat} (small : offset < 4) :
+    PlatformWordAddress (address + BitVec.ofNat 32 offset) := by
   have wordBound := address.isLt
   norm_num only [Nat.reducePow] at wordBound
   have noWrap : address.toNat + offset < 4294967296 := by omega
-  change (address.toNat < 33554432 ∨ 33603584 ≤ address.toNat) ∧
-    (address.toNat < 201326592 ∨ 201326624 ≤ address.toNat) at ordinary
-  change ((address + BitVec.ofNat 32 offset).toNat < 33554432 ∨
+  change ((_root_.Sail.ArchSem.MemoryPlatform.devices (ue := SailRV32.exception)).haveClint = false ∨ address.toNat < 33554432 ∨ 33603584 ≤ address.toNat) ∧
+    ((_root_.Sail.ArchSem.MemoryPlatform.devices (ue := SailRV32.exception)).haveSig = false ∨ address.toNat < 201326592 ∨ 201326624 ≤ address.toNat) at ordinary
+  change ((_root_.Sail.ArchSem.MemoryPlatform.devices (ue := SailRV32.exception)).haveClint = false ∨ (address + BitVec.ofNat 32 offset).toNat < 33554432 ∨
       33603584 ≤ (address + BitVec.ofNat 32 offset).toNat) ∧
-    ((address + BitVec.ofNat 32 offset).toNat < 201326592 ∨
+    ((_root_.Sail.ArchSem.MemoryPlatform.devices (ue := SailRV32.exception)).haveSig = false ∨ (address + BitVec.ofNat 32 offset).toNat < 201326592 ∨
       201326624 ≤ (address + BitVec.ofNat 32 offset).toNat)
   rw [BitVec.toNat_add, BitVec.toNat_ofNat]
   norm_num only [Nat.reducePow]
   have offsetBound : offset < 4294967296 := by omega
   rw [Nat.mod_eq_of_lt offsetBound, Nat.mod_eq_of_lt noWrap]
-  omega
+  constructor
+  · rcases ordinary.1 with disabled | outside
+    · exact Or.inl disabled
+    · exact Or.inr (by omega)
+  · rcases ordinary.2 with disabled | outside
+    · exact Or.inl disabled
+    · exact Or.inr (by omega)
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- Registry-independent address equations. Initialized history supplies the
     three canonical words and cell membership; this lemma supplies alignment. -/
 theorem local_address {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 33554432)
@@ -71,6 +80,7 @@ theorem local_address {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 3355
   refine ⟨effect.1, effect.2.1, effect.2.2.1, effect.2.2.2.1, effect.2.2.2.2, ?_⟩
   exact present
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- Public initialization and latest-write history supply operand/address bounds.
     Imported address equations then identify the aligned cell and byte offset. -/
 theorem native_address {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 33554432)

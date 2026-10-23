@@ -36,5 +36,12 @@ The same initialized history reaches every terminal cell. Existing public span
 mode/count, modeled tables, aligned domain and RAM restriction remain explicit.
 The span derives valid controls and canonical aligned disjoint pointers; no new
 per-row ABI or desired result is assumed. [Full mixed execution](../../UnifiedReduced/FullExecution.lean)
-now connects caller fetch/PC retirement under the explicit occurrence ledger;
-F03 participation enforcement remains an implementation finding.
+connects caller fetch/PC retirement with participation derived from native
+caller accounting and active-invocation timestamps. The current integrated
+profile is straight-line; general mixed branch/jump/loop composition remains
+unfinished. No external occurrence ledger is required in that integrated scope.
+
+Standalone worker inputs retain both `clockRoom` and `invocationHigh`; integrated
+caller/request matching derives them. See the [shared worker boundary](../README.md)
+and [native memory inputs](../../../Helpers/Delegation/Memory.lean). Actual read
+values and pointer bounds are derived from initialized matching.

@@ -1,9 +1,12 @@
 # Upstream Sail RV32 reference
 
+<!-- lean-context: SailRV32 SailRV32.Defs SailRV32.SailPlatform -->
+<!-- source-names: ILLEGAL I_insts M_insts LICENCE SAIL_COMPILER_LICENSE SailRV32.lean Zicsr Zimop base_insts.sail false jalr_seq.sail mext_insts.sail pc_access.sail provenance.json regs.sail rv32d_v256_e32.json step.sail zicsr_insts.sail zimop_insts.sail -->
+
 This directory holds generated reference artifacts, not handwritten ISA semantics.
 This README and `provenance.json` are local documentation/metadata; the `.lean`
 files are upstream compiler output and copied backend support, except the recorded
-platform-parameter header in `SailRV32.lean` and
+platform-parameter header and two device-configuration bindings in `SailRV32.lean`, and
 `SailRV32/SailPlatform.lean`: our platform configuration and runtime compatibility support,
 copied through the backend's `--lean-import-file` option. See
 [trust and review boundaries](../../TRUST_AND_REVIEW.md) for what remains unchecked.
@@ -11,11 +14,12 @@ copied through the backend's `--lean-import-file` option. See
 The instruction semantics come from **riscv/sail-riscv**, not from a local rewrite
 of ADD, SUB, or ADDI. The source review entry is
 [`base_insts.sail`](../../vendor/sail-riscv/source/model/extensions/I/base_insts.sail):
-the `ITYPE` execution clause implements ADDI and the `RTYPE` clause implements
-ADD and SUB; `UTYPE` implements LUI and AUIPC. The original branch and JAL
+the clause for [`SailRV32.instruction.ITYPE`](SailRV32/Defs.lean) implements ADDI
+and the clause for [`SailRV32.instruction.RTYPE`](SailRV32/Defs.lean) implements
+ADD and SUB; [`SailRV32.instruction.UTYPE`](SailRV32/Defs.lean) implements LUI and AUIPC. The original branch and JAL
 clauses are in the same source; JALR is in
 [`jalr_seq.sail`](../../vendor/sail-riscv/source/model/extensions/I/jalr_seq.sail).
-`SHIFTIOP` retains the
+[`SailRV32.instruction.SHIFTIOP`](SailRV32/Defs.lean) retains the
 original SLLI/SRLI/SRAI clause, including RV32 low-five-bit extraction. The original MUL/DIV/REM clauses are
 in [`mext_insts.sail`](../../vendor/sail-riscv/source/model/extensions/M/mext_insts.sail).
 The register accessors are in
@@ -42,7 +46,8 @@ upstream `I_insts` and `M_insts` modules, extracted PC helper and dependency pru
 `tick_pc`, `normal_base_next_pc` and `encdec_backwards` roots and their transitive dependencies.
 This is not coverage of every instruction in the configuration.
 The decoder retains the selected modules' original mapping clauses. Successful
-decoding of the seven restricted instructions is checked in `Tests/SailDecoder.lean`.
+decoding is checked by eight theorems in [SailDecoder](../../Tests/SailDecoder.lean):
+ADD, ADDI, SUB, LUI, AUIPC, LW, SW and configuration-dependent REV8.
 The postlude's `ILLEGAL` fallback is excluded; decoding completeness and unsupported
 instruction behavior are not claimed. No mapping clause is rewritten.
 `Zicsr` is selected to retain its original `currentlyEnabled(Ext_Zicsr)` clause,
@@ -89,13 +94,33 @@ propagation and agreement with Sail's native handler; no new effect model is add
 Terminal writes and reservation calls remain abstract through `MemoryPlatform`.
 The generator inserts an implicit instance parameter and lifted aliases after
 `namespace Functions`; it records the exact header and pre-insertion hash.
-Removing that header reproduces the original emitter hash. No instruction body
-is rewritten and no terminal/reservation behavior is assumed. Native memory claims
-quantify over this parameter and state their access contracts explicitly.
+The two original platform flags `plat_have_clint` and `plat_have_sig` read an
+explicit `MemoryPlatform.devices` record (`haveClint` and `haveSig`). SIG is the
+upstream Simple Interrupt Generator at byte address 201326592. Its constructor default and named
+upstream adapter enable both devices, exactly matching the pinned JSON. The named
+Airbender adapter disables both: the native interpreter/JIT, circuit ROM/RAM
+dispatch and 1 GiB linker layout treat these addresses as RAM. The manifest pins
+those four native evidence sources. These are distinct documented platform
+configurations around the same instruction clauses; no global instance fixes
+polymorphic generated functions to either choice.
+
+The generator count-checks both exact platform substitutions. Reversing them and
+removing the recorded header reproduces the original emitter hash. Every
+`execute_*` declaration body is byte-identical. No instruction body is rewritten
+and no terminal/reservation behavior is assumed. Native memory claims quantify
+over the handlers and select the Airbender device configuration explicitly.
+Disabling devices does not bypass PMA/PMP, alignment, byte initialization or
+logical memory matching. Ordinary-address compatibility entrypoints retain the
+upstream exclusion windows; configuration-aware bridges admit the disabled-device
+regions under the Airbender adapter.
 The generator
 mechanically extracts the PC assignment; its fidelity and selected-path scope need review. Single-file
 output avoids the backend's include-file bookkeeping failure on a pruned model.
 Compare the regenerated Lean files before replacing a checked-in snapshot.
+Run `python3 scripts/check_sail_reference.py` for the lightweight retained-snapshot
+gate: it verifies exact reversible recovery against the pinned original emitter
+hash, all thirteen instruction fingerprints, copied support, generated-file
+inventory/hashes, configuration, adapter and native platform evidence hashes.
 
 The extraction, model-to-Lean translation and pruning remain a trust boundary. Lean checks
 proofs about the generated definitions; that does not certify the Sail compiler.

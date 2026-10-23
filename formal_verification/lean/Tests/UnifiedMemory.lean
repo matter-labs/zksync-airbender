@@ -200,6 +200,7 @@ theorem ram_soundness [Sail.ArchSem.MemoryPlatform SailRV32.exception] (store : 
     · intro address member
       cases store <;> simp [cells] at member
       all_goals subst address
+      all_goals apply ordinaryWordAddress_for
       all_goals unfold OrdinaryWordAddress
       all_goals decide
     · intro address member

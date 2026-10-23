@@ -141,7 +141,7 @@ theorem row_step {p : Nat} [Fact p.Prime]
     (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable (ROM.words initial))
     (registers : ∀ index, Cell.register index ∈ cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
-    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address)
     (memoryConfiguration : FlatMemoryConfiguration initial)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
     (programImage : Pooled.programImage initial addresses = some program)

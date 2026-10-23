@@ -1,0 +1,12 @@
+-- Isolated environment-hacking negative control. Never a product import.
+import Lean
+open Lean Elab Command
+set_option debug.skipKernelTC true in
+run_cmd do
+  Lean.Elab.Command.liftCoreM <| Lean.addDecl <| .thmDecl {
+    name := `AssuranceNegative.bad
+    levelParams := []
+    type := .const ``False []
+    value := .const ``True.intro []
+    all := [`AssuranceNegative.bad] }
+#print axioms AssuranceNegative.bad

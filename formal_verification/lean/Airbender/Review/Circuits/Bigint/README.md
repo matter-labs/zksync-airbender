@@ -23,7 +23,7 @@ indirect addresses and shared aligned/RAM pointer claim.
 
 [Control](Control.lean), [Additive](Additive.lean), [Equality](Equality.lean),
 [Multiplication](Multiplication.lean) and [Execution](Execution.lean) select
-the seven operation references. [Artifact](Artifact.lean) and [`setup`](Tables/Setup.lean)
+the seven operation references. [Artifact](Artifact.lean) and [setup](Tables/Setup.lean)
 bind imported equations and actual native setup rows. The six fixed-table
 regions come from [setup JSON](../../../../artifacts/setup/README.md); their exact
 carry-range and low-byte meanings are proved in

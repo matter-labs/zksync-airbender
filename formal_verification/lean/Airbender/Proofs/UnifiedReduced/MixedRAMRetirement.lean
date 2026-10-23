@@ -2,11 +2,13 @@ import Airbender.Proofs.UnifiedReduced.MixedRetirement
 import Airbender.Proofs.UnifiedReduced.MemoryExecution
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Reference.Sail Trace Trace.Proofs
 set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem word_fields {input : Airbender.WordMemory.Input} {entry : UnifiedReduced.ProgramEntry}
     (fields : Mixed.decoderFields entry.instruction = some entry.data)
     (encoding : entry.instruction = if input.store then .STORE (input.encodedImmediate, input.rs2, input.rs1, 4)
@@ -17,6 +19,7 @@ theorem word_fields {input : Airbender.WordMemory.Input} {entry : UnifiedReduced
   · rw [encoding] at custom
     cases mode : input.store <;> simp [mode, customDecoderFields] at custom
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem mixed_ram_cycle_at [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : State} {ca oa : List (BitVec 32)} {cells : List Cell}
@@ -27,7 +30,7 @@ theorem mixed_ram_cycle_at [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exceptio
     (order : events.Pairwise (fun a b => b.1 ≤ a.1))
     (history : SailHistory cells events initial finalState)
     (configuration : FlatMemoryConfiguration initial)
-    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address)
     (ram : ∀ address, Cell.ram address ∈ cells → 4194304 ≤ address.toNat)
     {w : Nat → ZMod babyBearModulus} {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output}
     (destination : input.store = false → input.rd ≠ zeroRegister)
@@ -73,13 +76,14 @@ theorem mixed_ram_cycle_at [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exceptio
     CircuitLayout.columns, PCState.State.word, rawPair, importedConstraintsTraceColumns,
     Control.initialPC, Control.finalPC] using retired
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem mixed_ram_cycle [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
     (started : 0 < (timeOfPair data.machine.initial.timestamp).value)
     (configuration : FlatMemoryConfiguration initial)
-    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address)
     (ram : ∀ address, Cell.ram address ∈ cells → 4194304 ≤ address.toNat)
     {w : Nat → ZMod babyBearModulus} {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output}
     (destination : input.store = false → input.rd ≠ zeroRegister)

@@ -575,7 +575,7 @@ private theorem decoded : UnifiedReduced.Decoded trace program := by
   refine ⟨index, ?_⟩
   fin_cases index <;> decide +kernel
 
-private theorem inputs : UnifiedReduced.Modular.Inputs trace before cells program := by
+private theorem inputs [MemoryPlatform SailRV32.exception] : UnifiedReduced.Modular.Inputs trace before cells program := by
   constructor
   · exact ⟨by decide, Tests.TraceExecution.inputs.aligned,
       ⟨by apply read_register; simp [before, Tests.TraceExecution.before, Std.ExtDHashMap.get?_insert],

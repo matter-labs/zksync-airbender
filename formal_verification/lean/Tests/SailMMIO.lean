@@ -1,6 +1,8 @@
+import Tests.Platform
 import Airbender.Proofs.Sail.MMIO
 
 namespace Tests.SailMMIO
+local instance : _root_.Sail.ArchSem.MemoryPlatform SailRV32.exception := Tests.upstreamPlatform
 open Airbender.Reference Airbender.Reference.RiscV.Sail
 set_option warningAsError true
 
@@ -28,7 +30,7 @@ theorem ram_write :
 theorem windows_excluded : ¬ OrdinaryWordAddress 33554432 ∧ ¬ OrdinaryWordAddress 201326592 :=
   by unfold OrdinaryWordAddress; decide
 
--- The original classifier recognizes the signature window as MMIO, so the
+-- The original classifier recognizes the Simple Interrupt Generator (SIG) window as MMIO, so the
 -- public domain exclusion is not just an unrelated range predicate.
 theorem signature_is_mmio :
     Sail.run (SailRV32.Functions.within_mmio_readable (.Physaddr 201326592) 4) configured =

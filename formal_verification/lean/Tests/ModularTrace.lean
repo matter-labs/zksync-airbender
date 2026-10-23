@@ -433,7 +433,7 @@ private theorem loads : NoDiscardedLoads program := by
   rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   all_goals intros; simp [Modular.instruction]
 
-private theorem inputs : PooledBootInputs trace before cells program Modular.Pooled.decoderFields := by
+private theorem inputs [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] : PooledBootInputs trace before cells program Modular.Pooled.decoderFields := by
   refine {
     registers := Tests.TraceExecution.inputs.registers
     ordinary := Tests.TraceExecution.inputs.ordinary
@@ -655,7 +655,7 @@ private theorem mixed_image : initialImage mixedBefore cells = some mixedTrace.i
   simp only [initialImage, cells, Tests.TraceExecution.cells, List.mapM_cons, List.mapM_nil, mixed_zero_registers]
   rfl
 
-private theorem mixed_inputs : PooledBootInputs mixedTrace mixedBefore cells mixedProgram Modular.External.decoderFields := by
+private theorem mixed_inputs [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] : PooledBootInputs mixedTrace mixedBefore cells mixedProgram Modular.External.decoderFields := by
   refine {
     registers := Tests.TraceExecution.inputs.registers
     ordinary := Tests.TraceExecution.inputs.ordinary

@@ -115,10 +115,10 @@ theorem word_address_announcement (before : State) (address : BitVec 32) :
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 4096 in
-theorem checked_memory_read {size : Nat} {before : State} {address : BitVec 32} {value : BitVec (8 * size)}
+theorem checked_memory_read_platform [MemoryPlatform SailRV32.exception] {size : Nat} {before : State} {address : BitVec 32} {value : BitVec (8 * size)}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
-    (ordinary : OrdinaryWordAddress address)
+    (ordinary : PlatformWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) size address.toNat).run before = .ok value before) :
     run (SailRV32.Functions.checked_mem_read (.Load .Data) .PBMT_PMA .Machine
       (.Physaddr (address.setWidth 34)) size false false false false) before =
@@ -129,7 +129,7 @@ theorem checked_memory_read {size : Nat} {before : State} {address : BitVec 32} 
   have permission := configured_memory_permission width configuration aligned (.Load .Data) (by simp)
   have pmp := machine_pmp_off configuration.pmpOff initialized
     (.Physaddr (address.setWidth 34)) size (.Load .Data)
-  have mmio := mmio_read_excluded_sized positive hartInitialized configuration.htifDisabled ordinary
+  have mmio := mmio_read_excluded_sized_platform positive hartInitialized configuration.htifDisabled ordinary
   have ram := read_ram_sized width read
   rcases width with rfl | rfl | rfl
   all_goals
@@ -153,22 +153,22 @@ theorem checked_memory_read {size : Nat} {before : State} {address : BitVec 32} 
     simp [_root_.Sail.BitVec.updateSubrange, _root_.Sail.BitVec.updateSubrange']
     rfl
 
-theorem checked_word_read {before : State} {address value : BitVec 32}
+theorem checked_word_read_platform [MemoryPlatform SailRV32.exception] {before : State} {address value : BitVec 32}
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
-    (ordinary : OrdinaryWordAddress address)
+    (ordinary : PlatformWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) 4 address.toNat).run before = .ok value before) :
     run (SailRV32.Functions.checked_mem_read (.Load .Data) .PBMT_PMA .Machine
       (.Physaddr (address.setWidth 34)) 4 false false false false) before =
         .ok (.Ok (value, ())) before :=
-  checked_memory_read (Or.inr (Or.inr rfl)) configuration aligned ordinary read
+  checked_memory_read_platform (Or.inr (Or.inr rfl)) configuration aligned ordinary read
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 4096 in
-theorem checked_memory_read_error {size : Nat} {before after : State} {address : BitVec 32}
+theorem checked_memory_read_error_platform [MemoryPlatform SailRV32.exception] {size : Nat} {before after : State} {address : BitVec 32}
     {error : _root_.Sail.Error SailRV32.exception}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
-    (ordinary : OrdinaryWordAddress address)
+    (ordinary : PlatformWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) size address.toNat).run before = .error error after) :
     run (SailRV32.Functions.checked_mem_read (.Load .Data) .PBMT_PMA .Machine
       (.Physaddr (address.setWidth 34)) size false false false false) before =
@@ -179,7 +179,7 @@ theorem checked_memory_read_error {size : Nat} {before after : State} {address :
   have permission := configured_memory_permission width configuration aligned (.Load .Data) (by simp)
   have pmp := machine_pmp_off configuration.pmpOff initialized
     (.Physaddr (address.setWidth 34)) size (.Load .Data)
-  have mmio := mmio_read_excluded_sized positive hartInitialized configuration.htifDisabled ordinary
+  have mmio := mmio_read_excluded_sized_platform positive hartInitialized configuration.htifDisabled ordinary
   have ram := read_ram_sized_error read
   rcases width with rfl | rfl | rfl
   all_goals
@@ -201,22 +201,22 @@ theorem checked_memory_read_error {size : Nat} {before after : State} {address :
       | simp [freeM_pure_bind, PreSail.assert, SailRV32.Functions.bits_of_physaddr,
           _root_.Sail.BitVec.addInt]
 
-theorem checked_word_read_error {before after : State} {address : BitVec 32}
+theorem checked_word_read_error_platform [MemoryPlatform SailRV32.exception] {before after : State} {address : BitVec 32}
     {error : _root_.Sail.Error SailRV32.exception}
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
-    (ordinary : OrdinaryWordAddress address)
+    (ordinary : PlatformWordAddress address)
     (read : (readBytes (ue := SailRV32.exception) 4 address.toNat).run before = .error error after) :
     run (SailRV32.Functions.checked_mem_read (.Load .Data) .PBMT_PMA .Machine
       (.Physaddr (address.setWidth 34)) 4 false false false false) before =
         .error error after :=
-  checked_memory_read_error (Or.inr (Or.inr rfl)) configuration aligned ordinary read
+  checked_memory_read_error_platform (Or.inr (Or.inr rfl)) configuration aligned ordinary read
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 4096 in
-theorem checked_memory_write [MemoryPlatform SailRV32.exception] {size : Nat} {before after : State} {address : BitVec 32}
+theorem checked_memory_write_platform [MemoryPlatform SailRV32.exception] {size : Nat} {before after : State} {address : BitVec 32}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
-    (ordinary : OrdinaryWordAddress address) (value : BitVec (8 * size))
+    (ordinary : PlatformWordAddress address) (value : BitVec (8 * size))
     (write : run (writeMemory (size := size) address value) before = .ok () after) :
     run (SailRV32.Functions.checked_mem_write (.Physaddr (address.setWidth 34)) size value
       (.Store .Data) .PBMT_PMA .Machine () false false false) before =
@@ -227,7 +227,7 @@ theorem checked_memory_write [MemoryPlatform SailRV32.exception] {size : Nat} {b
   have permission := configured_memory_permission width configuration aligned (.Store .Data) (by simp)
   have pmp := machine_pmp_off configuration.pmpOff initialized
     (.Physaddr (address.setWidth 34)) size (.Store .Data)
-  have mmio := mmio_write_excluded_sized positive hartInitialized configuration.htifDisabled ordinary
+  have mmio := mmio_write_excluded_sized_platform positive hartInitialized configuration.htifDisabled ordinary
   have ram := write_ram_sized address width value write
   rcases width with rfl | rfl | rfl
   all_goals
@@ -250,20 +250,20 @@ theorem checked_memory_write [MemoryPlatform SailRV32.exception] {size : Nat} {b
           _root_.Sail.BitVec.addInt, _root_.Sail.BitVec.extractLsb, BitVec.extractLsb]
     rfl
 
-theorem checked_word_write [MemoryPlatform SailRV32.exception] {before : State} {address : BitVec 32}
+theorem checked_word_write_platform [MemoryPlatform SailRV32.exception] {before : State} {address : BitVec 32}
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
-    (ordinary : OrdinaryWordAddress address) (value : BitVec 32) :
+    (ordinary : PlatformWordAddress address) (value : BitVec 32) :
     run (SailRV32.Functions.checked_mem_write (.Physaddr (address.setWidth 34)) 4 value
       (.Store .Data) .PBMT_PMA .Machine () false false false) before =
         .ok (.Ok true) (wordWriteState before address.toNat value) :=
-  checked_memory_write (Or.inr (Or.inr rfl)) configuration aligned ordinary value (write_word_state before address value)
+  checked_memory_write_platform (Or.inr (Or.inr rfl)) configuration aligned ordinary value (write_word_state before address value)
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 4096 in
-theorem checked_memory_announcement {size : Nat} {before : State} {address : BitVec 32}
+theorem checked_memory_announcement_platform [MemoryPlatform SailRV32.exception] {size : Nat} {before : State} {address : BitVec 32}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
-    (ordinary : OrdinaryWordAddress address) :
+    (ordinary : PlatformWordAddress address) :
     run (SailRV32.Functions.mem_write_ea (.Physaddr (address.setWidth 34)) size .Machine
       (.Store .Data) .PBMT_PMA false false false) before = .ok (.Ok ()) before := by
   have positive : 0 < size := by rcases width with rfl | rfl | rfl <;> decide
@@ -272,7 +272,7 @@ theorem checked_memory_announcement {size : Nat} {before : State} {address : Bit
   have permission := configured_memory_permission width configuration aligned (.Store .Data) (by simp)
   have pmp := machine_pmp_off configuration.pmpOff initialized
     (.Physaddr (address.setWidth 34)) size (.Store .Data)
-  have mmio := mmio_write_excluded_sized positive hartInitialized configuration.htifDisabled ordinary
+  have mmio := mmio_write_excluded_sized_platform positive hartInitialized configuration.htifDisabled ordinary
   have announce := memory_address_announcement before address size
   rcases width with rfl | rfl | rfl
   all_goals
@@ -295,11 +295,93 @@ theorem checked_memory_announcement {size : Nat} {before : State} {address : Bit
           _root_.Sail.BitVec.addInt, SailRV32.not]
     rfl
 
-theorem checked_word_announcement {before : State} {address : BitVec 32}
+theorem checked_word_announcement_platform [MemoryPlatform SailRV32.exception] {before : State} {address : BitVec 32}
+    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (ordinary : PlatformWordAddress address) :
+    run (SailRV32.Functions.mem_write_ea (.Physaddr (address.setWidth 34)) 4 .Machine
+      (.Store .Data) .PBMT_PMA false false false) before = .ok (.Ok ()) before :=
+  checked_memory_announcement_platform (Or.inr (Or.inr rfl)) configuration aligned ordinary
+
+
+theorem checked_memory_read [MemoryPlatform SailRV32.exception] {size : Nat} {before : State} {address : BitVec 32} {value : BitVec (8 * size)}
+    (width : size = 1 ∨ size = 2 ∨ size = 4)
+    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
+    (ordinary : OrdinaryWordAddress address)
+    (read : (readBytes (ue := SailRV32.exception) size address.toNat).run before = .ok value before) :
+    run (SailRV32.Functions.checked_mem_read (.Load .Data) .PBMT_PMA .Machine
+      (.Physaddr (address.setWidth 34)) size false false false false) before =
+        .ok (.Ok (value, ())) before := by
+  apply checked_memory_read_platform
+  all_goals first | assumption | exact ordinaryWordAddress_for ordinary
+
+theorem checked_word_read [MemoryPlatform SailRV32.exception] {before : State} {address value : BitVec 32}
+    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (ordinary : OrdinaryWordAddress address)
+    (read : (readBytes (ue := SailRV32.exception) 4 address.toNat).run before = .ok value before) :
+    run (SailRV32.Functions.checked_mem_read (.Load .Data) .PBMT_PMA .Machine
+      (.Physaddr (address.setWidth 34)) 4 false false false false) before =
+        .ok (.Ok (value, ())) before := by
+  apply checked_word_read_platform
+  all_goals first | assumption | exact ordinaryWordAddress_for ordinary
+
+theorem checked_memory_read_error [MemoryPlatform SailRV32.exception] {size : Nat} {before after : State} {address : BitVec 32}
+    {error : _root_.Sail.Error SailRV32.exception}
+    (width : size = 1 ∨ size = 2 ∨ size = 4)
+    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
+    (ordinary : OrdinaryWordAddress address)
+    (read : (readBytes (ue := SailRV32.exception) size address.toNat).run before = .error error after) :
+    run (SailRV32.Functions.checked_mem_read (.Load .Data) .PBMT_PMA .Machine
+      (.Physaddr (address.setWidth 34)) size false false false false) before =
+        .error error after := by
+  apply checked_memory_read_error_platform
+  all_goals first | assumption | exact ordinaryWordAddress_for ordinary
+
+theorem checked_word_read_error [MemoryPlatform SailRV32.exception] {before after : State} {address : BitVec 32}
+    {error : _root_.Sail.Error SailRV32.exception}
+    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (ordinary : OrdinaryWordAddress address)
+    (read : (readBytes (ue := SailRV32.exception) 4 address.toNat).run before = .error error after) :
+    run (SailRV32.Functions.checked_mem_read (.Load .Data) .PBMT_PMA .Machine
+      (.Physaddr (address.setWidth 34)) 4 false false false false) before =
+        .error error after := by
+  apply checked_word_read_error_platform
+  all_goals first | assumption | exact ordinaryWordAddress_for ordinary
+
+theorem checked_memory_write [MemoryPlatform SailRV32.exception] {size : Nat} {before after : State} {address : BitVec 32}
+    (width : size = 1 ∨ size = 2 ∨ size = 4)
+    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
+    (ordinary : OrdinaryWordAddress address) (value : BitVec (8 * size))
+    (write : run (writeMemory (size := size) address value) before = .ok () after) :
+    run (SailRV32.Functions.checked_mem_write (.Physaddr (address.setWidth 34)) size value
+      (.Store .Data) .PBMT_PMA .Machine () false false false) before =
+        .ok (.Ok true) after := by
+  apply checked_memory_write_platform
+  all_goals first | assumption | exact ordinaryWordAddress_for ordinary
+
+theorem checked_word_write [MemoryPlatform SailRV32.exception] {before : State} {address : BitVec 32}
+    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (ordinary : OrdinaryWordAddress address) (value : BitVec 32) :
+    run (SailRV32.Functions.checked_mem_write (.Physaddr (address.setWidth 34)) 4 value
+      (.Store .Data) .PBMT_PMA .Machine () false false false) before =
+        .ok (.Ok true) (wordWriteState before address.toNat value) := by
+  apply checked_word_write_platform
+  all_goals first | assumption | exact ordinaryWordAddress_for ordinary
+
+theorem checked_memory_announcement [MemoryPlatform SailRV32.exception] {size : Nat} {before : State} {address : BitVec 32}
+    (width : size = 1 ∨ size = 2 ∨ size = 4)
+    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % size = 0)
+    (ordinary : OrdinaryWordAddress address) :
+    run (SailRV32.Functions.mem_write_ea (.Physaddr (address.setWidth 34)) size .Machine
+      (.Store .Data) .PBMT_PMA false false false) before = .ok (.Ok ()) before := by
+  apply checked_memory_announcement_platform
+  all_goals first | assumption | exact ordinaryWordAddress_for ordinary
+
+theorem checked_word_announcement [MemoryPlatform SailRV32.exception] {before : State} {address : BitVec 32}
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address) :
     run (SailRV32.Functions.mem_write_ea (.Physaddr (address.setWidth 34)) 4 .Machine
-      (.Store .Data) .PBMT_PMA false false false) before = .ok (.Ok ()) before :=
-  checked_memory_announcement (Or.inr (Or.inr rfl)) configuration aligned ordinary
+      (.Store .Data) .PBMT_PMA false false false) before = .ok (.Ok ()) before := by
+  apply checked_word_announcement_platform
+  all_goals first | assumption | exact ordinaryWordAddress_for ordinary
 
 end Airbender.Reference.RiscV.Sail

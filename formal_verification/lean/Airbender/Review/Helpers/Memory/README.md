@@ -64,7 +64,7 @@ boot profile; [Platform](Platform.lean) records the ordinary-memory configuratio
 [Ports](Ports.lean) and [IndirectPorts](IndirectPorts.lean) interpret imported
 addresses, timestamps and values. [Values](Values.lean) gives the word view.
 [History](History.lean) states logical native events and matching; its rows and
-tokens come from the shared [`model`](../Context/Model.lean).
+tokens come from the shared [model](../Context/Model.lean).
 
 [SailHistory](SailHistory.lean) connects those transfers to actual Sail states.
 Bounds and latest-write reads are derived by the supporting proofs from accepted

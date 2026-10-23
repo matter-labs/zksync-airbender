@@ -1,11 +1,7 @@
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Core.SerializedInverse
-import Airbender.Review.Trace.Soundness
-import Airbender.Review.Trace.UnifiedReduced.Theorems
-import Airbender.Proofs.Tables.ImportedPooledDecoder
-import Airbender.Proofs.Tables.ImportedUnifiedDecoder
-import Airbender.Proofs.UnifiedReduced.Tables.ImportedROM
-import Airbender.Review.Helpers.UnifiedReduced.ImportedInputs
+import Airbender.Review.Helpers.Decoder.SelectedProgram
+import Airbender.Proofs.Trace.ImportedDecoder
 
 namespace Airbender.Trace
 
@@ -17,14 +13,11 @@ theorem pooled_imported_decoder_soundness
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     {trace : PooledTrace babyBearModulus} {before : Reference.RiscV.Sail.State}
     {cells : List Cell}
-    (inputs : PooledBootInputs trace before cells NativeDecoder.Proofs.pooledProgram)
+    (inputs : PooledBootInputs trace before cells NativeDecoder.pooledProgram)
     (accepted : Accepted trace) (decoded : NativeDecoder.PooledLookups trace) :
-    Realizes (PooledStep NativeDecoder.Proofs.pooledProgram) trace before cells
+    Realizes (PooledStep NativeDecoder.pooledProgram) trace before cells
       (ROMView.token before) := by
-  apply pooled_native_soundness inputs accepted
-  apply NativeDecoder.Proofs.pooled_decoded (by decide) accepted ?_ decoded
-  rw [inputs.initialBoundary]
-  decide +kernel
+  exact Proofs.pooled_imported_decoder_soundness inputs accepted decoded
 
 end Airbender.Trace
 
@@ -39,29 +32,10 @@ theorem imported_decoder_execution_soundness [Fact p.Prime]
     (byteInverse : SerializedInverse.Scale256 p)
     {trace : Trace.UnifiedTrace p} {initial : Reference.RiscV.Sail.State}
     {cells : List Trace.Cell}
-    (inputs : ImportedExecutionInputs trace initial cells Trace.NativeDecoder.Proofs.unifiedProgram)
+    (inputs : ImportedExecutionInputs trace initial cells Trace.NativeDecoder.unifiedProgram)
     (accepted : Trace.Accepted trace) (decoded : Trace.NativeDecoder.UnifiedLookups trace) :
-    Trace.Realizes (Step Trace.NativeDecoder.Proofs.unifiedProgram) trace initial cells
+    Trace.Realizes (Step Trace.NativeDecoder.unifiedProgram) trace initial cells
       (Trace.ROMView.token initial) := by
-  have semantic : ExecutionInputs trace initial cells Trace.NativeDecoder.Proofs.unifiedProgram := {
-    boot := {
-      distinct := inputs.boot.distinct
-      aligned := inputs.boot.aligned
-      profile := inputs.boot.profile
-      image := inputs.boot.image
-      seed := inputs.boot.seed
-      initialPC := inputs.boot.initialPC
-      programImage := inputs.boot.programImage
-      setup := inputs.boot.setup.trans (Setup.Proofs.imported_table_before inputs.boot.importedImage) }
-    registers := inputs.registers
-    code := inputs.code
-    configuration := inputs.configuration
-    ordinary := inputs.ordinary
-    landingPadDisabled := inputs.landingPadDisabled
-    loads := inputs.loads }
-  apply execution_soundness hp clockInverse byteInverse semantic accepted
-  apply Trace.NativeDecoder.Proofs.unified_decoded (by omega) accepted ?_ decoded
-  rw [inputs.boot.initialPC]
-  simp [PCState.boundary, PCState.encode, PCState.State.word, Arithmetic.limbBase]
+  exact Proofs.imported_decoder_execution_soundness hp clockInverse byteInverse inputs accepted decoded
 
 end Airbender.UnifiedReduced

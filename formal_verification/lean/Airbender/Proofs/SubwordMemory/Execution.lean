@@ -8,6 +8,7 @@ import Airbender.Review.Helpers.Context.Boundary
 import Airbender.Review.Helpers.Decoder.Instruction
 
 namespace Airbender.SubwordMemory.Proofs
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 open Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
 
@@ -22,6 +23,7 @@ def rowData (store byte signed : Bool) (imm : BitVec 12) (rs1 rs2 rd : BitVec 5)
     Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm),
     (if store then 1 else 0) + (if byte then 2 else 0) + (if signed && !store then 4 else 0), 0⟩
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem row_decoder_shape {entry : ProgramEntry} (store byte signed : Bool)
     (imm : BitVec 12) (rs1 rs2 rd : BitVec 5)
     (encoding : entry.instruction = rowInstruction store byte signed imm rs1 rs2 rd)
@@ -45,6 +47,7 @@ def rowOutput (store : Bool) (w : Nat → ZMod p) : Output :=
 
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- Shared subword retirement over the imported constraints and actual port
     history. Bounds/address/ROM facts are supplied by the global history proof. -/
 theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
@@ -52,7 +55,7 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
     {program : Nat → BitVec 32} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Verification.subwordTable program)))
     (active : w 4 = 1) {cells : List Cell} (epoch : Nat)
-    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
     (query : decoderQuery w = entry.query)
     (store byte signed : Bool) (imm : BitVec 12) (rs1 rs2 rd : BitVec 5)
@@ -145,8 +148,8 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
       change (input.source.toBitVec + input.immediate.toBitVec).toNat % 2 = 0
       omega
     · change _ % 1 = 0; exact Nat.mod_one _
-  have domain : OrdinaryWordAddress (input.source.toBitVec + input.immediate.toBitVec) := by
-    change OrdinaryWordAddress ((Word.mk (w 19).val (w 20).val).toBitVec +
+  have domain : PlatformWordAddress (input.source.toBitVec + input.immediate.toBitVec) := by
+    change PlatformWordAddress ((Word.mk (w 19).val (w 20).val).toBitVec +
       (Word.mk (w 8).val (w 9).val).toBitVec)
     rw [← address.2.2.2.1]
     exact ordinary_cell_offset (by rw [Word.toBitVec_toNat cellBound]; exact address.2.1)
@@ -256,6 +259,7 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
 
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- RAM loads/stores reach the actual native after-state. All operand ranges,
     reads, decoding and virtual transport are derived from the accepted history.
     The address-domain restriction is on public initialized cells. -/
@@ -266,7 +270,7 @@ theorem row_ram_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exce
     (image : initialImage initial cells = some trace.initialMemory)
     {program : Nat → BitVec 32} (setup : trace.rom = Verification.subwordTable program)
     (ramDomain : ∀ address, Cell.ram address ∈ cells → ROM.limit ≤ address.toNat)
-    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address)
     (configuration : FlatMemoryConfiguration initial)
     {w : Nat → ZMod p} (member : (⟨.subwordMemory, w⟩ : Row p TraceKind) ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)

@@ -1,3 +1,4 @@
+import Tests.Platform
 import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Proofs.Sail.WordMemoryState
 
@@ -6,6 +7,8 @@ open Airbender Arithmetic UnifiedReduced Trace Reference.RiscV.Sail Reference.Sa
 set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
+
+local instance : Sail.ArchSem.MemoryPlatform SailRV32.exception := Tests.upstreamPlatform
 
 private def setup : Table (ZMod babyBearModulus) (fields 10) := .fromStatic {
   name := "UnifiedDisabledQueries"

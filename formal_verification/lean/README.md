@@ -1,5 +1,8 @@
 # Circuit verification
 
+<!-- lean-context: Clean.Circuit.Expression Clean.Circuit.Operations Clean.Circuit.Lookup Clean.Specs.Keccak256 -->
+<!-- source-names: CI FV_ROOT -->
+
 ## What is checked
 
 [Verification status](VERIFICATION_STATUS.md) lists every circuit, checked coverage
@@ -71,45 +74,124 @@ import paths without compiling.
 
 ## Reproduce
 
-Run from `formal_verification/lean`:
+Use Python 3.11+, the pinned Lean `leanprover/lean4:v4.31.0` and Rust
+`nightly-2026-08-09` from the repository toolchain files. Run the following in
+Bash from `formal_verification/lean`, with the global FV worker idle:
 
 ```sh
-python3 scripts/prepare_clean.py
-python3 - <<'PYTESTS'
-from pathlib import Path
-import subprocess
-modules = [".".join(path.with_suffix("").parts)
-           for path in sorted(Path("Tests").rglob("*.lean"))]
-subprocess.run(["lake", "build", "Airbender", "airbender_import",
-                "airbender_tests", "Airbender.Checks.Axioms", *modules], check=True)
-PYTESTS
-lake env lean Airbender/Checks/Axioms.lean
-lake exe airbender_tests
-python3 scripts/check_review.py
-python3 scripts/check_proof_boundaries.py
+set -euo pipefail
+FV_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/airbender-fv.XXXXXX")"
+export CARGO_BUILD_JOBS=1 RAYON_NUM_THREADS=1 MATHLIB_NO_CACHE_ON_UPDATE=1
+# Debug symbols are unnecessary for deterministic setup exports.
+export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+export CARGO_TARGET_DIR="$FV_ROOT/cargo"
+
+# A lightweight orchestrator: its process controls guard their own children.
+# Run these on Linux itself before Linux compiler work; Darwin cannot verify
+# Linux pidfd/subreaper behavior. Do not wrap this orchestrator in another guard.
+python3 -m unittest discover -s scripts -p test_bounded_fv.py -v
+fv() {
+  label="$1"
+  shift
+  python3 scripts/bounded_fv.py --mib 2560 --resident-mib 5120 --seconds 900 \
+    --log "$FV_ROOT/$label.log" -- "$@" | tee "$FV_ROOT/$label.guard.jsonl"
+}
+
+# Bootstrap only the pinned Mathlib cache CLI, serially, before Clean patches.
+# Ordinary Lake loads the exact manifest; do not run lake update.
+modules=(Batteries.Data.Array.Match Batteries.Data.String.Basic
+  Batteries.Data.String.Matcher Batteries.Tactic.OpenPrivate Cache.Lean
+  Cache.IO Cache.Hashing Cache.Init Cache.Requests Cache.Main)
+for module in "${modules[@]}"; do
+  fv "cache-olean-$module" lake --no-cache build "+$module:olean"
+done
+for module in "${modules[@]}"; do
+  fv "cache-native-$module" lake --no-cache build "+$module:o"
+done
+fv cache-executable lake --no-cache build cache
+fv mathlib-cache lake exe cache get
+fv prepare-clean python3 scripts/prepare_clean.py
+
+# Copy the retained Cargo lock only when absent; an existing lock must match.
+fv native-lock python3 scripts/check_setup_artifacts.py --prepare-lock
+fv provenance-controls python3 -m unittest discover -s scripts -p test_setup_provenance.py -v
+families=(add-sub jump-branch mul-div shift-binop word-memory subword-memory
+  unified bigint blake-g blake-round keccak inits-and-teardowns)
+for family in "${families[@]}"; do
+  fv "regenerate-$family" env -u CI -u RUST_MIN_STACK python3 scripts/check_setup_freshness.py \
+    regenerate "$family" --work-dir "$FV_ROOT/native"
+done
+for family in "${families[@]}" decoder-smoke; do
+  fv "export-$family" env -u CI -u RUST_MIN_STACK python3 scripts/check_setup_freshness.py \
+    export "$family" --work-dir "$FV_ROOT/native"
+done
+dep_args=()
+while IFS= read -r -d '' file; do dep_args+=(--dep-info "$file"); done \
+  < <(find "$CARGO_TARGET_DIR/debug" -type f -name '*.d' -print0)
+fv native-receipts python3 scripts/check_setup_freshness.py verify \
+  --work-dir "$FV_ROOT/native" "${dep_args[@]}"
+
+# Frontends own their aggregate guard; use no outer guard.
+# Source freshness defaults to four bounded read-only query workers.
+python3 scripts/check_lean.py --guard scripts/bounded_fv.py --output "$FV_ROOT/lean"
+sysroot="$(lean --print-prefix)"
+python3 scripts/check_axioms.py --guard scripts/bounded_fv.py \
+  --sysroot "$sysroot" --output "$FV_ROOT/axioms"
+python3 scripts/check_kernel_replay.py --guard scripts/bounded_fv.py \
+  --sysroot "$sysroot" --output "$FV_ROOT/replay" \
+  --axiom-result "$FV_ROOT/axioms/axiom-result.json"
+python3 scripts/check_assurance_controls.py --guard scripts/bounded_fv.py \
+  --sysroot "$sysroot" --output "$FV_ROOT/assurance-controls" \
+  --ledger "$FV_ROOT/replay/ledger"
 ```
 
-The audit lists theorem axiom dependencies. The checked claims use only standard
-Lean axioms; no `sorry` or project axioms are admitted. Importer tests are not
-proofs of faithful parsing. Subsequent work is in [the plan](FORMAL_VERIFICATION_PLAN.md).
-The [review check](scripts/check_review.py) uses Lean's compiled declaration locations to require an explicit
-axiom root for every source-declared public theorem in `Review/`. It also resolves
-guide declaration names and local file/heading links. Source-only Rust/Sail names
-are listed separately in the script; their fidelity remains a trust boundary.
-It also checks context/trace import separation and the documented proof-assembly dependencies.
+The 25 native jobs execute twelve production generators and thirteen exports,
+including the derived decoder smoke fixture. Their final verification checks
+execution receipts, complete JSON identity and the scoped native build's dep-info.
+`CI` must be absent for generators and smoke tests; `CI=false` still skips them.
 
-For the integrated trace proof and regressions:
+The Lean frontend discovers every concrete Airbender, Tests and retained
+Sail module. Its [bounded compilation pool](scripts/compilation_pool/README.md)
+checks cached ordinary Lake freshness with four workers by default,
+under one combined resource owner. Dirty rebuilds and high-memory work run
+exclusively. It serializes the actual executable
+native closures, and checks the library, both executables, importer runtime,
+complete explicit audit, guide references, proof boundaries and source/evidence
+pins. Its verified source/object/job snapshot lets the review check inspect the
+same compiled tree without starting an aggregate build. The environment-origin
+proof audit, full independent kernel replay and isolated direct/transitive false
+proof controls are separate gates. Only `propext`, `Classical.choice` and
+`Quot.sound` are allowed; all preserved audit roots remain required. Importer
+regressions do not prove parsing fidelity.
+
+All real workers use `/tmp/airbender-fv-single-worker.lock`, 2560 MiB physical
+footprint (Linux uses the documented conservative charged-memory proxy), 5120 MiB
+resident memory and 900 seconds. The review stage alone permits 1800 seconds.
+The commands keep existing stack limits. A failed bounded job stops the run;
+logs, commands, resource metrics and exact failed stages remain under `FV_ROOT`.
+The [formal-verification workflow](../../.github/workflows/formal-verification.yml)
+uses the existing high-performance Linux runner and source/dependency keyed caches
+with ordinary freshness checking. Rust CI calls it once and requires its result in
+the stable `pr-checks` gate; manual runs use the same worker guard. Cached outputs
+do not serve as final pass markers. Remote CI, cold-cache bootstrap and whole-project replay results must be
+measured on their actual hosts; this command list does not claim they passed.
+
+After the toolchain/cache/preparation steps above, a focused trace check is:
 
 ```sh
-lake build Tests.TraceImport Airbender.Checks.TraceAxioms
-lake env lean Airbender/Checks/TraceAxioms.lean
+python3 scripts/check_lean.py --guard scripts/bounded_fv.py \
+  --output "$FV_ROOT/trace-import" \
+  --module Tests.TraceImport --module Airbender.Checks.TraceAxioms
+fv trace-axioms lake env lean Airbender/Checks/TraceAxioms.lean
 ```
 
-This focused target checks ADD/SUB, word-memory and jump/branch/SLT native
-clock/port artifacts, rollover/rejection
-fixtures and timestamp/address/value importer guards. The primary public surface is
+This scope compiles the importer checks and audits the six ordinary families:
+ADD/SUB, word-memory, jump/branch/SLT, MUL/DIV, shift/binop and subword memory,
+including REV8, rollover/rejection histories and public initialization. The full
+frontend's importer runtime additionally executes the timestamp/address/value,
+physical-placement, decoder-selector and storage-polarity mutation guards. The primary public surface is
 [Trace/Soundness.lean](Airbender/Review/Trace/Soundness.lean), with the native
-matching and initial-clock conditions in [Trace/Model.lean](Airbender/Review/Helpers/Context/Model.lean).
+matching and initial-clock conditions in [Context/Model.lean](Airbender/Review/Helpers/Context/Model.lean).
 The history fixtures check rejection of an unmatched previous-write timestamp
 and complete per-address paths with interleaved accesses and changing values.
 A changed operand/result pair satisfies the local ADD constraints but is rejected

@@ -43,5 +43,12 @@ The existing public mode/count and initialized history derive the whole x12
 word, exclusive round, all three mode flags and pointer ABI. The completed
 ten-round controller is rejected by the successful-call reference. Modeled-table
 fidelity and the RAM domain remain explicit. [Full mixed execution](../../UnifiedReduced/FullExecution.lean)
-now connects caller fetch/PC retirement under the temporary occurrence ledger;
-its implementation enforcement remains open under F03.
+connects caller fetch/PC retirement with participation derived from native
+caller accounting and active-invocation timestamps. The current integrated
+profile is straight-line; general mixed branch/jump/loop composition remains
+unfinished. No external occurrence ledger is required in that integrated scope.
+
+Standalone worker inputs retain both `clockRoom` and `invocationHigh`; integrated
+caller/request matching derives them. See the [shared worker boundary](../README.md)
+and [native memory inputs](../../../Helpers/Delegation/Memory.lean). Actual read
+values and pointer bounds are derived from initialized matching.
