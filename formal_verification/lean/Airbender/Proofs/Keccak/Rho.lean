@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.DecodeControl
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Keccak.RhoRotation
 import Airbender.Proofs.Keccak.Theta
