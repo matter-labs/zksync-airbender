@@ -48,8 +48,8 @@ interface assumptions. Follow the named columns to the artifact and the selected
 reference to its actual semantics. Preserve the theorem's field minimum and
 serialized inverse conditions; generic field proofs do not establish a Proth120 import.
 
-Shared [`context`](../Helpers/Context/README.md), [`decoder`](../Helpers/Decoder/README.md)
-and [`memory`](../Helpers/Memory/README.md) supply initialized-history interpretation.
+Shared [context](../Helpers/Context/README.md), [decoder](../Helpers/Decoder/README.md)
+and [memory](../Helpers/Memory/README.md) supply initialized-history interpretation.
 Circuit Tables directories contain modeled setup rows; Rust setup correspondence
 remains unproved. [Whole execution](../Trace/README.md) is a separate route.
 

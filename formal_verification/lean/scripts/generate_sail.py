@@ -36,6 +36,62 @@ abbrev match_reservation (address : BitVec Arch.addr_size) : Bool :=
 """
 
 
+# Platform configuration bindings only. Standard instruction definitions are
+# never substituted. The manifest records the exact reversible transformation.
+PLATFORM_FLAG_BINDINGS = [
+    {"original": "def plat_have_clint : Bool := true",
+     "parameterized": "def plat_have_clint : Bool := (MemoryPlatform.devices (ue := exception)).haveClint"},
+    {"original": "def plat_have_sig : Bool := true",
+     "parameterized": "def plat_have_sig : Bool := (MemoryPlatform.devices (ue := exception)).haveSig"},
+]
+
+
+def parameterize_functions(source):
+    marker = "namespace Functions\n\n"
+    if source.count(marker) != 1:
+        raise ValueError("Expected one generated function namespace")
+    source = source.replace(marker, marker + MEMORY_PLATFORM_HEADER, 1)
+    for binding in PLATFORM_FLAG_BINDINGS:
+        if source.count(binding["original"]) != 1:
+            raise ValueError("Expected one exact platform flag definition: " + binding["original"])
+        source = source.replace(binding["original"], binding["parameterized"], 1)
+    return source
+
+
+def restore_functions(source):
+    for binding in reversed(PLATFORM_FLAG_BINDINGS):
+        if source.count(binding["parameterized"]) != 1:
+            raise ValueError("Expected one parameterized platform flag")
+        source = source.replace(binding["parameterized"], binding["original"], 1)
+    if source.count(MEMORY_PLATFORM_HEADER) != 1:
+        raise ValueError("Expected one exact platform parameter header")
+    return source.replace(MEMORY_PLATFORM_HEADER, "", 1)
+
+
+def instruction_fingerprints(source):
+    """Hash complete unmodified execute declarations, including original bytes."""
+    declarations = list(re.finditer(r"(?m)^def ([A-Za-z_][A-Za-z_0-9]*)\b", source))
+    fingerprints = {}
+    for index, declaration in enumerate(declarations):
+        name = declaration.group(1)
+        if name.startswith("execute_"):
+            end = declarations[index + 1].start() if index + 1 < len(declarations) else source.index("\nend Functions", declaration.end())
+            fingerprints[name] = hashlib.sha256(source[declaration.start():end].encode()).hexdigest()
+    if len(fingerprints) != 13:
+        raise ValueError("Expected exactly thirteen original execute declarations")
+    return fingerprints
+
+
+def airbender_platform_evidence():
+    files = [
+        "riscv_transpiler/src/vm/ram_with_rom_region.rs",
+        "riscv_transpiler/src/jit/impls.rs",
+        "cs/src/gkr_circuits/unified_reduced_machine/mem_word_only_lw_sw.rs",
+        "riscv_common/src/lds/1gb_total/memory.x",
+    ]
+    return {name: digest(ROOT.parent.parent / name) for name in files}
+
+
 def command(args, cwd=None, env=None):
     subprocess.run([str(a) for a in args], cwd=cwd, env=env, check=True)
 
@@ -147,9 +203,13 @@ def main():
     original_functions_hash = digest(functions)
     source = functions.read_text()
     marker = "namespace Functions\n\n"
-    if source.count(marker) != 1:
-        raise ValueError("Expected one generated function namespace")
-    functions.write_text(source.replace(marker, marker + MEMORY_PLATFORM_HEADER, 1))
+    parameterized = parameterize_functions(source)
+    if restore_functions(parameterized) != source:
+        raise ValueError("Platform transformation is not lossless")
+    fingerprints = instruction_fingerprints(source)
+    if instruction_fingerprints(parameterized) != fingerprints:
+        raise ValueError("Platform parameterization changed an instruction declaration")
+    functions.write_text(parameterized)
     manifest = {
         "model_repository": "https://github.com/riscv/sail-riscv",
         "model_revision": MODEL_REV,
@@ -177,9 +237,14 @@ def main():
         },
         "platform_parameterization": {
             "original_functions_sha256": original_functions_hash,
+            "instruction_sha256": fingerprints,
             "insertion_marker": marker,
             "inserted_header": MEMORY_PLATFORM_HEADER,
             "externs": ["plat_term_write", "load_reservation", "match_reservation"],
+            "flag_bindings": PLATFORM_FLAG_BINDINGS,
+            "upstream_devices": {"clint": True, "sig": True},
+            "airbender_devices": {"clint": False, "sig": False},
+            "airbender_evidence_sha256": airbender_platform_evidence(),
         },
         "generated_sha256": {
             str(p.relative_to(generated)): digest(p)

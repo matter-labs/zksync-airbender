@@ -9,7 +9,7 @@ namespace Airbender.Trace
     registers/RAM; `program` is constructed by actual pinned Sail decoding.
 
     `inputs` binds initialization, configuration, modeled tables and the unresolved
-    jump terminal-PC condition. `accepted` checks imported richer constraints
+    external canonical verifier-PC closure. `accepted` checks imported richer constraints
     and logical state/memory matching; `decoded` checks decoder-table membership.
     Cryptographic enforcement and import/table-generation fidelity remain external.
 

@@ -111,7 +111,7 @@ omit [MemoryPlatform SailRV32.exception] in
 structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry) : Prop
     extends PooledHistoryInputs trace initial cells program where
-  ordinary : ∀ address, Cell.ram address ∈ cells → Sail.OrdinaryWordAddress address
+  ordinary : ∀ address, Cell.ram address ∈ cells → Sail.PlatformWordAddress address
   configuration : Sail.FlatMemoryConfiguration initial
 
 end Airbender.SubwordMemory

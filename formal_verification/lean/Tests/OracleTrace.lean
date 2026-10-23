@@ -133,7 +133,7 @@ private theorem public_image : programImageWith NonDeterminism.decoderFields bef
     read, add, hint, decodeRead, decodeAdd, decodeHint, bind, Option.bind]
   rfl
 
-private theorem inputs : NativeBootBoundary trace before cells program NonDeterminism.decoderFields := by
+private theorem inputs [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] : NativeBootBoundary trace before cells program NonDeterminism.decoderFields := by
   refine {
     registers := Tests.TraceExecution.inputs.registers
     distinct := by decide

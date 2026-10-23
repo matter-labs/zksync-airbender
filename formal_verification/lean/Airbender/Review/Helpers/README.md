@@ -13,7 +13,7 @@ history and latest-write reads from initialized matching and clock constraints.
 public decoding and preserve it through state updates.
 [Context results](Context/README.md#checked-connections) recover native order and
 boundary ranges. [Delegation](Delegation/README.md#checked-connections) and
-[unified context](UnifiedReduced/README.md#checked-connections) extend the same
+[unified context](UnifiedReduced/README.md#checked-results) extend the same
 history interpretation to workers and joint windows.
 
 These results justify the inputs used by circuit and execution claims. They do

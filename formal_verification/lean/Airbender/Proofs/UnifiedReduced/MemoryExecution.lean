@@ -5,11 +5,13 @@ import Airbender.Proofs.UnifiedReduced.StoreRetirement
 import Airbender.Proofs.UnifiedReduced.ROMSoundness
 
 namespace Airbender.UnifiedReduced.Proofs
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Reference.Sail Trace Trace.Proofs
 set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem word_register_retirement [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {cells : List Cell} {w : Nat → ZMod p} {epoch : Nat}
@@ -61,6 +63,7 @@ theorem word_register_retirement [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatf
     have same := (EStateM.Result.ok.inj (projected.symm.trans effects)).2
     simpa only [same] using normal
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem word_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
@@ -70,7 +73,7 @@ theorem word_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPla
     {before after : State} {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output} {entry : ProgramEntry}
     (boot : BootInputsWith projection trace initial cells program)
     (configuration : FlatMemoryConfiguration initial)
-    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address)
     (destination : input.store = false → input.rd ≠ zeroRegister)
     (words : WordMemory.WordMapping input output w)
     (atRow : input.before = retiredState before (Control.initialPC w).toBitVec)
@@ -93,6 +96,7 @@ theorem word_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPla
     word_register_retirement (by omega) core source.fields query encoding destination words atRow history result⟩
   rw [encoding]; cases mode : input.store <;> simp [Airbender.WordMemory.execution, Airbender.WordMemory.instruction, Trace.instructionClause, Option.get_some, mode, instructionClause]
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem word_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}

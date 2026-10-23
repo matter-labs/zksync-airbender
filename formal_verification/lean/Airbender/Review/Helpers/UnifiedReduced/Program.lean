@@ -13,7 +13,9 @@ def decoderFields (instruction : SailRV32.instruction) : Option (DecoderData Uni
 /-- The standard/custom registry uses the same public boot, readonly code,
     configuration and supported-load profile as standard execution. Reads,
     ranges and instruction results are derived from the shared history. -/
-abbrev Inputs {p : Nat} [Fact p.Prime] := ExecutionInputsWith (p := p) decoderFields
+abbrev Inputs {p : Nat} [Fact p.Prime]
+    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :=
+  ExecutionInputsWith (p := p) decoderFields
 
 /-- Read actual public bytes and run the pinned Sail decoder once for the
     combined program. Unsupported encodings and missing bytes remain failures. -/

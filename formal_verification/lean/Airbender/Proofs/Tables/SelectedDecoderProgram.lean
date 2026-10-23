@@ -1,6 +1,5 @@
 import Airbender.Proofs.Tables.ImportedDecoder
-import Airbender.Review.Helpers.Decoder.PooledProgram
-import Airbender.Review.Circuits.UnifiedReduced.Decoder
+import Airbender.Review.Helpers.Decoder.SelectedProgram
 
 namespace Airbender.Trace.NativeDecoder.Proofs
 set_option warningAsError true
@@ -10,19 +9,19 @@ set_option maxRecDepth 32768
 theorem selected_text_extent : ROM.nativeProgramData.text_words = 1048576 := rfl
 
 def selectedIndex (index : Fin 4) : Fin ROM.nativeProgramData.text_words :=
-  ⟨index.val, by have := index.isLt; change index.val < 1048576; omega⟩
+  _root_.Airbender.Trace.NativeDecoder.selectedIndex index
 
 private theorem pooled_entry_present (index : Fin 4) :
     (selectedEntry pooledDecoderFields (selectedIndex index)).isSome := by
   fin_cases index <;> decide +kernel
 
 def pooledEntry (index : Fin 4) : PooledProgramEntry :=
-  (selectedEntry pooledDecoderFields (selectedIndex index)).get (pooled_entry_present index)
+  _root_.Airbender.Trace.NativeDecoder.pooledEntry index
 
-def pooledProgram : List PooledProgramEntry := (List.finRange 4).map pooledEntry
+def pooledProgram : List PooledProgramEntry := _root_.Airbender.Trace.NativeDecoder.pooledProgram
 
 theorem pooled_program_member (index : Fin 4) : pooledEntry index ∈ pooledProgram := by
-  simp [pooledProgram]
+  simp [pooledProgram, _root_.Airbender.Trace.NativeDecoder.pooledProgram, pooledEntry]
 
 theorem pooled_entry_member (index : Fin 4) :
     pooledEntry index ∈ selectedProgram pooledDecoderFields := by
@@ -35,12 +34,12 @@ private theorem unified_entry_present (index : Fin 4) :
   fin_cases index <;> decide +kernel
 
 def unifiedEntry (index : Fin 4) : UnifiedReduced.ProgramEntry :=
-  (selectedEntry UnifiedReduced.decoderFields (selectedIndex index)).get (unified_entry_present index)
+  _root_.Airbender.Trace.NativeDecoder.unifiedEntry index
 
-def unifiedProgram : List UnifiedReduced.ProgramEntry := (List.finRange 4).map unifiedEntry
+def unifiedProgram : List UnifiedReduced.ProgramEntry := _root_.Airbender.Trace.NativeDecoder.unifiedProgram
 
 theorem unified_program_member (index : Fin 4) : unifiedEntry index ∈ unifiedProgram := by
-  simp [unifiedProgram]
+  simp [unifiedProgram, _root_.Airbender.Trace.NativeDecoder.unifiedProgram, unifiedEntry]
 
 theorem unified_entry_member (index : Fin 4) :
     unifiedEntry index ∈ selectedProgram UnifiedReduced.decoderFields := by

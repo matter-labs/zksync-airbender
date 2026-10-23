@@ -6,6 +6,7 @@ open Trace
 set_option warningAsError true
 set_option Elab.async false
 variable {p : Nat} [Fact p.Prime] [CommRing E]
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 theorem unified_inputs {base : UnifiedTrace p} {layout : Layout}
     {geometry : Geometry layout} {windows : Windows layout}

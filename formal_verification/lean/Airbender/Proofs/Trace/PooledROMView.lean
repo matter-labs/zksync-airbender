@@ -260,7 +260,8 @@ theorem data_clocks {p : Nat} [Fact p.Prime] (before : State)
 
 /-- The public byte view discharges physical initialization; only proven unused
     ROM columns/intermediates change. All native trace outputs stay fixed. -/
-theorem execution_boundary {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 4)
+theorem execution_boundary [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 4)
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
     {trace : PooledTrace p} {before : State} {cells : List Cell} {program : List PooledProgramEntry}
     (inputs : PooledBootInputs trace before cells program projection) :

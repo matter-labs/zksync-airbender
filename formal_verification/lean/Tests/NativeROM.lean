@@ -92,7 +92,7 @@ private theorem configuration : FlatMemoryConfiguration before := by
       regs := Tests.TraceExecution.before.regs.insert .x1 (0 : BitVec 32) })
     (after := before) rfl preserved
 
-private theorem inputs : NativeBootBoundary trace before cells [entry] := by
+private theorem inputs [MemoryPlatform SailRV32.exception] : NativeBootBoundary trace before cells [entry] := by
   refine {
     registers := fun index => List.mem_append_left _ (Tests.TraceExecution.inputs.registers index)
     distinct := by decide
@@ -113,6 +113,7 @@ private theorem inputs : NativeBootBoundary trace before cells [entry] := by
   · intro address member
     have zero : address = 0 := by simpa [cells, Tests.TraceExecution.cells] using member
     subst address
+    apply ordinaryWordAddress_for
     unfold OrdinaryWordAddress
     decide
   · simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes,

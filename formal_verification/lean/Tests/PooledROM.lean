@@ -192,6 +192,7 @@ private theorem inputs [MemoryPlatform SailRV32.exception] : PooledBootInputs tr
       intro address member
       have zero : address = 0 := by simpa [cells, Tests.TraceExecution.cells] using member
       subst address
+      apply ordinaryWordAddress_for
       unfold OrdinaryWordAddress
       decide
     configuration := configuration

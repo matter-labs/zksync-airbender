@@ -10,16 +10,16 @@ open _root_.Sail.ArchSem
 theorem memory_access [MemoryPlatform SailRV32.exception] {input : Input}
     (configuration : Sail.FlatMemoryConfiguration input.before)
     (aligned : (input.source.toBitVec + input.immediate.toBitVec).toNat % 4 = 0)
-    (ordinary : Sail.OrdinaryWordAddress (input.source.toBitVec + input.immediate.toBitVec)) :
+    (ordinary : Sail.PlatformWordAddress (input.source.toBitVec + input.immediate.toBitVec)) :
     MemoryAccess input := by
   constructor
   · intro _ nextPC value registerRead bytes
-    apply Sail.virtual_word_read (Sail.configuration_next_pc_write configuration nextPC)
+    apply Sail.virtual_word_read_platform (Sail.configuration_next_pc_write configuration nextPC)
       input.rs1 input.immediate.toBitVec registerRead aligned ordinary
     exact Sail.read_word_frame (before := input.before)
       (after := { input.before with regs := input.before.regs.insert .nextPC nextPC }) rfl bytes
   · intro _ nextPC value registerRead
-    rw [Sail.virtual_word_write (Sail.configuration_next_pc_write configuration nextPC)
+    rw [Sail.virtual_word_write_platform (Sail.configuration_next_pc_write configuration nextPC)
       input.rs1 input.immediate.toBitVec registerRead aligned ordinary value]
     rw [run_bind_of_ok _ _ _ _ _ (Sail.write_word_state _ _ value)]
     rfl

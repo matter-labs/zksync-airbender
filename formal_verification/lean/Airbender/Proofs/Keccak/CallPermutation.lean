@@ -77,6 +77,15 @@ private theorem permutation_of_chain (states : Fin 650 → LaneState)
   rw [final_layout] at lastRound
   exact lastRound
 
+/-- A complete chain of actual physical lane views has the existing independent
+    Keccak permutation as its final logical view. This pure adapter has no
+    native pool, timestamp permutation or homogeneous-span premise. -/
+theorem permutation_of_physical_chain (states : Fin 650 → LaneState)
+    (transitions : ∀ i : Fin 649, states ⟨i.val, by omega⟩ =
+      microStep ⟨648 - i.val, by omega⟩ (states ⟨i.val + 1, by omega⟩)) :
+    logicalLanes 0 (states 0) = keccakPermutation (logicalLanes 0 (states 649)) :=
+  permutation_of_chain states transitions
+
 theorem call_permutation [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
     (inverse : SerializedInverse.Scale256 p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}

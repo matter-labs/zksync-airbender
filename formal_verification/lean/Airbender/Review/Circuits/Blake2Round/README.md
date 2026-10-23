@@ -28,7 +28,7 @@ Start with [Artifact](Artifact.lean), [Row](Row.lean) and [Execution](Execution.
 for the imported operation view. Follow [Preparation](Preparation.lean),
 [Mixing](Mixing.lean) and [Finalization](Finalization.lean) for the worker phases.
 
-[Control](Control.lean), [Schedule](Schedule.lean) and [`setup`](Tables/Setup.lean)
+[Control](Control.lean), [Schedule](Schedule.lean) and [setup](Tables/Setup.lean)
 describe controller flags, round selection and imported lookup contents.
 The [fixed rows](Tables/XorData.lean) come from this circuit's own artifact;
 [kernel proofs](../../../Proofs/Blake2Round/ImportedXor.lean) check their connection

@@ -4,8 +4,10 @@ import Airbender.Proofs.Trace.Composition
 import Airbender.Proofs.Trace.OracleConsumption
 
 namespace Airbender.Trace.NonDeterminism.Proofs
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 open Arithmetic Reference.RiscV.Sail Reference.Sail Trace.Proofs
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem clause_standard [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     {instruction : SailRV32.instruction} {data : DecoderData}
     (fields : Trace.decoderFields instruction = some data)
@@ -17,6 +19,7 @@ theorem clause_standard [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
   unfold clause
   split <;> simp_all [Trace.decoderFields]
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem clause_original [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     {instruction : SailRV32.instruction} {stream : List (BitVec 32)} {position : Nat}
     {original : SailRV32.SailM SailRV32.ExecutionResult}
@@ -25,6 +28,7 @@ theorem clause_original [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
   unfold clause
   split <;> simp_all [instructionClause, Reference.RiscV.Sail.registerClause, profileClause]
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem local_read_execution [Fact p.Prime] (hp : FieldCapacity.NoWrap p ROM.limit)
     (inverse : SerializedInverse.Clock p) (epoch : Nat)
     {w : Nat → ZMod p}
@@ -69,6 +73,7 @@ theorem local_read_execution [Fact p.Prime] (hp : FieldCapacity.NoWrap p ROM.lim
   rw [← next] at checked
   exact checked
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- The native destination port supplies the entire register update. Stream
     agreement is only the external input boundary, while PC+4 is proved from
     the same imported equations as every other ADD/SUB row. -/
@@ -92,6 +97,7 @@ theorem read_row_execution [Fact p.Prime] (hp : FieldCapacity.NoWrap p ROM.limit
 
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem instruction_step {p : Nat} [Fact p.Prime]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : FieldCapacity.NoWrap p ROM.limit) (inverse : SerializedInverse.Clock p) {trace : Data p}
@@ -101,7 +107,7 @@ theorem instruction_step {p : Nat} [Fact p.Prime]
     (setup : trace.rom = ROM.table cells trace.initialMemory)
     (registers : ∀ index, Cell.register index ∈ cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
-    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address)
     (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
     {row : Row p} (member : row ∈ trace.rows) {entry : ProgramEntry}
     (fields : NonDeterminism.decoderFields entry.instruction = some entry.data)

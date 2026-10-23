@@ -21,12 +21,46 @@ instance runtimeErrors {ue ε : Type} [Arch] :
     This is a platform configuration binding, not an instruction definition. -/
 def sys_enable_experimental_extensions (_ : Unit) : Bool := false
 
+/-- Device routing is platform configuration, separate from the pinned instruction
+clauses. The upstream generated configuration enables both devices. -/
+structure DeviceConfiguration where
+  haveClint : Bool
+  /-- The upstream Simple Interrupt Generator, selected by plat_have_sig. -/
+  haveSig : Bool
+  deriving DecidableEq
+
+namespace DeviceConfiguration
+
+def upstream : DeviceConfiguration := ⟨true, true⟩
+
+/-- Airbender's native ROM/RAM address space has neither Sail test device. -/
+def airbender : DeviceConfiguration := ⟨false, false⟩
+
+end DeviceConfiguration
+
 /-- External platform calls left abstract. Memory proofs quantify over the
     bindings; this interface supplies no implementation or behavioral axiom. -/
 class MemoryPlatform (ue : Type) [Arch] where
   terminalWrite : BitVec 8 → PreSailM ue Unit
   reserve : BitVec Arch.addr_size → Nat → PreSailM ue Unit
   reservationMatches : BitVec Arch.addr_size → Bool
+  /-- Constructor default preserves the pinned upstream device configuration.
+  Native adapters select their configuration explicitly; this is not an axiom
+  about every quantified platform. -/
+  devices : DeviceConfiguration := DeviceConfiguration.upstream
+
+/-- Rebind device routing while retaining every external effect handler. -/
+abbrev MemoryPlatform.withDevices {ue : Type} [Arch] (platform : MemoryPlatform ue)
+    (devices : DeviceConfiguration) : MemoryPlatform ue :=
+  { platform with devices := devices }
+
+/-- Explicit Airbender platform; no global instance fixes polymorphic clauses. -/
+abbrev MemoryPlatform.airbender {ue : Type} [Arch] (platform : MemoryPlatform ue) :
+    MemoryPlatform ue := platform.withDevices DeviceConfiguration.airbender
+
+/-- Explicit pinned upstream routing with the same external effect handlers. -/
+abbrev MemoryPlatform.upstream {ue : Type} [Arch] (platform : MemoryPlatform ue) :
+    MemoryPlatform ue := platform.withDevices DeviceConfiguration.upstream
 
 def plat_term_write {ue : Type} [Arch] [MemoryPlatform ue] (byte : BitVec 8) :
     PreSailM ue Unit := MemoryPlatform.terminalWrite byte

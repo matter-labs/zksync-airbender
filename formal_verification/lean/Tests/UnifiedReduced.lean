@@ -1,11 +1,14 @@
 import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.Sail.WordMemoryState
+import Tests.Platform
 
 set_option Elab.async false
 
 namespace Tests.UnifiedReduced
 open Airbender Airbender.Arithmetic
+
+local instance : Sail.ArchSem.MemoryPlatform SailRV32.exception := Tests.upstreamPlatform
 
 -- A row using only the setup's disabled-query entry.
 private def zeroSetup : Table (ZMod babyBearModulus) (fields 10) := .fromStatic {

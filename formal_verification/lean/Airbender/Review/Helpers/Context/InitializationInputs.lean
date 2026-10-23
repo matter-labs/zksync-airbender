@@ -13,7 +13,7 @@ variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 structure PooledProfile (base : PooledTrace p) (layout : Layout)
     (geometry : Geometry layout) (windows : Windows layout)
     (initial : State) (program : List PooledProgramEntry) : Prop where
-  ordinary : ∀ address, Cell.ram address ∈ cells geometry windows → OrdinaryWordAddress address
+  ordinary : ∀ address, Cell.ram address ∈ cells geometry windows → PlatformWordAddress address
   configuration : FlatMemoryConfiguration initial
   landingPadDisabled : ∃ security, initial.regs.get? .mseccfg = some security ∧
     SailRV32.Functions._get_Seccfg_MLPE security = 0

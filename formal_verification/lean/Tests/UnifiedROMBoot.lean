@@ -171,6 +171,7 @@ theorem sail_rom_load [MemoryPlatform SailRV32.exception] : Airbender.WordMemory
   · intro address member
     have zero : address = 0 := by simpa [cells, Tests.TraceExecution.cells] using member
     subst address
+    apply ordinaryWordAddress_for
     unfold OrdinaryWordAddress
     decide
   · constructor
@@ -185,7 +186,7 @@ theorem sail_rom_load [MemoryPlatform SailRV32.exception] : Airbender.WordMemory
         CircuitLayout.columns, UnifiedReduced.importedConstraintsDecoderColumns,
         UnifiedReduced.importedConstraintsTraceColumns] using preserved.trans (by decide)
 
-private theorem execution_inputs : UnifiedReduced.ExecutionInputs trace before cells [entry] := by
+private theorem execution_inputs [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] : UnifiedReduced.ExecutionInputs trace before cells [entry] := by
   refine ⟨public_inputs, ?_, ?_, configuration, ?_, ?_, ?_⟩
   · intro index
     have numeric : ∀ n : Nat, n < 32 → Cell.register (BitVec.ofNat 5 n) ∈ cells := by
@@ -199,6 +200,7 @@ private theorem execution_inputs : UnifiedReduced.ExecutionInputs trace before c
   · intro address member
     have zero : address = 0 := by simpa [cells, Tests.TraceExecution.cells] using member
     subst address
+    apply ordinaryWordAddress_for
     unfold OrdinaryWordAddress
     decide
   · rintro ⟨actual, present, imm, rs1, rd, encoding⟩

@@ -12,7 +12,7 @@ set_option maxHeartbeats 2000000
 
 /-- A real imported decoder row admits its actual decoded instruction. -/
 theorem accepted_decoder :
-    addSubSetup.lookup ((pooledEntry 0).query (p := babyBearModulus)) := by
+    addSubSetup.lookup ((NativeDecoder.pooledEntry 0).query (p := babyBearModulus)) := by
   refine ⟨⟨0, by decide⟩, ?_⟩
   decide +kernel
 

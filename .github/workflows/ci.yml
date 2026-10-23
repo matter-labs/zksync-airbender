@@ -194,6 +194,10 @@ jobs:
         run: ./target/release/cli continue-proof --proof output/base.json --bin examples/basic_fibonacci/app.bin --target recursion-unified --cycles-bound 16777216 --worker-threads 8 --output-dir output --output-file recursion_unified.json
       - name: Verify recursion unified
         run: ./target/release/cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
+  formal_verification:
+    name: Formal verification
+    uses: ./.github/workflows/formal-verification.yml
+
   # Keep branch protection tied to one stable check name even as the
   # underlying CI fan-out changes over time.
   pr-checks:
@@ -207,6 +211,7 @@ jobs:
       - circuits_generated
       - check_verifiers
       - cli_smoke_verify
+      - formal_verification
     steps:
       - name: Decide on PR checks
         uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2

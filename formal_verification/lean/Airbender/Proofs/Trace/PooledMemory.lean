@@ -6,9 +6,11 @@ import Airbender.Review.Helpers.Context.Boundary
 import Airbender.Review.Helpers.Decoder.Instruction
 
 namespace Airbender.Trace.Proofs
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 open Arithmetic Reference.RiscV.Sail Reference.Sail
 
 set_option backward.isDefEq.respectTransparency false in
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- Effective addresses and their initialized RAM cells come from the pooled
     read/address history and actual decoder query, including cross-family reads. -/
 theorem pooled_word_address {p : Nat} [Fact p.Prime]
@@ -85,6 +87,7 @@ theorem pooled_word_address {p : Nat} [Fact p.Prime]
       sourceBound immediateBound bound cell.1
 
 set_option backward.isDefEq.respectTransparency false in
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- The same pooled grouped history realizes actual Sail word-RAM accesses.
     Canonical addresses are recovered from initialized cells, not assumed. -/
 theorem pooled_word_native_transport {p : Nat} [Fact p.Prime]
@@ -131,6 +134,7 @@ theorem pooled_word_native_transport {p : Nat} [Fact p.Prime]
 
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- LW/SW execute on the same pooled state used by every other family. All
     operands, effective addresses and native/ROM reads are derived internally. -/
 theorem pooled_word_execution {p : Nat} [Fact p.Prime]
@@ -144,7 +148,7 @@ theorem pooled_word_execution {p : Nat} [Fact p.Prime]
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
-    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address)
     (configuration : FlatMemoryConfiguration initial)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
     (programImage : programImageRunWith projection initial addresses = some program)

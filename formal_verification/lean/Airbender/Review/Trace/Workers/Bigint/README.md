@@ -27,3 +27,8 @@ The shared execution mapping reaches native terminal tokens.
 The original reference rejects the checked issued controls 0 and 65537.
 Native operation observations do not close that full caller ABI.
 Worker ROM/public-byte transport and whole mixed caller retirement remain separate.
+
+Standalone worker inputs retain both `clockRoom` and `invocationHigh`; integrated
+caller/request matching derives them. See the [shared worker boundary](../README.md)
+and [native memory inputs](../../../Helpers/Delegation/Memory.lean). The invalid
+bigint-control cases remain explicit under F02.
