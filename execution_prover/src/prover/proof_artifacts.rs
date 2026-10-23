@@ -9,6 +9,16 @@ type ProofArtifacts = (
 );
 
 impl<B: ExecutionBackend> ExecutionProver<B> {
+    /// Shared challenge oracle for `gpu/execution_prover/tests/commitment_parity.rs`.
+    #[doc(hidden)]
+    pub fn external_challenges(
+        &self,
+        commitment: &CommitMemoryResult,
+    ) -> GKRExternalChallenges<BF, E4> {
+        self.derive_proof_artifacts(commitment.binary_handle.0, commitment)
+            .1
+    }
+
     fn derive_proof_artifacts(
         &self,
         binary_key: usize,
@@ -441,16 +451,9 @@ mod tests {
             &[ProofProfile::Standard],
         );
         let source = || Arc::new(Mutex::new(Some(QuasiUARTSource::new_with_reads(vec![]))));
-        let mode = CommitmentMode::SeparateMemoryAndWitness;
         let mut cache = Some(TraceCache::new());
-        let mut commitment = prover.commit_memory_inner(
-            &mut cache,
-            BATCH,
-            handle,
-            source(),
-            mode,
-            ProofProfile::Standard,
-        );
+        let mut commitment =
+            prover.commit_memory_inner(&mut cache, BATCH, handle, source(), ProofProfile::Standard);
         let instances: BTreeSet<_> = commitment.memory_partial_trees.keys().copied().collect();
         let entries = &mut cache.as_mut().unwrap().entries;
         assert!(
@@ -482,7 +485,6 @@ mod tests {
             external_challenges,
             proof_caps,
             proof_partial_trees,
-            mode,
             ProofProfile::Standard,
         );
         let dispatched: Vec<_> = PROOF_PARTIAL_TREES

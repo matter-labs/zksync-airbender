@@ -65,7 +65,7 @@ gpu_whir = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
 sha3 = { workspace = true }
-cpu_execution_prover = { workspace = true }
+cpu_execution_prover = { workspace = true, features = ["test-support"] }
 program_prover = { workspace = true, features = [
     "timing_logs",
     "gkr_self_checks",

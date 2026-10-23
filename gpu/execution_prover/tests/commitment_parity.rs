@@ -67,7 +67,7 @@ fn commit<B>(
     kind: ExecutionKind,
     machine: MachineType,
     workload: &Workload,
-    commitment_mode: CommitmentMode,
+    expected_mode: CommitmentMode,
     profile: ProofProfile,
 ) -> (ExecutionProver<B>, BinaryHandle, CommitMemoryResult)
 where
@@ -76,7 +76,7 @@ where
     let (bin, text) = load(workload);
     let handle = prover.add_binary(kind, machine, bin, text, Some(CYCLES_BOUND), &[profile]);
     let resolved_mode = execution_prover::execution_commitment_mode(kind, profile, SECURITY);
-    assert_eq!(commitment_mode, resolved_mode);
+    assert_eq!(expected_mode, resolved_mode);
     let commitment = prover.commit_memory(
         0,
         &handle,
@@ -184,10 +184,6 @@ fn l1_feeder_merged_commitment_cpu_parity() {
     );
     assert_eq!(cpu_commitment.profile, ProofProfile::L1Feeder);
     assert_eq!(gpu_commitment.profile, ProofProfile::L1Feeder);
-    assert_eq!(
-        cpu_commitment.commitment_mode,
-        CommitmentMode::MergedMemoryAndWitness
-    );
     assert!(!cpu_commitment.circuit_families_memory_caps.is_empty());
     for instances in cpu_commitment.circuit_families_memory_caps.values() {
         assert!(!instances.is_empty());
@@ -276,7 +272,7 @@ fn compare_commitments(
     kind: ExecutionKind,
     machine: MachineType,
     workload: &Workload,
-    commitment_mode: CommitmentMode,
+    expected_mode: CommitmentMode,
     profile: ProofProfile,
 ) -> (
     ExecutionProver<CpuBackend>,
@@ -291,7 +287,7 @@ fn compare_commitments(
         kind,
         machine,
         workload,
-        commitment_mode,
+        expected_mode,
         profile,
     );
     let (gpu, gpu_handle, gpu_commitment) = commit(
@@ -299,7 +295,7 @@ fn compare_commitments(
         kind,
         machine,
         workload,
-        commitment_mode,
+        expected_mode,
         profile,
     );
 

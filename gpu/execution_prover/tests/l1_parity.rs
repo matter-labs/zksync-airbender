@@ -777,7 +777,6 @@ fn prove_feeder_layer(
         0,
         &handle,
         FlatResponsesSource::new_with_reads(build_unified_stream(setups, proof)),
-        execution_prover::execution_commitment_mode(kind, profile, SecurityLevel::Sec100),
         profile,
     );
     let (mut layer_proof, layer_setups) =

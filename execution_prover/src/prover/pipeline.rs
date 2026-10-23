@@ -572,6 +572,7 @@ mod tests {
                     binary_holder: &prover.binary_holders[&handle.0],
                     external_challenges: None,
                     proof_caps: &proof_caps,
+                    proof_partial_trees: RefCell::new(BTreeMap::new()),
                 };
                 let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     context.build_work_request(
