@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2Round.NativeBooleanBindings
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2Round.NativeXorTransfer
 import Airbender.Proofs.Blake2Round.ArtifactChecks
@@ -40,9 +41,9 @@ theorem native_column_flags {p : Nat} [Fact p.Prime]
     ⟨NativeLayout.columnBooleanAssertion call slot, by
       dsimp [NativeLayout.columnBooleanAssertion]
       rw [constraint_count]; have a := call.isLt; have b := slot.isLt; omega⟩
-  fin_cases call <;> fin_cases slot
-  all_goals simpa [NativeLayout.columnBooleanAssertion, columnBooleanColumns, importedConstraints, FlatOperation.constraints,
-    Expression.eval, Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero]
-    using asserted
+  rw [NativeBooleanBindings.column_expression (p := p)] at asserted
+  simpa only [Verification.environment] using
+    (Arithmetic.nativeBooleanExpression_eq_zero (p := p)
+      ((columnBooleanColumns call)[slot]) (Verification.environment w)).mp asserted
 
 end Airbender.Blake2Round.Proofs

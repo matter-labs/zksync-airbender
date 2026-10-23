@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2Round.NativeBooleanBindings
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2Round.NativeDiagonalAssignment
@@ -130,11 +131,11 @@ theorem native_diagonal_first_c_flags {p : Nat} [Fact p.Prime]
     ⟨NativeLayout.diagonalBooleanAssertion call slot, by
       rw [constraint_count]; have := call.isLt; have := slot.isLt
       dsimp [NativeLayout.diagonalBooleanAssertion]; omega⟩
-  fin_cases call <;> fin_cases slot
-  all_goals simpa [NativeLayout.diagonalBooleanAssertion, diagonalFrame,
-    NativeLayout.Layout.read, NativeLayout.Location.read, NativeLayout.diagonal,
-    importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] using asserted
+  rw [NativeBooleanBindings.diagonal_expression (p := p)] at asserted
+  rw [NativeBooleanBindings.diagonal_first_c_read (p := p) call slot w]
+  simpa only [Verification.environment] using
+    (Arithmetic.nativeBooleanExpression_eq_zero (p := p)
+      (426 + 30 * call.val + 3 * slot.val) (Verification.environment w)).mp asserted
 
 /-- The two final carry values are bounded by the native seven-bit carry table. -/
 theorem native_diagonal_last_c_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
