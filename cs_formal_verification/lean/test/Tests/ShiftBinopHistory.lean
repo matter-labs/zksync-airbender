@@ -78,7 +78,7 @@ private theorem program_image : Airbender.ShiftBinop.programImage before [65532]
   have decoded : run (SailRV32.Functions.encdec_backwards entry.bits) before =
       .ok entry.instruction before := by with_unfolding_all rfl
   simp only [Airbender.ShiftBinop.programImage, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, bytes, decoded, bind, Option.bind]
+    programEntryWith, bytes, decoded, bind, Option.bind]
   rfl
 
 private theorem decoded (rom : Table (ZMod babyBearModulus) (fields 9)) :
@@ -222,8 +222,8 @@ private theorem pooledImage : pooledProgramImage before [65532] = some pooledPro
   have source := Proofs.run_program_sources program_image entry (by simp)
   have bytes := source.bytes
   change (Cell.ram 65532).read before = .ok entry.bits before at bytes
-  simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, bytes, source.decoded, bind, Option.bind]
+  simp only [pooledProgramImage, programImageWith, List.mapM_cons, List.mapM_nil,
+    programEntryWith, bytes, source.decoded, bind, Option.bind]
   rfl
 
 private theorem pooledDecoded : PooledDecoded pooled pooledProgram := by

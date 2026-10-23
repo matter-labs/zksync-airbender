@@ -112,4 +112,19 @@ open Configuration
 def Configured (σ : State) : Prop :=
   ∀ r, writtenByProgram r = false → σ.regs.get? r = some (resetState.regs r)
 
+/-- The reset state as a lean-sail state: every register (`Register.ofNat` covers them all) at its reset
+    value, no memory. -/
+noncomputable def resetMachine : State :=
+  { (default : State) with
+    regs := (List.range 256).foldl (fun regs n =>
+      regs.insert (SailRV32.Register.ofNat n) (resetState.regs (SailRV32.Register.ofNat n))) ∅ }
+
+/-- Sail's decoder (`encdec_backwards`) on the Airbender configuration. It reads only configuration
+    registers, which every `Configured` state holds at their reset values, so decoding is this pure function
+    of the instruction word. -/
+noncomputable def decodeOnReset (bits : BitVec 32) : Option SailRV32.instruction :=
+  match Airbender.Reference.Sail.run (SailRV32.Functions.encdec_backwards bits) resetMachine with
+  | .ok instruction _ => some instruction
+  | .error _ _ => none
+
 end Airbender.Reference.RiscV.Sail

@@ -124,8 +124,8 @@ private theorem program_image (mode : Fin 3) : UnifiedReduced.Mixed.programImage
     fin_cases mode <;> with_unfolding_all rfl
   have fields : UnifiedReduced.Mixed.decoderFields ((literal mode).instruction (register mode)) = some (entry mode).data := by
     fin_cases mode <;> with_unfolding_all rfl
-  simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+  simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+    programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
   rfl
 
 private theorem inputs (mode : Fin 3) : UnifiedReduced.Caller.MixedMemoryInputs (data mode) [entry mode] (before mode) [] [0] (cells mode) := by
@@ -399,8 +399,8 @@ private theorem chainedImage : UnifiedReduced.Mixed.programImage chainedBefore [
     with_unfolding_all rfl
   have fieldsSecond : UnifiedReduced.Mixed.decoderFields (UnifiedReduced.Caller.ControlLiteral.instruction (.addi 0) 12) =
       some chainedEntry.data := by with_unfolding_all rfl
-  simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, first, second, decodeFirst, decodeSecond, fieldsFirst, fieldsSecond, bind, Option.bind, pure]
+  simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+    programEntryWith, first, second, decodeFirst, decodeSecond, fieldsFirst, fieldsSecond, bind, Option.bind, pure]
   rfl
 
 private theorem chainedInputs :
@@ -755,8 +755,8 @@ private theorem sequentialImage (custom : Bool) : UnifiedReduced.Mixed.programIm
     cases custom <;> with_unfolding_all rfl
   have fieldsSecond : UnifiedReduced.Mixed.decoderFields chainedEntry.instruction = some chainedEntry.data := by
     cases custom <;> with_unfolding_all rfl
-  simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, first, second, decodeFirst, decodeSecond, fieldsFirst, fieldsSecond, bind, Option.bind, pure]
+  simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+    programEntryWith, first, second, decodeFirst, decodeSecond, fieldsFirst, fieldsSecond, bind, Option.bind, pure]
   rfl
 
 private theorem sequentialInputs (custom : Bool) :

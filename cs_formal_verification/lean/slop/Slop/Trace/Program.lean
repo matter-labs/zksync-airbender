@@ -95,9 +95,9 @@ theorem program_sources {Kind : Type} {before : Reference.RiscV.Sail.State}
 theorem run_entry_source {Kind : Type} {before : Reference.RiscV.Sail.State} {pc : BitVec 32}
     {entry : ProgramEntry Kind}
     {projection : SailRV32.instruction → Option (DecoderData Kind)}
-    (image : programEntryRunWith projection before pc = some entry) :
+    (image : programEntryWith projection before pc = some entry) :
     entry.pc = pc ∧ entry.SourceWith before projection := by
-  unfold programEntryRunWith at image
+  unfold programEntryWith at image
   cases read : (Cell.ram pc).read before with
   | error error after => simp [read, bind, Option.bind] at image
   | ok bits after =>
@@ -118,9 +118,9 @@ theorem run_entry_source {Kind : Type} {before : Reference.RiscV.Sail.State} {pc
 theorem run_program_sources {Kind : Type} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List (ProgramEntry Kind)}
     {projection : SailRV32.instruction → Option (DecoderData Kind)}
-    (image : programImageRunWith projection before addresses = some program) :
+    (image : programImageWith projection before addresses = some program) :
     ∀ entry ∈ program, entry.SourceWith before projection := by
-  unfold programImageRunWith at image
+  unfold programImageWith at image
   induction addresses generalizing program with
   | nil =>
     simp only [List.mapM_nil, pure, Option.some.injEq] at image
@@ -128,10 +128,10 @@ theorem run_program_sources {Kind : Type} {before : Reference.RiscV.Sail.State}
     simp
   | cons address addresses ih =>
     rw [List.mapM_cons] at image
-    cases first : programEntryRunWith projection before address with
+    cases first : programEntryWith projection before address with
     | none => simp [first, bind, Option.bind] at image
     | some entry =>
-      cases rest : addresses.mapM (programEntryRunWith projection before) with
+      cases rest : addresses.mapM (programEntryWith projection before) with
       | none => simp [first, rest, bind, Option.bind] at image
       | some entries =>
         simp only [first, rest, bind, Option.bind, pure, Option.some.injEq] at image

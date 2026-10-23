@@ -89,7 +89,7 @@ theorem public_image (family : Delegation.Family) :
     written_word_read default 0 (encoding family)
   have decoded := original_decoder family (before family)
   have fields := metadata family
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields,
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
     bind, Option.bind, pure]
   rfl
 

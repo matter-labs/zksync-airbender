@@ -45,7 +45,7 @@ theorem pooled_subword_address {p : Nat} [Fact p.Prime]
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable (ROM.words initial))
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : programImageRunWith projection initial addresses = some program) (decoded : PooledDecoded trace program)
+    (programImage : programImageWith projection initial addresses = some program) (decoded : PooledDecoded trace program)
     {w : Nat → ZMod p} (member : (⟨.subwordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows)
     {entry : SubwordMemory.ProgramEntry} (fields : SubwordMemory.decoderFields entry.instruction = some entry.data)
     (query : SubwordMemory.decoderQuery w = entry.query) (store : Bool) (selected : w 10 = if store then 1 else 0) :
@@ -90,7 +90,7 @@ theorem pooled_subword_execution {p : Nat} [Fact p.Prime]
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
     (configuration : Configured initial)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : programImageRunWith projection initial addresses = some program)
+    (programImage : programImageWith projection initial addresses = some program)
     (decoded : PooledDecoded trace program)
     {w : Nat → ZMod p} (member : (⟨.subwordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows)
     {entry : PooledProgramEntry} (present : entry ∈ program)

@@ -27,7 +27,7 @@ private theorem extraction (pc bits : BitVec 32) (instruction : SailRV32.instruc
     Airbender.SubwordMemory.programImage (before pc bits) [pc] = some [⟨pc, bits, instruction, data⟩] := by
   have bytes : (Cell.ram pc).read (before pc bits) = .ok bits (before pc bits) :=
     by simpa only [Cell.read, before] using written_word_read default pc.toNat bits
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields,
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
     bind, Option.bind, pure]
 
 /-- All six byte/halfword forms come from original Sail decoding of actual

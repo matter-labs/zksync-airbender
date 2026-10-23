@@ -26,7 +26,7 @@ theorem actual_public_encoding {state : State} (configured : Configured state) :
       .ok entry.instruction (before state) :=
     Tests.SailDecoder.rev8 (configuration_word_write configured 0 _)
   simp only [Airbender.ShiftBinop.programImage, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, bytes, decoded, bind, Option.bind]
+    programEntryWith, bytes, decoded, bind, Option.bind]
   rfl
 
 theorem actual_clause  :

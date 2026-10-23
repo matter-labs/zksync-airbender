@@ -118,8 +118,8 @@ private theorem inputs : Caller.RequestInputs data before [0] := by
         .ok (Tests.DelegationCaller.entry .bigint).instruction before := Tests.DelegationCaller.original_decoder .bigint before
     have fields : Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
         some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-    simp only [Caller.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    simp only [Caller.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
     rfl
   · change 4 < timestampBase ∧ 0 < timestampBase
     norm_num [timestampBase]

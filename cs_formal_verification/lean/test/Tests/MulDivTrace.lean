@@ -97,7 +97,7 @@ private theorem program_image (remainder : Bool) :
         | (with_unfolding_all conv_lhs => arg 1; whnf
            erw [@run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
              _ _ SailRV32.Register.misa _ _ _ isa])
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, bind, Option.bind]
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind]
   cases remainder <;> rfl
 
 /-- The real public DIVU/REMU encoding decodes identically after GPR, PC,
@@ -233,8 +233,8 @@ private theorem pooledImage (remainder : Bool) :
   have source := Proofs.run_program_sources (program_image remainder) (entry remainder) (by simp)
   have bytes := source.bytes
   change (Cell.ram 0x3fffc).read (before remainder) = .ok (entry remainder).bits (before remainder) at bytes
-  simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, bytes, source.decoded, bind, Option.bind]
+  simp only [pooledProgramImage, programImageWith, List.mapM_cons, List.mapM_nil,
+    programEntryWith, bytes, source.decoded, bind, Option.bind]
   cases remainder <;> rfl
 
 private theorem pooledDecoded (remainder : Bool) : PooledDecoded (pooled remainder) (pooledProgram remainder) := by

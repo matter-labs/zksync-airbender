@@ -206,8 +206,8 @@ private theorem pooledImage (tag : Fin 6) (wrap : Bool) :
   have source := Proofs.program_sources (program_image tag wrap) (entry tag wrap) (by simp)
   have bytes := source.bytes
   change (Cell.ram (Branch.initial wrap).toBitVec).read (before tag wrap) = .ok (entry tag wrap).bits (before tag wrap) at bytes
-  simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, bytes, source.decoded, bind, Option.bind]
+  simp only [pooledProgramImage, programImageWith, List.mapM_cons, List.mapM_nil,
+    programEntryWith, bytes, source.decoded, bind, Option.bind]
   fin_cases tag <;> cases wrap <;> rfl
 
 private theorem pooledDecoded (tag : Fin 6) (wrap : Bool) : PooledDecoded (pooled tag wrap) (pooledProgram tag wrap) := by

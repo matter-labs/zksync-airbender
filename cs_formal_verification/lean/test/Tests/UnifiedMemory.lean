@@ -110,7 +110,7 @@ private theorem program_image (store : Bool) :
     cases store <;> simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
       get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
       before, entry, Std.ExtHashMap.getElem_insert]
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, bind, Option.bind, pure]
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind, pure]
   cases store <;> with_unfolding_all rfl
 
 private theorem public_image (store : Bool) :

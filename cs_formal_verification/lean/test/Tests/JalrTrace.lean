@@ -234,8 +234,8 @@ private theorem pooledImage  :
   have source := Proofs.program_sources (program_image) entry (by simp)
   have bytes := source.bytes
   change (Cell.ram 0).read before = .ok entry.bits before at bytes
-  simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, bytes, source.decoded, bind, Option.bind]
+  simp only [pooledProgramImage, programImageWith, List.mapM_cons, List.mapM_nil,
+    programEntryWith, bytes, source.decoded, bind, Option.bind]
   rfl
 
 private theorem pooledDecoded  : PooledDecoded (pooled) (pooledProgram) := by

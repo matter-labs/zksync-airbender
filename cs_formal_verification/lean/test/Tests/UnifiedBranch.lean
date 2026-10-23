@@ -90,7 +90,7 @@ private theorem program_image (taken : Bool) :
   have bytes : (Cell.ram 0).read (before taken) = .ok (entry taken).bits (before taken) := by
     cases taken <;> simp [Cell.read, readBytes, readByte, EStateM.run, get, getThe, MonadStateOf.get,
       bind, pure, EStateM.bind, EStateM.get, EStateM.pure, before, entry, Std.ExtHashMap.getElem_insert]
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, bind, Option.bind, pure]
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind, pure]
   cases taken <;> with_unfolding_all rfl
 
 private theorem inputs (taken : Bool) :

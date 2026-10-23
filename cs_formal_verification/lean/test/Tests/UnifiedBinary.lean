@@ -124,7 +124,7 @@ private theorem program_image (kind : Fin 3) : UnifiedReduced.programImage (befo
     fin_cases kind <;> simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
       get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
       before, instructionBits, Std.ExtHashMap.getElem_insert]
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, bind, Option.bind, pure]
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind, pure]
   fin_cases kind <;> with_unfolding_all rfl
 
 private theorem boundary (kind : Fin 3) : ClockBoundary (trace kind) := by

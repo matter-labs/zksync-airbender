@@ -34,7 +34,7 @@ private theorem public_image (family : Delegation.Family) :
   have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry family).instruction =
       some (Tests.DelegationCaller.entry family).data := Tests.DelegationCaller.metadata family
   simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage,
-    programImageRunWith, List.mapM_cons, List.mapM_nil, programEntryRunWith,
+    programImageWith, List.mapM_cons, List.mapM_nil, programEntryWith,
     bytes, decoded, fields, bind, Option.bind, pure]
   rfl
 
@@ -372,8 +372,8 @@ private theorem mixedInputs : UnifiedReduced.Caller.MixedMemoryInputs (mixedData
         Tests.DelegationCaller.original_decoder .bigint mixedBefore
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
-        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
+        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
       rfl
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
@@ -383,8 +383,8 @@ private theorem mixedInputs : UnifiedReduced.Caller.MixedMemoryInputs (mixedData
         .ok (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) mixedBefore := by with_unfolding_all rfl
     have fields : UnifiedReduced.Mixed.decoderFields (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) =
         some mixedProgram[0].data := by with_unfolding_all rfl
-    simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
     rfl
 
 theorem shared_machine_worker_effects : UnifiedReduced.Caller.MixedMemoryEffects (mixedData 0) mixedBefore cells :=
@@ -939,8 +939,8 @@ private theorem customInputs (kind : Fin 5) : UnifiedReduced.Caller.MixedMemoryI
         Tests.DelegationCaller.original_decoder .bigint (customBefore kind)
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
-        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
+        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
       rfl
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
@@ -953,8 +953,8 @@ private theorem customInputs (kind : Fin 5) : UnifiedReduced.Caller.MixedMemoryI
       fin_cases kind <;> with_unfolding_all rfl
     have fields : UnifiedReduced.Mixed.decoderFields (customEntry kind).instruction = some (customEntry kind).data := by
       fin_cases kind <;> with_unfolding_all rfl
-    simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
     rfl
 
 theorem copy_then_custom_retirement (kind : Fin 5) : ∃ events finalState clause,
@@ -1063,8 +1063,8 @@ private theorem binaryInputs : UnifiedReduced.Caller.MixedMemoryInputs binaryDat
         Tests.DelegationCaller.original_decoder .bigint binaryBefore
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
-        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
+        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
       rfl
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
@@ -1073,8 +1073,8 @@ private theorem binaryInputs : UnifiedReduced.Caller.MixedMemoryInputs binaryDat
     have decoded : run (SailRV32.Functions.encdec_backwards 0x00164613) binaryBefore = .ok binaryEntry.instruction binaryBefore := by
       with_unfolding_all rfl
     have fields : UnifiedReduced.Mixed.decoderFields binaryEntry.instruction = some binaryEntry.data := by with_unfolding_all rfl
-    simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
     rfl
 
 private def binaryView : UnifiedReduced.Binary.Input :=
@@ -1199,8 +1199,8 @@ private theorem comparisonInputs : UnifiedReduced.Caller.MixedMemoryInputs compa
         Tests.DelegationCaller.original_decoder .bigint comparisonBefore
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
-        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
+        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
       rfl
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
@@ -1209,8 +1209,8 @@ private theorem comparisonInputs : UnifiedReduced.Caller.MixedMemoryInputs compa
     have decoded : run (SailRV32.Functions.encdec_backwards 0xfff63613) comparisonBefore = .ok comparisonEntry.instruction comparisonBefore := by
       with_unfolding_all rfl
     have fields : UnifiedReduced.Mixed.decoderFields comparisonEntry.instruction = some comparisonEntry.data := by with_unfolding_all rfl
-    simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
     rfl
 
 private def comparisonView : UnifiedReduced.Control.Comparison.Input :=
@@ -1391,8 +1391,8 @@ private theorem controlInputs (kind : Fin 4) : UnifiedReduced.Caller.MixedMemory
         Tests.DelegationCaller.original_decoder .bigint (controlBefore kind)
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
-        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
+        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
       rfl
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
@@ -1402,8 +1402,8 @@ private theorem controlInputs (kind : Fin 4) : UnifiedReduced.Caller.MixedMemory
     have decoded : run (SailRV32.Functions.encdec_backwards (controlBits kind)) (controlBefore kind) = .ok (controlEntry kind).instruction (controlBefore kind) := by
       fin_cases kind <;> with_unfolding_all rfl
     have fields : UnifiedReduced.Mixed.decoderFields (controlEntry kind).instruction = some (controlEntry kind).data := by fin_cases kind <;> with_unfolding_all rfl
-    simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
     rfl
 
 private def branchView (taken : Bool) : UnifiedReduced.Control.Branch.Input :=
@@ -1597,8 +1597,8 @@ private theorem memoryInputs (store : Bool) : UnifiedReduced.Caller.MixedMemoryI
         Tests.DelegationCaller.original_decoder .bigint (memoryBefore store)
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
-        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
+        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
       rfl
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
@@ -1608,8 +1608,8 @@ private theorem memoryInputs (store : Bool) : UnifiedReduced.Caller.MixedMemoryI
     have decoded : run (SailRV32.Functions.encdec_backwards (memoryBits store)) (memoryBefore store) = .ok (memoryEntry store).instruction (memoryBefore store) := by
       cases store <;> with_unfolding_all rfl
     have fields : UnifiedReduced.Mixed.decoderFields (memoryEntry store).instruction = some (memoryEntry store).data := by cases store <;> with_unfolding_all rfl
-    simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
     rfl
 
 set_option backward.isDefEq.respectTransparency false in
@@ -1803,8 +1803,8 @@ private theorem abiInputs (highControl : Bool) : UnifiedReduced.Caller.MixedMemo
         Tests.DelegationCaller.original_decoder .bigint (abiBefore highControl)
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
-        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
+        List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
       rfl
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]

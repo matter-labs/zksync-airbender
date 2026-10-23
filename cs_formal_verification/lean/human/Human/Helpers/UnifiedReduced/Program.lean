@@ -17,7 +17,7 @@ abbrev Inputs {p : Nat} [Fact p.Prime] := ExecutionInputsWith (p := p) decoderFi
 
 /-- Read actual public bytes and run the pinned Sail decoder once for the
     combined program. Unsupported encodings and missing bytes remain failures. -/
-noncomputable abbrev programImage := programImageRunWith decoderFields
+noncomputable abbrev programImage := programImageWith decoderFields
 
 /-- Standard rows call original Sail execution. Project MOPs call the same
     pinned custom clauses used by TRIADD/XORROT soundness. Unsupported operations

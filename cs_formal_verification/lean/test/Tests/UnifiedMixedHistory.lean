@@ -101,7 +101,7 @@ theorem original_mixed_public_image : Mixed.programImage before [0, 4] = some pr
       .ok (.ITYPE (1, .Regidx 1, .Regidx 1, .ADDI)) before := by with_unfolding_all rfl
   have custom : run (SailRV32.Functions.encdec_backwards 0xc210c0f3) before =
       .ok (.ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1)) before := by with_unfolding_all rfl
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, first, second, standard, custom,
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, first, second, standard, custom,
     bind, Option.bind, pure]
   rfl
 

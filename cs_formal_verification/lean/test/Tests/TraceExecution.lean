@@ -231,8 +231,8 @@ private theorem pooledImage : pooledProgramImage before [0, 4] = some pooledProg
     (by simp [Tests.TraceMemory.sequentialProgram, Tests.TraceMemory.publicProgram])).bytes
   change (Cell.ram 0).read before = .ok 0x00008133 before at first
   change (Cell.ram 4).read before = .ok 0x002100b3 before at second
-  simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, first, second, bind, Option.bind]
+  simp only [pooledProgramImage, programImageWith, List.mapM_cons, List.mapM_nil,
+    programEntryWith, first, second, bind, Option.bind]
   rfl
 
 private theorem pooledInputs : NativeInputs pooledDecoderFields pooled before cells pooledProgram :=

@@ -22,7 +22,7 @@ theorem pooled_muldiv_execution {p : Nat} [Fact p.Prime]
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : programImageRunWith projection initial addresses = some program)
+    (programImage : programImageWith projection initial addresses = some program)
     (decoded : PooledDecoded trace program)
     {w : Nat → ZMod p} (member : (⟨.mulDiv, w⟩ : Row p PooledFamily) ∈ trace.rows)
     {entry : PooledProgramEntry} (present : entry ∈ program)
@@ -68,7 +68,7 @@ theorem pooled_shift_execution {p : Nat} [Fact p.Prime]
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : programImageRunWith projection initial addresses = some program)
+    (programImage : programImageWith projection initial addresses = some program)
     (decoded : PooledDecoded trace program)
     {w : Nat → ZMod p} (member : (⟨.shiftBinop, w⟩ : Row p PooledFamily) ∈ trace.rows)
     {entry : PooledProgramEntry} (present : entry ∈ program)
@@ -174,7 +174,7 @@ theorem pooled_control_bounds {p : Nat} [Fact p.Prime]
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : programImageRunWith projection initial addresses = some program)
+    (programImage : programImageWith projection initial addresses = some program)
     (decoded : PooledDecoded trace program)
     (code : ∀ entry ∈ program, entry.pc.toNat % 4 = 0)
     (terminal : trace.terminal.word.Bounded)
@@ -212,7 +212,7 @@ theorem pooled_control_execution {p : Nat} [Fact p.Prime]
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : programImageRunWith projection initial addresses = some program)
+    (programImage : programImageWith projection initial addresses = some program)
     (decoded : PooledDecoded trace program)
     (code : ∀ entry ∈ program, entry.pc.toNat % 4 = 0)
     (terminal : trace.terminal.word.Bounded)

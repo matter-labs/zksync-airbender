@@ -221,8 +221,8 @@ private theorem pooledImage (signed immediate : Bool) :
   have source := Proofs.program_sources (program_image signed immediate) (entry signed immediate) (by simp)
   have bytes := source.bytes
   change (Cell.ram 0).read (before signed immediate) = .ok (entry signed immediate).bits (before signed immediate) at bytes
-  simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, bytes, source.decoded, bind, Option.bind]
+  simp only [pooledProgramImage, programImageWith, List.mapM_cons, List.mapM_nil,
+    programEntryWith, bytes, source.decoded, bind, Option.bind]
   cases signed <;> cases immediate <;> rfl
 
 private theorem pooledDecoded (signed immediate : Bool) : PooledDecoded (pooled signed immediate) (pooledProgram signed immediate) := by

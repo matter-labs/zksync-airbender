@@ -99,7 +99,7 @@ theorem pooled_write_rules {p : Nat} [Fact p.Prime]
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : programImageRunWith projection before addresses = some program)
+    (programImage : programImageWith projection before addresses = some program)
     (decoded : PooledDecoded trace program) : WriteBoundsFromReads trace := by
   intro row member
   obtain ⟨entry, present, family, query⟩ := decoder_member (decoded row member)
@@ -119,7 +119,7 @@ theorem pooled_value_bounds {p : Nat} [Fact p.Prime]
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : programImageRunWith projection before addresses = some program)
+    (programImage : programImageWith projection before addresses = some program)
     (decoded : PooledDecoded trace program) :
     (∀ row ∈ trace.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded) ∧
     (∀ row ∈ trace.rows, ∀ port ∈ row.ports,

@@ -126,8 +126,8 @@ private theorem inputs : Caller.MixedMemoryInputs (data 0) program before [0] [4
           Tests.DelegationCaller.original_decoder .bigint before
         have fields : Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
             some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-        simp only [Caller.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-          programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+        simp only [Caller.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+          programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
         rfl
       · exact Tests.DelegationOperationEffects.sharedInputs.publicProgram.initialClock
       · exact Tests.DelegationOperationEffects.sharedInputs.publicProgram.initialAligned
@@ -139,8 +139,8 @@ private theorem inputs : Caller.MixedMemoryInputs (data 0) program before [0] [4
         .ok (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) before := by with_unfolding_all rfl
     have fields : pooledDecoderFields (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) =
         some program[0].data := by with_unfolding_all rfl
-    simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    simp only [pooledProgramImage, programImageWith, List.mapM_cons, List.mapM_nil,
+      programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
     rfl
 
 theorem shared_machine_worker_effects : Caller.MixedMemoryEffects (data 0) before cells :=

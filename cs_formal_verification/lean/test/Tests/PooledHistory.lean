@@ -145,7 +145,7 @@ private theorem program_image : pooledProgramImage before [0, 4] = some [loadEnt
       .ok loadEntry.instruction before := by with_unfolding_all rfl
   have addDecoded : run (SailRV32.Functions.encdec_backwards addEntry.bits) before =
       .ok addEntry.instruction before := by with_unfolding_all rfl
-  simp only [pooledProgramImage, List.mapM_cons, List.mapM_nil, programEntryRunWith,
+  simp only [pooledProgramImage, List.mapM_cons, List.mapM_nil, programEntryWith,
     loadBytes, addBytes, loadDecoded, addDecoded, bind, Option.bind]
   rfl
 

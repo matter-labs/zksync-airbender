@@ -25,7 +25,7 @@ structure BootInputsWith (projection : SailRV32.instruction → Option (DecoderD
   /-- Public starting PC zero and native timestamp four. Later clocks are proved. -/
   initialPC : trace.initial = PCState.boundary 0 (4, 0)
   /-- Actual public bytes and original Sail decoding construct the program table. -/
-  programImage : ∃ addresses, programImageRunWith projection initial addresses = some program
+  programImage : ∃ addresses, programImageWith projection initial addresses = some program
   /-- The modeled pooled table is fixed by the public physical ROM image. -/
   setup : trace.rom = Setup.table initial
 

@@ -194,8 +194,8 @@ private theorem inputs  : PooledBootInputs trace before cells [entry] := by
     configuration := configuration
     landingPadDisabled := ⟨0, by simp [before], rfl⟩
     programImage := ⟨[0], by
-      simp only [programImageRunWith, List.mapM_cons, List.mapM_nil,
-        programEntryRunWith, bytes, bind, Option.bind]
+      simp only [programImageWith, List.mapM_cons, List.mapM_nil,
+        programEntryWith, bytes, bind, Option.bind]
       rfl⟩
     code := by
       intro actual member

@@ -158,7 +158,7 @@ private theorem inputs (kind : Fin 4) : NativeInputs customDecoderFields
     simp [initialState, pc, trace, PCState.boundary]
   · have bytes : (Cell.ram 0).read (before kind) = .ok (bits kind) (before kind) :=
       written_word_read _ _ _
-    simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes]
+    simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes]
     fin_cases kind <;> with_unfolding_all rfl
   · constructor
     · change (timeOfPair (4, 0)).Bounded

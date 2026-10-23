@@ -47,7 +47,7 @@ theorem public_image (kind : Fin 5) :
     written_word_read default 0 (encoding kind)
   have decoded := original_decoder kind (before kind)
   have fields := native_metadata kind
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields,
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
     bind, Option.bind, pure]
   rfl
 

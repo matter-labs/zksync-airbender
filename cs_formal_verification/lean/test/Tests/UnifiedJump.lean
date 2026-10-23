@@ -98,7 +98,7 @@ private theorem program_image (indirect : Bool) :
   have bytes : (Cell.ram 0).read (before indirect) = .ok (entry indirect).bits (before indirect) := by
     cases indirect <;> simp [Cell.read, readBytes, readByte, EStateM.run, get, getThe, MonadStateOf.get,
       bind, pure, EStateM.bind, EStateM.get, EStateM.pure, before, entry, Std.ExtHashMap.getElem_insert]
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, bind, Option.bind, pure]
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind, pure]
   cases indirect <;> with_unfolding_all rfl
 
 private theorem inputs (indirect : Bool) :

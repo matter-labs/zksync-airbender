@@ -214,8 +214,8 @@ theorem actual_public_image : NonDeterminism.Pooled.programImage before [0, 4, 8
   have firstFields := fields (readEntry false) (by simp [program])
   have shiftFields := fields shiftEntry (by simp [program])
   simp only [readEntry, shiftEntry, Bool.false_eq_true, ↓reduceIte] at first shift second firstDecode shiftDecode firstFields shiftFields
-  simp only [NonDeterminism.Pooled.programImage, programImageRunWith,
-    List.mapM_cons, List.mapM_nil, programEntryRunWith, first, shift, second,
+  simp only [NonDeterminism.Pooled.programImage, programImageWith,
+    List.mapM_cons, List.mapM_nil, programEntryWith, first, shift, second,
     firstDecode, shiftDecode, firstFields, shiftFields,
     bind, Option.bind, pure]
   rfl

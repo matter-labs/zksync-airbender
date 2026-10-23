@@ -67,7 +67,7 @@ private theorem image : Caller.programImage before [0] = some data.program := by
     Tests.DelegationCaller.original_decoder .keccak before
   have fields : Caller.decoderFields (Tests.DelegationCaller.entry .keccak).instruction =
       some (Tests.DelegationCaller.entry .keccak).data := Tests.DelegationCaller.metadata .keccak
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields,
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
     bind, Option.bind, pure]
   rfl
 

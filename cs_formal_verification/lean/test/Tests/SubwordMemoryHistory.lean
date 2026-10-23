@@ -87,7 +87,7 @@ private theorem program_image : Airbender.SubwordMemory.programImage before [0] 
   have decoded : run (SailRV32.Functions.encdec_backwards entry.bits) before =
       .ok entry.instruction before := by with_unfolding_all rfl
   simp only [Airbender.SubwordMemory.programImage, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, bytes, decoded, bind, Option.bind]
+    programEntryWith, bytes, decoded, bind, Option.bind]
   rfl
 
 private theorem decoded : Airbender.SubwordMemory.Decoded trace [entry] := by

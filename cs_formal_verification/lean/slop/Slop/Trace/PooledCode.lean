@@ -134,7 +134,7 @@ theorem pooled_source_after_history {p : Nat} [Fact p.Prime]
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : programImageRunWith projection initial addresses = some program)
+    (programImage : programImageWith projection initial addresses = some program)
     {entry : PooledProgramEntry} (present : entry ∈ program)
     (code : entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0)
     {before : State} {events : List MemoryAccess}

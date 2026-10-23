@@ -75,7 +75,7 @@ theorem original_mixed_public_image : Mixed.programImage before [0, 4, 8] = some
       .ok (.ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1)) before := by with_unfolding_all rfl
   have memory : run (SailRV32.Functions.encdec_backwards 0x2083) before =
       .ok (.LOAD (0, .Regidx 0, .Regidx 1, false, 4)) before := by with_unfolding_all rfl
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, public_bytes.1, public_bytes.2.1,
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, public_bytes.1, public_bytes.2.1,
     public_bytes.2.2, standard, custom, memory, bind, Option.bind, pure]
   rfl
 

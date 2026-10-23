@@ -108,7 +108,7 @@ private theorem inputs (source : Nat) : Caller.SharedMemoryInputs (data source) 
         Tests.DelegationCaller.original_decoder .keccak before
       have fields : Caller.decoderFields (Tests.DelegationCaller.entry .keccak).instruction =
           some (Tests.DelegationCaller.entry .keccak).data := Tests.DelegationCaller.metadata .keccak
-      simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
       rfl
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]

@@ -92,7 +92,7 @@ private theorem inputs : Caller.RequestOperationInputs data before [0] Tests.Big
           Tests.DelegationCaller.original_decoder .bigint before
         have fields : Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
             some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
-        simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields,
+        simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
           bind, Option.bind, pure]
         rfl
       · change 4 < timestampBase ∧ 0 < timestampBase

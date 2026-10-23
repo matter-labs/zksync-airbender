@@ -400,7 +400,7 @@ private theorem fetchImage :
     Airbender.UnifiedReduced.programImage fetchState [fetchEntry.pc] = some [fetchEntry] := by
   have bytes : (Cell.ram fetchEntry.pc).read fetchState = .ok fetchEntry.bits fetchState :=
     written_word_read before fetchEntry.pc.toNat fetchEntry.bits
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, bind, Option.bind, pure]
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind, pure]
   rfl
 
 theorem accepted_row_fetched (rollover : Bool) :

@@ -497,8 +497,8 @@ private theorem preparationProgram :
       .ok preparationEntry.instruction preparationBefore := by with_unfolding_all rfl
   have fields : UnifiedReduced.Mixed.decoderFields preparationEntry.instruction = some preparationEntry.data := by
     with_unfolding_all rfl
-  simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+  simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
+    programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
   rfl
 
 private theorem preparationImage :

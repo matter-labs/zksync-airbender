@@ -1,4 +1,5 @@
 import Human.Helpers.Memory.InitialImage
+import Human.Helpers.Core.Configuration
 
 -- The full Sail model compiles its decoder (`encdec_backwards`) as noncomputable (sail/regen.sh,
 -- `proof` variant): these definitions are specifications, read by proofs, never executed.
@@ -80,44 +81,17 @@ noncomputable abbrev programEntryWith {Kind : Type}
   let bits ← match (Cell.ram pc).read before with
     | .ok bits _ => some bits
     | .error _ _ => none
-  -- Base-ISA decoding is a pure result of the original generated Sail term.
-  -- Reject effects rather than silently depending on the initial CSR state.
-  let instruction ← match SailRV32.Functions.encdec_backwards bits with
-    | .pure instruction => some instruction
-    | .impure _ _ => none
+  -- The original Sail decoder on the Airbender configuration: a pure function of the word.
+  let instruction ← Reference.RiscV.Sail.decodeOnReset bits
   let data ← projection instruction
   pure ⟨pc, bits, instruction, data⟩
 
-/-- Construct entries for the public `addresses` using pure Sail decoding.
-    A missing byte, effectful decoder or unsupported instruction makes it fail. -/
+/-- Construct entries for the public `addresses`. A missing byte, undecodable or unsupported
+    instruction makes it fail. -/
 noncomputable abbrev programImageWith {Kind : Type}
     (projection : SailRV32.instruction → Option (DecoderData Kind))
     (before : Reference.RiscV.Sail.State) (addresses : List (BitVec 32)) :
     Option (List (ProgramEntry Kind)) := addresses.mapM (programEntryWith projection before)
-
-/-- Stateful decoding uses the original Sail interpreter on the public state.
-    Unlike the pure constructor, this permits configuration reads such as
-    `misa.M`. Its source theorem retains the actual decoder execution. -/
-noncomputable abbrev programEntryRunWith {Kind : Type}
-    (projection : SailRV32.instruction → Option (DecoderData Kind))
-    (before : Reference.RiscV.Sail.State) (pc : BitVec 32) :
-    Option (ProgramEntry Kind) := do
-  let bits ← match (Cell.ram pc).read before with
-    | .ok bits _ => some bits
-    | .error _ _ => none
-  let instruction ← match Reference.Sail.run (SailRV32.Functions.encdec_backwards bits) before with
-    | .ok instruction _ => some instruction
-    | .error _ _ => none
-  let data ← projection instruction
-  pure ⟨pc, bits, instruction, data⟩
-
-/-- Construct entries for public `addresses` by running Sail decoding in
-    `before`, including configuration reads. Failure at any address rejects the
-    whole image. The addresses and starting state are independent of the witness. -/
-noncomputable abbrev programImageRunWith {Kind : Type}
-    (projection : SailRV32.instruction → Option (DecoderData Kind))
-    (before : Reference.RiscV.Sail.State) (addresses : List (BitVec 32)) :
-    Option (List (ProgramEntry Kind)) := addresses.mapM (programEntryRunWith projection before)
 
 noncomputable abbrev programEntry := programEntryWith decoderFields
 noncomputable abbrev programImage := programImageWith decoderFields

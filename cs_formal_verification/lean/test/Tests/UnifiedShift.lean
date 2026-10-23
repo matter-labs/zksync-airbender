@@ -169,7 +169,7 @@ private theorem program_image (kind : Fin 7) : UnifiedReduced.programImage (befo
       | (with_unfolding_all conv_lhs => arg 1; whnf
          erw [@run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
            _ _ SailRV32.Register.misa _ _ _ isa])
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, bind, Option.bind, pure]
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind, pure]
   fin_cases kind <;> rfl
 
 private theorem boundary (kind : Fin 7) : ClockBoundary (trace kind) := by

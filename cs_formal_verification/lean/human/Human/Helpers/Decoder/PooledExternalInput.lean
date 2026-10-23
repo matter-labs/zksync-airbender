@@ -14,7 +14,7 @@ def decoderFields (instruction : SailRV32.instruction) : Option (DecoderData Poo
 
 /-- Read public instruction bytes and invoke actual pinned Sail decoding,
     retaining the original constructor and pooled/custom metadata. -/
-noncomputable abbrev programImage := programImageRunWith decoderFields
+noncomputable abbrev programImage := programImageWith decoderFields
 
 /-- The imported ADD/SUB external-read selector. Other pooled families never
     consume input, even when the same numeric column contains one.

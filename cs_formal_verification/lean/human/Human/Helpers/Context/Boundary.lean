@@ -27,7 +27,7 @@ structure NativeInputs {Kind ISA : Type} [CircuitLayout Kind]
   /-- Sail's initial PC and a public timestamp form the native starting state. -/
   initialPC : ∃ timestamp, initialState initial timestamp = some trace.initial
   /-- Public byte reads and actual Sail decoding construct every program entry. -/
-  programImage : ∃ addresses, programImageRunWith projection initial addresses = some program
+  programImage : ∃ addresses, programImageWith projection initial addresses = some program
   /-- Only initial clock ranges/alignment are supplied; later clocks are proved. -/
   clocks : ClockBoundary trace
 

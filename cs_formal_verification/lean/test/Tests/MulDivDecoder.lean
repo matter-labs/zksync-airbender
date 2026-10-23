@@ -29,7 +29,7 @@ private theorem extraction (pc bits : BitVec 32) (instruction : SailRV32.instruc
   have bytes : (Cell.ram pc).read (before pc bits) = .ok bits (before pc bits) :=
     by simpa only [Cell.read, before] using
       Reference.RiscV.Sail.written_word_read configured pc.toNat bits
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields,
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
     bind, Option.bind, pure]
 
 private def samples : List (BitVec 32 × SailRV32.instruction × DecoderData Unit) := [
@@ -75,7 +75,7 @@ private theorem extraction_rejected (bits : BitVec 32) (instruction : SailRV32.i
     Airbender.MulDiv.programImage (before 0 bits) [0] = none := by
   have bytes : (Cell.ram 0).read (before 0 bits) = .ok bits (before 0 bits) :=
     Reference.RiscV.Sail.written_word_read configured 0 bits
-  simp only [List.mapM_cons, programEntryRunWith, bytes, decoded, fields, bind, Option.bind]
+  simp only [List.mapM_cons, programEntryWith, bytes, decoded, fields, bind, Option.bind]
 
 /-- Actual decoding rejects signed-family and discarded-destination forms. -/
 theorem unsupported_forms_rejected : ∀ sample ∈ excluded,
@@ -158,6 +158,6 @@ theorem disabled_extension_rejected :
            _ _ SailRV32.Register.misa _ _ _ isa])
   have bytes : (Cell.ram 0).read state = .ok 0x022081b3 state :=
     Reference.RiscV.Sail.written_word_read _ 0 _
-  simp only [List.mapM_cons, programEntryRunWith, bytes, decoded, bind, Option.bind]
+  simp only [List.mapM_cons, programEntryWith, bytes, decoded, bind, Option.bind]
 
 end Tests.MulDivDecoder

@@ -62,7 +62,7 @@ structure PooledBootInputs {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
   /-- Tracked RAM cells are aligned words. -/
   aligned : ∀ cell ∈ cells, cell.Aligned
   /-- Read public code bytes and run pinned Sail decoding for all program entries. -/
-  programImage : ∃ addresses, programImageRunWith projection initial addresses = some program
+  programImage : ∃ addresses, programImageWith projection initial addresses = some program
   /-- Sail starts at PC zero with zero GPRs and zero tracked non-ROM RAM. -/
   profile : InitialProfile initial cells
   /-- All native seed values and prior timestamps are zero, including ROM shadow slots. -/

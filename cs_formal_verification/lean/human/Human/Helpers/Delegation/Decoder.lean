@@ -23,7 +23,7 @@ abbrev ProgramEntry := Trace.ProgramEntry Family
 
 /-- Construct caller entries by reading public bytes and running pinned Sail
     decoding. Unreadable, invalid or unsupported instructions are rejected. -/
-noncomputable abbrev programImage := Trace.programImageRunWith decoderFields
+noncomputable abbrev programImage := Trace.programImageWith decoderFields
 
 /-- The actual ADD/SUB decoder query for a delegation caller. Its rs2 field
     is the full virtual CSR address. Other register/immediate fields are zero;

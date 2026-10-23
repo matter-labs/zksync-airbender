@@ -35,7 +35,7 @@ private theorem extraction (bits : BitVec 32) (instruction : SailRV32.instructio
     UnifiedReduced.programImage (before bits) [0] = some [⟨0, bits, instruction, data⟩] := by
   have bytes : (Cell.ram 0).read (before bits) = .ok bits (before bits) :=
     written_word_read default 0 bits
-  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields,
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
     bind, Option.bind, pure]
 
 theorem all_instruction_forms : ∀ sample ∈ samples,

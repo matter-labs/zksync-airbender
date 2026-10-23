@@ -96,7 +96,7 @@ private theorem public_inputs : UnifiedReduced.BootInputs trace before cells [en
     rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
       rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
       rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> trivial
-  · simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, bind, Option.bind, pure]
+  · simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind, pure]
     with_unfolding_all rfl
 
 private theorem public_word : ROM.words before 0 = 0x2083 := by

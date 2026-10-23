@@ -394,8 +394,8 @@ private theorem pooledAccepted : Accepted pooled := by
 private theorem pooledImage : pooledProgramImage before [65532] = some pooledProgram := by
   have bytes := (Proofs.program_sources program_image entry (by simp)).bytes
   change (Cell.ram 65532).read before = .ok 0x0020a223 before at bytes
-  simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
-    programEntryRunWith, bytes, bind, Option.bind]
+  simp only [pooledProgramImage, programImageWith, List.mapM_cons, List.mapM_nil,
+    programEntryWith, bytes, bind, Option.bind]
   rfl
 
 private theorem pooledDecoded : PooledDecoded pooled pooledProgram := by
