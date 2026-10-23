@@ -578,8 +578,7 @@ mod tests {
                         None,
                     );
                 }))
-                .err()
-                .expect("merged L1 profiles must reject delegation work before dispatch");
+                .expect_err("merged L1 profiles must reject delegation work before dispatch");
                 let message = error
                     .downcast_ref::<&str>()
                     .copied()
