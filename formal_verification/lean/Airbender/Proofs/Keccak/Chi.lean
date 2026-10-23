@@ -1,3 +1,5 @@
+import Airbender.Proofs.Keccak.ChiRoutes
+import Airbender.Proofs.Keccak.ByteLookupValues
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.Keccak.Chi
 import Airbender.Proofs.Keccak.FixedLookups
@@ -39,36 +41,7 @@ private theorem chi_routes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p
       256 * w (111 + 24 * operation.val + 2 * limb.val) = w (bColumns second)[operation][limb] ∧
     w (118 + 24 * operation.val + 2 * limb.val) +
       256 * w (119 + 24 * operation.val + 2 * limb.val) = w (cColumns second)[operation][limb] := by
-  have modes := selected_modes hp h active (chiMode second) selected
-  have m0 := modes (0 : Fin 7); have m1 := modes (1 : Fin 7)
-  have m2 := modes (2 : Fin 7); have m3 := modes (3 : Fin 7)
-  have m4 := modes (4 : Fin 7); have m5 := modes (5 : Fin 7); have m6 := modes (6 : Fin 7)
-  have rho : w 67 = 0 := by
-    cases second <;> simpa [Variables.modeColumns, chiMode] using m4
-  have rotations (i : Fin 5) : w (80 + i.val) = 0 := by
-    have equation := Verification.assertion_of_holds h ⟨9 + i.val, by rw [constraint_count]; omega⟩
-    fin_cases i <;>
-      simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, rho] using equation.symm
-  have r0 := rotations (0 : Fin 5); have r1 := rotations (1 : Fin 5)
-  have r2 := rotations (2 : Fin 5); have r3 := rotations (3 : Fin 5); have r4 := rotations (4 : Fin 5)
-  change w 80 = 0 at r0
-  change w 81 = 0 at r1
-  change w 82 = 0 at r2
-  change w 83 = 0 at r3
-  change w 84 = 0 at r4
-  have a := Verification.assertion_of_holds h
-    ⟨20 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
-  have b := Verification.assertion_of_holds h
-    ⟨21 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
-  have c := Verification.assertion_of_holds h
-    ⟨22 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
-  cases second <;> fin_cases operation <;> fin_cases limb <;>
-    simp [Variables.modeColumns, chiMode] at m0 m1 m2 m3 m4 m5 m6
-  all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, m0, m1, m2, m3, m4, m5, m6,
-    r0, r1, r2, r3, r4, aColumns, bColumns, cColumns, nativeLimbs, temporary] at a b c ⊢
-  all_goals exact ⟨by linear_combination a, by linear_combination b, by linear_combination c⟩
+  exact ChiRoutes.checked hp second h active selected operation limb
 
 private theorem chi_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
@@ -85,20 +58,24 @@ private theorem chi_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p
           (w (110 + 24 * operation.val + byte.val)).val
       else (w (102 + 24 * operation.val + byte.val)).val ^^^
         (w (110 + 24 * operation.val + byte.val)).val) := by
-  have query := byte_lookup_checks hp h ⟨8 * operation.val + byte.val, by omega⟩
+  have query := ByteQueryBindings.values hp h operation byte
   have tags := selected_tags (by omega) h active (chiMode second) selected
     ⟨8 * operation.val + byte.val, by omega⟩
-  cases second <;> fin_cases operation <;> fin_cases byte <;>
-    simp [chiMode, operationTags, byteTag, byteQuery, importedConstraints,
-      FlatOperation.lookups, Expression.eval, Verification.environment,
-      ByteOperationFacts, isAndn] at tags query ⊢
-  all_goals
-    split at query
-    · rename_i zero
-      have value := congrArg ZMod.val zero
-      simp only [ZMod.val_zero] at value
-      omega
-    · simpa [tags] using query
+  have group : (⟨(8 * operation.val + byte.val) / 8, by omega⟩ : Fin 5) = operation := by
+    apply Fin.ext
+    change (8 * operation.val + byte.val) / 8 = operation.val
+    omega
+  have indexEq := congrArg (fun i : Fin 5 => operationTags[chiMode second][i]) group
+  have selectedTag : (byteTag (setupTable control) w
+      ⟨8 * operation.val + byte.val, by omega⟩).val = operationTags[chiMode second][operation] :=
+    tags.trans indexEq
+  have tagKind : operationTags[chiMode second][operation] =
+      (if isAndn second operation then 39 else 4 : Nat) := by
+    cases second <;> fin_cases operation <;> rfl
+  rw [selectedTag, tagKind] at query
+  cases chosen : isAndn second operation <;> simpa [ByteOperationFacts, chosen] using query
+
+
 
 private theorem chi_limb {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
@@ -260,16 +237,20 @@ theorem chi_written_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast 
   have r0 := results 0; have r1 := results 1; have r2 := results 2
   have r3 := results 3; have r4 := results 4
   have c0 := copied 0; have c1 := copied 1; have c2 := copied 2
-  cases second <;> fin_cases lane <;> fin_cases limb
-  all_goals first
-    | simpa [cColumns, nativeLimbs, temporary] using r0
-    | simpa [cColumns, nativeLimbs, temporary] using r1
-    | simpa [cColumns, nativeLimbs, temporary] using r2
-    | simpa [cColumns, nativeLimbs, temporary] using r3
-    | simpa [cColumns, nativeLimbs, temporary] using r4
-    | simpa [targets] using c0
-    | simpa [targets] using c1
-    | simpa [targets] using c2
+  cases second <;> fin_cases lane
+  · fin_cases limb <;> simpa [cColumns, nativeLimbs, temporary] using r2
+  · fin_cases limb <;> simpa [cColumns, nativeLimbs, temporary] using r4
+  · fin_cases limb <;> simpa [targets] using c1
+  · fin_cases limb <;> simpa [targets] using c2
+  · fin_cases limb <;> simpa [cColumns, nativeLimbs, temporary] using r0
+  · fin_cases limb <;> simpa [targets] using c0
+  · fin_cases limb <;> simpa [cColumns, nativeLimbs, temporary] using r4
+  · fin_cases limb <;> simpa [cColumns, nativeLimbs, temporary] using r1
+  · fin_cases limb <;> simpa [cColumns, nativeLimbs, temporary] using r3
+  · fin_cases limb <;> simpa [targets] using c0
+  · fin_cases limb <;> simpa [targets] using c1
+  · fin_cases limb <;> simpa [targets] using c2
+
 
 theorem chi_first {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
