@@ -1,3 +1,4 @@
+import Airbender.Proofs.AddSub.ModularSelectors
 import Airbender.Proofs.UnifiedReduced.ModularDecoder
 import Airbender.Proofs.AddSub.ModularNative
 import Airbender.Proofs.UnifiedReduced.TriAddNative
@@ -96,11 +97,14 @@ theorem interfaces_from_history
   · intro k lower upper
     have flag := flags ⟨k - 10, by omega⟩
     rw [data] at flag
-    interval_cases k <;> cases opcode <;> by_cases zero : rd = (0#5)
-    all_goals simpa [lift, AddSub.Modular.Proofs.nativeInput, mopData, DecoderData.mapFamily,
-      AddSub.Modular.nativeData, Trace.arithmeticFields, zero, zeroRegister,
-      AddSub.Modular.Opcode.selector, importedConstraintsDecoderColumns,
-      Nat.testBit, Nat.shiftRight_eq_div_pow] using flag
+    change w importedConstraintsDecoderColumns.flags[(⟨k - 10, by omega⟩ : Fin 19)] =
+      (if (AddSub.Modular.nativeData opcode rs1 rs2 rd).mask.testBit (k - 10) then 1 else 0) at flag
+    rw [AddSub.Modular.Proofs.native_mask_bit opcode rs1 rs2 rd k lower] at flag
+    have column : lift w k =
+        w importedConstraintsDecoderColumns.flags[(⟨k - 10, by omega⟩ : Fin 19)] := by
+      interval_cases k <;> rfl
+    rw [← column] at flag
+    simpa [AddSub.Modular.Proofs.nativeInput, zeroRegister] using flag
   · have value := native_query_pc_word (p := babyBearModulus) (by decide) query
     change Control.initialPC w = Word.ofBitVec entry.pc at value
     change (Control.initialPC w).Bounded

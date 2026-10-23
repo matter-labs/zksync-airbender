@@ -1,3 +1,4 @@
+import Airbender.Proofs.AddSub.ModularSelectors
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.AddSub.Modular
 import Airbender.Proofs.AddSub.ModularProgram
@@ -87,9 +88,8 @@ theorem native_interfaces
   · exact active
   · intro k lower upper
     have flag := flags ⟨k - 10, by omega⟩
-    interval_cases k <;> cases opcode <;> by_cases zero : rd = (0#5)
-    all_goals simpa [nativeInput, nativeData, arithmeticFields, zero, zeroRegister,
-      Opcode.selector, Nat.testBit, Nat.shiftRight_eq_div_pow] using flag
+    rw [native_mask_bit opcode rs1 rs2 rd k lower] at flag
+    simpa [nativeInput, zeroRegister, native_selector_index k lower upper] using flag
   · have canonical := native_query_pc_word (p := babyBearModulus) (by decide) query
     change Word.mk (w 0).val (w 1).val = Word.ofBitVec entry.pc at canonical
     change (Word.mk (w 0).val (w 1).val).Bounded
