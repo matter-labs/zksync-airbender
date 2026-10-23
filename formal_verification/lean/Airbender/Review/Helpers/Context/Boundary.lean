@@ -6,7 +6,6 @@ import Airbender.Review.Helpers.Memory.Values
 namespace Airbender.Trace
 open Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
-variable [MemoryPlatform SailRV32.exception]
 
 /-- Bind `trace`'s initial data to the public Sail state `initial` and tracked
     `cells`. `program` is constructed by reading public bytes and running Sail
@@ -36,7 +35,7 @@ structure NativeInputs {Kind ISA : Type} [CircuitLayout Kind]
     arithmetic + word-memory trace. `initial` supplies Sail state and bytes;
     `cells` lists accessible tracked locations. This selects the supported normal
     memory path, without assuming that an instruction's access succeeds. -/
-structure PublicBoundary (initial : State) (cells : List Cell)
+structure PublicBoundary [MemoryPlatform SailRV32.exception] (initial : State) (cells : List Cell)
     (program : List ProgramEntry)
     (projection : SailRV32.instruction → Option DecoderData := decoderFields) : Prop where
   /-- All RV32 registers occur in the tracked domain, including x0. -/
@@ -46,7 +45,7 @@ structure PublicBoundary (initial : State) (cells : List Cell)
   /-- Tracked RAM cells are aligned words. -/
   aligned : ∀ cell ∈ cells, cell.Aligned
   /-- Tracked RAM excludes the platform's special MMIO windows. -/
-  ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address
+  ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address
   /-- Public CSR/PMA/PMP settings select the supported Machine memory path. -/
   configuration : FlatMemoryConfiguration initial
   /-- The restricted program is fetched from public bytes and decoded by Sail. -/
@@ -57,7 +56,7 @@ structure PublicBoundary (initial : State) (cells : List Cell)
 /-- Add physical memory, initial PC/clock and modeled-table binding to
     `PublicBoundary`. Here `trace.initialMemory` contains actual Sail cell values,
     including ROM bytes. Native zero ROM shadow tokens use `NativeBootBoundary`. -/
-structure ExecutionBoundary {p : Nat} [Fact p.Prime] (trace : Data p)
+structure ExecutionBoundary [MemoryPlatform SailRV32.exception] {p : Nat} [Fact p.Prime] (trace : Data p)
     (initial : State) (cells : List Cell) (program : List ProgramEntry)
     (projection : SailRV32.instruction → Option DecoderData := decoderFields) : Prop
     extends PublicBoundary initial cells program projection where

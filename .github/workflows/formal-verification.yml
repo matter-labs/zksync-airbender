@@ -1,0 +1,159 @@
+name: Formal verification
+
+# Rust CI calls this job and includes its result in the stable pr-checks gate.
+# Manual runs share the same bounded global worker; PR/push have one caller.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One FV run across branches. Each actual worker also takes the host's global
+# /tmp/airbender-fv-single-worker.lock; Actions concurrency alone is insufficient.
+concurrency:
+  group: formal-verification-single-worker
+  cancel-in-progress: false
+
+jobs:
+  verification:
+    runs-on: [matterlabs-ci-runner-high-performance]
+    # Overall serial job window; each actual worker keeps its 900/1800s cap.
+    timeout-minutes: 1440
+    env:
+      CARGO_BUILD_JOBS: '1'
+      RAYON_NUM_THREADS: '1'
+      # Omit DWARF metadata; keep the pinned compiler, optimization and assertions.
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      MATHLIB_NO_CACHE_ON_UPDATE: '1'
+    defaults:
+      run:
+        shell: bash
+        working-directory: formal_verification/lean
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Linux guard runtime controls before compiler work
+        run: |
+          set -euo pipefail
+          test "$(uname -s)" = Linux
+          FV_ROOT="$RUNNER_TEMP/airbender-fv-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$FV_ROOT"
+          echo "FV_ROOT=$FV_ROOT" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/airbender-fv-cargo" >> "$GITHUB_ENV"
+          # This is a lightweight orchestrator; ProcessTests guard their own
+          # children sequentially. An outer guard would deadlock the host lock.
+          python3 -m unittest discover -s scripts -p test_bounded_fv.py -v 2>&1 | tee "$FV_ROOT/guard-controls.log"
+          cat > "$FV_ROOT/guard.sh" <<'SH'
+          set -euo pipefail
+          fv() {
+            local label="$1"
+            shift
+            python3 "$GITHUB_WORKSPACE/formal_verification/lean/scripts/bounded_fv.py" \
+              --mib 2560 --resident-mib 5120 --seconds 900 \
+              --log "$FV_ROOT/$label.log" -- "$@" | tee "$FV_ROOT/$label.guard.jsonl"
+            python3 - "$FV_ROOT/$label.guard.jsonl" <<'PY'
+          import json, sys
+          records = [json.loads(line) for line in open(sys.argv[1]) if line.startswith('{')]
+          records = [record for record in records if 'reason' in record]
+          assert len(records) == 1, records
+          assert records[0]['reason'] == 'finished' and records[0]['exit'] == 0, records
+          assert records[0]['live_owned_after'] == [], records
+          PY
+          }
+          SH
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly-2026-08-09
+          rustflags: ''
+          cache: false
+      - name: Install pinned Lean toolchain
+        run: |
+          source "$FV_ROOT/guard.sh"
+          test "$(cat lean-toolchain)" = 'leanprover/lean4:v4.31.0'
+          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o "$FV_ROOT/elan-init.sh"
+          fv lean-toolchain sh "$FV_ROOT/elan-init.sh" -y --default-toolchain 'leanprover/lean4:v4.31.0'
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - uses: actions/cache@v4
+        with:
+          path: formal_verification/lean/.lake
+          key: fv-lean-${{ runner.os }}-${{ hashFiles('formal_verification/lean/lean-toolchain', 'formal_verification/lean/lake-manifest.json', '**/lakefile.*', 'formal_verification/lean/**/*.lean', 'formal_verification/lean/scripts/**', 'formal_verification/lean/artifacts/**') }}
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.CARGO_TARGET_DIR }}
+          key: fv-native-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.toml', '**/*.rs', '**/build.rs', 'formal_verification/lean/artifacts/setup/native-cargo.lock', 'cs/compiled_circuits/*layout_no_caches_gkr.json') }}
+      - name: Bootstrap only the cache CLI, fetch Mathlib, then prepare Clean
+        run: |
+          source "$FV_ROOT/guard.sh"
+          # These pinned cache-CLI sources import only each other and Lean/Lake.
+          # No lake update, aggregate cold compile, stack increase or trace edits.
+          modules=(Batteries.Data.Array.Match Batteries.Data.String.Basic
+            Batteries.Data.String.Matcher Batteries.Tactic.OpenPrivate Cache.Lean
+            Cache.IO Cache.Hashing Cache.Init Cache.Requests Cache.Main)
+          for module in "${modules[@]}"; do
+            fv "cache-olean-$module" lake --no-cache build "+$module:olean"
+          done
+          for module in "${modules[@]}"; do
+            fv "cache-native-$module" lake --no-cache build "+$module:o"
+          done
+          fv cache-executable lake --no-cache build cache
+          fv mathlib-cache lake exe cache get
+          fv prepare-clean python3 scripts/prepare_clean.py
+          git diff --quiet -- lake-manifest.json lean-toolchain
+      - name: Prepare exact native lock and provenance controls
+        run: |
+          source "$FV_ROOT/guard.sh"
+          fv native-lock python3 scripts/check_setup_artifacts.py --prepare-lock
+          fv provenance-controls python3 -m unittest discover -s scripts -p test_setup_provenance.py -v
+      - name: Twelve generators and thirteen complete fresh exports
+        run: |
+          source "$FV_ROOT/guard.sh"
+          families=(add-sub jump-branch mul-div shift-binop word-memory subword-memory
+            unified bigint blake-g blake-round keccak inits-and-teardowns)
+          for family in "${families[@]}"; do
+            fv "regenerate-$family" env -u CI -u RUST_MIN_STACK python3 scripts/check_setup_freshness.py \
+              regenerate "$family" --work-dir "$FV_ROOT/native"
+          done
+          for family in "${families[@]}" decoder-smoke; do
+            fv "export-$family" env -u CI -u RUST_MIN_STACK python3 scripts/check_setup_freshness.py \
+              export "$family" --work-dir "$FV_ROOT/native"
+          done
+          # Only this source-keyed, scoped native build's dep-info is supplied.
+          mapfile -d '' dep_info < <(find "$CARGO_TARGET_DIR/debug" -type f -name '*.d' -print0)
+          test "${#dep_info[@]}" -gt 0
+          dep_args=()
+          for path in "${dep_info[@]}"; do dep_args+=(--dep-info "$path"); done
+          fv native-receipts python3 scripts/check_setup_freshness.py verify \
+            --work-dir "$FV_ROOT/native" "${dep_args[@]}"
+          git diff --quiet -- ../../cs/compiled_circuits
+      - name: Complete serial Lean source and runtime verification
+        run: |
+          # No outer guard: the frontend guards each real child and checks reap metadata.
+          python3 scripts/check_lean.py --guard scripts/bounded_fv.py --output "$FV_ROOT/lean"
+      - name: Environment-origin proof inventory and standard axioms
+        run: |
+          sysroot="$(lean --print-prefix)"
+          python3 scripts/check_axioms.py --guard scripts/bounded_fv.py \
+            --sysroot "$sysroot" --output "$FV_ROOT/axioms"
+      - name: Independent kernel replay of the complete compiled dependency DAG
+        run: |
+          sysroot="$(lean --print-prefix)"
+          python3 scripts/check_kernel_replay.py --guard scripts/bounded_fv.py \
+            --sysroot "$sysroot" --output "$FV_ROOT/replay" \
+            --axiom-result "$FV_ROOT/axioms/axiom-result.json"
+      - name: Direct and transitive isolated false-proof controls
+        run: |
+          sysroot="$(lean --print-prefix)"
+          python3 scripts/check_assurance_controls.py --guard scripts/bounded_fv.py \
+            --sysroot "$sysroot" --output "$FV_ROOT/assurance-controls" \
+            --ledger "$FV_ROOT/replay/ledger"
+      - name: Upload exact commands, resource metrics, receipts and failure logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: formal-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.FV_ROOT }}
+          if-no-files-found: warn

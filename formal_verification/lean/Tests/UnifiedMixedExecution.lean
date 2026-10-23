@@ -101,7 +101,7 @@ private theorem configuration : FlatMemoryConfiguration before := by
   exact configuration_register_frame (before := { Tests.TraceExecution.before with
       regs := Tests.TraceExecution.before.regs.insert .x1 (0 : BitVec 32) }) (after := before) rfl preserved
 
-private theorem inputs : Mixed.Inputs (trace 1) before cells program := by
+private theorem inputs [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] : Mixed.Inputs (trace 1) before cells program := by
   constructor
   · refine ⟨by decide, ?_, ?_, ?_, rfl, rfl, ⟨[0, 4, 8], original_mixed_public_image⟩, rfl⟩
     · intro cell member
@@ -133,6 +133,7 @@ private theorem inputs : Mixed.Inputs (trace 1) before cells program := by
   · intro address member
     have zero : address = 0 := by simpa [cells, Tests.TraceExecution.cells] using member
     subst address
+    apply ordinaryWordAddress_for
     unfold OrdinaryWordAddress
     decide
   · rintro ⟨entry, member, imm, rs1, rd, encoding⟩

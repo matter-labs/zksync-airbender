@@ -1,3 +1,4 @@
+import Tests.Platform
 import Tests.UnifiedBigintFixtures
 import Airbender.Review.Trace.Padding
 import Airbender.Review.Trace.UnifiedReduced.Theorems
@@ -18,6 +19,8 @@ set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
+
+local instance : Sail.ArchSem.MemoryPlatform SailRV32.exception := Tests.upstreamPlatform
 
 def before (family : Delegation.Family) : State :=
   wordWriteState Tests.BigintMemory.before 0 (Tests.DelegationCaller.entry family).bits
@@ -1679,6 +1682,7 @@ theorem copy_then_ram_retirement [Sail.ArchSem.MemoryPlatform SailRV32.exception
   · intro address member
     simp [Tests.DelegationOperationEffects.sharedCells, Tests.BigintMemory.cells] at member
     rcases member with ⟨i, bound, rfl⟩ | ⟨i, bound, rfl⟩
+    all_goals apply ordinaryWordAddress_for
     all_goals unfold OrdinaryWordAddress
     all_goals interval_cases i <;> decide +kernel
   · intro address member

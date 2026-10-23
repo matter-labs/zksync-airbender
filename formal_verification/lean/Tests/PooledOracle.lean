@@ -360,7 +360,7 @@ private theorem configuration : FlatMemoryConfiguration before := by
     hart := by simpa [before, Std.ExtDHashMap.get?_insert] using base.hart
     htifDisabled := by simpa [before, Std.ExtDHashMap.get?_insert] using base.htifDisabled }
 
-private theorem inputs : PooledBootInputs trace before cells program NonDeterminism.Pooled.decoderFields := by
+private theorem inputs [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] : PooledBootInputs trace before cells program NonDeterminism.Pooled.decoderFields := by
   refine {
     registers := Tests.TraceExecution.inputs.registers
     ordinary := Tests.TraceExecution.inputs.ordinary

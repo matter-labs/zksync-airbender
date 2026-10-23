@@ -8,7 +8,7 @@ def rv32Region (attributes : SailRV32.PMA) : SailRV32.PMA_Region :=
   ⟨0, 4294967296, attributes, false⟩
 
 /-- The ordinary-memory domain excludes the pinned platform's CLINT and
-    signature windows. HTIF is disabled separately by its initialized CSR. -/
+    Simple Interrupt Generator (SIG) windows. HTIF is disabled separately by its initialized CSR. -/
 def OrdinaryWordAddress (address : BitVec 32) : Prop :=
   (address.toNat < SailRV32.Functions.plat_clint_base.toNat ∨
     SailRV32.Functions.plat_clint_base.toNat + SailRV32.Functions.plat_clint_size.toNat ≤
@@ -16,6 +16,38 @@ def OrdinaryWordAddress (address : BitVec 32) : Prop :=
   (address.toNat < SailRV32.Functions.plat_sig_base.toNat ∨
     SailRV32.Functions.plat_sig_base.toNat + SailRV32.Functions.plat_sig_size.toNat ≤
       address.toNat)
+
+/-- An enabled device excludes its address window; a disabled device leaves
+that region in RAM. This does not bypass PMP/PMA, alignment or byte initialization. -/
+def OrdinaryWordAddressFor (devices : _root_.Sail.ArchSem.DeviceConfiguration)
+    (address : BitVec 32) : Prop :=
+  (devices.haveClint = false ∨
+    address.toNat < SailRV32.Functions.plat_clint_base.toNat ∨
+      SailRV32.Functions.plat_clint_base.toNat + SailRV32.Functions.plat_clint_size.toNat ≤
+        address.toNat) ∧
+  (devices.haveSig = false ∨
+    address.toNat < SailRV32.Functions.plat_sig_base.toNat ∨
+      SailRV32.Functions.plat_sig_base.toNat + SailRV32.Functions.plat_sig_size.toNat ≤
+        address.toNat)
+
+/-- Actual device routing of the explicit platform passed to Sail clauses. -/
+abbrev PlatformWordAddress
+    [platform : _root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (address : BitVec 32) : Prop := OrdinaryWordAddressFor platform.devices address
+
+theorem ordinaryWordAddress_for {devices : _root_.Sail.ArchSem.DeviceConfiguration}
+    {address : BitVec 32} (ordinary : OrdinaryWordAddress address) :
+    OrdinaryWordAddressFor devices address := ⟨Or.inr ordinary.1, Or.inr ordinary.2⟩
+
+theorem ordinaryWordAddress_upstream (address : BitVec 32) :
+    OrdinaryWordAddressFor _root_.Sail.ArchSem.DeviceConfiguration.upstream address ↔
+      OrdinaryWordAddress address := by
+  simp [OrdinaryWordAddressFor, OrdinaryWordAddress,
+    _root_.Sail.ArchSem.DeviceConfiguration.upstream]
+
+theorem ordinaryWordAddress_airbender (address : BitVec 32) :
+    OrdinaryWordAddressFor _root_.Sail.ArchSem.DeviceConfiguration.airbender address := by
+  simp [OrdinaryWordAddressFor, _root_.Sail.ArchSem.DeviceConfiguration.airbender]
 
 /-- Public CSR data for the selected Machine-mode ordinary-memory execution.
     These conditions specify configuration, not successful accesses or values. -/

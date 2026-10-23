@@ -5,9 +5,11 @@ import Airbender.Proofs.Trace.ROMView
 import Airbender.Proofs.Trace.ExternalComposition
 
 namespace Airbender.Trace.NonDeterminism.Proofs
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 open Arithmetic Reference.RiscV.Sail Reference.Sail Trace.Proofs
 
 set_option backward.isDefEq.respectTransparency false in
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem row_step {p : Nat} [Fact p.Prime]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : FieldCapacity.NoWrap p ROM.limit) (inverse : SerializedInverse.Clock p) {trace : Data p}
@@ -17,7 +19,7 @@ theorem row_step {p : Nat} [Fact p.Prime]
     (setup : trace.rom = ROM.table cells trace.initialMemory)
     (registers : ∀ index, Cell.register index ∈ cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
-    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address)
     (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
     {program : List ProgramEntry}
     (sources : ∀ entry ∈ program, entry.Source initial NonDeterminism.decoderFields)
@@ -48,6 +50,7 @@ theorem row_step {p : Nat} [Fact p.Prime]
 
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- Compose the same grouped native histories while the reference counter
     advances only on actual decoder-selected external reads. -/
 theorem rows_trace {p : Nat} [Fact p.Prime]
@@ -59,7 +62,7 @@ theorem rows_trace {p : Nat} [Fact p.Prime]
     (setup : trace.rom = ROM.table cells trace.initialMemory)
     (registers : ∀ index, Cell.register index ∈ cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
-    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address)
     (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
     {program : List ProgramEntry} (sources : ∀ entry ∈ program, entry.Source initial NonDeterminism.decoderFields)
     (code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0)
@@ -104,6 +107,7 @@ theorem rows_trace {p : Nat} [Fact p.Prime]
 
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- Full native execution with an independent stream: all standard/read/hint
     rows execute in clock order, reaching the terminal cells and read count. -/
 theorem trace_execution {p : Nat} [Fact p.Prime]
@@ -166,12 +170,14 @@ theorem trace_execution {p : Nat} [Fact p.Prime]
 variable {p : Nat} [Fact p.Prime]
 
 omit [Fact p.Prime] in
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 @[simp] theorem view_clock (before : State) (native : Row p) :
     (ROMView.row before native).clock = native.clock := by
   change (timeOfPair (ROMView.row before native).start.timestamp).value =
     (timeOfPair native.start.timestamp).value
   rw [ROMView.row_start]
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 @[simp] theorem view_is_read (before : State) (native : Row p) :
     isRead (ROMView.row before native) = isRead native := by
   rcases native with ⟨family, assignment⟩
@@ -181,6 +187,7 @@ omit [Fact p.Prime] in
     dsimp only [ROMView.row]
     split <;> rfl
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem view_read_index (before : State) (trace : Data p) (native : Row p) :
     readIndex (ROMView.data before trace) (ROMView.row before native) = readIndex trace native := by
   have count : ∀ rows : List (Row p),
@@ -196,6 +203,7 @@ theorem view_read_index (before : State) (trace : Data p) (native : Row p) :
       split <;> simp [ih]
   exact count trace.rows
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- The physical ROM view changes no read response or external-stream position. -/
 theorem view_stream_ports (before : State) {trace : Data p} {stream : List (BitVec 32)}
     (ports : StreamPorts trace stream) : StreamPorts (ROMView.data before trace) stream := by
@@ -213,6 +221,7 @@ theorem view_stream_ports (before : State) {trace : Data p} {stream : List (BitV
   | addSub => rfl
   | wordMemory => cases read
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem view_read_count (before : State) (trace : Data p) :
     readCount (ROMView.data before trace) = readCount trace := by
   have count : ∀ rows : List (Row p),

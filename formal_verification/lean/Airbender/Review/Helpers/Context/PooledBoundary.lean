@@ -18,7 +18,7 @@ structure PooledPublicInputs (initial : State) (cells : List Cell)
   /-- Every RV32 register, including x0, is in the public tracked domain. -/
   registers : ∀ index, Cell.register index ∈ cells
   /-- Tracked RAM avoids platform-specific MMIO windows. -/
-  ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address
+  ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address
   /-- Public CSR/PMA/PMP values select the supported Machine memory path. -/
   configuration : FlatMemoryConfiguration initial
   /-- Disable JALR landing-pad updates, which the native circuit does not model. -/

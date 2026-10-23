@@ -20,7 +20,7 @@ structure UnifiedProfile (base : UnifiedTrace p) (layout : Layout)
   setup : base.rom = UnifiedReduced.Setup.table initial
   code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0
   configuration : FlatMemoryConfiguration initial
-  ordinary : ∀ address, Cell.ram address ∈ cells geometry windows → OrdinaryWordAddress address
+  ordinary : ∀ address, Cell.ram address ∈ cells geometry windows → PlatformWordAddress address
   landingPadDisabled : (∃ entry ∈ program, ∃ imm rs1 rd,
     entry.instruction = .JALR (imm, rs1, rd)) → ∃ security,
     initial.regs.get? .mseccfg = some security ∧ SailRV32.Functions._get_Seccfg_MLPE security = 0

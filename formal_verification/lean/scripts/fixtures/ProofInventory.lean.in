@@ -1,0 +1,16 @@
+import Lean
+-- The origin module is AssuranceReview.Inventory; the namespace is different.
+namespace OutsideNames
+theorem namedTheorem : True := True.intro
+def proofDefinition : True := True.intro
+def proofAlias : True := proofDefinition
+class Evidence : Prop where
+  witness : True
+instance evidenceInstance : Evidence := ⟨True.intro⟩
+private theorem privateProof : True := True.intro
+@[simp] def generatedProof : Bool → True
+  | false => True.intro
+  | true => True.intro
+def predicate (n : Nat) : Prop := n = n
+def ordinaryDefinition : Nat := 3
+end OutsideNames

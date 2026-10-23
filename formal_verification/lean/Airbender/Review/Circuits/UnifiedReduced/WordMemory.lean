@@ -4,6 +4,7 @@ import Airbender.Review.Circuits.WordMemory.Model
 import Airbender.Review.Helpers.Context.RowContext
 
 namespace Airbender.UnifiedReduced.WordMemory
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Trace
 
 /-- Unified LW/SW's canonical operands, effective address, data and PCs.
@@ -51,7 +52,7 @@ structure InterfaceAssumptions [Fact p.Prime] (trace : UnifiedTrace p) (initial 
     (_w : Nat → ZMod p) : Prop where
   initialization : NativeInputs decoderFields trace initial cells program
   configuration : FlatMemoryConfiguration initial
-  ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address
+  ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address
   ram : ∀ address, Cell.ram address ∈ cells → 4194304 ≤ address.toNat
   destination : input.store = false → input.rd ≠ zeroRegister
 

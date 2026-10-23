@@ -35,3 +35,6 @@ import Airbender.Review.Trace.ImportedDecoder
 import Airbender.Review.Circuits.WordMemory.ImportedROM
 import Airbender.Review.Circuits.SubwordMemory.ImportedSetup
 import Airbender.Review.Trace.Initialization
+
+import Airbender.Review.Trace.UnifiedReduced.PathExecution
+import Airbender.Review.Trace.UnifiedReduced.PathSpanExecution

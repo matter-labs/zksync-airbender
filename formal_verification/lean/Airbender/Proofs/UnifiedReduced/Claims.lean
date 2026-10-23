@@ -36,8 +36,10 @@ import Airbender.Proofs.UnifiedReduced.Decoder
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.UnifiedReduced
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Mixed.native_memory_execution [Fact p.Prime]
     (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     (inverse : SerializedInverse.Clock p)
@@ -49,6 +51,7 @@ theorem Mixed.native_memory_execution [Fact p.Prime]
   Mixed.Proofs.memory_execution hp inverse accepted inputs decoded
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem custom_native_memory_execution [Fact p.Prime]
     (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     (inverse : SerializedInverse.Clock p)
@@ -60,6 +63,7 @@ theorem custom_native_memory_execution [Fact p.Prime]
   Proofs.custom_memory_execution hp inverse accepted inputs decoded
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem XorRotate.soundness [Fact p.Prime]
     (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     (clockInverse : SerializedInverse.Clock p)
@@ -70,6 +74,7 @@ theorem XorRotate.soundness [Fact p.Prime]
       (XorRotate.InterfaceAssumptions trace initial cells program) XorRotate.spec :=
   Proofs.native_xorrot_soundness hp clockInverse byteInverse trace initial cells program
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem XorRotate.babyBear_soundness (trace : Trace.UnifiedTrace babyBearModulus)
     (initial : Reference.RiscV.Sail.State) (cells : List Trace.Cell) (program : List ProgramEntry) :
     (XorRotate.circuitModel trace initial cells program).SoundnessUnder
@@ -77,6 +82,7 @@ theorem XorRotate.babyBear_soundness (trace : Trace.UnifiedTrace babyBearModulus
   XorRotate.soundness (by decide) (by decide) (by decide) trace initial cells program
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Custom.execution_soundness [Fact p.Prime]
     (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     (clockInverse : SerializedInverse.Clock p)
@@ -88,6 +94,7 @@ theorem Custom.execution_soundness [Fact p.Prime]
     Trace.Realizes (Custom.Step program) trace initial cells :=
   Proofs.custom_trace_execution hp clockInverse byteInverse inputs accepted decoded
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Custom.babyBear_execution_soundness
     {trace : Trace.UnifiedTrace babyBearModulus} {initial : Reference.RiscV.Sail.State}
     {cells : List Trace.Cell} {program : List ProgramEntry}
@@ -97,6 +104,7 @@ theorem Custom.babyBear_execution_soundness
   Custom.execution_soundness (by decide) (by decide) (by decide) inputs accepted decoded
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Control.Branch.soundness [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     (inverse : SerializedInverse.Clock p)
     (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
@@ -106,6 +114,7 @@ theorem Control.Branch.soundness [Fact p.Prime] (hp : FieldCapacity.NativeRomCap
   Control.Branch.Proofs.soundness hp inverse trace initial cells program
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Control.Comparison.soundness [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     (inverse : SerializedInverse.Clock p)
     (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
@@ -115,6 +124,7 @@ theorem Control.Comparison.soundness [Fact p.Prime] (hp : FieldCapacity.NativeRo
   Control.Comparison.Proofs.soundness hp inverse trace initial cells program
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem native_rom_memory_execution [Fact p.Prime]
     (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : Trace.UnifiedTrace p} {initial : Reference.RiscV.Sail.State}
@@ -124,6 +134,7 @@ theorem native_rom_memory_execution [Fact p.Prime]
   ROMView.memory_execution hp inverse accepted inputs decoded
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem WordMemory.NativeROM.soundness [Fact p.Prime]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : FieldCapacity.NativeRomCapacity p) (inverse : SerializedInverse.Clock p)
@@ -134,6 +145,7 @@ theorem WordMemory.NativeROM.soundness [Fact p.Prime]
   WordMemory.NativeROM.Proofs.soundness hp inverse trace initial cells program
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem WordMemory.soundness [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (inverse : SerializedInverse.Clock p)
     (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
@@ -142,6 +154,7 @@ theorem WordMemory.soundness [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform 
       (WordMemory.InterfaceAssumptions trace initial cells program) Airbender.WordMemory.spec :=
   WordMemory.Proofs.soundness hp inverse trace initial cells program
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Binary.soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     (clockInverse : SerializedInverse.Clock p)
     (byteInverse : SerializedInverse.Scale256 p)
@@ -152,6 +165,7 @@ theorem Binary.soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.
   Binary.Proofs.soundness hp clockInverse byteInverse trace initial cells program
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Jump.soundness [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     (inverse : SerializedInverse.Clock p)
     (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
@@ -161,6 +175,7 @@ theorem Jump.soundness [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
   Jump.Proofs.soundness hp inverse trace initial cells program
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Shift.soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     (clockInverse : SerializedInverse.Clock p)
     (byteInverse : SerializedInverse.Scale256 p)
@@ -173,6 +188,7 @@ theorem Shift.soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.t
 open Airbender.Reference.RiscV
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem native_clocks {p : Nat} [Fact p.Prime]
     (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : Trace.UnifiedTrace p} (accepted : Trace.Accepted trace)
@@ -181,6 +197,7 @@ theorem native_clocks {p : Nat} [Fact p.Prime]
   Trace.Proofs.trace_clocks hp inverse accepted boundary
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem native_value_bounds {p : Nat} [Fact p.Prime]
     (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : Trace.UnifiedTrace p} (accepted : Trace.Accepted trace)
@@ -195,6 +212,7 @@ theorem native_value_bounds {p : Nat} [Fact p.Prime]
   Proofs.value_bounds hp inverse accepted clocks image
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem native_memory_history {p : Nat} [Fact p.Prime]
     (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : Trace.UnifiedTrace p} (accepted : Trace.Accepted trace)
@@ -205,6 +223,7 @@ theorem native_memory_history {p : Nat} [Fact p.Prime]
   Proofs.memory_history hp inverse accepted clocks image distinct
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem native_memory_execution [Fact p.Prime]
     (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase) (inverse : SerializedInverse.Clock p)
     {trace : Trace.UnifiedTrace p} (accepted : Trace.Accepted trace)
@@ -214,6 +233,7 @@ theorem native_memory_execution [Fact p.Prime]
   Proofs.memory_execution hp inverse accepted inputs decoded
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem fetched {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     {before : Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
@@ -223,6 +243,7 @@ theorem fetched {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
   Proofs.fetched hp image accepted membership
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     (inverse : SerializedInverse.Clock p)
     (trace : Trace.UnifiedTrace p) (initial : Sail.State) (cells : List Trace.Cell)
@@ -231,6 +252,7 @@ theorem soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timesta
       (InterfaceAssumptions trace initial cells program) Sail.spec :=
   Proofs.trace_soundness hp inverse trace initial cells program
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem babyBear_soundness (trace : Trace.UnifiedTrace babyBearModulus)
     (initial : Sail.State) (cells : List Trace.Cell) (program : List ProgramEntry) :
     (circuitModel trace initial cells program).SoundnessUnder
@@ -238,6 +260,7 @@ theorem babyBear_soundness (trace : Trace.UnifiedTrace babyBearModulus)
   soundness (by decide) (by decide) trace initial cells program
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem TriAdd.soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     (inverse : SerializedInverse.Clock p)
     (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
@@ -246,6 +269,7 @@ theorem TriAdd.soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.ClockNoWra
       (TriAdd.InterfaceAssumptions trace initial cells program) TriAdd.spec :=
   Proofs.native_triadd_soundness hp inverse trace initial cells program
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem TriAdd.babyBear_soundness (trace : Trace.UnifiedTrace babyBearModulus)
     (initial : Reference.RiscV.Sail.State) (cells : List Trace.Cell) (program : List ProgramEntry) :
     (TriAdd.circuitModel trace initial cells program).SoundnessUnder
@@ -253,6 +277,7 @@ theorem TriAdd.babyBear_soundness (trace : Trace.UnifiedTrace babyBearModulus)
   TriAdd.soundness (by decide) (by decide) trace initial cells program
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Caller.soundness [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
@@ -263,6 +288,7 @@ theorem Caller.soundness [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
   Caller.Proofs.caller_binding hp constraints image member
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Caller.request_soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     (inverse : SerializedInverse.Clock p)
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
@@ -270,6 +296,7 @@ theorem Caller.request_soundness [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap 
     Caller.RequestBinding data before := Caller.Proofs.request_binding hp inverse accepted inputs
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Caller.bigint_pointer_soundness
     {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
@@ -281,6 +308,7 @@ theorem Caller.bigint_pointer_soundness
   Caller.Proofs.bigint_pointer_abi accepted inputs ram
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Caller.arithmetic_cycle_soundness
     {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
@@ -301,6 +329,7 @@ theorem Caller.arithmetic_cycle_soundness
   Caller.Proofs.mixed_arithmetic_cycle accepted inputs started member words registers instruction
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Caller.custom_cycle_soundness
     {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
@@ -319,6 +348,7 @@ theorem Caller.custom_cycle_soundness
   Caller.Proofs.mixed_custom_cycle accepted inputs started member present query supported
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Caller.binary_cycle_soundness
     {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
@@ -338,6 +368,7 @@ theorem Caller.binary_cycle_soundness
   Caller.Proofs.mixed_binary_cycle accepted inputs started shift member words instruction
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Caller.comparison_cycle_soundness
     {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
@@ -357,6 +388,7 @@ theorem Caller.comparison_cycle_soundness
   Caller.Proofs.mixed_comparison_cycle accepted inputs started member words instruction
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Caller.branch_cycle_soundness
     {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
@@ -377,6 +409,7 @@ theorem Caller.branch_cycle_soundness
   Caller.Proofs.mixed_branch_cycle accepted inputs started isa member words instruction
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Caller.jump_cycle_soundness
     {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
@@ -401,6 +434,7 @@ theorem Caller.jump_cycle_soundness
   Caller.Proofs.mixed_jump_cycle accepted inputs started isa landingPad member words instruction
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Caller.ram_cycle_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
@@ -408,7 +442,7 @@ theorem Caller.ram_cycle_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.
     (inputs : Caller.MixedMemoryInputs data program initial ca oa cells)
     (started : 0 < (Trace.timeOfPair data.machine.initial.timestamp).value)
     (configuration : Reference.RiscV.Sail.FlatMemoryConfiguration initial)
-    (ordinary : ∀ address, Trace.Cell.ram address ∈ cells → Reference.RiscV.Sail.OrdinaryWordAddress address)
+    (ordinary : ∀ address, Trace.Cell.ram address ∈ cells → Reference.RiscV.Sail.PlatformWordAddress address)
     (ram : ∀ address, Trace.Cell.ram address ∈ cells → 4194304 ≤ address.toNat)
     {w : Nat → ZMod babyBearModulus} {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output}
     (destination : input.store = false → input.rd ≠ Reference.RiscV.Sail.zeroRegister)
@@ -425,6 +459,7 @@ theorem Caller.ram_cycle_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.
   Caller.Proofs.mixed_ram_cycle accepted inputs started configuration ordinary ram destination member words instruction
 
 
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem Caller.current_fetch_soundness
     {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}

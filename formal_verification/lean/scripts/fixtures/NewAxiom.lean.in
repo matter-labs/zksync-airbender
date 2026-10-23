@@ -1,0 +1,5 @@
+import Lean
+namespace AssuranceNegative
+axiom foreign : False
+theorem usesForeign : False := foreign
+end AssuranceNegative

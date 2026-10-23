@@ -2,6 +2,7 @@ import Airbender.Review.Circuits.UnifiedReduced.WordMemory
 import Airbender.Review.Helpers.UnifiedReduced.NativeROM
 
 namespace Airbender.UnifiedReduced.WordMemory.NativeROM
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 open Reference.RiscV.Sail Trace
 
 /-- Public inputs for unified LW/SW with readonly ROM. `boot` binds the native
@@ -15,7 +16,7 @@ structure InterfaceAssumptions [Fact p.Prime] (trace : UnifiedTrace p) (initial 
     (_w : Nat → ZMod p) : Prop where
   boot : BootInputs trace initial cells program
   configuration : FlatMemoryConfiguration initial
-  ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address
+  ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address
   destination : input.store = false → input.rd ≠ zeroRegister
 
 /-- The imported native rows and their logical matching remain the proof target.

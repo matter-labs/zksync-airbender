@@ -16,7 +16,7 @@ structure RAMInputs {p : Nat} [Fact p.Prime] (trace : NativeTrace p)
     extends NativeInputs decoderFields trace initial cells program where
   configuration : FlatMemoryConfiguration initial
   ramDomain : ∀ address, Cell.ram address ∈ cells → ROM.limit ≤ address.toNat
-  ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address
+  ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address
   code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0
   setup : ∃ values, trace.rom = Verification.subwordTable values
 

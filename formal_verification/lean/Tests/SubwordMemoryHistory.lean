@@ -135,6 +135,7 @@ private theorem ram_inputs [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exceptio
   · intro address member
     simp [cells] at member
     subst address
+    apply ordinaryWordAddress_for
     unfold OrdinaryWordAddress
     decide
   · intro actual member

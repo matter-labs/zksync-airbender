@@ -1086,13 +1086,13 @@ def plat_misaligned_access : GlobalMisalignedExceptions :=
     amo := none
     lrsc := (some AccessFault) }
 
-def plat_have_clint : Bool := true
+def plat_have_clint : Bool := (MemoryPlatform.devices (ue := exception)).haveClint
 
 def plat_clint_base : physaddrbits := unwrapValue ((to_bits_checked (l := 34) (33554432 : Int)))
 
 def plat_clint_size : physaddrbits := unwrapValue ((to_bits_checked (l := 34) (49152 : Int)))
 
-def plat_have_sig : Bool := true
+def plat_have_sig : Bool := (MemoryPlatform.devices (ue := exception)).haveSig
 
 def plat_sig_base : physaddrbits := unwrapValue ((to_bits_checked (l := 34) (201326592 : Int)))
 

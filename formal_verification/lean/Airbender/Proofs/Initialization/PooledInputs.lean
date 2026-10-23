@@ -8,7 +8,6 @@ set_option warningAsError true
 set_option Elab.async false
 variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] [CommRing E]
 
-omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem pooled_inputs {base : PooledTrace babyBearModulus} {layout : Layout}
     {geometry : Geometry layout} {windows : Windows layout}
     (embed : ZMod babyBearModulus →+* E) (additive : E) (weights : Fin 6 → E)

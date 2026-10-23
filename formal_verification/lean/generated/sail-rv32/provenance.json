@@ -42,7 +42,7 @@
   "adapter_sha256": "8a8fd612447310f5a418b4435522b65a6534401209ff87d896e192dc03f418a6",
   "platform_binding": {
     "source": "scripts/SailPlatform.lean",
-    "sha256": "03c820d8cd6d4064a5acee7b1d8f9d233b01d0ae04046263b8ea78402022597c",
+    "sha256": "c7c51fa3539ff8272ab8a633bc9dec8086f2439279053f77124cb9c9d5e89524",
     "experimental_extensions": false,
     "emulator_default_source": "c_emulator/riscv_model_impl.h",
     "emulator_default_sha256": "be1de073ca7e69d68e3b33045ad9c288fd280fe504aafa52287d1d53c3ea09ca",
@@ -57,13 +57,52 @@
       "plat_term_write",
       "load_reservation",
       "match_reservation"
-    ]
+    ],
+    "flag_bindings": [
+      {
+        "original": "def plat_have_clint : Bool := true",
+        "parameterized": "def plat_have_clint : Bool := (MemoryPlatform.devices (ue := exception)).haveClint"
+      },
+      {
+        "original": "def plat_have_sig : Bool := true",
+        "parameterized": "def plat_have_sig : Bool := (MemoryPlatform.devices (ue := exception)).haveSig"
+      }
+    ],
+    "upstream_devices": {
+      "clint": true,
+      "sig": true
+    },
+    "airbender_devices": {
+      "clint": false,
+      "sig": false
+    },
+    "airbender_evidence_sha256": {
+      "riscv_transpiler/src/vm/ram_with_rom_region.rs": "60cf8397aa96eb854dd562511aa43cd3cc7813f41902f8cd67179ec180421bb0",
+      "riscv_transpiler/src/jit/impls.rs": "cc4ac5da976ffaa445a1215f2913d27242b48dbe7efc1a5b797cce18c45928a8",
+      "cs/src/gkr_circuits/unified_reduced_machine/mem_word_only_lw_sw.rs": "5bc0b53cbbf6fdb625e4d69fea3da928f9294a41d87cfb86c357e225168e8471",
+      "riscv_common/src/lds/1gb_total/memory.x": "e87db808fdd6ce788c35970ed7af42f05251de1fc612e99dcb6049537e41bbb2"
+    },
+    "instruction_sha256": {
+      "execute_UTYPE": "1ff4232f2f8b66ea78f291357a36aa7910607ddd2ce5beb487d50e2058d2e617",
+      "execute_STORE": "57d3c9e99046ca643ab8e5a4893fa2586ede1c20c2695c5eb2aef8d96f6dcbf7",
+      "execute_SHIFTIOP": "a7083abca26b4b1fd15acf13bfeac2258f81341e2a4e39755745672a8a16df7d",
+      "execute_RTYPE": "95037de310051f6a9bb3bb6806b44d1b3ba2035668e68107e64b2ede9fd51aae",
+      "execute_REV8": "8d2c9673c7b98d79ea17a61064baf71b5738a85b83c2f0beb915270897d11f94",
+      "execute_REM": "06ebb450089bafc71e736980a0d24babea0ce88d1a2d906b638b9e6f88809fe5",
+      "execute_MUL": "9c90ff7d56bd81f0d70970b6f7b1380b46fe9270626d7d7d055c0c40596a6311",
+      "execute_LOAD": "a836ae4ca805afa5dd26ca145f96afe4d2ffe772b914d40e48a470715f7e7ec4",
+      "execute_JALR": "55a04e6455991893e9de1bf9839cb173e39ecae7143ba1850338a55892e2778d",
+      "execute_JAL": "f2eff41c0f9472fad11e021ad8c5eba7d807f48e27593d9a1c4a56185e7b7851",
+      "execute_ITYPE": "cb1a03dc5bed7e9452ed0ee31662fa958f531bd5fd72e2242b2dc64a48557581",
+      "execute_DIV": "9e3386b1674c1f2a98fb1362ca4bbefb936847ea62857bbe3313f8e4facf1062",
+      "execute_BTYPE": "a4ecb5b9a83e5eb6848429dd17d60f31e047ac2d169168b65b00b64771dec856"
+    }
   },
   "generated_sha256": {
     "SailRV32/Defs.lean": "01ef1acf8d539eb15e9ade1b30c0b17bb40e02d142475954a1598e975bfa6b2d",
     "SailRV32/FakeReal.lean": "7fd4dd3710716205f9beaa21cddfdccaa5d77529bb2af5f72b7f9f023fb6c2a9",
-    "SailRV32/SailPlatform.lean": "03c820d8cd6d4064a5acee7b1d8f9d233b01d0ae04046263b8ea78402022597c",
+    "SailRV32/SailPlatform.lean": "c7c51fa3539ff8272ab8a633bc9dec8086f2439279053f77124cb9c9d5e89524",
     "SailRV32/SpecializationArchSem.lean": "ca8477a86fc89204ffd71cbba42a00c0d3805b7953caea55b26cc5f800eb73b5",
-    "SailRV32.lean": "415fe0bbffe8a626bb3c4eee3e7d8b1007689340d8058cd06025d032db7952f4"
+    "SailRV32.lean": "c42ebaf342da5f066a173d3a4647e40f151caaa880c2b6a561ead32f0b5fd807"
   }
 }

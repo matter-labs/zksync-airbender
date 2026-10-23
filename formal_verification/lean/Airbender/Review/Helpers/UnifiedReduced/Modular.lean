@@ -19,7 +19,9 @@ def decoderFields (instruction : SailRV32.instruction) : Option (DecoderData Uni
   Mixed.decoderFields instruction <|> mopDecoderFields instruction
 
 abbrev programImage := programImageRunWith decoderFields
-abbrev Inputs {p : Nat} [Fact p.Prime] := ExecutionInputsWith (p := p) decoderFields
+abbrev Inputs {p : Nat} [Fact p.Prime]
+    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :=
+  ExecutionInputsWith (p := p) decoderFields
 
 variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 

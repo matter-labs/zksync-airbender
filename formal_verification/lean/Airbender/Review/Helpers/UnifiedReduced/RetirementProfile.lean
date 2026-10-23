@@ -1,6 +1,7 @@
 import Airbender.Review.Helpers.UnifiedReduced.MixedFetch
 
 namespace Airbender.UnifiedReduced.Caller
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 open Trace Reference.RiscV.Sail
 
 /-- Public execution profile for the existing ordinary registry in a shared
@@ -15,7 +16,7 @@ structure RetirementProfile [Fact p.Prime] (data : RequestTrace p)
   /-- Machine configuration selects the reviewed Sail memory path. -/
   configuration : FlatMemoryConfiguration initial
   /-- Tracked data uses the existing ordinary aligned-word memory profile. -/
-  ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address
+  ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address
   /-- Programs using JALR disable the experimental landing pad. -/
   landingPadDisabled : (∃ entry ∈ program, ∃ imm rs1 rd,
     entry.instruction = .JALR (imm, rs1, rd)) →

@@ -1,4 +1,5 @@
 import Tests.PaddingBoundary
+import Tests.Platform
 import Airbender.Proofs.AddSub.RowClaims
 import Tests.TraceMemory
 import Airbender.Review.Circuits.AddSub.Theorems
@@ -134,7 +135,7 @@ theorem configuration : FlatMemoryConfiguration before := by
   · exact ⟨7, by simp [before, Std.ExtDHashMap.get?_insert]⟩
   · simp [before, Std.ExtDHashMap.get?_insert]
 
-theorem inputs : ExecutionBoundary trace before cells Tests.TraceMemory.sequentialProgram := by
+theorem inputs [MemoryPlatform SailRV32.exception] : ExecutionBoundary trace before cells Tests.TraceMemory.sequentialProgram := by
   refine {
     image := image
     initialPC := ⟨(4, 0), ?_⟩
@@ -236,8 +237,9 @@ private theorem pooledImage : pooledProgramImage before [0, 4] = some pooledProg
     programEntryRunWith, first, second, bind, Option.bind]
   rfl
 
-private theorem pooledInputs : NativeInputs pooledDecoderFields pooled before cells pooledProgram :=
-  ⟨inputs.distinct, inputs.aligned, inputs.image, inputs.initialPC,
+private theorem pooledInputs : NativeInputs pooledDecoderFields pooled before cells pooledProgram := by
+  letI : MemoryPlatform SailRV32.exception := Tests.upstreamPlatform
+  exact ⟨inputs.distinct, inputs.aligned, inputs.image, inputs.initialPC,
     ⟨[0, 4], pooledImage⟩, ⟨inputs.clocks.initial, inputs.clocks.aligned, inputs.clocks.memory⟩⟩
 
 /-- The second ADD reads the first ADD's write through the per-circuit model.
@@ -248,6 +250,7 @@ theorem addsub_per_circuit_soundness :
         ⟨⟨10, 0⟩, ⟨8, 0⟩⟩ Tests.TraceMemory.secondRow.assignment ∧
       AddSub.InterfaceAssumptions pooled before cells pooledProgram ∧
       spec input ⟨⟨10, 0⟩, ⟨8, 0⟩⟩ := by
+  letI : MemoryPlatform SailRV32.exception := Tests.upstreamPlatform
   have member : (⟨.addSub, Tests.TraceMemory.secondRow.assignment⟩ : Row babyBearModulus PooledFamily) ∈
       pooled.rows := by simp [pooled]
   obtain ⟨current, position⟩ := Proofs.pooled_row_position_exists (by decide) (by decide)

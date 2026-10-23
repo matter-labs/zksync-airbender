@@ -2,6 +2,7 @@ import Airbender.Review.Helpers.UnifiedReduced.ExecutionInputs
 import Airbender.Review.Helpers.Memory.ImportedImage
 
 namespace Airbender.UnifiedReduced
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 open Trace Reference.RiscV.Sail
 
 structure BootPublicInputsWith (projection : SailRV32.instruction → Option (DecoderData UnifiedFamily))
@@ -38,7 +39,7 @@ structure ExecutionPublicInputsWith (projection : SailRV32.instruction → Optio
   code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0
   /-- Public CSR data selects the reviewed Sail memory path. -/
   configuration : FlatMemoryConfiguration initial
-  ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address
+  ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address
   /-- Indirect-jump programs disable the experimental landing pad. -/
   landingPadDisabled : (∃ entry ∈ program, ∃ imm rs1 rd, entry.instruction = .JALR (imm, rs1, rd)) → ∃ security, initial.regs.get? .mseccfg = some security ∧
     SailRV32.Functions._get_Seccfg_MLPE security = 0

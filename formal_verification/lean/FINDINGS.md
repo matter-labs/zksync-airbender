@@ -1,6 +1,28 @@
 # Findings: assumptions and circuit bindings
 
-Review date: 13 October 2026. Snapshot: `59a493173a85441da542155cb825488f43904b1e`.
+Current native target: upstream `av_gkr_compiler` at
+`4518846625730fabc4cd83744d4bd983a5e42b97`. Current totals and completed validation
+are maintained in [Verification status](VERIFICATION_STATUS.md), separately from
+this evidence register. The [current eight-file native inspection](artifacts/setup/native-evidence.json)
+records the 22 October reinspection and exact source drift guards.
+
+The original review below was dated 13 October 2026 at snapshot
+`59a493173a85441da542155cb825488f43904b1e`; its inventory counts and dated
+integration checkpoints are historical. Conditional closure within a public
+profile is distinct from native enforcement and from general control-flow coverage.
+The older full-CSR theorem retains straight-line preparation. The general
+actual-path and complete-span theorems now pass focused kernel checks, including
+an accepted two-COPY branch/jump/loop application. The accepted native
+[G-loop application](Tests/PathGLoop.lean) also passes focused kernel checks:
+`Tests.PathGLoop.full_execution` retains all three variants' real effects,
+`baseline_grouped` and `scratch_grouped` compose the complete 56-call G protocol,
+and `actual_nonzero_position` binds the last worker to index 55/controller 183 after
+55 repeated loop calls. `protected_negative` proves the actual protected-message
+SW7 changes message0 from 0 to 7 and refutes both endpoint
+[`Airbender.Blake2G.WorkVector.WordMapping`](Airbender/Review/Trace/Workers/Blake2G/WorkVector.lean) and
+[`PathSpanAlgorithmAt`](Airbender/Review/Trace/UnifiedReduced/Paths/SpanProjection.lean); its whole execution still holds. These applications must also pass separate declaration-origin auditing,
+transitive controls and full independent kernel replay over the complete source inventory. Tracked data RAM
+remains at or above the ROM limit; standard boot-ROM-data copying is not claimed.
 
 This document records places where a checked theorem can remain true while a
 broader circuit or execution claim fails. The pass examined the input/interface
@@ -145,8 +167,10 @@ The existing valid merged proof is replayed through the fresh verifier and commi
 fixture. On the rebased `451884662` target, both Rust tests and all eight Solidity
 cases pass, including the two 256-run fuzz tests. The main production contract has
 a different terminal PC; its guard is compared, with no production-proof replay claimed.
-The local macOS run disabled Rust debug information for `prover` and
-`keccak_special5` to avoid the pinned nightly compiler's debug-info crash.
+The local macOS run disabled Rust debug information for the
+[prover](../../prover/Cargo.toml) and
+[keccak_special5](../../circuit_defs/keccak_special5/Cargo.toml) crates to avoid
+the pinned nightly compiler's debug-info crash.
 Full FV validation of the rebased branch remains in progress.
 
 This fixes the source-level AIH-334 validation defect for the current single-proof
@@ -201,12 +225,14 @@ supported/unsupported PC zero. It checks exact
 real rows, out-of-range filler, legal PC-zero preservation, committed-column
 compression versus the full cache, inactive tuples, and actual production forward
 lookup numerators/denominators with cancelling valid multiplicities. It runs
-with `gkr_self_checks`. The same test fails for the old zero tail and for a
+with the [gkr_self_checks feature](../../prover/Cargo.toml). The same test fails
+for the old zero tail and for a
 committed-only correction with a truncated cache. The
 [CUDA scheduling regression](../../gpu/gkr/src/setup/tests.rs) now includes a
 nonzero tail and compares the complete domain with CPU arithmetic.
 
-Scoped `prover` library and `gpu_gkr` library/test checks pass on this aarch64
+Scoped [prover](../../prover/Cargo.toml) library and
+[gpu_gkr](../../gpu/gkr/Cargo.toml) library/test checks pass on this aarch64
 Mac. The CPU regression passes; CUDA is unavailable and the AVX-512 path is not
 executed here. The test automatically reaches that accelerated path on enabled
 x86 hosts. Full regenerated proof replay, accelerated runtime agreement and
@@ -217,7 +243,8 @@ The existing Lean temporary contract is unchanged and is not counted as the
 implementation correction.
 
 The nightly compiler crashed in LLVM debug-info emission for the large prover
-test harness. The successful scoped build disables debug info only for `prover`
+test harness. The successful scoped build disables debug info only for the
+[prover crate](../../prover/Cargo.toml)
 through command-line profile overrides; no compiler pin or dependency changed:
 
 ```sh
@@ -679,7 +706,8 @@ tables derive x12's returned word as zero or one, including a zero high limb.
 Raw token classification uses native matching, initialization and modeled tables
 before round masks. Raw prefix matching retains the actual worker token at cut
 minus one; strict order
-rejects consuming that token again before the cut. `BigintControlBoundaryExecution`
+rejects consuming that token again before the cut.
+[`BigintControlBoundaryExecution`](Airbender/Review/Trace/UnifiedReduced/RegisterDataflow.lean)
 then realizes the actual x12 read in the same initialized history, without an
 incoming opcode/control restriction, supplied output or intermediate state.
 The public `Caller.bigint_control_boundary_soundness` entry keeps the existing
@@ -715,9 +743,9 @@ The current validation totals are recorded in
 [Verification status](VERIFICATION_STATUS.md); importer, axiom and review checks
 retain the existing regression roots with no handwritten project diagnostics.
 
-## Rebased validation checkpoint — 21 October 2026
+## Historical rebased validation checkpoint — 21 October 2026
 
-The current native artifacts and proof adapters pass the library, both executables,
+At this historical checkpoint, the native artifacts and proof adapters passed the library, both executables,
 all 137 concrete test modules, importer regressions and review/source checks.
 All 13 setup artifacts, 85 native source hashes and 11 retained circuit identities
 are checked. The full audit has 3,850 roots (149 axiom-free), with no added axioms:
@@ -733,7 +761,8 @@ statement and assumptions are unchanged.
 
 The native JSON round-trip check also retains strict equality with the actual
 Rust circuit object. A small [wire-format serializer](Airbender/Import/NativeJson.lean)
-implements Rust's omission of absent `generic_lookup_padding`; present zero,
+implements Rust's omission of an absent
+[generic_lookup_padding field](Airbender/Import/Schema.lean); present zero,
 nonzero padding and other explicit null fields are retained. This is serialization
 fidelity, not a new circuit assumption or cryptographic correspondence claim.
 
@@ -747,7 +776,7 @@ fidelity, not a new circuit assumption or cryptographic correspondence claim.
 | F04 | Worker ROM shadows can disagree with public bytes | Accepted COPY/request counterexample | Physical seed images and tracked-RAM profiles exclude the problematic general native case |
 | F05 | Raw inactive rows need not stutter | Conditionally resolved by the external contribution-mask boundary; no demonstrated implementation bug | Exact whole-layout masked closure derives active acceptance/execution; Rust/GKR/cryptographic enforcement remains external |
 | F06 | Discarded LW differs from original Sail | Accepted native NOP with no original Sail execution | `NoDiscardedLoads`, or the named Airbender NOP profile |
-| F07 | Standalone worker claims retain control/participation conditions | Unresolved general binding; discharged in specified stronger scopes | `rounds`, `RoundMask`, `keccakActive` |
+| F07 | Standalone worker claims retain control/participation conditions | Unresolved general binding; discharged in specified stronger scopes | [`OperationInputs.rounds`](Airbender/Review/Helpers/Delegation/Operations.lean), [`Blake2Round.Memory.RoundMask`](Airbender/Review/Circuits/Blake2Round/Memory.lean), [`OperationInputs.keccakActive`](Airbender/Review/Helpers/Delegation/Operations.lean) |
 | F08 | Complete hash claims retain protocol shape and first-span restrictions | Public-program binding derives selected span/controller shape and all issued round coverage/masks; full coverage exposes the zero-clock extended-round boundary | Mode/duration/preparation, public code profile, controller extents/full coverage and legacy prefix conditions |
 | F09 | Setup/decoder queries retain implementation-fidelity boundaries | Actual table contents and semantic connections are imported and checked | Rust/parser fidelity, public-program binding, native query binding and commitment authentication remain external |
 | F10 | Caller-cycle effects are weaker than full custom instruction execution | Complete mixed CSR reference execution uses F02 and public protocol/RAM profiles; native participation is derived | General acceptance still admits invalid bigint commands and ROM-shadow behavior; conditional integration does not fix F02/F04 |
@@ -776,14 +805,15 @@ Register-word bounds still hold: this is specifically an endpoint failure.
 [Standalone jump inputs](Airbender/Review/Helpers/Context/Registries/JumpBranchSltInputs.lean)
 and both
 [pooled physical/native-boot inputs](Airbender/Review/Helpers/Context/PooledBoundary.lean)
-now consume `verifierBoundary` closure in place of their former direct
-`terminalPC` / `terminalCanonical` range fields. The
+now consume verifier-boundary closure in place of their former direct
+terminal-PC and terminal-canonical range fields. The
 [public contract](Airbender/Review/Helpers/Context/VerifierBoundary/Model.lean)
 keeps typed statement PCs/timestamps and the logical permutation over the actual
 imported row starts/ends explicit. Boot inputs fix initial PC/clock to 0/4;
 general canonical initial endpoints describe conditional trace/segment scopes.
 
-**Checked connection.** The encoding reuses `PCState.boundary` and preserves the
+**Checked connection.** The encoding reuses
+[`PCState.boundary`](Airbender/Review/Helpers/Context/PCState/Model.lean) and preserves the
 full 32-bit PC in bounded low/high field limbs. Comparing accepted state matching
 against the canonical closure and canceling their identical start-list proves
 equality of the entire original terminal tuple with the typed contribution.
@@ -851,7 +881,7 @@ the bigint reference-connection proof task, not F02 implementation enforcement.
 
 **Closure needed.** Bind all control bits, opcode cardinality and invalid-call
 behavior to general native acceptance and the full call reference. An assumed
-`validControl` premise would only narrow the theorem and leave these witnesses open.
+valid-control premise would only narrow the theorem and leave these witnesses open.
 
 ## F03 — Historical zero-clock worker; native exclusion adopted
 
@@ -955,8 +985,10 @@ row's desired output or architectural inertness was assumed.
 ## F06 — The discarded-LW restriction protects a real semantic difference
 
 **Evidence.** [DiscardedLoad](Tests/DiscardedLoad.lean)
-proves `native_accepts_discarded_load`, `original_discarded_load_error`,
-`no_native_terminal_execution` and `profile_terminal_execution`. An accepted native
+proves [`Tests.DiscardedLoad.native_accepts_discarded_load`](Tests/DiscardedLoad.lean),
+[`Tests.DiscardedLoad.original_discarded_load_error`](Tests/DiscardedLoad.lean),
+[`Tests.DiscardedLoad.no_native_terminal_execution`](Tests/DiscardedLoad.lean) and
+[`Tests.DiscardedLoad.profile_terminal_execution`](Tests/DiscardedLoad.lean). An accepted native
 NOP has no original Sail execution because the discarded load still performs a
 failing memory access. The explicit Airbender profile admits the PC-only NOP.
 
@@ -975,7 +1007,9 @@ or proof inputs.
 ## F07 — Round selection and worker participation remain inputs in weaker scopes
 
 **Condition.** [OperationInputs](Airbender/Review/Helpers/Delegation/Operations.lean)
-requires an exclusive `RoundMask` for every extended-BLAKE row and execute = 1
+requires an exclusive
+[`Blake2Round.Memory.RoundMask`](Airbender/Review/Circuits/Blake2Round/Memory.lean)
+for every extended-BLAKE row and execute = 1
 for every Keccak row. The extended-round
 [local interfaces](Airbender/Review/Circuits/Blake2Round/Row.lean)
 and [Memory interface](Airbender/Review/Circuits/Blake2Round/Memory.lean)
@@ -1065,11 +1099,11 @@ prefix emptiness and duration constrain the accepted worker/machine collections.
 Intermediate values, actual cut states and schedules *within that scope* are proved.
 The theorem does not derive that every generally accepted execution has that shape.
 
-**Evidence for the limit.** Both
-[extended-BLAKE completion](Tests/Blake2RoundCall.lean)
-and [Keccak completion](Tests/KeccakSchedule.lean)
-have checked `completion_does_not_restart` results. Treating first-span theorems
-as automatically repeating would be incorrect.
+**Evidence for the limit.** The checked
+[`Tests.Blake2RoundCall.completion_does_not_restart`](Tests/Blake2RoundCall.lean)
+and [`Tests.KeccakSchedule.completion_does_not_restart`](Tests/KeccakSchedule.lean)
+results cover extended-BLAKE and Keccak completion, respectively. Treating
+first-span theorems as automatically repeating would be incorrect.
 
 **New public-program connection.**
 [ProgramCallerRegion](Airbender/Review/Helpers/UnifiedReduced/WindowSchedule.lean)
@@ -1184,7 +1218,8 @@ with participation derived from native constraints and initialized caller accoun
 bigint/G/extended-round/Keccak caller step fetches its actual public instruction,
 executes in the same full Sail states and retires to the next native PC. The
 chain starts at the original public state and reaches actual terminal cells/PC;
-it is a `Realizes` result, rather than the older observational certificate.
+it is a [`Trace.Realizes`](Airbender/Review/Trace/Execution.lean) result,
+rather than the older observational certificate.
 Public initial PC, readonly code/configuration, tracked-RAM domain, modeled tables,
 logical matching and the existing complete prepared-protocol profile remain
 explicit. Per-row reads, ABI controls, lane bounds, pointer conditions and

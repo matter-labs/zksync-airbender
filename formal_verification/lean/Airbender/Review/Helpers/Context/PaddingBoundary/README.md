@@ -10,20 +10,20 @@ boundary on 15 October 2026, analogous to the
 ## Contract and checked result
 
 `mask execute input = 1 + execute * (input - 1)`. At zero it is one, and at one it
-preserves the input. `contribution` represents identity as `none` and an entire
+preserves the input. `contribution` represents identity as `Option.none` and an entire
 native tuple as `some tuple`; a zero-valued active tuple remains `some tuple`.
 `product_soundness` proves that these symbolic factors agree with masking the
 aggregate product for a Boolean selector. It holds for arbitrary tuple encodings
 and values, without operand or result assumptions.
 
-`Binding` retains the whole unfiltered layout and uses each row's actual imported
+`Airbender.PaddingBoundary.Binding` retains the whole unfiltered layout and uses each row's actual imported
 execute column. It supplies Booleanity and exact masked PC/memory permutations,
-with the public initial/terminal contributions unmasked. `AcceptedLayout` also
+with the public initial/terminal contributions unmasked. `Airbender.PaddingBoundary.AcceptedLayout` also
 checks imported constraints and every retained auxiliary/range/timestamp query
 for every raw row. Active decoder membership stays in the existing public APIs;
 no original instruction is required for inactive decoder padding.
 
-`acceptance_soundness` erases identity factors and derives `Trace.Accepted` for
+`Airbender.PaddingBoundary.acceptance_soundness` erases identity factors and derives [`Airbender.Trace.Accepted`](../Model.lean) for
 `active trace`. Selection preserves native occurrence order and multiplicity,
 including duplicate padding rows. All public initial/terminal tokens, modeled
 tables and full raw active tuples are unchanged. No inactive PC, timestamp, write
@@ -45,7 +45,7 @@ native worker ROM transport are not added by this boundary.
 
 ## External meaning and provenance
 
-The exact tuple permutations in `Binding` are external logical assumptions.
+The exact tuple permutations in `Airbender.PaddingBoundary.Binding` are external logical assumptions.
 Mask algebra alone, or equal products at sampled challenges, does not imply them.
 No project axiom is introduced: the theorems take the named contract as an input.
 Address-space projection, binding compiled selector copies to native execute
@@ -53,14 +53,18 @@ columns, GKR/commitment/sumcheck soundness and Rust/artifact correspondence rema
 external. The new boundary conditionally resolves architectural padding erasure;
 it does not prove the Rust verifier implementation correct.
 
-The source was inspected at checkout `4a12ba264` before this FV-only change.
+The current source was re-inspected on 22 October 2026 at checkout
+`9683fe67d16aabadd31140a062082e79c7bccf43`, based on upstream `451884662`.
+The [eight-file evidence manifest](../../../../../artifacts/setup/native-evidence.json)
+records current hashes/observations and retains the earlier `4a12ba264` inspection
+as historical. Identity checks do not establish Rust or cryptographic refinement.
 
 | Source | Observed mechanism | Blob |
 | --- | --- | --- |
-| [Family compiler](../../../../../../../cs/src/gkr_compiler/family_circuit.rs) | Native execute masks PC and architectural memory products; it also masks the decoder query. | `df29400096c2e540edd28e2014ca1113a42acf8e` |
-| [Contribution compiler](../../../../../../../cs/src/gkr_compiler/memory_like_grand_product.rs) | Separate raw PC/clock and port tuples; enforced masking gates on both final read/write contributions. | `6f4ae37c6c8643f5f2aac40b399502ea10699ffb` |
+| [Family compiler](../../../../../../../cs/src/gkr_compiler/family_circuit.rs) | Native execute masks PC and architectural memory products; it also masks the decoder query. | `708f69088d9875ad6941099950b0bbab5933a6ba` |
+| [Contribution compiler](../../../../../../../cs/src/gkr_compiler/memory_like_grand_product.rs) | Separate raw PC/clock and port tuples; enforced masking gates on both final read/write contributions. | `b99efc7ee516ea085c2c42399029b10fbb93f4f1` |
 | [Mask kernel](../../../../../../../prover/src/gkr/sumcheck/evaluation_kernels/kernel_impls/mask_into_identity.rs) | Enforced polynomial `(input - 1) * execute + 1`. | `a9688b531bbb67476dc39b95f4953c3e21d3c03a` |
-| [Generated ADD/SUB verifier](../../../../../../../verifier/src/generated/add_sub_lui_auipc_mop/sec_100/gkr.rs) | Contains both mask gates and evaluates the same polynomial. | `66633ee6e714d7c2391109a7b562a1bf5984da6e` |
+| [Generated ADD/SUB verifier](../../../../../../../verifier/src/generated/add_sub_lui_auipc_mop/sec_100/gkr.rs) | Contains both mask gates and evaluates the same polynomial. | `1c4cc94c026b22f7a41765126881e8d554653cd3` |
 
 [Padding regressions](../../../../../Tests/PaddingBoundary.lean) retain the
 execute-zero PC 0→4/result-123 case with complete native clock lookups, reject a

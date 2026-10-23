@@ -8,11 +8,13 @@ import Airbender.Proofs.Trace.Terminal
 import Mathlib.Data.List.Chain
 
 namespace Airbender.Trace.Proofs
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
 
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- Discharge every selected original instruction against its native row.
     Decoder fields select the clause; all read/range/effect facts are derived
     by the existing family proofs. No expected instruction effect is assumed. -/
@@ -24,7 +26,7 @@ theorem row_instruction_step (profile : ISAProfile) {p : Nat} [Fact p.Prime] [Me
     (setup : trace.rom = ROM.table cells trace.initialMemory)
     (registers : ∀ index, Cell.register index ∈ cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
-    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address)
     (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
     {row : Row p} (member : row ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
@@ -88,6 +90,7 @@ theorem row_instruction_step (profile : ISAProfile) {p : Nat} [Fact p.Prime] [Me
       case h_8 => cases fields
 
 set_option backward.isDefEq.respectTransparency false in
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- The current instruction is obtained from logical decoder membership and
     preserved public bytes. Original Sail stepping is supplied by the native
     family proofs, not by a desired-read or desired-result premise. -/
@@ -99,7 +102,7 @@ theorem row_execution_step (profile : ISAProfile) {p : Nat} [Fact p.Prime] [Memo
     (setup : trace.rom = ROM.table cells trace.initialMemory)
     (registers : ∀ index, Cell.register index ∈ cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
-    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address)
     (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
     {program : List ProgramEntry} (sources : ∀ entry ∈ program, entry.Source initial)
     (code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0)
@@ -126,6 +129,7 @@ theorem row_execution_step (profile : ISAProfile) {p : Nat} [Fact p.Prime] [Memo
 
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- Compose all native rows in their derived order. The first step starts
     from the public state unchanged; subsequent steps reuse the existing
     history through the actual retired Sail control-register states. -/
@@ -137,7 +141,7 @@ theorem rows_execution_trace (profile : ISAProfile) {p : Nat} [Fact p.Prime] [Me
     (setup : trace.rom = ROM.table cells trace.initialMemory)
     (registers : ∀ index, Cell.register index ∈ cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
-    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address)
     (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
     {program : List ProgramEntry} (sources : ∀ entry ∈ program, entry.Source initial)
     (code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0)
@@ -169,6 +173,7 @@ theorem rows_execution_trace (profile : ISAProfile) {p : Nat} [Fact p.Prime] [Me
 
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
+omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 /-- Whole selected-trace soundness, from the public initial state through
     every native instruction row to the actual terminal PC and cell reads. -/
 theorem restricted_trace_execution (profile : ISAProfile) {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]

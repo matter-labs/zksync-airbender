@@ -38,7 +38,7 @@ caller accounting derive complete worker participation.
 
 Start with [Soundness](Soundness.lean) for the primary six-family standard claim
 and its external-stream extension. [Execution](Execution.lean) defines the generic
-step relation and `Realizes`: execution reaches the native final PC and tracked cells.
+step relation and `Airbender.Trace.Realizes`: execution reaches the native final PC and tracked cells.
 [PooledExecution](PooledExecution.lean) specializes the standard relation.
 
 Read [public pooled inputs](../Helpers/Context/PooledBoundary.lean),

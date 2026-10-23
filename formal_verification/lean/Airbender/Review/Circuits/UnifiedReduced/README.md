@@ -20,7 +20,7 @@ selected pre-state and public instruction binding. [Artifact](Artifact.lean)
 and [Decoder](Decoder.lean) identify the unified columns, selectors and modeled setup.
 
 Read the slice being reviewed: [`control`](Control.lean), [jumps](Jump.lean),
-[`binary`](Binary.lean), [shifts](Shift.lean), [word memory](WordMemory.lean),
+[binary](Binary.lean), [shifts](Shift.lean), [word memory](WordMemory.lean),
 [ROM](WordROM.lean), [TRIADD](TriAdd.lean), [XORROT](XorRotate.lean),
 or [delegation callers](Delegation.lean). Standard clauses use original Sail;
 custom operations use the pinned project reference.

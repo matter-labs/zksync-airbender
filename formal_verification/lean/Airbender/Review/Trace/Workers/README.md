@@ -15,16 +15,26 @@ native terminal tokens, with schedules and intermediate values derived from matc
 
 | Claim | Direct theorem entry |
 | --- | --- |
-| Seven selected bigint operation effects | [`operation_execution`](Bigint/Theorems.lean) |
-| Complete G work-vector fold | [`Native.workvector_soundness`](Blake2G/Theorems.lean) |
-| Complete extended-BLAKE compression | [`compression_soundness`](Blake2Round/Theorems.lean) |
-| Complete Keccak permutation | [`Native.permutation_soundness`](Keccak/Theorems.lean) |
+| Seven selected bigint operation effects | [`Airbender.Bigint.Native.operation_execution`](Bigint/Theorems.lean) |
+| Complete G work-vector fold | [`Airbender.Blake2G.Native.workvector_soundness`](Blake2G/Theorems.lean) |
+| Complete extended-BLAKE compression | [`Airbender.Blake2Round.Native.compression_soundness`](Blake2Round/Theorems.lean) |
+| Complete Keccak permutation | [`Airbender.Keccak.Native.permutation_soundness`](Keccak/Theorems.lean) |
 
 Native-boundary/window variants retain timestamps rather than restarting history.
 Public protocol modes/counts, modeled tables, domain/alignment and the existing
 worker ABI conditions remain visible. A standalone extended-round operation still
 takes its mask ABI; prepared unified scopes derive those masks.
-These claims do not prove full CSR validity or whole mixed caller retirement.
+Worker-only [MemoryInputs](../../Helpers/Delegation/Memory.lean) and
+[BoundaryMemoryInputs](../../Helpers/Delegation/BoundaryMemory.lean) expose both
+`MemoryInputs.clockRoom` (the low invocation limb leaves room for offset-two writes) and
+`MemoryInputs.invocationHigh` (the high limb is in range). The integrated caller/request
+matching derives these bounds and complete participation; the current worker
+compiler does not independently query the invocation high limb. These inputs
+supply neither read values nor pointer bounds: initialized matching derives them.
+
+These claims do not prove full CSR validity. [Unified composition](../UnifiedReduced/README.md)
+proves caller retirement within its stated straight-line and RAM profile; general
+branch/jump/loop composition remains unfinished.
 
 These directories connect local worker behavior to actual Sail port observations
 and, for the hash families, complete protocol spans.

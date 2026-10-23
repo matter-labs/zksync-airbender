@@ -21,8 +21,10 @@ in the actual full Sail states, with exact writes and frame. The existing
 649-call schedule derives supported full controls; initialized history supplies
 canonical lane reads and the aligned RAM pointer. It adds no per-row ABI or
 expected-output premise. [Full mixed execution](../../UnifiedReduced/FullExecution.lean)
-connects caller fetch/PC retirement under the temporary occurrence ledger;
-F03 participation enforcement remains an implementation finding.
+connects caller fetch/PC retirement with participation derived from native
+caller accounting and active-invocation timestamps. The current integrated
+profile is straight-line; general mixed branch/jump/loop composition remains
+unfinished. No external occurrence ledger is required in that integrated scope.
 
 Read [Theorems](Theorems.lean), [Call](Call.lean) and
 [BoundaryCall](BoundaryCall.lean). [Permutation](Permutation.lean) binds
@@ -38,3 +40,8 @@ Invalid-control fallback does not establish the 24-round protocol.
 [Caller composition](../../Delegation/README.md) and
 [prepared unified spans](../../UnifiedReduced/README.md) retain separate prefix
 and preparation restrictions; completion does not imply automatic restart.
+
+Standalone worker inputs retain both `clockRoom` and `invocationHigh`; integrated
+caller/request matching derives them. See the [shared worker boundary](../README.md)
+and [native memory inputs](../../../Helpers/Delegation/Memory.lean). Actual read
+values and pointer bounds are derived from initialized matching.

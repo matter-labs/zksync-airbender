@@ -104,7 +104,7 @@ theorem row_soundness_from_history [Fact p.Prime] [MemoryPlatform SailRV32.excep
       else .LOAD (input.encodedImmediate, input.rs1, input.rd, false, 4))
     (configuration : FlatMemoryConfiguration initial)
     (aligned : ∀ address, Cell.ram address ∈ cells → address.toNat % 4 = 0)
-    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address)
     (destination : input.store = false → input.rd ≠ zeroRegister)
     (copiedWord : output.data.toBitVec = input.readData.toBitVec)
     (pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before) :
@@ -332,7 +332,7 @@ theorem row_soundness_from_memory [Fact p.Prime] [MemoryPlatform SailRV32.except
     (memory : MemoryExecution trace initial cells)
     (initialization : NativeInputs projection trace initial cells program)
     (configuration : FlatMemoryConfiguration initial)
-    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address)
     (destination : input.store = false → input.rd ≠ zeroRegister)
     (copiedWord : output.data.toBitVec = input.readData.toBitVec) :
     Airbender.WordMemory.spec input output := by
@@ -363,7 +363,7 @@ theorem row_soundness [Fact p.Prime] [MemoryPlatform SailRV32.exception]
     (mapping : TraceMapping trace initial cells program input output w)
     (initialization : NativeInputs decoderFields trace initial cells program)
     (configuration : FlatMemoryConfiguration initial)
-    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → PlatformWordAddress address)
     (destination : input.store = false → input.rd ≠ zeroRegister)
     (copiedWord : output.data.toBitVec = input.readData.toBitVec) :
     Airbender.WordMemory.spec input output := by

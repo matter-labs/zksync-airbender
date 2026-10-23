@@ -1489,7 +1489,8 @@ private theorem memoryOrdinaryCycles [Sail.ArchSem.MemoryPlatform SailRV32.excep
       have words : UnifiedReduced.WordMemory.WordMapping (memoryView store) memoryOutput (memoryAssignment store) := by
         constructor <;> cases store <;> decide +kernel
       exact UnifiedReduced.Caller.Proofs.mixed_ram_cycle_at (memoryAccepted store) (memoryInputs store)
-        effects permutation order history (memoryConfiguration store) domain (memoryCode store).ram
+        effects permutation order history (memoryConfiguration store)
+        (fun address member => ordinaryWordAddress_for (domain address member)) (memoryCode store).ram
         (input := memoryView store) (output := memoryOutput) (by cases store <;> decide)
         List.mem_cons_self words ⟨memoryEntry store, List.mem_cons_self,
           by cases store <;> decide +kernel, by cases store <;> rfl⟩

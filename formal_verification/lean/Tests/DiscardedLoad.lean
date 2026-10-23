@@ -92,7 +92,7 @@ private theorem configuration : FlatMemoryConfiguration before := by
       regs := Tests.TraceExecution.before.regs.insert .x1 (4194304 : BitVec 32) })
     (after := before) rfl preserved
 
-private theorem inputs : ExecutionBoundary trace before cells [entry] := by
+private theorem inputs [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] : ExecutionBoundary trace before cells [entry] := by
   refine {
     image := image
     initialPC := ⟨(4, 0), ?_⟩
@@ -122,7 +122,7 @@ private theorem inputs : ExecutionBoundary trace before cells [entry] := by
 
 /-- Every public boundary condition and native acceptance/membership relation
     holds; only the separately named discarded-load scope restriction fails. -/
-theorem native_accepts_discarded_load : ExecutionBoundary trace before cells [entry] ∧
+theorem native_accepts_discarded_load [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] : ExecutionBoundary trace before cells [entry] ∧
     Accepted trace ∧ Decoded trace [entry] ∧ ¬NoDiscardedLoads [entry] := by
   refine ⟨inputs, accepted, decoded, ?_⟩
   intro scope
