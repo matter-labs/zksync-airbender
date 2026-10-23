@@ -1,5 +1,5 @@
 import Airbender.Proofs.Blake2G.FrameQueryEntries
-import Airbender.Proofs.Blake2G.Fragment
+import Airbender.Proofs.Blake2G.FragmentDefinitions
 
 namespace Airbender.Blake2G.Proofs.FrameQueryShapes
 set_option warningAsError true
