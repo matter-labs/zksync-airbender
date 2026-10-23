@@ -23,21 +23,23 @@ theorem mix_rotation_parts {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast 
     (w (118 + 24 * operation.val + limb.val)).val =
       (((w (102 + 24 * operation.val + limb.val)).val % 65536) *
         2 ^ ((w (102 + 24 * operation.val + limb.val)).val / 65536)) % 65536 := by
-  have query := byte_lookup_checks hp h ⟨8 * operation.val + limb.val, by omega⟩
+  have query := ByteQueryBindings.values hp h operation (limb.castLE (by decide))
+  simp only [Fin.val_castLE] at query
   have tags := selected_tags (by omega) h active (mixMode second) selected
     ⟨8 * operation.val + limb.val, by omega⟩
-  cases second <;> fin_cases operation <;> simp [isRotation] at rotation
-  all_goals fin_cases limb <;>
-    simp [mixMode, operationTags, byteTag, byteQuery, importedConstraints,
-      FlatOperation.lookups, Expression.eval, Verification.environment,
-      ByteOperationFacts] at tags query ⊢
-  all_goals
-    split at query
-    · rename_i zero
-      have value := congrArg ZMod.val zero
-      simp only [ZMod.val_zero] at value
-      omega
-    · simpa [tags] using query
+  have group : (⟨(8 * operation.val + limb.val) / 8, by omega⟩ : Fin 5) = operation := by
+    apply Fin.ext
+    change (8 * operation.val + limb.val) / 8 = operation.val
+    omega
+  have indexEq := congrArg (fun i : Fin 5 => operationTags[(mixMode second)][i]) group
+  have selectedTag : (byteTag (setupTable control) w
+      ⟨8 * operation.val + limb.val, by omega⟩).val = operationTags[(mixMode second)][operation] :=
+    tags.trans indexEq
+  have tagKind : operationTags[(mixMode second)][operation] = 40 := by
+    cases second <;> fin_cases operation <;> simp [isRotation, mixMode, operationTags] at rotation ⊢
+  rw [selectedTag, tagKind] at query
+  simpa [ByteOperationFacts] using query
+
 
 theorem mix_rotated_limb {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
