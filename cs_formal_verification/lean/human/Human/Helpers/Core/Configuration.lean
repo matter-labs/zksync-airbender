@@ -7,8 +7,9 @@ The same definition as the verifier branch's `HumanSail/Airbender.lean` (`misa`,
 `State`, so the reset is computed on a state that holds every register (as in `HumanSail/Machine.lean`), and a
 `Configured` state has each register a program never writes present with its reset value.
 
-A state of the Airbender machine: Sail's own reset (with `sail/config/airbender-base.json`), Airbender's `misa`
-(RV32 I + M) and Airbender's memory map. Everything a program cannot change (privilege, `misa`, `mstatus`,
+A state of the Airbender machine behaves as Sail with these register values: Sail's own reset (with
+`sail/config/airbender-base.json`), `misa` = RV32 I + M (Airbender has no `misa` CSR; this value selects the
+decoded extensions) and Airbender's memory map. Everything a program cannot change (privilege, `misa`, `mstatus`,
 `mseccfg`, the landing-pad state `elp`, the PMP/PMA registers, …) keeps that value. -/
 
 namespace Airbender.Reference.RiscV.Sail.Configuration
@@ -75,9 +76,11 @@ def region (base size : Nat) (readable writable executable : Bool) : PMA_Region 
     supports_pte_read := false, supports_pte_write := false,
     misaligned_atomicity_granule_size_exp := 0, vector_misaligned_atomicity_granule_size_exp := 0 }
 
-/-- Memory map (`rust/lds/memory.x`): ROM `[0, 4 MiB)` holds the program, RAM `[4 MiB, 1 GiB)`. Nothing else. -/
+/-- Memory map: ROM `[0, 2^22)` holds the program (`common_constants/src/rom.rs`), RAM `[2^22, 2^32)` (the
+    verifier initialises `MAX_NUM_INIT_WORDS = 2^30` words, `full_statement_verifier/src/unrolled_circuit_params.rs`).
+    Nothing else. -/
 def ROM_END : Nat := 0x400000
-def RAM_END : Nat := 0x40000000
+def RAM_END : Nat := 0x100000000
 def memoryMap : List PMA_Region :=
   [ region 0       ROM_END             (readable := true) (writable := false) (executable := true),
     region ROM_END (RAM_END - ROM_END) (readable := true) (writable := true)  (executable := false) ]

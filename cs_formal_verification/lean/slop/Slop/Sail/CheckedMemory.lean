@@ -1,4 +1,5 @@
 import Slop.Sail.Configured
+import Slop.Sail.MemoryMap
 import Slop.Sail.PhysicalMemory
 import Slop.Sail.RegisterState
 
@@ -67,24 +68,25 @@ theorem configured_memory_permission {size : Nat} {before : State} {address : Bi
     (width : size = 1 ∨ size = 2 ∨ size = 4)
     (configuration : Configured before) (aligned : address.toNat % size = 0)
     (access : SailRV32.MemoryAccessType SailRV32.mem_payload)
-    (ordinary : access = .Load .Data ∨ access = .Store .Data ∨ access = .InstructionFetch ()) :
+    (ordinary : access = .Load .Data ∨ access = .Store .Data ∨ access = .InstructionFetch ())
+    (permits : MapPermits address access) :
     run (SailRV32.Functions.check_pma_with_pmp_priority access .PBMT_PMA .Machine
       (.Physaddr (address.setWidth 34)) size false) before =
         .ok (.Ok ⟨.CannotSplit, 0⟩) before := by
-  obtain ⟨attributes, regions, readable, writable, executable⟩ := configuration.pma
   simp only [SailRV32.Functions.check_pma_with_pmp_priority]
   rw [run_bind_of_ok _ _ _ _ _
-    (pma_memory_access width regions readable writable executable aligned access ordinary)]
+    (memory_map_access width configuration.pma aligned access ordinary permits)]
   rfl
 
 theorem configured_word_permission {before : State} {address : BitVec 32}
     (configuration : Configured before) (aligned : address.toNat % 4 = 0)
     (access : SailRV32.MemoryAccessType SailRV32.mem_payload)
-    (ordinary : access = .Load .Data ∨ access = .Store .Data ∨ access = .InstructionFetch ()) :
+    (ordinary : access = .Load .Data ∨ access = .Store .Data ∨ access = .InstructionFetch ())
+    (permits : MapPermits address access) :
     run (SailRV32.Functions.check_pma_with_pmp_priority access .PBMT_PMA .Machine
       (.Physaddr (address.setWidth 34)) 4 false) before =
         .ok (.Ok ⟨.CannotSplit, 0⟩) before :=
-  configured_memory_permission (Or.inr (Or.inr rfl)) configuration aligned access ordinary
+  configured_memory_permission (Or.inr (Or.inr rfl)) configuration aligned access ordinary permits
 
 private theorem no_split_memory (address : SailRV32.physaddr) (size : Nat) :
     SailRV32.Functions.split_misaligned address size 0 .CannotSplit = pure (1, (size : Int)) := by
@@ -113,7 +115,7 @@ theorem checked_memory_read {size : Nat} {before : State} {address : BitVec 32} 
   have positive : 0 < size := by rcases width with rfl | rfl | rfl <;> decide
   obtain ⟨addresses, initialized⟩ := configuration.pmpAddresses
   obtain ⟨hart, hartInitialized⟩ := configuration.hart
-  have permission := configured_memory_permission width configuration aligned (.Load .Data) (by simp)
+  have permission := configured_memory_permission width configuration aligned (.Load .Data) (by simp) trivial
   have pmp := machine_pmp_off configuration.pmpOff initialized
     (.Physaddr (address.setWidth 34)) size (.Load .Data)
   have mmio := mmio_read_excluded_sized positive hartInitialized configuration.htifDisabled ordinary
@@ -163,7 +165,7 @@ theorem checked_memory_read_error {size : Nat} {before after : State} {address :
   have positive : 0 < size := by rcases width with rfl | rfl | rfl <;> decide
   obtain ⟨addresses, initialized⟩ := configuration.pmpAddresses
   obtain ⟨hart, hartInitialized⟩ := configuration.hart
-  have permission := configured_memory_permission width configuration aligned (.Load .Data) (by simp)
+  have permission := configured_memory_permission width configuration aligned (.Load .Data) (by simp) trivial
   have pmp := machine_pmp_off configuration.pmpOff initialized
     (.Physaddr (address.setWidth 34)) size (.Load .Data)
   have mmio := mmio_read_excluded_sized positive hartInitialized configuration.htifDisabled ordinary
@@ -203,7 +205,8 @@ set_option maxRecDepth 4096 in
 theorem checked_memory_write  {size : Nat} {before after : State} {address : BitVec 32}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
     (configuration : Configured before) (aligned : address.toNat % size = 0)
-    (ordinary : OrdinaryWordAddress address) (value : BitVec (8 * size))
+    (ordinary : OrdinaryWordAddress address)
+    (ram : Configuration.ROM_END ≤ address.toNat) (value : BitVec (8 * size))
     (write : run (writeMemory (size := size) address value) before = .ok () after) :
     run (SailRV32.Functions.checked_mem_write (.Physaddr (address.setWidth 34)) size value
       (.Store .Data) .PBMT_PMA .Machine () false false false) before =
@@ -211,7 +214,7 @@ theorem checked_memory_write  {size : Nat} {before after : State} {address : Bit
   have positive : 0 < size := by rcases width with rfl | rfl | rfl <;> decide
   obtain ⟨addresses, initialized⟩ := configuration.pmpAddresses
   obtain ⟨hart, hartInitialized⟩ := configuration.hart
-  have permission := configured_memory_permission width configuration aligned (.Store .Data) (by simp)
+  have permission := configured_memory_permission width configuration aligned (.Store .Data) (by simp) ram
   have pmp := machine_pmp_off configuration.pmpOff initialized
     (.Physaddr (address.setWidth 34)) size (.Store .Data)
   have mmio := mmio_write_excluded_sized positive hartInitialized configuration.htifDisabled ordinary
@@ -239,24 +242,26 @@ theorem checked_memory_write  {size : Nat} {before after : State} {address : Bit
 
 theorem checked_word_write  {before : State} {address : BitVec 32}
     (configuration : Configured before) (aligned : address.toNat % 4 = 0)
-    (ordinary : OrdinaryWordAddress address) (value : BitVec 32) :
+    (ordinary : OrdinaryWordAddress address)
+    (ram : Configuration.ROM_END ≤ address.toNat) (value : BitVec 32) :
     run (SailRV32.Functions.checked_mem_write (.Physaddr (address.setWidth 34)) 4 value
       (.Store .Data) .PBMT_PMA .Machine () false false false) before =
         .ok (.Ok true) (wordWriteState before address.toNat value) :=
-  checked_memory_write (Or.inr (Or.inr rfl)) configuration aligned ordinary value (write_word_state before address value)
+  checked_memory_write (Or.inr (Or.inr rfl)) configuration aligned ordinary ram value (write_word_state before address value)
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 4096 in
 theorem checked_memory_announcement {size : Nat} {before : State} {address : BitVec 32}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
     (configuration : Configured before) (aligned : address.toNat % size = 0)
-    (ordinary : OrdinaryWordAddress address) :
+    (ordinary : OrdinaryWordAddress address)
+    (ram : Configuration.ROM_END ≤ address.toNat) :
     run (SailRV32.Functions.mem_write_ea (.Physaddr (address.setWidth 34)) size .Machine
       (.Store .Data) .PBMT_PMA false false false) before = .ok (.Ok ()) before := by
   have positive : 0 < size := by rcases width with rfl | rfl | rfl <;> decide
   obtain ⟨addresses, initialized⟩ := configuration.pmpAddresses
   obtain ⟨hart, hartInitialized⟩ := configuration.hart
-  have permission := configured_memory_permission width configuration aligned (.Store .Data) (by simp)
+  have permission := configured_memory_permission width configuration aligned (.Store .Data) (by simp) ram
   have pmp := machine_pmp_off configuration.pmpOff initialized
     (.Physaddr (address.setWidth 34)) size (.Store .Data)
   have mmio := mmio_write_excluded_sized positive hartInitialized configuration.htifDisabled ordinary
@@ -284,9 +289,10 @@ theorem checked_memory_announcement {size : Nat} {before : State} {address : Bit
 
 theorem checked_word_announcement {before : State} {address : BitVec 32}
     (configuration : Configured before) (aligned : address.toNat % 4 = 0)
-    (ordinary : OrdinaryWordAddress address) :
+    (ordinary : OrdinaryWordAddress address)
+    (ram : Configuration.ROM_END ≤ address.toNat) :
     run (SailRV32.Functions.mem_write_ea (.Physaddr (address.setWidth 34)) 4 .Machine
       (.Store .Data) .PBMT_PMA false false false) before = .ok (.Ok ()) before :=
-  checked_memory_announcement (Or.inr (Or.inr rfl)) configuration aligned ordinary
+  checked_memory_announcement (Or.inr (Or.inr rfl)) configuration aligned ordinary ram
 
 end Airbender.Reference.RiscV.Sail
