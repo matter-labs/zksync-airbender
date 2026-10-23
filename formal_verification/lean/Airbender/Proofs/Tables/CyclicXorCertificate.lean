@@ -75,5 +75,26 @@ theorem cyclic_xor8_check (base native : List Block)
   rw [checkBlocks_append_iff, byte_extent]
   exact ⟨chunk 1, chunk 2⟩
 
+/-- Reuse a checked seven-bit XOR column in three consecutive carry cycles. -/
+theorem cyclic_xor7_check (base native : List Block)
+    (shape : native = base ++ (base ++ base))
+    (fullExtent : (native.map Block.length).sum = 49152)
+    (baseChecked : checkBlocks (fun n => n / 128 ^^^ n % 128) 0 base = true) :
+    checkBlocks (fun n => n / 128 % 128 ^^^ n % 128) 0 native = true := by
+  rw [shape] at fullExtent
+  simp only [List.map_append, List.sum_append] at fullExtent
+  have extent : (base.map Block.length).sum = 16384 := by omega
+  have chunk (part : Fin 3) :
+      checkBlocks (fun n => n / 128 % 128 ^^^ n % 128) (16384 * part.val) base = true := by
+    refine checkBlocks_reindex (blocks := base) baseChecked ?_
+    intro n bound
+    rw [extent] at bound
+    fin_cases part <;> congr 1 <;> omega
+  rw [shape, checkBlocks_append_iff, extent]
+  refine ⟨chunk 0, ?_⟩
+  rw [checkBlocks_append_iff, extent]
+  exact ⟨chunk 1, chunk 2⟩
+
+
 end Airbender.Setup.Proofs
 
