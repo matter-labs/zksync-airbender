@@ -3,6 +3,7 @@ use riscv_transpiler::jit::JitRunnerRam;
 use crate::upstream::SecurityLevel;
 use execution_prover::config::{BackendConfiguration, ExecutionProverConfiguration};
 use gpu_circuit_prover::config::GPU_SUPPORTED_SECURITY_LEVELS;
+use gpu_circuit_prover::l1_wrap::L1_WRAP_NTT_LOG_MAX_DOMAIN;
 use gpu_prover_context::ProverContextConfig;
 
 #[derive(Clone, Copy, Debug)]
@@ -25,6 +26,14 @@ impl GpuBackendConfiguration {
     pub(super) fn context_config(self) -> ProverContextConfig {
         let mut config = self.prover_context_config;
         config.inputs_reserve_bytes = crate::memory_policy::INPUTS_RESERVE_BYTES;
+        config.h2d_staging_bytes = crate::memory_policy::H2D_STAGING_BYTES;
+        match config.proth120_ntt_log_max_domain {
+            None => config.proth120_ntt_log_max_domain = Some(L1_WRAP_NTT_LOG_MAX_DOMAIN),
+            Some(log_max_domain) => assert!(
+                log_max_domain == L1_WRAP_NTT_LOG_MAX_DOMAIN,
+                "the GPU backend requires proth120_ntt_log_max_domain {L1_WRAP_NTT_LOG_MAX_DOMAIN} for L1Wrap, got {log_max_domain}"
+            ),
+        }
         let bytes: usize = match self.memory_preset {
             MemoryPreset::Auto => return config,
             MemoryPreset::GiB30 => 30 << 30,
@@ -108,5 +117,75 @@ mod tests {
         );
         config.memory_preset = MemoryPreset::GiB21;
         assert!(std::panic::catch_unwind(|| config.context_config()).is_err());
+    }
+
+    /// Every admission floor of the L1 chain (app, recursion, feeders, wrap)
+    /// fits the 30 GiB preset the CLI pins; the ones that also fit 21 GiB are
+    /// printed.
+    #[test]
+    fn cpu_l1_chain_floors_fit_pinned_arenas() {
+        use crate::memory_policy::{
+            admit_l1_feeder, admit_l1_wrap, l1_feeder::L1_FEEDER_FLOOR_BYTES,
+            l1_wrap::L1_WRAP_WHOLE_PROOF_FLOOR_BYTES, select_arena_bytes,
+        };
+        let arena = |preset| {
+            let config = GpuBackendConfiguration {
+                memory_preset: preset,
+                ..Default::default()
+            }
+            .context_config();
+            config.device_allocation_blocks_count.unwrap() << config.allocator_block_log_size
+        };
+        let (pinned, small) = (arena(MemoryPreset::GiB30), arena(MemoryPreset::GiB21));
+        admit_l1_feeder(pinned);
+        admit_l1_wrap(pinned);
+        for (name, floor) in [
+            ("generated tier", select_arena_bytes(small)),
+            ("L1Feeder", L1_FEEDER_FLOOR_BYTES),
+            ("L1Wrap", L1_WRAP_WHOLE_PROOF_FLOOR_BYTES),
+        ] {
+            assert!(
+                floor <= pinned,
+                "the {name} floor {floor} exceeds the 30 GiB preset arena {pinned}"
+            );
+            println!(
+                "L1 chain floor {name}: {floor} bytes, fits 21 GiB: {}",
+                floor <= small
+            );
+        }
+        assert_eq!(select_arena_bytes(pinned), pinned);
+        assert_eq!(select_arena_bytes(small), small);
+    }
+
+    #[test]
+    fn cpu_m8_context_config_pr_domain() {
+        for preset in [MemoryPreset::Auto, MemoryPreset::GiB30, MemoryPreset::GiB21] {
+            let config = GpuBackendConfiguration {
+                memory_preset: preset,
+                ..Default::default()
+            };
+            assert_eq!(
+                config.context_config().proth120_ntt_log_max_domain,
+                Some(L1_WRAP_NTT_LOG_MAX_DOMAIN)
+            );
+        }
+        let mut config = GpuBackendConfiguration::default();
+        config.prover_context_config.proth120_ntt_log_max_domain = Some(L1_WRAP_NTT_LOG_MAX_DOMAIN);
+        assert_eq!(
+            config.context_config().proth120_ntt_log_max_domain,
+            Some(L1_WRAP_NTT_LOG_MAX_DOMAIN)
+        );
+        for log_max_domain in [
+            L1_WRAP_NTT_LOG_MAX_DOMAIN - 1,
+            L1_WRAP_NTT_LOG_MAX_DOMAIN + 1,
+        ] {
+            config.prover_context_config.proth120_ntt_log_max_domain = Some(log_max_domain);
+            let panic = std::panic::catch_unwind(|| config.context_config())
+                .expect_err("an explicit PR domain other than 31 must be rejected");
+            assert_eq!(
+                panic.downcast_ref::<String>().expect("named domain panic"),
+                &format!("the GPU backend requires proth120_ntt_log_max_domain {L1_WRAP_NTT_LOG_MAX_DOMAIN} for L1Wrap, got {log_max_domain}")
+            );
+        }
     }
 }

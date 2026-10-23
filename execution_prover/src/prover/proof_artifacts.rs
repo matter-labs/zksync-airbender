@@ -9,6 +9,16 @@ type ProofArtifacts = (
 );
 
 impl<B: ExecutionBackend> ExecutionProver<B> {
+    /// Shared challenge oracle for `gpu/execution_prover/tests/commitment_parity.rs`.
+    #[doc(hidden)]
+    pub fn external_challenges(
+        &self,
+        commitment: &CommitMemoryResult,
+    ) -> GKRExternalChallenges<BF, E4> {
+        self.derive_proof_artifacts(commitment.binary_handle.0, commitment)
+            .1
+    }
+
     fn derive_proof_artifacts(
         &self,
         binary_key: usize,
@@ -22,6 +32,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             circuit_families_memory_caps,
             inits_and_teardowns_memory_caps,
             delegation_circuits_memory_caps,
+            memory_partial_trees: _,
             num_trivial_unified_circuits,
             inits_and_teardowns_top_bits,
             binary_handle: _,
@@ -169,12 +180,13 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
     pub fn prove(
         &self,
         batch_id: u64,
-        commit_ticket: CommitMemoryResult,
+        mut commit_ticket: CommitMemoryResult,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
     ) -> ProveResult {
         let binary_key = commit_ticket.binary_handle.0;
         let (pow_challenge, external_challenges, proof_caps) =
             self.derive_proof_artifacts(binary_key, &commit_ticket);
+        let proof_partial_trees = std::mem::take(&mut commit_ticket.memory_partial_trees);
         let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
         let mut cache = None;
         self.prove_inner(
@@ -185,6 +197,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             pow_challenge,
             external_challenges,
             proof_caps,
+            proof_partial_trees,
             commit_ticket.profile,
         )
     }
@@ -213,7 +226,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let non_determinism_source = Arc::new(Mutex::new(Some(nd_wrapper)));
         let mut cache = Some(TraceCache::new());
         let timer = Instant::now();
-        let memory_commitment = self.commit_memory_inner(
+        let mut memory_commitment = self.commit_memory_inner(
             &mut cache,
             batch_id,
             *handle,
@@ -231,6 +244,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let challenge_timer = Instant::now();
         let (pow_challenge, external_challenges, proof_caps) =
             self.derive_proof_artifacts(binary_key, &memory_commitment);
+        let proof_partial_trees = std::mem::take(&mut memory_commitment.memory_partial_trees);
         let external_challenges_time = challenge_timer.elapsed();
         let final_register_values = memory_commitment.final_register_values;
         let final_pc = memory_commitment.final_pc;
@@ -244,6 +258,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             pow_challenge,
             external_challenges,
             proof_caps,
+            proof_partial_trees,
             memory_commitment.profile,
         );
         let proof_pass = proof_timer.elapsed();
@@ -413,6 +428,82 @@ mod tests {
                 kind,
             );
             assert_eq!(ct, expected);
+        }
+    }
+
+    /// Every dispatched proof request carries its own instance's trees, whether
+    /// it was seeded from the trace cache or rebuilt by replay after eviction.
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn cpu_partial_trees_reach_cached_and_replayed_proofs() {
+        use crate::test_support::{TestBackend, PROOF_PARTIAL_TREES};
+        use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+        const BATCH: u64 = 8030;
+        let program = vec![0x0001_2083, 0xffdf_f06f]; // lw x1, 0(x2); jal x0, -4
+        let cycles = 4 * riscv_transpiler::jit::TRACE_CHUNK_LEN as u32;
+        let mut prover = ExecutionProver::<TestBackend>::new();
+        let handle = prover.add_binary(
+            ExecutionKind::Unrolled,
+            MachineType::FullUnsigned,
+            program.clone(),
+            program,
+            Some(cycles),
+            &[ProofProfile::Standard],
+        );
+        let source = || Arc::new(Mutex::new(Some(QuasiUARTSource::new_with_reads(vec![]))));
+        let mut cache = Some(TraceCache::new());
+        let mut commitment =
+            prover.commit_memory_inner(&mut cache, BATCH, handle, source(), ProofProfile::Standard);
+        let instances: BTreeSet<_> = commitment.memory_partial_trees.keys().copied().collect();
+        let entries = &mut cache.as_mut().unwrap().entries;
+        assert!(
+            entries.len() >= 2,
+            "the batch needs cached and evicted instances"
+        );
+        // Evict the oldest half, as `trim_cache` does under host-pool pressure.
+        let evicted: BTreeSet<_> = entries
+            .drain(..entries.len() / 2)
+            .map(|entry| {
+                prover.free_traces(entry.inits_and_teardowns, entry.tracing_data);
+                (entry.circuit_type, entry.sequence_id)
+            })
+            .collect();
+        let cached: BTreeSet<_> = entries
+            .iter()
+            .map(|entry| (entry.circuit_type, entry.sequence_id))
+            .collect();
+        assert!(evicted.is_subset(&instances) && cached.is_subset(&instances));
+        let (pow_challenge, external_challenges, proof_caps) =
+            prover.derive_proof_artifacts(handle.0, &commitment);
+        let proof_partial_trees = std::mem::take(&mut commitment.memory_partial_trees);
+        prover.prove_inner(
+            &mut cache,
+            BATCH,
+            handle.0,
+            source(),
+            pow_challenge,
+            external_challenges,
+            proof_caps,
+            proof_partial_trees,
+            ProofProfile::Standard,
+        );
+        let dispatched: Vec<_> = PROOF_PARTIAL_TREES
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(batch, ..)| *batch == BATCH)
+            .map(|(_, circuit_type, sequence_id, trees)| ((*circuit_type, *sequence_id), *trees))
+            .collect();
+        assert_eq!(
+            dispatched
+                .iter()
+                .map(|(key, _)| *key)
+                .collect::<BTreeSet<_>>(),
+            instances
+        );
+        assert_eq!(dispatched.len(), instances.len(), "one proof per instance");
+        for (key, trees) in dispatched {
+            assert_eq!(trees, Some(key), "{key:?} carried another instance's trees");
         }
     }
 

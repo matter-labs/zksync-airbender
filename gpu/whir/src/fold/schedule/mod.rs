@@ -331,6 +331,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
                     base_log_rows_per_leaf,
                     base_log_total_leaves_count,
                     base_layers_count,
+                    holder.partial_tree_reduction_layers(),
                     device_query_indexes_for_base,
                     stream,
                 )

@@ -1,0 +1,149 @@
+{
+  "add_sub_lui_auipc_mop": {
+    "program_sha3_256": "8e290b4e63a0cacb6d84080a0811d33bdda2c6ad93c484b20dbc742efda80483",
+    "predicted_traffic": [
+      31,
+      66,
+      41,
+      16
+    ]
+  },
+  "bigint_with_extended_control": {
+    "program_sha3_256": "56ca3076cd84b1bd51880b78e7bd51bb7ac09be74286315a9358ca310401603a",
+    "predicted_traffic": [
+      114,
+      553,
+      336,
+      176,
+      96,
+      57
+    ]
+  },
+  "blake2_g_function": {
+    "program_sha3_256": "84ad409a17df121c039471e1bcb50be79f385b604f4d0ecf3907deb3e5c87d3c",
+    "predicted_traffic": [
+      56,
+      192,
+      96,
+      48,
+      41
+    ]
+  },
+  "blake2_with_extended_control": {
+    "program_sha3_256": "24909ef03e41c844a7681d3e9673b4a75a26424670df778915d42d3360c75e6a",
+    "predicted_traffic": [
+      226,
+      1292,
+      640,
+      336,
+      160,
+      80,
+      57,
+      16
+    ]
+  },
+  "inits_and_teardowns": {
+    "program_sha3_256": "2120b797e8c9e32fb977185095c067dacf5cbb8f43cde111feb4db68e8b7b99b",
+    "predicted_traffic": [
+      32,
+      32,
+      16
+    ]
+  },
+  "jump_branch_slt": {
+    "program_sha3_256": "dda0055b2449fe1e3ab5dcf9d60ac66d17fe0c36d335d2de008e928c28455700",
+    "predicted_traffic": [
+      31,
+      66,
+      57,
+      16
+    ]
+  },
+  "keccak_chi5": {
+    "program_sha3_256": "3847e063bb7d95f6e9483e695ef055a3deb2b4d6cdbd718b7905042ad2eb3b64",
+    "predicted_traffic": [
+      67,
+      121,
+      64,
+      32,
+      25
+    ]
+  },
+  "keccak_column_parity": {
+    "program_sha3_256": "20bce60ce9507f24c43d5fceec51609d2a428b1d7cfbe78dc9c8acda3e0f67a9",
+    "predicted_traffic": [
+      76,
+      277,
+      144,
+      64,
+      41
+    ]
+  },
+  "keccak_special5": {
+    "program_sha3_256": "b2a2e9e99d02017eacfa4433bae8db7d3e5367282d7e553b6170a68fe9c4622e",
+    "predicted_traffic": [
+      92,
+      345,
+      176,
+      96,
+      41,
+      16
+    ]
+  },
+  "keccak_theta_rho": {
+    "program_sha3_256": "a51b86a58eade91005e843e6245bc58ae40c2d54a2095eee6a7a9f6ef5da1616",
+    "predicted_traffic": [
+      75,
+      277,
+      128,
+      64,
+      48,
+      25
+    ]
+  },
+  "mem_subword_only": {
+    "program_sha3_256": "fb8605626062d93e0d7426057f75d7aca84ee2c8185d4fcb7268a4a6940d0a8a",
+    "predicted_traffic": [
+      33,
+      67,
+      49,
+      16
+    ]
+  },
+  "mem_word_only": {
+    "program_sha3_256": "449556c04fae6b9b682a9359523980a14d77c02aff4eabfaebb67b507cdf06e6",
+    "predicted_traffic": [
+      32,
+      50,
+      42,
+      16
+    ]
+  },
+  "shift_binop": {
+    "program_sha3_256": "b00375114ba800fd7c4c93f167df94b2d9c0eea845eec4bbb9c55b2cf813e816",
+    "predicted_traffic": [
+      33,
+      58,
+      41,
+      32
+    ]
+  },
+  "unified_reduced_machine": {
+    "program_sha3_256": "a6894cf3c50265fb7eef2fc5ad6cc4313044e486f6a81be586b43a184aa06f65",
+    "predicted_traffic": [
+      44,
+      99,
+      73,
+      48
+    ]
+  },
+  "unsigned_mul_div": {
+    "program_sha3_256": "d139cb6fa2f911a54538d771cd9904f5cebdd37c49351e89573eaf3268471f18",
+    "predicted_traffic": [
+      33,
+      98,
+      57,
+      48
+    ]
+  }
+}

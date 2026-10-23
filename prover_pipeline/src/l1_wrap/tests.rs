@@ -260,9 +260,9 @@ fn wrap_rejects_an_invalid_feeder_proof_before_proving() {
 
 #[test]
 #[cfg(not(feature = "gpu"))]
-fn gpu_target_requires_gpu_feature() {
+fn gpu_l1_target_requires_gpu_feature() {
     let config = ProgramProverConfig {
-        target: ProofTarget::RecursionUnified,
+        target: ProofTarget::L1,
         backend: ProverBackend::Gpu,
         ..Default::default()
     };
@@ -343,25 +343,11 @@ fn l1_activation_accepts_cpu_wrap21() {
 }
 
 #[test]
-fn l1_activation_rejects_gpu_before_registration() {
-    for target in [ProofTarget::L1, ProofTarget::L1Feeder] {
-        let error = ProgramProver::new(
-            unused_source(),
-            ProgramProverConfig {
-                target,
-                backend: ProverBackend::Gpu,
-                ..Default::default()
-            },
-        )
-        .err()
-        .expect(
-            "GPU L1 targets must be rejected before reading the source or registering binaries",
-        );
-        assert_eq!(
-            error,
-            format!("ProofTarget::{target:?} is not supported by the GPU backend")
-        );
-    }
+#[cfg(feature = "gpu")]
+fn l1_activation_accepts_gpu_wrap21() {
+    assert_eq!(L1_WRAP_KIND, ExecutionKind::L1Wrap21);
+    validate_l1_wrap_activation().unwrap();
+    validate_l1_wrap_backend(ProverBackend::Gpu).unwrap();
 }
 
 #[test]

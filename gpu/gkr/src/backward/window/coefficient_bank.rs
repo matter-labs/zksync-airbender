@@ -243,7 +243,7 @@ fn translate_recipe_inner(
 
     for (product_index, product) in recipe.terms.iter().enumerate() {
         let monomial = translate_product(product, recipe_index, product_index)?;
-        let mut scalar = BF::from_u32_with_reduction(product.scalar);
+        let mut scalar = crate::backward::babybear_from_canonical(product.scalar);
         for reference in &product.inits_and_teardowns_top_bits {
             let top_bits = runtime_top_bits.get(reference.set_index).copied().ok_or(
                 CoefficientBankError::MissingTopBits {
@@ -327,7 +327,7 @@ fn translate_product(
     }
 
     let mut monomial = BankMonomial {
-        coeff: BF::from_u32_with_reduction(product.scalar),
+        coeff: crate::backward::babybear_from_canonical(product.scalar),
         batch_power: batch as u16,
         ..BankMonomial::default()
     };
@@ -573,7 +573,7 @@ pub(crate) fn build_window_coefficient_bank(
             WindowCoefficientPlan::Scaled { recipe, scalar } => (
                 recipe,
                 BWD_COEFF_PLAN_SCALED,
-                BF::from_u32_with_reduction(*scalar),
+                crate::backward::babybear_from_canonical(*scalar),
                 0,
             ),
             WindowCoefficientPlan::LinearBasis { recipe, limb } => {
@@ -803,14 +803,14 @@ mod cpu_tests {
 
     fn product(scalar: u32, challenges: Vec<CoeffChallenge>) -> CoeffProduct {
         CoeffProduct {
-            scalar,
+            scalar: scalar.into(),
             challenges,
             inits_and_teardowns_top_bits: Vec::new(),
         }
     }
 
     fn recipe(terms: Vec<CoeffProduct>) -> NormalizedCoefficientRecipe {
-        NormalizedCoefficientRecipe::from_terms(terms)
+        NormalizedCoefficientRecipe::from_terms(gpu_gkr_compiler::ElementModel::BABYBEAR, terms)
     }
 
     #[test]

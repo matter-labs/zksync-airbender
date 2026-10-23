@@ -10,10 +10,10 @@
 
 use crate::precomputations::{
     build_unrolled_circuit_precomputation, get_common_precomputations_for_all,
-    CircuitPrecomputations,
+    get_inits_and_teardowns_precomputations, CircuitPrecomputations,
 };
 use crate::upstream::{
-    GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel, ROM_WORD_SIZE,
+    GKRExternalChallenges, MerkleTreeCapVarLength, ProofProfile, SecurityLevel, ROM_WORD_SIZE,
 };
 use crate::A;
 use common_constants::delegation_types::keccak_f1600::{
@@ -35,6 +35,7 @@ use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use era_cudart::result::CudaResult;
 use execution_prover_model::MachineType;
 use gpu_core::primitives::field::{BF, E4};
+use gpu_trace::trace::memory_transfer::PartialTrees;
 use gpu_trace::trace::tracing_data::{
     DelegationTracingDataHostSource, TracingDataHost, UnrolledTracingDataHost,
 };
@@ -117,7 +118,9 @@ fn keccak_sizing_row<const WORDS: usize, const LANES: usize>(
         }
         for (words, distance) in witness
             .indirect_writes
-            .chunks_exact_mut(2)
+            .as_chunks_mut::<2>()
+            .0
+            .iter_mut()
             .zip(lane_read_distances)
         {
             for word in words {
@@ -163,9 +166,7 @@ fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<Tr
         ))))
     }
     match circuit {
-        CircuitType::L1Wrap21 | CircuitType::Unrolled(UnrolledCircuitType::Unified22) => {
-            panic!("GPU backend does not support this CPU-only circuit type")
-        }
+        CircuitType::L1Wrap21 => panic!("L1Wrap is not enumerated by the all-circuit sweep; its capacity cases run through the bounded harness (tests/l1_memory.rs) and its policy is presets::l1_wrap"),
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => Ok(None),
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => delegation(
             DelegationCircuitType::BigIntWithControl,
@@ -234,7 +235,7 @@ fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<Tr
                 },
             )?)),
         )),
-        CircuitType::Unrolled(UnrolledCircuitType::Unified) => Ok(Some(TracingDataHost::Unrolled(
+        CircuitType::Unrolled(UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22) => Ok(Some(TracingDataHost::Unrolled(
             UnrolledTracingDataHost::Unified(pinned_filled_trace(
                 rows,
                 UnifiedOpcodeTracingDataWithTimestamp::NonMem(
@@ -249,18 +250,25 @@ fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<Tr
 }
 
 /// One circuit's reusable synthetic inputs. `memory_caps` stays `None` until
-/// the runner has fed back the warm GPU memory commitment for this circuit.
+/// the runner has fed back the warm GPU memory commitment for this circuit;
+/// `memory_partial_trees` too, for profiles whose commitment persists them.
 pub(crate) struct PreparedCircuit {
     pub(crate) circuit: CircuitType,
+    pub(crate) profile: ProofProfile,
     pub(crate) precomputations: CircuitPrecomputations,
     pub(super) security_level: SecurityLevel,
     pub(super) inputs: SyntheticInputs,
     pub(super) memory_caps: Option<Vec<MerkleTreeCapVarLength>>,
+    pub(super) memory_partial_trees: Option<PartialTrees>,
 }
 
 impl PreparedCircuit {
     pub(crate) fn set_memory_caps(&mut self, memory_caps: Vec<MerkleTreeCapVarLength>) {
         self.memory_caps = Some(memory_caps);
+    }
+
+    pub(crate) fn set_memory_partial_trees(&mut self, trees: PartialTrees) {
+        self.memory_partial_trees = Some(trees);
     }
 }
 
@@ -287,29 +295,55 @@ impl SyntheticInputFactory {
         }
     }
 
+    pub(crate) fn for_l1_capacity(security_level: SecurityLevel) -> Self {
+        let worker = Worker::new();
+        let common = get_inits_and_teardowns_precomputations(&worker, security_level);
+        Self {
+            worker,
+            security_level,
+            binary_image: vec![0; ROM_WORD_SIZE],
+            text_section: vec![0; ROM_WORD_SIZE],
+            common,
+        }
+    }
+
     /// Precomputations for `circuit`: production delegations and i&t from the
     /// binary-independent map, unrolled families and the unified circuit from
     /// the per-binary builder over the zero image; Blake2G retained for proof-matrix coverage.
-    fn precomputations(&self, circuit: CircuitType) -> CircuitPrecomputations {
+    fn precomputations(
+        &self,
+        circuit: CircuitType,
+        profile: ProofProfile,
+    ) -> CircuitPrecomputations {
         match circuit {
-            CircuitType::L1Wrap21 | CircuitType::Unrolled(UnrolledCircuitType::Unified22) => {
-                panic!("GPU backend does not support this CPU-only circuit type")
-            }
             CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => {
                 let setup = execution_prover::setup::build_delegation_setup(
                     DelegationCircuitType::Blake2GFunction,
                     &self.worker,
                 );
-                CircuitPrecomputations::from_canonical(circuit, setup, self.security_level)
-                    .expect("Blake2GFunction precomputations must be supported")
+                CircuitPrecomputations::from_canonical(
+                    circuit,
+                    setup,
+                    self.security_level,
+                    &[ProofProfile::Standard],
+                )
+                .expect("Blake2GFunction precomputations must be supported")
             }
+            CircuitType::L1Wrap21 => panic!("L1Wrap is not enumerated by the all-circuit sweep; its capacity cases run through the bounded harness (tests/l1_memory.rs) and its policy is presets::l1_wrap"),
             CircuitType::Delegation(_)
             | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
+                assert_eq!(
+                    profile,
+                    ProofProfile::Standard,
+                    "common circuits are prepared at ProofProfile::Standard"
+                );
                 self.common[&circuit].clone()
             }
             CircuitType::Unrolled(unrolled) => {
                 let machine_type = match unrolled {
-                    UnrolledCircuitType::Unified => MachineType::Reduced,
+                    UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22 => {
+                        MachineType::Reduced
+                    }
                     _ => MachineType::FullUnsigned,
                 };
                 build_unrolled_circuit_precomputation(
@@ -319,20 +353,31 @@ impl SyntheticInputFactory {
                     &self.text_section,
                     &self.worker,
                     self.security_level,
+                    &[profile],
                 )
             }
         }
     }
 
     pub(crate) fn prepare(&self, circuit: CircuitType) -> CudaResult<PreparedCircuit> {
-        let precomputations = self.precomputations(circuit);
+        self.prepare_profile(circuit, ProofProfile::Standard)
+    }
+
+    pub(crate) fn prepare_profile(
+        &self,
+        circuit: CircuitType,
+        profile: ProofProfile,
+    ) -> CudaResult<PreparedCircuit> {
+        let precomputations = self.precomputations(circuit, profile);
         let inputs = build_inputs(circuit, &precomputations)?;
         Ok(PreparedCircuit {
             circuit,
+            profile,
             precomputations,
             security_level: self.security_level,
             inputs,
             memory_caps: None,
+            memory_partial_trees: None,
         })
     }
 }
@@ -341,7 +386,7 @@ fn build_inputs(
     circuit: CircuitType,
     precomputations: &CircuitPrecomputations,
 ) -> CudaResult<SyntheticInputs> {
-    let compiled = precomputations.gkr_programs.compiled_circuit();
+    let compiled = precomputations.baby_bear().gkr_programs.compiled_circuit();
     let tracing_data = build_tracing_data(circuit, circuit.get_domain_size())?;
     let num_sets = compiled.memory_layout.teardown_sets.len();
     let inits_and_teardowns = if carries_inits_and_teardowns(circuit) {
@@ -362,7 +407,9 @@ fn carries_inits_and_teardowns(circuit: CircuitType) -> bool {
     matches!(
         circuit,
         CircuitType::Unrolled(
-            UnrolledCircuitType::InitsAndTeardowns | UnrolledCircuitType::Unified
+            UnrolledCircuitType::InitsAndTeardowns
+                | UnrolledCircuitType::Unified
+                | UnrolledCircuitType::Unified22
         )
     )
 }

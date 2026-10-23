@@ -90,6 +90,7 @@ fn prove(
             tracing_data: Some(empty_trace()),
             external_challenges: challenges(),
             memory_caps: memory_caps(committed.merkle_tree_caps),
+            memory_partial_trees: None,
             security_level: SECURITY_LEVEL,
             commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
             profile: ProofProfile::Standard,

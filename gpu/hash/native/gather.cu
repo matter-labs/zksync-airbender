@@ -112,6 +112,38 @@ EXTERN __global__ void ab_gather_merkle_paths_from_rows_physical_kernel(const un
                            layers_count, tree_bottom);
 }
 
+EXTERN __launch_bounds__(1024) __global__
+    void ab_gather_merkle_paths_from_rows_physical_block_kernel(const unsigned *indexes, const unsigned indexes_count, const bf *values,
+                                                                const unsigned log_rows_per_leaf, const unsigned cols_count,
+                                                                const unsigned log_total_leaves_count, const u32 *tree_bottom, const unsigned layers_count,
+                                                                const unsigned reduction_layers, u32 *merkle_paths) {
+  extern __shared__ __align__(32) uint8_t frontier_smem[];
+  const unsigned idx = blockIdx.x;
+  if (idx >= indexes_count)
+    return;
+  const unsigned query_index = indexes[idx];
+  const unsigned log_rows_count = log_total_leaves_count + log_rows_per_leaf;
+  const unsigned log_subtrees_count = log_total_leaves_count - reduction_layers;
+  const unsigned subtree_block = bitreverse_low_bits(query_index >> reduction_layers, log_subtrees_count);
+  auto hash_leaf = [=](const unsigned slot) {
+    const unsigned block_index = (slot << log_subtrees_count) | subtree_block;
+    auto read = [=](const unsigned offset) {
+      const unsigned row_slot = offset & ((1u << log_rows_per_leaf) - 1);
+      const unsigned col = offset >> log_rows_per_leaf;
+      const unsigned row = (block_index << log_rows_per_leaf) + row_slot;
+      const auto address = values + row + (col << log_rows_count);
+      return col < cols_count ? bf::into_raw_u32(load_cs(address)) : 0;
+    };
+    digest state;
+    initialize(state.words);
+    u32 t = 0;
+    absorb_stream(state.words, t, cols_count << log_rows_per_leaf, read);
+    return state;
+  };
+  collect_merkle_path_block(reinterpret_cast<digest *>(frontier_smem), merkle_paths + idx * STATE_SIZE, indexes_count * STATE_SIZE, query_index,
+                            log_total_leaves_count, reduction_layers, layers_count, tree_bottom, true, hash_leaf);
+}
+
 // Mirror of `GpuGatherTreeCapsDesc` in gpu/hash/src/blake2s/gather.rs.
 // Consolidated-tree form: a single base pointer + per-coset stride lets the
 // kernel gather all per-coset cap regions from one contiguous tree backing.
@@ -524,6 +556,70 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_single_coset_p
                                                                                                const u32 *query_indexes, const u32 indexes_count) {
   gather_merkle_paths_partial_for_queries_physical<true>(desc, log_lde_factor, log_rows_per_leaf, log_total_leaves_count, stride_per_coset_in_digests,
                                                          layers_count, query_indexes, indexes_count, resident_coset);
+}
+
+template <bool SINGLE_COSET>
+DEVICE_FORCEINLINE void gather_merkle_paths_partial_for_queries_physical_block(const gpu_oracle_partial_path_desc desc, const u32 log_lde_factor,
+                                                                               const u32 log_rows_per_leaf, const u32 log_total_leaves_count,
+                                                                               const u32 stride_per_coset_in_digests, const u32 layers_count,
+                                                                               const u32 reduction_layers, const u32 *query_indexes, const u32 indexes_count,
+                                                                               const u32 resident_coset) {
+  extern __shared__ __align__(32) uint8_t frontier_smem[];
+  if (desc.columns_count == 0u)
+    return;
+  const unsigned idx = blockIdx.x;
+  if (idx >= indexes_count)
+    return;
+  const unsigned q = query_indexes[idx];
+  const unsigned lde_mask = log_lde_factor == 0u ? 0u : ((1u << log_lde_factor) - 1u);
+  const unsigned coset = q & lde_mask;
+  if constexpr (SINGLE_COSET) {
+    if (coset != resident_coset)
+      return;
+  }
+  const unsigned local_coset = SINGLE_COSET ? 0u : coset;
+  const unsigned query_index = q >> log_lde_factor;
+  const unsigned log_domain_size = log_total_leaves_count + log_rows_per_leaf;
+  const bf *values = reinterpret_cast<const bf *>(desc.cosets_ptr) + (size_t)local_coset * ((size_t)desc.columns_count << log_domain_size);
+  const u32 *tree_bottom = reinterpret_cast<const u32 *>(desc.partial_tree_ptr) + (size_t)local_coset * (size_t)stride_per_coset_in_digests * STATE_SIZE;
+  u32 *merkle_paths = reinterpret_cast<u32 *>(desc.slab_dst_ptr) + idx * layers_count * STATE_SIZE;
+  const unsigned cols_count = desc.columns_count;
+  const unsigned log_subtrees_count = log_total_leaves_count - reduction_layers;
+  const unsigned subtree_block = bitreverse_low_bits(query_index >> reduction_layers, log_subtrees_count);
+  auto hash_leaf = [=](const unsigned slot) {
+    const unsigned block_index = (slot << log_subtrees_count) | subtree_block;
+    auto read = [=](const unsigned offset) {
+      const unsigned row_slot = offset & ((1u << log_rows_per_leaf) - 1);
+      const unsigned col = offset >> log_rows_per_leaf;
+      const unsigned row = (block_index << log_rows_per_leaf) + row_slot;
+      const auto address = values + row + (col << log_domain_size);
+      return col < cols_count ? bf::into_raw_u32(load_cs(address)) : 0;
+    };
+    digest state;
+    initialize(state.words);
+    u32 t = 0;
+    absorb_stream(state.words, t, cols_count << log_rows_per_leaf, read);
+    return state;
+  };
+  collect_merkle_path_block(reinterpret_cast<digest *>(frontier_smem), merkle_paths, STATE_SIZE, query_index, log_total_leaves_count, reduction_layers,
+                            layers_count, tree_bottom, true, hash_leaf);
+}
+
+EXTERN __launch_bounds__(1024) __global__
+    void ab_gather_merkle_paths_partial_for_queries_physical_block_kernel(__grid_constant__ const gpu_oracle_partial_path_desc desc, const u32 log_lde_factor,
+                                                                          const u32 log_rows_per_leaf, const u32 log_total_leaves_count,
+                                                                          const u32 stride_per_coset_in_digests, const u32 layers_count,
+                                                                          const u32 reduction_layers, const u32 *query_indexes, const u32 indexes_count) {
+  gather_merkle_paths_partial_for_queries_physical_block<false>(desc, log_lde_factor, log_rows_per_leaf, log_total_leaves_count, stride_per_coset_in_digests,
+                                                                layers_count, reduction_layers, query_indexes, indexes_count, 0);
+}
+
+EXTERN __launch_bounds__(1024) __global__ void ab_gather_merkle_paths_partial_for_queries_single_coset_physical_block_kernel(
+    __grid_constant__ const gpu_oracle_partial_path_desc desc, const u32 resident_coset, const u32 log_lde_factor, const u32 log_rows_per_leaf,
+    const u32 log_total_leaves_count, const u32 stride_per_coset_in_digests, const u32 layers_count, const u32 reduction_layers, const u32 *query_indexes,
+    const u32 indexes_count) {
+  gather_merkle_paths_partial_for_queries_physical_block<true>(desc, log_lde_factor, log_rows_per_leaf, log_total_leaves_count, stride_per_coset_in_digests,
+                                                               layers_count, reduction_layers, query_indexes, indexes_count, resident_coset);
 }
 
 // Sibling of `ab_gather_merkle_paths_partial_for_queries_kernel` for the WHIR

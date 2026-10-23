@@ -116,6 +116,34 @@ jobs:
           shutil.copy2(executables[0], "artifacts/gpu_circuit_prover_tests")
           PYTHON
 
+      - name: Compile execution prover GPU tests
+        shell: bash
+        env:
+          CUDAARCHS: "80;89;90;120"
+        run: |
+          cargo +$RUST_TOOLCHAIN test -p gpu_execution_prover --release --target x86_64-unknown-linux-gnu --tests --features verifiers --no-run --message-format=json > artifacts/execution-test-build.json
+          python3 - <<'PYTHON'
+          import json, shutil
+          from collections import defaultdict
+          executables = defaultdict(list)
+          with open("artifacts/execution-test-build.json") as source:
+              for line in source:
+                  artifact = json.loads(line)
+                  if (artifact.get("reason") == "compiler-artifact"
+                          and "test" in artifact["target"]["kind"]
+                          and artifact["profile"]["test"]
+                          and artifact.get("executable")):
+                      executables[artifact["target"]["name"]].append(artifact["executable"])
+          for name in ("l1_parity", "program", "commitment_parity"):
+              assert len(executables[name]) == 1, (name, executables[name])
+              shutil.copy2(executables[name][0], f"artifacts/gpu_execution_prover_{name}_tests")
+          PYTHON
+
+      - name: GPU crate CPU tests
+        env:
+          CUDAARCHS: "80;89;90;120"
+        run: cargo +$RUST_TOOLCHAIN test -p gpu_execution_prover -p gpu_circuit_prover --release --target x86_64-unknown-linux-gnu --lib ::cpu_
+
       - name: Record compiler cache statistics
         if: always() && steps.sccache.outcome == 'success'
         run: |

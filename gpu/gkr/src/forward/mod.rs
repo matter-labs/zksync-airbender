@@ -34,6 +34,40 @@ pub struct ForwardOutputSlabTarget<E> {
     pub len: usize,
 }
 
+impl<B, E> GpuGKRForwardOutput<B, E> {
+    pub(crate) fn new(
+        tracing_ranges: Vec<Range>,
+        storage: GpuGKRStorage<B, E>,
+        initial_layer_for_sumcheck: usize,
+        dimension_reducing_inputs: BTreeMap<
+            usize,
+            BTreeMap<OutputType, DimensionReducingInputOutput>,
+        >,
+    ) -> Self {
+        Self {
+            tracing_ranges,
+            storage,
+            initial_layer_for_sumcheck,
+            dimension_reducing_inputs,
+        }
+    }
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        Vec<Range>,
+        GpuGKRStorage<B, E>,
+        usize,
+        BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>>,
+    ) {
+        (
+            self.tracing_ranges,
+            self.storage,
+            self.initial_layer_for_sumcheck,
+            self.dimension_reducing_inputs,
+        )
+    }
+}
+
 impl<E> GpuGKRTranscriptHandoff<E> {
     pub fn device_flat_evaluations(&self) -> &DeviceSlice<E> {
         &self.flat_evaluations_backing[..self.flat_total_len]
@@ -108,11 +142,12 @@ pub use recompute::GkrMemoryPolicy;
 pub(crate) mod vm;
 
 use crate::upstream::{
-    DimensionReducingInputOutput, Field, FieldExtension, GKRAddress, GKRCircuitArtifact,
-    GKRExternalChallenges, OutputType,
+    DimensionReducingInputOutput, Field, GKRAddress, GKRCircuitArtifact, GKRExternalChallenges,
+    OutputType,
 };
-use dimension_reducing::{
+pub(crate) use dimension_reducing::{
     prepare_dimension_reduction_forward, schedule_prepared_dimension_reduction_forward,
+    LoweredSlotInitialInput, LoweredSlotOutput, PreparedDimensionReductionForward,
 };
 
 // The optional slab target transfers ownership into the scheduled forward pass.
@@ -148,6 +183,7 @@ pub fn schedule_forward_pass(
         setup_trace_holder.log_tree_cap_size,
         &stage1.memory_trace_holder,
         &stage1.witness_trace_holder,
+        stage1.merged_witness_offset,
     )?;
     let storage_layout = std::sync::Arc::new(
         crate::storage_layout::GpuGKRStorageLayout::from_artifact_with_tower(
@@ -315,9 +351,13 @@ fn bind_scratch_space_into_storage<E>(
             .layers
             .resize_with(1, crate::GpuGKRLayerSource::default);
     }
-    let prev = storage.layers[0]
-        .base_class_backings
-        .insert(AddressClass::ScratchSpace, Arc::clone(scratch_space_trace));
+    let prev = storage.layers[0].base_class_backings.insert(
+        AddressClass::ScratchSpace,
+        crate::ClassBacking {
+            backing: Arc::clone(scratch_space_trace),
+            offset: 0,
+        },
+    );
     assert!(
         prev.is_none(),
         "scratch_space backing already registered for layer 0 AddressClass::ScratchSpace"

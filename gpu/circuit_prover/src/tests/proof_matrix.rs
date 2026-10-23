@@ -56,6 +56,7 @@ fn run_mixed_circuit_multi_schedule_test() {
                 transfers,
                 &plan,
                 ProofMemoryPolicy::default(),
+                crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
                 context,
             )
             .unwrap(),
@@ -1035,6 +1036,14 @@ fn run_blake2_g_function_profile_test() {
 #[ignore]
 fn run_unified_proof_parity_test() {
     run_proof_parity(&prepare_unified_proof_fixture());
+}
+
+#[test]
+#[ignore]
+fn run_unified_merged_proof_parity_test() {
+    run_proof_parity(&prepare_unified_proof_fixture_with_mode(
+        CommitmentMode::MergedMemoryAndWitness,
+    ));
 }
 
 /// Full e2e unified proof parity + closure-to-ONE.

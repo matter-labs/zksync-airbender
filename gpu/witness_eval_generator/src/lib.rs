@@ -1,3 +1,5 @@
+use ::field::baby_bear::base::BabyBearField;
+use ::field::{PrimeField, Proth120};
 use cs::definitions::{GKRAddress, Variable, VirtualSetupPoly};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use cs::oracle::Placeholder;
@@ -7,6 +9,7 @@ use cs::witness_placer::graph_description::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
 mod boolean;
@@ -24,9 +27,30 @@ pub(crate) enum ColumnAddress {
     OptimizedOut(usize),
 }
 
-pub type F = ::field::baby_bear::base::BabyBearField;
+pub type F = BabyBearField;
 
-pub struct Generator {
+pub trait GpuWitnessField: PrimeField + serde::de::DeserializeOwned {
+    fn push_field_constant(generator: &mut Generator<Self>, value: Self) -> usize;
+}
+
+impl GpuWitnessField for BabyBearField {
+    fn push_field_constant(generator: &mut Generator<Self>, value: Self) -> usize {
+        generator.emit_constant("f", value)
+    }
+}
+
+impl GpuWitnessField for Proth120 {
+    fn push_field_constant(generator: &mut Generator<Self>, value: Self) -> usize {
+        let new_ident = generator.create_var();
+        let [l0, l1, l2, l3]: [u32; 4] = std::array::from_fn(|i| (value.0 >> (32 * i)) as u32);
+        generator.push(&format!(
+            "CONSTANT_PR({new_ident}, {l0}, {l1}, {l2}, {l3})\n"
+        ));
+        new_ident
+    }
+}
+
+pub struct Generator<F: GpuWitnessField = BabyBearField> {
     write_into_memory: bool,
     layout: BTreeMap<Variable, ColumnAddress>,
     num_lookup_mappings: usize,
@@ -44,9 +68,10 @@ pub struct Generator {
     // emitted (as `SET_WITNESS_PLACE_OR_ZERO`). Subsequent writes stay `IF`.
     witness_zero_default_emitted: BTreeSet<usize>,
     written_lookup_mapping_indices: BTreeSet<usize>,
+    _field: PhantomData<F>,
 }
 
-impl Generator {
+impl<F: GpuWitnessField> Generator<F> {
     fn new(
         layout: &BTreeMap<Variable, ColumnAddress>,
         num_lookup_mappings: usize,
@@ -71,6 +96,7 @@ impl Generator {
             conditional_only_witness: BTreeSet::new(),
             witness_zero_default_emitted: BTreeSet::new(),
             written_lookup_mapping_indices: BTreeSet::new(),
+            _field: PhantomData,
         }
     }
 
@@ -509,7 +535,7 @@ impl Generator {
     }
 }
 
-pub fn generate_from_files(
+pub fn generate_from_files_for_field<F: GpuWitnessField>(
     layout_path: impl AsRef<Path>,
     ssa_path: impl AsRef<Path>,
     perform_assignments_to_memory: bool,
@@ -526,6 +552,30 @@ pub fn generate_from_files(
     ))
 }
 
+pub fn generate_from_files(
+    layout_path: impl AsRef<Path>,
+    ssa_path: impl AsRef<Path>,
+    perform_assignments_to_memory: bool,
+) -> Result<String, Box<dyn std::error::Error>> {
+    generate_from_files_for_field::<BabyBearField>(
+        layout_path,
+        ssa_path,
+        perform_assignments_to_memory,
+    )
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GeneratedField {
+    BabyBear,
+    Proth120,
+}
+
+/// Repo-relative paths of the committed layout and SSA inputs.
+pub struct GeneratorInputs {
+    pub layout_json: &'static str,
+    pub ssa_json: &'static str,
+}
+
 /// A circuit whose witness-generation CUDA body is generated from committed
 /// SSA/layout inputs and checked in under `circuit_defs/`.
 ///
@@ -535,10 +585,12 @@ pub fn generate_from_files(
 /// `regenerate_committed` binary refreshes the artifacts after an intentional
 /// codegen change.
 pub struct GeneratedCircuit {
-    /// Base name of the `cs/compiled_circuits/{id}_{layout,ssa}_gkr.json` inputs.
+    /// Circuit name used in diagnostics.
     pub id: &'static str,
+    pub inputs: GeneratorInputs,
     /// Repo-relative path of the checked-in `witness_generation_fn.cuh`.
     pub committed_cuh: &'static str,
+    pub field: GeneratedField,
 }
 
 impl GeneratedCircuit {
@@ -546,9 +598,16 @@ impl GeneratedCircuit {
     /// inputs, exactly as the checked-in artifact was produced
     /// (`perform_assignments_to_memory = false`).
     pub fn regenerate(&self, repo_root: &Path) -> Result<String, Box<dyn std::error::Error>> {
-        let layout = repo_root.join(format!("cs/compiled_circuits/{}_layout_gkr.json", self.id));
-        let ssa = repo_root.join(format!("cs/compiled_circuits/{}_ssa_gkr.json", self.id));
-        generate_from_files(layout, ssa, false)
+        let layout = repo_root.join(self.inputs.layout_json);
+        let ssa = repo_root.join(self.inputs.ssa_json);
+        match self.field {
+            GeneratedField::BabyBear => {
+                generate_from_files_for_field::<BabyBearField>(layout, ssa, false)
+            }
+            GeneratedField::Proth120 => {
+                generate_from_files_for_field::<Proth120>(layout, ssa, false)
+            }
+        }
     }
 
     /// Absolute path of the checked-in artifact under `repo_root`.
@@ -566,59 +625,138 @@ impl GeneratedCircuit {
 pub const CIRCUITS: &[GeneratedCircuit] = &[
     GeneratedCircuit {
         id: "add_sub_lui_auipc_mop",
+        inputs: GeneratorInputs {
+            layout_json: "cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json",
+            ssa_json: "cs/compiled_circuits/add_sub_lui_auipc_mop_ssa_gkr.json",
+        },
         committed_cuh: "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/witness_generation_fn.cuh",
+        field: GeneratedField::BabyBear,
     },
     GeneratedCircuit {
         id: "bigint_with_extended_control",
+        inputs: GeneratorInputs {
+            layout_json: "cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json",
+            ssa_json: "cs/compiled_circuits/bigint_with_extended_control_ssa_gkr.json",
+        },
         committed_cuh: "circuit_defs/bigint_with_control/generated/witness_generation_fn.cuh",
+        field: GeneratedField::BabyBear,
     },
     GeneratedCircuit {
         id: "blake2_g_function",
+        inputs: GeneratorInputs {
+            layout_json: "cs/compiled_circuits/blake2_g_function_layout_gkr.json",
+            ssa_json: "cs/compiled_circuits/blake2_g_function_ssa_gkr.json",
+        },
         committed_cuh: "circuit_defs/blake2_g_function/generated/witness_generation_fn.cuh",
+        field: GeneratedField::BabyBear,
     },
     GeneratedCircuit {
         id: "blake2_with_extended_control",
+        inputs: GeneratorInputs {
+            layout_json: "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
+            ssa_json: "cs/compiled_circuits/blake2_with_extended_control_ssa_gkr.json",
+        },
         committed_cuh: "circuit_defs/blake2_with_compression/generated/witness_generation_fn.cuh",
+        field: GeneratedField::BabyBear,
     },
     GeneratedCircuit {
         id: "jump_branch_slt",
+        inputs: GeneratorInputs {
+            layout_json: "cs/compiled_circuits/jump_branch_slt_layout_gkr.json",
+            ssa_json: "cs/compiled_circuits/jump_branch_slt_ssa_gkr.json",
+        },
         committed_cuh: "circuit_defs/unrolled_circuits/jump_branch_slt/generated/witness_generation_fn.cuh",
+        field: GeneratedField::BabyBear,
     },
     GeneratedCircuit {
         id: "keccak_chi5",
+        inputs: GeneratorInputs {
+            layout_json: "cs/compiled_circuits/keccak_chi5_layout_gkr.json",
+            ssa_json: "cs/compiled_circuits/keccak_chi5_ssa_gkr.json",
+        },
         committed_cuh: "circuit_defs/keccak_chi5/generated/witness_generation_fn.cuh",
+        field: GeneratedField::BabyBear,
     },
     GeneratedCircuit {
         id: "keccak_column_parity",
+        inputs: GeneratorInputs {
+            layout_json: "cs/compiled_circuits/keccak_column_parity_layout_gkr.json",
+            ssa_json: "cs/compiled_circuits/keccak_column_parity_ssa_gkr.json",
+        },
         committed_cuh: "circuit_defs/keccak_column_parity/generated/witness_generation_fn.cuh",
+        field: GeneratedField::BabyBear,
     },
     GeneratedCircuit {
         id: "keccak_special5",
+        inputs: GeneratorInputs {
+            layout_json: "cs/compiled_circuits/keccak_special5_layout_gkr.json",
+            ssa_json: "cs/compiled_circuits/keccak_special5_ssa_gkr.json",
+        },
         committed_cuh: "circuit_defs/keccak_special5/generated/witness_generation_fn.cuh",
+        field: GeneratedField::BabyBear,
     },
     GeneratedCircuit {
         id: "keccak_theta_rho",
+        inputs: GeneratorInputs {
+            layout_json: "cs/compiled_circuits/keccak_theta_rho_layout_gkr.json",
+            ssa_json: "cs/compiled_circuits/keccak_theta_rho_ssa_gkr.json",
+        },
         committed_cuh: "circuit_defs/keccak_theta_rho/generated/witness_generation_fn.cuh",
+        field: GeneratedField::BabyBear,
     },
     GeneratedCircuit {
         id: "mem_subword_only",
+        inputs: GeneratorInputs {
+            layout_json: "cs/compiled_circuits/mem_subword_only_layout_gkr.json",
+            ssa_json: "cs/compiled_circuits/mem_subword_only_ssa_gkr.json",
+        },
         committed_cuh: "circuit_defs/unrolled_circuits/load_store_subword_only/generated/witness_generation_fn.cuh",
+        field: GeneratedField::BabyBear,
     },
     GeneratedCircuit {
         id: "mem_word_only",
+        inputs: GeneratorInputs {
+            layout_json: "cs/compiled_circuits/mem_word_only_layout_gkr.json",
+            ssa_json: "cs/compiled_circuits/mem_word_only_ssa_gkr.json",
+        },
         committed_cuh: "circuit_defs/unrolled_circuits/load_store_word_only/generated/witness_generation_fn.cuh",
+        field: GeneratedField::BabyBear,
     },
     GeneratedCircuit {
         id: "shift_binop",
+        inputs: GeneratorInputs {
+            layout_json: "cs/compiled_circuits/shift_binop_layout_gkr.json",
+            ssa_json: "cs/compiled_circuits/shift_binop_ssa_gkr.json",
+        },
         committed_cuh: "circuit_defs/unrolled_circuits/shift_binary/generated/witness_generation_fn.cuh",
+        field: GeneratedField::BabyBear,
     },
     GeneratedCircuit {
         id: "unified_reduced_machine",
+        inputs: GeneratorInputs {
+            layout_json: "cs/compiled_circuits/unified_reduced_machine_layout_gkr.json",
+            ssa_json: "cs/compiled_circuits/unified_reduced_machine_ssa_gkr.json",
+        },
         committed_cuh: "circuit_defs/unrolled_circuits/unified_reduced_machine/generated/witness_generation_fn.cuh",
+        field: GeneratedField::BabyBear,
     },
     GeneratedCircuit {
         id: "unsigned_mul_div",
+        inputs: GeneratorInputs {
+            layout_json: "cs/compiled_circuits/unsigned_mul_div_layout_gkr.json",
+            ssa_json: "cs/compiled_circuits/unsigned_mul_div_ssa_gkr.json",
+        },
         committed_cuh: "circuit_defs/unrolled_circuits/mul_div_unsigned/generated/witness_generation_fn.cuh",
+        field: GeneratedField::BabyBear,
+    },
+    GeneratedCircuit {
+        id: "unified_reduced_machine_proth120",
+        inputs: GeneratorInputs {
+            layout_json: "cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json",
+            ssa_json: "cs/compiled_circuits/unified_reduced_machine_ssa_gkr_proth120_2p21.json",
+        },
+        committed_cuh: "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/witness_generation_fn.cuh",
+        field: GeneratedField::Proth120,
     },
 ];
 
@@ -634,8 +772,15 @@ pub fn repo_root() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use crate::{CIRCUITS, repo_root};
-    use std::collections::HashSet;
+    use crate::{
+        CIRCUITS, GeneratedField, generate_from_files, generate_from_files_for_field, repo_root,
+    };
+    use ::field::Proth120;
+    use ::field::baby_bear::base::BabyBearField;
+    use cs::gkr_compiler::GKRCircuitArtifact;
+    use cs::witness_placer::graph_description::{FieldNodeExpression, RawExpression};
+    use std::collections::{BTreeSet, HashSet};
+    use std::fs::File;
     use std::path::Path;
 
     /// A readable description of the first byte where `generated` and
@@ -744,6 +889,154 @@ mod tests {
             "found {} committed .cuh under circuit_defs but CIRCUITS lists {}",
             found.len(),
             CIRCUITS.len()
+        );
+    }
+
+    /// `Unified22` has no witness `.cuh` of its own: the GPU runs the unified
+    /// kernels on it, so its 2^22 layout must generate the committed unified file.
+    #[test]
+    fn unified22_layout_generates_the_committed_unified_cuh() {
+        let root = repo_root();
+        let circuit = CIRCUITS
+            .iter()
+            .find(|c| c.id == "unified_reduced_machine")
+            .expect("unified_reduced_machine entry");
+        let generated = generate_from_files_for_field::<BabyBearField>(
+            root.join("cs/compiled_circuits/unified_reduced_machine_2_22_layout_gkr.json"),
+            root.join(circuit.inputs.ssa_json),
+            false,
+        )
+        .unwrap();
+        let committed = std::fs::read_to_string(circuit.committed_path(&root)).unwrap();
+        assert!(
+            generated == committed,
+            "{}",
+            first_diff(&generated, &committed)
+        );
+    }
+
+    #[test]
+    fn cpu_babybear_wrapper_equivalence() {
+        let root = repo_root();
+        let circuit = CIRCUITS
+            .iter()
+            .find(|c| c.id == "unified_reduced_machine")
+            .expect("unified_reduced_machine entry");
+        let layout = root.join(circuit.inputs.layout_json);
+        let ssa = root.join(circuit.inputs.ssa_json);
+        assert_eq!(
+            generate_from_files(&layout, &ssa, false).unwrap(),
+            generate_from_files_for_field::<BabyBearField>(&layout, &ssa, false).unwrap()
+        );
+    }
+
+    #[test]
+    fn cpu_proth120_emission_contract() {
+        let root = repo_root();
+        let circuit = CIRCUITS
+            .iter()
+            .find(|c| c.id == "unified_reduced_machine_proth120")
+            .expect("unified_reduced_machine_proth120 entry");
+        assert_eq!(circuit.field, GeneratedField::Proth120);
+        let generated = circuit.regenerate(&root).unwrap();
+        let layout: GKRCircuitArtifact<Proth120> =
+            serde_json::from_reader(File::open(root.join(circuit.inputs.layout_json)).unwrap())
+                .unwrap();
+        let graph: Vec<Vec<RawExpression<Proth120>>> =
+            serde_json::from_reader(File::open(root.join(circuit.inputs.ssa_json)).unwrap())
+                .unwrap();
+        assert_eq!(graph.len(), 75);
+
+        let functions: Vec<&str> = generated
+            .lines()
+            .filter_map(|line| line.strip_prefix("FN_BEGIN(")?.strip_suffix(')'))
+            .collect();
+        let retained: Vec<usize> = (0..graph.len())
+            .filter(|index| ![0, 1, 2].contains(index))
+            .collect();
+        let expected_functions: Vec<String> = retained
+            .iter()
+            .map(|index| index.to_string())
+            .chain(["generate".to_owned()])
+            .collect();
+        assert_eq!(functions.len(), 73);
+        assert_eq!(functions, expected_functions);
+
+        let expected_constants: Vec<Proth120> = retained
+            .iter()
+            .flat_map(|&index| &graph[index])
+            .filter_map(|expression| match expression {
+                RawExpression::Field(FieldNodeExpression::Constant(constant)) => Some(*constant),
+                _ => None,
+            })
+            .collect();
+        let constants: Vec<Proth120> = generated
+            .lines()
+            .filter_map(|line| line.strip_prefix("CONSTANT_PR(")?.strip_suffix(')'))
+            .map(|arguments| {
+                let arguments: Vec<&str> = arguments.split(", ").collect();
+                assert_eq!(arguments.len(), 5);
+                let raw = arguments[1..]
+                    .iter()
+                    .enumerate()
+                    .fold(0u128, |raw, (index, limb)| {
+                        raw | (limb.parse::<u32>().unwrap() as u128) << (32 * index)
+                    });
+                Proth120::from_raw_u128(raw)
+            })
+            .collect();
+        assert_eq!(constants.len(), 125);
+        assert_eq!(constants, expected_constants);
+        let distinct: BTreeSet<u128> = constants.iter().map(|constant| constant.0).collect();
+        assert_eq!(distinct.len(), 19);
+        assert!(distinct.contains(&0));
+        assert_eq!(
+            distinct
+                .iter()
+                .filter(|&&raw| Proth120::from_raw_u128(raw).to_u128() > u64::MAX as u128)
+                .count(),
+            4
+        );
+        assert!(!generated.contains("CONSTANT(f,"));
+
+        let offsets: Vec<u32> = generated
+            .split_once("LOOKUP_TABLE_OFFSETS(")
+            .unwrap()
+            .1
+            .split_once(')')
+            .unwrap()
+            .0
+            .split(',')
+            .map(|offset| offset.trim().parse().unwrap())
+            .collect();
+        assert_eq!(offsets.len(), 67);
+        assert_eq!(offsets, layout.table_offsets);
+
+        assert!(
+            generated
+                .lines()
+                .any(|line| line == "#define SCRATCH wrapped_f *scratch = scratch_storage + gid;")
+        );
+
+        let mapping_indices: BTreeSet<usize> = generated
+            .lines()
+            .filter_map(|line| {
+                if let Some(arguments) = line.strip_prefix("LOOKUP(") {
+                    arguments.split(", ").nth(4)
+                } else if let Some(arguments) = line.strip_prefix("LOOKUP_ENFORCE(") {
+                    arguments.split(", ").nth(2)
+                } else {
+                    None
+                }
+            })
+            .map(|index| index.parse().unwrap())
+            .collect();
+        assert_eq!(layout.generic_lookups.len(), 5);
+        assert_eq!(mapping_indices, (0..5).collect());
+        assert!(
+            generated
+                .lines()
+                .any(|line| line.starts_with("SET_WITNESS_PLACE_OR_ZERO("))
         );
     }
 }

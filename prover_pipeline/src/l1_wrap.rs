@@ -357,8 +357,7 @@ pub(super) fn validate_l1_wrap_activation() -> Result<(), String> {
 #[cfg_attr(not(feature = "gpu"), allow(dead_code))]
 pub(super) fn validate_l1_wrap_backend(backend: ProverBackend) -> Result<(), String> {
     match backend {
-        ProverBackend::Cpu => Ok(()),
-        ProverBackend::Gpu => Err("ProofTarget::L1 is not supported by the GPU backend".into()),
+        ProverBackend::Cpu | ProverBackend::Gpu => Ok(()),
     }
 }
 

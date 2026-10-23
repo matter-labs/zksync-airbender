@@ -160,14 +160,14 @@ cargo run --release -p cli -- verify \
 proves the L1 feeder verifier's execution as one Proth120 packed unified proof
 with Keccak commitments, the proof shape the EVM verifier consumes. The
 artifact (schema 5) keeps the BabyBear feeder sidecar and adds the `l1` bundle
-(proof and operation-mode data).
+(proof and commitment-mode data).
 
 ```bash
-cargo run --release -p cli -- continue-proof \
+cargo run --release -p cli --features gpu -- continue-proof \
   --proof output/l1_feeder.json \
   --bin examples/basic_fibonacci/app.bin \
   --target l1 \
-  --backend cpu \
+  --backend gpu \
   --output-dir output \
   --output-file l1.json
 

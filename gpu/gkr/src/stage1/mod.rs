@@ -13,7 +13,8 @@ use gpu_core::primitives::field::BF;
 use gpu_ops::simple::set_to_zero;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::{
-    TraceHolder, TreesCacheMode, WitnessCommitmentStrategy, WitnessPostCommitStorage,
+    PartialTreePolicy, TraceHolder, TreesCacheMode, WitnessCommitmentStrategy,
+    WitnessPostCommitStorage,
 };
 use gpu_trace::trace::tracing_data::{
     DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
@@ -45,7 +46,7 @@ use gpu_trace::witness::witness_unrolled::{
     generate_witness_values_unrolled_non_memory, generate_witness_values_unrolled_unified,
 };
 
-use crate::upstream::GKRCircuitArtifact;
+use crate::upstream::{CommitmentMode, GKRCircuitArtifact};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 
@@ -113,6 +114,10 @@ pub struct GpuGKRStage1Output {
     tracing_ranges: Vec<Range>,
     pub memory_trace_holder: TraceHolder<BF>,
     pub witness_trace_holder: TraceHolder<BF>,
+    /// `Some(memory width)` under `MergedMemoryAndWitness`: the witness columns
+    /// follow the memory columns inside `memory_trace_holder` and
+    /// `witness_trace_holder` is empty.
+    pub merged_witness_offset: Option<usize>,
     pub(crate) scratch_space_trace: Option<Arc<DeviceAllocation<BF>>>,
     pub lookup_mappings: GpuGKRLookupMappings,
 }
@@ -126,7 +131,9 @@ pub enum WitnessGenerationStrategy {
 
 const fn production_witness_strategy(circuit_type: CircuitType) -> WitnessGenerationStrategy {
     match circuit_type {
-        CircuitType::L1Wrap21 => panic!("GPU backend does not support L1 wrap circuits"),
+        CircuitType::L1Wrap21 => {
+            panic!("BabyBear stage 1 is not defined for L1Wrap")
+        }
         CircuitType::Delegation(circuit_type) => match circuit_type {
             DelegationCircuitType::BigIntWithControl => WitnessGenerationStrategy::Split,
             DelegationCircuitType::Blake2WithCompression => WitnessGenerationStrategy::Fused,
@@ -137,9 +144,6 @@ const fn production_witness_strategy(circuit_type: CircuitType) -> WitnessGenera
             DelegationCircuitType::KeccakChi5 => WitnessGenerationStrategy::Fused,
         },
         CircuitType::Unrolled(circuit_type) => match circuit_type {
-            UnrolledCircuitType::Unified22 => {
-                panic!("GPU backend does not support the CPU-only Unified22 circuit")
-            }
             UnrolledCircuitType::InitsAndTeardowns => WitnessGenerationStrategy::Split,
             UnrolledCircuitType::Memory(circuit_type) => match circuit_type {
                 UnrolledMemoryCircuitType::LoadStoreSubwordOnly => WitnessGenerationStrategy::Fused,
@@ -152,6 +156,7 @@ const fn production_witness_strategy(circuit_type: CircuitType) -> WitnessGenera
                 UnrolledNonMemoryCircuitType::ShiftBinary => WitnessGenerationStrategy::Fused,
             },
             UnrolledCircuitType::Unified => WitnessGenerationStrategy::Fused,
+            UnrolledCircuitType::Unified22 => WitnessGenerationStrategy::Fused,
         },
     }
 }
@@ -164,6 +169,13 @@ impl GpuGKRStage1Output {
             .map(|allocation| &allocation[..])
     }
 
+    pub fn release_all_but_memory_trace_holder(&mut self) {
+        self.scratch_space_trace = None;
+        self.lookup_mappings.release_generic_family();
+        self.lookup_mappings.release_range_check_16();
+        self.lookup_mappings.release_timestamp();
+    }
+
     pub fn into_keepalive(self) -> GpuGKRStage1Keepalive {
         let Self { tracing_ranges, .. } = self;
         // memory_trace_holder, witness_trace_holder, lookup_mappings drop here —
@@ -174,6 +186,7 @@ impl GpuGKRStage1Output {
     fn allocate_trace_holder(
         columns_count: usize,
         geometry: GpuGKRTraceGeometry,
+        partial_tree_reduction_layers: u32,
         context: &ProverContext,
     ) -> CudaResult<TraceHolder<BF>> {
         // Allocate cosets at commitment, after the persistent stage1 buffers,
@@ -185,6 +198,7 @@ impl GpuGKRStage1Output {
             geometry.log_tree_cap_size,
             columns_count,
             TreesCacheMode::CachePartial,
+            partial_tree_reduction_layers,
             context,
         )
     }
@@ -192,6 +206,7 @@ impl GpuGKRStage1Output {
     pub fn generate(
         circuit_type: CircuitType,
         compiled_circuit: &GKRCircuitArtifact<BF>,
+        commitment_mode: CommitmentMode,
         geometry: GpuGKRTraceGeometry,
         setup_hypercube_evals: Option<&DeviceSlice<BF>>,
         decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
@@ -200,12 +215,14 @@ impl GpuGKRStage1Output {
         witness_cap_dst: Option<&mut DeviceSlice<u32>>,
         commitment: WitnessCommitmentStrategy,
         post_commitment: WitnessPostCommitStorage,
+        partial_trees: PartialTreePolicy,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let strategy = production_witness_strategy(circuit_type);
         Self::generate_with_strategy_impl(
             circuit_type,
             compiled_circuit,
+            commitment_mode,
             geometry,
             setup_hypercube_evals,
             decoder_table,
@@ -216,12 +233,14 @@ impl GpuGKRStage1Output {
             strategy,
             commitment,
             post_commitment,
+            partial_trees,
         )
     }
 
     fn generate_with_strategy_impl(
         circuit_type: CircuitType,
         compiled_circuit: &GKRCircuitArtifact<BF>,
+        commitment_mode: CommitmentMode,
         geometry: GpuGKRTraceGeometry,
         setup_hypercube_evals: Option<&DeviceSlice<BF>>,
         decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
@@ -232,6 +251,7 @@ impl GpuGKRStage1Output {
         strategy: WitnessGenerationStrategy,
         commitment: WitnessCommitmentStrategy,
         post_commitment: WitnessPostCommitStorage,
+        partial_trees: PartialTreePolicy,
     ) -> CudaResult<Self> {
         let trace_len = compiled_circuit.trace_len;
         assert_eq!(trace_len, 1usize << geometry.log_domain_size);
@@ -240,20 +260,39 @@ impl GpuGKRStage1Output {
         let stage1_range = Range::new("gkr.stage1.generate")?;
         stage1_range.start(stream)?;
 
+        let memory_columns = compiled_circuit.memory_layout.total_width;
+        let witness_columns = compiled_circuit.witness_layout.total_width;
+        let merged_witness_offset = match commitment_mode {
+            CommitmentMode::SeparateMemoryAndWitness => None,
+            CommitmentMode::MergedMemoryAndWitness => Some(memory_columns),
+        };
         let mut memory_trace_holder = TraceHolder::new_without_cosets(
             geometry.log_domain_size,
             geometry.log_lde_factor,
             geometry.log_rows_per_leaf,
             geometry.log_tree_cap_size,
-            compiled_circuit.memory_layout.total_width,
+            match merged_witness_offset {
+                Some(_) => memory_columns + witness_columns,
+                None => memory_columns,
+            },
             TreesCacheMode::CacheNone,
+            partial_trees.memory,
             context,
         )?;
-        let mut witness_trace_holder = Self::allocate_trace_holder(
-            compiled_circuit.witness_layout.total_width,
-            geometry,
-            context,
-        )?;
+        let mut witness_trace_holder = if merged_witness_offset.is_some() {
+            TraceHolder::new_without_cosets(
+                geometry.log_domain_size,
+                geometry.log_lde_factor,
+                geometry.log_rows_per_leaf,
+                geometry.log_tree_cap_size,
+                0,
+                TreesCacheMode::CacheNone,
+                partial_trees.witness,
+                context,
+            )?
+        } else {
+            Self::allocate_trace_holder(witness_columns, geometry, partial_trees.witness, context)?
+        };
         let mut scratch_space_trace = if compiled_circuit.scratch_space_size > 0 {
             Some(context.alloc(
                 compiled_circuit.scratch_space_size * trace_len,
@@ -275,6 +314,7 @@ impl GpuGKRStage1Output {
                 CircuitType::Unrolled(UnrolledCircuitType::Memory(_))
                     | CircuitType::Unrolled(UnrolledCircuitType::NonMemory(_))
                     | CircuitType::Unrolled(UnrolledCircuitType::Unified)
+                    | CircuitType::Unrolled(UnrolledCircuitType::Unified22)
             );
         let use_fused_delegation = strategy == WitnessGenerationStrategy::Fused
             && matches!(circuit_type, CircuitType::Delegation(_));
@@ -294,10 +334,15 @@ impl GpuGKRStage1Output {
         let generic_lookup_tables: &DeviceSlice<BF> =
             setup_hypercube_evals.unwrap_or_else(DeviceSlice::empty);
 
-        let (memory_raw, witness_raw) = (
-            memory_trace_holder.get_uninit_hypercube_evals_mut(),
-            witness_trace_holder.get_uninit_hypercube_evals_mut(),
-        );
+        let (memory_raw, witness_raw) = match merged_witness_offset {
+            None => (
+                memory_trace_holder.get_uninit_hypercube_evals_mut(),
+                witness_trace_holder.get_uninit_hypercube_evals_mut(),
+            ),
+            Some(memory_columns) => memory_trace_holder
+                .get_uninit_hypercube_evals_mut()
+                .split_at_mut(memory_columns * trace_len),
+        };
         let mut memory_matrix = DeviceMatrixMut::new(memory_raw, trace_len);
         let mut witness_matrix = DeviceMatrixMut::new(witness_raw, trace_len);
         let empty_scratch = DeviceSlice::empty_mut();
@@ -627,7 +672,9 @@ impl GpuGKRStage1Output {
                     tracing_ranges.push(witness_values_range);
                 }
                 (
-                    CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                    CircuitType::Unrolled(
+                        unified @ (UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22),
+                    ),
                     Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(trace))),
                 ) => {
                     let witness_values_range =
@@ -663,6 +710,7 @@ impl GpuGKRStage1Output {
                             trace_len,
                         );
                         generate_fused_values_unrolled_unified(
+                            unified,
                             compiled_circuit,
                             decoder_table,
                             trace,
@@ -678,6 +726,7 @@ impl GpuGKRStage1Output {
                         )?;
                     } else {
                         generate_memory_and_witness_values_unrolled_unified(
+                            unified,
                             &compiled_circuit.memory_layout,
                             &compiled_circuit.aux_layout_data,
                             decoder_table,
@@ -689,6 +738,7 @@ impl GpuGKRStage1Output {
                             context.get_exec_stream(),
                         )?;
                         generate_witness_values_unrolled_unified(
+                            unified,
                             trace,
                             &DeviceMatrix::new(generic_lookup_tables, trace_len),
                             &DeviceMatrix::new(memory_matrix.slice(), trace_len),
@@ -804,6 +854,7 @@ impl GpuGKRStage1Output {
             tracing_ranges,
             memory_trace_holder,
             witness_trace_holder,
+            merged_witness_offset,
             scratch_space_trace: scratch_space_trace.map(Arc::new),
             lookup_mappings,
         })
@@ -826,6 +877,7 @@ pub fn generate_with_witness_strategy(
     GpuGKRStage1Output::generate_with_strategy_impl(
         circuit_type,
         compiled_circuit,
+        CommitmentMode::SeparateMemoryAndWitness,
         geometry,
         setup_hypercube_evals,
         decoder_table,
@@ -836,5 +888,6 @@ pub fn generate_with_witness_strategy(
         strategy,
         WitnessCommitmentStrategy::AllCosets,
         WitnessPostCommitStorage::RawAndCosets,
+        PartialTreePolicy::DEFAULT,
     )
 }
