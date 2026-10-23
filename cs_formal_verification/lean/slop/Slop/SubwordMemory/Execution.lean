@@ -149,6 +149,25 @@ theorem local_execution {p : Nat} [Fact p.Prime]
     rw [← address.2.2.2.1]
     exact ordinary_cell_offset (by rw [Word.toBitVec_toNat cellBound]; exact address.2.1)
       (ordinary _ cellPresent) address.2.2.1
+  -- The circuit rejects stores into ROM (`rom_selection`): a store address is in RAM.
+  have ramStore (mode : store = true) :
+      Reference.RiscV.Sail.Configuration.ROM_END ≤ (input.source.toBitVec + input.immediate.toBitVec).toNat := by
+    subst mode
+    have classified := rom_selection (by omega) true h selected
+      (address := ⟨(w 27).val, (w 28).val⟩) (ZMod.natCast_zmod_val _).symm address.1
+    have high := classified.2 rfl
+    change 64 ≤ (w 28).val at high
+    change Reference.RiscV.Sail.Configuration.ROM_END ≤ ((Word.mk (w 19).val (w 20).val).toBitVec +
+      (Word.mk (w 8).val (w 9).val).toBitVec).toNat
+    have sum := address.2.2.2.1
+    have bounded : (Word.mk (w 27).val (w 28).val).Bounded := by simpa using address.1
+    have cellAligned : (Word.mk (w 27).val (w 28).val).value % 4 = 0 := by simpa using address.2.1
+    have offsetBound : (w 35).val + 2 * (w 36).val < 4 := address.2.2.1
+    simp only [ite_true] at sum
+    rw [← sum, BitVec.toNat_add, Word.toBitVec_toNat bounded, BitVec.toNat_ofNat]
+    simp only [Word.Bounded, Word.value, limbBase] at bounded cellAligned ⊢
+    simp only [Reference.RiscV.Sail.Configuration.ROM_END]
+    omega
   have immediate := Trace.Proofs.native_query_immediate_word limbField (decoder_field_bounds fields).1 query
   change input.immediate = entry.data.immediate at immediate
   have pcWord := Trace.Proofs.native_query_pc_word limbField query
@@ -208,7 +227,7 @@ theorem local_execution {p : Nat} [Fact p.Prime]
     · exact Trace.Proofs.retired_state_pc before currentPC
     · exact memory_access
         (Trace.Proofs.retired_state_configuration configuration currentPC)
-        aligned domain
+        aligned domain ramStore
   have addressInverse : (-30720 : ZMod p) * 65536 = 1 := by
     calc
       (-30720 : ZMod p) * 65536 = (-3840 : ZMod p) * 524288 := by ring

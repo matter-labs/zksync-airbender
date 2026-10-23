@@ -163,7 +163,13 @@ theorem local_word_transport {p : Nat} [Fact p.Prime]
       ((Word.mk (w 17).val (w 18).val).toBitVec + (Word.mk (w 8).val (w 9).val).toBitVec)
       (Word.mk (w 23).val (w 24).val).toBitVec
     have same := (EStateM.Result.ok.inj (written.symm.trans native)).2
-    exact ⟨register, by rw [virtual_word_write configuration _ _ source alignment domain, same]⟩
+    -- The circuit rejects stores into ROM (`rom_selection`): the address is in RAM.
+    have ramAddress : Configuration.ROM_END ≤ (Word.mk (w 25).val (w 26).val).toBitVec.toNat := by
+      rw [Word.toBitVec_toNat address.1]
+      simp only [Configuration.ROM_END, Word.value, limbBase]
+      omega
+    rw [address.2.1] at ramAddress
+    exact ⟨register, by rw [virtual_word_write configuration _ _ source alignment domain ramAddress, same]⟩
 
 set_option backward.isDefEq.respectTransparency false in
 /-- Discharge Sail's virtual memory calls for a grouped native row. Alignment

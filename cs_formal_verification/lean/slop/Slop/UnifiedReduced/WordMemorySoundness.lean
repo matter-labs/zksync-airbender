@@ -4,6 +4,7 @@ import Slop.UnifiedReduced.WordMemory
 import Slop.UnifiedReduced.History
 import Slop.WordMemory.MemoryAccess
 import Slop.Sail.Memory
+import Slop.UnifiedReduced.WordROM
 
 namespace Airbender.UnifiedReduced.WordMemory.Proofs
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Reference.Sail Trace Trace.Proofs
@@ -241,9 +242,17 @@ theorem row_soundness_from_history [Fact p.Prime]
     simpa [EStateM.run, Cell.read, importedConstraintsMemoryPorts, MemoryPort.readCode, WordColumns.code,
       pairCode, memoryWord, ← readWord] using actual
   have configuration := history_configuration past (retired_state_configuration configuration _)
+  -- The circuit rejects stores into ROM (`word_rom_selection`): a store address is in RAM.
+  have ramStore (mode : input.store = true) :
+      Configuration.ROM_END ≤ (input.source.toBitVec + input.immediate.toBitVec).toNat := by
+    have high := (Airbender.UnifiedReduced.Proofs.word_rom_selection (by omega) input.store core selected other).2 mode
+    rw [← effective, Word.toBitVec_toNat addressBound, addressWord]
+    simp only [mode, ite_true] at high ⊢
+    simp only [Word.value, limbBase, Configuration.ROM_END]
+    omega
   have access := Airbender.WordMemory.Proofs.memory_access configuration
     (by rw [← effective]; exact aligned _ physical.1)
-    (by rw [← effective]; exact ordinary _ physical.1)
+    (by rw [← effective]; exact ordinary _ physical.1) ramStore
   exact retire_ram input output effective successor.2.2 copiedWord
     sourceRead storeRead loadRead extension pcRead access
 
