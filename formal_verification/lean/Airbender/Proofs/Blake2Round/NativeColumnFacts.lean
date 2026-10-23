@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2Round.NativeColumnCarryBounds
 import Airbender.Proofs.Blake2Round.NativeBooleanBindings
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2Round.NativeXorTransfer
@@ -25,11 +26,7 @@ theorem native_column_carries {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLea
       have b := NativeLayout.additionCarryQueries[slot].isLt
       dsimp [NativeLayout.queryIndex]
       omega⟩
-  fin_cases call <;> fin_cases slot
-  all_goals have bound := carry_value_bound hp 0 source (by
-    norm_num [carryTags, Expression.eval])
-  all_goals simpa [columnCarryColumns, importedConstraints, FlatOperation.lookups,
-    Expression.eval, Verification.environment] using bound
+  exact NativeColumnCarryBounds.query_bound hp call slot source
 
 /-- The four remaining carries are the native Boolean assertions. -/
 theorem native_column_flags {p : Nat} [Fact p.Prime]
