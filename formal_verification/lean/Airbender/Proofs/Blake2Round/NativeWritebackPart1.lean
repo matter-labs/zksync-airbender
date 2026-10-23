@@ -1,3 +1,7 @@
+import Airbender.Proofs.Blake2Round.NativeDiagonalView0
+import Airbender.Proofs.Blake2Round.NativeDiagonalView1
+import Airbender.Proofs.Blake2Round.NativeDiagonalView2
+import Airbender.Proofs.Blake2Round.NativeDiagonalView3
 import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2Round.PhaseProjection
 import Airbender.Proofs.Blake2G.FrameNormalization
@@ -31,13 +35,12 @@ theorem native_writeback_part_1 {p : Nat} [Fact p.Prime]
      Arithmetic.Word.mk.injEq]
   all_goals constructor
   all_goals apply congrArg ZMod.val
-  all_goals simp [
-    importedConstraints, FlatOperation.lookups, Blake2G.Proofs.Frame.assignment_eq_normalized,
-    Blake2G.Proofs.Frame.normalizedAssignment, columnFrame, diagonalFrame,
-    diagonalIncoming, NativeLayout.column, NativeLayout.columnInputs,
-    NativeLayout.diagonal, NativeLayout.Layout.read, NativeLayout.Location.read,
-    NativeLayout.queryColumn, NativeLayout.queryIndex, nativeColumnAssignment,
-    Expression.eval, Verification.environment
+  all_goals simp [Blake2G.Proofs.Frame.assignment_eq_normalized,
+    Blake2G.Proofs.Frame.normalizedAssignment,
+    NativeDiagonalView0.frame_eq, NativeDiagonalView0.frame,
+    NativeDiagonalView1.frame_eq, NativeDiagonalView1.frame,
+    NativeDiagonalView2.frame_eq, NativeDiagonalView2.frame,
+    NativeDiagonalView3.frame_eq, NativeDiagonalView3.frame,
   ]
   all_goals ring_nf
   all_goals reduce_mod_char
