@@ -1,0 +1,4 @@
+interface:
+  display_name: "ZK Recursion and L1 Review"
+  short_description: "Audit one recursion or on-chain acceptance boundary"
+  default_prompt: "Use $zk-recursion-l1-verifier-review to audit this recursive verifier or L1 settlement boundary."
