@@ -1,3 +1,5 @@
+import Airbender.Proofs.Keccak.ThetaRoutes
+import Airbender.Proofs.Keccak.ByteQueryBindings
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.Keccak.Theta
 import Airbender.Proofs.Keccak.Lookups
@@ -34,32 +36,7 @@ private theorem theta_limb_routes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.N
     w (118 + 24 * operation.val + 2 * limb.val) +
       256 * w (119 + 24 * operation.val + 2 * limb.val) =
       w (17 + 8 * operation.val + limbOffsets[limb]) := by
-  have modes := selected_modes hp h active (3 : Fin 7) theta
-  have m0 : w 63 = 0 := by simpa [Variables.modeColumns] using modes (0 : Fin 7)
-  have m1 : w 64 = 0 := by simpa [Variables.modeColumns] using modes (1 : Fin 7)
-  have m2 : w 65 = 0 := by simpa [Variables.modeColumns] using modes (2 : Fin 7)
-  have m4 : w 67 = 0 := by simpa [Variables.modeColumns] using modes (4 : Fin 7)
-  have m5 : w 68 = 0 := by simpa [Variables.modeColumns] using modes (5 : Fin 7)
-  have m6 : w 69 = 0 := by simpa [Variables.modeColumns] using modes (6 : Fin 7)
-  have rotations := theta_rotations hp h active theta
-  have r0 := rotations (0 : Fin 5); have r1 := rotations (1 : Fin 5)
-  have r2 := rotations (2 : Fin 5); have r3 := rotations (3 : Fin 5)
-  have r4 := rotations (4 : Fin 5)
-  change w 80 = 0 at r0
-  change w 81 = 0 at r1
-  change w 82 = 0 at r2
-  change w 83 = 0 at r3
-  change w 84 = 0 at r4
-  have a := Verification.assertion_of_holds h
-    ⟨20 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
-  have b := Verification.assertion_of_holds h
-    ⟨21 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
-  have c := Verification.assertion_of_holds h
-    ⟨22 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
-  fin_cases operation <;> fin_cases limb <;>
-    simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
-      m0, m1, m2, theta, m4, m5, m6, r0, r1, r2, r3, r4, limbOffsets] at a b c ⊢
-  all_goals exact ⟨by linear_combination a, by linear_combination b, by linear_combination c⟩
+  exact ThetaRoutes.checked hp h active theta operation limb
 
 private theorem theta_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 256)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
@@ -74,9 +51,10 @@ private theorem theta_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast
         (w (110 + 24 * operation.val + byte.val)).val := by
   have query := theta_byte_relations hp h active theta
     ⟨8 * operation.val + byte.val, by omega⟩
-  fin_cases operation <;> fin_cases byte <;>
-    simpa [byteQuery, importedConstraints, FlatOperation.lookups, Expression.eval,
-      Verification.environment] using query
+  rcases ByteQueryBindings.columns (setupTable control) w operation byte with ⟨a, b, c⟩
+  dsimp only at query
+  rw [a, b, c] at query
+  exact query
 
 
 /-- Every observed input/output limb is forced by its two native byte queries. -/
