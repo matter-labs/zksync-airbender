@@ -50,16 +50,6 @@ def checkCompression (seed : Nat) : Bool :=
   | some s => (wordsAt s.mem B 8).toList == (hash2 l r).toList
   | none => false
 
-/-- G function (0x7c8): 56 calls from `x12 = 0x80` are 7 rounds of `Spec.round`; `x12` back to `0x80`. -/
-def checkG (seed : Nat) : Bool :=
-  let ws := rnd seed 32
-  let v : Vector Word 16 := Vector.ofFn fun i => ws[i.val]!
-  let m : Vector Word 16 := Vector.ofFn fun i => ws[16 + i.val]!
-  let want := (List.range 7).foldl (fun v r => round m (SIGMA ⟨r % 10, by omega⟩) v) v
-  match calls .blakeG B 32 56 (start B ws (BitVec.ofNat 32 B) (BitVec.ofNat 32 (B + 64)) 0x80) with
-  | some s => (wordsAt s.mem B 16).toList == want.toList && s.getReg 12 == 0x80
-  | none => false
-
 /-- bigint (0x7ca) on `a`, `b`, control `x12`: the result and the flag. -/
 def runBigint (x12 : Word) (a b : Nat) : Option (Nat × Nat) := do
   let s ← calls .bigint B 16 1 (start B ((ofU256 a).toArray ++ (ofU256 b).toArray) (BitVec.ofNat 32 B)
@@ -102,7 +92,6 @@ def delegationChecks : IO Bool := do
   for (name, good) in [("blake2s round (0x7c7) x 7 = blake5", checkBlakeRound [5, 1, 2, 3, 4] &&
         checkBlakeRound [123456789, 2013265920, 7, 0, 1234567]),
       ("blake2s round (0x7c7) compression mode x 7 = hash2", checkCompression 0 && checkCompression 1),
-      ("blake2s G (0x7c8) x 56 = 7 rounds", checkG 0 && checkG 1),
       ("bigint (0x7ca) ops and flags", checkBigint),
       ("keccak special5 (0x7cb) x 649, f1600 (0x7cc-0x7ce) x 361 = keccakF", checkKeccak 0 && checkKeccak 1)] do
     IO.println s!"delegation: {name}: {if good then "OK" else "MISMATCH"}"

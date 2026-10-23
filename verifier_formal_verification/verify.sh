@@ -20,14 +20,16 @@ echo "== 2. Generated decode lemmas / code lists"
 lean/gen/words.sh
 git add -N lean/slop/Slop/RV/Code
 git diff --exit-code -- lean/slop/Slop/RV/Code || { echo "FAIL: generated code files are stale"; exit 1; }
+(cd lean && python3 gen/machine_checks.py)
+git diff --exit-code -- lean/slop/Slop/Equiv/Checks.lean || { echo "FAIL: Slop/Equiv/Checks.lean is stale (gen/machine_checks.py)"; exit 1; }
 
 echo "== 3. Lean build (spec + proofs)"
 (cd lean && lake build Human Slop.RV.FinalPlain Slop.RV.FinalMop Slop.Deleg 2>&1 | grep -E "error|Build completed" )
 
 echo "== 4. Final theorems (plain-Rust image, field-opcode image), delegation runs, standards' test vectors: statements and axioms"
 thms=("program_correct : RV.ProgramCorrect" "program_correct_mop : RV.ProgramCorrectMop"
-  "blake_compress_run : RV.BlakeCompressRun" "blake_hash_run : RV.BlakeHashRun" "blake_g_run : RV.BlakeGRun"
-  "blake_compress_run10 : RV.BlakeCompressRun10" "blake_hash_run10 : RV.BlakeHashRun10" "blake_g_run10 : RV.BlakeGRun10"
+  "blake_compress_run : RV.BlakeCompressRun" "blake_hash_run : RV.BlakeHashRun"
+  "blake_compress_run10 : RV.BlakeCompressRun10" "blake_hash_run10 : RV.BlakeHashRun10"
   "keccak_special5_run : RV.KeccakSpecial5Run" "keccak_f1600_run : RV.KeccakF1600Run" "calls_run : RV.CallsRun"
   "standard_vectors : RV.StandardVectors")
 out=$(cd lean && { printf 'import Slop.RV.FinalPlain\nimport Slop.RV.FinalMop\nimport Slop.Deleg\n'

@@ -18,13 +18,13 @@ input; the verifier's two-to-one Blake2s hash) — a wrong root fails the run.
 
 ## What a human reads (`lean/human/`, ~200 lines)
 - `Human/State.lean` — the machine state (registers, PC, byte memory, the non-determinism input).
-- `Human/Delegations.lean` — Airbender's delegations (precompiles), one call per instruction: Blake2s round (`0x7c7`)
-  and `G` (`0x7c8`), u256 bigint (`0x7ca`), Keccak special5 (`0x7cb`) and Keccak-f1600 (`0x7cc` … `0x7ce`);
-  `Accepted`: the decoder's run lengths (and the 361-call Keccak-f1600 pattern). Built from `Human/Blake2s.lean` (Blake2s constants, `G`, one
-  round) and `Human/Keccak.lean` (Keccak-f[1600], FIPS 202).
+- `Human/Delegations.lean` — Airbender's delegations (precompiles), one call per instruction: Blake2s round (`0x7c7`),
+  u256 bigint (`0x7ca`), Keccak special5 (`0x7cb`) and Keccak-f1600 (`0x7cc` … `0x7ce`); `Accepted`: the decoder's
+  run lengths. Built from `Human/Blake2s.lean` (Blake2s constants, `G`, one round) and `Human/Keccak.lean`
+  (Keccak-f[1600], FIPS 202).
 - `Human/DelegationRuns.lean` — what a run of calls computes, stated with those standard definitions: 7 (10) round
   calls = the 7-round (RFC 7693 10-round) Blake2s compression, or `hash2` (its 10-round version) in compression mode;
-  56 (80) `G` calls = 7 (10) Blake2s rounds; 649 special5 / 361 f1600 calls = Keccak-f[1600]; delegation words in
+  649 special5 / 361 f1600 calls = Keccak-f[1600]; delegation words in
   ROM run as these calls. Calls outside such a run (another layout or control word) are undefined behaviour.
 - `Human/RV32.lean` — the machine: RV32IM as Airbender runs it (decoder from the encoding tables, one line of
   behaviour per instruction, memory map, the input read `csrrw rd, 0x7c0, x0` from a list of input words; anything
@@ -62,8 +62,8 @@ input; the verifier's two-to-one Blake2s hash) — a wrong root fails the run.
   instruction looks like) and `RV/DecodeCsr.lean` (the CSR table) are the only lemmas downstream proofs use about
   the decoder besides `Equiv/Decode.lean`; `RV/Frame.lean` (a stack frame's stores as a list); `RV/Merkle/Contract.lean`
   and `RV/Merkle/MFrame.lean` (`merkle_step`'s contract, `merkle_check`'s frame), so its parts build in parallel.
-- `Slop/Deleg/` — the delegation runs (`Human/DelegationRuns.lean`): Blake2s rounds and `G` by induction over the
-  calls; Keccak through a slot view of the 31 lanes, one lemma per call kind, five stages per round.
+- `Slop/Deleg/` — the delegation runs (`Human/DelegationRuns.lean`): Blake2s rounds by induction over the calls;
+  Keccak through a slot view of the 31 lanes, one lemma per call kind, five stages per round.
 - `Slop/Sail/` — the official Sail RISC-V model route (Airbender config, oracle evaluator, `kernel_rfl`).
 - `Slop/Equiv/` — our spec ⇔ Sail: decoder walk, symbolic Sail runner (`sail_run`), per-layer memory lemmas,
   per-instruction execute lemmas, `StepIsAirbender`, final transfer (`Final.lean`).

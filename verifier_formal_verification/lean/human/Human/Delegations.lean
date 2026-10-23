@@ -23,16 +23,15 @@ namespace RV
 open Spec
 
 /-- The precompiles and their CSRs (`ofCsr`; proofs use it only through `RV.ofCsr_csr`). Keccak-f1600 in three
-circuits: CSRs `0x7cc` … `0x7ce` (`common_constants/src/delegation_types/keccak_f1600.rs`). `blakeG` (`0x7c8`) is not
-in the ISA table, but Airbender's unified-machine setup still accepts it. -/
-inductive DelegationKind | blakeRound | blakeG | bigint | keccak | keccakThetaRho | keccakParity | keccakChi5
+circuits: CSRs `0x7cc` … `0x7ce` (`common_constants/src/delegation_types/keccak_f1600.rs`). -/
+inductive DelegationKind | blakeRound | bigint | keccak | keccakThetaRho | keccakParity | keccakChi5
 
 def DelegationKind.csr : DelegationKind → BitVec 12
-  | .blakeRound => 0x7c7 | .blakeG => 0x7c8 | .bigint => 0x7ca | .keccak => 0x7cb
+  | .blakeRound => 0x7c7 | .bigint => 0x7ca | .keccak => 0x7cb
   | .keccakThetaRho => 0x7cc | .keccakParity => 0x7cd | .keccakChi5 => 0x7ce
 
 def DelegationKind.ofCsr (csr : BitVec 12) : Option DelegationKind :=
-  if csr = 0x7c7 then some .blakeRound else if csr = 0x7c8 then some .blakeG
+  if csr = 0x7c7 then some .blakeRound
   else if csr = 0x7ca then some .bigint else if csr = 0x7cb then some .keccak
   else if csr = 0x7cc then some .keccakThetaRho else if csr = 0x7cd then some .keccakParity
   else if csr = 0x7ce then some .keccakChi5 else none
@@ -91,33 +90,6 @@ def blakeRound (x10 x11 x12 : Word) (mem : Word → BitVec 8) : Option Effect :=
     let h' : Vector Word 8 := if r + 1 = n then Vector.ofFn fun i => h₀[i] ^^^ v'[i.val] ^^^ v'[i.val + 8] else h
     some { writes := writesAt x10 h' ++ writesAt (x10 + 32) v', reg := 12,
            val := (((x12 >>> 16) &&& 7#32) ||| (((mask <<< 1) &&& 0x3ff#32) <<< 3)) <<< 16 }
-  else none
-
-/-- The words of the state and message of `G` number `j` of a round (columns, then diagonals). -/
-def gIndices : Fin 8 → Fin 4 → Fin 16 :=
-  ![![0, 4, 8, 12], ![1, 5, 9, 13], ![2, 6, 10, 14], ![3, 7, 11, 15],
-    ![0, 5, 10, 15], ![1, 6, 11, 12], ![2, 7, 8, 13], ![3, 4, 9, 14]]
-
-/-- BLAKE2s `G` function (CSR `0x7c8`; table: "x10 → 64-aligned v[0..15], x11 → 64-aligned m[0..15]; each
-instruction performs one G; runs of 56 or 80").
-From source (`riscv_transpiler/src/replayer/delegations/blake2_g_function.rs`): `x12 < 256`, bits 0 … 6 = the counter
-`k` (`G` number `k % 8` of round `k / 8`), bit 7 = 7 rounds (else 10, `n` = 56 / 80 calls); the counter then
-advances, wrapping to 0 after the last `G`. The circuit's table (`cs/src/tables/blake_g_function_precompile_related.rs`)
-also takes `k ≥ n`: `G` 0 of round 0, counter back to 0. Pointers: in RAM, 64-aligned, different. -/
-def blakeG (x10 x11 x12 : Word) (mem : Word → BitVec 8) : Option Effect :=
-  let k := x12.toNat % 128
-  let n := if x12.getLsbD 7 then 56 else 80
-  let i := if k < n then k else 0
-  if ROM_END ≤ x10.toNat ∧ x10.toNat % 64 = 0 ∧ ROM_END ≤ x11.toNat ∧ x11.toNat + 64 ≤ RAM_END ∧
-      x11.toNat % 64 = 0 ∧ x10 ≠ x11 ∧ x12.toNat < 256 then
-    let v := readWords mem x10 16
-    let m := readWords mem x11 16
-    let r : Fin 10 := ⟨i / 8 % 10, Nat.mod_lt _ (by decide)⟩
-    let j : Fin 8 := ⟨i % 8, Nat.mod_lt _ (by decide)⟩
-    let g := gIndices j
-    let v' := G v (g 0) (g 1) (g 2) (g 3) m[SIGMA r ⟨2 * j.val, by omega⟩] m[SIGMA r ⟨2 * j.val + 1, by omega⟩]
-    some { writes := writesAt x10 v', reg := 12,
-           val := (x12 &&& 0x80#32) ||| BitVec.ofNat 32 (if k + 1 < n then k + 1 else 0) }
   else none
 
 /-- The 256-bit number with the 8 words `ws` (least significant first), and back. -/
@@ -279,7 +251,6 @@ def keccakF1600 (op : Nat) (x10 x11 : Word) (mem : Word → BitVec 8) : Option E
 /-- What one delegation instruction does, given `x10`, `x11`, `x12` and memory. -/
 def effect : DelegationKind → (x10 x11 x12 : Word) → (Word → BitVec 8) → Option Effect
   | .blakeRound, x10, x11, x12, mem => blakeRound x10 x11 x12 mem
-  | .blakeG, x10, x11, x12, mem => blakeG x10 x11 x12 mem
   | .bigint, x10, x11, x12, mem => bigint x10 x11 x12 mem
   | .keccak, x10, x11, _, mem => keccakSpecial5 x10 x11 mem
   | .keccakParity, x10, x11, _, mem => keccakF1600 0 x10 x11 mem
@@ -293,9 +264,9 @@ end RV
 namespace RV
 
 /-- How many delegation calls in a row the decoder accepts (ISA table: "only exact runs of"), by instruction word:
-`csrrw x0, 0x7c7, x0` 7 or 10, `0x7c8` 56 or 80, `0x7cb` 649 (`0x7ca`: any). -/
+`csrrw x0, 0x7c7, x0` 7 or 10, `0x7cb` 649 (`0x7ca`: any). -/
 def callRun (w : Word) : Option (List Nat) :=
-  if w = 0x7c701073 then some [7, 10] else if w = 0x7c801073 then some [56, 80]
+  if w = 0x7c701073 then some [7, 10]
   else if w = 0x7cb01073 then some [649] else none
 
 /-- The words of a flat binary (little-endian). -/
@@ -303,23 +274,10 @@ def imageWords : List (BitVec 8) → List Word
   | b0 :: b1 :: b2 :: b3 :: rest => (b3 ++ b2 ++ b1 ++ b0) :: imageWords rest
   | _ => []
 
-/-- The Keccak-f1600 words (`csrrw x0, 0x7cc … 0x7ce, x0`). -/
-def isF1600Word (w : Word) : Bool := w == 0x7cc01073 || w == 0x7cd01073 || w == 0x7ce01073
-
-/-- A Keccak-f1600 run (ISA table: "exact runs of 361 consecutive calls"): 24 × (5 parity `0x7cd`, 5 θ+ρ `0x7cc`,
-5 χ `0x7ce`), then 1 parity. -/
-def f1600Run : List Word :=
-  (List.replicate 24
-    (List.replicate 5 0x7cd01073 ++ List.replicate 5 0x7cc01073 ++ List.replicate 5 0x7ce01073)).flatten ++
-  [0x7cd01073]
-
-/-- The decoder accepts the binary: every maximal run of one delegation word has an accepted length, and every
-maximal run of Keccak-f1600 words is one Keccak-f1600 run. -/
+/-- The decoder accepts the binary: every maximal run of one delegation word has an accepted length. (Keccak-f1600's
+three words are not constrained here: that 361 calls in their order are Keccak-f[1600] is `KeccakF1600Run`.) -/
 def Accepted (bytes : Array (BitVec 8)) : Prop :=
-  (∀ run ∈ (imageWords bytes.toList).splitBy (· == ·),
-    ∀ lengths ∈ run.head?.bind callRun, run.length ∈ lengths) ∧
-  ∀ run ∈ (imageWords bytes.toList).splitBy (fun a b => isF1600Word a && isF1600Word b),
-    run.head?.any isF1600Word → run = f1600Run
+  ∀ run ∈ (imageWords bytes.toList).splitBy (· == ·), ∀ lengths ∈ run.head?.bind callRun, run.length ∈ lengths
 
 instance : DecidablePred Accepted := fun _ => by unfold Accepted; infer_instance
 

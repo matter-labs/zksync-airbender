@@ -80,23 +80,6 @@ def BlakeHashRun10 : Prop :=
         (if right then readWords s.mem q 8 ++ readWords s.mem p 8 else readWords s.mem p 8 ++ readWords s.mem q 8)
         64#32 true
 
-/-- 7 Blake2s rounds: 56 `G` calls (CSR `0x7c8`) from `x12 = 0x80` on the work vector `v` at `x10 = p` with the
-block `m` at `x11 = q`; `x12` is `0x80` again. -/
-def BlakeGRun : Prop :=
-  ∀ (s : State) (p q : Word), Buffer p 64 64 → Buffer q 64 64 → p ≠ q →
-    s.getReg 10 = p → s.getReg 11 = q → s.getReg 12 = 0x80#32 →
-    ∃ s', calls (.replicate 56 .blakeG) s = some s' ∧ ChangesOnly s s' p 64 12 ∧ s'.getReg 12 = 0x80#32 ∧
-      readWords s'.mem p 16 = (List.finRange 7).foldl
-        (fun v r => round (readWords s.mem q 16) (SIGMA (r.castLE (by decide))) v) (readWords s.mem p 16)
-
-/-- 10 Blake2s rounds: 80 `G` calls from `x12 = 0`; `x12` is `0` again. -/
-def BlakeGRun10 : Prop :=
-  ∀ (s : State) (p q : Word), Buffer p 64 64 → Buffer q 64 64 → p ≠ q →
-    s.getReg 10 = p → s.getReg 11 = q → s.getReg 12 = 0#32 →
-    ∃ s', calls (.replicate 80 .blakeG) s = some s' ∧ ChangesOnly s s' p 64 12 ∧ s'.getReg 12 = 0#32 ∧
-      readWords s'.mem p 16 = (List.finRange 10).foldl
-        (fun v r => round (readWords s.mem q 16) (SIGMA r) v) (readWords s.mem p 16)
-
 /-- Keccak-f[1600]: 649 special5 calls (CSR `0x7cb`) from `x10 = 0` on the 25 lanes at `x11 = p` (6 scratch lanes
 after them). -/
 def KeccakSpecial5Run : Prop :=

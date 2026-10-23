@@ -74,7 +74,7 @@ def MachineChecks : Prop :=
   nextPC 0x7c001073 = none ∧           -- csrrw x0, 0x7c0, x0
   -- delegation calls: run by `RV.Delegation`, rejected on bad arguments
   nextPC 0x7c701073 = none ∧           -- Blake2s round with x12 = 0
-  nextPC 0x7c801073 = none ∧           -- Blake2s G with x10 not 64-aligned
+  nextPC 0x7c801073 = none ∧           -- csrrw x0, 0x7c8, x0 (Blake2s G: not a delegation)
   (step ⟨(testState 0x7c701073).set .x12 0x90000#32, []⟩).isNone = true  -- x10 not 128-aligned, x11 in ROM
 
 end Airbender
