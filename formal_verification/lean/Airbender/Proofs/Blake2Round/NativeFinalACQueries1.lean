@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2Round.NativeFinalACSoundness
 import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2Round.NativeFinalQueryBase
 
@@ -20,58 +21,7 @@ theorem native_ac_queries_4 {p : Nat} [Fact p.Prime]
     chunkXor 7 (acTemp w (4 : Fin 8) 1) (acLowA w (4 : Fin 8)) (acTemp w (4 : Fin 8) 4) ∧
     chunkXor 9 (acTemp w (4 : Fin 8) 2)
       ((-15728640 : ZMod p) * (acA w (4 : Fin 8) - acLowA w (4 : Fin 8))) (acTemp w (4 : Fin 8) 5) := by
-  have field := serialized_field compatible
-  subst p
-  unfold babyBearModulus at *
-  have tag (stage : Fin 4) : finalColumn w ((4 : Fin 8).castLE (by decide)) stage 5 =
-      (if stage.val % 2 = 0 then 19 else 20 : ZMod 2013265921) := by
-    fin_cases stage <;> simp [finalColumn,
-      NativeFinalLayout.queryColumn, NativeFinalLayout.query, NativeFinalLayout.queryIndex,
-      importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment]
-  have q0 := final_query (by decide) ((4 : Fin 8).castLE (by decide)) 0 1 h (tag 0)
-  have q1 := final_query (by decide) ((4 : Fin 8).castLE (by decide)) 1 2 h (tag 1)
-  have q2 := final_query (by decide) ((4 : Fin 8).castLE (by decide)) 2 1 h (tag 2)
-  have q3 := final_query (by decide) ((4 : Fin 8).castLE (by decide)) 3 2 h (tag 3)
-  have initialHigh : finalColumn w ((4 : Fin 8).castLE (by decide)) 1 0 =
-      (-15728640 : ZMod 2013265921) * (acInitial w (4 : Fin 8) - acTemp w (4 : Fin 8) 0) := by
-    all_goals simp [finalColumn, NativeFinalLayout.queryColumn, NativeFinalLayout.query,
-      NativeFinalLayout.queryIndex, importedConstraints, FlatOperation.lookups,
-      Expression.eval, Verification.environment, acInitial, NativeFinalLayout.initial,
-      acTemp, NativeFinalLayout.temporary]
-    all_goals ring
-  have cHigh : finalColumn w ((4 : Fin 8).castLE (by decide)) 1 1 =
-      (-15728640 : ZMod 2013265921) * (acC w (4 : Fin 8) - acLowC w (4 : Fin 8)) := by
-    all_goals simp [finalColumn, NativeFinalLayout.queryColumn, NativeFinalLayout.query,
-      NativeFinalLayout.queryIndex, importedConstraints, FlatOperation.lookups,
-      Expression.eval, Verification.environment, acC, NativeFinalLayout.secondInput,
-      acLowC, NativeFinalLayout.lowC, diagonalFrame, NativeLayout.diagonal,
-      NativeLayout.Layout.read, NativeLayout.Location.read]
-    all_goals ring
-  have aHigh : finalColumn w ((4 : Fin 8).castLE (by decide)) 3 1 =
-      (-15728640 : ZMod 2013265921) * (acA w (4 : Fin 8) - acLowA w (4 : Fin 8)) := by
-    all_goals simp [finalColumn, NativeFinalLayout.queryColumn, NativeFinalLayout.query,
-      NativeFinalLayout.queryIndex, importedConstraints, FlatOperation.lookups,
-      Expression.eval, Verification.environment, acA, NativeFinalLayout.firstInput,
-      acLowA, NativeFinalLayout.lowA, diagonalFrame, NativeLayout.diagonal,
-      NativeLayout.Layout.read, NativeLayout.Location.read, NativeFinalLayout.temporary]
-
-    all_goals ring_nf
-    all_goals reduce_mod_char
-    all_goals ring_nf
-    all_goals reduce_mod_char
-  rw [initialHigh, cHigh] at q1
-  rw [aHigh] at q3
-  all_goals simp [finalColumn, NativeFinalLayout.queryColumn, NativeFinalLayout.query,
-    NativeFinalLayout.queryIndex, importedConstraints, FlatOperation.lookups,
-    Expression.eval, Verification.environment, acTemp, NativeFinalLayout.temporary,
-    acLowC, NativeFinalLayout.lowC, acLowA, NativeFinalLayout.lowA, diagonalFrame,
-    NativeLayout.diagonal, NativeLayout.Layout.read, NativeLayout.Location.read] at q0 q1 q2 q3 ⊢
-  all_goals
-    refine ⟨q0, ?_, ?_, ?_⟩
-    · exact q1
-    · convert q2 using 1
-      all_goals ring
-    · exact q3
+  exact native_ac_queries_cached compatible (4 : Fin 8) h
 
 
 /-- Native query projections for the first half of finalization. -/
@@ -86,58 +36,7 @@ theorem native_ac_queries_5 {p : Nat} [Fact p.Prime]
     chunkXor 7 (acTemp w (5 : Fin 8) 1) (acLowA w (5 : Fin 8)) (acTemp w (5 : Fin 8) 4) ∧
     chunkXor 9 (acTemp w (5 : Fin 8) 2)
       ((-15728640 : ZMod p) * (acA w (5 : Fin 8) - acLowA w (5 : Fin 8))) (acTemp w (5 : Fin 8) 5) := by
-  have field := serialized_field compatible
-  subst p
-  unfold babyBearModulus at *
-  have tag (stage : Fin 4) : finalColumn w ((5 : Fin 8).castLE (by decide)) stage 5 =
-      (if stage.val % 2 = 0 then 19 else 20 : ZMod 2013265921) := by
-    fin_cases stage <;> simp [finalColumn,
-      NativeFinalLayout.queryColumn, NativeFinalLayout.query, NativeFinalLayout.queryIndex,
-      importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment]
-  have q0 := final_query (by decide) ((5 : Fin 8).castLE (by decide)) 0 1 h (tag 0)
-  have q1 := final_query (by decide) ((5 : Fin 8).castLE (by decide)) 1 2 h (tag 1)
-  have q2 := final_query (by decide) ((5 : Fin 8).castLE (by decide)) 2 1 h (tag 2)
-  have q3 := final_query (by decide) ((5 : Fin 8).castLE (by decide)) 3 2 h (tag 3)
-  have initialHigh : finalColumn w ((5 : Fin 8).castLE (by decide)) 1 0 =
-      (-15728640 : ZMod 2013265921) * (acInitial w (5 : Fin 8) - acTemp w (5 : Fin 8) 0) := by
-    all_goals simp [finalColumn, NativeFinalLayout.queryColumn, NativeFinalLayout.query,
-      NativeFinalLayout.queryIndex, importedConstraints, FlatOperation.lookups,
-      Expression.eval, Verification.environment, acInitial, NativeFinalLayout.initial,
-      acTemp, NativeFinalLayout.temporary]
-    all_goals ring
-  have cHigh : finalColumn w ((5 : Fin 8).castLE (by decide)) 1 1 =
-      (-15728640 : ZMod 2013265921) * (acC w (5 : Fin 8) - acLowC w (5 : Fin 8)) := by
-    all_goals simp [finalColumn, NativeFinalLayout.queryColumn, NativeFinalLayout.query,
-      NativeFinalLayout.queryIndex, importedConstraints, FlatOperation.lookups,
-      Expression.eval, Verification.environment, acC, NativeFinalLayout.secondInput,
-      acLowC, NativeFinalLayout.lowC, diagonalFrame, NativeLayout.diagonal,
-      NativeLayout.Layout.read, NativeLayout.Location.read]
-    all_goals ring
-  have aHigh : finalColumn w ((5 : Fin 8).castLE (by decide)) 3 1 =
-      (-15728640 : ZMod 2013265921) * (acA w (5 : Fin 8) - acLowA w (5 : Fin 8)) := by
-    all_goals simp [finalColumn, NativeFinalLayout.queryColumn, NativeFinalLayout.query,
-      NativeFinalLayout.queryIndex, importedConstraints, FlatOperation.lookups,
-      Expression.eval, Verification.environment, acA, NativeFinalLayout.firstInput,
-      acLowA, NativeFinalLayout.lowA, diagonalFrame, NativeLayout.diagonal,
-      NativeLayout.Layout.read, NativeLayout.Location.read, NativeFinalLayout.temporary]
-
-    all_goals ring_nf
-    all_goals reduce_mod_char
-    all_goals ring_nf
-    all_goals reduce_mod_char
-  rw [initialHigh, cHigh] at q1
-  rw [aHigh] at q3
-  all_goals simp [finalColumn, NativeFinalLayout.queryColumn, NativeFinalLayout.query,
-    NativeFinalLayout.queryIndex, importedConstraints, FlatOperation.lookups,
-    Expression.eval, Verification.environment, acTemp, NativeFinalLayout.temporary,
-    acLowC, NativeFinalLayout.lowC, acLowA, NativeFinalLayout.lowA, diagonalFrame,
-    NativeLayout.diagonal, NativeLayout.Layout.read, NativeLayout.Location.read] at q0 q1 q2 q3 ⊢
-  all_goals
-    refine ⟨q0, ?_, ?_, ?_⟩
-    · exact q1
-    · convert q2 using 1
-      all_goals ring
-    · exact q3
+  exact native_ac_queries_cached compatible (5 : Fin 8) h
 
 
 /-- Native query projections for the first half of finalization. -/
@@ -152,58 +51,7 @@ theorem native_ac_queries_6 {p : Nat} [Fact p.Prime]
     chunkXor 7 (acTemp w (6 : Fin 8) 1) (acLowA w (6 : Fin 8)) (acTemp w (6 : Fin 8) 4) ∧
     chunkXor 9 (acTemp w (6 : Fin 8) 2)
       ((-15728640 : ZMod p) * (acA w (6 : Fin 8) - acLowA w (6 : Fin 8))) (acTemp w (6 : Fin 8) 5) := by
-  have field := serialized_field compatible
-  subst p
-  unfold babyBearModulus at *
-  have tag (stage : Fin 4) : finalColumn w ((6 : Fin 8).castLE (by decide)) stage 5 =
-      (if stage.val % 2 = 0 then 19 else 20 : ZMod 2013265921) := by
-    fin_cases stage <;> simp [finalColumn,
-      NativeFinalLayout.queryColumn, NativeFinalLayout.query, NativeFinalLayout.queryIndex,
-      importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment]
-  have q0 := final_query (by decide) ((6 : Fin 8).castLE (by decide)) 0 1 h (tag 0)
-  have q1 := final_query (by decide) ((6 : Fin 8).castLE (by decide)) 1 2 h (tag 1)
-  have q2 := final_query (by decide) ((6 : Fin 8).castLE (by decide)) 2 1 h (tag 2)
-  have q3 := final_query (by decide) ((6 : Fin 8).castLE (by decide)) 3 2 h (tag 3)
-  have initialHigh : finalColumn w ((6 : Fin 8).castLE (by decide)) 1 0 =
-      (-15728640 : ZMod 2013265921) * (acInitial w (6 : Fin 8) - acTemp w (6 : Fin 8) 0) := by
-    all_goals simp [finalColumn, NativeFinalLayout.queryColumn, NativeFinalLayout.query,
-      NativeFinalLayout.queryIndex, importedConstraints, FlatOperation.lookups,
-      Expression.eval, Verification.environment, acInitial, NativeFinalLayout.initial,
-      acTemp, NativeFinalLayout.temporary]
-    all_goals ring
-  have cHigh : finalColumn w ((6 : Fin 8).castLE (by decide)) 1 1 =
-      (-15728640 : ZMod 2013265921) * (acC w (6 : Fin 8) - acLowC w (6 : Fin 8)) := by
-    all_goals simp [finalColumn, NativeFinalLayout.queryColumn, NativeFinalLayout.query,
-      NativeFinalLayout.queryIndex, importedConstraints, FlatOperation.lookups,
-      Expression.eval, Verification.environment, acC, NativeFinalLayout.secondInput,
-      acLowC, NativeFinalLayout.lowC, diagonalFrame, NativeLayout.diagonal,
-      NativeLayout.Layout.read, NativeLayout.Location.read]
-    all_goals ring
-  have aHigh : finalColumn w ((6 : Fin 8).castLE (by decide)) 3 1 =
-      (-15728640 : ZMod 2013265921) * (acA w (6 : Fin 8) - acLowA w (6 : Fin 8)) := by
-    all_goals simp [finalColumn, NativeFinalLayout.queryColumn, NativeFinalLayout.query,
-      NativeFinalLayout.queryIndex, importedConstraints, FlatOperation.lookups,
-      Expression.eval, Verification.environment, acA, NativeFinalLayout.firstInput,
-      acLowA, NativeFinalLayout.lowA, diagonalFrame, NativeLayout.diagonal,
-      NativeLayout.Layout.read, NativeLayout.Location.read, NativeFinalLayout.temporary]
-
-    all_goals ring_nf
-    all_goals reduce_mod_char
-    all_goals ring_nf
-    all_goals reduce_mod_char
-  rw [initialHigh, cHigh] at q1
-  rw [aHigh] at q3
-  all_goals simp [finalColumn, NativeFinalLayout.queryColumn, NativeFinalLayout.query,
-    NativeFinalLayout.queryIndex, importedConstraints, FlatOperation.lookups,
-    Expression.eval, Verification.environment, acTemp, NativeFinalLayout.temporary,
-    acLowC, NativeFinalLayout.lowC, acLowA, NativeFinalLayout.lowA, diagonalFrame,
-    NativeLayout.diagonal, NativeLayout.Layout.read, NativeLayout.Location.read] at q0 q1 q2 q3 ⊢
-  all_goals
-    refine ⟨q0, ?_, ?_, ?_⟩
-    · exact q1
-    · convert q2 using 1
-      all_goals ring
-    · exact q3
+  exact native_ac_queries_cached compatible (6 : Fin 8) h
 
 
 /-- Native query projections for the first half of finalization. -/
@@ -218,58 +66,7 @@ theorem native_ac_queries_7 {p : Nat} [Fact p.Prime]
     chunkXor 7 (acTemp w (7 : Fin 8) 1) (acLowA w (7 : Fin 8)) (acTemp w (7 : Fin 8) 4) ∧
     chunkXor 9 (acTemp w (7 : Fin 8) 2)
       ((-15728640 : ZMod p) * (acA w (7 : Fin 8) - acLowA w (7 : Fin 8))) (acTemp w (7 : Fin 8) 5) := by
-  have field := serialized_field compatible
-  subst p
-  unfold babyBearModulus at *
-  have tag (stage : Fin 4) : finalColumn w ((7 : Fin 8).castLE (by decide)) stage 5 =
-      (if stage.val % 2 = 0 then 19 else 20 : ZMod 2013265921) := by
-    fin_cases stage <;> simp [finalColumn,
-      NativeFinalLayout.queryColumn, NativeFinalLayout.query, NativeFinalLayout.queryIndex,
-      importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment]
-  have q0 := final_query (by decide) ((7 : Fin 8).castLE (by decide)) 0 1 h (tag 0)
-  have q1 := final_query (by decide) ((7 : Fin 8).castLE (by decide)) 1 2 h (tag 1)
-  have q2 := final_query (by decide) ((7 : Fin 8).castLE (by decide)) 2 1 h (tag 2)
-  have q3 := final_query (by decide) ((7 : Fin 8).castLE (by decide)) 3 2 h (tag 3)
-  have initialHigh : finalColumn w ((7 : Fin 8).castLE (by decide)) 1 0 =
-      (-15728640 : ZMod 2013265921) * (acInitial w (7 : Fin 8) - acTemp w (7 : Fin 8) 0) := by
-    all_goals simp [finalColumn, NativeFinalLayout.queryColumn, NativeFinalLayout.query,
-      NativeFinalLayout.queryIndex, importedConstraints, FlatOperation.lookups,
-      Expression.eval, Verification.environment, acInitial, NativeFinalLayout.initial,
-      acTemp, NativeFinalLayout.temporary]
-    all_goals ring
-  have cHigh : finalColumn w ((7 : Fin 8).castLE (by decide)) 1 1 =
-      (-15728640 : ZMod 2013265921) * (acC w (7 : Fin 8) - acLowC w (7 : Fin 8)) := by
-    all_goals simp [finalColumn, NativeFinalLayout.queryColumn, NativeFinalLayout.query,
-      NativeFinalLayout.queryIndex, importedConstraints, FlatOperation.lookups,
-      Expression.eval, Verification.environment, acC, NativeFinalLayout.secondInput,
-      acLowC, NativeFinalLayout.lowC, diagonalFrame, NativeLayout.diagonal,
-      NativeLayout.Layout.read, NativeLayout.Location.read]
-    all_goals ring
-  have aHigh : finalColumn w ((7 : Fin 8).castLE (by decide)) 3 1 =
-      (-15728640 : ZMod 2013265921) * (acA w (7 : Fin 8) - acLowA w (7 : Fin 8)) := by
-    all_goals simp [finalColumn, NativeFinalLayout.queryColumn, NativeFinalLayout.query,
-      NativeFinalLayout.queryIndex, importedConstraints, FlatOperation.lookups,
-      Expression.eval, Verification.environment, acA, NativeFinalLayout.firstInput,
-      acLowA, NativeFinalLayout.lowA, diagonalFrame, NativeLayout.diagonal,
-      NativeLayout.Layout.read, NativeLayout.Location.read, NativeFinalLayout.temporary]
-
-    all_goals ring_nf
-    all_goals reduce_mod_char
-    all_goals ring_nf
-    all_goals reduce_mod_char
-  rw [initialHigh, cHigh] at q1
-  rw [aHigh] at q3
-  all_goals simp [finalColumn, NativeFinalLayout.queryColumn, NativeFinalLayout.query,
-    NativeFinalLayout.queryIndex, importedConstraints, FlatOperation.lookups,
-    Expression.eval, Verification.environment, acTemp, NativeFinalLayout.temporary,
-    acLowC, NativeFinalLayout.lowC, acLowA, NativeFinalLayout.lowA, diagonalFrame,
-    NativeLayout.diagonal, NativeLayout.Layout.read, NativeLayout.Location.read] at q0 q1 q2 q3 ⊢
-  all_goals
-    refine ⟨q0, ?_, ?_, ?_⟩
-    · exact q1
-    · convert q2 using 1
-      all_goals ring
-    · exact q3
+  exact native_ac_queries_cached compatible (7 : Fin 8) h
 
 
 end Airbender.Blake2Round.Proofs
