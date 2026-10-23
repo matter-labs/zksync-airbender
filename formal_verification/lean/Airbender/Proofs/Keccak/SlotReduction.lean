@@ -1,5 +1,5 @@
 import Airbender.Proofs.Keccak.ReferenceController
-import Airbender.Proofs.Keccak.PhysicalStep
+import Airbender.Proofs.Keccak.PhysicalDefinitions
 import Airbender.Proofs.Keccak.LayoutReduction
 namespace Airbender.Keccak.Proofs
 set_option warningAsError true

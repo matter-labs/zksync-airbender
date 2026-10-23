@@ -1,4 +1,4 @@
-import Airbender.Proofs.Keccak.PhysicalStep
+import Airbender.Proofs.Keccak.PhysicalDefinitions
 import Airbender.Proofs.Keccak.DeferredIota
 
 namespace Airbender.Keccak.Proofs
