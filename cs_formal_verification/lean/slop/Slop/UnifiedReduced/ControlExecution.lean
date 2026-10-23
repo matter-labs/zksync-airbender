@@ -1,3 +1,4 @@
+import Slop.Sail.Configured
 import Slop.UnifiedReduced.RegisterRetirement
 import Slop.UnifiedReduced.BranchSoundness
 import Slop.UnifiedReduced.ComparisonSoundness
@@ -267,7 +268,8 @@ theorem jump_execution [Fact p.Prime]
       run (normalStep clause) (retiredState before (Control.initialPC w).toBitVec) =
         .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (Control.finalPC w).toBitVec) := by
   obtain ⟨addresses, image⟩ := inputs.initialization.programImage
-  exact jump_execution_from_memory hp inverse accepted member inputs.initialization inputs.setup inputs.isa inputs.landingPad words atRow position
+  exact jump_execution_from_memory hp inverse accepted member inputs.initialization inputs.setup inputs.configuration.isa
+    (fun _ => ⟨inputs.configuration.privilege, inputs.configuration.landingPad⟩) words atRow position
     (run_program_sources image entry present) (inputs.codeAligned entry present)
     (memory_execution (by dsimp [timestampBase]; omega) inverse accepted inputs.initialization decoded)
     query encoding history

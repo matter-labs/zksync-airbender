@@ -52,7 +52,7 @@ theorem step_of_rebased {Kind : Type}
     (EStateM.Result.ok.inj ((retired_state_pc before pc).symm.trans fetched)).1
   refine ⟨entry, present, ⟨read_word_frame (before := retiredState before pc) (after := before)
     rfl source.bytes, (decoded_misa_frame _ source.decoded).2 _
-      (by simp [retiredState, Std.ExtDHashMap.get?_insert]), source.fields⟩,
+      (((ConfigSame.refl before).insert (key := .nextPC) rfl pc).insert (key := .PC) rfl pc).symm, source.fields⟩,
     same ▸ read, original, chosen, ?_⟩
   rw [← normal_step_rebased read original]
   exact normal

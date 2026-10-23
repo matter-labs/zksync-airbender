@@ -16,7 +16,7 @@ theorem source_after_ram_history {Kind : Type}
     (code : entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0) :
     entry.SourceWith before projection := by
   exact ⟨history_code_frame_of_domain history ram entry.pc code.1 code.2 source.bytes,
-    (decoded_misa_frame _ source.decoded).2 _ (sail_history_control_flow_csrs history).1, source.fields⟩
+    (decoded_misa_frame _ source.decoded).2 _ (sail_history_config_same history), source.fields⟩
 
 theorem cycle_source {Kind : Type} {projection : SailRV32.instruction → Option (DecoderData Kind)}
     {cells : List Cell} {events : List MemoryAccess} {initial before : State}
@@ -31,7 +31,8 @@ theorem cycle_source {Kind : Type} {projection : SailRV32.instruction → Option
   rw [pc]
   have bytes := cell_read_nextPC (.ram entry.pc) current.bytes entry.pc
   have bytes := cell_read_PC (.ram entry.pc) bytes entry.pc
-  exact ⟨bytes, (decoded_misa_frame _ current.decoded).2 _ (by simp [retiredState, Std.ExtDHashMap.get?_insert]), current.fields⟩
+  exact ⟨bytes, (decoded_misa_frame _ current.decoded).2 _
+    (((ConfigSame.refl before).insert (key := .nextPC) rfl entry.pc).insert (key := .PC) rfl entry.pc), current.fields⟩
 
 theorem current_fetch_of_history
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
