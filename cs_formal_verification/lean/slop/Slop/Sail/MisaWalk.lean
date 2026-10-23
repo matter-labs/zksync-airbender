@@ -31,6 +31,27 @@ theorem configured_same {before state : State} (hb : Configured before) (hs : Co
     ConfigSame before state :=
   fun register unwritten => (hs register unwritten).trans (hb register unwritten).symm
 
+theorem ConfigSame.refl (state : State) : ConfigSame state state := fun _ _ => rfl
+
+theorem ConfigSame.symm {before state : State} (same : ConfigSame before state) : ConfigSame state before :=
+  fun register unwritten => (same register unwritten).symm
+
+theorem ConfigSame.trans {first second third : State} (one : ConfigSame first second)
+    (two : ConfigSame second third) : ConfigSame first third :=
+  fun register unwritten => (two register unwritten).trans (one register unwritten)
+
+/-- Writing a register a program writes keeps the configuration. -/
+theorem ConfigSame.insert {before state : State} (same : ConfigSame before state) {key : SailRV32.Register}
+    (written : Configuration.writtenByProgram key = true) (value : SailRV32.RegisterType key) :
+    ConfigSame before { state with regs := state.regs.insert key value } := by
+  intro register unwritten
+  have distinct : key ≠ register := by
+    rintro rfl
+    rw [written] at unwritten
+    cases unwritten
+  simp only [Std.ExtDHashMap.get?_insert, beq_iff_eq, distinct, ↓reduceDIte]
+  exact same register unwritten
+
 /-- A property of the existing Sail interpreter: successful execution preserves state and can be
     replayed in any state with the same configuration registers (`ConfigSame`). -/
 def MisaOnly {α : Type} (action : SailRV32.SailM α) : Prop :=

@@ -1,4 +1,5 @@
 import Slop.Trace.SailHistory
+import Slop.Sail.MisaWalk
 
 namespace Airbender.Trace.Proofs
 open Reference.RiscV.Sail Reference.Sail
@@ -69,6 +70,37 @@ theorem sail_history_control_flow_csrs {cells : List Cell} {events : List Memory
   | cons past cell member address read written ih =>
     have frame := cell_write_control_flow_csrs written
     exact ⟨frame.1.trans ih.1, frame.2.1.trans ih.2.1, frame.2.2.trans ih.2.2⟩
+
+/-- A native cell write keeps every register a program never writes. -/
+theorem cell_write_config_same {before after : State} {cell : Cell} {value : BitVec 32}
+    (written : run (cell.write value) before = .ok () after) : ConfigSame before after := by
+  cases cell with
+  | register index =>
+    have primitive (reg : SailRV32.Register) (v : SailRV32.RegisterType reg) (state : State) :
+        run (do SailRV32.writeReg reg v; pure ()) state =
+          .ok () { state with regs := state.regs.insert reg v } := rfl
+    have pureRun (state : State) : run (pure () : SailRV32.SailM Unit) state = .ok () state := rfl
+    have bound := index.isLt
+    change run (SailRV32.Functions.wX (.Regno (index.toNat : Int)) value) before = _ at written
+    interval_cases index.toNat
+    all_goals simp [SailRV32.Functions.wX, SailRV32.Functions.regval_into_reg,
+      write_callback_pure, freeM_pure_bind, primitive, pureRun, EStateM.Result.ok.injEq] at written
+    all_goals subst after
+    all_goals first
+      | exact ConfigSame.refl _
+      | exact (ConfigSame.refl _).insert rfl _
+  | ram address =>
+    have same := (EStateM.Result.ok.inj ((write_word_state before address value).symm.trans written)).2
+    subst after
+    exact ConfigSame.refl _
+
+/-- Complete native histories keep every register a program never writes. -/
+theorem sail_history_config_same {cells : List Cell} {events : List MemoryAccess}
+    {before after : State} (history : SailHistory cells events before after) : ConfigSame before after := by
+  induction history with
+  | nil => exact ConfigSame.refl _
+  | cons past cell member address read written ih =>
+    exact ih.trans (cell_write_config_same written)
 
 theorem sail_history_pc_read {cells : List Cell} {events : List MemoryAccess}
     {before after : State} (history : SailHistory cells events before after)

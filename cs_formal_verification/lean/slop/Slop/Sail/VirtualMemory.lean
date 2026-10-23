@@ -36,11 +36,12 @@ theorem physical_memory_write
     {size : Nat} {before after : State} {address : BitVec 32}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
     (configuration : Configured before) (aligned : address.toNat % size = 0)
-    (ordinary : OrdinaryWordAddress address) (value : BitVec (8 * size))
+    (ordinary : OrdinaryWordAddress address)
+    (ram : Configuration.ROM_END ≤ address.toNat) (value : BitVec (8 * size))
     (write : run (writeMemory (size := size) address value) before = .ok () after) :
     run (SailRV32.Functions.mem_write_value (.Physaddr (address.setWidth 34)) size value
       .Machine (.Store .Data) .PBMT_PMA false false false) before = .ok (.Ok true) after := by
-  have checked := checked_memory_write width configuration aligned ordinary value write
+  have checked := checked_memory_write width configuration aligned ordinary ram value write
   simp only [SailRV32.Functions.mem_write_value, SailRV32.Functions.mem_write_value_priv_meta,
     SailRV32.Functions.default_meta]
   rw [run_bind_of_ok _ _ _ _ _ checked]
@@ -155,15 +156,16 @@ theorem virtual_address_memory_write
     {size : Nat} {before after : State} {address : BitVec 32}
     (width : size = 1 ∨ size = 2 ∨ size = 4)
     (configuration : Configured before) (aligned : address.toNat % size = 0)
-    (ordinary : OrdinaryWordAddress address) (value : BitVec (8 * size))
+    (ordinary : OrdinaryWordAddress address)
+    (ram : Configuration.ROM_END ≤ address.toNat) (value : BitVec (8 * size))
     (write : run (writeMemory (size := size) address value) before = .ok () after) :
     run (SailRV32.Functions.vmem_write_addr (.Virtaddr address) size value (.Store .Data)
       ⟨.Machine, 0, false⟩ false false false) before = .ok (.Ok true) after := by
   obtain ⟨isa, initialized⟩ := configuration.isa
   have satp := machine_satp_mode initialized
   have translated := configured_translation configuration address (.Store .Data) (by simp)
-  have announcement := checked_memory_announcement width configuration aligned ordinary
-  have write := physical_memory_write width configuration aligned ordinary value write
+  have announcement := checked_memory_announcement width configuration aligned ordinary ram
+  have write := physical_memory_write width configuration aligned ordinary ram value write
   simp only [SailRV32.Functions.vmem_write_addr, SailRV32.SailME.run]
   repeat first
     | rw [freeM_bind_assoc]
@@ -239,12 +241,13 @@ theorem virtual_memory_write
     (width : size = 1 ∨ size = 2 ∨ size = 4)
     (configuration : Configured before) (index : SailRV32.regidx) (offset : BitVec 32)
     (registerRead : run (SailRV32.Functions.rX_bits index) before = .ok source before)
-    (aligned : (source + offset).toNat % size = 0) (ordinary : OrdinaryWordAddress (source + offset)) (value : BitVec (8 * size))
+    (aligned : (source + offset).toNat % size = 0) (ordinary : OrdinaryWordAddress (source + offset))
+    (ram : Configuration.ROM_END ≤ (source + offset).toNat) (value : BitVec (8 * size))
     (write : run (writeMemory (size := size) (source + offset) value) before = .ok () after) :
     run (SailRV32.Functions.vmem_write index offset size value (.Store .Data) false false false) before =
       .ok (.Ok true) after := by
   have address := effective_memory_address configuration index offset size (.Store .Data) registerRead
-  have memory := virtual_address_memory_write width configuration aligned ordinary value write
+  have memory := virtual_address_memory_write width configuration aligned ordinary ram value write
   simp only [SailRV32.Functions.vmem_write]
   rw [run_bind_of_ok _ _ _ _ _
     (machine_access_info configuration.status configuration.privilege (.Store .Data))]
@@ -352,11 +355,12 @@ theorem physical_word_read {before : State} {address value : BitVec 32}
 theorem physical_word_write
     {before : State} {address : BitVec 32}
     (configuration : Configured before) (aligned : address.toNat % 4 = 0)
-    (ordinary : OrdinaryWordAddress address) (value : BitVec 32) :
+    (ordinary : OrdinaryWordAddress address)
+    (ram : Configuration.ROM_END ≤ address.toNat) (value : BitVec 32) :
     run (SailRV32.Functions.mem_write_value (.Physaddr (address.setWidth 34)) 4 value
       .Machine (.Store .Data) .PBMT_PMA false false false) before =
         .ok (.Ok true) (wordWriteState before address.toNat value) :=
-  physical_memory_write (Or.inr (Or.inr rfl)) configuration aligned ordinary value (write_word_state before address value)
+  physical_memory_write (Or.inr (Or.inr rfl)) configuration aligned ordinary ram value (write_word_state before address value)
 
 theorem translated_word_read
     {before : State} {address value : BitVec 32}
@@ -384,11 +388,12 @@ theorem virtual_address_word_read
 theorem virtual_address_word_write
     {before : State} {address : BitVec 32}
     (configuration : Configured before) (aligned : address.toNat % 4 = 0)
-    (ordinary : OrdinaryWordAddress address) (value : BitVec 32) :
+    (ordinary : OrdinaryWordAddress address)
+    (ram : Configuration.ROM_END ≤ address.toNat) (value : BitVec 32) :
     run (SailRV32.Functions.vmem_write_addr (.Virtaddr address) 4 value (.Store .Data)
       ⟨.Machine, 0, false⟩ false false false) before =
         .ok (.Ok true) (wordWriteState before address.toNat value) :=
-  virtual_address_memory_write (Or.inr (Or.inr rfl)) configuration aligned ordinary value (write_word_state before address value)
+  virtual_address_memory_write (Or.inr (Or.inr rfl)) configuration aligned ordinary ram value (write_word_state before address value)
 
 theorem virtual_word_read
     {before : State} {source value : BitVec 32}
@@ -406,10 +411,11 @@ theorem virtual_word_write
     (configuration : Configured before) (index : SailRV32.regidx) (offset : BitVec 32)
     (registerRead : run (SailRV32.Functions.rX_bits index) before = .ok source before)
     (aligned : (source + offset).toNat % 4 = 0) (ordinary : OrdinaryWordAddress (source + offset))
+    (ram : Configuration.ROM_END ≤ (source + offset).toNat)
     (value : BitVec 32) :
     run (SailRV32.Functions.vmem_write index offset 4 value (.Store .Data) false false false) before =
       .ok (.Ok true) (wordWriteState before (source + offset).toNat value) :=
-  virtual_memory_write (Or.inr (Or.inr rfl)) configuration index offset registerRead aligned ordinary value (write_word_state before (source + offset) value)
+  virtual_memory_write (Or.inr (Or.inr rfl)) configuration index offset registerRead aligned ordinary ram value (write_word_state before (source + offset) value)
 
 theorem physical_word_read_error {before after : State} {address : BitVec 32}
     {error : _root_.Sail.Error SailRV32.exception}

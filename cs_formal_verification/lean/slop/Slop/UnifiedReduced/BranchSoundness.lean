@@ -1,3 +1,4 @@
+import Slop.Sail.Configured
 import Slop.UnifiedReduced.ControlContext
 import Slop.JumpBranchSlt.BranchSoundness
 
@@ -182,6 +183,6 @@ theorem soundness [Fact p.Prime] (hp : 4194304 ≤ p)
   exact soundness_from_memory hp inverse assumptions.initialization accepted
     (UnifiedReduced.Proofs.memory_execution (by dsimp [timestampBase]; omega) inverse accepted assumptions.initialization decoded)
     assumptions.setup member mapping.words mapping.state (run_program_sources image entry present)
-    query encoding (assumptions.codeAligned entry present) assumptions.isa
+    query encoding (assumptions.codeAligned entry present) assumptions.configuration.isa
 
 end Airbender.UnifiedReduced.Control.Branch.Proofs
