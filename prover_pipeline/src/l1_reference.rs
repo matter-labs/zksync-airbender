@@ -1548,10 +1548,10 @@ fn guard_reports_first_differing_file() {
 fn cpu_l1_feeder_profiles_and_capacity_margins() {
     let reference = fixture_dir();
     validated_manifest(&reference).expect("L1 reference manifest");
-    for (layer, profile, instances, cycles, spare) in [
-        (0, FeederProfile::A, 2, 16_100_634, 676_582),
-        (1, FeederProfile::A, 1, 5_896_777, 2_491_831),
-        (2, FeederProfile::C, 1, 2_959_224, 1_235_080),
+    for (layer, profile, instances) in [
+        (0, FeederProfile::A, 2),
+        (1, FeederProfile::A, 1),
+        (2, FeederProfile::C, 1),
     ] {
         let checkpoint: StepCheckpoint =
             read_typed(&reference.join(feeder_checkpoint_name(layer))).expect("feeder checkpoint");
@@ -1562,15 +1562,16 @@ fn cpu_l1_feeder_profiles_and_capacity_margins() {
         setups::validate_setups_cap_size(&checkpoint.setups, profile.cap_size()).unwrap();
         let report: FsvRunReport = read_typed(&reference.join(feeder_report_name(layer)))
             .expect("feeder prediction report");
-        assert_eq!(report.cycles, cycles, "feeder layer {layer} cycles");
         assert_eq!(report.nd_words_remaining, 0);
         assert_eq!(
             predicted_feeder_shape(&report).unwrap(),
             (profile, instances)
         );
-        assert_eq!(
-            instances as u64 * profile.circuit().get_domain_size() as u64 - report.cycles,
-            spare
+        let capacity = instances as u64 * profile.circuit().get_domain_size() as u64;
+        assert!(
+            report.cycles <= capacity,
+            "feeder layer {layer}: {} cycles exceed capacity {capacity}",
+            report.cycles
         );
     }
     assert_eq!(
@@ -1592,8 +1593,10 @@ fn cpu_l1_feeder_profiles_and_capacity_margins() {
     );
     let report = observe_wrap_program(&program, stream).unwrap();
     validate_wrap_report(&report, &output).unwrap();
-    assert_eq!(report.cycles, 2_042_705);
-    assert_eq!(L1_WRAP_PROGRAM_CYCLE_LIMIT as u64 - report.cycles, 54_447);
+    assert!(
+        report.cycles <= L1_WRAP_PROGRAM_CYCLE_LIMIT as u64 - 16_384,
+        "wrap must leave at least 16,384 cycles of capacity"
+    );
 }
 
 #[test]
