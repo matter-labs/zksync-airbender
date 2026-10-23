@@ -1,5 +1,6 @@
 import Airbender.Review.Circuits.Blake2Round.Tables.XorData
-import Airbender.Proofs.Tables.ImportedBlocks
+import Airbender.Proofs.Blake2G.Xor7Certificate
+import Airbender.Proofs.Tables.CyclicXorCertificate
 
 namespace Airbender.Blake2Round.Proofs
 open Airbender.Setup Airbender.Setup.Proofs
@@ -7,20 +8,30 @@ set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 131072
 set_option maxHeartbeats 4000000
+@[irreducible] private noncomputable def shortBlocks : List Block :=
+  (Blake2G.xor7Data.columns[2]'(by decide)).blocks.toList
 
-/-- Check the actual XOR output in every carry-aware seven-bit row. -/
+private theorem shape : xor7CarryData.columns[3].blocks.toList =
+    shortBlocks ++ (shortBlocks ++ shortBlocks) := by
+  unfold shortBlocks
+  dsimp only [xor7CarryData, Blake2G.xor7Data, Vector.getElem_mk,
+    Fin.getElem_fin, List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ]
+  simp only [raw_toList_append, List.cons_append, List.nil_append]
+
+
+/-- Exact coverage of the native seven-bit carry output column. -/
+theorem carry7_output_extent :
+    (xor7CarryData.columns[3].blocks.toList.map Block.length).sum = 49152 := by
+  dsimp only [xor7CarryData, Vector.getElem_mk, Fin.getElem_fin, List.getElem_toArray,
+    List.getElem_cons_zero, List.getElem_cons_succ]
+  simp (config := { maxSteps := 1000000 }) [Block.length]
+
+/-- Reuse the seven-bit XOR certificate on each of the three native carry cycles. -/
 theorem carry7_output_checks :
     checkBlocks (fun n => n / 128 % 128 ^^^ n % 128) 0
       xor7CarryData.columns[3].blocks.toList = true := by
-  dsimp only [xor7CarryData, Vector.getElem_mk, List.getElem_toArray,
-    List.getElem_cons_zero, List.getElem_cons_succ]
-  simp only [raw_toList_append, List.cons_append, List.nil_append]
-  simp (config := { maxSteps := 1000000 }) only [checkBlocks_cons_iff,
-    checkBlocks_nil, and_true, Block.length, Array.size_ofFn,
-    raw_size_append, Nat.reduceAdd, Nat.reduceMul]
-  repeat' apply And.intro
-  all_goals simp only [Block.get?, Block.length, Array.getElem?_ofFn,
-    Array.size_ofFn, raw_size_append, raw_get_append]
-  all_goals decide +kernel
+  apply cyclic_xor7_check shortBlocks _ shape carry7_output_extent
+  unfold shortBlocks
+  exact Blake2G.Proofs.XorCertificate.output7
 
 end Airbender.Blake2Round.Proofs
