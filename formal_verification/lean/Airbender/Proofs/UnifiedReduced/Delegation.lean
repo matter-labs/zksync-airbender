@@ -1,3 +1,4 @@
+import Mathlib.Algebra.EuclideanDomain.Field
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.UnifiedReduced.Delegation
 import Airbender.Proofs.UnifiedReduced.Decoder
