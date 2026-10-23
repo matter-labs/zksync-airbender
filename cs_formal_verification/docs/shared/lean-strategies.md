@@ -22,8 +22,8 @@ with `-E hasSorry`, which turns Lean's "declaration uses `sorry`" warning into a
 
 `./verify.sh` rebuilds the guest binaries and every generated artifact (Lean images, code lists) and checks they
 match what is committed; builds the spec and proofs; checks every final theorem by name, statement and axioms;
-checks the equivalence of our spec with Sail; runs the images on sample inputs. Anything it does not check does not
-count.
+checks the equivalence of our spec with Sail. Anything it does not check does not count. `./verify.sh --sanity` also
+runs the images and the delegations on sample inputs: a test, not needed for the proof.
 
 - **Every final theorem is in its check list.** A theorem that exists but is not listed is not verified. When you
   add a statement to `human/`, add it to the list in the same change.
@@ -33,7 +33,7 @@ count.
   check fails on a stale index.
 - **The Sail model is pinned and fetched, not committed.** Changes to how Sail is configured (which extensions it
   offers) go through its config; every behavioural difference from Sail lives in Lean (3.1).
-- **The trust checks run on every build of the final theorems** (3.5): statements only from `human/` and the trusted
+- **The trust checks run on every build of the final theorems** (3.6): statements only from `human/` and the trusted
   libraries, `human/` imports nothing else, no escape hatches outside the listed tactic code, only standard axioms.
 
 ### 1.2 Iterating quickly
@@ -77,8 +77,16 @@ checks that the statements are well-formed, not that they are proven. Keep `veri
 
 `backup-check.sh` replays every declaration of `human/` and `slop/` through a second, fresh kernel with `leanchecker`,
 which ships with the pinned toolchain (`--fresh` also replays Mathlib and Sail). It guards against tactics or other
-metaprograms that might add declarations without the kernel. It takes tens of minutes, so it is not part of
-`verify.sh` and not run per commit: run it only at major milestones, such as before tagging or publishing a result.
+metaprograms that might add declarations without the kernel. It takes hours (`verify.sh`: about 15 min), so it is
+not part of `verify.sh` and never run per commit: run it by hand every few months at most.
+
+`leanchecker` selects modules by name prefix (`Human` means every `Human.*` module) and replays each selected module
+with its own copy of the imported environment, in parallel and without a limit. Given a root module or a batch, it
+can exhaust the machine's memory. So pass it one module at a time, never a module with modules below it unless it is
+small. Bound how many run at once by the memory available, not the core count. A check is mostly the system mapping
+the imported `.olean` files, so a few processes at once are faster than many. `backup-check.sh` does this. Lean 4.35's
+`lake check` replaces this: one export and one replay for the whole package, about 1 h for a Mathlib project, with
+nothing cached between runs. `lake check --paranoid` also runs independent kernels (lean4lean, nanoda and others).
 
 ### 1.6 Working with several agents or sessions
 
@@ -174,7 +182,14 @@ specified as one small definition per step, partial on purpose. Using a step out
 spec says what the step does and claims nothing else. Separate theorems state that the steps, used as documented,
 compose to the standard operation. The reviewer checks small definitions; the composed theorems carry the meaning.
 
-### 3.3 Direction of trust
+### 3.3 Final theorems are not vacuous
+
+A theorem whose assumptions can never hold, or whose conclusion has a branch no input can reach, is true and says
+nothing. So name the assumptions once (one definition, used by the theorem) and state, in the final theorem itself,
+that they can be met: one witness per branch of the conclusion. Prove facts about standard definitions (test
+vectors, tables) the same way, by evaluation in the kernel, instead of running them as tests.
+
+### 3.4 Direction of trust
 
 The model must accept at least everything the real system accepts. Then "no run reaches a bad state" in the model
 covers every run of the real system; a model that rejects something the system accepts would make such claims
@@ -182,7 +197,7 @@ vacuous for those runs. Where the model is wider than the reference (Sail) or th
 difference explicitly. The equivalence with Sail is a check on `human/`, not a replacement for reading it: it is
 how wrong spec lines get found.
 
-### 3.4 Everything trusted is visible in `human/`
+### 3.5 Everything trusted is visible in `human/`
 
 A reader must be able to see, in `human/`, every assumption the final theorems rest on. One file in `human/` lists
 them: the Lean kernel and its standard axioms, each external library the spec is stated in (with where it is
@@ -194,7 +209,7 @@ reader reads.
 Proof-search code is not trusted: the kernel re-checks everything it produces. It may use `unsafe` evaluation or
 `partial` functions, but only in the modules that file lists.
 
-### 3.5 What the trust checks enforce
+### 3.6 What the trust checks enforce
 
 - Every theorem whose statement is a `human/` definition uses only the standard axioms, and its statement mentions
   nothing defined outside `human/` and the trusted libraries.
@@ -204,7 +219,7 @@ Proof-search code is not trusted: the kernel re-checks everything it produces. I
 
 Adding a library, an assumption or a tactic module is a change to that `human/` file, visible in review.
 
-### 3.6 What goes where
+### 3.7 What goes where
 
 | `human/` | `slop/` |
 |---|---|
@@ -221,10 +236,11 @@ Adding a library, an assumption or a tactic module is a change to that `human/` 
 
 ## 4. Checklist for a change
 
-1. Put each new statement or definition in the right layer (3.6).
+1. Put each new statement or definition in the right layer (3.7).
 2. Reuse helpers; if one is missing, add it to the shared toolkit in general form (2.5).
 3. Prove general facts once and cite them (2.1); keep contracts separate from proofs (2.2).
 4. Measure the module (1.2); if it is slow, do less work before splitting (2.1, 2.3).
-5. Check that nothing you added is unused (2.6), that every new final theorem is in `verify.sh` (1.1), and that a new
-   library, assumption or tactic module is listed in the trust file (3.4).
+5. Check that nothing you added is unused (2.6), that every new final theorem is in `verify.sh` (1.1) and states that
+   its assumptions can be met (3.3), and that a new
+   library, assumption or tactic module is listed in the trust file (3.5).
 6. Stage generated files, run `./verify.sh`, commit with Conventional Commits.
