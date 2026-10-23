@@ -65,11 +65,12 @@ theorem checked {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 7)
     ⟨21 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
   have c := Verification.assertion_of_holds h
     ⟨22 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
-  cases second <;> fin_cases operation <;> fin_cases limb <;>
-    simp [Variables.modeColumns, chiMode] at m0 m1 m2 m3 m4 m5 m6
+  fin_cases operation <;> fin_cases limb
   all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, m0, m1, m2, m3, m4, m5, m6,
-    r0, r1, r2, r3, r4, aColumns, bColumns, cColumns, nativeLimbs, temporary] at a b c ⊢
+    Verification.environment, r0, r1, r2, r3, r4] at a b c
+  all_goals cases second <;>
+    simp [Variables.modeColumns, chiMode] at m0 m1 m2 m3 m4 m5 m6
+  all_goals simp [m0, m1, m2, m3, m4, m5, m6, aColumns, bColumns, cColumns, nativeLimbs, temporary] at a b c ⊢
   all_goals exact ⟨by linear_combination a, by linear_combination b, by linear_combination c⟩
 
 end Airbender.Keccak.Proofs.ChiRoutes
