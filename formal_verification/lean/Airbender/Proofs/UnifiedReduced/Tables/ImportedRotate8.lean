@@ -1,5 +1,5 @@
 import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.Rotate8Data
-import Airbender.Proofs.Blake2G.XorCertificateBase
+import Airbender.Proofs.Blake2G.Xor8Certificate
 
 namespace Airbender.UnifiedReduced.Setup.Proofs
 open Verification Airbender.Setup Airbender.Setup.Proofs

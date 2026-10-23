@@ -1,6 +1,6 @@
 import Airbender.Review.Circuits.Keccak.Tables.FixedData
 import Airbender.Review.Circuits.Keccak.Tables.Operations
-import Airbender.Proofs.Blake2G.XorCertificateBase
+import Airbender.Proofs.Blake2G.Xor8Certificate
 
 namespace Airbender.Keccak.Proofs
 open Airbender.Setup Airbender.Setup.Proofs
