@@ -7,12 +7,6 @@ set_option Elab.async false
 set_option maxRecDepth 131072
 set_option maxHeartbeats 4000000
 
-def combinedLowPad {p : Nat} (row : Vector (ZMod p) 6) : Vector (ZMod p) 9 :=
-  #v[row[0], row[2], combinedLow row[4], 0, 0, 0, 0, 0, 18]
-
-def combinedHighPad {p : Nat} (row : Vector (ZMod p) 6) : Vector (ZMod p) 9 :=
-  #v[row[1], row[3], combinedHigh row[4], 0, 0, 0, 0, 0, 17]
-
 private theorem combined_payload {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {source : Vector (Expression (ZMod p)) 6} {env : Environment (ZMod p)}
     (member : (Lookup.mk setupTable.toRaw source).Contains env)
