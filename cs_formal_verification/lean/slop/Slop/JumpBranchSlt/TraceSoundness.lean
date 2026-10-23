@@ -1,3 +1,4 @@
+import Slop.Sail.Configured
 import Human.Circuits.JumpBranchSlt.Branch
 import Human.Circuits.JumpBranchSlt.Jump
 import Slop.Trace.RowContext
@@ -132,7 +133,7 @@ theorem pooled_branch_soundness {p : Nat} [Fact p.Prime]
       have normal := local_branch_execution (by omega) h (accepted.active _ member)
         trace.memoryEpoch source query leftBound rightBound aligned finalHi input.opcode
         input.encodedOffset rs1 rs2 (by simpa only [Branch.instruction, rs1Index, rs2Index] using encoding)
-        history past assumptions.isa
+        history past assumptions.configuration.isa
       dsimp only at normal
       rw [← atState] at normal
       have pcWord : output.pc = Word.mk (w 16).val (w 17).val :=
@@ -187,14 +188,14 @@ theorem pooled_jump_soundness {p : Nat} [Fact p.Prime]
       case jal imm =>
         have normal := local_jump_execution (by omega) h (accepted.active _ member)
           trace.memoryEpoch source query leftBound aligned finalHi (.jal imm) rs1 rd
-          (by simpa only [Jump.instruction, instruction, rs1Index, rdIndex] using encoding) history past assumptions.isa
-          (by simpa only [instruction] using assumptions.landingPad)
+          (by simpa only [Jump.instruction, instruction, rs1Index, rdIndex] using encoding) history past assumptions.configuration.isa
+          (fun _ => ⟨assumptions.configuration.privilege, assumptions.configuration.landingPad⟩)
         simpa only [Jump.execution, Jump.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, instruction, rs1Index, rdIndex, ← atState, ← pcWord] using normal
       case jalr imm =>
         have normal := local_jump_execution (by omega) h (accepted.active _ member)
           trace.memoryEpoch source query leftBound aligned finalHi (.jalr imm) rs1 rd
-          (by simpa only [Jump.instruction, instruction, rs1Index, rdIndex] using encoding) history past assumptions.isa
-          (by simpa only [instruction] using assumptions.landingPad)
+          (by simpa only [Jump.instruction, instruction, rs1Index, rdIndex] using encoding) history past assumptions.configuration.isa
+          (fun _ => ⟨assumptions.configuration.privilege, assumptions.configuration.landingPad⟩)
         simpa only [Jump.execution, Jump.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, instruction, rs1Index, rdIndex, ← atState, ← pcWord] using normal
 
 end Airbender.JumpBranchSlt.Proofs
