@@ -1,6 +1,6 @@
 import Airbender.Review.Helpers.Tables.Shift.XorData
 import Airbender.Proofs.Tables.ImportedBlocks
-import Airbender.Proofs.Blake2G.XorCertificateBase
+import Airbender.Proofs.Blake2G.Xor8Certificate
 
 namespace Airbender.Verification.ShiftCertificate
 open Airbender.Setup Airbender.Setup.Proofs
