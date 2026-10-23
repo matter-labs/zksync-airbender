@@ -1,3 +1,5 @@
+import Airbender.Proofs.Blake2G.RawXorLookup
+import Airbender.Proofs.Blake2G.QueryTags
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2G.ArtifactChecks
 import Airbender.Proofs.Blake2G.Tables
@@ -28,13 +30,10 @@ theorem data_lookups_of_queries {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtL
   change ((FlatOperation.lookups (importedConstraints (setupTable control))).get
     ⟨q.val + 3, by rw [lookup_count]; have size := q.isLt; omega⟩).Contains
       (Verification.environment w) at member
-  fin_cases q
-  all_goals first
-    | exact xor_lookup hp 0 member (by simp [importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment])
-    | exact xor_lookup hp 1 member (by simp [importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment])
-    | exact xor_lookup hp 2 member (by simp [importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment])
-    | exact xor_lookup hp 3 member (by simp [importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment])
-    | exact xor_lookup hp 4 member (by simp [importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment])
+  have result := xor_lookup_raw hp dataQueryKinds[q] member
+    (data_query_table (setupTable control) q)
+    (data_query_tag (setupTable control) (Verification.environment w) q)
+  simpa only [data_query_width] using result
 
 theorem data_lookups {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
