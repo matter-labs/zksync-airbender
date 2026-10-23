@@ -1,10 +1,11 @@
 import Airbender.Review.Helpers.Core.Field
+import Airbender.Proofs.BabyBearPrimeCertificate
 import Mathlib.Algebra.Field.ZMod
 import Mathlib.Tactic.NormNum.Prime
 
 namespace Airbender
 
-instance babyBearPrime : Fact (Nat.Prime babyBearModulus) := ⟨by norm_num [babyBearModulus]⟩
+instance babyBearPrime : Fact (Nat.Prime babyBearModulus) := ⟨BabyBearPrimeCertificate.prime⟩
 
 theorem babyBear_eq_of_natCast_zero {p : Nat} [Fact p.Prime]
     (characteristic : (babyBearModulus : ZMod p) = 0) : p = babyBearModulus := by
