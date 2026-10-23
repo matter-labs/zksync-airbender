@@ -14,10 +14,8 @@ private theorem carry_output_covered (kind : Fin 2) :
     (((xorData (carryKind kind)).columns[3]).blocks.toList.map Block.length).sum =
       (xorData (carryKind kind)).length := by
   fin_cases kind
-  all_goals dsimp only [carryKind, xorData, xor8CarryData, xor7CarryData,
-    Vector.getElem_mk, Fin.getElem_fin, List.getElem_toArray,
-    List.getElem_cons_zero, List.getElem_cons_succ]
-  all_goals simp (config := { maxSteps := 1000000 }) [Block.length]
+  · exact carry8_output_extent
+  · exact carry7_output_extent
 
 private theorem carry_output_get (kind : Fin 2) (n : Nat)
     (hn : n < (xorData (carryKind kind)).length) :
