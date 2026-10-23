@@ -1,0 +1,5 @@
+`alt_whir_stream.hex`: the WHIR proof stream of ANOTHER valid 2^21 wrap proof with the version's
+shape. With this proof's GKR stream it must not verify. Used only by `test_rejects_mismatched_halves`.
+Written by `AB_EVM_VERSION=2p21 AB_ALT_L1_PROOF=<proof.json> AB_ALT_L1_AUX=<aux.json> cargo test
+-p verifier_evm --release --test alt_whir_calldata -- --ignored`, which also rewrites the line below.
+Current file: l1_wrap_alt_dynamic_fibonacci_1000.json (keccak256 28beeb9e26fa11f6813859cbb7c041ba96ee706f031f5ef5fdcbf8c1b2e8ba44), final PC 262644.

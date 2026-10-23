@@ -28,10 +28,21 @@ fn prove(
     let mut prover =
         CpuExecutionProver::with_configuration(CpuExecutionProverConfiguration::default());
     let (binary, text) = workload;
-    let handle = prover.add_binary(execution_kind, machine_type, binary, text, None);
-    let result =
-        prover.commit_memory_and_prove(1, &handle, QuasiUARTSource::new_with_reads(inputs));
-    let artifacts = prover.program_artifacts(&handle);
+    let handle = prover.add_binary(
+        execution_kind,
+        machine_type,
+        binary,
+        text,
+        None,
+        &[execution_prover::ProofProfile::Standard],
+    );
+    let result = prover.commit_memory_and_prove(
+        1,
+        &handle,
+        QuasiUARTSource::new_with_reads(inputs),
+        execution_prover::ProofProfile::Standard,
+    );
+    let artifacts = prover.program_artifacts(&handle, execution_prover::ProofProfile::Standard);
     program_prover::assemble_program_proof(&artifacts, result)
 }
 

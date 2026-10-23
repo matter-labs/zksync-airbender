@@ -6,7 +6,6 @@ use crate::recursion_chain::{self, RecursionChain};
 use setups::Setups;
 use std::path::Path;
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
-use verifier_common::prover::definitions::MerkleTreeCap;
 use verifier_common::USE_REDUCED_BLAKE2_ROUNDS;
 
 /// The recursion chain as hashed by the deployed fsv binaries.
@@ -33,9 +32,7 @@ pub fn build_unified_stream(setups: &Setups, proof: &ProgramProof) -> Vec<u32> {
 }
 
 fn flattened_caps(setups: &Setups) -> impl Iterator<Item = &[u32]> {
-    setups
-        .values()
-        .map(|params| MerkleTreeCap::flatten_single(&params.setup_caps))
+    setups.values().map(|params| params.flattened_setup_caps())
 }
 
 #[cfg(feature = "verifiers")]
@@ -64,6 +61,76 @@ pub fn native_verify_unrolled(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
         .expect("spawn verifier thread")
         .join()
         .expect("verifier thread must not panic")
+}
+
+/// Native verification of an L1 feeder stream (the zero-delegation
+/// feeder statement) at a checked boundary: a verifier error, a structural
+/// panic inside the statement (a nonzero delegation count, a truncated
+/// stream), or trailing words after the statement consumed its input are all
+/// reported as `Err`.
+#[cfg(feature = "verifiers")]
+pub fn native_verify_unified_l1_feeder(stream: Vec<u32>) -> Result<[u32; 16], String> {
+    native_verify_l1_feeder_statement(
+        stream,
+        crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_l1_feeder::<
+            _,
+            verifier_common::errors::DebugErrorCreator,
+            USE_REDUCED_BLAKE2_ROUNDS,
+        >,
+    )
+}
+
+/// [`native_verify_unified_l1_feeder`] over a proof of the 2^23 feeder
+/// profile A.
+#[cfg(feature = "verifiers")]
+pub fn native_verify_unified_l1_feeder_a(stream: Vec<u32>) -> Result<[u32; 16], String> {
+    native_verify_l1_feeder_statement(
+        stream,
+        crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_l1_feeder_a::<
+            _,
+            verifier_common::errors::DebugErrorCreator,
+            USE_REDUCED_BLAKE2_ROUNDS,
+        >,
+    )
+}
+
+#[cfg(feature = "verifiers")]
+fn native_verify_l1_feeder_statement(
+    stream: Vec<u32>,
+    statement: fn(
+        &mut std::vec::IntoIter<u32>,
+    ) -> Result<[u32; 16], verifier_common::errors::VerificationError>,
+) -> Result<[u32; 16], String> {
+    let joined = std::thread::Builder::new()
+        .name("unified l1 feeder verifier".to_string())
+        .stack_size(1 << 27)
+        .spawn(move || {
+            let mut it = stream.into_iter();
+            let output = statement(&mut it)
+                .map_err(|err| format!("unified l1 feeder proof failed to verify: {err:?}"))?;
+            let trailing = it.count();
+            if trailing != 0 {
+                return Err(format!(
+                    "unified l1 feeder stream carries {trailing} trailing words after the statement"
+                ));
+            }
+            Ok(output)
+        })
+        .expect("spawn verifier thread")
+        .join();
+    match joined {
+        Ok(result) => result,
+        Err(payload) => {
+            let reason = payload
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| payload.downcast_ref::<&str>().copied())
+                .unwrap_or("unknown verifier panic");
+            Err(format!(
+                "unified l1 feeder statement rejected the stream: {reason}"
+            ))
+        }
+    }
 }
 
 #[cfg(feature = "verifiers")]
@@ -122,11 +189,8 @@ pub fn load_fsv_program(
             false
         }
     };
-    if exists {
-        load_program(
-            &dir.join(format!("{stem}.bin")),
-            &dir.join(format!("{stem}.text")),
-        )
+    let selected_stem = if exists {
+        stem
     } else {
         println!(
             "Verifier binary `{}` doesn't exist at path {}, using fallback naming mode",
@@ -138,12 +202,21 @@ pub fn load_fsv_program(
             "missing variant binary {} — run `cd tools/gkr_verifier && ./dump_recursive_verifiers.sh`",
             dir.join(format!("{stem}.bin")).display()
         );
-        let base = program.base_name();
-        load_program(
-            &dir.join(format!("{base}.bin")),
-            &dir.join(format!("{base}.text")),
-        )
-    }
+        program.base_name().to_string()
+    };
+    // Keep the canonical program unpadded. Its execution consumer selects ROM
+    // geometry; padding here would turn a wrap image into a 4 MiB image.
+    let (_, bin) = setups::read_binary(&dir.join(format!("{selected_stem}.bin")));
+    let (_, text) = setups::read_binary(&dir.join(format!("{selected_stem}.text")));
+    assert!(
+        bin.len() <= program.rom().word_size(),
+        "FSV image exceeds selected ROM"
+    );
+    assert!(
+        text.len() <= program.rom().word_size(),
+        "FSV text exceeds selected ROM"
+    );
+    (bin, text)
 }
 
 fn blake_mode_from_env(vars: &[&str], program: FsvProgram, default: BlakeMode) -> BlakeMode {

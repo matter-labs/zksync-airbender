@@ -4,6 +4,27 @@ set -e
 
 cd "$(dirname "$0")"
 
+usage() {
+    cat <<'EOF'
+Usage: ./recreate_verifiers.sh [--help]
+
+Regenerate circuit layouts, witness evaluators and Rust verifiers.
+For L1 proof references, follow REGENERATE in prover_pipeline/src/l1_reference.rs:
+seed, fresh-process feeder/wrap, then the feature-enabled witness producer.
+Next run that module's ignored l1_reference::export_l1_wrap_evm_fixtures and
+l1_reference::export_l1_wrap_setup_frontier tests.
+Then run the ignored verifier_evm producers: generate_contracts (also build.sh),
+flatten_calldata write_calldata_into_debug_data, and alt_whir_calldata write_alt_whir_calldata.
+EOF
+}
+
+for option in "$@"; do
+    case "$option" in
+        --help|-h) usage; exit 0 ;;
+        *) echo "unknown option: $option" >&2; usage >&2; exit 1 ;;
+    esac
+done
+
 # Keep compiler layouts and SSA in sync with the production artifacts.
 RUST_MIN_STACK=100000000 cargo test -p cs --lib -- \
     _into_gkr _into_no_caches_gkr _witness_graph
@@ -29,6 +50,7 @@ unrolled_circuit_names=(
     "mul_div_unsigned"
     "shift_binary"
     "unified_reduced_machine"
+    "unified_reduced_machine_2_22"
 )
 
 for CIRCUIT_NAME in "${circuit_names[@]}"; do

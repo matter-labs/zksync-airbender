@@ -1,46 +1,27 @@
 #!/bin/sh
-# End-to-end for the merged single-transaction verifier: (re)generate GkrWhirVerifier.sol from
-# the circuit artifact, regenerate the single tx's calldata from the proof, compile, run the
-# Foundry test (pure execution gas, then tx-level gas incl. intrinsic + EIP-7623), and report the
-# compiler options, deployed bytecode size and the REAL tx gas (raw anvil tx, no harness
-# over-count).
+# Merged single-transaction verifiers of a version: build every generated project, run the
+# Foundry suites (v0 and F1 positive/negative, F1 ↔ v0 oracle, EIP-170 size tests), then
+# (unless --no-gas) the EIP-170 deployment gate and the raw-transaction gas on a task-owned anvil
+# (merged_gas.py; JSON written to <out.json>). Prereq: generated sources and calldata are current
+# (`cargo test -p verifier_evm --release --test generate_contracts -- --ignored` and
+# `--test flatten_calldata -- --ignored`). Exits non-zero when any forge test failed.
 #
-#   ./run_merged.sh          # full run
-#   ./run_merged.sh --no-gas # skip the anvil raw-tx gas step
-#
-# The verifier binds the statement to the terminal PC of the checked-in L1 feeder binary and to
-# the pinned inits/teardowns top bits; the proof must have been produced against that same binary
-# (otherwise the GKR half reverts on the final-PC / top-bits checks). The Foundry test deploys a
-# TestRegistry and checks the (publicInput, auxInput, setupCommitment) mark it records.
-set -e
-cd "$(dirname "$0")"
-
-# 1. generate the verifier source + the calldata (production Rust functions; no fixtures).
-#    debuginfo=0: rustc (macOS/aarch64 nightly) may SIGBUS emitting DWARF for keccak_special5.
-echo "== generating the verifier + calldata from the circuit artifact + proof =="
-( cd .. && RUSTFLAGS="-C debuginfo=0" cargo test -q -p verifier_evm --test generate_contracts >/dev/null )
-( cd .. && RUSTFLAGS="-C debuginfo=0" cargo test -q -p verifier_evm --test flatten_calldata   >/dev/null )
-
-# 2. compile
-echo "== compiling GkrWhirVerifier (via_ir, runs=1) =="
-( cd merged && forge build >/dev/null )
-
-# 3. single-transaction verification
-echo "== single-transaction verification: pure execution gas (no isolation) =="
-( cd merged && forge test --no-isolate -vv | grep -E "calldata_bytes|verifier_call_gas|public_input|aux_input|setup_commitment|PASS|FAIL" )
-echo "== single-transaction verification: tx-level gas (isolation: intrinsic + EIP-7623) =="
-( cd merged && forge test --isolate -vv --match-test test_merged_single_tx | grep -E "verifier_call_gas|PASS|FAIL" )
-
-# 4. compiler options actually used
-echo "== compiler options =="
-art=$(find merged/out -name 'GkrWhirVerifier.json' | head -1)
-ver=$(jq -r '.metadata.compiler.version' "$art")
-ir=$(jq -r '.metadata.settings.viaIR // false' "$art")
-opt=$(jq -r '.metadata.settings.optimizer | "optimizer=\(.enabled) runs=\(.runs)"' "$art")
-evm=$(jq -r '.metadata.settings.evmVersion // "?"' "$art")
-printf "  solc %s  viaIR=%s  %s  evm=%s\n" "$ver" "$ir" "$opt" "$evm"
-
-# 5. bytecode size + real tx gas (raw anvil transaction)
-[ "$1" = "--no-gas" ] && exit 0
-echo "== deployed bytecode size + real tx gas (Prague / EIP-7623) =="
-./raw_tx_gas.sh | grep -E "verifier|gasUsed|registry"
+#   ./run_merged.sh 2p21 18546 gas.json   # full run on a task-owned port
+#   ./run_merged.sh 2p21 --no-gas         # build + forge tests only
+set -eu
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$SCRIPT_DIR/version.sh"
+select_version "${1:?usage: run_merged.sh <2p21> <anvil-port|--no-gas> [out.json]}"
+GAS_ARG=${2:?usage: run_merged.sh <2p21> <anvil-port|--no-gas> [out.json]}
+cd "$CONTRACTS_ROOT"
+for p in merged merged_f1 negative/v0_wrong_final_pc negative/f1_wrong_final_pc \
+  negative/f1_wrong_setup_cap controls/f1_cap_level instrumented/v0 instrumented/f1; do
+  ( cd "$p" && forge build >/dev/null )
+done
+( cd merged_f1 && forge build --sizes | grep -E 'GkrWhirVerifier' ) || true
+status=0
+( cd merged && forge test -vv ) || status=$?
+if [ "$GAS_ARG" != "--no-gas" ]; then
+  python3 "$SCRIPT_DIR/merged_gas.py" "$AB_EVM_VERSION" "$GAS_ARG" "${3:?usage: run_merged.sh <2p21> <anvil-port> <out.json>}" "$DATA_ROOT"
+fi
+exit "$status"

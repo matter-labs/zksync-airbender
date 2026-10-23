@@ -1,5 +1,5 @@
 #!/bin/sh
-# Deterministic deployment of the merged GkrWhirVerifier (+ a TestRegistry) through the CreateX
+# Deterministic deployment of a version's merged v0 GkrWhirVerifier (+ a TestRegistry) through the CreateX
 # factory (https://github.com/pcaversaccio/createx, pre-deployed on most networks at the fixed
 # address below) via `ICreateX.deployCreate2(bytes32 salt, bytes initCode)`, so every address is a
 # pure function of (factory, salt, initCode).
@@ -11,19 +11,24 @@
 # `registry.markVerified(publicInput, auxInput, setupCommitment)`.
 #
 # CREATE2 reverts on an address collision — bump the salts to deploy fresh contracts.
-# Feed the printed verifier address to ./send_proof.sh afterwards.
-set -e
-cd "$(dirname "$0")"
+# Feed the printed verifier address to ./send_proof.sh afterwards. The F1 verifier additionally
+# pins its SetupFrontier data contract's address and code hash: deploy the data contract first
+# and generate the F1 verifier with that address.
+#
+#   ./deploy.sh <2p21>
+set -eu
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$SCRIPT_DIR/version.sh"
+select_version "${1:?usage: deploy.sh <2p21>}"
+cd "$CONTRACTS_ROOT"
 
 # ---- configuration: edit for the target network ------------------------------------------------
 RPC=http://127.0.0.1:8545
 KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-# First 20 bytes zero + 21st byte zero = CreateX's unpermissioned, non-redeploy-protected salt
-# flavor (anyone can reproduce the address).
-REGISTRY_SALT=0x00000000000000000000000000000000000000000000000000616972621b0001
-VERIFIER_SALT=0x00000000000000000000000000000000000000000000000000616972621b0002
-# An already-deployed registry to bind the verifier to instead of deploying TestRegistry:
-REGISTRY_ADDR=${REGISTRY_ADDR:-}
+# REGISTRY_SALT / VERIFIER_SALT come from version.sh: first 20 bytes zero + 21st byte zero =
+# CreateX's unpermissioned, non-redeploy-protected salt flavor (anyone can reproduce the address).
+# An already-deployed registry to bind the verifier to instead of deploying TestRegistry: set the
+# version's REGISTRY_ADDR_<VERSION> (version.sh).
 # ------------------------------------------------------------------------------------------------
 
 CREATEX=0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed
@@ -76,4 +81,4 @@ if [ "$(printf '%s' "$pinned" | tr 'A-F' 'a-f')" != "$(printf '%s' "$REGISTRY_AD
 fi
 echo "== done =="
 echo "send the proof transaction with:"
-echo "   ./send_proof.sh $ADDR"
+echo "   $SCRIPT_DIR/send_proof.sh $AB_EVM_VERSION $ADDR"

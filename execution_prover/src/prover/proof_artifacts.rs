@@ -15,6 +15,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         memory_commitment: &CommitMemoryResult,
     ) -> ProofArtifacts {
         let CommitMemoryResult {
+            profile: _,
             final_register_values,
             final_pc,
             final_timestamp,
@@ -27,6 +28,9 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         } = memory_commitment;
         let execution_kind = self.binary_holders[&binary_key].execution_kind;
         let all_challenges_seed = match execution_kind {
+            ExecutionKind::L1Wrap21 => {
+                panic!("L1Wrap derives its own external challenges")
+            }
             ExecutionKind::Unrolled => fs_transform_for_permutation_argument(
                 final_register_values,
                 *final_pc,
@@ -42,7 +46,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     .map(|(i, v)| (*i, v.clone()))
                     .collect_vec(),
             ),
-            ExecutionKind::Unified => {
+            ExecutionKind::Unified | ExecutionKind::Unified22 => {
                 // Inits and teardowns are inline in the unified circuit, so the
                 // dedicated i&t slot must be empty (mirrors the CPU reference in
                 // prover_examples::unified).
@@ -50,7 +54,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     inits_and_teardowns_memory_caps.is_empty(),
                     "unified execution must not produce separate inits-and-teardowns memory caps"
                 );
-                let unified_family_idx = UnrolledCircuitType::Unified.get_family_idx();
+                let CircuitType::Unrolled(unified_circuit_type) =
+                    execution_kind.unified_circuit().unwrap()
+                else {
+                    unreachable!()
+                };
+                let unified_family_idx = unified_circuit_type.get_family_idx();
                 assert!(
                     circuit_families_memory_caps
                         .keys()
@@ -65,7 +74,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 // The seed must absorb the same per-instance windows the proofs
                 // bind.
                 let compiled_circuit = self.binary_holders[&binary_key].precomputations
-                    [&UnrolledCircuitType::Unified]
+                    [&unified_circuit_type]
                     .compiled_circuit()
                     .as_ref();
                 let num_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
@@ -103,7 +112,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let mut proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>> =
             BTreeMap::new();
         for (family_idx, per_seq) in circuit_families_memory_caps.iter() {
-            let circuit_type = unrolled_circuit_type_from_family_idx(*family_idx, machine_type);
+            let circuit_type =
+                unrolled_circuit_type_from_family_idx(*family_idx, machine_type, execution_kind);
             for (sequence_id, caps) in per_seq.iter().enumerate() {
                 proof_caps.insert(
                     (CircuitType::Unrolled(circuit_type), sequence_id),
@@ -144,9 +154,16 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         batch_id: u64,
         handle: &BinaryHandle,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
+        profile: ProofProfile,
     ) -> CommitMemoryResult {
         let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
-        self.commit_memory_inner(&mut None, batch_id, *handle, non_determinism_source)
+        self.commit_memory_inner(
+            &mut None,
+            batch_id,
+            *handle,
+            non_determinism_source,
+            profile,
+        )
     }
 
     pub fn prove(
@@ -168,6 +185,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             pow_challenge,
             external_challenges,
             proof_caps,
+            commit_ticket.profile,
         )
     }
 
@@ -176,7 +194,20 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         batch_id: u64,
         handle: &BinaryHandle,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
+        profile: ProofProfile,
     ) -> ProveResult {
+        self.commit_memory_and_prove_with_timings(batch_id, handle, non_determinism_source, profile)
+            .0
+    }
+
+    /// The cached commit-and-prove path with host wall times for each pass.
+    pub fn commit_memory_and_prove_with_timings(
+        &self,
+        batch_id: u64,
+        handle: &BinaryHandle,
+        non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
+        profile: ProofProfile,
+    ) -> (ProveResult, CommitAndProveTimings) {
         let binary_key = handle.0;
         let nd_wrapper = NonDeterminismWrapper::new(non_determinism_source);
         let non_determinism_source = Arc::new(Mutex::new(Some(nd_wrapper)));
@@ -187,7 +218,9 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             batch_id,
             *handle,
             non_determinism_source.clone(),
+            profile,
         );
+        let commit_pass = timer.elapsed();
         let non_determinism_values = Arc::into_inner(non_determinism_source)
             .expect("non_determinism_source Arc still has other strong refs after commit_memory")
             .into_inner()
@@ -195,11 +228,14 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             .expect("commit_memory consumed the non_determinism_source")
             .into_replay_source();
         let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_values)));
+        let challenge_timer = Instant::now();
         let (pow_challenge, external_challenges, proof_caps) =
             self.derive_proof_artifacts(binary_key, &memory_commitment);
+        let external_challenges_time = challenge_timer.elapsed();
         let final_register_values = memory_commitment.final_register_values;
         let final_pc = memory_commitment.final_pc;
         let final_timestamp = memory_commitment.final_timestamp;
+        let proof_timer = Instant::now();
         let prove_result = self.prove_inner(
             &mut cache,
             batch_id,
@@ -208,15 +244,26 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             pow_challenge,
             external_challenges,
             proof_caps,
+            memory_commitment.profile,
         );
+        let proof_pass = proof_timer.elapsed();
         assert_eq!(prove_result.register_final_values, final_register_values);
         assert_eq!(prove_result.final_pc, final_pc);
         assert_eq!(prove_result.final_timestamp, final_timestamp);
-        let elapsed = timer.elapsed().as_secs_f64();
+        let total = timer.elapsed();
+        let elapsed = total.as_secs_f64();
         info!(
             "BATCH[{batch_id}] PROVER committed to memory and produced proofs for binary with key {binary_key:?} in {elapsed:.3}s"
         );
-        prove_result
+        (
+            prove_result,
+            CommitAndProveTimings {
+                commit_pass,
+                external_challenges: external_challenges_time,
+                proof_pass,
+                total,
+            },
+        )
     }
 }
 
@@ -234,7 +281,7 @@ fn flatten_delegation_memory_caps(
                 *delegation_type,
                 per_sequence_caps
                     .iter()
-                    .flat_map(|caps| caps.iter().cloned())
+                    .map(|caps| crate::join_per_coset_caps(caps))
                     .collect_vec(),
             )
         })
@@ -257,7 +304,7 @@ fn fs_transform_for_permutation_argument(
                 *family,
                 per_sequence_caps
                     .iter()
-                    .flat_map(|caps| caps.iter().cloned())
+                    .map(|caps| crate::join_per_coset_caps(caps))
                     .collect_vec(),
             )
         })
@@ -270,12 +317,7 @@ fn fs_transform_for_permutation_argument(
         .iter()
         .enumerate()
         .map(|(sequence_id, per_coset_caps)| {
-            let cap = MerkleTreeCapVarLength {
-                cap: per_coset_caps
-                    .iter()
-                    .flat_map(|caps| caps.cap.iter().copied())
-                    .collect_vec(),
-            };
+            let cap = crate::join_per_coset_caps(per_coset_caps);
             (inits_and_teardowns_top_bits[&sequence_id].clone(), cap)
         })
         .collect_vec();
@@ -291,12 +333,7 @@ fn fs_transform_for_permutation_argument(
     )
 }
 
-/// Unified-execution counterpart of the wrapper above. Each unified circuit
-/// contributes one `(inits-and-teardowns top bits, memory cap)` pair. A backend
-/// memory commitment repacks the single unified memory-tree cap into
-/// natural-coset-order `MerkleTreeCapVarLength` chunks
-/// (`gpu_trace::trace::memory`); concatenating them in order
-/// reconstructs the single cap the CPU reference absorbs.
+/// Pairs each unified circuit's teardown top bits with its joined memory cap.
 fn fs_transform_unified(
     final_register_values: &[FinalRegisterValue; 32],
     final_pc: u32,
@@ -313,12 +350,7 @@ fn fs_transform_unified(
         .iter()
         .enumerate()
         .map(|(sequence_id, per_coset_caps)| {
-            let cap = MerkleTreeCapVarLength {
-                cap: per_coset_caps
-                    .iter()
-                    .flat_map(|caps| caps.cap.iter().copied())
-                    .collect_vec(),
-            };
+            let cap = crate::join_per_coset_caps(per_coset_caps);
             let top_bits = if sequence_id < num_trivial_unified_circuits {
                 vec![0u32; num_teardown_sets]
             } else {
@@ -341,6 +373,7 @@ fn fs_transform_unified(
 fn unrolled_circuit_type_from_family_idx(
     family_idx: u8,
     machine_type: MachineType,
+    execution_kind: ExecutionKind,
 ) -> UnrolledCircuitType {
     for ct in UnrolledMemoryCircuitType::get_circuit_types_for_machine_type(machine_type) {
         if ct.get_family_idx() == family_idx {
@@ -353,9 +386,15 @@ fn unrolled_circuit_type_from_family_idx(
         }
     }
     if family_idx == UnrolledCircuitType::Unified.get_family_idx() {
-        return UnrolledCircuitType::Unified;
+        // The 2^23 and 2^22 unified circuits share the family index; the
+        // execution kind selects the geometry.
+        if let Some(CircuitType::Unrolled(unified)) = execution_kind.unified_circuit() {
+            return unified;
+        }
     }
-    panic!("unknown unrolled family idx {family_idx} for machine type {machine_type:?}")
+    panic!(
+        "unknown unrolled family idx {family_idx} for machine type {machine_type:?} and {execution_kind:?}"
+    )
 }
 
 #[cfg(test)]
@@ -364,10 +403,26 @@ mod tests {
 
     #[test]
     fn cpu_reduced_machine_idx_maps_to_unified() {
-        let ct = unrolled_circuit_type_from_family_idx(
+        for (kind, expected) in [
+            (ExecutionKind::Unified, UnrolledCircuitType::Unified),
+            (ExecutionKind::Unified22, UnrolledCircuitType::Unified22),
+        ] {
+            let ct = unrolled_circuit_type_from_family_idx(
+                UnrolledCircuitType::Unified.get_family_idx(),
+                MachineType::Reduced,
+                kind,
+            );
+            assert_eq!(ct, expected);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown unrolled family idx")]
+    fn cpu_reduced_machine_idx_needs_a_unified_kind() {
+        unrolled_circuit_type_from_family_idx(
             UnrolledCircuitType::Unified.get_family_idx(),
             MachineType::Reduced,
+            ExecutionKind::Unrolled,
         );
-        assert_eq!(ct, UnrolledCircuitType::Unified);
     }
 }

@@ -26,6 +26,7 @@ pub use ::load_store_word_only::LoadStoreWordOnlyCircuit;
 pub use ::mul_div_unsigned::UnsignedMulDivCircuit;
 pub use ::shift_binary::ShiftBinaryCircuit;
 pub use ::unified_reduced_machine::UnifiedReducedMachineCircuit;
+pub use ::unified_reduced_machine_2_22::UnifiedReducedMachineCircuit2_22;
 
 pub use ::bigint_with_control::BigIntDelegationCircuit;
 pub use ::blake2_g_function::Blake2sGFunctionDelegationCircuit;
@@ -53,13 +54,33 @@ pub use self::circuits::*;
 pub use self::unrolled_circuits::*;
 
 pub fn pad_bytecode_bytes_for_proving(bytecode: &mut Vec<u8>) {
-    assert!(bytecode.len() <= common_constants::ROM_BYTE_SIZE);
-    bytecode.resize(common_constants::ROM_BYTE_SIZE, 0);
+    pad_bytecode_bytes_for_proving_with_rom(bytecode, common_constants::REGULAR_ROM);
 }
 
 pub fn pad_bytecode_for_proving(bytecode: &mut Vec<u32>) {
-    assert!(bytecode.len() <= common_constants::ROM_WORD_SIZE);
-    bytecode.resize(common_constants::ROM_WORD_SIZE, 0);
+    pad_bytecode_for_proving_with_rom(bytecode, common_constants::REGULAR_ROM);
+}
+
+pub fn pad_bytecode_bytes_for_proving_with_rom(
+    bytecode: &mut Vec<u8>,
+    rom: common_constants::RomGeometry,
+) {
+    assert!(
+        bytecode.len() <= rom.byte_size(),
+        "bytecode exceeds selected ROM"
+    );
+    bytecode.resize(rom.byte_size(), 0);
+}
+
+pub fn pad_bytecode_for_proving_with_rom(
+    bytecode: &mut Vec<u32>,
+    rom: common_constants::RomGeometry,
+) {
+    assert!(
+        bytecode.len() <= rom.word_size(),
+        "bytecode exceeds selected ROM"
+    );
+    bytecode.resize(rom.word_size(), 0);
 }
 
 pub fn is_default_machine_configuration<C: MachineConfig>() -> bool {
@@ -213,39 +234,67 @@ use prover::definitions::DEFAULT_CAP_SIZE;
 /// (ascending-key) order.
 pub type Setups = std::collections::BTreeMap<u32, UnrolledCircuitSetupParams>;
 
+/// The setup caps a profile commits: [`DEFAULT_CAP_SIZE`] leaves for
+/// `Standard`, the feeder config's cap for `L1Feeder`. Every leaf is part of
+/// the statement (the verifier stream and `end_params`); the entry point
+/// fixes the cap, so no cap-length word enters the stream.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UnrolledCircuitSetupParams {
     pub family_idx: u32,
     pub capacity: u32,
-    // #[serde(with = "serde_big_array::BigArray")]
-    // #[serde(bound(deserialize = "MerkleTreeCap<DEFAULT_CAP_SIZE>: serde::Deserialize<'de>"))]
-    // #[serde(bound(serialize = "MerkleTreeCap<DEFAULT_CAP_SIZE>: serde::Serialize"))]
-    pub setup_caps: MerkleTreeCap<DEFAULT_CAP_SIZE>,
+    pub setup_caps: MerkleTreeCapVarLength,
 }
 
 impl UnrolledCircuitSetupParams {
-    /// Build the params from a committed setup tree's cap, converting the
-    /// var-length cap into the fixed [`DEFAULT_CAP_SIZE`] one.
+    /// Build the params from a committed setup tree's cap, which must have
+    /// exactly `expected_cap_size` leaves (the trusted profile config's
+    /// `cap_size`).
     ///
     /// # Panics
-    /// If the cap does not have exactly [`DEFAULT_CAP_SIZE`] leafs.
+    /// If the cap does not have exactly `expected_cap_size` leaves.
     #[must_use]
     pub fn from_setup_tree_cap(
         family_idx: u32,
         capacity: u32,
         cap: prover::merkle_trees::MerkleTreeCapVarLength,
+        expected_cap_size: usize,
     ) -> Self {
-        let num_leafs = cap.cap.len();
-        Self {
+        let params = Self {
             family_idx,
             capacity,
-            setup_caps: MerkleTreeCap {
-                cap: cap.cap.try_into().unwrap_or_else(|_| {
-                    panic!("setup tree cap has {num_leafs} leafs, expected {DEFAULT_CAP_SIZE}")
-                }),
-            },
-        }
+            setup_caps: cap,
+        };
+        params
+            .validate_cap_size(expected_cap_size)
+            .unwrap_or_else(|err| panic!("{err}"));
+        params
     }
+
+    /// Repeat the constructor's shape check on deserialized params (serde
+    /// bypasses [`Self::from_setup_tree_cap`]).
+    pub fn validate_cap_size(&self, expected_cap_size: usize) -> Result<(), String> {
+        let num_leafs = self.setup_caps.cap.len();
+        if num_leafs != expected_cap_size {
+            return Err(format!(
+                "setup tree cap of family {} has {num_leafs} leafs, expected {expected_cap_size}",
+                self.family_idx
+            ));
+        }
+        Ok(())
+    }
+
+    /// The cap as the verifier stream consumes it: every leaf, in order.
+    pub fn flattened_setup_caps(&self) -> &[u32] {
+        self.setup_caps.cap.as_flattened()
+    }
+}
+
+/// Every entry of `setups` must carry exactly `expected_cap_size` leaves.
+pub fn validate_setups_cap_size(setups: &Setups, expected_cap_size: usize) -> Result<(), String> {
+    for params in setups.values() {
+        params.validate_cap_size(expected_cap_size)?;
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

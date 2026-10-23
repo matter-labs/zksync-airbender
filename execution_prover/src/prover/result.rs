@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 use common_constants::TimestampScalar;
 
@@ -7,8 +8,10 @@ use crate::upstream::{
     DefaultTreeConstructor, FinalRegisterValue, GKRProof, MerkleTreeCapVarLength,
 };
 use crate::upstream::{BF, E4};
+use crate::ProofProfile;
 
 pub struct CommitMemoryResult {
+    pub profile: ProofProfile,
     pub final_register_values: [FinalRegisterValue; 32],
     pub final_pc: u32,
     pub final_timestamp: TimestampScalar,
@@ -31,6 +34,18 @@ pub struct CommitMemoryResult {
     pub(super) binary_handle: BinaryHandle,
 }
 
+/// Host wall times for one cached commit-and-prove invocation. Pass times include
+/// simulation/replay and waiting for backend work; they are not GPU kernel times.
+#[derive(Clone, Copy, Debug)]
+pub struct CommitAndProveTimings {
+    pub commit_pass: Duration,
+    pub external_challenges: Duration,
+    pub proof_pass: Duration,
+    /// Includes pass transitions and consistency checks, but excludes setup and
+    /// the caller's proof assembly and native verification.
+    pub total: Duration,
+}
+
 pub struct ProveResult {
     pub register_final_values: [FinalRegisterValue; 32],
     pub final_pc: u32,
@@ -47,21 +62,21 @@ pub struct ProveResult {
 }
 
 pub(super) enum ExecutionProverResult {
-    CommitMemory(CommitMemoryResult),
-    Prove(ProveResult),
+    CommitMemory(Box<CommitMemoryResult>),
+    Prove(Box<ProveResult>),
 }
 
 impl ExecutionProverResult {
     pub fn into_memory_commitment_result(self) -> CommitMemoryResult {
         match self {
-            ExecutionProverResult::CommitMemory(result) => result,
+            ExecutionProverResult::CommitMemory(result) => *result,
             _ => panic!("expected CommitMemoryResult"),
         }
     }
 
     pub fn into_proof_result(self) -> ProveResult {
         match self {
-            ExecutionProverResult::Prove(result) => result,
+            ExecutionProverResult::Prove(result) => *result,
             _ => panic!("expected ProveResult"),
         }
     }

@@ -10,8 +10,8 @@ mod test {
 
     use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 
-    /// Keep the replayed cycles and their bytecode together: the large-field proof
-    /// generator writes a different program to `unified_proth120_witness.bin`.
+    /// Keep the replayed cycles and their bytecode together so setup and witness
+    /// generation use the same program.
     fn basic_fibonacci_witness() -> (Vec<UnifiedOpcodeTracingDataWithTimestamp>, Vec<u32>) {
         use crate::tests::gkr::orchestration::common::{run_vm_and_capture, ProgramConfig};
         use crate::tests::gkr::orchestration::unified::replay_unified_cycles;
@@ -1156,5 +1156,124 @@ mod pc_carry_boundary_tests {
     fn pc_bump_carry_boundary_rejects_forgeries() {
         check::<BabyBearField>();
         check::<Proth120>();
+    }
+}
+
+#[cfg(test)]
+mod wrap_rom_tests {
+    use super::*;
+    use common_constants::rom::{RomGeometry, L1_WRAP_ROM, REGULAR_ROM};
+    use cs::gkr_circuits::unified_reduced_machine::{
+        unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core,
+        unified_reduced_machine_table_addition_fn, UnifiedReducedMachineDecoder,
+    };
+    use field::baby_bear::base::BabyBearField;
+    use field::Proth120;
+    use riscv_transpiler::ir::ReducedMachineDecoderConfig;
+    use std::alloc::Global;
+
+    type F = Proth120;
+
+    /// `sw x2, 0(x1)`.
+    const SW_X2_0_X1: u32 = (2 << 20) | (1 << 15) | (0b010 << 12) | 0x23;
+
+    /// One `sw` to `address` through the unified circuit compiled for `rom`:
+    /// `Ok` when every constraint holds, otherwise the debug evaluator's
+    /// first violation.
+    fn store_outcome(rom: RomGeometry, address: u32) -> Result<(), String> {
+        std::panic::catch_unwind(|| assert!(store_is_satisfied(rom, address))).map_err(|panic| {
+            panic
+                .downcast_ref::<String>()
+                .cloned()
+                .unwrap_or_else(|| "non-string panic".into())
+        })
+    }
+
+    fn store_is_satisfied(rom: RomGeometry, address: u32) -> bool {
+        let binary = vec![SW_X2_0_X1];
+        let mut t = process_binary_into_separate_tables_ext::<
+            F,
+            ReducedMachineDecoderConfig,
+            false,
+            Global,
+        >(
+            &binary,
+            &[Box::new(UnifiedReducedMachineDecoder)],
+            rom.word_size(),
+            &[NON_DETERMINISM_CSR as u16],
+        );
+        let decoder_data = t
+            .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
+            .expect("decoder data");
+        let store = StoreOpcodeTracingData {
+            initial_pc: 0,
+            rs1_value: address,
+            aligned_ram_address: address,
+            aligned_ram_old_value: 0,
+            rs2_value: 0x1234_5678,
+            aligned_ram_write_value: 0x1234_5678,
+        };
+        let opcode_data =
+            UnifiedOpcodeTracingDataWithTimestamp::Mem(MemoryOpcodeTracingDataWithTimestamp {
+                opcode_data: unsafe {
+                    core::mem::transmute::<StoreOpcodeTracingData, LoadOpcodeTracingData>(store)
+                },
+                discr: MEM_STORE_TRACE_DATA_MARKER,
+                rs1_read_timestamp: TimestampData::from_scalar(0),
+                rs2_or_ram_read_timestamp: TimestampData::from_scalar(0),
+                rd_or_ram_read_timestamp: TimestampData::from_scalar(0),
+                cycle_timestamp: TimestampData::from_scalar(4),
+            });
+        let oracle = UnifiedRiscvCircuitOracle {
+            inner: &[opcode_data],
+            decoder_table: &decoder_data,
+        };
+        let oracle: UnifiedRiscvCircuitOracle<'static> = unsafe { core::mem::transmute(oracle) };
+        let mut cs = BasicAssembly::<F, CSDebugWitnessEvaluator<F>, false>::new_with_oracle_and_preprocessed_decoder(
+            oracle,
+            decoder_data
+                .iter()
+                .map(|el| el.unwrap_or_default())
+                .collect::<Vec<_>>(),
+        );
+        unified_reduced_machine_table_addition_fn::<F, _>(&mut cs);
+        let tables = match rom {
+            L1_WRAP_ROM => cs::gkr_circuits::mem_word_only::create_mem_word_only_special_tables::<
+                F,
+                { L1_WRAP_ROM.second_word_bits() },
+            >(&binary),
+            REGULAR_ROM => cs::gkr_circuits::mem_word_only::create_mem_word_only_special_tables::<
+                F,
+                { REGULAR_ROM.second_word_bits() },
+            >(&binary),
+            _ => unreachable!(),
+        };
+        for (table_type, table) in tables {
+            cs.add_table_with_content(table_type, table);
+        }
+        unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core::<
+            F,
+            BabyBearField,
+            _,
+        >(&mut cs, rom);
+        cs.is_satisfied()
+    }
+
+    /// The store-into-ROM trap `is_rom * is_sw = 0`.
+    const ROM_STORE_TRAP: &str = "unsatisfied at constraint  + (v29)(v54)";
+
+    #[test]
+    fn wrap_2p21_sw_into_rom_rejected() {
+        let err = store_outcome(L1_WRAP_ROM, 0x0007_fffc).unwrap_err();
+        assert!(err.starts_with(ROM_STORE_TRAP), "{err}");
+    }
+
+    #[test]
+    fn wrap_2p21_sw_at_ram_boundary_accepted() {
+        store_outcome(L1_WRAP_ROM, 0x0008_0000).unwrap();
+        // the same store is a store into the regular 4 MiB ROM
+        let err = store_outcome(REGULAR_ROM, 0x0008_0000).unwrap_err();
+        assert!(err.starts_with(ROM_STORE_TRAP), "{err}");
+        store_outcome(REGULAR_ROM, 0x0040_0000).unwrap();
     }
 }

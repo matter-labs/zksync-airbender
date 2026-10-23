@@ -1,14 +1,16 @@
 use super::caps::split_memory_cap;
-use super::{rows, teardown_sets, CpuJobs, CpuTwiddles};
+use super::{rows, teardown_sets, whir_storage, CpuJobs, CpuTwiddles};
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{
     commit_memory_tree_for_delegation_circuit, commit_memory_tree_for_inits_and_teardowns,
     commit_memory_tree_for_unified_circuits, commit_memory_tree_for_unrolled_mem_circuits,
-    commit_memory_tree_for_unrolled_nonmem_circuits, BigintAbiDescription,
-    Blake2sGFunctionAbiDescription, Blake2sRoundFunctionAbiDescription, DefaultBabyBearBackend,
-    DefaultTreeConstructor, DelegationAbiDescription, DelegationWitness, KeccakChi5AbiDescription,
-    KeccakColumnParityAbiDescription, KeccakSpecial5AbiDescription, KeccakThetaRhoAbiDescription,
-    MerkleTreeCapVarLength, ProverConfig, UnrolledCircuitWitnessEvalFn, BF, E4,
+    commit_memory_tree_for_unrolled_nonmem_circuits, commit_merged_memory_and_witness_recompute,
+    commit_merged_memory_and_witness_subtrees, BigintAbiDescription,
+    Blake2sGFunctionAbiDescription, Blake2sRoundFunctionAbiDescription, CommitmentMode,
+    DefaultBabyBearBackend, DefaultTreeConstructor, DelegationAbiDescription, DelegationWitness,
+    GenericAllocationPool, KeccakChi5AbiDescription, KeccakColumnParityAbiDescription,
+    KeccakSpecial5AbiDescription, KeccakThetaRhoAbiDescription, MerkleTreeCapVarLength,
+    ProverConfig, RsCodewordSource, TwiddleSetOps, UnrolledCircuitWitnessEvalFn, BF, E4,
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{MemoryCommitmentRequest, MemoryCommitmentResult};
@@ -40,10 +42,50 @@ pub(super) fn run<A: HostTraceAllocator>(
         inits_and_teardowns,
         tracing_data,
         security_level,
+        commitment_mode,
+        profile,
     } = request;
-    let config = prover_config(circuit_type, security_level);
+    let config = prover_config(circuit_type, profile, security_level);
+    assert_eq!(
+        commitment_mode, config.commitment_mode,
+        "request commitment mode disagrees with its profile config"
+    );
+    let storage = whir_storage(profile);
     let twiddles = jobs.twiddles(precomputations.trace_len, worker);
     let flat_cap = match circuit_type {
+        CircuitType::L1Wrap21 => {
+            panic!("L1Wrap requires its typed proof request")
+        }
+        CircuitType::Unrolled(UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22)
+            if commitment_mode == CommitmentMode::MergedMemoryAndWitness =>
+        {
+            let (witness, _) = super::proof::build_witness(
+                &precomputations,
+                circuit_type,
+                inits_and_teardowns.as_ref(),
+                tracing_data.as_ref(),
+                worker,
+            );
+            if storage.base_rs_source == RsCodewordSource::Recompute {
+                commit_merged_memory_and_witness_recompute::<BF, DefaultTreeConstructor>(
+                    &witness,
+                    twiddles.plain(),
+                    &config,
+                    worker,
+                )
+                .get_cap()
+            } else {
+                commit_merged_memory_and_witness_subtrees::<BF, E4, DefaultTreeConstructor, _>(
+                    &jobs.backend,
+                    &witness,
+                    &*twiddles,
+                    &config,
+                    &GenericAllocationPool::proxy(),
+                    worker,
+                )
+                .get_cap()
+            }
+        }
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(_)) => {
             let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::NonMemory(trace))) =
                 tracing_data.as_ref()
@@ -110,7 +152,7 @@ pub(super) fn run<A: HostTraceAllocator>(
                 worker,
             )
         }
-        CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
+        CircuitType::Unrolled(UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22) => {
             let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(trace))) =
                 tracing_data.as_ref()
             else {

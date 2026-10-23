@@ -1,0 +1,137 @@
+{
+  "SingleChunk": {
+    "external_challenges_pow_bits": 20,
+    "register_final_state": [
+      {
+        "value": 0,
+        "last_access_timestamp": 8171066
+      },
+      {
+        "value": 261904,
+        "last_access_timestamp": 8170941
+      },
+      {
+        "value": 8912224,
+        "last_access_timestamp": 8170996
+      },
+      {
+        "value": 8923136,
+        "last_access_timestamp": 8170514
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8170518
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8170829
+      },
+      {
+        "value": 2417840793,
+        "last_access_timestamp": 8170861
+      },
+      {
+        "value": 2099347195,
+        "last_access_timestamp": 8170857
+      },
+      {
+        "value": 8912272,
+        "last_access_timestamp": 8170986
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8170878
+      },
+      {
+        "value": 144,
+        "last_access_timestamp": 8171002
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8171006
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8171010
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8171014
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8171018
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8171022
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8171026
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8171030
+      },
+      {
+        "value": 3754027829,
+        "last_access_timestamp": 8171034
+      },
+      {
+        "value": 410525734,
+        "last_access_timestamp": 8171038
+      },
+      {
+        "value": 1943498142,
+        "last_access_timestamp": 8171042
+      },
+      {
+        "value": 2650797043,
+        "last_access_timestamp": 8171046
+      },
+      {
+        "value": 1418378416,
+        "last_access_timestamp": 8171050
+      },
+      {
+        "value": 1560998444,
+        "last_access_timestamp": 8171054
+      },
+      {
+        "value": 2099347195,
+        "last_access_timestamp": 8171058
+      },
+      {
+        "value": 2417840793,
+        "last_access_timestamp": 8171062
+      },
+      {
+        "value": 8912280,
+        "last_access_timestamp": 8171060
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 8170918
+      },
+      {
+        "value": 1560998444,
+        "last_access_timestamp": 8170853
+      },
+      {
+        "value": 1418378416,
+        "last_access_timestamp": 8170849
+      },
+      {
+        "value": 2650797043,
+        "last_access_timestamp": 8170845
+      },
+      {
+        "value": 1943498142,
+        "last_access_timestamp": 8170841
+      }
+    ],
+    "final_pc": 262644,
+    "final_timestamp": 8171068
+  }
+}

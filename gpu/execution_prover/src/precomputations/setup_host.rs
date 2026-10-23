@@ -84,6 +84,7 @@ impl CircuitPrecomputations {
         setup: CanonicalCircuitSetup,
         security_level: SecurityLevel,
     ) -> CudaResult<Self> {
+        gpu_circuit_prover::config::assert_supported_circuit(circuit_type);
         let (compiled_circuit, cpu_setup, decoder_table) = match setup {
             CanonicalCircuitSetup::Riscv(setup) => {
                 let decoder_table = setup.witness_eval_fn.map(|evaluator| match evaluator {
@@ -94,6 +95,9 @@ impl CircuitPrecomputations {
                 (setup.compiled_circuit, setup.setup, decoder_table)
             }
             CanonicalCircuitSetup::Delegation(setup) => (setup.compiled_circuit, setup.setup, None),
+            CanonicalCircuitSetup::L1Wrap(_) => {
+                panic!("GPU backend does not support L1 wrap setups")
+            }
         };
         assert_eq!(
             compiled_circuit.trace_len,

@@ -70,7 +70,10 @@ pub fn heap_end() -> *mut usize {
 pub fn init() {
     use core::ptr::addr_of_mut;
 
-    use common_constants::rom::ROM_BYTE_SIZE;
+    const ROM_BYTE_SIZE: usize = crate::GUEST_ROM_GEOMETRY.byte_size();
+    #[cfg(feature = "ram_16mb_no_heap_wrap")]
+    assert_eq!(addr_of_mut!(_rom_size).addr(), ROM_BYTE_SIZE);
+    #[cfg(not(feature = "ram_16mb_no_heap_wrap"))]
     assert!(addr_of_mut!(_rom_size).addr() <= ROM_BYTE_SIZE);
     assert_eq!(addr_of_mut!(_estack).addr(), ROM_BYTE_SIZE);
 
@@ -98,9 +101,18 @@ pub fn init() {
 }
 
 unsafe fn load_to_ram(src: *const u8, dst_start: *mut u8, dst_end: *mut u8) {
+    #[cfg(feature = "ram_16mb_no_heap_wrap")]
+    {
+        let rom_size = crate::GUEST_ROM_GEOMETRY.byte_size();
+        let len = dst_end.addr().checked_sub(dst_start.addr()).unwrap();
+        assert!(src.addr() <= rom_size);
+        assert!(len <= rom_size - src.addr());
+        assert!(dst_start.addr() >= rom_size);
+        assert!(dst_end.addr() <= 1 << 24);
+    }
     #[cfg(debug_assertions)]
     {
-        use common_constants::rom::ROM_BYTE_SIZE;
+        const ROM_BYTE_SIZE: usize = crate::GUEST_ROM_GEOMETRY.byte_size();
 
         debug_assert!(src.addr() < ROM_BYTE_SIZE);
         debug_assert!(dst_start.addr() >= ROM_BYTE_SIZE);

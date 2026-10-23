@@ -1,76 +1,83 @@
-//! Regenerates the verifier calldata + intermediate commit seed into `debug_data/` using the
-//! production flatten/seed functions (from a serialized proof + aux + circuit). This is what a
-//! deployment tool would call to prepare the single on-chain transaction's calldata
-//! (`merged_calldata.hex`, read by the merged Foundry test). The other files are debug
-//! intermediates for transcript work. Nothing here is read by `src/`.
+//! Regenerates the verifier calldata, the registry mark and the intermediate commit seed into
+//! `debug_data/` using the production flatten/seed/encoding functions (from a serialized proof +
+//! aux + circuit). This is what a deployment tool would call to prepare the single transaction's
+//! calldata (v0 `merged_calldata.hex`, F1 `single_tx_f1.hex`); the merged Foundry tests read these
+//! files. Nothing here is read by `src/`.
 
 mod common;
 
-use cs::gkr_compiler::GKRCircuitArtifact;
-use field::Proth120;
-use prover::gkr::prover::{GKRProof, OperationMode};
-use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
-
-type Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
-
-fn load() -> (GKRCircuitArtifact<Proth120>, Proof, OperationMode) {
-    let circuit = serde_json::from_reader(
-        std::fs::File::open(
-            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
-        )
-        .expect("circuit"),
-    )
-    .expect("deserialize circuit");
-    let proof = serde_json::from_reader(
-        std::fs::File::open("../prover/unified_circuit_proof_proth120.json").expect("proof"),
-    )
-    .expect("deserialize proof");
-    let aux = serde_json::from_reader(
-        std::fs::File::open(
-            "../prover/unified_circuit_proof_proth120_commitment_mod_aux_data.json",
-        )
-        .expect("aux"),
-    )
-    .expect("deserialize aux");
-    (circuit, proof, aux)
-}
-
 #[test]
+#[ignore = "writes versioned debug_data; run explicitly before read-only drift tests"]
 fn write_calldata_into_debug_data() {
-    let (circuit, proof, aux) = load();
-    std::fs::create_dir_all("debug_data").unwrap();
-    let put = |name: &str, bytes: &[u8]| {
-        std::fs::write(format!("debug_data/{name}"), hex::encode(bytes)).unwrap();
-        eprintln!("wrote debug_data/{name} ({} bytes)", bytes.len());
-    };
+    for version in common::selected_versions() {
+        let (circuit, proof, aux) = version.load();
+        std::fs::create_dir_all(version.data_root).unwrap();
+        let put = |name: &str, bytes: &[u8]| {
+            let path = version.data_path(name);
+            std::fs::write(&path, hex::encode(bytes)).unwrap();
+            eprintln!("wrote {} ({} bytes)", path.display(), bytes.len());
+        };
 
-    let cfg = common::production_prover_config();
-    let (folds, queries) = (
-        &cfg.whir_schedule.whir_steps_schedule,
-        &cfg.whir_schedule.whir_queries_schedule,
-    );
-    // the single transaction's calldata: GKR stream ‖ WHIR proof stream
-    put(
-        "merged_calldata.hex",
-        &verifier_evm::merged_calldata(&circuit, &proof, &aux, folds, queries),
-    );
-    // the (publicInput, auxInput, setupCommitment) tuple the verifier reports to its registry
-    // (and returns) for this proof — the Foundry test checks the registry against it
-    put(
-        "verified_mark.hex",
-        &verifier_evm::verified_mark(&proof, &aux).to_bytes(),
-    );
-    // debug intermediates
-    put(
-        "gkr_full_calldata.hex",
-        &verifier_evm::gkr_calldata(&circuit, &proof, &aux),
-    );
-    put(
-        "gkr_step1_preimage.hex",
-        &verifier_evm::commit_seed_preimage(&circuit, &proof, &aux),
-    );
-    put(
-        "gkr_whir_handoff_seed.hex",
-        &verifier_evm::gkr_whir_handoff_seed(&proof),
-    );
+        let cfg = version.prover_config();
+        let (folds, queries) = (
+            &cfg.whir_schedule.whir_steps_schedule,
+            &cfg.whir_schedule.whir_queries_schedule,
+        );
+        let (gkr, gkr_fields) =
+            verifier_evm::flatten::gkr_calldata_with_fields(&circuit, &proof, &aux);
+        let merged = verifier_evm::merged_calldata(&circuit, &proof, &aux, folds, queries);
+        assert_eq!(&merged[..gkr.len()], &gkr[..]);
+        put(common::MERGED_CALLDATA, &merged);
+        put(
+            common::VERIFIED_MARK,
+            &verifier_evm::verified_mark(&proof, &aux).to_bytes(),
+        );
+        if let Some(name) = version.mutation_fields_file {
+            let metadata = common::calldata_field_metadata(&gkr_fields, gkr.len());
+            let path = version.data_path(name);
+            std::fs::write(
+                &path,
+                format!("{}\n", serde_json::to_string_pretty(&metadata).unwrap()),
+            )
+            .unwrap();
+            eprintln!("wrote {}", path.display());
+        }
+        put(
+            "gkr_step1_preimage.hex",
+            &verifier_evm::commit_seed_preimage(&circuit, &proof, &aux),
+        );
+        put(
+            "gkr_whir_handoff_seed.hex",
+            &verifier_evm::gkr_whir_handoff_seed(&proof),
+        );
+        let f1 = verifier_evm::encoding::encode_single_tx(
+            &circuit,
+            &proof,
+            &aux,
+            &version.prover_config(),
+            &version.f1_params(),
+        );
+        put(common::F1_CALLDATA, &f1.bytes);
+        if version.setup_frontier().is_some() {
+            let control = verifier_evm::encoding::encode_single_tx(
+                &circuit,
+                &proof,
+                &aux,
+                &version.prover_config(),
+                &version.f1_cap_level_params(),
+            );
+            put(common::F1_CAP_LEVEL_CALLDATA, &control.bytes);
+        }
+        let path = version.data_path(common::F1_FIELDS);
+        std::fs::write(
+            &path,
+            format!(
+                "{}\n",
+                serde_json::to_string_pretty(&common::f1_field_metadata(&f1, &version.f1_params()))
+                    .unwrap()
+            ),
+        )
+        .unwrap();
+        eprintln!("wrote {}", path.display());
+    }
 }

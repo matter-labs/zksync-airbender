@@ -241,7 +241,10 @@ fn schedule_phase_one<'a>(
                 inits_and_teardowns,
                 tracing_data,
                 security_level,
+                commitment_mode,
+                profile: req_profile,
             } = req;
+            assert_standard_request(circuit_type, req_profile, commitment_mode, security_level);
             let state = RequestState {
                 batch_id,
                 circuit_type,
@@ -267,7 +270,10 @@ fn schedule_phase_one<'a>(
                 external_challenges,
                 memory_caps,
                 security_level,
+                commitment_mode,
+                profile: req_profile,
             } = req;
+            assert_standard_request(circuit_type, req_profile, commitment_mode, security_level);
             let state = RequestState {
                 batch_id,
                 circuit_type,
@@ -281,6 +287,9 @@ fn schedule_phase_one<'a>(
                 security_level,
             };
             (state, inits_and_teardowns, tracing_data)
+        }
+        GpuWorkRequest::L1WrapProof(_) => {
+            panic!("GPU backend does not support L1 wrap proof requests")
         }
         GpuWorkRequest::SetupInitialization(_) => {
             unreachable!("setup initialization returns early above")
@@ -530,4 +539,23 @@ fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWor
             ))
         }
     }
+}
+
+fn assert_standard_request(
+    circuit: CircuitType,
+    profile: execution_prover::ProofProfile,
+    mode: execution_prover::CommitmentMode,
+    level: SecurityLevel,
+) {
+    assert_eq!(
+        profile,
+        execution_prover::ProofProfile::Standard,
+        "GPU backend only supports ProofProfile::Standard"
+    );
+    let config = gpu_circuit_prover::config::prover_config(circuit, level)
+        .expect("unsupported GPU security level");
+    assert_eq!(
+        mode, config.commitment_mode,
+        "GPU request commitment mode differs from its circuit config"
+    );
 }
