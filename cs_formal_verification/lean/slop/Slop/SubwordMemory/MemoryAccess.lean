@@ -11,7 +11,9 @@ theorem memory_access  {input : Input}
     (configuration : Sail.Configured input.before)
     (aligned : (input.source.toBitVec + input.immediate.toBitVec).toNat %
       (if input.byte then 1 else 2) = 0)
-    (ordinary : Sail.OrdinaryWordAddress (input.source.toBitVec + input.immediate.toBitVec)) :
+    (ordinary : Sail.OrdinaryWordAddress (input.source.toBitVec + input.immediate.toBitVec))
+    (ram : input.store = true →
+      Sail.Configuration.ROM_END ≤ (input.source.toBitVec + input.immediate.toBitVec).toNat) :
     MemoryAccess input := by
   have width : (if input.byte then 1 else 2) = 1 ∨
       (if input.byte then 1 else 2) = 2 ∨ (if input.byte then 1 else 2) = 4 := by
@@ -22,13 +24,13 @@ theorem memory_access  {input : Input}
       input.rs1 input.immediate.toBitVec registerRead aligned ordinary
     exact Sail.read_memory_frame width (before := input.before)
       (after := { input.before with regs := input.before.regs.insert .nextPC nextPC }) rfl bytes
-  · intro _ nextPC value registerRead
+  · intro store nextPC value registerRead
     obtain ⟨after, write, _⟩ := Sail.write_memory_frame
       (by cases input.byte <;> simp : (if input.byte then 1 else 2) ≤ 4)
       (input.source.toBitVec + input.immediate.toBitVec) value
       { input.before with regs := input.before.regs.insert .nextPC nextPC }
     rw [Sail.virtual_memory_write width (Sail.configuration_next_pc_write configuration nextPC)
-      input.rs1 input.immediate.toBitVec registerRead aligned ordinary value write]
+      input.rs1 input.immediate.toBitVec registerRead aligned ordinary (ram store) value write]
     rw [run_bind_of_ok _ _ _ _ _ write]
     rfl
 
