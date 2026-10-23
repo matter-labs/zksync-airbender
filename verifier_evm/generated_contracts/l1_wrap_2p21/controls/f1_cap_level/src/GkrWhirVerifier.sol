@@ -99,7 +99,7 @@ contract GkrWhirVerifier {
     uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_0 = 0;
     uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_1 = 1;
     uint256 constant __TEMPLATE_EXTERNAL_POW_BITS = 20; // external-challenge PoW difficulty
-    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC = 263568; // program's terminal PC — binds the verified statement to this program
+    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC = 262644; // program's terminal PC — binds the verified statement to this program
 
     // ── GKR entry + dimension reduction (generated from the circuit / config) ─────────────────
     uint256 constant __TEMPLATE_GKR_NUM_OUTPUTS        = 5 * 2; // GKR output polys (global_output_map lines)
@@ -156,7 +156,7 @@ contract GkrWhirVerifier {
     // The setup data contract: STOP ‖ setup frontier (if any) ‖ pinned setup cap image ‖ GKR
     // term table; its code hash is checked once per call, before any read.
     address constant __TEMPLATE_F1_FRONTIER = 0x5FbDB2315678afecb367f032d93F642f64180aa3;
-    uint256 constant __TEMPLATE_F1_FRONTIER_HASH = 0x0544f3d4ea2fff9f9c30bd9bc6fb46d0d1faf11c1ca158e38db29f387bae48c9;
+    uint256 constant __TEMPLATE_F1_FRONTIER_HASH = 0x12604e70f5565588ee4ce2b85d51486d360b87919e20dc8c9bc7c2282fe31a87;
     uint256 constant __TEMPLATE_F1_DATA_CAP_OFFSET = 1;
     uint256 constant __TEMPLATE_F1_DATA_QTABLE_OFFSET = 257;
 
@@ -248,7 +248,7 @@ contract GkrWhirVerifier {
         // (∏ of each relevant GKR output poly's OUTPUT_EVALS elements). Filled in gkr_init,
         // consumed by check_permutation_identity; untouched by compress/circuit.
         function GKR_PERM_PROD_PTR() -> ptr { ptr := add(GKR_ABS_PTR(), __TEMPLATE_GKR_ABS_BYTES) }
-        // Circuit-layer claims array (STEP 3): the previous circuit layer's at-point evals,
+        // Circuit-layer claims array: the previous circuit layer's at-point evals,
         // offset-indexed, that this layer's `compute_claim` batches into its initial claim.
         // Threaded across layers: each layer writes its input evals here for the next one.
         // Sized by the generator for the widest layer.
@@ -348,7 +348,7 @@ contract GkrWhirVerifier {
             }
             {
                 let lo, hi := f1_ts(32)
-                mstore(add(F1_V0_PTR(), 384), shl(224, 0x90050400)) // pinned final PC
+                mstore(add(F1_V0_PTR(), 384), shl(224, 0xf4010400)) // pinned final PC
                 mstore(add(F1_V0_PTR(), 388), f1_le19(lo))
                 mstore(add(F1_V0_PTR(), 392), f1_le19(hi))
             }
@@ -385,11 +385,9 @@ contract GkrWhirVerifier {
         }
 
         function transcript_4to1_dual(w0, w1, modulus) -> r {
-            // Proth120 recipe (validated in step1_test/GkrCompressYul): ABSORB the 4 coeffs
-            // (seed = keccak(seed || w0 || w1)) THEN DRAW (seed = keccak(seed); r = top128 mod P).
-            // The prior code drew straight from the absorb result (missing the draw keccak) — a
-            // leftover of the old field's convention; it corrupts every round after the first.
-            //
+            // Absorb the four coefficients before drawing the round challenge:
+            // seed = keccak(seed || w0 || w1), then seed = keccak(seed), r = top128 mod P.
+            // F1Oracle.t.sol compares these transcript observations with the v0 path.
             // F1/E1 rebuilds c0..c3 from (b, c) with lanes up to 2P: canonicalize the 4 lanes (mod
             // P) before absorbing, so the transcript binds to the reduced values. Re-pack keeps
             // the [hi|lo] layout.
@@ -403,13 +401,10 @@ contract GkrWhirVerifier {
         }
 
         function transcript_init(ptr) -> next_ptr {
-            // Proth120 packed-mode transcript (OperationMode::SingleChunk), validated
-            // keccak-for-keccak in step1_test/GkrStep1.sol against the real proof.
-            //   seed = keccak256(preimage)                       // commit_initial_u32 (916 B: regs+PC+topbits+caps)
-            //   nonce = calldata[preimage..preimage+8] (BE u64)
-            //   seed = keccak256(seed || be8(nonce)); require top __TEMPLATE_EXTERNAL_POW_BITS bits zero
-            //   for i in 0..9: seed = keccak256(seed); ch = (seed>>128) % P
-            //   ch[0..7] -> MEMORY_CHALLS (6 perm-linearization + additive), ch[7..9] -> LOGUP (alpha, additive)
+            // SingleChunk commits the register/PC boundary, top bits and both caps.
+            // Hash the LE-u32 preimage, absorb the BE-u64 nonce, check its configured PoW,
+            // then draw permutation and lookup challenges. F1Oracle.t.sol checks that
+            // both calldata formats produce the same transcript observations.
             mcopy(SEED_PTR(), ptr, __TEMPLATE_GKR_INIT_PREIMAGE_BYTES)
             let seed := keccak256(SEED_PTR(), __TEMPLATE_GKR_INIT_PREIMAGE_BYTES)
             // The inits/teardowns top_bits the prover absorbed must be the program's pinned
@@ -457,21 +452,16 @@ contract GkrWhirVerifier {
             mstore(SEED_PTR(), seed)
             mstore(add(LOGUP_CHALLS_PTR(), 32),        mod(shr(128, seed), mload(P_PTR)))
 
-            // SEED_PTR now holds the post-STEP-1 seed; the GKR entry (gkr_init) absorbs output evals next.
+            // SEED_PTR now holds the post-transcript-init seed; the GKR entry (gkr_init) absorbs output evals next.
             next_ptr := add(ptr, add(__TEMPLATE_GKR_INIT_PREIMAGE_BYTES, 8)) // preimage + 8-byte PoW nonce
         }
 
 
 
-        // Strategy 2: absorb the init block and draw z1..z4 and alpha, but do not
-        // store full eq[16]. Instead, generate eq factors inline while streaming
-        // over calldata so folding and accumulator updates happen in one pass.
-        // GKR entry (STEP 2a). Validated keccak-for-keccak against GkrStep1.gkrEntry
-        // (step1_test/GkrInitYul.t.sol): continue from the post-STEP-1 seed, absorb the INIT_BYTES
-        // of output evals, draw eval_point[4] (→ POINT_PTR) + batching (→ GKR_BATCHING_PTR).
-        // Then compute the 10 dim-reducing claims: eq[16] over eval_point, dotted with each of
-        // the 10 output columns (matches the validated Rust mirror). claim/alpha are legacy
-        // returns kept 0 — gkr_compress reads GKR_CLAIMS_PTR / GKR_BATCHING_PTR.
+        // Absorb the explicit output evaluations and draw the evaluation point plus
+        // batching challenge. Stream the equality factors while accumulating the
+        // NUM_OUTPUTS claims, without retaining a full equality table.
+        // claim/alpha remain zero: gkr_compress reads GKR_CLAIMS_PTR / GKR_BATCHING_PTR.
         function gkr_init(ptr) -> next_ptr, claim, alpha {
             let sp := SEED_PTR()
             // absorb output evals: seed = keccak(seed || outputEvals). The INIT_BYTES are bulk-copied
@@ -675,8 +665,8 @@ contract GkrWhirVerifier {
 
 
 
-        // Dim-reducing final step for one layer (own frame -> shallow caller stack). Validated
-        // in step1_test/GkrCompressYul. `cp` points at the 10 [E;2] LSB lines (sorted). Compute
+        // Dim-reducing final step in its own frame to keep the caller stack shallow.
+        // `cp` points at the NUM_OUTPUTS [E;2] LSB lines in sorted order. Compute
         // g (products slots 0,1,8,9; lookup num/den pairs (2,3)(4,5)(6,7); running batching powers;
         // boundary permutation on the last layer), check g*eq_scale==claim, absorb the LSB lines,
         // draw r_last + next_batching, interpolate the next claims (sorted order), grow the point.
@@ -760,8 +750,8 @@ contract GkrWhirVerifier {
 
         // DIM_REDUCE_LAYERS dim-reducing layers (folding_steps OUTPUT_LOG2 .. trace_log2-1).
         // Reads the NUM_OUTPUTS claims + batching from gkr_init (GKR_CLAIMS_PTR /
-        // GKR_BATCHING_PTR); reuses sumcheck_rounds for the monomial rounds. Validated end-to-end
-        // in step1_test/GkrCompressYul (post-state 0xc3616d7d…).
+        // GKR_BATCHING_PTR); reuses sumcheck_rounds for the monomial rounds.
+        // Merged.t.sol checks acceptance and rejects tampered GKR proof bytes.
         function gkr_compress(ptr, claim0, alpha0) -> next_ptr, next_claim, next_alpha {
             let batching := mload(GKR_BATCHING_PTR())
             for { let k := 0 } lt(k, __TEMPLATE_GKR_DIM_REDUCE_LAYERS) { k := add(k, 1) } {
