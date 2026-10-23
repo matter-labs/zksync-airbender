@@ -274,10 +274,23 @@ def imageWords : List (BitVec 8) → List Word
   | b0 :: b1 :: b2 :: b3 :: rest => (b3 ++ b2 ++ b1 ++ b0) :: imageWords rest
   | _ => []
 
-/-- The decoder accepts the binary: every maximal run of one delegation word has an accepted length. (Keccak-f1600's
-three words are not constrained here: that 361 calls in their order are Keccak-f[1600] is `KeccakF1600Run`.) -/
+/-- The Keccak-f1600 words (`csrrw x0, 0x7cc … 0x7ce, x0`). -/
+def isF1600Word (w : Word) : Bool := w == 0x7cc01073 || w == 0x7cd01073 || w == 0x7ce01073
+
+/-- A Keccak-f1600 run (ISA table: "exact runs of 361 consecutive calls"): 24 × (5 parity `0x7cd`, 5 θ+ρ `0x7cc`,
+5 χ `0x7ce`), then 1 parity. -/
+def f1600Run : List Word :=
+  (List.replicate 24
+    (List.replicate 5 0x7cd01073 ++ List.replicate 5 0x7cc01073 ++ List.replicate 5 0x7ce01073)).flatten ++
+  [0x7cd01073]
+
+/-- Airbender's setup accepts the binary: every maximal run of one delegation word has an accepted length, and every
+maximal run of Keccak-f1600 words is one Keccak-f1600 run (what such a run computes: `KeccakF1600Run`). -/
 def Accepted (bytes : Array (BitVec 8)) : Prop :=
-  ∀ run ∈ (imageWords bytes.toList).splitBy (· == ·), ∀ lengths ∈ run.head?.bind callRun, run.length ∈ lengths
+  (∀ run ∈ (imageWords bytes.toList).splitBy (· == ·),
+    ∀ lengths ∈ run.head?.bind callRun, run.length ∈ lengths) ∧
+  ∀ run ∈ (imageWords bytes.toList).splitBy (fun a b => isF1600Word a && isF1600Word b),
+    run.head?.any isF1600Word → run = f1600Run
 
 instance : DecidablePred Accepted := fun _ => by unfold Accepted; infer_instance
 
