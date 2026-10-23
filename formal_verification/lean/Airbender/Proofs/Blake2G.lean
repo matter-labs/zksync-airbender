@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2G.Fragment
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Circuits.Blake2G.Artifact

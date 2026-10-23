@@ -3,7 +3,7 @@ import Airbender.Proofs.Blake2G.QueryTags
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Blake2G.ArtifactChecks
 import Airbender.Proofs.Blake2G.Tables
-import Airbender.Proofs.Blake2G.Fragment
+import Airbender.Proofs.Blake2G.FragmentDefinitions
 import Airbender.Review.Helpers.Properties
 import Airbender.Proofs.Constraints
 
