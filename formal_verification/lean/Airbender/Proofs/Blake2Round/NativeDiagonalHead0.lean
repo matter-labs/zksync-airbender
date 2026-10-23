@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2Round.NativeDiagonalView0
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Proofs.Blake2G.FrameQueryShapes
@@ -56,66 +57,38 @@ def highA {p : Nat} (w : Nat → ZMod p) : ZMod p :=
 theorem source0_eval {p : Nat} [Fact p.Prime] (w : Nat → ZMod p) :
     source0.map (Expression.eval (Verification.environment w)) =
       #v[w 404, w 416, w 417, w 420, 0, 55] := by
-  apply Vector.ext
-  intro lane bound
-  change lane < 6 at bound
-  interval_cases lane
-  all_goals simp [source0, importedConstraints, FlatOperation.lookups,
-    Expression.eval, Verification.environment]
+  exact NativeDiagonalView0.source0_eval w
+
 
 theorem source1_eval {p : Nat} [Fact p.Prime] (w : Nat → ZMod p) :
     source1.map (Expression.eval (Verification.environment w)) =
       #v[w 407, highA w, w 421, 0, 0, 4] := by
-  apply Vector.ext
-  intro lane bound
-  change lane < 6 at bound
-  interval_cases lane
-  all_goals simp [source1, importedConstraints, FlatOperation.lookups,
-    Expression.eval, Verification.environment, highA]
-  all_goals ring
+  exact NativeDiagonalView0.source1_eval w
+
 
 theorem source2_eval {p : Nat} [Fact p.Prime] (w : Nat → ZMod p) :
     source2.map (Expression.eval (Verification.environment w)) =
       #v[w 405, w 418, w 419, w 422, 0, 55] := by
-  apply Vector.ext
-  intro lane bound
-  change lane < 6 at bound
-  interval_cases lane
-  all_goals simp [source2, importedConstraints, FlatOperation.lookups,
-    Expression.eval, Verification.environment]
+  exact NativeDiagonalView0.source2_eval w
+
 
 theorem d_byte0 {p : Nat} [Fact p.Prime] (w : Nat → ZMod p) :
     (diagonalFrame 0 w).dBytes[0] = w 404 := by
-  have column := congrArg (fun row : Vector (ZMod p) 6 => row[0]) (source0_eval w)
-  have projection : (diagonalFrame 0 w).dBytes[0] =
-      ((source0 (p := p)).toArray[0]!).eval (Verification.environment w) := by
-    simp [source0, diagonalFrame, NativeLayout.diagonal, NativeLayout.Layout.read,
-      NativeLayout.Location.read, NativeLayout.queryColumn, NativeLayout.queryIndex]
-    rw [getElem!_pos _ 0 (by change 0 < 6; decide)]
-    rfl
-  rw [projection, getElem!_pos (source0 (p := p)).toArray 0
-    (by rw [Vector.size_toArray]; decide)]
-  simpa using column
+  rw [NativeDiagonalView0.frame_eq]
+  rfl
+
 
 theorem d_byte1 {p : Nat} [Fact p.Prime] (w : Nat → ZMod p) :
     (diagonalFrame 0 w).dBytes[1] = w 405 := by
-  have column := congrArg (fun row : Vector (ZMod p) 6 => row[0]) (source2_eval w)
-  have projection : (diagonalFrame 0 w).dBytes[1] =
-      ((source2 (p := p)).toArray[0]!).eval (Verification.environment w) := by
-    simp [source2, diagonalFrame, NativeLayout.diagonal, NativeLayout.Layout.read,
-      NativeLayout.Location.read, NativeLayout.queryColumn, NativeLayout.queryIndex]
-    rw [getElem!_pos _ 0 (by change 0 < 6; decide)]
-    rfl
-  rw [projection, getElem!_pos (source2 (p := p)).toArray 0
-    (by rw [Vector.size_toArray]; decide)]
-  simpa using column
+  rw [NativeDiagonalView0.frame_eq]
+  rfl
+
 
 theorem d_input {p : Nat} [Fact p.Prime] (w : Nat → ZMod p) :
     (diagonalFrame 0 w).inputs[6] = w 404 + 256 * w 407 := by
-  simp [diagonalFrame, diagonalIncoming, NativeLayout.diagonal, NativeLayout.Layout.read,
-    NativeLayout.Location.read, nativeColumnAssignment,
-    Blake2G.Proofs.Frame.assignment_eq_normalized, Blake2G.Proofs.Frame.normalizedAssignment,
-    columnFrame, NativeLayout.column, NativeLayout.columnInputs]
+  rw [NativeDiagonalView0.frame_eq]
+  rfl
+
 
 theorem a_input_sum {p : Nat} [Fact p.Prime] (w : Nat → ZMod p) :
     let f := diagonalFrame 0 w
@@ -124,11 +97,11 @@ theorem a_input_sum {p : Nat} [Fact p.Prime] (w : Nat → ZMod p) :
     w 155 + w 171 + w 224 + w 226 + w 240 -
       65536 * w 257 - 65536 * w 281 + w 278 + 128 * w 277 +
       w 332 + 512 * w 335 - 65536 * w 417 - w 416 := by
-  simp [diagonalFrame, diagonalIncoming, NativeLayout.diagonal, NativeLayout.Layout.read,
-    NativeLayout.Location.read, nativeColumnAssignment,
-    Blake2G.Proofs.Frame.assignment_eq_normalized, Blake2G.Proofs.Frame.normalizedAssignment,
-    columnFrame, NativeLayout.column, NativeLayout.columnInputs]
+  rw [NativeDiagonalView0.frame_eq]
+  simp only [NativeDiagonalView0.frame, Vector.getElem_mk,
+    List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ]
   ring
+
 
 theorem columns0 {p : Nat} [Fact p.Prime]
     (control : Fin 512 → Vector Nat 7) (w : Nat → ZMod p) :
@@ -139,8 +112,8 @@ theorem columns0 {p : Nat} [Fact p.Prime]
     (Expression.eval (Verification.environment (diagonalFrame 0 w).assignment)) = _
   rw [row0, source0_eval]
   rw [d_byte0]
-  simp [carryPad, diagonalFrame, NativeLayout.diagonal, NativeLayout.Layout.read,
-    NativeLayout.Location.read]
+  rw [NativeDiagonalView0.frame_eq]
+  simp [carryPad, NativeDiagonalView0.frame]
 
 theorem columns1 {p : Nat} [Fact p.Prime]
     (compatible : SerializedInverse.Scale64 p)
@@ -154,12 +127,12 @@ theorem columns1 {p : Nat} [Fact p.Prime]
   have inverse := Blake2G.Proofs.inverse256 compatible
   have scale : (-7864320 : ZMod p) * 65536 = 256 := by
     linear_combination 256 * inverse
+  rw [NativeDiagonalView0.frame_eq]
   apply Vector.ext
   intro lane bound
   change lane < 9 at bound
   interval_cases lane
-  all_goals simp [highA, plainPad, diagonalFrame, NativeLayout.diagonal,
-    NativeLayout.Layout.read, NativeLayout.Location.read]
+  all_goals simp [highA, plainPad, NativeDiagonalView0.frame]
   · linear_combination w 407 * inverse
   · linear_combination -(w 257 + w 281 + w 417) * scale + 2 * w 335 * inverse
 
@@ -172,8 +145,8 @@ theorem columns2 {p : Nat} [Fact p.Prime]
     (Expression.eval (Verification.environment (diagonalFrame 0 w).assignment)) = _
   rw [row2, source2_eval]
   rw [d_byte1]
-  simp [carryPad, diagonalFrame, NativeLayout.diagonal, NativeLayout.Layout.read,
-    NativeLayout.Location.read]
+  rw [NativeDiagonalView0.frame_eq]
+  simp [carryPad, NativeDiagonalView0.frame]
 
 /-- Transfer the first three native diagonal queries through checked row interfaces. -/
 theorem native_diagonal_head0_queries {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 512)
