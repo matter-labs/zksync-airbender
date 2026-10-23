@@ -1,3 +1,5 @@
+import Airbender.Proofs.Keccak.IotaRoutes
+import Airbender.Proofs.Keccak.ByteLookupValues
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Circuits.Keccak.Iota
 import Airbender.Proofs.Keccak.DecodeControl
@@ -32,32 +34,7 @@ private theorem iota_routes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap 
       256 * w (111 + 24 * operation.val + 2 * limb.val) = w bColumns[operation][limb] ∧
     w (118 + 24 * operation.val + 2 * limb.val) +
       256 * w (119 + 24 * operation.val + 2 * limb.val) = w cColumns[operation][limb] := by
-  have modes := selected_modes hp h active (0 : Fin 7) selected
-  have m1 := modes (1 : Fin 7); have m2 := modes (2 : Fin 7); have m3 := modes (3 : Fin 7)
-  have m4 := modes (4 : Fin 7); have m5 := modes (5 : Fin 7); have m6 := modes (6 : Fin 7)
-  simp [Variables.modeColumns] at m1 m2 m3 m4 m5 m6
-  have rotations (i : Fin 5) : w (80 + i.val) = 0 := by
-    have equation := Verification.assertion_of_holds h ⟨9 + i.val, by rw [constraint_count]; omega⟩
-    fin_cases i <;> simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, m4] using equation.symm
-  have r0 := rotations (0 : Fin 5); have r1 := rotations (1 : Fin 5)
-  have r2 := rotations (2 : Fin 5); have r3 := rotations (3 : Fin 5); have r4 := rotations (4 : Fin 5)
-  change w 80 = 0 at r0
-  change w 81 = 0 at r1
-  change w 82 = 0 at r2
-  change w 83 = 0 at r3
-  change w 84 = 0 at r4
-  have a := Verification.assertion_of_holds h
-    ⟨20 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
-  have b := Verification.assertion_of_holds h
-    ⟨21 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
-  have c := Verification.assertion_of_holds h
-    ⟨22 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
-  fin_cases operation <;> fin_cases limb <;>
-    simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, selected, m1, m2, m3, m4, m5, m6,
-      r0, r1, r2, r3, r4, aColumns, bColumns, cColumns, nativeLimbs, temporary] at a b c ⊢
-  all_goals exact ⟨by linear_combination a, by linear_combination b, by linear_combination c⟩
+  exact IotaRoutes.checked hp h active selected operation limb
 
 private theorem iota_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
@@ -71,20 +48,23 @@ private theorem iota_bytes {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast 
       (w (102 + 24 * operation.val + byte.val)).val ^^^
         (if operation.val = 0 then iotaByte (w (110 + 24 * operation.val + byte.val)).val
          else (w (110 + 24 * operation.val + byte.val)).val) := by
-  have query := byte_lookup_checks hp h ⟨8 * operation.val + byte.val, by omega⟩
+  have query := ByteQueryBindings.values hp h operation byte
   have tags := selected_tags (by omega) h active (0 : Fin 7) selected
     ⟨8 * operation.val + byte.val, by omega⟩
-  fin_cases operation <;> fin_cases byte <;>
-    simp [operationTags, byteTag, byteQuery, importedConstraints,
-      FlatOperation.lookups, Expression.eval, Verification.environment,
-      ByteOperationFacts] at tags query ⊢
-  all_goals
-    split at query
-    · rename_i zero
-      have value := congrArg ZMod.val zero
-      simp only [ZMod.val_zero] at value
-      omega
-    · simpa [tags] using query
+  have group : (⟨(8 * operation.val + byte.val) / 8, by omega⟩ : Fin 5) = operation := by
+    apply Fin.ext
+    change (8 * operation.val + byte.val) / 8 = operation.val
+    omega
+  have indexEq := congrArg (fun i : Fin 5 => operationTags[(0 : Fin 7)][i]) group
+  have selectedTag : (byteTag (setupTable control) w
+      ⟨8 * operation.val + byte.val, by omega⟩).val = operationTags[(0 : Fin 7)][operation] :=
+    tags.trans indexEq
+  have tagKind : operationTags[(0 : Fin 7)][operation] =
+      (if operation.val = 0 then 38 else 4 : Nat) := by
+    fin_cases operation <;> rfl
+  rw [selectedTag, tagKind] at query
+  by_cases first : operation.val = 0 <;> simpa [ByteOperationFacts, first] using query
+
 
 private theorem effective_round {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 2048)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
@@ -272,14 +252,14 @@ theorem iota_written_bounds {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast
     omega
   have r0 := result 0; have r4 := result 4
   have c0 := copied 0; have c1 := copied 1; have c2 := copied 2; have c3 := copied 3
-  fin_cases lane <;> fin_cases limb
-  all_goals first
-    | simpa [cColumns, nativeLimbs] using r0
-    | simpa [cColumns, nativeLimbs] using r4
-    | simpa using c0
-    | simpa using c1
-    | simpa using c2
-    | simpa using c3
+  fin_cases lane
+  · fin_cases limb <;> simpa [cColumns, nativeLimbs] using r0
+  · fin_cases limb <;> simpa using c0
+  · fin_cases limb <;> simpa using c1
+  · fin_cases limb <;> simpa using c2
+  · fin_cases limb <;> simpa using c3
+  · fin_cases limb <;> simpa [cColumns, nativeLimbs] using r4
+
 
 private theorem iota_operation {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 1048576)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (round : Fin 32)
