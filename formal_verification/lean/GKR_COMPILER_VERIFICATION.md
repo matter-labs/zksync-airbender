@@ -4,9 +4,10 @@ The compiler verification effort is active. Arithmetic translation, graph wiring
 and source lookup-field encoding have kernel-checked instances for all eleven
 production circuit families, with and without caches. All 22 native consumer
 field-role checks also pass. Full protocol reduction, RAM/timestamp lowering,
-cache/source connection and complete witness extension remain open.
+setup interpretation and complete witness extension remain open.
 All 60 emitted native lookup output pairs now have checked reduction proofs;
-connecting their operands to the independently captured source fields remains open.
+the 38 generic/range-16 groups also reduce to the original source query multiset
+plus their actual setup contribution.
 
 ## Independent source and actual compiler output
 
@@ -89,12 +90,9 @@ Witness-evaluation metadata sometimes names an intermediate value by its
 mapping and checked forward inverse. An alias is interpreted as that storage
 location, rather than introduced as an unconstrained additional value.
 
-These results cover the visible request fields and structural output ports.
-They do not yet establish correct numerator/denominator reductions, RAM tuple
-products, cache/source binding, output-group semantics or
-complete extension through compiler-generated memory constraints. The generic
-lookup-pair/product-fold algebra in `GKRCompiler/Reduction.lean` is checked but
-still needs those concrete graph connections.
+These field results are composed with concrete numerator/denominator reductions
+below. RAM tuple products, table contents, timestamp helpers and complete
+extension through compiler-generated memory constraints remain required.
 
 ## Native consumer field roles
 
@@ -174,14 +172,48 @@ generic foundation: selected actual definitions preserve affine interpretation,
 base-column identities lift through a field homomorphism, and vector encoding
 preserves those identities for arbitrary alpha. A base-role check prevents an
 extension-field vector cache from being treated as a free base column. Concrete
-source labels and column identities for the actual consumed operands still need
-to be checked and composed with these native reduction roots.
+source labels and column identities are checked and composed with these native
+reduction roots as described below.
 
 The lookup graph and base-encoding controls reject swapped/mixed pair
 components, missing copies, dropped/repeated source labels, invalid native gate
 or definition indices, wrong operand weights and replacement payloads. The
 combined 534 compiler roots pass a direct axiom audit with only standard Lean
 axioms. This audit is separate from the historical full-project assurance gates.
+
+## Consumed operands and original source queries
+
+`LookupSourceData.lean` enumerates actual consumer operands and actual affine
+definitions. `LookupSourceImport.lean` expands selected copy/cache/materializer
+heads and checks the result against the separately imported native registry.
+Selectors contain only actual definition indices, source row indices and
+polynomial-combination witnesses. Both sides of every column identity are
+reconstructed from actual native columns and independently captured source
+fields. A checked address-bank round trip prevents an arbitrary projection from
+discarding a native input. Decoder masks receive their own base-role and source
+identity checks.
+
+All 4,436 consumed authored fields pass these checks in the 22 configurations.
+For each of the 38 emitted generic/range-16 groups, `native.genericSourceReduction`
+or `native.range16SourceReduction` composes the per-query identities with the
+actual reduction root. Expected query lists are reconstructed in original source
+order, independently from the consumed operand selectors. Kernel-checked exact
+label permutations preserve every occurrence, including duplicate queries and
+the decoder request. The theorem holds for arbitrary challenges, under the
+actual affine-definition, base-copy and native lookup equations.
+
+The resulting sum contains the original source queries and one **actual native
+setup contribution**. This boundary is explicit: the theorem does not yet
+identify that contribution with independently interpreted source table contents.
+The 22 timestamp groups still require their independent source-helper
+derivation. These are required before claiming complete compiler preservation.
+Large BLAKE-round instances split operand proofs into 32-operand modules, then
+compose the checked results; the bounded builder processes these sequentially.
+
+`Tests/GKRLookupSource.lean` rejects an unretained actual column, an omitted
+decoder occurrence and a query replaced by a second setup occurrence. The
+combined 658 compiler roots pass a direct axiom audit using only standard Lean
+axioms. This audit remains separate from full-project assurance gates.
 
 ## Reproduction and freshness
 
@@ -197,6 +229,8 @@ python3 scripts/gkr_wiring_instances.py --build
 python3 scripts/export_gkr_lookup_certificates.py
 python3 scripts/check_gkr_lookup_certificates.py
 python3 scripts/gkr_lookup_instances.py
+python3 scripts/gkr_lookup_source_certificate.py --check
+python3 scripts/gkr_consumer_instances.py --stage source
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerCertificate:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerWiring:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRLookupFields:olean
@@ -219,6 +253,10 @@ proof using the locked local package closure, changes an actual native lookup
 coefficient while preserving the authored source and certificate, checks that
 normal Lake rebuilding reaches a kernel rejection, then restores and rechecks.
 It never changes retained repository artifacts or copies compiler build traces.
+With `--stage consumed`, the control changes only an actual consumed query
+operand, preserving the authored source and request metadata. Normal
+Lake invalidation reaches rejection in the source-operand bridge; restoration
+rebuilds successfully.
 
 `Tests/GKRCompilerCertificate.lean` starts from the actual ADD/SUB translation
 and proves rejection of dropped constraints, a changed coefficient, a wrong
@@ -232,10 +270,10 @@ decoder masks, scratch aliases, authored fields and source projection.
 
 ## Required remaining work
 
-1. Connect the checked native consumer formulas and cache materialization to
-   independently captured source fields and complete protocol reductions.
-2. Derive lookup/range/decoder and RAM/timestamp obligations from the captured
-   source inputs; certify their actual gate reductions and helper formulas.
+1. Connect lookup setup contributions to the source table layout and contents.
+2. Derive timestamp and RAM/alignment helper obligations from the captured
+   source inputs; certify their actual gate reductions, tuple identities and
+   complete product groups.
 3. Prove complete witness extension under explicit source primitive-query and
    memory-history contracts, then compose with existing circuit/execution roots.
 4. Keep algebraic fingerprint preservation separate from cryptographic

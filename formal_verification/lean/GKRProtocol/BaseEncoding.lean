@@ -206,4 +206,59 @@ theorem BaseRecipeAgreement.sound {relations : List (Polynomial n Source.BaseFie
   apply AffineProgram.value_congr
   simpa only [AffineProgram.mapCoefficients_inputs, Function.comp_apply] using wires
 
+structure WireBank (n : Nat) where
+  address : Fin n → GKRAddress
+  placement : GKRAddress → Fin n
+
+def WireBank.check (bank : WireBank n) (recipe : NativeBaseRecipe) : Bool :=
+  recipe.inputs.all (fun address => addressEqual (bank.address (bank.placement address)) address)
+
+theorem WireBank.wires (bank : WireBank n) {recipe : NativeBaseRecipe} (checked : bank.check recipe = true)
+    (base : GKRAddress → Source.BaseField) :
+    ∀ address ∈ recipe.inputs, base address = (base ∘ bank.address) (bank.placement address) := by
+  intro address member
+  have same : addressEqual (bank.address (bank.placement address)) address = true :=
+    List.all_eq_true.mp checked address member
+  exact congrArg base ((addressEqual_iff _ _).mp same).symm
+
+theorem BaseRecipeAgreement.sound_bank {relations : List (Polynomial n Source.BaseField)}
+    {recipe : NativeBaseRecipe} {agreement : BaseRecipeAgreement relations recipe}
+    (sourcePlacement : Nat → Fin n) (bank : WireBank n)
+    (checked : agreement.check sourcePlacement bank.placement = true)
+    (inBank : bank.check recipe = true) (base : GKRAddress → Source.BaseField)
+    (holds : Satisfies relations (base ∘ bank.address)) :
+    agreement.source.value ((base ∘ bank.address) ∘ sourcePlacement) = recipe.value base :=
+  agreement.sound sourcePlacement bank.placement checked holds base (bank.wires inBank base)
+
+structure SourceLookupQuery where
+  fields : List Source.EncodedField
+  mask : Option Source.EncodedField
+
+def SourceLookupQuery.weight [CommRing R] (query : SourceLookupQuery)
+    (hom : Source.BaseField →+* R) (source : Nat → Source.BaseField) : R :=
+  match query.mask with
+  | none => 1
+  | some field => hom (field.value source)
+
+def SourceLookupQuery.value [CommRing R] (query : SourceLookupQuery)
+    (hom : Source.BaseField →+* R) (alpha gamma : R) (source : Nat → Source.BaseField) : RationalPair R :=
+  RationalPair.leaf (query.weight hom source)
+    (NativeLookupEncoding.linearize hom alpha (query.fields.map (fun field => field.value source)) 0 0 + gamma)
+
+theorem NativeLookupLeaf.source_query [CommRing R] (leaf : NativeLookupLeaf)
+    (encoding : NativeLookupEncoding) (typing : ConsumerTyping)
+    (baseCheck : encoding.baseCheck typing = true) (definitions : List AffineDefinition) (indices : List Nat)
+    (expanded : LookupPayload.expand definitions indices leaf.payload = some encoding.program)
+    (assignment : TypedAssignment R) (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
+    (defined : ∀ definition ∈ definitions, definition.Holds hom challenges (assignment.value typing hom))
+    (query : SourceLookupQuery) (source : Nat → Source.BaseField)
+    (fields : query.fields.map (fun field => field.value source) = encoding.fields assignment.base)
+    (mask : leaf.weight.value (assignment.value typing hom) = query.weight hom source) :
+    leaf.value hom challenges gamma (assignment.value typing hom) =
+      query.value hom challenges.lookupAlpha gamma source := by
+  have expansion := LookupPayload.expand_sound hom challenges (assignment.value typing hom) defined expanded
+  have payload := expansion.symm.trans (encoding.interpret_typed typing baseCheck assignment hom challenges)
+  rw [← fields] at payload
+  exact congrArg₂ RationalPair.mk mask (congrArg (· + gamma) payload)
+
 end Airbender.Compiler
