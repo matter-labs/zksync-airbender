@@ -67,7 +67,7 @@ private def pair (output : GKRAddress) (left right : TSyntax `term) (index : Nat
   return ⟨← `(NativeProductGate.pair $address $left $right), ← `(ProductStep.pair $address $(quote index) $(quote (index + 1))),
     #[left, right], 3, .pair output index (index + 1)⟩
 
-private def pieces (circuit : Circuit) (memoryCaches : Array GKRAddress) (index : Nat) :
+def pieces (circuit : Circuit) (memoryCaches : Array GKRAddress) (index : Nat) :
     GKRRelation → CommandElabM (Option Pieces)
   | .InitialGrandProductFromCaches input output => do
       let [left, right] := input.values.toList | throwError "invalid cached memory pair"

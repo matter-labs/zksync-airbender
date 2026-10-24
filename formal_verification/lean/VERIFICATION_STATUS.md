@@ -21,8 +21,8 @@ arithmetic slice. All 60 actual native lookup output pairs have checked
 formula/port reduction proofs, with metadata count and one-setup-term checks.
 All 4,436 consumed authored lookup fields also pass the source bridge; the 38
 generic/range-16 groups reduce to the exact original query multiset plus their
-actual native setup contribution. Source table interpretation, timestamp helpers,
-RAM products and complete witness extension remain open. The native
+actual native setup contribution. Materialized table binding, timestamp helpers
+and complete witness extension remain open. The native
 input mutation control exposed ineffective deprecated Lake dependency keys;
 these have been replaced by `needs`, and affected compiler targets passed ordinary
 dependency-aware replay. All 140 roots in the arithmetic/wiring/lookup-field
@@ -39,9 +39,12 @@ expanded compiler audit contains 1,010 roots using only standard Lean axioms.
 
 All 48 native RAM/initialization product output scalars also pass exact formula
 and port reduction, including final mask shape and actual initialization set
-offsets. Connecting these factors to independent source memory tuples and
-deriving timestamp/alignment helpers remain open. The compiler audit now covers
-1,293 roots with only standard Lean axioms.
+offsets. All 22 source-memory instances now connect those outputs to the original
+executor/delegation/initialization tuples, preserving exactly 476 occurrences
+and the source execution mask. Source variables and history/setup inputs have
+separate domains with checked native projections. Timestamp/alignment helper
+derivation and complete witness extension remain open. The combined compiler
+audit covers 1,700 roots using only standard Lean axioms.
 
 ## Checked coverage
 

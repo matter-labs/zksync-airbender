@@ -14,12 +14,13 @@ import subprocess
 from check_gkr_lookup_certificates import verify
 from export_gkr_translations import LEAN
 from gkr_lookup_source_certificate import synthesis as source_synthesis
+from gkr_memory_certificate import synthesis as memory_synthesis
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--work-dir", type=Path, required=True)
-    parser.add_argument("--stage", choices=("metadata", "consumed"), default="metadata")
+    parser.add_argument("--stage", choices=("metadata", "consumed", "memory"), default="metadata")
     args = parser.parse_args()
     verify()
     work = args.work_dir.resolve()
@@ -72,6 +73,23 @@ import_compiler_lookup_fields native from "pair.json"
                    '  reference Probe.native\n'
                    '  typing Airbender.Compiler.ConsumerNative.AddSubCached.native.typing\n'
                    f'  phase 3 start 0 stop {len(selectors["operands"])}\n')
+    elif args.stage == "memory":
+        selectors = memory_synthesis(json.loads(inputs["pair.json"].read_text()),
+                                     json.loads(inputs["source.json"].read_text()))
+        encoded = json.dumps(json.dumps(selectors, separators=(",", ":")))
+        module = ('import GKRProtocol.MemoryImport\n'
+                  'import GKRProtocol.ConsumerNative.AddSubCached\n'
+                  'open Airbender Airbender.Compiler\n'
+                  'set_option warningAsError true\n'
+                  'set_option Elab.async false\n'
+                  'set_option maxRecDepth 32768\n'
+                  'set_option maxHeartbeats 4000000\n'
+                  'namespace Probe\n'
+                  'import_native_products native from "pair.json"\n'
+                  'import_source_memory bridge from "pair.json" source "source.json"\n'
+                  f'  selectors {encoded}\n'
+                  '  word_bits 2 native_model Probe.native\n'
+                  '  typing Airbender.Compiler.ConsumerNative.AddSubCached.native.typing\n')
     (work / "Probe.lean").write_text(module + 'end Probe\n')
     environment = dict(os.environ, LEAN_NUM_THREADS="1", MATHLIB_NO_CACHE_ON_UPDATE="1")
     command = ["lake", "--no-cache", "build", "+Probe:olean"]
@@ -88,6 +106,8 @@ import_compiler_lookup_fields native from "pair.json"
             raise RuntimeError(f"Failure was not the intended kernel certificate rejection; see {log}")
         if not success and args.stage == "consumed" and "bank.placement" not in text:
             raise RuntimeError(f"Failure was not in the consumed source-column checker; see {log}")
+        if not success and args.stage == "memory" and "memoryReadCertificate0" not in text:
+            raise RuntimeError(f"Failure was not in the source-memory fingerprint checker; see {log}")
         print(f"PASS {label}: {'valid proof' if success else 'dependency rebuilt and kernel rejected corruption'}", flush=True)
 
     run("warm", True)
@@ -103,7 +123,7 @@ import_compiler_lookup_fields native from "pair.json"
                     pair["circuit"]["witness_layout"]["total_width"])
         if args.stage == "metadata":
             pair["circuit"]["range_check_16_lookup_expressions"][0]["input"]["constant"] = 1
-        else:
+        elif args.stage == "consumed":
             # Mutate the consumed query operand alone. Original source and native
             # request metadata remain unchanged, so the source-operand bridge
             # must be the rejecting boundary.
@@ -117,11 +137,19 @@ import_compiler_lookup_fields native from "pair.json"
             if gate["input"] == replacement:
                 raise ValueError("consumed operand fixture already uses the corruption target")
             gate["input"] = replacement
+        else:
+            # Keep the original source, metadata, ports and selector witnesses.
+            # The actual cached read tuple alone acquires a different timestamp.
+            cache = next(cache[1]["MemoryTuple"] for layer in pair["circuit"]["layers"]
+                         for cache in layer["cached_relations"] if "MemoryTuple" in cache[1])
+            cache["timestamp_offset"] += 1
         assert geometry == (pair["source"]["num_variables"], pair["circuit"]["trace_len"],
                             len(pair["circuit"]["layers"]), pair["circuit"]["memory_layout"]["total_width"],
                             pair["circuit"]["witness_layout"]["total_width"])
         pair_path.write_text(json.dumps(pair, separators=(",", ":")) + "\n")
-        run("changed-native-coefficient" if args.stage == "metadata" else "changed-consumed-operand", False)
+        label = {"metadata": "changed-native-coefficient", "consumed": "changed-consumed-operand",
+                 "memory": "changed-memory-timestamp"}[args.stage]
+        run(label, False)
     finally:
         pair_path.write_bytes(original)
     run("restored", True)

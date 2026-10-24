@@ -4,13 +4,14 @@ The compiler verification effort is active. Arithmetic translation, graph wiring
 and source lookup-field encoding have kernel-checked instances for all eleven
 production circuit families, with and without caches. All 22 native consumer
 field-role checks also pass. Source table geometry and consumed setup coordinates
-are checked. Full protocol reduction, RAM/timestamp lowering, materialized table
+are checked. Source RAM/initialization products are also checked. Full protocol
+reduction, timestamp/alignment helpers, materialized table
 binding and complete witness extension remain open.
 All 60 emitted native lookup output pairs now have checked reduction proofs;
 the 38 generic/range-16 groups also reduce to the original source query multiset
 plus their actual setup contribution.
-All 48 emitted native RAM/initialization product output scalars also have checked
-formula/port reductions; their original source-tuple connection remains open.
+All 48 emitted native RAM/initialization product output scalars reduce to the
+independent source tuples, preserving all 476 tuple occurrences.
 
 ## Independent source and actual compiler output
 
@@ -94,8 +95,9 @@ mapping and checked forward inverse. An alias is interpreted as that storage
 location, rather than introduced as an unconstrained additional value.
 
 These field results are composed with concrete numerator/denominator reductions
-below. RAM tuple products, table contents, timestamp helpers and complete
-extension through compiler-generated memory constraints remain required.
+below. RAM tuple products are connected to source tuples as described below.
+Table contents, timestamp helpers and complete extension through
+compiler-generated memory constraints remain required.
 
 ## Native consumer field roles
 
@@ -273,8 +275,51 @@ need that extra premise.
 offsets and rejects missing dependencies/copies, invalid gate/primitive indices,
 changed mask sources, non-Boolean mask distribution and exchanged read/write
 leaf bags. The combined 1,293 compiler roots pass the direct standard-axiom audit.
-Independent source memory tuples, timestamp/alignment helpers and complete
-witness extension remain required for full compiler preservation.
+The source-tuple connection is established by the following additional stage;
+timestamp/alignment helpers and complete witness extension remain required.
+
+## Independent source memory products
+
+`MemoryRequests.lean` derives read/write tuples from the original executor or
+delegation inputs. It retains address spaces, byte-to-limb reconstruction,
+constant and variable indirect offsets, local write timestamps, PC markers and
+delegation markers. Initialization writes the zero state; teardown consumes the
+final state. Initialization geometry comes from the source configuration and
+the explicit two-bit word-width compile parameter, checked against the actual
+native initialization metadata.
+
+`MemorySource.lean` separates original source variables from history timestamps
+and initialization/teardown inputs. The concrete projection into actual native
+input cells has checked bounds, address-bank membership and base-field roles.
+History slots follow source request order; they are not additional original
+source variables. The memory-history validity of these inputs remains an
+explicit boundary for the next helper/witness-construction stage.
+
+`MemoryCertificate.lean` checks each complete seven-field fingerprint identity.
+It reflects the actual consumed operand after selected actual affine/cache
+definitions and compares it with the independently constructed source tuple.
+Formal challenge coordinates are separate from all base-field input cells.
+`HomPolynomial.lean` proves that these checked polynomial identities hold after
+mapping BabyBear into any commutative extension ring, for arbitrary challenges.
+Certificates supply only addresses, occurrence/definition selectors and
+copy-ideal witnesses; they cannot supply either equation.
+
+All 22 `MemoryNative/` instances pass. The 48 `SourceReduction` roots compose
+these identities with the actual native product reductions, preserving exactly
+476 read/write/initialization occurrences. Exact label permutations preserve
+multiplicity even when common-subexpression elimination shares a native factor.
+The RAM execution mask is proved equal to the original source predicate under
+actual base-copy equations; the final-mask shape requires no additional Boolean
+assumption. Initialization products are unmasked.
+
+`Tests/GKRMemorySource.lean` rejects changed address spaces, consumed payloads,
+timestamp limb order, unexpanded extension caches, lookup challenges in memory
+encoding, dangling source/history references and replaced execution predicates.
+It also checks initialization direction and shared-factor multiplicity.
+These are exact algebraic fingerprint results, separate from cryptographic
+product matching and memory-history soundness.
+The combined 1,700 compiler roots pass the direct axiom audit using only
+`propext`, `Classical.choice` and `Quot.sound` as applicable.
 
 ## Reproduction and freshness
 
@@ -294,6 +339,7 @@ python3 scripts/gkr_lookup_source_certificate.py --check
 python3 scripts/gkr_consumer_instances.py --stage source
 python3 scripts/gkr_table_instances.py --check --build
 python3 scripts/gkr_product_instances.py --check --build
+python3 scripts/gkr_memory_certificate.py --check --build
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerCertificate:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerWiring:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRLookupFields:olean
@@ -320,6 +366,9 @@ With `--stage consumed`, the control changes only an actual consumed query
 operand, preserving the authored source and request metadata. Normal
 Lake invalidation reaches rejection in the source-operand bridge; restoration
 rebuilds successfully.
+With `--stage memory`, the same isolated control changes an actual memory
+cache's timestamp offset while retaining the source, ports and certificate.
+The source-memory fingerprint checker must reject the rebuilt proof.
 
 `Tests/GKRCompilerCertificate.lean` starts from the actual ADD/SUB translation
 and proves rejection of dropped constraints, a changed coefficient, a wrong
@@ -335,9 +384,9 @@ decoder masks, scratch aliases, authored fields and source projection.
 
 1. Instantiate the explicit table-value/multiplicity interpretation with the
    retained materialized setup and witness-generation boundary.
-2. Derive timestamp and RAM/alignment helper obligations from the captured
-   source inputs; bind the checked native product factors to original memory
-   tuples and certify exact source multiset coverage.
+2. Derive timestamp and alignment helper obligations from the captured source
+   inputs and explicit memory-history contracts. Source RAM tuple identities
+   and exact multiset coverage are already checked.
 3. Prove complete witness extension under explicit source primitive-query and
    memory-history contracts, then compose with existing circuit/execution roots.
 4. Keep algebraic fingerprint preservation separate from cryptographic
