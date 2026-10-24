@@ -13,20 +13,20 @@ pub enum ShuffleRamQueryType {
     },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct LookupQuery<F: PrimeField> {
     pub row: Vec<LookupInput<F>>,
     pub table: LookupQueryTableType<F>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub enum LookupQueryTableType<F: PrimeField> {
     Variable(Variable),
     Constant(TableType),
     Expression(LookupInput<F>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct RangeCheckQuery<F: PrimeField> {
     pub input: LookupInput<F>,
     pub width: usize,
@@ -63,7 +63,7 @@ pub struct RegisterAccessRequest {
     pub indirect_accesses: Vec<IndirectAccessOffset>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize)]
 pub enum RegisterAccessType {
     Read {
         read_value: [Variable; REGISTER_SIZE],
@@ -74,7 +74,7 @@ pub enum RegisterAccessType {
     },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize)]
 pub enum IndirectAccessType {
     Read {
         read_value: [Variable; REGISTER_SIZE],
@@ -157,7 +157,7 @@ impl IndirectAccessType {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize)]
 pub struct RegisterAndIndirectAccesses {
     pub register_index: u32,
     pub register_access: RegisterAccessType,

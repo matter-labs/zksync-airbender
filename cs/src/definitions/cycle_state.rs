@@ -2,7 +2,7 @@ use crate::definitions::Vec;
 use crate::definitions::{Variable, NUM_TIMESTAMP_COLUMNS_FOR_RAM, REGISTER_SIZE};
 use field::PrimeField;
 
-#[derive(Clone, Copy, Hash, Debug)]
+#[derive(Clone, Copy, Hash, Debug, serde::Serialize)]
 pub struct MachineCycleStartOrEndState<F: PrimeField> {
     pub pc: [Variable; 2],
     pub(crate) timestamp: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
@@ -14,7 +14,7 @@ pub struct MachineCycleStartOrEndState<F: PrimeField> {
 // and `circuit_family_extra_mask` for the corresponding families would
 // indicate whether it's REG-IMM or REG-REG instruction
 
-#[derive(Clone, Hash, Debug)]
+#[derive(Clone, Hash, Debug, serde::Serialize)]
 pub struct DecoderData<F: PrimeField> {
     pub rs1_index: Variable,
     pub rs2_index: Variable,
@@ -27,19 +27,19 @@ pub struct DecoderData<F: PrimeField> {
     pub(crate) _marker: core::marker::PhantomData<F>,
 }
 
-#[derive(Clone, Hash, Debug)]
+#[derive(Clone, Hash, Debug, serde::Serialize)]
 pub struct DecoderDataForDecoderCircuit<F: PrimeField> {
     pub decoder_data: DecoderData<F>,
     pub circuit_family: Variable,
 }
 
-#[derive(Clone, Hash, Debug)]
+#[derive(Clone, Hash, Debug, serde::Serialize)]
 pub struct DecoderCircuitMachineState<F: PrimeField> {
     pub cycle_start_state: MachineCycleStartOrEndState<F>,
     pub decoder_data: DecoderDataForDecoderCircuit<F>,
 }
 
-#[derive(Clone, Hash, Debug)]
+#[derive(Clone, Hash, Debug, serde::Serialize)]
 pub struct OpcodeFamilyCircuitState<F: PrimeField> {
     pub(crate) execute: Variable, // Boolean
     pub cycle_start_state: MachineCycleStartOrEndState<F>,
@@ -47,7 +47,7 @@ pub struct OpcodeFamilyCircuitState<F: PrimeField> {
     pub cycle_end_state: MachineCycleStartOrEndState<F>,
 }
 
-#[derive(Clone, Copy, Hash, Debug)]
+#[derive(Clone, Copy, Hash, Debug, serde::Serialize)]
 pub struct DelegationCircuitState {
     pub(crate) delegation_type: u16,
     pub(crate) execute: Variable, // Boolean

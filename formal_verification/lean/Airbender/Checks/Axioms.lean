@@ -1,3 +1,9 @@
+import GKRCompiler.Reduction
+import GKRProtocol
+import Tests.GKRCompilerWiring
+import Tests.GKRLookupFields
+import GKRCompiler
+import Tests.GKRCompilerCertificate
 import Tests.AirbenderApplicability
 import Tests.AirbenderUnifiedApplicability
 import Tests.DynamicCopyLoop
@@ -5326,3 +5332,147 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Blake2Round.Proofs.successful_mask
 #print axioms Airbender.Blake2Round.Proofs.successful_position
 #print axioms Airbender.Keccak.Proofs.successful_position
+
+-- GKR compiler translation validation.
+#print axioms Airbender.Compiler.equal_sound
+#print axioms Airbender.Compiler.check_valid
+#print axioms Airbender.Compiler.backward_preservation
+#print axioms Airbender.Compiler.witness_extension
+#print axioms Airbender.Compiler.semantic_preservation
+#print axioms Airbender.Compiler.ArithmeticArtifact.backward
+#print axioms Airbender.Compiler.ArithmeticArtifact.forward
+#print axioms Airbender.Compiler.Native.AddSubUncached.source_preserved
+#print axioms Airbender.Compiler.Native.AddSubUncached.source_extends
+#print axioms Airbender.Compiler.Native.AddSubCached.source_preserved
+#print axioms Airbender.Compiler.Native.AddSubCached.source_extends
+#print axioms Airbender.Compiler.Native.JumpBranchUncached.source_preserved
+#print axioms Airbender.Compiler.Native.JumpBranchUncached.source_extends
+#print axioms Airbender.Compiler.Native.JumpBranchCached.source_preserved
+#print axioms Airbender.Compiler.Native.JumpBranchCached.source_extends
+#print axioms Airbender.Compiler.Native.MulDivUncached.source_preserved
+#print axioms Airbender.Compiler.Native.MulDivUncached.source_extends
+#print axioms Airbender.Compiler.Native.MulDivCached.source_preserved
+#print axioms Airbender.Compiler.Native.MulDivCached.source_extends
+#print axioms Airbender.Compiler.Native.ShiftBinopUncached.source_preserved
+#print axioms Airbender.Compiler.Native.ShiftBinopUncached.source_extends
+#print axioms Airbender.Compiler.Native.ShiftBinopCached.source_preserved
+#print axioms Airbender.Compiler.Native.ShiftBinopCached.source_extends
+#print axioms Airbender.Compiler.Native.WordMemoryUncached.source_preserved
+#print axioms Airbender.Compiler.Native.WordMemoryUncached.source_extends
+#print axioms Airbender.Compiler.Native.WordMemoryCached.source_preserved
+#print axioms Airbender.Compiler.Native.WordMemoryCached.source_extends
+#print axioms Airbender.Compiler.Native.SubwordMemoryUncached.source_preserved
+#print axioms Airbender.Compiler.Native.SubwordMemoryUncached.source_extends
+#print axioms Airbender.Compiler.Native.SubwordMemoryCached.source_preserved
+#print axioms Airbender.Compiler.Native.SubwordMemoryCached.source_extends
+#print axioms Airbender.Compiler.Native.UnifiedUncached.source_preserved
+#print axioms Airbender.Compiler.Native.UnifiedUncached.source_extends
+#print axioms Airbender.Compiler.Native.UnifiedCached.source_preserved
+#print axioms Airbender.Compiler.Native.UnifiedCached.source_extends
+#print axioms Airbender.Compiler.Native.BigintUncached.source_preserved
+#print axioms Airbender.Compiler.Native.BigintUncached.source_extends
+#print axioms Airbender.Compiler.Native.BigintCached.source_preserved
+#print axioms Airbender.Compiler.Native.BigintCached.source_extends
+#print axioms Airbender.Compiler.Native.BlakeGUncached.source_preserved
+#print axioms Airbender.Compiler.Native.BlakeGUncached.source_extends
+#print axioms Airbender.Compiler.Native.BlakeGCached.source_preserved
+#print axioms Airbender.Compiler.Native.BlakeGCached.source_extends
+#print axioms Airbender.Compiler.Native.BlakeRoundUncached.source_preserved
+#print axioms Airbender.Compiler.Native.BlakeRoundUncached.source_extends
+#print axioms Airbender.Compiler.Native.BlakeRoundCached.source_preserved
+#print axioms Airbender.Compiler.Native.BlakeRoundCached.source_extends
+#print axioms Airbender.Compiler.Native.KeccakUncached.source_preserved
+#print axioms Airbender.Compiler.Native.KeccakUncached.source_extends
+#print axioms Airbender.Compiler.Native.KeccakCached.source_preserved
+#print axioms Airbender.Compiler.Native.KeccakCached.source_extends
+#print axioms Tests.GKRCompilerCertificate.rejects_dropped_constraints
+#print axioms Tests.GKRCompilerCertificate.rejects_changed_constraint
+#print axioms Tests.GKRCompilerCertificate.rejects_wrong_witness_extension
+#print axioms Tests.GKRCompilerCertificate.rejects_wrong_placement
+#print axioms Tests.GKRCompilerCertificate.rejects_inconsistent_native_fields
+
+-- GKR wiring and source-request encoding checkpoints.
+#print axioms Airbender.Compiler.addressEqual_iff
+#print axioms Airbender.Compiler.distinct_iff
+#print axioms Airbender.Compiler.distinctAt_sound
+#print axioms Airbender.Compiler.Wiring.unique_sound
+#print axioms Airbender.Compiler.Wiring.sound
+#print axioms Airbender.Compiler.Wiring.unique_input
+#print axioms Airbender.Compiler.RationalPair.add_represents
+#print axioms Airbender.Compiler.RationalPair.leaf_represents
+#print axioms Airbender.Compiler.RationalPair.quotient
+#print axioms Airbender.Compiler.lookupPair_is_add
+#print axioms Airbender.Compiler.lookupMinusSetup_is_add
+#print axioms Airbender.Compiler.lookupRemainder_is_add
+#print axioms Airbender.Compiler.LookupTree.represents
+#print axioms Airbender.Compiler.LookupTree.source_sum
+#print axioms Airbender.Compiler.ProductTree.product
+#print axioms Airbender.Compiler.ProductTree.source_product
+#print axioms Airbender.Compiler.maskProduct_active
+#print axioms Airbender.Compiler.maskProduct_inactive
+#print axioms Airbender.Compiler.Agreement.sound
+#print axioms Airbender.Compiler.tuple_agreement
+#print axioms Airbender.Compiler.Source.LookupInput.polynomial_value
+#print axioms Airbender.Compiler.Source.LookupTable.polynomial_value
+#print axioms Airbender.Compiler.Source.EncodedField.polynomial_value
+#print axioms Airbender.Compiler.LookupFieldAgreement.sound
+#print axioms Airbender.Compiler.WiringNative.AddSubUncached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.AddSubCached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.JumpBranchUncached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.JumpBranchCached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.MulDivUncached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.MulDivCached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.ShiftBinopUncached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.ShiftBinopCached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.WordMemoryUncached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.WordMemoryCached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.SubwordMemoryUncached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.SubwordMemoryCached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.UnifiedUncached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.UnifiedCached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.BigintUncached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.BigintCached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.BlakeGUncached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.BlakeGCached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.BlakeRoundUncached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.BlakeRoundCached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.KeccakUncached.wiring_valid
+#print axioms Airbender.Compiler.WiringNative.KeccakCached.wiring_valid
+#print axioms Airbender.Compiler.LookupNative.AddSubUncached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.AddSubCached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.JumpBranchUncached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.JumpBranchCached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.MulDivUncached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.MulDivCached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.ShiftBinopUncached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.ShiftBinopCached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.WordMemoryUncached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.WordMemoryCached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.SubwordMemoryUncached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.SubwordMemoryCached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.UnifiedUncached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.UnifiedCached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.BigintUncached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.BigintCached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.BlakeGUncached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.BlakeGCached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.BlakeRoundUncached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.BlakeRoundCached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.KeccakUncached.request_fields_preserved
+#print axioms Airbender.Compiler.LookupNative.KeccakCached.request_fields_preserved
+#print axioms Tests.GKRCompilerWiring.rejects_wrong_layer
+#print axioms Tests.GKRCompilerWiring.rejects_out_of_bounds_memory
+#print axioms Tests.GKRCompilerWiring.rejects_wrong_cache_layer
+#print axioms Tests.GKRCompilerWiring.rejects_duplicate_producer
+#print axioms Tests.GKRCompilerWiring.rejects_duplicate_source_placement
+#print axioms Tests.GKRCompilerWiring.rejects_dangling_output
+#print axioms Tests.GKRCompilerWiring.rejects_stale_producer_table
+#print axioms Tests.GKRLookupFields.actual_padding_field
+#print axioms Tests.GKRLookupFields.actual_table_selector
+#print axioms Tests.GKRLookupFields.actual_scratch_source
+#print axioms Tests.GKRLookupFields.rejects_nonzero_padding
+#print axioms Tests.GKRLookupFields.rejects_changed_table_selector
+#print axioms Tests.GKRLookupFields.rejects_changed_decoder_mask
+#print axioms Tests.GKRLookupFields.rejects_wrong_scratch_binding
+#print axioms Tests.GKRLookupFields.rejects_changed_authored_source
+#print axioms Tests.GKRLookupFields.rejects_wrong_source_projection

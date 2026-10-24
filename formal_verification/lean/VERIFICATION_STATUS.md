@@ -12,6 +12,16 @@ do not certify those gates.
 constraints under the published Review contracts. See [trust boundaries](TRUST_AND_REVIEW.md)
 and the [fixed scope](FORMAL_VERIFICATION_PLAN.md).
 
+The [GKR compiler preservation effort](GKR_COMPILER_VERIFICATION.md) is active.
+All 22 production source/compiler arithmetic, graph-wiring and lookup-field
+instances (eleven families, both cache modes) pass kernel checking, with
+corruption controls. Arithmetic witness extension covers the selected source
+arithmetic slice. Full lookup reduction, RAM/timestamp lowering, cache binding,
+output-group semantics and complete witness extension remain open. The native
+input mutation control exposed ineffective deprecated Lake dependency keys;
+these have been replaced by `needs`, with affected targets undergoing ordinary
+dependency-aware replay.
+
 ## Checked coverage
 
 | Circuit | Coverage |
