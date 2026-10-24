@@ -1,6 +1,6 @@
 name = "airbender_circuits"
 version = "0.1.0"
-defaultTargets = ["Airbender", "airbender_import", "airbender_tests"]
+defaultTargets = ["Airbender", "GKRCompiler", "GKRProtocol", "airbender_import", "airbender_tests"]
 
 [[require]]
 name = "lean-sail"
@@ -24,7 +24,7 @@ srcDir = "generated/sail-rv32"
 
 [[lean_lib]]
 name = "Airbender"
-extraDepTargets = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson", "shiftBinopJson", "wordMemoryJson", "subwordMemoryJson", "unifiedReducedJson", "blakeGJson", "blakeRoundJson", "bigintJson", "keccakJson", "setupSmokeJson", "setupAddSubJson", "setupBigintJson", "setupBlakeGJson", "setupKeccakJson", "setupBlakeRoundJson", "setupJumpBranchJson", "setupMulDivJson", "setupShiftBinopJson", "setupWordMemoryJson", "setupSubwordMemoryJson", "setupUnifiedJson", "setupInitsJson", "initializationJson"]
+needs = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson", "shiftBinopJson", "wordMemoryJson", "subwordMemoryJson", "unifiedReducedJson", "blakeGJson", "blakeRoundJson", "bigintJson", "keccakJson", "setupSmokeJson", "setupAddSubJson", "setupBigintJson", "setupBlakeGJson", "setupKeccakJson", "setupBlakeRoundJson", "setupJumpBranchJson", "setupMulDivJson", "setupShiftBinopJson", "setupWordMemoryJson", "setupSubwordMemoryJson", "setupUnifiedJson", "setupInitsJson", "initializationJson"]
 
 [[lean_lib]]
 name = "Tests"
@@ -160,4 +160,452 @@ text = true
 [[input_file]]
 name = "initializationJson"
 path = "../../cs/compiled_circuits/inits_and_teardowns_layout_no_caches_gkr.json"
+text = true
+
+[[lean_lib]]
+name = "GKRCompiler"
+needs = ["gkrAddSubUncachedPair", "gkrAddSubUncachedIdentity", "gkrAddSubCachedPair", "gkrAddSubCachedIdentity", "gkrJumpBranchUncachedPair", "gkrJumpBranchUncachedIdentity", "gkrJumpBranchCachedPair", "gkrJumpBranchCachedIdentity", "gkrMulDivUncachedPair", "gkrMulDivUncachedIdentity", "gkrMulDivCachedPair", "gkrMulDivCachedIdentity", "gkrShiftBinopUncachedPair", "gkrShiftBinopUncachedIdentity", "gkrShiftBinopCachedPair", "gkrShiftBinopCachedIdentity", "gkrWordMemoryUncachedPair", "gkrWordMemoryUncachedIdentity", "gkrWordMemoryCachedPair", "gkrWordMemoryCachedIdentity", "gkrSubwordMemoryUncachedPair", "gkrSubwordMemoryUncachedIdentity", "gkrSubwordMemoryCachedPair", "gkrSubwordMemoryCachedIdentity", "gkrUnifiedUncachedPair", "gkrUnifiedUncachedIdentity", "gkrUnifiedCachedPair", "gkrUnifiedCachedIdentity", "gkrBigintUncachedPair", "gkrBigintUncachedIdentity", "gkrBigintCachedPair", "gkrBigintCachedIdentity", "gkrBlakeGUncachedPair", "gkrBlakeGUncachedIdentity", "gkrBlakeGCachedPair", "gkrBlakeGCachedIdentity", "gkrBlakeRoundUncachedPair", "gkrBlakeRoundUncachedIdentity", "gkrBlakeRoundCachedPair", "gkrBlakeRoundCachedIdentity", "gkrKeccakUncachedPair", "gkrKeccakUncachedIdentity", "gkrKeccakCachedPair", "gkrKeccakCachedIdentity"]
+
+[[input_file]]
+name = "gkrAddSubUncachedPair"
+path = "artifacts/compiler/add-sub-uncached.json"
+text = true
+
+[[input_file]]
+name = "gkrAddSubUncachedIdentity"
+path = "artifacts/compiler/add-sub-uncached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrAddSubCachedPair"
+path = "artifacts/compiler/add-sub-cached.json"
+text = true
+
+[[input_file]]
+name = "gkrAddSubCachedIdentity"
+path = "artifacts/compiler/add-sub-cached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrJumpBranchUncachedPair"
+path = "artifacts/compiler/jump-branch-uncached.json"
+text = true
+
+[[input_file]]
+name = "gkrJumpBranchUncachedIdentity"
+path = "artifacts/compiler/jump-branch-uncached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrJumpBranchCachedPair"
+path = "artifacts/compiler/jump-branch-cached.json"
+text = true
+
+[[input_file]]
+name = "gkrJumpBranchCachedIdentity"
+path = "artifacts/compiler/jump-branch-cached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrMulDivUncachedPair"
+path = "artifacts/compiler/mul-div-uncached.json"
+text = true
+
+[[input_file]]
+name = "gkrMulDivUncachedIdentity"
+path = "artifacts/compiler/mul-div-uncached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrMulDivCachedPair"
+path = "artifacts/compiler/mul-div-cached.json"
+text = true
+
+[[input_file]]
+name = "gkrMulDivCachedIdentity"
+path = "artifacts/compiler/mul-div-cached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrShiftBinopUncachedPair"
+path = "artifacts/compiler/shift-binop-uncached.json"
+text = true
+
+[[input_file]]
+name = "gkrShiftBinopUncachedIdentity"
+path = "artifacts/compiler/shift-binop-uncached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrShiftBinopCachedPair"
+path = "artifacts/compiler/shift-binop-cached.json"
+text = true
+
+[[input_file]]
+name = "gkrShiftBinopCachedIdentity"
+path = "artifacts/compiler/shift-binop-cached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrWordMemoryUncachedPair"
+path = "artifacts/compiler/word-memory-uncached.json"
+text = true
+
+[[input_file]]
+name = "gkrWordMemoryUncachedIdentity"
+path = "artifacts/compiler/word-memory-uncached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrWordMemoryCachedPair"
+path = "artifacts/compiler/word-memory-cached.json"
+text = true
+
+[[input_file]]
+name = "gkrWordMemoryCachedIdentity"
+path = "artifacts/compiler/word-memory-cached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrSubwordMemoryUncachedPair"
+path = "artifacts/compiler/subword-memory-uncached.json"
+text = true
+
+[[input_file]]
+name = "gkrSubwordMemoryUncachedIdentity"
+path = "artifacts/compiler/subword-memory-uncached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrSubwordMemoryCachedPair"
+path = "artifacts/compiler/subword-memory-cached.json"
+text = true
+
+[[input_file]]
+name = "gkrSubwordMemoryCachedIdentity"
+path = "artifacts/compiler/subword-memory-cached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrUnifiedUncachedPair"
+path = "artifacts/compiler/unified-uncached.json"
+text = true
+
+[[input_file]]
+name = "gkrUnifiedUncachedIdentity"
+path = "artifacts/compiler/unified-uncached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrUnifiedCachedPair"
+path = "artifacts/compiler/unified-cached.json"
+text = true
+
+[[input_file]]
+name = "gkrUnifiedCachedIdentity"
+path = "artifacts/compiler/unified-cached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrBigintUncachedPair"
+path = "artifacts/compiler/bigint-uncached.json"
+text = true
+
+[[input_file]]
+name = "gkrBigintUncachedIdentity"
+path = "artifacts/compiler/bigint-uncached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrBigintCachedPair"
+path = "artifacts/compiler/bigint-cached.json"
+text = true
+
+[[input_file]]
+name = "gkrBigintCachedIdentity"
+path = "artifacts/compiler/bigint-cached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrBlakeGUncachedPair"
+path = "artifacts/compiler/blake-g-uncached.json"
+text = true
+
+[[input_file]]
+name = "gkrBlakeGUncachedIdentity"
+path = "artifacts/compiler/blake-g-uncached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrBlakeGCachedPair"
+path = "artifacts/compiler/blake-g-cached.json"
+text = true
+
+[[input_file]]
+name = "gkrBlakeGCachedIdentity"
+path = "artifacts/compiler/blake-g-cached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrBlakeRoundUncachedPair"
+path = "artifacts/compiler/blake-round-uncached.json"
+text = true
+
+[[input_file]]
+name = "gkrBlakeRoundUncachedIdentity"
+path = "artifacts/compiler/blake-round-uncached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrBlakeRoundCachedPair"
+path = "artifacts/compiler/blake-round-cached.json"
+text = true
+
+[[input_file]]
+name = "gkrBlakeRoundCachedIdentity"
+path = "artifacts/compiler/blake-round-cached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrKeccakUncachedPair"
+path = "artifacts/compiler/keccak-uncached.json"
+text = true
+
+[[input_file]]
+name = "gkrKeccakUncachedIdentity"
+path = "artifacts/compiler/keccak-uncached-certificate.json"
+text = true
+
+[[input_file]]
+name = "gkrKeccakCachedPair"
+path = "artifacts/compiler/keccak-cached.json"
+text = true
+
+[[input_file]]
+name = "gkrKeccakCachedIdentity"
+path = "artifacts/compiler/keccak-cached-certificate.json"
+text = true
+
+[[lean_lib]]
+name = "GKRProtocol"
+needs = ["gkrAddSubUncachedPair", "gkrAddSubCachedPair", "gkrJumpBranchUncachedPair", "gkrJumpBranchCachedPair", "gkrMulDivUncachedPair", "gkrMulDivCachedPair", "gkrShiftBinopUncachedPair", "gkrShiftBinopCachedPair", "gkrWordMemoryUncachedPair", "gkrWordMemoryCachedPair", "gkrSubwordMemoryUncachedPair", "gkrSubwordMemoryCachedPair", "gkrUnifiedUncachedPair", "gkrUnifiedCachedPair", "gkrBigintUncachedPair", "gkrBigintCachedPair", "gkrBlakeGUncachedPair", "gkrBlakeGCachedPair", "gkrBlakeRoundUncachedPair", "gkrBlakeRoundCachedPair", "gkrKeccakUncachedPair", "gkrKeccakCachedPair", "compilerSourceAddSubUncached", "compilerSourceAddSubCached", "compilerSourceJumpBranchUncached", "compilerSourceJumpBranchCached", "compilerSourceMulDivUncached", "compilerSourceMulDivCached", "compilerSourceShiftBinopUncached", "compilerSourceShiftBinopCached", "compilerSourceWordMemoryUncached", "compilerSourceWordMemoryCached", "compilerSourceSubwordMemoryUncached", "compilerSourceSubwordMemoryCached", "compilerSourceUnifiedUncached", "compilerSourceUnifiedCached", "compilerSourceBigintUncached", "compilerSourceBigintCached", "compilerSourceBlakeGUncached", "compilerSourceBlakeGCached", "compilerSourceBlakeRoundUncached", "compilerSourceBlakeRoundCached", "compilerSourceKeccakUncached", "compilerSourceKeccakCached", "compilerLookupAddSubUncached", "compilerLookupAddSubCached", "compilerLookupJumpBranchUncached", "compilerLookupJumpBranchCached", "compilerLookupMulDivUncached", "compilerLookupMulDivCached", "compilerLookupShiftBinopUncached", "compilerLookupShiftBinopCached", "compilerLookupWordMemoryUncached", "compilerLookupWordMemoryCached", "compilerLookupSubwordMemoryUncached", "compilerLookupSubwordMemoryCached", "compilerLookupUnifiedUncached", "compilerLookupUnifiedCached", "compilerLookupBigintUncached", "compilerLookupBigintCached", "compilerLookupBlakeGUncached", "compilerLookupBlakeGCached", "compilerLookupBlakeRoundUncached", "compilerLookupBlakeRoundCached", "compilerLookupKeccakUncached", "compilerLookupKeccakCached"]
+
+[[input_file]]
+name = "compilerSourceAddSubUncached"
+path = "artifacts/compiler/add-sub-uncached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceAddSubCached"
+path = "artifacts/compiler/add-sub-cached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceJumpBranchUncached"
+path = "artifacts/compiler/jump-branch-uncached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceJumpBranchCached"
+path = "artifacts/compiler/jump-branch-cached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceMulDivUncached"
+path = "artifacts/compiler/mul-div-uncached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceMulDivCached"
+path = "artifacts/compiler/mul-div-cached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceShiftBinopUncached"
+path = "artifacts/compiler/shift-binop-uncached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceShiftBinopCached"
+path = "artifacts/compiler/shift-binop-cached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceWordMemoryUncached"
+path = "artifacts/compiler/word-memory-uncached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceWordMemoryCached"
+path = "artifacts/compiler/word-memory-cached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceSubwordMemoryUncached"
+path = "artifacts/compiler/subword-memory-uncached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceSubwordMemoryCached"
+path = "artifacts/compiler/subword-memory-cached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceUnifiedUncached"
+path = "artifacts/compiler/unified-uncached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceUnifiedCached"
+path = "artifacts/compiler/unified-cached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceBigintUncached"
+path = "artifacts/compiler/bigint-uncached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceBigintCached"
+path = "artifacts/compiler/bigint-cached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceBlakeGUncached"
+path = "artifacts/compiler/blake-g-uncached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceBlakeGCached"
+path = "artifacts/compiler/blake-g-cached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceBlakeRoundUncached"
+path = "artifacts/compiler/blake-round-uncached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceBlakeRoundCached"
+path = "artifacts/compiler/blake-round-cached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceKeccakUncached"
+path = "artifacts/compiler/keccak-uncached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerSourceKeccakCached"
+path = "artifacts/compiler/keccak-cached-source.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupAddSubUncached"
+path = "artifacts/compiler/lookup/add-sub-uncached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupAddSubCached"
+path = "artifacts/compiler/lookup/add-sub-cached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupJumpBranchUncached"
+path = "artifacts/compiler/lookup/jump-branch-uncached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupJumpBranchCached"
+path = "artifacts/compiler/lookup/jump-branch-cached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupMulDivUncached"
+path = "artifacts/compiler/lookup/mul-div-uncached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupMulDivCached"
+path = "artifacts/compiler/lookup/mul-div-cached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupShiftBinopUncached"
+path = "artifacts/compiler/lookup/shift-binop-uncached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupShiftBinopCached"
+path = "artifacts/compiler/lookup/shift-binop-cached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupWordMemoryUncached"
+path = "artifacts/compiler/lookup/word-memory-uncached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupWordMemoryCached"
+path = "artifacts/compiler/lookup/word-memory-cached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupSubwordMemoryUncached"
+path = "artifacts/compiler/lookup/subword-memory-uncached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupSubwordMemoryCached"
+path = "artifacts/compiler/lookup/subword-memory-cached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupUnifiedUncached"
+path = "artifacts/compiler/lookup/unified-uncached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupUnifiedCached"
+path = "artifacts/compiler/lookup/unified-cached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupBigintUncached"
+path = "artifacts/compiler/lookup/bigint-uncached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupBigintCached"
+path = "artifacts/compiler/lookup/bigint-cached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupBlakeGUncached"
+path = "artifacts/compiler/lookup/blake-g-uncached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupBlakeGCached"
+path = "artifacts/compiler/lookup/blake-g-cached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupBlakeRoundUncached"
+path = "artifacts/compiler/lookup/blake-round-uncached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupBlakeRoundCached"
+path = "artifacts/compiler/lookup/blake-round-cached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupKeccakUncached"
+path = "artifacts/compiler/lookup/keccak-uncached.json"
+text = true
+
+[[input_file]]
+name = "compilerLookupKeccakCached"
+path = "artifacts/compiler/lookup/keccak-cached.json"
 text = true
