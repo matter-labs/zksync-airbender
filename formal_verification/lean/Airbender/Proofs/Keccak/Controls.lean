@@ -29,7 +29,7 @@ theorem control_bits
     simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
       Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero, or_comm] using flag
   · intro i
-    have flag := Verification.assertion_of_holds h ⟨156 + i.val, by rw [constraint_count]; omega⟩
+    have flag := Verification.assertion_of_holds h ⟨161 + i.val, by rw [constraint_count]; omega⟩
     fin_cases i <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
       Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] at flag ⊢
     all_goals exact flag

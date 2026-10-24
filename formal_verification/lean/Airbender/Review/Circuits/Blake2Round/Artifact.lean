@@ -15,6 +15,10 @@ def clockConstraints {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 6)
     List (FlatOperation (ZMod p)) :=
   importedConstraints setup ++ importedConstraintsTimestampLookups
 
+/-- Native successful-call assertions: canonical low control, one round bit,
+and no full-only round in reduced mode. -/
+abbrev successfulControlAssertions := #v[124, 125, 126]
+
 namespace Variables
 abbrev execute := 0
 abbrev controlReadLo := 135

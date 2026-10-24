@@ -377,6 +377,54 @@ pub fn define_blake2_g_function_delegation_circuit<F: PrimeField, CS: Circuit<F>
         }
     }
 
+    // The controller table has deterministic fallback rows for out-of-schedule
+    // counters. They must not be accepted as successful native calls. A valid
+    // increment has delta zero; a wrap has delta80 (full) or56 (reduced).
+    let control_delta = Expr::var(x12_vars[0]) + Expr::var(execute) - Expr::var(x12_write_vars[0]);
+    cs.add_constraint_expr(
+        control_delta.clone()
+            * (control_delta * F::from_u32_unchecked(16) - Expr::from(1280u32)
+                + Expr::var(x12_write_vars[0]) * F::from_u32_unchecked(3)),
+    );
+
+    // Disjoint aligned block bases are part of the successful G ABI, including
+    // calls entered at a nonzero counter. Allocate this witness last to retain
+    // all existing arithmetic column identities.
+    let RegisterAccessType::Read {
+        read_value: state_base,
+    } = x10_and_indirects.register_access
+    else {
+        unreachable!()
+    };
+    let RegisterAccessType::Read {
+        read_value: message_base,
+    } = x11_and_indirects.register_access
+    else {
+        unreachable!()
+    };
+    let base_difference = Expr::var(state_base[0]) - Expr::var(message_base[0])
+        + (Expr::var(state_base[1]) - Expr::var(message_base[1])) * F::from_u32_unchecked(1 << 16);
+    let base_difference_inverse = cs.add_named_variable("G block base difference inverse");
+    cs.set_values(move |placer: &mut CS::WitnessPlacer| {
+        let mut difference = placer.get_field(state_base[0]);
+        difference.sub_assign(&placer.get_field(message_base[0]));
+        let mut high = placer.get_field(state_base[1]);
+        high.sub_assign(&placer.get_field(message_base[1]));
+        high.mul_assign(&<CS::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(
+            F::from_u32_unchecked(1 << 16),
+        ));
+        difference.add_assign(&high);
+        let inverse = difference.inverse_or_zero();
+        let enabled = placer.get_boolean(execute);
+        let zero = <CS::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(F::ZERO);
+        let witness =
+            <CS::WitnessPlacer as WitnessTypeSet<F>>::Field::select(&enabled, &inverse, &zero);
+        placer.assign_field(base_difference_inverse, &witness);
+    });
+    cs.add_constraint_expr(
+        base_difference * Expr::var(base_difference_inverse) - Expr::var(execute),
+    );
+
     output_placeholder_extended_state
 }
 

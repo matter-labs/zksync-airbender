@@ -87,6 +87,15 @@ outputs; generalized arbitrary controllers and all existing fixtures retain thei
 scope. Runtime regressions compare all 32,768 emitted field values, native
 metadata and source bytes against the JSON.
 
+The refreshed hash-worker circuits enforce successful local calls in addition to
+these table relations. G rejects fallback counters and equal state/message bases;
+extended-round enforces canonical control packing and one supported round bit;
+Keccak restricts mode/iteration/round combinations to its 649 successful positions.
+The deterministic controller tables retain their fallback rows. Native enforcement
+comes from the added circuit assertions, imported and used by the family
+`NativeValidity` proofs and the plan-free actual-path execution theorem. Complete
+algorithm coverage and valid gaps remain separate span properties.
+
 Keccak's five fixed regions (IDs 0/4/38/39/40) import all 1,245,185 real rows and
 all physical columns. `Proofs/Keccak/ImportedFixed.lean` checks XOR/Iota/Chi,
 both rotation outputs, keys, padding/tags and native signed casts. Existing

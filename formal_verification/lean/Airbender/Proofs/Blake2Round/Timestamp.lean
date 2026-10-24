@@ -28,7 +28,7 @@ theorem clock_facts {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 6)}
     simp only [Vector.toArray_ofFn, Array.mem_ofFn] at member
     obtain ⟨i, rfl⟩ := member
     have bit := Verification.assertion_of_holds core
-      ⟨177 + i.val, by rw [constraint_count]; omega⟩
+      ⟨180 + i.val, by rw [constraint_count]; omega⟩
     have lowerLookup := Verification.lookup_of_holds timestamps
       ⟨1 + 2 * i.val, by rw [timestamp_count]; omega⟩
     have upperLookup := Verification.lookup_of_holds timestamps

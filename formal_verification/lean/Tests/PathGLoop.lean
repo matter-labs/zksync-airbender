@@ -4,6 +4,7 @@ memory effects; only the baseline and scratch variants group the full protocol. 
 import Tests.PathGLoopNative
 import Tests.PathGLoopInputs
 import Airbender.Review.Trace.UnifiedReduced.PathSpanExecution
+import Airbender.Review.Trace.UnifiedReduced.NativePathExecution
 import Airbender.Proofs.Trace.MemoryFrame
 
 namespace Tests.PathGLoop
@@ -1203,7 +1204,8 @@ the scratch/protected SW7 effects remain in these actual FullStep executions. -/
 theorem full_execution (variant : Variant) :
     Realizes (FullStep (ordinaryProgram variant) (data variant).program)
       (data variant).machine (before variant) cells :=
-  path_span_realizes_soundness (Tests.PathGLoopNative.accepted variant) (span_inputs variant)
+  native_path_execution_soundness (Tests.PathGLoopNative.accepted variant)
+    (Tests.PathGLoopNative.inputs variant).toNative
     (profile variant) (initial_pc variant) (no_bigint_commands variant)
 
 /-- The baseline groups all56 actual positions through real JAL/BNE loops. -/
@@ -1351,6 +1353,17 @@ private theorem history_uniform_write {domain : List Cell} {events : List Memory
         exact same (address.symm.trans (congrArg Cell.addressCode equal).symm)
       exact cell_write_frame written different (aligned cell member) otherAligned previous
 
+/-- Readback after a nonempty set of equal-value writes, independently of
+ordering among ports with the same native clock. -/
+theorem history_uniform_value {domain : List Cell} {events : List MemoryAccess}
+    {initial after : State} (history : SailHistory domain events initial after)
+    (aligned : ∀ cell ∈ domain, cell.Aligned) (other : Cell) (otherAligned : other.Aligned)
+    (nonzero : other ≠ .register 0) (value : BitVec 32)
+    (touch : ∃ event ∈ events, event.2.1 = other.addressCode)
+    (values : ∀ event ∈ events, event.2.1 = other.addressCode → memoryWord event.2.2.2 = value) :
+    other.read after = .ok value after :=
+  history_uniform_write history aligned other otherAligned nonzero value touch values
+
 private theorem native_prefix_x11_touched :
     ((data .protectedMessage).mixedSteps.map transferEvent).any (fun event =>
       decide (event.1 ≤ 28 ∧ event.2.1 = (Cell.register 11).addressCode)) = true := by
@@ -1410,10 +1423,9 @@ private theorem mapping_impossible {first last : State}
   have seven : message[0].toBitVec = 7 := (EStateM.Result.ok.inj (readAfter.symm.trans finalWord)).1
   exact (by decide : (0 : BitVec 32) ≠ 7) (zero.symm.trans seven)
 
-/-- Actual protected-message SW7 is a counterexample to endpoint WordMapping
-and to PathSpanAlgorithmAt. The pointer is anchored by the real pre-span x11,
-the old message0 is0 and the final message0 is7. This proves more than rejecting
-one proposed syntactic gap certificate; the whole FullStep execution still holds. -/
+/-- One admissible ordered native history witnesses the protected-message SW7
+endpoint discrepancy. The stronger order-independent exclusion is stated by
+`protected_no_algorithm` and `protected_no_grouped_result` below. -/
 def ProtectedNegative : Prop := ∃ events : List MemoryAccess, ∃ finalState first last : State,
     events.Perm ((data .protectedMessage).mixedSteps.map transferEvent) ∧
     events.Pairwise (fun a b => b.1 ≤ a.1) ∧ SailHistory cells events (before .protectedMessage) finalState ∧
@@ -1467,6 +1479,105 @@ theorem protected_negative : ProtectedNegative := by
   have noMapping := mapping_impossible values.1 values.2.1 values.2.2
   obtain ⟨statePointer, messagePointer, input, message, output, mapping, _⟩ := result
   exact noMapping ⟨statePointer, messagePointer, input, message, output, mapping⟩
+
+private theorem native_suffix_message_touched :
+    ((data .protectedMessage).mixedSteps.map transferEvent).any (fun event =>
+      decide (909 < event.1 ∧ event.1 ≤ 916 ∧
+        event.2.1 = (Cell.ram messageAddress).addressCode)) = true := by
+  decide +kernel
+
+private theorem native_suffix_message_values :
+    ((data .protectedMessage).mixedSteps.map transferEvent).all (fun event =>
+      decide (909 < event.1 → event.2.1 = (Cell.ram messageAddress).addressCode →
+        memoryWord event.2.2.2 = 7)) = true := by
+  decide +kernel
+
+private theorem protected_events_end {events : List MemoryAccess}
+    (permutation : events.Perm ((data .protectedMessage).mixedSteps.map transferEvent)) :
+    ∀ event ∈ events, event.1 ≤ 916 := by
+  have accepted := Tests.PathGLoopNative.accepted .protectedMessage
+  have physical := Tests.PathGLoopNative.inputs .protectedMessage
+  have effects := mixed_memory_effects accepted physical
+  have ledger := ExternalBoundary.Requests.Proofs.native_binding accepted.toRequestChecks effects.requests
+  intro event member
+  exact (mixed_event_interval accepted physical.publicProgram effects.requests ledger
+    (permutation.mem_iff.mp member)).2
+
+/-- The store is the only message0 write after clock909. Every allowed order
+therefore ends with7, independently of permutations among equal-clock ports. -/
+private theorem protected_final_message {events : List MemoryAccess} {after : State}
+    (permutation : events.Perm ((data .protectedMessage).mixedSteps.map transferEvent))
+    (order : events.Pairwise (fun a b => b.1 ≤ a.1))
+    (history : SailHistory cells events (before .protectedMessage) after) :
+    (Cell.ram messageAddress).read after = .ok 7 after := by
+  have physical := Tests.PathGLoopNative.inputs .protectedMessage
+  have noLater : (events.filter fun event => decide (916 < event.1)) = [] := by
+    apply List.filter_eq_nil_iff.mpr
+    intro event member selected
+    have bound := protected_events_end permutation event member
+    have later := of_decide_eq_true selected
+    omega
+  obtain ⟨first, last, _, _, current, future⟩ :=
+    history_window order history (by decide : 909 ≤ 916)
+  have lastValue : (Cell.ram messageAddress).read last = .ok 7 last := by
+    apply history_uniform_write current physical.aligned (.ram messageAddress)
+      (physical.aligned _ (by decide +kernel)) (by decide) 7
+    · obtain ⟨event, member, chosen⟩ := List.any_eq_true.mp native_suffix_message_touched
+      have facts := of_decide_eq_true chosen
+      exact ⟨event, List.mem_filter.mpr
+        ⟨permutation.mem_iff.mpr member, decide_eq_true ⟨facts.1, facts.2.1⟩⟩, facts.2.2⟩
+    · intro event member address
+      obtain ⟨included, selected⟩ := List.mem_filter.mp member
+      have facts := of_decide_eq_true (List.all_eq_true.mp native_suffix_message_values event
+        (permutation.mem_iff.mp included))
+      exact facts (of_decide_eq_true selected).1 address
+  rw [noLater] at future
+  cases future
+  exact lastValue
+
+/-- Every event order satisfying the native permutation and chronological
+conditions refutes the actual algorithm projection. No choice of tied port
+order can rescue the protected-message execution. -/
+theorem protected_no_algorithm {events : List MemoryAccess}
+    (permutation : events.Perm ((data .protectedMessage).mixedSteps.map transferEvent))
+    (order : events.Pairwise (fun a b => b.1 ≤ a.1)) :
+    ¬ PathSpanAlgorithmAt (completeSpan .protectedMessage) cells events (before .protectedMessage) := by
+  rintro ⟨first, last, past, current, result⟩
+  have initialValues := prefix_observations permutation past
+  have allEvents : (events.filter fun event => decide (event.1 ≤ 916)) = events := by
+    apply List.filter_eq_self.mpr
+    intro event member
+    exact decide_eq_true (protected_events_end permutation event member)
+  have full := history_prefix_of_window order (by decide : 28 ≤ 916) past current
+  rw [allEvents] at full
+  have finalValue := protected_final_message permutation order full
+  have impossible := mapping_impossible initialValues.1 initialValues.2 finalValue
+  obtain ⟨statePointer, messagePointer, input, message, output, mapping, _⟩ := result
+  exact impossible ⟨statePointer, messagePointer, input, message, output, mapping⟩
+
+/-- The complete grouped result is impossible, including its existential
+choice of global history. The real FullStep execution remains accepted. -/
+theorem protected_no_grouped_result :
+    ¬ PathSpansResult (data .protectedMessage) (ordinaryProgram .protectedMessage)
+      (before .protectedMessage) cells [] [completeSpan .protectedMessage] := by
+  intro result
+  obtain ⟨events, _, permutation, order, _, algorithms⟩ := result.algorithms
+  exact protected_no_algorithm permutation order
+    (algorithms (completeSpan .protectedMessage) (List.mem_singleton_self _))
+
+/-- Neither admitted gap certificate can describe this actual protected store;
+otherwise the general span theorem would establish the refuted grouped result. -/
+theorem protected_no_gap_certificate :
+    ¬ PathSpanGapCertificate (completeSpan .protectedMessage) := by
+  intro gap
+  apply protected_no_grouped_result
+  apply path_span_execution_general_soundness (Tests.PathGLoopNative.accepted .protectedMessage)
+    (span_inputs .protectedMessage) (profile .protectedMessage) (initial_pc .protectedMessage)
+    (no_bigint_commands .protectedMessage)
+  intro span member
+  have same := List.mem_singleton.mp member
+  subst span
+  exact gap
 
 /-- Whole execution/terminal cells for every variant, both positive grouped
 protocols, the actual protected-message endpoint counterexample, and last

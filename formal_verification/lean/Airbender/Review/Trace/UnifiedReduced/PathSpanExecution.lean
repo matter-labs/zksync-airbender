@@ -3,7 +3,12 @@ import Airbender.Proofs.UnifiedReduced.PathSpanExecution
 namespace Airbender.UnifiedReduced.Caller
 open Trace Reference.RiscV.Sail Reference.Sail
 
-/-- Complete public protocol occurrences account for every native worker once,
+/- This prepared span interface retains a per-trace instruction/caller occurrence
+plan in PathSpansInputs, together with complete protocol coverage. These inputs
+are not derived from arbitrary native acceptance. NativePathExecution provides
+whole execution without that plan; algorithm grouping also needs valid gaps. -/
+
+/-- Complete selected protocol occurrences account for every native worker once,
     including every G/Round/Keccak index and each separate bigint occurrence. -/
 theorem path_span_partition_soundness
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}

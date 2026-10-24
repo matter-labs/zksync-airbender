@@ -2,7 +2,10 @@ import Tests.AirbenderApplicability
 import Tests.AirbenderUnifiedApplicability
 import Tests.DynamicCopyLoop
 import Tests.PathGLoop
+import Tests.NativeProtocolGap
+import Tests.PathGConsumedMessage
 import Airbender.Review.Trace.UnifiedReduced.PathExecution
+import Airbender.Review.Trace.UnifiedReduced.NativePathExecution
 import Airbender.Review.Trace.UnifiedReduced.PathSpanExecution
 import Airbender.Proofs.Trace.InterleavedProjection
 import Airbender.Proofs.Keccak.CallPermutation
@@ -5297,6 +5300,16 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DynamicCopyLoop.complete_regression
 
 #print axioms Tests.PathGLoop.complete_regression
+#print axioms Tests.PathGLoop.protected_no_algorithm
+#print axioms Tests.PathGLoop.protected_no_grouped_result
+#print axioms Tests.PathGLoop.protected_no_gap_certificate
+#print axioms Tests.NativeProtocolGap.rejected
+#print axioms Tests.NativeProtocolGap.equal_bases_rejected
+#print axioms Tests.PathGConsumedMessage.accepted
+#print axioms Tests.PathGConsumedMessage.inputs
+#print axioms Tests.PathGConsumedMessage.no_algorithm
+#print axioms Tests.PathGConsumedMessage.native_execution
+
 
 #print axioms Tests.AirbenderApplicability.native_execution
 #print axioms Tests.AirbenderUnifiedApplicability.physical_native_coupling
@@ -5306,3 +5319,10 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.PathGPointerPreparation.of_computed
 #print axioms Airbender.UnifiedReduced.Caller.PathGPointerPreparation.of_seed
 #print axioms Airbender.UnifiedReduced.Caller.path_span_call_count_positive
+
+#print axioms Airbender.UnifiedReduced.Caller.native_path_execution_soundness
+#print axioms Airbender.Blake2G.Proofs.successful_position
+#print axioms Airbender.Blake2G.Proofs.successful_bases
+#print axioms Airbender.Blake2Round.Proofs.successful_mask
+#print axioms Airbender.Blake2Round.Proofs.successful_position
+#print axioms Airbender.Keccak.Proofs.successful_position

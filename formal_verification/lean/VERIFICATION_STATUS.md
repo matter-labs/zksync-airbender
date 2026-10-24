@@ -33,8 +33,8 @@ and the [fixed scope](FORMAL_VERIFICATION_PLAN.md).
 | [Pooled execution](Airbender/Review/Trace/Soundness.lean) | Initialized history derives reads, bounds and decoding; six-family Sail execution realizes terminal PC/cells. |
 | [Mixed cycles](Airbender/Review/Trace/UnifiedReduced/MixedCycles.lean) | Ordinary/custom retirement, [complete bigint calls under F02](Airbender/Review/Trace/UnifiedReduced/BigintCalls.lean), caller observations and every worker share one initialized history and raw PC/clock path. |
 | [Full mixed execution](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean) | Ordinary/TRIADD/XORROT and complete bigint/G/extended-round/Keccak CSR calls reach native terminal PC/cells with the supported straight-line ordinary registry and F02 command contract; tracked data RAM is at or above the ROM limit; native constraints derive worker participation. |
-| [Actual-path full execution](Airbender/Review/Trace/UnifiedReduced/PathExecution.lean) | Branches, JAL/JALR and repeated-PC loops compose with complete bigint, BLAKE2 G, extended-round and Keccak calls in one execution, realizing native terminal PC/cells. Public occurrence preparation, initialization/matching, memory/configuration, retirement profile and F02 remain explicit. |
-| [Complete actual-path spans](Airbender/Review/Trace/UnifiedReduced/PathSpanExecution.lean) | Full native worker partition/count and complete algorithms share one derived history; each span uses readonly gaps or computed disjoint stores. Other ordinary writes retain whole-execution semantics. |
+| [Native actual-path full execution](Airbender/Review/Trace/UnifiedReduced/NativePathExecution.lean) | Branches, JAL/JALR and repeated-PC loops compose with complete bigint, BLAKE2 G, extended-round and Keccak calls, realizing native terminal PC/cells. Native constraints derive supported hash controllers, round masks and G base separation without an occurrence plan. Initialization/matching, memory/configuration, retirement profile and F02 remain explicit. |
+| [Complete actual-path spans](Airbender/Review/Trace/UnifiedReduced/PathSpanExecution.lean) | Under a per-trace occurrence plan and complete protocol coverage, full native worker partition/count and complete algorithms share one derived history; each span uses readonly gaps or computed disjoint stores. Other ordinary writes retain whole-execution semantics. |
 | [Hash spans](Airbender/Review/Trace/UnifiedReduced/Segmentation.lean) | Existing preparation and selected references compose; issued hash workers partition into complete spans under the public protocol profile. |
 | [Canonical terminal PC](Airbender/Review/Helpers/Context/VerifierBoundary/README.md) | Checked under the external canonical verifier boundary. |
 | [Inactive padding](Airbender/Review/Helpers/Context/PaddingBoundary/README.md) | Architectural erasure and existing execution derived under the external contribution-mask boundary. |
@@ -58,9 +58,28 @@ three variants retain their actual full executions and terminal PC 160/cells;
 The baseline and scratch SW7 variants group the complete 56-call G protocol.
 The protected-message SW7 variant instead refutes its actual endpoint
 [`WordMapping`](Airbender/Review/Trace/Workers/Blake2G/WorkVector.lean) and [`PathSpanAlgorithmAt`](Airbender/Review/Trace/UnifiedReduced/Paths/SpanProjection.lean), while retaining its full execution.
+The stronger protected-store regression now excludes every admissible event order,
+`PathSpansResult`, and `PathSpanGapCertificate` (focused kernel build).
+The [consumed-message variant](Tests/PathGConsumedMessage.lean) moves the store
+to message word 8, which the last G call reads. Its 228 CPU rows and 56 G rows
+have native acceptance and an initialized execution history. Every admissible
+history ends with state lane 3 equal to 119, while the independent 56-call
+computation on the initial zero state/message yields zero. This refutes the
+hash relation itself without using `messageUnchanged`.
 Whole execution preserves ordinary writes even when they modify a protected block;
 the grouped algorithm claims additionally require readonly gaps or computed stores
 disjoint from that block. Standard boot-ROM-data copying is outside the checked scope.
+
+The native actual-path entrypoint derives local successful-call validity for
+arbitrary accepted traces, including controllers loaded from memory or computed
+without a literal/AUIPC/ADDI preparation chain. The refreshed G, extended-round
+and Keccak circuits enforce their supported local controls; G also enforces
+separate state/message bases. [`Tests.NativeProtocolGap`](Tests/NativeProtocolGap.lean)
+checks rejection of G control80 and equal G bases. The older
+[`PathExecution`](Airbender/Review/Trace/UnifiedReduced/PathExecution.lean)
+interface retains its per-trace occurrence plan for compatibility. Complete
+algorithm grouping still needs protocol coverage and valid gaps; those properties
+do not follow from arbitrary local successful calls.
 
 ## Remaining work
 
@@ -85,8 +104,11 @@ Temporary assumptions do not close implementation bugs. Separately scoped work:
 
 ## Validation
 
-The ordinary suite validates current source and artifact freshness through normal
-Lake dependency tracking, including all concrete Tests and both executables.
+The ordinary-suite gate validates source and artifact freshness through normal
+Lake dependency tracking, including all concrete Tests and both executables. The
+full-suite, registration and declaration-origin counts below describe
+`5b17af422` and predate the native successful-call refresh. That refresh has
+its own focused validation record.
 [Native provenance](artifacts/setup/README.md) was verified and committed as
 e11139827: all twelve production generators ran with CI absent, all thirteen
 fresh exports match complete retained JSON, and execution receipts plus 546 actual
@@ -95,6 +117,8 @@ are separately pinned. Remote CI, Linux process controls and an empty-cache cold
 bootstrap require their own execution on a suitable host.
 
 - All 1,842 source modules, the library, both executables and all 176 concrete Tests pass at `5b17af422`.
+- Native successful-call refresh: focused builds pass for the three family `NativeValidity` modules, `native_path_execution_soundness`, and eight affected concrete Tests: G-loop, consumed-message, native-control/base rejection, G memory, G, extended-round, round calls and Keccak. Direct reports for 16 selected roots use only `propext`, `Classical.choice` and `Quot.sound`. Review import layers and the new public theorem's audit registration also pass.
+- Fresh no-cache G/round/Keccak exports and provenance checks pass (13 retained artifacts, 713 native source hashes).
 - Importer layout and setup dispatch pass for twelve layouts and thirteen setups.
 - Direct axiom reports: 4,425 roots, 158 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
 - All 178 public Review theorem registrations and contextual reference checks pass, including nine build-snapshot tampering controls.

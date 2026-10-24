@@ -21,8 +21,9 @@ abbrev stateOffsetColumns := #v[7, 8, 9, 10]
 abbrev messageOffsetColumns := #v[11, 12]
 abbrev statePointerLo := 13
 abbrev messagePointerLo := 31
+abbrev baseDifferenceInverse := 83
 abbrev booleanColumns := #v[0, 37, 38, 39, 40, 49, 50, 65, 66, 67, 68, 75, 76,
-  85, 88, 91, 94, 97, 100, 103, 106, 109]
+  86, 89, 92, 95, 98, 101, 104, 107, 110]
 end Variables
 
 end Airbender.Blake2G

@@ -16,7 +16,7 @@ theorem control_bits {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 6)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     ∀ i : Fin 13, w Variables.controlBits[i] = 0 ∨ w Variables.controlBits[i] = 1 := by
   intro i
-  have flag := Verification.assertion_of_holds h ⟨124 + i.val,
+  have flag := Verification.assertion_of_holds h ⟨127 + i.val,
     by rw [constraint_count]; have size := i.isLt; omega⟩
   fin_cases i <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment, Variables.controlBits,
