@@ -23,7 +23,7 @@ theorem local_flags {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 9)}
       w Variables.booleanColumns[i] = 0 ∨ w Variables.booleanColumns[i] = 1 := by
   intro i
   have flag := Verification.assertion_of_holds h
-    ⟨(#v[0, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31][i]),
+    ⟨(#v[0, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33][i]),
       by rw [constraint_count]; fin_cases i <;> decide⟩
   fin_cases i <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment, Variables.booleanColumns,

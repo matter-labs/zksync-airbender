@@ -23,16 +23,16 @@
       "circuit_sha256": "0e9d640e507b80c98eabd4376d644fd3c76f38a8f606b5761b711b991cc1ad09"
     },
     "blake-g.json": {
-      "sha256": "eec4037dd36a90af7a99d84288fd79193a83f5f2b2e059617d22cc7b1fde8f1a",
+      "sha256": "d9d7fb0456565f79421f214b50f58cd93bf477278530fc7fe21ba4183274f88e",
       "trace_len": 4194304,
       "columns": 9,
-      "circuit_sha256": "ad77ddd541114dadd6cf6ed90b95db77e2e9390a9459aacaadca162600bc107d"
+      "circuit_sha256": "ba5c0dc72db42575d3b386ee579c2d1252a754d6c620c62431f62aa40bc2bdab"
     },
     "blake-round.json": {
-      "sha256": "333f3d6334e077a39cac5bc562bc98ac6b2ec95163d0cc0375e7206929259909",
+      "sha256": "87542465ad3b042bb67134c2fef8ddf8716315344630d7eebe72a149e3dbeaca",
       "trace_len": 1048576,
       "columns": 6,
-      "circuit_sha256": "0dad602c664f12007cc4d0cd5142bad65693e84977a1ef0a44db3eaf1af55f9a"
+      "circuit_sha256": "520940d3880739bbf0f33bd571fc032a094e85ac9e7e4c6630b974017644d7e7"
     },
     "decoder-smoke.json": {
       "sha256": "fa68f92ff6664dc7def7c012f6cc24dce07533de427f7597cb9049ddc90b8487",
@@ -53,10 +53,10 @@
       "circuit_sha256": "69e7977a855214ff9f46e494b2ef80050125d65b75ff7eca3fc1bf36d5c0deae"
     },
     "keccak.json": {
-      "sha256": "84dfb734f5889aff4b6912c90dfdb5222906d37fcfc33566928f94a253146153",
+      "sha256": "293e19fe69c7b7a5060db8179fd3feee5190a0b1d1c5ca40e8393f84e3835e60",
       "trace_len": 4194304,
       "columns": 8,
-      "circuit_sha256": "ee76cfb772d2c4814ac9f0d7f2729360295fd2ed64ba8057aeedf9ac5c7db808"
+      "circuit_sha256": "d2513ccb52a9ca213fe6595a5a06ebf5cf4fd7b167d2a00d0f4a2d2d6a9eead8"
     },
     "mul-div.json": {
       "sha256": "99b68f095ff9e3a552562633222a3b32eafcff42b6add769ef79d7aff8b7eb12",
@@ -252,11 +252,11 @@
     "cs/src/gkr_circuits/binary_shifts_family/mod.rs": "a31c9e8580df3bdbe4071f7d5b0e7707a289e03d9e400d17ce0b655e19da6f67",
     "cs/src/gkr_circuits/decoder_trait.rs": "6b58da0323f18df69f536b23bccd9114956e7f5d6fed521c7075d2841b127caf",
     "cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs": "766bb7822df3333910ab8e19265fce3aaafb22e1e4dfb2cd09cea21602da1b4f",
-    "cs/src/gkr_circuits/delegation/blake2_g_function/mod.rs": "141aecca123143c358791c83bc916f89111aa37845f9371fe1b2e228cd452b3e",
-    "cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy.rs": "a60f96a377258bcd9f46566d7bfc2c1a12cefda181c8441daf144c19f6e271cd",
+    "cs/src/gkr_circuits/delegation/blake2_g_function/mod.rs": "fb3a63be6816361e418fb9a2e5c2aa08bc0994dd54a8141de08b6b8d0388ec4d",
+    "cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy.rs": "3a55933bf9871a73771da7c774e05a6b963f6e249de1345fe23a5c58fe2e4fdf",
     "cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs": "e898413c31550a6e1908cb262ec1a57b962bbb79cdb90d579c8d75a04106ddbe",
-    "cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs": "21f6eb6c35d3144cc1a3687e06d25923f1bd949f662c4eff0dea9f21b4ac079c",
-    "cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/wider_tables.rs": "d302cc6871c627b0e8eee2f52e3c378babd80daa60cf6716cb29f113da70c2e8",
+    "cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs": "bb1e3813f535d0e06e16c2bc0c5f20e7866891570c086661568add99a1cc1555",
+    "cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/wider_tables.rs": "169df62aab525e7fdd88cb7e3dba70a17b4bc93beb48d4a881718b6a5bca85e2",
     "cs/src/gkr_circuits/delegation/keccak_chi5/mod.rs": "117169b4d9819cafdf976b6c304b7091c5518f6faca1aeb82afbf172aa6f65ae",
     "cs/src/gkr_circuits/delegation/keccak_chi5/test.rs": "7505db3860f36c7152a4c70bd23982e3b52c0a2f6acd63a083b0cd8e5b4505f6",
     "cs/src/gkr_circuits/delegation/keccak_column_parity/mod.rs": "1e53e1db072daf72254fa9c58a3210b97db8d7d13662a766161e3418b6e99647",
@@ -264,7 +264,7 @@
     "cs/src/gkr_circuits/delegation/keccak_f1600_artifacts.rs": "af6d40dc46730048be62218b88d091267087cc1094cf44da9b73ecaefae1dd2b",
     "cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs": "9760f40f2edbce12f2b0d2b024dce8a9994004fa2166f7ac9f32cff8416a3e71",
     "cs/src/gkr_circuits/delegation/keccak_special5/debug_info.rs": "822698e54bff397a67913eaedcc02c0314780bcecc170df354e8558cf1eb8cd3",
-    "cs/src/gkr_circuits/delegation/keccak_special5/mod.rs": "075ffff69186bbacab9e06e64dc0079ab26724410da6d9246a8317e1ec42bad7",
+    "cs/src/gkr_circuits/delegation/keccak_special5/mod.rs": "674594ea258ebb55611542ea6d4153f91b72429df99fca3d227381d5f7a5b72a",
     "cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs": "6c9ff522687adb73410bed120a35e4fbf5d7a12c4231de2ffbd873f1919c7b6d",
     "cs/src/gkr_circuits/delegation/keccak_theta_rho/test.rs": "670d71ec7b2e13077ed922d96685b7cf78277a0ad9c2469afdb230d1d2db78e5",
     "cs/src/gkr_circuits/delegation/mod.rs": "1e97f4a60e525d0b122af83a6a9d144a680adce9cc881eb8439cde21fb0cfaa6",

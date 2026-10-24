@@ -19,6 +19,7 @@ theorem lookup_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 8)
 
 namespace Variables
 abbrev execute := 0
+abbrev highRound := 222
 abbrev controlReadLo := 3
 abbrev controlReadHi := 4
 abbrev controlWriteLo := 5

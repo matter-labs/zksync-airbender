@@ -1,7 +1,9 @@
 # Trust and review boundaries
 
-The checked target is the imported richer no-cache relation on upstream
-`av_gkr_compiler` revision `4518846625730fabc4cd83744d4bd983a5e42b97`.
+The target is the imported richer no-cache relation built from this checkout,
+with upstream `av_gkr_compiler` baseline revision
+`4518846625730fabc4cd83744d4bd983a5e42b97`. The hash workers include the native
+successful-call constraints recorded in the current source/artifact manifest.
 [Verification status](VERIFICATION_STATUS.md) records completed validation and
 material limits. The [historical integration record](TRUST_AND_REVIEW_HISTORY.md)
 retains earlier experiments and narrower intermediate interfaces.
@@ -21,12 +23,16 @@ ordinary execution and native terminal PC/cells from initialized matching.
 [Unified full execution](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean)
 also composes complete bigint, BLAKE2 G, extended-round and Keccak references
 with the supported straight-line ordinary registry.
-[Actual-path execution](Airbender/Review/Trace/UnifiedReduced/PathExecution.lean)
-composes branches, JAL/JALR and repeated-PC loops with complete delegations;
+[Native actual-path execution](Airbender/Review/Trace/UnifiedReduced/NativePathExecution.lean)
+composes branches, JAL/JALR and repeated-PC loops with complete delegations
+without an occurrence plan;
 [complete spans](Airbender/Review/Trace/UnifiedReduced/PathSpanExecution.lean)
-derive the full native worker partition/count and algorithms in one history.
-These general proofs, the accepted two-COPY loop and the complete native G-loop
-application pass kernel checks and the complete ordinary source/runtime suite.
+derive the full native worker partition/count and algorithms in one history
+under their per-trace occurrence plan and complete protocol coverage.
+The earlier entrypoints, accepted two-COPY loop and complete native G-loop
+application passed the full ordinary source/runtime suite at `5b17af422`.
+The native enforcement refresh has focused kernel checks recorded in the
+verification status.
 Separate declaration-origin auditing, transitive assurance controls and independent
 kernel replay are also required.
 
@@ -34,15 +40,20 @@ kernel replay are also required.
 
 Claims retain explicit public program/state/configuration, tracked domain,
 modeled lookup tables and exact logical matching. Reads, operand bounds,
-decoder selections and native scheduling are derived. A local request observation
+decoder selections and worker participation are derived. A local request observation
 is weaker than fulfilled worker effects or a complete reference span.
 
-The older full-CSR preparation profile retains aligned straight-line public
-code. Actual-path preparation uses the accepted PC/clock path and public
-instruction occurrences, including branches and jumps. Both require tracked
-data RAM at or above the ROM limit. Complete grouped algorithms also require
-readonly gaps or computed stores disjoint from each protected block. Standard
-boot-ROM-data copying remains outside these claims.
+The native actual-path entrypoint derives supported hash controller positions,
+round-mask validity and G base separation from the refreshed native constraints.
+It covers controllers loaded or computed through arbitrary supported ordinary
+instructions and requires no instruction/caller occurrence plan. Public program
+bytes, initialized tracked memory, configuration/retirement and the separate
+bigint command contract remain explicit. The older full-CSR profile retains
+aligned straight-line code, and the older actual-path preparation profile retains
+a per-trace occurrence plan. These execution claims require tracked data RAM at
+or above the ROM limit. Complete grouped algorithms additionally need protocol
+coverage and readonly gaps or computed stores disjoint from each protected block.
+Standard boot-ROM-data copying remains outside these claims.
 
 | Boundary | Current meaning |
 | --- | --- |

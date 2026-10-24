@@ -23,13 +23,19 @@ PC/cells. The F02 command contract remains explicit. Current native BabyBear
 constraints and caller accounting derive participation; no external occurrence
 ledger is supplied.
 
-[Actual-path execution](PathExecution.lean) composes branches, JAL, JALR and
-repeated-PC loops with complete calls from all four worker families. Public
-occurrence preparation derives native controls and call cuts; the conclusion
-realizes the native terminal PC and every tracked cell.
+[Native actual-path execution](NativePathExecution.lean) composes branches, JAL,
+JALR and repeated-PC loops with complete calls from all four worker families.
+Native constraints derive supported hash controller positions, round masks and
+G base separation, including when controllers are loaded or computed through
+ordinary instructions. No occurrence plan is supplied. The conclusion realizes
+the native terminal PC and every tracked cell. Public program/initialized memory,
+configuration/retirement and the separate bigint command contract remain explicit.
+The older [prepared actual-path interface](PathExecution.lean) retains its
+trace-dependent instruction/caller plan for compatibility.
 
 [Complete actual-path spans](PathSpanExecution.lean) also derives the full worker
-partition/count and complete algorithms in one history. Each span uses readonly
+partition/count and complete algorithms in one history under its per-trace
+occurrence plan and complete protocol coverage. Each span uses readonly
 gaps or computed stores disjoint from its protected blocks. Other ordinary
 writes retain their whole-execution meaning without a grouped algorithm claim.
 

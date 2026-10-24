@@ -9,15 +9,15 @@ theorem timestamp_count {p : Nat} [Fact p.Prime] :
 
 theorem delegation_columns : importedConstraintsDelegationColumns =
     (⟨0, #v[1, 2], (Vector.ofFn (fun i : Fin 14 =>
-      Trace.TimestampPort.mk 2 #v[222 + 3 * i.val, 223 + 3 * i.val]
-        (224 + 3 * i.val))).toArray⟩ : Delegation.ClockColumns) := by decide
+      Trace.TimestampPort.mk 2 #v[223 + 3 * i.val, 224 + 3 * i.val]
+        (225 + 3 * i.val))).toArray⟩ : Delegation.ClockColumns) := by decide
 
 theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
     importedConstraintsDelegationColumns.ports := by
   simp [importedConstraintsMemoryPorts, importedConstraintsDelegationColumns]
 
 theorem constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 8)) :
-    (FlatOperation.constraints (importedConstraints setup)).length = 187 := rfl
+    (FlatOperation.constraints (importedConstraints setup)).length = 192 := rfl
 
 theorem port_layout : importedConstraintsIndirectPorts =
     Vector.ofFn (fun i : Fin 12 => Verification.IndirectPort.mk 11 i.val #v[13, 14]

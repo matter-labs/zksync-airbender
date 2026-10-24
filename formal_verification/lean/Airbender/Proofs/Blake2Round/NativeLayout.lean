@@ -134,9 +134,9 @@ def columnCarryColumns (call : Fin 4) : Vector Nat 4 :=
 def columnBooleanColumns (call : Fin 4) : Vector Nat 4 :=
   #v[268 + 40 * call.val, 271 + 40 * call.val, 289 + 40 * call.val, 291 + 40 * call.val]
 def columnBooleanAssertion (call : Fin 4) (slot : Fin 4) : Nat :=
-  137 + 4 * call.val + slot.val
+  140 + 4 * call.val + slot.val
 
 def diagonalBooleanAssertion (call : Fin 4) (slot : Fin 2) : Nat :=
-  153 + 2 * call.val + slot.val
+  156 + 2 * call.val + slot.val
 
 end Airbender.Blake2Round.Proofs.NativeLayout
