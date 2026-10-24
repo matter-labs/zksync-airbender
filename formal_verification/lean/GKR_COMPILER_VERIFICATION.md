@@ -5,6 +5,8 @@ and source lookup-field encoding have kernel-checked instances for all eleven
 production circuit families, with and without caches. All 22 native consumer
 field-role checks also pass. Full protocol reduction, RAM/timestamp lowering,
 cache/source connection and complete witness extension remain open.
+All 60 emitted native lookup output pairs now have checked reduction proofs;
+connecting their operands to the independently captured source fields remains open.
 
 ## Independent source and actual compiler output
 
@@ -145,6 +147,41 @@ address space, scalar Montgomery decoding, vector family-mask packing and setup
 column order. It rejects a changed dependency and a free cache claim. All 124
 additional consumer/cache/aggregation roots pass a direct axiom audit using only
 standard Lean axioms.
+
+## Actual native lookup reductions
+
+`NativeLookupImport.lean` reads the actual balanced-pair, setup, aggregate,
+unbalanced-remainder and extension-copy opcodes. The original native operands
+are retained separately from normalization certificates, which contain only
+gate and primitive indices. `NativeLookupGate.normalization_sound` connects the
+native helper formulas to exact numerator/denominator pair addition.
+
+`LookupReduction.lean` follows actual ports through the graph. A pair read must
+find the numerator and denominator components of the same checked tree.
+`LookupNative/` checks all 22 configurations and all 60 emitted lookup output
+pairs. BLAKE and Keccak have no separate range-16 output. Every emitted group
+also passes a request-count check against its native metadata and contains
+exactly one negative setup-multiplicity term. These count checks alone do not
+establish original source-request identity or multiset coverage.
+
+Large profiles use 32-step replay checkpoints. An untrusted evaluator supplies
+finite checkpoint states; Lean checks each transition against the actual
+instructions and composes the proved state invariant. BLAKE-round stays below
+the existing 2560 MiB physical memory cap. No compiler traces are altered.
+
+`BaseEncoding.lean` and `AffineExpansion.lean` provide the remaining connection's
+generic foundation: selected actual definitions preserve affine interpretation,
+base-column identities lift through a field homomorphism, and vector encoding
+preserves those identities for arbitrary alpha. A base-role check prevents an
+extension-field vector cache from being treated as a free base column. Concrete
+source labels and column identities for the actual consumed operands still need
+to be checked and composed with these native reduction roots.
+
+The lookup graph and base-encoding controls reject swapped/mixed pair
+components, missing copies, dropped/repeated source labels, invalid native gate
+or definition indices, wrong operand weights and replacement payloads. The
+combined 534 compiler roots pass a direct axiom audit with only standard Lean
+axioms. This audit is separate from the historical full-project assurance gates.
 
 ## Reproduction and freshness
 

@@ -94,7 +94,8 @@ private def memoryTuple (row : SpecialMemoryContributionRelation) :
         result ← add result (← scale (← memoryPower (4 + index)) limb)
   return result
 
-private def program : GKRCacheRelation → CommandElabM (TSyntax `term)
+/-- Reflect the actual affine recipe without interpreting challenge values. -/
+def program : GKRCacheRelation → CommandElabM (TSyntax `term)
   | .SingleColumnLookup row _ => linear row.input
   | .MemoryTuple row => memoryTuple row
   | .VectorizedLookup row => do
