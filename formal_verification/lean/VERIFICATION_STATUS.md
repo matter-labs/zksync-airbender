@@ -1,10 +1,12 @@
 # Verification status
 
 Native upstream baseline: `av_gkr_compiler` at `451884662`. The ordinary
-source/runtime suite passes all 1,742 modules and 176 concrete Tests. Fresh direct
-reports cover 4,425 audit roots (158 axiom-free), preserving all 4,379 earlier
-reports. Declaration-origin auditing, transitive assurance controls and independent
-kernel replay are separate required gates; direct reports alone do not certify them.
+source/runtime suite at proof-refactor commit `5b17af422` passes all 1,842 modules
+and 176 concrete Tests (24 October 2026). Direct reports cover 4,425 audit roots
+(158 axiom-free), preserving all 4,379 earlier reports. The separate compiled
+declaration-origin audit also passes. Full independent kernel replay and the final
+negative-control sweep remain incomplete; ordinary compilation and axiom reports
+do not certify those gates.
 
 **Checked** means kernel-checked soundness of the imported richer no-cache
 constraints under the published Review contracts. See [trust boundaries](TRUST_AND_REVIEW.md)
@@ -31,7 +33,7 @@ and the [fixed scope](FORMAL_VERIFICATION_PLAN.md).
 | [Pooled execution](Airbender/Review/Trace/Soundness.lean) | Initialized history derives reads, bounds and decoding; six-family Sail execution realizes terminal PC/cells. |
 | [Mixed cycles](Airbender/Review/Trace/UnifiedReduced/MixedCycles.lean) | Ordinary/custom retirement, [complete bigint calls under F02](Airbender/Review/Trace/UnifiedReduced/BigintCalls.lean), caller observations and every worker share one initialized history and raw PC/clock path. |
 | [Full mixed execution](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean) | Ordinary/TRIADD/XORROT and complete bigint/G/extended-round/Keccak CSR calls reach native terminal PC/cells with the supported straight-line ordinary registry and F02 command contract; tracked data RAM is at or above the ROM limit; native constraints derive worker participation. |
-| [Actual-path full execution](Airbender/Review/Trace/UnifiedReduced/PathExecution.lean) | Branches, JAL/JALR and repeated-PC loops compose with complete calls from all four worker families; native terminal PC/cells, public occurrence preparation, retirement profile and F02 remain explicit. |
+| [Actual-path full execution](Airbender/Review/Trace/UnifiedReduced/PathExecution.lean) | Branches, JAL/JALR and repeated-PC loops compose with complete bigint, BLAKE2 G, extended-round and Keccak calls in one execution, realizing native terminal PC/cells. Public occurrence preparation, initialization/matching, memory/configuration, retirement profile and F02 remain explicit. |
 | [Complete actual-path spans](Airbender/Review/Trace/UnifiedReduced/PathSpanExecution.lean) | Full native worker partition/count and complete algorithms share one derived history; each span uses readonly gaps or computed disjoint stores. Other ordinary writes retain whole-execution semantics. |
 | [Hash spans](Airbender/Review/Trace/UnifiedReduced/Segmentation.lean) | Existing preparation and selected references compose; issued hash workers partition into complete spans under the public protocol profile. |
 | [Canonical terminal PC](Airbender/Review/Helpers/Context/VerifierBoundary/README.md) | Checked under the external canonical verifier boundary. |
@@ -39,28 +41,44 @@ and the [fixed scope](FORMAL_VERIFICATION_PLAN.md).
 | [Initialization/teardown](Airbender/Review/Circuits/Initialization/README.md) | Actual standalone/inline GKR products, computed RAM boundary tokens and pooled/unified execution adapters; native zero seed and domain properties derived. |
 | [Native mixed ROM](Airbender/Review/Trace/UnifiedReduced/NativeMixedROM.lean) | Public boot bytes and the explicit worker RAM contract compose into one ordinary/caller/worker memory history and terminal cells. F04 enforcement remains open. |
 
-## Remaining work
+### Checked composition regressions
 
-Implementation findings and external validation are tracked in the
-[case register](FINDINGS.md#linear-and-open-pr-review--15-october-2026).
-General branch/jump/loop composition and complete span algorithms now pass focused
-kernel checks in the current working tree. The Airbender device configuration,
-memory bridges and both actual initialization profiles also pass, including the
-disputed RAM regions. The accepted native COPY regression also passes: branches,
-JAL/JALR and a repeated-PC loop contain two complete calls in one derived history
-and realize the terminal PC/cells. Both standalone and inline physical/native
-platform applications pass, as do the old-claim/profile compatibility regressions.
+General branch/jump/loop composition and complete span algorithms pass the ordinary
+suite, together with the Airbender device configuration, memory bridges and both
+actual initialization profiles, including the disputed RAM regions. The accepted
+native [COPY regression](Tests/DynamicCopyLoop.lean) contains branches, JAL/JALR,
+a repeated-PC loop and two complete calls in one derived history, realizing the
+terminal PC/cells. Standalone and inline physical/native platform applications
+and the old-claim/profile compatibility regressions also pass.
 The four BabyBear entrypoint types match their original exported types exactly.
 The accepted native [G-loop regression](Tests/PathGLoop.lean),
-`Tests.PathGLoop.complete_regression`, also passes focused kernel checks. All
+`Tests.PathGLoop.complete_regression`, also passes the ordinary suite. All
 three variants retain their actual full executions and terminal PC 160/cells;
 55 calls revisit the loop PCs and the last call uses index 55/controller 183.
 The baseline and scratch SW7 variants group the complete 56-call G protocol.
 The protected-message SW7 variant instead refutes its actual endpoint
 [`WordMapping`](Airbender/Review/Trace/Workers/Blake2G/WorkVector.lean) and [`PathSpanAlgorithmAt`](Airbender/Review/Trace/UnifiedReduced/Paths/SpanProjection.lean), while retaining its full execution.
-These applications must also pass the separate declaration-origin audit,
-transitive controls and full independent kernel replay over the complete inventory.
-Standard boot-ROM-data copying is outside the checked scope.
+Whole execution preserves ordinary writes even when they modify a protected block;
+the grouped algorithm claims additionally require readonly gaps or computed stores
+disjoint from that block. Standard boot-ROM-data copying is outside the checked scope.
+
+## Remaining work
+
+1. Complete independent kernel replay over the full dependency inventory. The
+   latest extra sweep was stopped at the user's direction after the ordinary
+   suite and declaration-origin audit passed; it is not a replay pass.
+2. Complete the final negative-control sweep at the proof-refactor commit. Earlier
+   direct and full transitive controls passed on the review candidate, but the
+   latest sweep was not completed.
+3. Validate remote CI, Linux process controls and empty-cache reproduction on
+   suitable hosts. AIH-336 additionally retains CUDA/AVX-512 execution and a complete
+   regenerated proof as external validation tasks.
+4. Resolve implementation enforcement for [F02 bigint command validity](FINDINGS.md#f02--valid-bigint-operation-observations-do-not-establish-valid-calls)
+   and [F04 worker RAM ports](FINDINGS.md#f04--a-valid-copy-mode-does-not-bind-native-worker-rom-to-public-bytes).
+   Their conditional composition proofs are checked; general native acceptance
+   has not been shown to enforce these contracts. Other implementation cases and
+   target-specific validation remain in the
+   [case register](FINDINGS.md#linear-and-open-pr-review--15-october-2026).
 
 Temporary assumptions do not close implementation bugs. Separately scoped work:
 [deferred milestones](FORMAL_VERIFICATION_PLAN.md#deferred-milestones).
@@ -76,11 +94,13 @@ dependency inputs pass. The [eight evidence files](artifacts/setup/native-eviden
 are separately pinned. Remote CI, Linux process controls and an empty-cache cold
 bootstrap require their own execution on a suitable host.
 
-- All 1,742 source modules, the library, both executables and all 176 concrete Tests pass.
+- All 1,842 source modules, the library, both executables and all 176 concrete Tests pass at `5b17af422`.
 - Importer layout and setup dispatch pass for twelve layouts and thirteen setups.
 - Direct axiom reports: 4,425 roots, 158 axiom-free; only `propext`, `Classical.choice` and `Quot.sound`.
 - All 178 public Review theorem registrations and contextual reference checks pass, including nine build-snapshot tampering controls.
-- Complete assurance additionally requires the compiled declaration-origin audit and separate full-dependency kernel replay with direct/transitive negative controls.
+- Compiled declaration-origin audit: 8,560 roots and 170,355 declarations pass, with no forbidden axioms, unsafe proof dependencies, missing baseline roots or undispositioned changes. The documented pre-existing constructor/type closure of `Airbender.Keccak.IotaMapping` reaches standard `Quot.sound`/`propext`; its direct report remains unchanged.
+- Earlier direct/full-transitive assurance controls passed on the review candidate. Full independent kernel replay and the final negative-control sweep at `5b17af422` remain incomplete.
+- The proof-only modularity refactor is committed and integrated. Scoped cached recomputation and edit-invalidation experiments passed; no whole-project cold-build or replay speedup is claimed.
 - No handwritten project diagnostics, `sorry` or project axioms.
 
 [Reproduce the checks](README.md#reproduce).
