@@ -3,8 +3,9 @@
 The compiler verification effort is active. Arithmetic translation, graph wiring
 and source lookup-field encoding have kernel-checked instances for all eleven
 production circuit families, with and without caches. All 22 native consumer
-field-role checks also pass. Full protocol reduction, RAM/timestamp lowering,
-setup interpretation and complete witness extension remain open.
+field-role checks also pass. Source table geometry and consumed setup coordinates
+are checked. Full protocol reduction, RAM/timestamp lowering, materialized table
+binding and complete witness extension remain open.
 All 60 emitted native lookup output pairs now have checked reduction proofs;
 the 38 generic/range-16 groups also reduce to the original source query multiset
 plus their actual setup contribution.
@@ -215,6 +216,34 @@ decoder occurrence and a query replaced by a second setup occurrence. The
 combined 658 compiler roots pass a direct axiom audit using only standard Lean
 axioms. This audit remains separate from full-project assurance gates.
 
+## Source table geometry and setup interpretation
+
+`TableImport.lean` reads the original source table sizes and compilation
+configuration independently of the native layout. All 22 configurations pass
+kernel checks of every table offset, the decoder boundary, total table extent,
+trace length, encoded width and table-selector presence. Source table-size sums
+also agree with the captured table driver total.
+
+Each of the 60 actual setup operands has the expected ordered setup columns:
+generic columns, the virtual range-16 column or the virtual timestamp column.
+Its multiplicity comes from the corresponding declared base-field witness
+column. These columns are pairwise distinct and do not alias any original source
+variable. The checked affine expansion includes cached setup vectors.
+
+For each generic/range-16 group, `native.genericSourceTableReduction` or
+`native.range16SourceTableReduction` now replaces the remaining native setup leaf
+with a source setup-row interpretation. The output equals the exact original
+query sum plus the negative source multiplicity/table contribution. This holds
+for arbitrary challenges, under explicit agreement of the supplied table values
+and multiplicity with their assigned input cells. Table functions/program
+contents and multiplicity generation remain an interpretation interface; this
+result does not establish native witness-generator equivalence or derive lookup
+membership from an algebraic fingerprint.
+
+The table controls reject changed offsets/decoder boundaries, reversed generic
+columns, the wrong virtual range column and a multiplicity aliasing an original
+variable. The combined 1,010 compiler roots pass a direct standard-axiom audit.
+
 ## Reproduction and freshness
 
 Run heavy commands one at a time through the repository's bounded worker,
@@ -231,6 +260,7 @@ python3 scripts/check_gkr_lookup_certificates.py
 python3 scripts/gkr_lookup_instances.py
 python3 scripts/gkr_lookup_source_certificate.py --check
 python3 scripts/gkr_consumer_instances.py --stage source
+python3 scripts/gkr_table_instances.py --check --build
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerCertificate:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerWiring:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRLookupFields:olean
@@ -270,7 +300,8 @@ decoder masks, scratch aliases, authored fields and source projection.
 
 ## Required remaining work
 
-1. Connect lookup setup contributions to the source table layout and contents.
+1. Instantiate the explicit table-value/multiplicity interpretation with the
+   retained materialized setup and witness-generation boundary.
 2. Derive timestamp and RAM/alignment helper obligations from the captured
    source inputs; certify their actual gate reductions, tuple identities and
    complete product groups.
