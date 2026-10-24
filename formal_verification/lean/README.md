@@ -9,7 +9,8 @@
 and open tasks. It is updated after each completed task.
 
 [GKR compiler verification](GKR_COMPILER_VERIFICATION.md) records the new
-pre-compiler-to-lowered-IR effort and its checked arithmetic checkpoint.
+pre-compiler-to-lowered-IR effort and its arithmetic, wiring, lookup-field and
+native consumer field-role checkpoints.
 
 The [findings audit](FINDINGS.md) records accepted counterexamples and unresolved
 bindings, with links to their assumptions and evidence.
