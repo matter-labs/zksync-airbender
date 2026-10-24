@@ -9,6 +9,8 @@ binding and complete witness extension remain open.
 All 60 emitted native lookup output pairs now have checked reduction proofs;
 the 38 generic/range-16 groups also reduce to the original source query multiset
 plus their actual setup contribution.
+All 48 emitted native RAM/initialization product output scalars also have checked
+formula/port reductions; their original source-tuple connection remains open.
 
 ## Independent source and actual compiler output
 
@@ -244,6 +246,36 @@ The table controls reject changed offsets/decoder boundaries, reversed generic
 columns, the wrong virtual range column and a multiplicity aliasing an original
 variable. The combined 1,010 compiler roots pass a direct standard-axiom audit.
 
+## Actual native memory and initialization products
+
+`NativeProductImport.lean` reads every actual cached/uncached memory pair,
+materialized memory term, product aggregation, mask, extension copy and
+initialization/teardown pair. Memory caches retain their actual affine input
+addresses. Initialization tuples preserve RAM address space, virtual setup
+columns, set-index high-address offsets and teardown timestamp/value columns.
+Retired product consumers fail closed.
+
+`ProductReduction.lean` follows actual ports and retains mask addresses in the
+formula. All 22 configurations pass, covering 48 output scalars: RAM read/write
+for every compilation and inline initialization/teardown read/write for both
+unified configurations. Each RAM output has exactly one final mask around its
+tuple product; initialization outputs are unmasked. Leaf counts agree with the
+native request/teardown metadata. These counts do not establish source tuple
+identity or source multiset coverage.
+
+Each 32-step checkpoint is a finite literal checked by kernel reduction against
+the actual normalized instructions. The final product theorem is exact for
+arbitrary challenge and mask values. The separate mask-distribution lemma
+requires an idempotent mask explicitly; the concrete final-mask shape does not
+need that extra premise.
+
+`Tests/GKRNativeProduct.lean` checks actual initialization RAM tags and set
+offsets and rejects missing dependencies/copies, invalid gate/primitive indices,
+changed mask sources, non-Boolean mask distribution and exchanged read/write
+leaf bags. The combined 1,293 compiler roots pass the direct standard-axiom audit.
+Independent source memory tuples, timestamp/alignment helpers and complete
+witness extension remain required for full compiler preservation.
+
 ## Reproduction and freshness
 
 Run heavy commands one at a time through the repository's bounded worker,
@@ -261,6 +293,7 @@ python3 scripts/gkr_lookup_instances.py
 python3 scripts/gkr_lookup_source_certificate.py --check
 python3 scripts/gkr_consumer_instances.py --stage source
 python3 scripts/gkr_table_instances.py --check --build
+python3 scripts/gkr_product_instances.py --check --build
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerCertificate:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerWiring:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRLookupFields:olean
@@ -303,8 +336,8 @@ decoder masks, scratch aliases, authored fields and source projection.
 1. Instantiate the explicit table-value/multiplicity interpretation with the
    retained materialized setup and witness-generation boundary.
 2. Derive timestamp and RAM/alignment helper obligations from the captured
-   source inputs; certify their actual gate reductions, tuple identities and
-   complete product groups.
+   source inputs; bind the checked native product factors to original memory
+   tuples and certify exact source multiset coverage.
 3. Prove complete witness extension under explicit source primitive-query and
    memory-history contracts, then compose with existing circuit/execution roots.
 4. Keep algebraic fingerprint preservation separate from cryptographic

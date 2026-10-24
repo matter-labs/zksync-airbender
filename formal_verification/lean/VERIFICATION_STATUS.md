@@ -37,6 +37,12 @@ source variable. Binding this interpretation to materialized tables/witness
 generation, and the timestamp/RAM/full-extension work, remain required. The
 expanded compiler audit contains 1,010 roots using only standard Lean axioms.
 
+All 48 native RAM/initialization product output scalars also pass exact formula
+and port reduction, including final mask shape and actual initialization set
+offsets. Connecting these factors to independent source memory tuples and
+deriving timestamp/alignment helpers remain open. The compiler audit now covers
+1,293 roots with only standard Lean axioms.
+
 ## Checked coverage
 
 | Circuit | Coverage |
