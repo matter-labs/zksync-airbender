@@ -2,6 +2,8 @@ import GKRCompiler.Reduction
 import GKRProtocol
 import Tests.GKRCompilerWiring
 import Tests.GKRLookupFields
+import Tests.GKRConsumerTypes
+import Tests.GKRCacheBindings
 import GKRCompiler
 import Tests.GKRCompilerCertificate
 import Tests.AirbenderApplicability
@@ -5476,3 +5478,131 @@ import Clean.Specs.Keccak256
 #print axioms Tests.GKRLookupFields.rejects_wrong_scratch_binding
 #print axioms Tests.GKRLookupFields.rejects_changed_authored_source
 #print axioms Tests.GKRLookupFields.rejects_wrong_source_projection
+
+-- Compiler consumer field roles and exact lookup-pair aggregation.
+#print axioms Airbender.Compiler.ConsumerTyping.assemble
+#print axioms Airbender.Compiler.ConsumerTyping.sound
+#print axioms Airbender.Compiler.ConsumerTyping.unique_roles
+#print axioms Airbender.Compiler.LookupTree.exact_sum
+#print axioms Airbender.Compiler.LookupTree.exact_source
+#print axioms Airbender.Compiler.ConsumerNative.AddSubCached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.AddSubUncached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.BigintCached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.BigintUncached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.BlakeGCached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.BlakeGUncached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.BlakeRoundCached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.BlakeRoundUncached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.JumpBranchCached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.JumpBranchUncached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.KeccakCached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.KeccakUncached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.MulDivCached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.MulDivUncached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.ShiftBinopCached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.ShiftBinopUncached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.SubwordMemoryCached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.SubwordMemoryUncached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.UnifiedCached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.UnifiedUncached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.WordMemoryCached.consumer_types_valid
+#print axioms Airbender.Compiler.ConsumerNative.WordMemoryUncached.consumer_types_valid
+#print axioms Tests.GKRConsumerTypes.accepts_actual_consumers
+#print axioms Tests.GKRConsumerTypes.assertion_has_no_outputs
+#print axioms Tests.GKRConsumerTypes.rejects_omitted_assertion
+#print axioms Tests.GKRConsumerTypes.rejects_changed_field_role
+#print axioms Tests.GKRConsumerTypes.rejects_repeated_flattened_address
+#print axioms Tests.GKRConsumerTypes.rejects_changed_input_role
+
+-- Native cache descriptions and affine multilinear binding.
+#print axioms Airbender.Compiler.weightedEvaluation_constant
+#print axioms Airbender.Compiler.weightedEvaluation_add
+#print axioms Airbender.Compiler.weightedEvaluation_scale
+#print axioms Airbender.Compiler.weightedEvaluation_sum
+#print axioms Airbender.Compiler.AffineCache.evaluation_commutes
+#print axioms Airbender.Compiler.linearize_fields
+#print axioms Airbender.Compiler.AffineProgram.evaluation_commutes
+#print axioms Airbender.Compiler.multilinearEvaluation_constant
+#print axioms Airbender.Compiler.multilinearEvaluation_add
+#print axioms Airbender.Compiler.multilinearEvaluation_scale
+#print axioms Airbender.Compiler.AffineProgram.multilinear_commutes
+#print axioms Airbender.Compiler.AffineProgram.mapCoefficients_inputs
+#print axioms Airbender.Compiler.CacheBinding.ports_sound
+#print axioms Airbender.Compiler.CacheBinding.mapCoefficients_ports
+#print axioms Airbender.Compiler.CacheBinding.mapCoefficients_all
+#print axioms Airbender.Compiler.CacheBinding.mapCoefficients_metadata
+#print axioms Airbender.Compiler.CacheBinding.claim_bound
+#print axioms Airbender.Compiler.CacheBinding.checked_claim
+#print axioms Airbender.Compiler.CacheNative.AddSubCached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.AddSubCached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.AddSubCached.native.complete
+#print axioms Airbender.Compiler.CacheNative.AddSubUncached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.AddSubUncached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.AddSubUncached.native.complete
+#print axioms Airbender.Compiler.CacheNative.BigintCached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.BigintCached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.BigintCached.native.complete
+#print axioms Airbender.Compiler.CacheNative.BigintUncached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.BigintUncached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.BigintUncached.native.complete
+#print axioms Airbender.Compiler.CacheNative.BlakeGCached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.BlakeGCached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.BlakeGCached.native.complete
+#print axioms Airbender.Compiler.CacheNative.BlakeGUncached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.BlakeGUncached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.BlakeGUncached.native.complete
+#print axioms Airbender.Compiler.CacheNative.BlakeRoundCached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.BlakeRoundCached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.BlakeRoundCached.native.complete
+#print axioms Airbender.Compiler.CacheNative.BlakeRoundUncached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.BlakeRoundUncached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.BlakeRoundUncached.native.complete
+#print axioms Airbender.Compiler.CacheNative.JumpBranchCached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.JumpBranchCached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.JumpBranchCached.native.complete
+#print axioms Airbender.Compiler.CacheNative.JumpBranchUncached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.JumpBranchUncached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.JumpBranchUncached.native.complete
+#print axioms Airbender.Compiler.CacheNative.KeccakCached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.KeccakCached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.KeccakCached.native.complete
+#print axioms Airbender.Compiler.CacheNative.KeccakUncached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.KeccakUncached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.KeccakUncached.native.complete
+#print axioms Airbender.Compiler.CacheNative.MulDivCached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.MulDivCached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.MulDivCached.native.complete
+#print axioms Airbender.Compiler.CacheNative.MulDivUncached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.MulDivUncached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.MulDivUncached.native.complete
+#print axioms Airbender.Compiler.CacheNative.ShiftBinopCached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.ShiftBinopCached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.ShiftBinopCached.native.complete
+#print axioms Airbender.Compiler.CacheNative.ShiftBinopUncached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.ShiftBinopUncached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.ShiftBinopUncached.native.complete
+#print axioms Airbender.Compiler.CacheNative.SubwordMemoryCached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.SubwordMemoryCached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.SubwordMemoryCached.native.complete
+#print axioms Airbender.Compiler.CacheNative.SubwordMemoryUncached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.SubwordMemoryUncached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.SubwordMemoryUncached.native.complete
+#print axioms Airbender.Compiler.CacheNative.UnifiedCached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.UnifiedCached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.UnifiedCached.native.complete
+#print axioms Airbender.Compiler.CacheNative.UnifiedUncached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.UnifiedUncached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.UnifiedUncached.native.complete
+#print axioms Airbender.Compiler.CacheNative.WordMemoryCached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.WordMemoryCached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.WordMemoryCached.native.complete
+#print axioms Airbender.Compiler.CacheNative.WordMemoryUncached.cache_ports_checked
+#print axioms Airbender.Compiler.CacheNative.WordMemoryUncached.cache_claims_bound
+#print axioms Airbender.Compiler.CacheNative.WordMemoryUncached.native.complete
+#print axioms Tests.GKRCacheBindings.preserves_write_timestamp_offset
+#print axioms Tests.GKRCacheBindings.preserves_pc_address_space
+#print axioms Tests.GKRCacheBindings.decodes_scalar_coefficient
+#print axioms Tests.GKRCacheBindings.preserves_packed_vector_column
+#print axioms Tests.GKRCacheBindings.preserves_setup_column_order
+#print axioms Tests.GKRCacheBindings.rejects_changed_dependency
+#print axioms Tests.GKRCacheBindings.rejects_free_cache_claim

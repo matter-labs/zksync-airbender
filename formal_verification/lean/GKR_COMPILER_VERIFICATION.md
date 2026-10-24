@@ -2,8 +2,9 @@
 
 The compiler verification effort is active. Arithmetic translation, graph wiring
 and source lookup-field encoding have kernel-checked instances for all eleven
-production circuit families, with and without caches. Full protocol reduction,
-RAM/timestamp lowering, cache binding and complete witness extension remain open.
+production circuit families, with and without caches. All 22 native consumer
+field-role checks also pass. Full protocol reduction, RAM/timestamp lowering,
+cache/source connection and complete witness extension remain open.
 
 ## Independent source and actual compiler output
 
@@ -88,10 +89,62 @@ location, rather than introduced as an unconstrained additional value.
 
 These results cover the visible request fields and structural output ports.
 They do not yet establish correct numerator/denominator reductions, RAM tuple
-products, base/extension field roles, cache binding, output-group semantics or
+products, cache/source binding, output-group semantics or
 complete extension through compiler-generated memory constraints. The generic
 lookup-pair/product-fold algebra in `GKRCompiler/Reduction.lean` is checked but
 still needs those concrete graph connections.
+
+## Native consumer field roles
+
+`GKRProtocol/Typing.lean` checks the field roles of every input and output against
+the actual graph and its unique producer addresses. It also checks source and
+scratch cells are base-field values and final outputs are extension-field
+values. Every gate and cache, including assertion gates without output ports,
+must appear exactly once in the ordered consumer list. `TypingImport.lean`
+interprets every native relation variant explicitly and fails closed for retired
+unsupported consumers. All 22 `consumer_types_valid` instances pass.
+
+The native scalar, vector, memory and initialization flattening helpers require
+distinct addresses rather than accumulating duplicate coefficients. The checker
+verifies that requirement on every relevant actual gate and cache row.
+`Tests/GKRConsumerTypes.lean` proves
+rejection of omitted assertion consumers, changed input/output roles and
+repeated flattened addresses.
+
+`RationalSemantics.lean` additionally proves exact numerator/denominator pair
+aggregation as a commutative monoid and exact multiset preservation for lookup
+trees. This result does not divide by a denominator or assume a nonzero sampled
+challenge. Connecting the actual native lookup trees to source requests remains
+required.
+
+## Affine cache claims
+
+`CacheImport.lean` interprets all four actual native cache variants: scalar
+lookup, vector lookup, vector setup and memory tuple. The finite descriptions
+retain raw Montgomery coefficients, column order, challenge powers, address
+spaces, timestamp offsets and byte-to-limb reconstruction. Each description's
+input list is checked in the kernel against the separately imported cache
+ports, and the complete ordered cache list is checked against the actual graph.
+All 22 retained configurations pass these checks.
+
+`CacheBindings.lean` interprets those descriptions in any commutative ring with
+a homomorphism from BabyBear. `CacheSemantics.lean` proves that affine operations
+commute with multilinear evaluation on the Boolean cube. For every actual
+cache description, `cache_claims_bound` proves that evaluation of its canonical
+row materialization equals its expected claim from dependency evaluations at
+the same point. This holds for arbitrary challenge values and needs no extra
+normalization or nonzero premise.
+
+This theorem concerns the interpreted cache relation. It does not yet connect
+every cache to the independently captured source requests, prove full protocol
+reductions, or establish equivalence to the native witness generator's use of
+preprocessed lookup mappings and padding.
+
+`Tests/GKRCacheBindings.lean` checks actual write timestamp offsets, the PC
+address space, scalar Montgomery decoding, vector family-mask packing and setup
+column order. It rejects a changed dependency and a free cache claim. All 124
+additional consumer/cache/aggregation roots pass a direct axiom audit using only
+standard Lean axioms.
 
 ## Reproduction and freshness
 
@@ -142,8 +195,8 @@ decoder masks, scratch aliases, authored fields and source projection.
 
 ## Required remaining work
 
-1. Connect checked wiring to actual base/extension field roles and native
-   consumer formulas; certify cache materialization and binding.
+1. Connect the checked native consumer formulas and cache materialization to
+   independently captured source fields and complete protocol reductions.
 2. Derive lookup/range/decoder and RAM/timestamp obligations from the captured
    source inputs; certify their actual gate reductions and helper formulas.
 3. Prove complete witness extension under explicit source primitive-query and

@@ -15,12 +15,14 @@ and the [fixed scope](FORMAL_VERIFICATION_PLAN.md).
 The [GKR compiler preservation effort](GKR_COMPILER_VERIFICATION.md) is active.
 All 22 production source/compiler arithmetic, graph-wiring and lookup-field
 instances (eleven families, both cache modes) pass kernel checking, with
-corruption controls. Arithmetic witness extension covers the selected source
-arithmetic slice. Full lookup reduction, RAM/timestamp lowering, cache binding,
+corruption controls. All 22 consumer field-role and helper-address uniqueness
+instances pass as well. Arithmetic witness extension covers the selected source
+arithmetic slice. Full lookup reduction, RAM/timestamp lowering, cache/source binding,
 output-group semantics and complete witness extension remain open. The native
 input mutation control exposed ineffective deprecated Lake dependency keys;
-these have been replaced by `needs`, with affected targets undergoing ordinary
-dependency-aware replay.
+these have been replaced by `needs`, and affected compiler targets passed ordinary
+dependency-aware replay. All 140 roots in the arithmetic/wiring/lookup-field
+checkpoint passed a direct axiom audit using only standard Lean axioms.
 
 ## Checked coverage
 
