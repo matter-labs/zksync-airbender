@@ -30,6 +30,13 @@ checkpoint passed a direct axiom audit using only standard Lean axioms. The
 expanded compiler inventory contains 658 audited roots, including the consumed
 source-query reductions and their rejection controls.
 
+Source table geometry and all 60 consumed setup operands are also checked. The
+38 source-query reductions compose with an explicit source table-row and
+multiplicity interpretation. Distinct multiplicity columns avoid every original
+source variable. Binding this interpretation to materialized tables/witness
+generation, and the timestamp/RAM/full-extension work, remain required. The
+expanded compiler audit contains 1,010 roots using only standard Lean axioms.
+
 ## Checked coverage
 
 | Circuit | Coverage |
