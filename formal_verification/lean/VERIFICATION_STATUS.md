@@ -19,12 +19,16 @@ corruption controls. All 22 consumer field-role and helper-address uniqueness
 instances pass as well. Arithmetic witness extension covers the selected source
 arithmetic slice. All 60 actual native lookup output pairs have checked
 formula/port reduction proofs, with metadata count and one-setup-term checks.
-The source-field connection for those consumed operands, RAM/timestamp lowering, cache/source binding,
-output-group semantics and complete witness extension remain open. The native
+All 4,436 consumed authored lookup fields also pass the source bridge; the 38
+generic/range-16 groups reduce to the exact original query multiset plus their
+actual native setup contribution. Source table interpretation, timestamp helpers,
+RAM products and complete witness extension remain open. The native
 input mutation control exposed ineffective deprecated Lake dependency keys;
 these have been replaced by `needs`, and affected compiler targets passed ordinary
 dependency-aware replay. All 140 roots in the arithmetic/wiring/lookup-field
-checkpoint passed a direct axiom audit using only standard Lean axioms.
+checkpoint passed a direct axiom audit using only standard Lean axioms. The
+expanded compiler inventory contains 658 audited roots, including the consumed
+source-query reductions and their rejection controls.
 
 ## Checked coverage
 

@@ -11,15 +11,26 @@ from gkr_wiring_instances import CASES
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--family", choices=FAMILIES, action="append")
-    parser.add_argument("--stage", choices=("typing", "cache", "lookup"), default="typing")
+    parser.add_argument("--stage", choices=("typing", "cache", "lookup", "source"), default="typing")
     args = parser.parse_args()
     environment = dict(os.environ, LEAN_NUM_THREADS="1")
     for family, stem in zip(FAMILIES, CASES):
         if args.family and family not in args.family:
             continue
         for suffix in ("Uncached", "Cached"):
-            namespace = {"typing": "ConsumerNative", "cache": "CacheNative", "lookup": "LookupNative"}[args.stage]
+            namespace = {"typing": "ConsumerNative", "cache": "CacheNative", "lookup": "LookupNative",
+                         "source": "LookupSourceNative"}[args.stage]
             name = "GKRProtocol." + namespace + "." + stem + suffix
+            if args.stage == "source" and family == "blake-round":
+                module_root = LEAN / "GKRProtocol/LookupSourceNative"
+                prefix = stem + suffix
+                parts = sorted(module_root.glob(prefix + "Part*.lean"),
+                               key=lambda path: int(path.stem.removeprefix(prefix + "Part")))
+                for module in [module_root / (prefix + "Foundation.lean"), *parts]:
+                    target = "GKRProtocol.LookupSourceNative." + module.stem
+                    print("SOURCE SHARD", target, flush=True)
+                    subprocess.run(["lake", "--no-cache", "build", "+" + target + ":olean"],
+                                   cwd=LEAN, env=environment, check=True)
             print("CONSUMER " + args.stage.upper(), name, flush=True)
             subprocess.run(["lake", "--no-cache", "build", "+" + name + ":olean"],
                            cwd=LEAN, env=environment, check=True)
