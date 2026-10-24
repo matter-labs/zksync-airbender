@@ -17,7 +17,9 @@ All 22 production source/compiler arithmetic, graph-wiring and lookup-field
 instances (eleven families, both cache modes) pass kernel checking, with
 corruption controls. All 22 consumer field-role and helper-address uniqueness
 instances pass as well. Arithmetic witness extension covers the selected source
-arithmetic slice. Full lookup reduction, RAM/timestamp lowering, cache/source binding,
+arithmetic slice. All 60 actual native lookup output pairs have checked
+formula/port reduction proofs, with metadata count and one-setup-term checks.
+The source-field connection for those consumed operands, RAM/timestamp lowering, cache/source binding,
 output-group semantics and complete witness extension remain open. The native
 input mutation control exposed ineffective deprecated Lake dependency keys;
 these have been replaced by `needs`, and affected compiler targets passed ordinary
