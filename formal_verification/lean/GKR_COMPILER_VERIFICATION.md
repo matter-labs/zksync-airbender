@@ -5,8 +5,9 @@ and source lookup-field encoding have kernel-checked instances for all eleven
 production circuit families, with and without caches. All 22 native consumer
 field-role checks also pass. Source table geometry and consumed setup coordinates
 are checked. Source RAM/initialization products are also checked. Full protocol
-reduction, timestamp/alignment helpers, materialized table
-binding and complete witness extension remain open.
+reduction, materialized table binding and complete witness extension remain open.
+Source-derived timestamp/alignment query identities and their generic clock/range
+semantics are checked; their full witness-construction composition remains open.
 All 60 emitted native lookup output pairs now have checked reduction proofs;
 the 38 generic/range-16 groups also reduce to the original source query multiset
 plus their actual setup contribution.
@@ -321,6 +322,42 @@ product matching and memory-history soundness.
 The combined 1,700 compiler roots pass the direct axiom audit using only
 `propext`, `Classical.choice` and `Quot.sound` as applicable.
 
+## Source clock and alignment helpers
+
+`HelperSource.lean` derives all timestamp range queries from the original
+executor/delegation state and memory operations. These include executor final
+clock limbs, the delegation invocation-clock quotient, borrowed read/write
+comparisons and inverse-power indirect-address alignment. Borrow witnesses have
+a third domain, distinct from original variables and memory-history inputs.
+All 22 current source profiles have no relative read-timestamp groups; the
+importer rejects grouped profiles pending a separate proof.
+
+`HelperImport.lean` connects these independently derived fields to the actual
+consumed native lookup operands after checked affine expansion. It checks the
+original/history projection, base-field roles, distinct borrows, borrow
+freshness and exact source-query occurrence coverage. All 22 instances pass,
+covering 474 query occurrences. Their `timestampSourceReduction` roots compose
+with the actual native lookup output reductions, retaining the actual setup
+contribution. This completes source-query reductions for all 60 native lookup
+output pairs; binding materialized setup values/counts remains a separate task.
+
+`HelperSemantics.lean` proves that the two borrowed range expressions imply
+strict integer timestamp order and constructs a Boolean borrow and both range
+bounds from that order. It proves alignment soundness and completeness under
+the checked field-capacity condition, and derives the added executor arithmetic
+assertions from integer clock advance by four. It reuses the existing two-limb
+clock soundness theorem. No compiled helper assertion or range condition is a
+premise of these completeness lemmas. `HelperAssertions.lean` independently
+identifies the added clock/borrow assertions for the full arithmetic stage.
+
+`Tests/GKRHelperSources.lean` rejects changed borrow dependencies, coefficients,
+clock fields and dangling borrow references, non-Boolean borrows, unsupported
+alignment capacity, unaligned pointers and a changed clock step. It also checks
+the constructive borrow/alignment lemmas and original-column separation.
+The combined 1,988 compiler roots pass the direct standard-axiom audit.
+Full native witness construction, including composition of these helper facts
+with every emitted arithmetic assertion, remains required.
+
 ## Reproduction and freshness
 
 Run heavy commands one at a time through the repository's bounded worker,
@@ -340,6 +377,7 @@ python3 scripts/gkr_consumer_instances.py --stage source
 python3 scripts/gkr_table_instances.py --check --build
 python3 scripts/gkr_product_instances.py --check --build
 python3 scripts/gkr_memory_certificate.py --check --build
+python3 scripts/gkr_helper_instances.py --check --build
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerCertificate:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerWiring:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRLookupFields:olean
@@ -369,6 +407,9 @@ rebuilds successfully.
 With `--stage memory`, the same isolated control changes an actual memory
 cache's timestamp offset while retaining the source, ports and certificate.
 The source-memory fingerprint checker must reject the rebuilt proof.
+With `--stage helper`, it changes the consumed low-comparison cache coefficient
+while retaining the source and timestamp query metadata; the source-helper
+checker must reject the dependency-aware rebuild.
 
 `Tests/GKRCompilerCertificate.lean` starts from the actual ADD/SUB translation
 and proves rejection of dropped constraints, a changed coefficient, a wrong
@@ -384,9 +425,10 @@ decoder masks, scratch aliases, authored fields and source projection.
 
 1. Instantiate the explicit table-value/multiplicity interpretation with the
    retained materialized setup and witness-generation boundary.
-2. Derive timestamp and alignment helper obligations from the captured source
-   inputs and explicit memory-history contracts. Source RAM tuple identities
-   and exact multiset coverage are already checked.
+2. Compose the source-derived clock/alignment semantics and added arithmetic
+   assertions with the complete native witness construction under explicit
+   source primitive-query and memory-history contracts. Source RAM tuple
+   identities, helper query identities and exact multiset coverage are checked.
 3. Prove complete witness extension under explicit source primitive-query and
    memory-history contracts, then compose with existing circuit/execution roots.
 4. Keep algebraic fingerprint preservation separate from cryptographic

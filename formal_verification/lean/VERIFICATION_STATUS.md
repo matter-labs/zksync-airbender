@@ -13,38 +13,39 @@ constraints under the published Review contracts. See [trust boundaries](TRUST_A
 and the [fixed scope](FORMAL_VERIFICATION_PLAN.md).
 
 The [GKR compiler preservation effort](GKR_COMPILER_VERIFICATION.md) is active.
-All 22 production source/compiler arithmetic, graph-wiring and lookup-field
-instances (eleven families, both cache modes) pass kernel checking, with
-corruption controls. All 22 consumer field-role and helper-address uniqueness
-instances pass as well. Arithmetic witness extension covers the selected source
-arithmetic slice. All 60 actual native lookup output pairs have checked
-formula/port reduction proofs, with metadata count and one-setup-term checks.
-All 4,436 consumed authored lookup fields also pass the source bridge; the 38
-generic/range-16 groups reduce to the exact original query multiset plus their
-actual native setup contribution. Materialized table binding, timestamp helpers
-and complete witness extension remain open. The native
-input mutation control exposed ineffective deprecated Lake dependency keys;
-these have been replaced by `needs`, and affected compiler targets passed ordinary
-dependency-aware replay. All 140 roots in the arithmetic/wiring/lookup-field
-checkpoint passed a direct axiom audit using only standard Lean axioms. The
-expanded compiler inventory contains 658 audited roots, including the consumed
-source-query reductions and their rejection controls.
+All 22 production configurations (eleven families, both cache modes) have checked
+source-arithmetic preservation, graph wiring, consumer field roles, cache
+semantics and source lookup-field identities. Arithmetic witness extension
+currently covers the selected source arithmetic slice; full native witness
+construction remains open.
 
-Source table geometry and all 60 consumed setup operands are also checked. The
-38 source-query reductions compose with an explicit source table-row and
-multiplicity interpretation. Distinct multiplicity columns avoid every original
-source variable. Binding this interpretation to materialized tables/witness
-generation, and the timestamp/RAM/full-extension work, remain required. The
-expanded compiler audit contains 1,010 roots using only standard Lean axioms.
+All 4,436 consumed authored lookup fields agree with 836 original requests.
+Another 474 timestamp/alignment query occurrences agree with independently
+source-derived helpers. All 60 native lookup output pairs reduce to source query
+lists plus their actual setup contributions. Table geometry and all 60 consumed
+setup operands are checked; the 38 authored generic/range-16 query reductions
+also compose with an explicit source table-row/multiplicity interpretation.
+Binding materialized table values/counts and witness generation remains open.
 
-All 48 native RAM/initialization product output scalars also pass exact formula
-and port reduction, including final mask shape and actual initialization set
-offsets. All 22 source-memory instances now connect those outputs to the original
-executor/delegation/initialization tuples, preserving exactly 476 occurrences
-and the source execution mask. Source variables and history/setup inputs have
-separate domains with checked native projections. Timestamp/alignment helper
-derivation and complete witness extension remain open. The combined compiler
-audit covers 1,700 roots using only standard Lean axioms.
+All 48 RAM/initialization product output scalars reduce to the independent source
+executor/delegation/initialization tuples, preserving exactly 476 occurrences,
+initialization direction and the source execution mask. Source variables,
+history/setup inputs and borrow witnesses have separate domains with checked
+native projections. Borrows are distinct and avoid original/history cells.
+
+Generic helper proofs derive strict integer clock order and alignment, construct
+valid subtraction borrows and range bounds, and derive added executor assertions
+from integer clock advance by four. Full composition with every native arithmetic
+assertion and construction of the complete graph witness remain open. Current
+production source inputs have no relative timestamp groups; unsupported grouped
+profiles are rejected.
+
+The combined compiler audit covers 1,988 roots using only standard Lean axioms.
+Isolated source-preserving native lookup, memory-cache and timestamp-helper
+mutations trigger normal Lake rebuilding and kernel rejection; restoration
+passes. A prior mutation exposed ineffective deprecated dependency keys, now
+replaced by `needs`. Actual artifact provenance, input freshness, direct axiom
+reports and full independent kernel replay remain distinct checks.
 
 ## Checked coverage
 
