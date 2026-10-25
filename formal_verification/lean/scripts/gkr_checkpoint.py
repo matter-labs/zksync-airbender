@@ -1,51 +1,76 @@
 #!/usr/bin/env python3
-"""Replay the compiler checkpoint with ordinary Lake dependencies, one job at a time.
+"""Replay compiler proof stages with ordinary dependencies and one target at a time.
 
-Run this script inside bounded_fv.py. Repeat after a 900-second checkpoint to
-resume completed modules normally. No timestamps, traces or proof caches are
-rewritten. The full semantic-preservation effort extends beyond this checkpoint.
+Use --stage (repeatable) or --from-stage inside bounded_fv.py to keep each run
+within its budget. For a time checkpoint within a stage, resume with that stage's
+family/mode-selecting script. No timestamps, traces or proof caches are rewritten.
 """
+import argparse
 import os
 import subprocess
 import sys
 
 from export_gkr_translations import LEAN
 
+STAGES = {
+    'arithmetic': [],
+    'lookup_pins': [[sys.executable, 'scripts/check_gkr_lookup_certificates.py']],
+    'wiring': [[sys.executable, 'scripts/gkr_wiring_instances.py', '--build']],
+    'lookup_fields': [[sys.executable, 'scripts/gkr_lookup_instances.py']],
+    'cache': [[sys.executable, 'scripts/gkr_consumer_instances.py', '--stage', 'cache']],
+    'typing': [[sys.executable, 'scripts/gkr_consumer_instances.py', '--stage', 'typing']],
+    'lookup': [[sys.executable, 'scripts/gkr_consumer_instances.py', '--stage', 'lookup']],
+    'lookup_source': [[sys.executable, 'scripts/gkr_lookup_source_certificate.py', '--check'],
+                      [sys.executable, 'scripts/gkr_consumer_instances.py', '--stage', 'source']],
+    'table': [[sys.executable, 'scripts/gkr_table_instances.py', '--check', '--build']],
+    'product': [[sys.executable, 'scripts/gkr_product_instances.py', '--check', '--build']],
+    'memory': [[sys.executable, 'scripts/gkr_memory_certificate.py', '--check', '--build']],
+    'helper': [[sys.executable, 'scripts/gkr_helper_instances.py', '--check', '--build']],
+    'full_arithmetic': [[sys.executable, 'scripts/gkr_full_arithmetic_certificate.py', '--check', '--build']],
+    'functional': [[sys.executable, 'scripts/gkr_functional_instances.py', '--check', '--build']],
+    'source_links': [[sys.executable, 'scripts/gkr_functional_links.py', '--check', '--build']],
+    'source_contracts': [[sys.executable, 'scripts/gkr_source_contract_instances.py', '--check', '--build']],
+    'roots': [],
+}
+TESTS = ['GKRCompiler', 'GKRProtocol', 'Tests.GKRCompilerCertificate', 'Tests.GKRCompilerWiring',
+         'Tests.GKRLookupFields', 'Tests.GKRConsumerTypes', 'Tests.GKRCacheBindings',
+         'Tests.GKRLookupReduction', 'Tests.GKRBaseEncoding', 'Tests.GKRLookupSource',
+         'Tests.GKRSourceTable', 'Tests.GKRNativeProduct', 'Tests.GKRMemorySource',
+         'Tests.GKRHelperSources', 'Tests.GKRFullArithmetic', 'Tests.GKRFunctional']
+
 
 def main():
-    environment = dict(os.environ, LEAN_NUM_THREADS="1")
-    for line in (LEAN / "GKRCompiler.lean").read_text().splitlines():
-        if line.startswith("import GKRCompiler.Native."):
-            target = line.removeprefix("import ")
-            print("ARITHMETIC", target, flush=True)
-            subprocess.run(["lake", "--no-cache", "build", "+" + target + ":olean"],
-                           cwd=LEAN, env=environment, check=True)
-    commands = [
-        [sys.executable, "scripts/check_gkr_lookup_certificates.py"],
-        [sys.executable, "scripts/gkr_wiring_instances.py", "--build"],
-        [sys.executable, "scripts/gkr_lookup_instances.py"],
-        [sys.executable, "scripts/gkr_consumer_instances.py", "--stage", "cache"],
-        [sys.executable, "scripts/gkr_consumer_instances.py", "--stage", "typing"],
-        [sys.executable, "scripts/gkr_consumer_instances.py", "--stage", "lookup"],
-        [sys.executable, "scripts/gkr_lookup_source_certificate.py", "--check"],
-        [sys.executable, "scripts/gkr_consumer_instances.py", "--stage", "source"],
-        [sys.executable, "scripts/gkr_table_instances.py", "--check", "--build"],
-        [sys.executable, "scripts/gkr_product_instances.py", "--check", "--build"],
-        [sys.executable, "scripts/gkr_memory_certificate.py", "--check", "--build"],
-        [sys.executable, "scripts/gkr_helper_instances.py", "--check", "--build"],
-        [sys.executable, "scripts/gkr_full_arithmetic_certificate.py", "--check", "--build"],
-    ]
-    for command in commands:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--stage', choices=STAGES, action='append')
+    parser.add_argument('--from-stage', choices=STAGES)
+    args = parser.parse_args()
+    if args.stage and args.from_stage:
+        parser.error('choose --stage or --from-stage')
+    stages = list(STAGES)
+    if args.stage:
+        selected = args.stage
+    elif args.from_stage:
+        selected = stages[stages.index(args.from_stage):]
+    else:
+        selected = stages
+    environment = dict(os.environ, LEAN_NUM_THREADS='1')
+
+    def run(command):
         subprocess.run(command, cwd=LEAN, env=environment, check=True)
-    for target in ["GKRCompiler", "GKRProtocol", "Tests.GKRCompilerCertificate",
-                   "Tests.GKRCompilerWiring", "Tests.GKRLookupFields",
-                   "Tests.GKRConsumerTypes", "Tests.GKRCacheBindings",
-                   "Tests.GKRLookupReduction", "Tests.GKRBaseEncoding", "Tests.GKRLookupSource",
-                   "Tests.GKRSourceTable", "Tests.GKRNativeProduct", "Tests.GKRMemorySource", "Tests.GKRHelperSources", "Tests.GKRFullArithmetic"]:
-        print("CHECKPOINT", target, flush=True)
-        subprocess.run(["lake", "--no-cache", "build", "+" + target + ":olean"],
-                       cwd=LEAN, env=environment, check=True)
+
+    for stage in selected:
+        print('STAGE', stage, flush=True)
+        if stage == 'arithmetic':
+            for line in (LEAN / 'GKRCompiler.lean').read_text().splitlines():
+                if line.startswith('import GKRCompiler.Native.'):
+                    run(['lake', '--no-cache', 'build', '+' + line.removeprefix('import ') + ':olean'])
+        elif stage == 'roots':
+            for target in TESTS:
+                run(['lake', '--no-cache', 'build', '+' + target + ':olean'])
+        else:
+            for command in STAGES[stage]:
+                run(command)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
