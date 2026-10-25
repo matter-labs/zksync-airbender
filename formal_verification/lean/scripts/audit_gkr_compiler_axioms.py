@@ -13,7 +13,7 @@ import tempfile
 
 from export_gkr_translations import LEAN
 
-EXPECTED_ROOTS = 6955
+EXPECTED_ROOTS = 7176
 ALLOWED_AXIOMS = {'propext', 'Classical.choice', 'Quot.sound'}
 MARKER = '-- GKR compiler translation validation.'
 REPORT = re.compile(r"^'([^']+)' (?:depends on axioms: \[([^\]]*)\]|does not depend on any axioms)\s*$", re.M)
