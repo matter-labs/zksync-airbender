@@ -29,7 +29,9 @@ source-derived helpers. All 60 native lookup output pairs reduce to source query
 lists plus their actual setup contributions. Table geometry and all 60 consumed
 setup operands are checked; the 38 authored generic/range-16 query reductions
 also compose with an explicit source table-row/multiplicity interpretation.
-Binding materialized table values/counts and witness generation remains open.
+All literal setup columns are now imported and bound to both cache modes.
+Actual finite multiplicity coordinates and external setup addresses are checked,
+and canonical witness construction preserves every authored query field/mask.
 
 All 48 RAM/initialization product output scalars reduce to the independent source
 executor/delegation/initialization tuples, preserving exactly 476 occurrences,
@@ -46,8 +48,8 @@ of all 474 actual helper query occurrences from explicit source primitive/histor
 contracts in every configuration. Active histories and original coordinates are
 preserved; inactive history cells may be reset to zero, preserving original
 arithmetic and masked effects. Padding clocks must be positive, as in the native
-executor convention starting at 4. Materialized setup/count construction and
-the final argument-acceptance composition remain open. Current
+executor convention starting at 4. The same graph witnesses now carry the actual
+materialized lookup setup and chosen counters. Current
 production source inputs have no relative timestamp groups; unsupported grouped
 profiles are rejected.
 
@@ -58,7 +60,16 @@ the models' full clock constraints. The resulting constraint theorems retain
 explicit primitive lookup-membership premises; deriving those premises and the
 final execution composition remains open.
 
-The combined compiler audit covers 3,548 roots using only standard Lean axioms.
+All 22 configurations now construct one lookup multiplicity vector before any
+extension ring/challenges are chosen. Original arithmetic/Booleans, source clock
+and ordering/alignment contracts, and enabled authored table membership produce
+complete native graph witnesses for every row. All actual native lookup output
+groups have zero aggregate rational-pair numerators, including at zero
+denominators. Helper memberships are derived from source primitive conditions.
+RAM/initialization framing and pooled argument composition remain open.
+
+The combined compiler audit covers 4,482 roots using only standard Lean axioms.
+The normal root build and ten materialized-counter regression controls pass.
 Isolated source-preserving native lookup, memory-cache, timestamp-helper and
 native arithmetic-borrow
 mutations trigger normal Lake rebuilding and kernel rejection; restoration

@@ -1,0 +1,40 @@
+import GKRProtocol.QueryFrameImport
+import GKRProtocol.CounterFrameNative.BlakeRoundUncached
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedInputs
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart0
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart1
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart2
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart3
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart4
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart5
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart6
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart7
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart8
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart9
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart10
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart11
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart12
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart13
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart14
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart15
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart16
+import GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart17
+
+namespace Airbender.Compiler.QueryFrameNative.BlakeRoundUncached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 32768
+set_option maxHeartbeats 4000000
+
+import_query_frame native certificate "artifacts/compiler/lookup/blake-round-uncached.json"
+  queries (Airbender.Compiler.LookupSourceNative.BlakeRoundUncached.native.genericQueries)
+  base_model Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native
+  lookup_model Airbender.Compiler.LookupNative.BlakeRoundUncached.native
+  query_model Airbender.Compiler.LookupSourceNative.BlakeRoundUncached.native
+  source_model Airbender.Compiler.SourceContractNative.BlakeRoundUncached.native
+  history_model Airbender.Compiler.HistoryErasureNative.BlakeRoundUncached.native
+  helper_model Airbender.Compiler.HelperValidityNative.BlakeRoundUncached.native
+  counter_model Airbender.Compiler.CounterFrameNative.BlakeRoundUncached.native inputs 763 phase 2 start 0 stop 1152
+
+end Airbender.Compiler.QueryFrameNative.BlakeRoundUncached

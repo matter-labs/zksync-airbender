@@ -4,8 +4,8 @@ The compiler verification effort is active. Arithmetic translation, graph wiring
 and source lookup-field encoding have kernel-checked instances for all eleven
 production circuit families, with and without caches. All 22 native consumer
 field-role checks also pass. Source table geometry and consumed setup coordinates
-are checked. Source RAM/initialization products are also checked. Full protocol
-argument acceptance, materialized table binding and complete witness extension remain open.
+are checked. Source RAM/initialization products are also checked. Literal materialized lookup tables and uniform counter witnesses are now bound
+to complete native graph witnesses. RAM argument and execution composition remain open.
 Source-derived timestamp/alignment query identities and their generic clock/range
 semantics are checked. Source primitive/history contracts now construct valid
 helper witnesses and the whole native graph in all 22 configurations.
@@ -340,7 +340,8 @@ freshness and exact source-query occurrence coverage. All 22 instances pass,
 covering 474 query occurrences. Their `timestampSourceReduction` roots compose
 with the actual native lookup output reductions, retaining the actual setup
 contribution. This completes source-query reductions for all 60 native lookup
-output pairs; binding materialized setup values/counts remains a separate task.
+output pairs. The materialized setup and counter construction below now binds
+those setup values and multiplicities to the complete native graph.
 
 `HelperSemantics.lean` proves that the two borrowed range expressions imply
 strict integer timestamp order and constructs a Boolean borrow and both range
@@ -425,15 +426,15 @@ the fresh borrow set, including all 3,286 original logical coordinates across
 the two cache modes.
 
 This construction establishes the emitted gate equations and their source
-output formulas. Acceptance of the lookup/memory arguments additionally needs
-valid source primitive queries, history witnesses and materialized setup/count
-interpretation. Inactive histories require a canonical witness where helpers
-are unconditional; preserving arbitrary inactive history cells is not claimed
-to establish argument acceptance.
+output formulas. The later source-primitive and materialized-table stages
+construct valid helper histories and lookup counters. RAM argument composition
+remains open. Inactive histories require a canonical witness where helpers are
+unconditional; preserving arbitrary inactive history cells does not establish
+argument acceptance.
 
 Five actual ADD/SUB controls reject duplicate extension writes, missing
 dependencies, overwriting base cells and a changed base affine recipe, and
-check lookup construction at zero challenges. The combined 3,548-root axiom
+check lookup construction at zero challenges. The combined 4,482-root axiom
 report is checked separately from full independent kernel replay.
 
 ## Source primitive and inactive-history witnesses
@@ -468,6 +469,56 @@ exhibit failure of zero history at clock zero, and check inactive masked-effect
 preservation. Large transport checks are proved per field and assembled by
 `BoolChecks`, keeping the same resource limits as the preceding stages.
 
+## Materialized lookup traces and uniform counters
+
+`Airbender/Data/GKRSetup` imports all physical setup columns, scalar range
+columns, regions and program data from the eleven retained setup artifacts.
+The importer preserves the parsed literal data; chunking changes only the Lean
+representation. Generated literal-helper editor metadata is omitted, while
+normal elaboration diagnostics and kernel checking remain enabled. Existing
+Airbender input dependencies track these setup JSON files.
+
+`MaterializedNative` binds both cache modes to that family's actual table data,
+trace domain, width, fixed-region offsets and retained uncached circuit bytes.
+`MaterializedRangeNative` proves that the actual affine prefixes contain every
+16-bit and 19-bit value. Its proofs stay symbolic over the trace domain.
+
+`CounterFrameNative` checks the actual multiplicity coordinates, their freshness
+and their disjointness from source equations and helper fields. All consumed
+lookup setup addresses are checked outside the complete finite arithmetic bank;
+`OracleFrameNative` binds them through the external base-value interface.
+A default placement index is never accepted as an external setup coordinate.
+`QueryFrameNative` checks that history normalization, fresh borrows and counters
+preserve all authored query fields and masks, including their actual physical
+transport. All 22 configurations pass these checks.
+
+`UniformCounters` and `GroupedTrace` construct one base-field multiplicity vector
+**before** the extension ring or challenges are chosen. Repeated and weighted
+query occurrences are retained. Disabled queries need no table-row witness.
+The exact rational-pair numerator is zero even at zero denominators; no inverse
+or nonzero-challenge premise is used for this polynomial identity.
+
+Every `MaterializedWitnessNative.native_lookup_trace_extends` instance now takes
+original source arithmetic/Booleans, the bounded source clock contract, source
+ordering/alignment conditions and membership of enabled authored requests in the
+materialized source table. It constructs that uniform counter vector and, for
+each ring/challenge interpretation, complete native base/extension graph
+witnesses for every row. The witnesses contain the selected counters and actual
+setup rows, preserve the original authored requests, and retain all helper range
+memberships. Their **actual native lookup output ports** have zero aggregate
+rational-pair numerators for every emitted lookup group. All 22 instances pass.
+This is the exact polynomial aggregate, separate from verifier division and
+cryptographic soundness.
+
+Ten regression controls cover repeated-query cancellation, an incorrect count,
+zero denominators, a disabled unmatched query, a setup/input misclassification,
+source-coordinate aliasing, actual range membership and a timestamp endpoint, a query that reads
+normalized history and an incorrect source projection. The normal root build,
+controls and exact combined 4,482-root axiom audit pass, with only the standard
+Lean axioms. Source/compiler and lookup certificate provenance checks also pass.
+The constructive RAM/initialization frame and final execution composition remain
+open; these lookup results do not assert RAM argument acceptance.
+
 ## Connection to the retained Clean models
 
 `CleanArithmeticImport.lean` reconstructs the exact Clean expression trees for
@@ -498,6 +549,18 @@ replay, the model-list equalities and the combined axiom audit are separate
 validation steps.
 
 ## Reproduction and freshness
+
+The materialized stages are registered in `gkr_checkpoint.py`: full setup,
+table bindings, counter and oracle frames, query frames, scalar ranges and
+complete trace witnesses. Run stages within the existing bounded worker;
+`gkr_query_frame_instances.py` also selects a family/cache mode. The BLAKE round
+query proofs use 64-field modules and exact final coverage, so normal Lake
+replay retains completed chunks when a run reaches its time budget.
+
+`audit_gkr_compiler_axioms.py` reads the exact registered 4,482-root inventory
+from `Airbender/Checks/Axioms.lean`, builds its imports sequentially and checks
+every report and permitted axiom. The checkpoint's `audit` stage invokes it.
+Keep axiom reports and full independent kernel replay distinct.
 
 Run heavy commands one at a time through the repository's bounded worker,
 with the existing 2560 MiB physical / 5120 MiB resident / 900 second limits.
@@ -575,11 +638,12 @@ decoder masks, scratch aliases, authored fields and source projection.
 
 ## Required remaining work
 
-1. Instantiate the explicit table-value/multiplicity interpretation with the
-   retained materialized setup and witness-generation boundary.
-2. Compose valid authored queries, helper witnesses and materialized setup/count
-   interpretation into lookup/memory argument acceptance. Helper membership and
-   inactive-history construction from explicit source contracts are checked.
+1. Frame source RAM/initialization values through canonical histories, borrows,
+   counters and external base inputs. The existing native product reductions
+   must compose with the same complete graph witnesses as the lookup result.
+2. Compose those source memory products with the global pooled argument.
+   Materialized lookup tables, uniform counters and actual lookup output
+   aggregates are now checked in all 22 configurations.
 3. Discharge the retained Clean model's primitive lookup premises from the
    source-query/helper proofs, then compose with existing circuit/execution
    roots. Its complete arithmetic lists are now connected to the native relation.
