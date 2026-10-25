@@ -51,13 +51,10 @@ def main():
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--build', action='store_true')
     args = parser.parse_args()
-    unsupported = set(args.family or []) & {'shift-binop'}
-    if unsupported:
-        parser.error('fixed-table adapters remain open: ' + ', '.join(sorted(unsupported)))
     for family, stem, model, width in zip(FAMILIES, CASES, MODELS, WIDTHS, strict=True):
         if args.family and family not in args.family:
             continue
-        if not width and family not in ['add-sub', 'jump-branch', 'mul-div']:
+        if not width and family not in ['add-sub', 'jump-branch', 'mul-div', 'shift-binop']:
             continue
         for mode in ['uncached', 'cached']:
             if args.mode and mode not in args.mode:

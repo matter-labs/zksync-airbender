@@ -158,7 +158,7 @@ def main():
     args = parser.parse_args()
     unsupported = set(args.family or []) & {'jump-branch', 'mul-div', 'shift-binop'}
     if unsupported:
-        parser.error('fixed-table adapters remain open: ' + ', '.join(sorted(unsupported)))
+        parser.error('use gkr_clean_fixed_instances.py for Jump/MUL and gkr_clean_shift_instances.py for Shift')
     for family, stem, model, width in zip(FAMILIES, CASES, MODELS, WIDTHS, strict=True):
         if args.family and family not in args.family:
             continue

@@ -51,6 +51,10 @@ STAGES = {
     'clean_arguments': [[sys.executable, 'scripts/gkr_clean_argument_instances.py', '--check', '--build']],
     'clean_generic_arguments': [[sys.executable, 'scripts/gkr_clean_generic_arguments.py', '--check', '--build']],
     'clean_lookup_closure': [[sys.executable, 'scripts/gkr_clean_closed_instances.py', '--check', '--build']],
+    'shift_prefix': [[sys.executable, 'scripts/gkr_shift_prefix_instances.py', '--check', '--build'],
+                     [sys.executable, 'scripts/gkr_shift_prefix_assembly.py', '--check', '--build']],
+    'shift_setup': [['lake', '--no-cache', 'build', '+GKRProtocol.ShiftSetupNative:olean']],
+    'clean_shift_lookup': [[sys.executable, 'scripts/gkr_clean_shift_instances.py', '--check', '--build']],
     'clean_trace_witness': [[sys.executable, 'scripts/gkr_clean_witness_instances.py', '--check', '--build']],
     'roots': [],
     'audit': [[sys.executable, 'scripts/audit_gkr_compiler_axioms.py']],
@@ -60,7 +64,8 @@ TESTS = ['GKRCompiler', 'GKRProtocol', 'Tests.GKRCompilerCertificate', 'Tests.GK
          'Tests.GKRLookupReduction', 'Tests.GKRBaseEncoding', 'Tests.GKRLookupSource',
          'Tests.GKRSourceTable', 'Tests.GKRNativeProduct', 'Tests.GKRMemorySource',
          'Tests.GKRHelperSources', 'Tests.GKRFullArithmetic', 'Tests.GKRFunctional', 'Tests.GKRHelperValidity',
-         'Tests.GKRCleanArithmetic', 'Tests.GKRMaterializedCounters', 'Tests.GKRMemoryFrames']
+         'Tests.GKRCleanArithmetic', 'Tests.GKRMaterializedCounters', 'Tests.GKRMemoryFrames',
+         'Tests.GKRBlockNormalization', 'Tests.GKRBlockCoverage', 'Tests.GKRShiftSetup']
 
 
 def main():
