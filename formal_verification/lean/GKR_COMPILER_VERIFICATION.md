@@ -1,6 +1,6 @@
 # GKR compiler semantic preservation
 
-The compiler verification effort is active. Arithmetic translation, graph wiring
+Semantic preservation is checked for the 22 retained production compilations. Arithmetic translation, graph wiring
 and source lookup-field encoding have kernel-checked instances for all eleven
 production circuit families, with and without caches. All 22 native consumer
 field-role checks also pass. Source table geometry and consumed setup coordinates
@@ -8,7 +8,10 @@ are checked. Source RAM/initialization products are also checked. Literal materi
 to complete native graph witnesses. The same witnesses also preserve source RAM/initialization trace products.
 Retained Clean lookup composition is now instantiated for all 22 configurations.
 Public initialization and word/unified/subword ROM-image bindings are checked.
-Packed decoder/public-program binding and final execution composition remain open.
+Full native decoder and selected public-program bindings are checked.
+All fourteen executor row adapters and both whole-trace execution roots pass.
+The exact 7,760-root audit, public-execution checkpoint and normal root/control
+builds pass.
 Source-derived timestamp/alignment query identities and their generic clock/range
 semantics are checked. Source primitive/history contracts now construct valid
 helper witnesses and the whole native graph in all 22 configurations.
@@ -757,7 +760,7 @@ add block-span checks, complete column assembly and the fixed-table adapter.
 Generic argument and lookup-closure proof modules contain at most eight queries
 each.
 
-`audit_gkr_compiler_axioms.py` reads the exact registered 7,654-root inventory
+`audit_gkr_compiler_axioms.py` reads the exact registered 7,760-root inventory
 from `Airbender/Checks/Axioms.lean`, builds its imports sequentially and checks
 every report and permitted axiom. The checkpoint's `audit` stage invokes it.
 Keep axiom reports and full independent kernel replay distinct.
@@ -974,25 +977,70 @@ canonical-frame preservation carry source lookup validity through the same
 constructed witness. The enabled query therefore belongs to the retained
 `pooledProgram` family table (or `unifiedProgram` for unified), without inferring
 membership from an algebraic fingerprint. The source membership, nonzero execute
-weight and typed-PC conditions remain explicit. General public-image/program
-binding and final pooled execution composition are the next integration steps.
+weight and typed-PC conditions remain explicit. Selected public-image/program binding and all fourteen row adapters now pass;
+both whole-trace execution roots now pass their normal builds.
 
-## Required remaining work
+## Public programs and execution adapters
 
-1. Bind the retained selected programs to the execution model's public image
-   and program interfaces. All fourteen compiled decoder query adapters now
-   reach the retained program membership theorems, including actual full native
-   setup, packing masks and canonical witness frames.
-2. Construct the pooled logical execution interface using the actual setup,
-   per-set initialization windows and external memory tokens. All forty-eight
-   modeled RAM/initialization outputs already have token identities.
-3. Compose the complete retained constraint/native trace witnesses with the
-   execution roots. All 22 configurations have constraint and trace composition;
-   the deferred native enforcement fixes retain their separate status.
-4. Keep algebraic fingerprint preservation separate from cryptographic
-   soundness. A sampled product equality alone cannot establish exact lookup or
-   RAM membership; commitment authentication and logical matching stay explicit.
+`PublicProgram` binds the complete imported ROM image to the selected text,
+then constructs the actual stateful Sail program-image interface for both
+selected programs. The four retained entries also pass the extended pooled
+input registry, code-address and discarded-load profile checks. These are
+claims about the selected exported program; arbitrary public programs are not
+silently substituted into this instance verification.
 
-This is instance translation validation of actual production compiler runs,
-backed by generic checker-soundness theorems. It is not a proof of the Rust
-compiler for every possible `CircuitOutput`.
+`WordFullPublic` refines every native non-decoder word query, including disabled
+and committed padding rows, to the public cell/seed ROM table. It assumes that
+the public tracked domain covers the complete retained ROM and that actual
+initial Sail reads construct the seed image. `PublicConstraints` proves that
+the real word/subword queries exclude decoder tag 46 and transports every
+retained assertion, range query and timestamp query to the public tables.
+
+`UnifiedPublicConstraints` derives its five query-tag guards from native
+one-hot dispatch and decoder-derived operation metadata. `UnifiedProgramProfile`
+checks that metadata against the selected original Sail entries. All fourteen
+`PooledRowNative`/`UnifiedRowNative` adapters pass. Their certificates come from
+the existing complete native graph witnesses; the unified adapters also accept
+the actual independent-window initialization witnesses. Logical source lookup
+validity, active rows and canonical source framing remain explicit.
+
+`PooledExecution` and `UnifiedExecution` assemble these adapters with the
+existing Sail execution roots. Both normal root builds pass.
+The assemblies derive acceptance and decoder membership from compiler row
+certificates, public starting inputs and exact state/RAM matching. Incoming-PC
+ranges come from matched native states and locally ranged outgoing PCs, avoiding
+a per-row typed-PC assumption at the execution boundary. Commitment
+authentication and exact logical matching remain external to algebraic
+fingerprint preservation.
+
+## Checked scope and remaining boundaries
+
+The normal pooled and unified execution roots, the `public_execution` and
+`roots` checkpoint stages, and the exact **7,760-root** compiler axiom audit pass.
+Every audited declaration uses only `propext`, `Classical.choice` and `Quot.sound`
+as applicable. The audit includes both execution roots and the constructors
+from complete ordinary/windowed native graph witnesses. The generators preserve
+identical files and are checked by the checkpoint runner.
+
+The executable theorem boundary remains explicit:
+
+- The source contracts provide authored lookup validity and canonical helper
+  framing; complete-witness constructors discharge the corresponding native
+  arithmetic/helper fields. Actual query identities transport that validity.
+- Public starting state, selected program bytes, cell domain, execution profile
+  and the serialized-inverse contracts are inputs. Pooled word-ROM refinement
+  additionally requires full retained-ROM coverage in the tracked domain.
+- Exact logical lookup and state/RAM matching remain separate from sampled
+  algebraic fingerprints and commitment authentication. No equality at sampled
+  challenges is used to infer deterministic membership or a permutation.
+- The deferred native enforcement fixes retain their separate status. Compiler
+  correspondence preserves the supplied source relation and does not strengthen
+  an underconstrained native circuit.
+
+This is instance translation validation of the 22 actual compiler runs, backed
+by generic checker-soundness theorems, complete graph-witness constructions and
+conditional Sail execution composition for the selected program. A universal
+correctness theorem for the Rust compiler on every possible `CircuitOutput`,
+the Rust witness-generation implementation and cryptographic protocol soundness
+remain outside these checked claims. The exact axiom audit is also distinct from
+an independent clean-room kernel replay of the entire project.

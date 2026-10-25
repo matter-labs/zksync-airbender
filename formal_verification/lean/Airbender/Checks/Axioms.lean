@@ -752,6 +752,30 @@ import GKRProtocol.InitializationPortsNative.UnifiedUncached
 
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
+import GKRProtocol.ProgramProfile
+import GKRProtocol.PublicProgram
+import GKRProtocol.RetableConstraints
+import GKRProtocol.PublicConstraints
+import GKRProtocol.UnifiedProgramProfile
+import GKRProtocol.UnifiedPublicConstraints
+import GKRProtocol.PooledExecution
+import GKRProtocol.UnifiedExecution
+import GKRProtocol.ROMNative.WordFullPublic
+import GKRProtocol.PooledRowNative.AddSubCached
+import GKRProtocol.PooledRowNative.AddSubUncached
+import GKRProtocol.PooledRowNative.JumpBranchCached
+import GKRProtocol.PooledRowNative.JumpBranchUncached
+import GKRProtocol.PooledRowNative.MulDivCached
+import GKRProtocol.PooledRowNative.MulDivUncached
+import GKRProtocol.PooledRowNative.ShiftBinopCached
+import GKRProtocol.PooledRowNative.ShiftBinopUncached
+import GKRProtocol.PooledRowNative.SubwordMemoryCached
+import GKRProtocol.PooledRowNative.SubwordMemoryUncached
+import GKRProtocol.PooledRowNative.WordMemoryCached
+import GKRProtocol.PooledRowNative.WordMemoryUncached
+import GKRProtocol.UnifiedRowNative.UnifiedCached
+import GKRProtocol.UnifiedRowNative.UnifiedUncached
+
 #print axioms ExplicitCircuit.from_bind
 #print axioms ExplicitCircuit.from_map
 #print axioms GeneralFormalCircuit.toWithHint
@@ -13230,3 +13254,111 @@ import Tests.GKRDecoderSetup
 #print axioms Tests.GKRDecoderSetup.unified_padding_starts_at_actual_boundary
 #print axioms Tests.GKRDecoderSetup.unified_last_committed_row
 #print axioms Tests.GKRDecoderSetup.addsub_padding_retains_sentinel
+
+-- Public program and compiler-to-execution composition.
+#print axioms Airbender.Compiler.ProgramProfile.no_discarded_loads
+#print axioms Airbender.Compiler.PublicProgram.entry_run
+#print axioms Airbender.Compiler.PublicProgram.image_run
+#print axioms Airbender.Compiler.PublicProgram.text_image
+#print axioms Airbender.Compiler.PublicProgram.selected_bytes
+#print axioms Airbender.Compiler.PublicProgram.pooled_sources
+#print axioms Airbender.Compiler.PublicProgram.unified_sources
+#print axioms Airbender.Compiler.PublicProgram.pooled_image
+#print axioms Airbender.Compiler.PublicProgram.unified_image
+#print axioms Airbender.Compiler.PublicProgram.pooled_code
+#print axioms Airbender.Compiler.PublicProgram.pooled_loads
+#print axioms Airbender.Compiler.PublicProgram.unified_code
+#print axioms Airbender.Compiler.PublicProgram.unified_loads
+#print axioms Airbender.Compiler.PublicProgram.pooled_external_fields
+#print axioms Airbender.Compiler.PublicProgram.pooled_external_sources
+#print axioms Airbender.Compiler.PublicProgram.pooled_external_image
+#print axioms Airbender.Compiler.retable_constraints
+#print axioms Airbender.Compiler.PublicConstraints.word_not_decoder
+#print axioms Airbender.Compiler.PublicConstraints.subword_not_decoder
+#print axioms Airbender.Compiler.PublicConstraints.word_transport
+#print axioms Airbender.Compiler.PublicConstraints.subword_transport
+#print axioms Airbender.Compiler.UnifiedProgramProfile.entry_operation
+#print axioms Airbender.Compiler.UnifiedProgramProfile.query_operation
+#print axioms Airbender.Compiler.UnifiedPublicConstraints.one_hot_tags
+#print axioms Airbender.Compiler.UnifiedPublicConstraints.not_decoder
+#print axioms Airbender.Compiler.UnifiedPublicConstraints.transport
+#print axioms Airbender.Compiler.PooledExecution.row_active
+#print axioms Airbender.Compiler.PooledExecution.row_constraints
+#print axioms Airbender.Compiler.PooledExecution.row_decoded
+#print axioms Airbender.Compiler.PooledExecution.boot_inputs
+#print axioms Airbender.Compiler.PooledExecution.accepted
+#print axioms Airbender.Compiler.PooledExecution.decoded
+#print axioms Airbender.Compiler.PooledExecution.native_execution
+#print axioms Airbender.Compiler.UnifiedExecution.row_active
+#print axioms Airbender.Compiler.UnifiedExecution.row_native_constraints
+#print axioms Airbender.Compiler.UnifiedExecution.row_constraints
+#print axioms Airbender.Compiler.UnifiedExecution.row_decoded
+#print axioms Airbender.Compiler.UnifiedExecution.boot_inputs
+#print axioms Airbender.Compiler.UnifiedExecution.native_accepted
+#print axioms Airbender.Compiler.UnifiedExecution.accepted_and_decoded
+#print axioms Airbender.Compiler.UnifiedExecution.native_execution
+#print axioms Airbender.Compiler.ROMNative.WordFullPublic.padding_zero
+#print axioms Airbender.Compiler.ROMNative.WordFullPublic.full_refinement
+#print axioms Airbender.Compiler.ROMNative.WordFullPublic.image_zip_member
+#print axioms Airbender.Compiler.ROMNative.WordFullPublic.imported_public_refinement
+#print axioms Airbender.Compiler.ROMNative.WordFullPublic.public_refinement
+#print axioms Airbender.Compiler.PooledRowNative.AddSubCached.active
+#print axioms Airbender.Compiler.PooledRowNative.AddSubCached.constraints
+#print axioms Airbender.Compiler.PooledRowNative.AddSubCached.decoded
+#print axioms Airbender.Compiler.PooledRowNative.AddSubCached.ofWitness
+#print axioms Airbender.Compiler.PooledRowNative.AddSubUncached.active
+#print axioms Airbender.Compiler.PooledRowNative.AddSubUncached.constraints
+#print axioms Airbender.Compiler.PooledRowNative.AddSubUncached.decoded
+#print axioms Airbender.Compiler.PooledRowNative.AddSubUncached.ofWitness
+#print axioms Airbender.Compiler.PooledRowNative.JumpBranchCached.active
+#print axioms Airbender.Compiler.PooledRowNative.JumpBranchCached.constraints
+#print axioms Airbender.Compiler.PooledRowNative.JumpBranchCached.decoded
+#print axioms Airbender.Compiler.PooledRowNative.JumpBranchCached.ofWitness
+#print axioms Airbender.Compiler.PooledRowNative.JumpBranchUncached.active
+#print axioms Airbender.Compiler.PooledRowNative.JumpBranchUncached.constraints
+#print axioms Airbender.Compiler.PooledRowNative.JumpBranchUncached.decoded
+#print axioms Airbender.Compiler.PooledRowNative.JumpBranchUncached.ofWitness
+#print axioms Airbender.Compiler.PooledRowNative.MulDivCached.active
+#print axioms Airbender.Compiler.PooledRowNative.MulDivCached.constraints
+#print axioms Airbender.Compiler.PooledRowNative.MulDivCached.decoded
+#print axioms Airbender.Compiler.PooledRowNative.MulDivCached.ofWitness
+#print axioms Airbender.Compiler.PooledRowNative.MulDivUncached.active
+#print axioms Airbender.Compiler.PooledRowNative.MulDivUncached.constraints
+#print axioms Airbender.Compiler.PooledRowNative.MulDivUncached.decoded
+#print axioms Airbender.Compiler.PooledRowNative.MulDivUncached.ofWitness
+#print axioms Airbender.Compiler.PooledRowNative.ShiftBinopCached.active
+#print axioms Airbender.Compiler.PooledRowNative.ShiftBinopCached.constraints
+#print axioms Airbender.Compiler.PooledRowNative.ShiftBinopCached.decoded
+#print axioms Airbender.Compiler.PooledRowNative.ShiftBinopCached.ofWitness
+#print axioms Airbender.Compiler.PooledRowNative.ShiftBinopUncached.active
+#print axioms Airbender.Compiler.PooledRowNative.ShiftBinopUncached.constraints
+#print axioms Airbender.Compiler.PooledRowNative.ShiftBinopUncached.decoded
+#print axioms Airbender.Compiler.PooledRowNative.ShiftBinopUncached.ofWitness
+#print axioms Airbender.Compiler.PooledRowNative.SubwordMemoryCached.active
+#print axioms Airbender.Compiler.PooledRowNative.SubwordMemoryCached.constraints
+#print axioms Airbender.Compiler.PooledRowNative.SubwordMemoryCached.decoded
+#print axioms Airbender.Compiler.PooledRowNative.SubwordMemoryCached.ofWitness
+#print axioms Airbender.Compiler.PooledRowNative.SubwordMemoryUncached.active
+#print axioms Airbender.Compiler.PooledRowNative.SubwordMemoryUncached.constraints
+#print axioms Airbender.Compiler.PooledRowNative.SubwordMemoryUncached.decoded
+#print axioms Airbender.Compiler.PooledRowNative.SubwordMemoryUncached.ofWitness
+#print axioms Airbender.Compiler.PooledRowNative.WordMemoryCached.active
+#print axioms Airbender.Compiler.PooledRowNative.WordMemoryCached.constraints
+#print axioms Airbender.Compiler.PooledRowNative.WordMemoryCached.decoded
+#print axioms Airbender.Compiler.PooledRowNative.WordMemoryCached.ofWitness
+#print axioms Airbender.Compiler.PooledRowNative.WordMemoryUncached.active
+#print axioms Airbender.Compiler.PooledRowNative.WordMemoryUncached.constraints
+#print axioms Airbender.Compiler.PooledRowNative.WordMemoryUncached.decoded
+#print axioms Airbender.Compiler.PooledRowNative.WordMemoryUncached.ofWitness
+#print axioms Airbender.Compiler.UnifiedRowNative.UnifiedCached.active
+#print axioms Airbender.Compiler.UnifiedRowNative.UnifiedCached.native_constraints
+#print axioms Airbender.Compiler.UnifiedRowNative.UnifiedCached.decoded
+#print axioms Airbender.Compiler.UnifiedRowNative.UnifiedCached.constraints
+#print axioms Airbender.Compiler.UnifiedRowNative.UnifiedCached.ofWitness
+#print axioms Airbender.Compiler.UnifiedRowNative.UnifiedCached.ofWindowedWitness
+#print axioms Airbender.Compiler.UnifiedRowNative.UnifiedUncached.active
+#print axioms Airbender.Compiler.UnifiedRowNative.UnifiedUncached.native_constraints
+#print axioms Airbender.Compiler.UnifiedRowNative.UnifiedUncached.decoded
+#print axioms Airbender.Compiler.UnifiedRowNative.UnifiedUncached.constraints
+#print axioms Airbender.Compiler.UnifiedRowNative.UnifiedUncached.ofWitness
+#print axioms Airbender.Compiler.UnifiedRowNative.UnifiedUncached.ofWindowedWitness
