@@ -66,10 +66,15 @@ and ordering/alignment contracts, and enabled authored table membership produce
 complete native graph witnesses for every row. All actual native lookup output
 groups have zero aggregate rational-pair numerators, including at zero
 denominators. Helper memberships are derived from source primitive conditions.
-RAM/initialization framing and pooled argument composition remain open.
+All source RAM/initialization fields are now framed through the canonical
+history/borrow/counter choices in all 22 configurations. The same complete
+native witnesses preserve all 48 actual memory product ports and their full
+trace products against the raw source memory view, including external cells.
+Pooled logical-token/execution composition remains open.
 
-The combined compiler audit covers 4,482 roots using only standard Lean axioms.
-The normal root build and ten materialized-counter regression controls pass.
+The combined compiler audit covers 4,887 roots using only standard Lean axioms.
+The normal root build, ten materialized-counter controls and five memory-frame
+controls pass.
 Isolated source-preserving native lookup, memory-cache, timestamp-helper and
 native arithmetic-borrow
 mutations trigger normal Lake rebuilding and kernel rejection; restoration

@@ -5,7 +5,8 @@ and source lookup-field encoding have kernel-checked instances for all eleven
 production circuit families, with and without caches. All 22 native consumer
 field-role checks also pass. Source table geometry and consumed setup coordinates
 are checked. Source RAM/initialization products are also checked. Literal materialized lookup tables and uniform counter witnesses are now bound
-to complete native graph witnesses. RAM argument and execution composition remain open.
+to complete native graph witnesses. The same witnesses also preserve source RAM/initialization trace products.
+Retained Clean lookup and execution composition remain open.
 Source-derived timestamp/alignment query identities and their generic clock/range
 semantics are checked. Source primitive/history contracts now construct valid
 helper witnesses and the whole native graph in all 22 configurations.
@@ -427,14 +428,14 @@ the two cache modes.
 
 This construction establishes the emitted gate equations and their source
 output formulas. The later source-primitive and materialized-table stages
-construct valid helper histories and lookup counters. RAM argument composition
-remains open. Inactive histories require a canonical witness where helpers are
+construct valid helper histories and lookup counters. The later framed-witness stage also preserves source RAM/initialization
+products under the same witnesses. Inactive histories require a canonical witness where helpers are
 unconditional; preserving arbitrary inactive history cells does not establish
 argument acceptance.
 
 Five actual ADD/SUB controls reject duplicate extension writes, missing
 dependencies, overwriting base cells and a changed base affine recipe, and
-check lookup construction at zero challenges. The combined 4,482-root axiom
+check lookup construction at zero challenges. The combined 4,887-root axiom
 report is checked separately from full independent kernel replay.
 
 ## Source primitive and inactive-history witnesses
@@ -514,10 +515,51 @@ Ten regression controls cover repeated-query cancellation, an incorrect count,
 zero denominators, a disabled unmatched query, a setup/input misclassification,
 source-coordinate aliasing, actual range membership and a timestamp endpoint, a query that reads
 normalized history and an incorrect source projection. The normal root build,
-controls and exact combined 4,482-root axiom audit pass, with only the standard
+controls and exact combined 4,887-root axiom audit pass, with only the standard
 Lean axioms. Source/compiler and lookup certificate provenance checks also pass.
-The constructive RAM/initialization frame and final execution composition remain
-open; these lookup results do not assert RAM argument acceptance.
+The framed-witness stage below adds raw source RAM/initialization product
+preservation to these same graph witnesses.
+
+## Raw source memory frames and complete trace witnesses
+
+`MemoryFrame` interprets the independent source tuples through the actual source
+input bank and an explicit external memory/setup interpretation. A source port
+must be a real finite input coordinate or lie outside the complete arithmetic
+bank. The checker rejects an internal unaccounted address, a counter alias and
+a lookup setup address used as memory. Initialization and teardown use their
+actual memory projections; the helper-only dummy initialization maps are not
+used as a memory interpretation.
+
+All source RAM fields avoid the chosen borrows and counters. On active rows,
+canonical history normalization preserves their original values. On inactive
+rows the native execution mask makes the RAM effect independent of history.
+Initialization/teardown fields and execution flags are framed unconditionally,
+including against history normalization. All 22 field-frame checks pass.
+`MemoryExecuteNative` also proves that the source memory flag is exactly the
+flag driving helper normalization; its input-bank inverse follows from the
+checked full address uniqueness and input prefix.
+
+Every `FramedWitnessNative.complete_trace_extends` now constructs the **same**
+complete graph and native lookup witnesses with an explicit external base frame
+and raw source memory output equations. All 48 actual RAM/initialization output
+scalars, with all 476 tuple occurrences and their original direction and masks,
+agree with the independent source products before canonical borrows, counters
+and inactive-history changes. `memory_trace_products_preserved` lifts these
+identities to the full native row domains. All 22 instances pass, with uniform
+lookup counts chosen before the extension ring or challenges.
+
+The five new controls reject a memory field that aliases a counter, reject
+lookup setup as a memory source, accept the external initialization interface,
+and distinguish inactive history erasure from an invalid active erasure.
+The normal root/control replay and exact 4,887-root axiom audit pass with only
+standard Lean axioms. The larger memory field inventories use checked 64-field
+chunks and exact final coverage under the unchanged resource caps.
+
+These are exact algebraic source-to-native product identities, so a pooled
+source product equation transfers by substitution across circuit families.
+No per-family RAM balance is assumed. The existing pooled execution interface
+still requires exact logical token matching; sampled products do not derive it.
+Retained Clean lookup premises and the final execution adapter remain open.
 
 ## Connection to the retained Clean models
 
@@ -557,7 +599,7 @@ complete trace witnesses. Run stages within the existing bounded worker;
 query proofs use 64-field modules and exact final coverage, so normal Lake
 replay retains completed chunks when a run reaches its time budget.
 
-`audit_gkr_compiler_axioms.py` reads the exact registered 4,482-root inventory
+`audit_gkr_compiler_axioms.py` reads the exact registered 4,887-root inventory
 from `Airbender/Checks/Axioms.lean`, builds its imports sequentially and checks
 every report and permitted axiom. The checkpoint's `audit` stage invokes it.
 Keep axiom reports and full independent kernel replay distinct.
@@ -638,12 +680,12 @@ decoder masks, scratch aliases, authored fields and source projection.
 
 ## Required remaining work
 
-1. Frame source RAM/initialization values through canonical histories, borrows,
-   counters and external base inputs. The existing native product reductions
-   must compose with the same complete graph witnesses as the lookup result.
-2. Compose those source memory products with the global pooled argument.
-   Materialized lookup tables, uniform counters and actual lookup output
-   aggregates are now checked in all 22 configurations.
+1. Bind the exact raw source memory products to the existing pooled logical
+   token/execution interfaces. All native RAM/initialization outputs now preserve
+   these products under the same constructed graph witnesses as the lookup result.
+2. Retain the actual setup and external memory interfaces when instantiating
+   those adapters. Uniform lookup counters and all native trace product
+   identities are now checked in every retained configuration.
 3. Discharge the retained Clean model's primitive lookup premises from the
    source-query/helper proofs, then compose with existing circuit/execution
    roots. Its complete arithmetic lists are now connected to the native relation.
