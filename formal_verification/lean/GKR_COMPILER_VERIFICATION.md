@@ -6,8 +6,8 @@ production circuit families, with and without caches. All 22 native consumer
 field-role checks also pass. Source table geometry and consumed setup coordinates
 are checked. Source RAM/initialization products are also checked. Literal materialized lookup tables and uniform counter witnesses are now bound
 to complete native graph witnesses. The same witnesses also preserve source RAM/initialization trace products.
-Retained Clean lookup composition is now instantiated for sixteen configurations.
-Fixed-table projection adapters and the final execution composition remain open.
+Retained Clean lookup composition is now instantiated for twenty configurations.
+The shift/binop fixed-table adapter and final execution composition remain open.
 Source-derived timestamp/alignment query identities and their generic clock/range
 semantics are checked. Source primitive/history contracts now construct valid
 helper witnesses and the whole native graph in all 22 configurations.
@@ -641,11 +641,19 @@ The base-field counter assignment is still chosen before the extension ring or
 challenges. These are algebraic preservation and construction results; no sampled
 output equality is used to infer exact lookup or memory matching.
 
-Jump/branch, MUL/DIV, and shift/binop have checked argument transport in both
-cache modes, but still need their fixed-table projection adapters. Their retained
-tables select regions of the native generic setup, which also contains decoder
-rows. Replacing those fixed tables with the whole setup would change the claim.
-The logical execution adapter and public setup bindings also remain open.
+Jump/branch and MUL/DIV also discharge every retained primitive lookup in both
+cache modes. `TaggedSetup.lean` proves the actual piecewise-constant tag semantics;
+checked region bounds exclude decoder and padding rows for fixed IDs.
+`ColumnSlices.lean` preserves aligned blocks and selected affine/periodic cells.
+`FixedSetupNative` projects actual source rows into the retained zero-test, sign,
+conditional, JALR-cleanup and low-byte tables. MUL's actual range-13 region also
+implies membership in the retained range-13 table. These projections do not
+assume the desired table membership.
+
+The four new `CleanClosedNative` and `CleanWitnessNative` instances bring complete
+retained constraint/trace composition to twenty configurations. Shift/binop still
+needs its dynamic-tag fixed-table adapter. The logical execution adapter and
+public setup bindings also remain open.
 
 Two actual ADD/SUB controls reject replacing a retained Clean expression and
 changing its logical placement. These checks, the complete native arithmetic
@@ -659,6 +667,11 @@ with only standard Lean axioms. The full generic-argument run used 1,368.64 MiB
 physical and 3,887.75 MiB resident memory. Large lookup-closure runs resumed
 normally after the existing 900-second time checkpoint; no caps were raised.
 
+Four fixed-table controls reject a shifted region and a swapped cleanup column,
+retain the decoder's distinct tag, and check the native range-13 endpoint. The
+normal root/control replay and exact combined 6,129-root compiler audit pass
+with only standard Lean axioms.
+
 ## Reproduction and freshness
 
 The materialized stages are registered in `gkr_checkpoint.py`: full setup,
@@ -671,7 +684,7 @@ The retained-model stages add scalar refinements, argument transport, full-width
 generic arguments, lookup closure, and composed trace witnesses. Generic argument
 and lookup-closure proof modules contain at most eight queries each.
 
-`audit_gkr_compiler_axioms.py` reads the exact registered 6,082-root inventory
+`audit_gkr_compiler_axioms.py` reads the exact registered 6,129-root inventory
 from `Airbender/Checks/Axioms.lean`, builds its imports sequentially and checks
 every report and permitted axiom. The checkpoint's `audit` stage invokes it.
 Keep axiom reports and full independent kernel replay distinct.
@@ -759,10 +772,9 @@ decoder masks, scratch aliases, authored fields and source projection.
 2. Retain the actual setup and external memory interfaces when instantiating
    those adapters. Uniform lookup counters and all native trace product
    identities are now checked in every retained configuration.
-3. Complete the fixed-table projection adapters for Jump/branch, MUL/DIV and
-   shift/binop, then compose all retained circuit models with the execution
-   roots. The sixteen other configurations have complete retained constraint
-   and native trace witness composition.
+3. Complete the shift/binop fixed-table adapter, then compose all retained
+   circuit models with the execution roots. Twenty configurations have complete
+   retained constraint and native trace witness composition.
 4. Keep algebraic fingerprint preservation separate from cryptographic
    soundness. A sampled product equality alone cannot establish exact lookup or
    RAM membership.
