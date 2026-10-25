@@ -30,13 +30,15 @@ STAGES = {
     'functional': [[sys.executable, 'scripts/gkr_functional_instances.py', '--check', '--build']],
     'source_links': [[sys.executable, 'scripts/gkr_functional_links.py', '--check', '--build']],
     'source_contracts': [[sys.executable, 'scripts/gkr_source_contract_instances.py', '--check', '--build']],
+    'history_erasure': [[sys.executable, 'scripts/gkr_history_erasure_instances.py', '--check', '--build']],
+    'helper_validity': [[sys.executable, 'scripts/gkr_helper_validity_instances.py', '--check', '--build']],
     'roots': [],
 }
 TESTS = ['GKRCompiler', 'GKRProtocol', 'Tests.GKRCompilerCertificate', 'Tests.GKRCompilerWiring',
          'Tests.GKRLookupFields', 'Tests.GKRConsumerTypes', 'Tests.GKRCacheBindings',
          'Tests.GKRLookupReduction', 'Tests.GKRBaseEncoding', 'Tests.GKRLookupSource',
          'Tests.GKRSourceTable', 'Tests.GKRNativeProduct', 'Tests.GKRMemorySource',
-         'Tests.GKRHelperSources', 'Tests.GKRFullArithmetic', 'Tests.GKRFunctional']
+         'Tests.GKRHelperSources', 'Tests.GKRFullArithmetic', 'Tests.GKRFunctional', 'Tests.GKRHelperValidity']
 
 
 def main():
