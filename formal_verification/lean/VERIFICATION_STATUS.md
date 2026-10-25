@@ -121,11 +121,17 @@ discriminators, every decoder/padding field and packing-mask normalization.
 All fourteen compiled query adapters compose this with the Sail-derived selected
 program tables, including coordinate-wise canonical witness framing. Their
 source membership, active query, typed-PC and capacity conditions stay explicit.
-General public-program/image binding and pooled logical execution remain.
+Selected public-program/image binding and all fourteen executor row adapters
+now pass, including the actual per-set initialization-window constructors.
+Both whole-trace pooled/unified execution roots now pass their normal builds.
+The exact 7,760-root audit and the public-execution/root checkpoints pass.
 
-The combined compiler audit passes all 7,654 registered roots using only the
+The combined compiler audit passes all 7,760 registered roots using only the
 standard Lean axioms, including the subword/unified table refinements and all
-fourteen decoder query identities and full setup/program adapters.
+fourteen decoder query identities, full setup/program adapters and both
+compiler-to-Sail execution roots. Source framing/lookup validity, public inputs,
+exact logical matching and serialized inverses remain explicit; cryptographic
+enforcement and universal Rust-compiler correctness are separate claims.
 All 22 source/compiler pairs also pass the provenance guard.
 The normal root build, ten materialized-counter controls and five memory-frame
 controls pass, along with five retained lookup-argument/boundary controls and

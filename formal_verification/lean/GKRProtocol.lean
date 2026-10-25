@@ -615,3 +615,6 @@ import GKRProtocol.DecoderQueryNative.UnifiedCached
 import GKRProtocol.DecoderQueryNative.UnifiedUncached
 import GKRProtocol.DecoderQueryNative.WordMemoryCached
 import GKRProtocol.DecoderQueryNative.WordMemoryUncached
+
+import GKRProtocol.PooledExecution
+import GKRProtocol.UnifiedExecution
