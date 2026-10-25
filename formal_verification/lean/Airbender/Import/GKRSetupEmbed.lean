@@ -33,6 +33,21 @@ private def valuesSyntax (values : Array Nat) : CommandElabM (TSyntax `term) := 
     if (values.mapIdx fun index value => value == (first + index) % values.size).all id then
       return ← `(Array.ofFn (fun index : Fin $(quote values.size) =>
         ($(quote first) + index.val) % $(quote values.size)))
+    let run := (values.toList.takeWhile (· == first)).length
+    if 1 < run && run < values.size then
+      let some next := values[run]? | throwError "setup run encoding is out of bounds"
+      if first ≤ next then
+        let step := next - first
+        if (values.mapIdx fun index value => value == first + step * (index / run)).all id then
+          return ← `(Array.ofFn (fun index : Fin $(quote values.size) =>
+            $(quote first) + $(quote step) * (index.val / $(quote run))))
+    if 1 < run && run < values.size && values.size % run == 0 then
+      let compact := (Array.range (values.size / run)).map fun index =>
+        (values[index * run]?).getD 0
+      if (values.mapIdx fun index value => value == (compact[index / run]?).getD 0).all id then
+        let encoded ← arraySyntax (compact.map quote)
+        return ← `(Array.ofFn (fun index : Fin $(quote values.size) =>
+          ($encoded[index.val / $(quote run)]?).getD 0))
   let literals : Array (TSyntax `term) := values.map quote
   arraySyntax literals
 

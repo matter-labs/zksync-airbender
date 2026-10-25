@@ -83,14 +83,19 @@ preserving raw limbs and execute masks. These output identities follow from
 the complete native graph relations for arbitrary satisfying assignments.
 Jump/branch and MUL/DIV also have checked fixed-region table projections and
 complete retained constraint/trace composition in both cache modes, bringing
-that coverage to twenty configurations. Shift/binop's two configurations still
-need their dynamic-tag adapter. Worker delegation/marker tokens, initialization/public
-image binding, and pooled logical execution composition remain open.
+that coverage to twenty configurations. Shift/binop now also has complete
+fixed-prefix, decoder-exclusion and zero-padding refinements in both cache modes,
+closing retained constraint/trace composition for all 22 configurations.
+Worker delegation/marker tokens, initialization/public image binding, and pooled
+logical execution composition remain open. These results validate the captured
+compiler instances; they are not a universal Rust-compiler correctness theorem.
 
-The combined compiler audit covers 6,129 roots using only standard Lean axioms.
+The combined compiler audit passes all 6,309 roots using only standard Lean
+axioms, after normal dependency rebuilding for the Shift importer changes.
 The normal root build, ten materialized-counter controls and five memory-frame
 controls pass, along with five retained lookup-argument/boundary controls and
-four memory-token controls and four fixed-table controls.
+four memory-token controls and four fixed-table controls. Shift additionally
+checks block coverage, sound normalization, decoder exclusion and native padding.
 Isolated source-preserving native lookup, memory-cache, timestamp-helper and
 native arithmetic-borrow
 mutations trigger normal Lake rebuilding and kernel rejection; restoration

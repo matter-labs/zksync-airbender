@@ -6,8 +6,9 @@ production circuit families, with and without caches. All 22 native consumer
 field-role checks also pass. Source table geometry and consumed setup coordinates
 are checked. Source RAM/initialization products are also checked. Literal materialized lookup tables and uniform counter witnesses are now bound
 to complete native graph witnesses. The same witnesses also preserve source RAM/initialization trace products.
-Retained Clean lookup composition is now instantiated for twenty configurations.
-The shift/binop fixed-table adapter and final execution composition remain open.
+Retained Clean lookup composition is now instantiated for all 22 configurations.
+Worker/marker token binding, public initialization/setup binding and final
+execution composition remain open.
 Source-derived timestamp/alignment query identities and their generic clock/range
 semantics are checked. Source primitive/history contracts now construct valid
 helper witnesses and the whole native graph in all 22 configurations.
@@ -560,7 +561,7 @@ These are exact algebraic source-to-native product identities, so a pooled
 source product equation transfers by substitution across circuit families.
 No per-family RAM balance is assumed. The existing pooled execution interface
 still requires exact logical token matching; sampled products do not derive it.
-The remaining fixed-table lookup premises and final execution adapter are
+Fixed-table lookup refinements and the remaining final execution adapter are
 described below.
 
 ## Executor products and logical memory tokens
@@ -650,10 +651,25 @@ conditional, JALR-cleanup and low-byte tables. MUL's actual range-13 region also
 implies membership in the retained range-13 table. These projections do not
 assume the desired table membership.
 
-The four new `CleanClosedNative` and `CleanWitnessNative` instances bring complete
-retained constraint/trace composition to twenty configurations. Shift/binop still
-needs its dynamic-tag fixed-table adapter. The logical execution adapter and
-public setup bindings also remain open.
+Shift/binop also has complete retained constraint/trace composition in both cache
+modes. `ShiftPrefixNative` checks all ten columns over the complete 524,545-row
+fixed prefix against the actual retained `shiftBinopRow`. `BlockNormalization`
+proves contiguous affine and zero-stride periodic block merging sound;
+`BlockCoverageImport` composes kernel-checked literal leaf equalities and exact
+coverage. The untrusted span planner supplies only block boundaries. It cannot
+supply replacement table values or a coverage assertion.
+
+`ShiftSetupNative.clean_contains` uses the query's actual zero padding column to
+exclude decoder rows, then maps every native padding row to the retained dummy
+row. Decoder exclusion follows from the physical padding/family-mask column,
+independently of the lookup's dynamic tag. The same full native graph witnesses satisfy all retained
+constraints, lookup aggregates and RAM products in all 22 configurations. Worker
+and marker tokens, initialization/public-image binding and the pooled logical
+execution adapter remain open.
+
+These are translation-validation instances for the captured compiler inputs,
+including the actual exported setup. They do not prove correctness of the Rust
+compiler for every possible circuit input or program.
 
 Two actual ADD/SUB controls reject replacing a retained Clean expression and
 changing its logical placement. These checks, the complete native arithmetic
@@ -672,6 +688,13 @@ retain the decoder's distinct tag, and check the native range-13 endpoint. The
 normal root/control replay and exact combined 6,129-root compiler audit pass
 with only standard Lean axioms.
 
+The Shift controls reject missing/duplicated block coverage, changed block
+stride/gaps and unsound periodic merging, and check decoder exclusion and the
+native padding-to-dummy refinement. The complete column assembly stayed below
+1 GiB physical memory. The existing worker limits were unchanged.
+The exact combined 6,309-root audit passes with only `propext`,
+`Classical.choice` and `Quot.sound` as applicable, after normal dependency replay.
+
 ## Reproduction and freshness
 
 The materialized stages are registered in `gkr_checkpoint.py`: full setup,
@@ -681,10 +704,12 @@ complete trace witnesses. Run stages within the existing bounded worker;
 query proofs use 64-field modules and exact final coverage, so normal Lake
 replay retains completed chunks when a run reaches its time budget.
 The retained-model stages add scalar refinements, argument transport, full-width
-generic arguments, lookup closure, and composed trace witnesses. Generic argument
-and lookup-closure proof modules contain at most eight queries each.
+generic arguments, lookup closure, and composed trace witnesses. The Shift stages
+add block-span checks, complete column assembly and the fixed-table adapter.
+Generic argument and lookup-closure proof modules contain at most eight queries
+each.
 
-`audit_gkr_compiler_axioms.py` reads the exact registered 6,129-root inventory
+`audit_gkr_compiler_axioms.py` reads the exact registered 6,309-root inventory
 from `Airbender/Checks/Axioms.lean`, builds its imports sequentially and checks
 every report and permitted axiom. The checkpoint's `audit` stage invokes it.
 Keep axiom reports and full independent kernel replay distinct.
@@ -720,6 +745,10 @@ LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCleanArithmetic:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerCertificate:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerWiring:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRLookupFields:olean
+python3 scripts/gkr_shift_prefix_instances.py --check --build
+python3 scripts/gkr_shift_prefix_assembly.py --check --build
+python3 scripts/gkr_clean_shift_instances.py --check --build
+python3 scripts/gkr_clean_witness_instances.py --family shift-binop --check --build
 ```
 
 The manifest binds producer scripts, exporter, Rust toolchain, Cargo lock,
@@ -772,9 +801,9 @@ decoder masks, scratch aliases, authored fields and source projection.
 2. Retain the actual setup and external memory interfaces when instantiating
    those adapters. Uniform lookup counters and all native trace product
    identities are now checked in every retained configuration.
-3. Complete the shift/binop fixed-table adapter, then compose all retained
-   circuit models with the execution roots. Twenty configurations have complete
-   retained constraint and native trace witness composition.
+3. Compose all retained circuit models with the execution roots. All 22
+   configurations now have complete retained constraint and native trace witness
+   composition, including the Shift/binop fixed-table adapter.
 4. Keep algebraic fingerprint preservation separate from cryptographic
    soundness. A sampled product equality alone cannot establish exact lookup or
    RAM membership.

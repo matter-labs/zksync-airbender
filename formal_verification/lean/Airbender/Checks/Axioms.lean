@@ -713,6 +713,26 @@ import Tests.UnifiedDecoder
 import Tests.DelegationTimestamps
 import Tests.DelegationMemory
 import Clean.Specs.Keccak256
+import GKRProtocol.BlockNormalization
+import GKRProtocol.ShiftPrefixNative.Column0
+import GKRProtocol.ShiftPrefixNative.Column1
+import GKRProtocol.ShiftPrefixNative.Column2
+import GKRProtocol.ShiftPrefixNative.Column3
+import GKRProtocol.ShiftPrefixNative.Column4
+import GKRProtocol.ShiftPrefixNative.Column5
+import GKRProtocol.ShiftPrefixNative.Column6
+import GKRProtocol.ShiftPrefixNative.Column7
+import GKRProtocol.ShiftPrefixNative.Column8
+import GKRProtocol.ShiftPrefixNative.Column9
+import GKRProtocol.ShiftSetupNative
+import Tests.GKRBlockNormalization
+import Tests.GKRBlockCoverage
+import Tests.GKRShiftSetup
+import GKRProtocol.CleanClosedNative.ShiftBinopCached
+import GKRProtocol.CleanClosedNative.ShiftBinopUncached
+import GKRProtocol.CleanWitnessNative.ShiftBinopCached
+import GKRProtocol.CleanWitnessNative.ShiftBinopUncached
+
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -11508,3 +11528,187 @@ import Clean.Specs.Keccak256
 #print axioms Tests.GKRFixedLookups.rejects_cleanup_column_swap
 #print axioms Tests.GKRFixedLookups.decoder_region_has_distinct_tag
 #print axioms Tests.GKRFixedLookups.native_range13_last_value
+
+-- Complete Shift fixed-table refinement and retained witness composition.
+#print axioms Airbender.Compiler.affine_blocks_merge
+#print axioms Airbender.Compiler.periodic_zero_get
+#print axioms Airbender.Compiler.periodic_blocks_merge
+#print axioms Airbender.Compiler.mergeSetupBlocks_sound
+#print axioms Airbender.Compiler.prependNormalizedBlock_value
+#print axioms Airbender.Compiler.normalizeSetupBlocks_sound
+#print axioms Airbender.Compiler.normalized_columns_agree
+#print axioms Airbender.Compiler.mergeSetupBlocks_length
+#print axioms Airbender.Compiler.prependNormalizedBlock_length
+#print axioms Airbender.Compiler.normalizeSetupBlocks_length
+#print axioms Airbender.Compiler.getFromBlocks_append
+#print axioms Airbender.Compiler.normalized_chunks_agree
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column0.sourceShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column0.targetShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column0.chunksChecked
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column0.prefixLength
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column0.regionLength0
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column0.regionLength1
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column0.regionLength2
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column0.regionLength3
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column0.regionLength4
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column0.regionLength5
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column0.prefix_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column0.padding_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column0.clean_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column1.sourceShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column1.targetShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column1.chunksChecked
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column1.prefixLength
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column1.regionLength0
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column1.regionLength1
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column1.regionLength2
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column1.regionLength3
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column1.regionLength4
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column1.regionLength5
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column1.prefix_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column1.padding_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column1.clean_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column2.sourceShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column2.targetShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column2.chunksChecked
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column2.prefixLength
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column2.regionLength0
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column2.regionLength1
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column2.regionLength2
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column2.regionLength3
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column2.regionLength4
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column2.regionLength5
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column2.prefix_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column2.padding_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column2.clean_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column3.sourceShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column3.targetShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column3.chunksChecked
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column3.prefixLength
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column3.regionLength0
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column3.regionLength1
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column3.regionLength2
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column3.regionLength3
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column3.regionLength4
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column3.regionLength5
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column3.prefix_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column3.padding_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column3.clean_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column4.sourceShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column4.targetShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column4.chunksChecked
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column4.prefixLength
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column4.regionLength0
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column4.regionLength1
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column4.regionLength2
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column4.regionLength3
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column4.regionLength4
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column4.regionLength5
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column4.prefix_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column4.padding_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column4.clean_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column5.sourceShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column5.targetShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column5.chunksChecked
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column5.prefixLength
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column5.regionLength0
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column5.regionLength1
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column5.regionLength2
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column5.regionLength3
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column5.regionLength4
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column5.regionLength5
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column5.prefix_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column5.padding_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column5.clean_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column6.sourceShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column6.targetShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column6.chunksChecked
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column6.prefixLength
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column6.regionLength0
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column6.regionLength1
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column6.regionLength2
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column6.regionLength3
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column6.regionLength4
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column6.regionLength5
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column6.prefix_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column6.padding_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column6.clean_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column7.sourceShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column7.targetShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column7.chunksChecked
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column7.prefixLength
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column7.regionLength0
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column7.regionLength1
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column7.regionLength2
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column7.regionLength3
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column7.regionLength4
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column7.regionLength5
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column7.prefix_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column7.padding_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column7.clean_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column8.sourceShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column8.targetShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column8.chunksChecked
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column8.prefixLength
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column8.regionLength0
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column8.regionLength1
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column8.regionLength2
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column8.regionLength3
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column8.regionLength4
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column8.regionLength5
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column8.prefix_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column8.padding_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column8.clean_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column9.sourceShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column9.targetShape
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column9.chunksChecked
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column9.prefixLength
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column9.regionLength0
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column9.regionLength1
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column9.regionLength2
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column9.regionLength3
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column9.regionLength4
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column9.regionLength5
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column9.prefix_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column9.padding_value
+#print axioms Airbender.Compiler.ShiftPrefixNative.Column9.clean_value
+#print axioms Airbender.Compiler.ShiftSetupNative.padding_shape
+#print axioms Airbender.Compiler.ShiftSetupNative.padding_domain
+#print axioms Airbender.Compiler.ShiftSetupNative.prefix_row
+#print axioms Airbender.Compiler.ShiftSetupNative.padding_row
+#print axioms Airbender.Compiler.ShiftSetupNative.clean_contains
+#print axioms Tests.GKRBlockNormalization.rejects_affine_gap
+#print axioms Tests.GKRBlockNormalization.rejects_changed_stride
+#print axioms Tests.GKRBlockNormalization.rejects_nonzero_periodic_stride
+#print axioms Tests.GKRBlockNormalization.nonzero_periodic_merge_would_change_rows
+#print axioms Tests.GKRShiftSetup.decoder_cannot_supply_zero_padding
+#print axioms Tests.GKRShiftSetup.zero_row_is_retained
+#print axioms Tests.GKRShiftSetup.native_padding_refines_dummy
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopCached.generic_columns_inventory
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopCached.clock_lookup_inventory
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopCached.range_lookup0
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopCached.range_lookup1
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopCached.generic_lookup0
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopCached.generic_lookup1
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopCached.generic_lookup2
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopCached.generic_lookup3
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopCached.generic_lookup4
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopCached.retained_clock_from_source
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopUncached.generic_columns_inventory
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopUncached.clock_lookup_inventory
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopUncached.range_lookup0
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopUncached.range_lookup1
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopUncached.generic_lookup0
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopUncached.generic_lookup1
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopUncached.generic_lookup2
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopUncached.generic_lookup3
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopUncached.generic_lookup4
+#print axioms Airbender.Compiler.CleanClosedNative.ShiftBinopUncached.retained_clock_from_source
+#print axioms Airbender.Compiler.CleanWitnessNative.ShiftBinopCached.complete_trace_clean_extends
+#print axioms Airbender.Compiler.CleanWitnessNative.ShiftBinopUncached.complete_trace_clean_extends
+
+#print axioms Tests.GKRBlockCoverage.complete
+#print axioms Tests.GKRBlockCoverage.complete_retains_last_row
+#print axioms Tests.GKRBlockCoverage.changed_part_changes_a_row
+
+#print axioms Airbender.Compiler.ShiftSetupNative.dummy_row_zero
