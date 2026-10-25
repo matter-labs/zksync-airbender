@@ -5394,6 +5394,9 @@ import GKRProtocol.WindowedNative.UnifiedUncachedPublic
 import GKRProtocol.WindowedNative.UnifiedCachedPublic
 import Tests.GKRWindowedInitialization
 
+import GKRProtocol.ROMNative.WordMemoryPublic
+import Tests.GKRNativeROM
+
 -- GKR compiler translation validation.
 #print axioms Airbender.Compiler.equal_sound
 #print axioms Airbender.Compiler.check_valid
@@ -11959,3 +11962,16 @@ import Tests.GKRWindowedInitialization
 #print axioms Airbender.Compiler.initialization_virtual_high
 #print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.public_boundary_outputs
 #print axioms Airbender.Compiler.WindowedNative.UnifiedCached.public_boundary_outputs
+
+-- Native word-ROM/public-image refinement.
+#print axioms Airbender.Compiler.ROMNative.WordMemory.rom_column
+#print axioms Airbender.Compiler.ROMNative.WordMemory.rom_row
+#print axioms Airbender.Compiler.ROMNative.WordMemory.rom_tag_region
+#print axioms Airbender.Compiler.ROMNative.WordMemory.active_rom_refinement
+#print axioms Airbender.Compiler.ROMNative.WordMemory.native_rom_reads
+#print axioms Airbender.Compiler.ROMNative.WordMemory.uncached_rom_reads
+#print axioms Airbender.Compiler.ROMNative.WordMemory.cached_rom_reads
+#print axioms Tests.GKRNativeROM.decoder_region_excluded
+#print axioms Tests.GKRNativeROM.committed_padding_excluded
+#print axioms Tests.GKRNativeROM.final_rom_word_address
+#print axioms Tests.GKRNativeROM.image_padding_is_zero
