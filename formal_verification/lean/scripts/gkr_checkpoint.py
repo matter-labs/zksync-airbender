@@ -32,13 +32,16 @@ STAGES = {
     'source_contracts': [[sys.executable, 'scripts/gkr_source_contract_instances.py', '--check', '--build']],
     'history_erasure': [[sys.executable, 'scripts/gkr_history_erasure_instances.py', '--check', '--build']],
     'helper_validity': [[sys.executable, 'scripts/gkr_helper_validity_instances.py', '--check', '--build']],
+    'clean_arithmetic': [[sys.executable, 'scripts/gkr_clean_arithmetic.py', '--check', '--build']],
+    'clean_links': [[sys.executable, 'scripts/gkr_clean_links.py', '--check', '--build']],
     'roots': [],
 }
 TESTS = ['GKRCompiler', 'GKRProtocol', 'Tests.GKRCompilerCertificate', 'Tests.GKRCompilerWiring',
          'Tests.GKRLookupFields', 'Tests.GKRConsumerTypes', 'Tests.GKRCacheBindings',
          'Tests.GKRLookupReduction', 'Tests.GKRBaseEncoding', 'Tests.GKRLookupSource',
          'Tests.GKRSourceTable', 'Tests.GKRNativeProduct', 'Tests.GKRMemorySource',
-         'Tests.GKRHelperSources', 'Tests.GKRFullArithmetic', 'Tests.GKRFunctional', 'Tests.GKRHelperValidity']
+         'Tests.GKRHelperSources', 'Tests.GKRFullArithmetic', 'Tests.GKRFunctional', 'Tests.GKRHelperValidity',
+         'Tests.GKRCleanArithmetic']
 
 
 def main():
