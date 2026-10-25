@@ -7,7 +7,8 @@ field-role checks also pass. Source table geometry and consumed setup coordinate
 are checked. Source RAM/initialization products are also checked. Literal materialized lookup tables and uniform counter witnesses are now bound
 to complete native graph witnesses. The same witnesses also preserve source RAM/initialization trace products.
 Retained Clean lookup composition is now instantiated for all 22 configurations.
-Public setup enforcement/ROM binding and final execution composition remain open.
+Public initialization and word/unified/subword ROM-image bindings are checked.
+Packed decoder/public-program binding and final execution composition remain open.
 Source-derived timestamp/alignment query identities and their generic clock/range
 semantics are checked. Source primitive/history contracts now construct valid
 helper witnesses and the whole native graph in all 22 configurations.
@@ -756,7 +757,7 @@ add block-span checks, complete column assembly and the fixed-table adapter.
 Generic argument and lookup-closure proof modules contain at most eight queries
 each.
 
-`audit_gkr_compiler_axioms.py` reads the exact registered 6,672-root inventory
+`audit_gkr_compiler_axioms.py` reads the exact registered 6,955-root inventory
 from `Airbender/Checks/Axioms.lean`, builds its imports sequentially and checks
 every report and permitted axiom. The checkpoint's `audit` stage invokes it.
 Keep axiom reports and full independent kernel replay distinct.
@@ -887,8 +888,8 @@ proof excludes every neighboring fixed region, decoder row and padding row from
 tag-34 queries. The final membership bridge composes with the retained
 `Setup.imported_table_before` theorem under `Trace.ROM.ImportedImage`.
 Both cache modes' exact `CleanClosedNative.nativeSetup` tables use this bridge.
-It proves the ROM-query part of the public table interface; other unified fixed
-queries and the decoder interface retain their separate obligations.
+This ROM-query bridge is supplemented by the complete non-decoder table
+refinement below. The decoder retains its separate program interface.
 
 ## Full native subword table and public bytes
 
@@ -907,23 +908,44 @@ remains explicit. Controls cover both ROM tags, the decoder discriminator and
 committed zero padding. The shared Shift span planner now accepts optional
 prefix/chunk sizes; all existing Shift scaffolds remain byte-for-byte identical.
 
+## Full native unified table and public bytes
+
+`UnifiedAllPrefix` and the separately bounded `UnifiedPrefixNative.Column1`
+check all ten columns of the entire 2,097,537-row native fixed/ROM prefix.
+Actual source block spans are matched to independently imported regions, including
+partial periodic blocks and the few source blocks crossing the decoder boundary.
+Bounded certificates cover every source block; no sampled row check supplies
+whole-column equality. Generic partition and list-reordering proofs compose the
+certificates without reevaluating the large literal arrays.
+
+`UnifiedLogicalRegions` and `ROMNative/UnifiedRows` check the physical-to-logical
+row permutation: native ROM precedes the rotate/binop regions, while the retained
+table places ROM after its fixed regions. Every field is preserved. `UnifiedBoundary`
+proves decoder tag 46 on its full interval and zero values in every committed
+padding column. Consequently every full native query whose tag differs from 46
+belongs to the retained imported table, including disabled padding queries.
+`UnifiedFullPublic` binds this to the public image in both exact cache-mode
+`CleanClosedNative.nativeSetup` tables under `Trace.ROM.ImportedImage`.
+
+Controls cover periodic phase changes, overrun, oversized finite certificates,
+the ROM/rotation permutation, decoder separation and zero padding. The generators
+are reproducible through `check_gkr_unified_scaffolds.py`; the checkpoint runner
+replays this boundary with `--stage unified_public`. The decoder-tag guard,
+public-image premise and commitment-authentication boundary remain explicit.
+
 ## Required remaining work
 
-1. Bind the public virtual-setup laws and actual ROM image, then construct the
-   pooled logical execution interface. All forty-eight modeled RAM/initialization
-   outputs have token identities, including PC-state and virtual CSR markers.
-   Actual per-set initialization windows and row-only virtual setup are now
-   retained in both unified configurations; commitment authentication remains
-   an external protocol boundary.
-2. Retain the actual setup and external memory interfaces when instantiating
-   those adapters. Uniform lookup counters and all native trace product
-   identities are now checked in every retained configuration.
-3. Compose all retained circuit models with the execution roots. All 22
-   configurations now have complete retained constraint and native trace witness
-   composition, including the Shift/binop fixed-table adapter.
+1. Connect packed native decoder queries to the existing public-program proofs,
+   retaining typed PC and selector obligations.
+2. Construct the pooled logical execution interface using the actual setup,
+   per-set initialization windows and external memory tokens. All forty-eight
+   modeled RAM/initialization outputs already have token identities.
+3. Compose the complete retained constraint/native trace witnesses with the
+   execution roots. All 22 configurations have constraint and trace composition;
+   the deferred native enforcement fixes retain their separate status.
 4. Keep algebraic fingerprint preservation separate from cryptographic
    soundness. A sampled product equality alone cannot establish exact lookup or
-   RAM membership.
+   RAM membership; commitment authentication and logical matching stay explicit.
 
 This is instance translation validation of actual production compiler runs,
 backed by generic checker-soundness theorems. It is not a proof of the Rust
