@@ -5,9 +5,10 @@ and source lookup-field encoding have kernel-checked instances for all eleven
 production circuit families, with and without caches. All 22 native consumer
 field-role checks also pass. Source table geometry and consumed setup coordinates
 are checked. Source RAM/initialization products are also checked. Full protocol
-reduction, materialized table binding and complete witness extension remain open.
+argument acceptance, materialized table binding and complete witness extension remain open.
 Source-derived timestamp/alignment query identities and their generic clock/range
-semantics are checked; their full witness-construction composition remains open.
+semantics are checked. Source primitive/history contracts now construct valid
+helper witnesses and the whole native graph in all 22 configurations.
 All 60 emitted native lookup output pairs now have checked reduction proofs;
 the 38 generic/range-16 groups also reduce to the original source query multiset
 plus their actual setup contribution.
@@ -432,8 +433,40 @@ to establish argument acceptance.
 
 Five actual ADD/SUB controls reject duplicate extension writes, missing
 dependencies, overwriting base cells and a changed base affine recipe, and
-check lookup construction at zero challenges. The combined 2,948-root axiom
+check lookup construction at zero challenges. The combined 3,348-root axiom
 report is checked separately from full independent kernel replay.
+
+## Source primitive and inactive-history witnesses
+
+`HistoryErasureImport.lean` derives history coordinates from original memory
+requests, then checks that erasing them preserves the original arithmetic and
+added clock equations. Current clocks, execution flags and alignment pointers
+are also preserved. Executor histories include original logical columns;
+worker histories use separate compiler inputs. Their distinction is retained.
+
+`HelperValidity.lean` derives all helper range memberships from source integer
+conditions: bounded and strictly ordered active timestamps, positive bounded
+current timestamps on padding rows, worker clock phase, and aligned 16-bit
+pointer limbs. These premises contain no compiled helper query or lookup
+equation. Zero is a valid canonical inactive history under the positivity
+condition. Native executor clocks, including padding, start at 4; see
+`common_constants/src/timestamps.rs` and the padding convention in
+`prover/src/gkr/witness_gen/family_circuits/mod.rs`. This implementation evidence
+does not replace the explicit source clock premise of the Lean theorem.
+
+`HelperValidityImport.lean` checks the exact helper inventory and its physical
+coordinate transport to the emitted native operands. `helper_graph_extends`
+constructs the whole native graph and proves membership of all 474 helper query
+occurrences in the 19-bit range, for all 22 configurations. Fresh canonical
+borrows preserve original coordinates; active histories are retained verbatim.
+On inactive rows only the checked history coordinates may also change. The
+generic masking theorem preserves every masked fingerprint under that history
+change, for arbitrary challenges.
+
+Four controls reject erasing a current clock or aliasing a borrow with it,
+exhibit failure of zero history at clock zero, and check inactive masked-effect
+preservation. Large transport checks are proved per field and assembled by
+`BoolChecks`, keeping the same resource limits as the preceding stages.
 
 ## Reproduction and freshness
 
@@ -459,6 +492,9 @@ python3 scripts/gkr_full_arithmetic_certificate.py --check --build
 python3 scripts/gkr_functional_instances.py --check --build
 python3 scripts/gkr_functional_links.py --check --build
 python3 scripts/gkr_source_contract_instances.py --check --build
+python3 scripts/gkr_history_erasure_instances.py --check --build
+python3 scripts/gkr_helper_validity_instances.py --check --build
+LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRHelperValidity:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerCertificate:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerWiring:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRLookupFields:olean
@@ -509,9 +545,9 @@ decoder masks, scratch aliases, authored fields and source projection.
 
 1. Instantiate the explicit table-value/multiplicity interpretation with the
    retained materialized setup and witness-generation boundary.
-2. Discharge helper query membership from source primitive/history contracts,
-   choosing inactive history witnesses where needed. Gate construction and the
-   added arithmetic assertions are checked; argument acceptance remains open.
+2. Compose valid authored queries, helper witnesses and materialized setup/count
+   interpretation into lookup/memory argument acceptance. Helper membership and
+   inactive-history construction from explicit source contracts are checked.
 3. Connect the complete native relation to the retained post-compiler Clean
    model and compose with existing circuit/execution roots.
 4. Keep algebraic fingerprint preservation separate from cryptographic

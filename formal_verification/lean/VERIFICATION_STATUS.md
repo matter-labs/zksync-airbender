@@ -41,12 +41,17 @@ Generic helper proofs derive strict integer clock order and alignment, construct
 valid subtraction borrows and range bounds, and derive added executor assertions
 from integer clock advance by four. These facts now compose with every native
 arithmetic assertion and complete graph construction in all 22 configurations.
-Helper query membership and inactive history witness construction still need
-source primitive/history contracts. Current
+An additional checked stage constructs inactive histories and proves membership
+of all 474 actual helper query occurrences from explicit source primitive/history
+contracts in every configuration. Active histories and original coordinates are
+preserved; inactive history cells may be reset to zero, preserving original
+arithmetic and masked effects. Padding clocks must be positive, as in the native
+executor convention starting at 4. Materialized setup/count construction and
+the final argument-acceptance composition remain open. Current
 production source inputs have no relative timestamp groups; unsupported grouped
 profiles are rejected.
 
-The combined compiler audit covers 2,948 roots using only standard Lean axioms.
+The combined compiler audit covers 3,348 roots using only standard Lean axioms.
 Isolated source-preserving native lookup, memory-cache, timestamp-helper and
 native arithmetic-borrow
 mutations trigger normal Lake rebuilding and kernel rejection; restoration
