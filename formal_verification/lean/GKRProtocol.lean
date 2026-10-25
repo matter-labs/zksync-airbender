@@ -577,3 +577,6 @@ import GKRProtocol.WindowedNative.UnifiedCachedPublic
 
 -- Full native word-ROM queries read the bound public image.
 import GKRProtocol.ROMNative.WordMemoryPublic
+
+-- Full native unified ROM query refinement to the public-image table.
+import GKRProtocol.ROMNative.UnifiedPublic

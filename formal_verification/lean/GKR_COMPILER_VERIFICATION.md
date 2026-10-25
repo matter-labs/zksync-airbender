@@ -756,7 +756,7 @@ add block-span checks, complete column assembly and the fixed-table adapter.
 Generic argument and lookup-closure proof modules contain at most eight queries
 each.
 
-`audit_gkr_compiler_axioms.py` reads the exact registered 6,538-root inventory
+`audit_gkr_compiler_axioms.py` reads the exact registered 6,575-root inventory
 from `Airbender/Checks/Axioms.lean`, builds its imports sequentially and checks
 every report and permitted axiom. The checkpoint's `audit` stage invokes it.
 Keep axiom reports and full independent kernel replay distinct.
@@ -877,6 +877,18 @@ No table equality or witness load result is assumed. Controls distinguish
 decoder/padding rows and check the final ROM address and zero image padding.
 Commitment authentication remains external; unified/subword and decoder query
 bridges are still required for the full pooled execution interface.
+
+## Full native unified ROM queries
+
+`ROMColumns/Unified` checks the physical ROM spans through bounded block-length
+certificates and exact array coverage. `ROMNative/UnifiedValues` then checks all
+ten columns against the independently imported ROM region. A structural tag
+proof excludes every neighboring fixed region, decoder row and padding row from
+tag-34 queries. The final membership bridge composes with the retained
+`Setup.imported_table_before` theorem under `Trace.ROM.ImportedImage`.
+Both cache modes' exact `CleanClosedNative.nativeSetup` tables use this bridge.
+It proves the ROM-query part of the public table interface; other unified fixed
+queries and the decoder interface retain their separate obligations.
 
 ## Required remaining work
 

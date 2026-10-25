@@ -5397,6 +5397,9 @@ import Tests.GKRWindowedInitialization
 import GKRProtocol.ROMNative.WordMemoryPublic
 import Tests.GKRNativeROM
 
+import GKRProtocol.ROMNative.UnifiedPublic
+import Tests.GKRUnifiedROM
+
 -- GKR compiler translation validation.
 #print axioms Airbender.Compiler.equal_sound
 #print axioms Airbender.Compiler.check_valid
@@ -11975,3 +11978,42 @@ import Tests.GKRNativeROM
 #print axioms Tests.GKRNativeROM.committed_padding_excluded
 #print axioms Tests.GKRNativeROM.final_rom_word_address
 #print axioms Tests.GKRNativeROM.image_padding_is_zero
+
+-- Native unified ROM/public-image refinement.
+#print axioms Airbender.Compiler.dense_zero_tag
+#print axioms Airbender.Compiler.constant_tag_skip
+#print axioms Airbender.Compiler.constant_tag_avoids
+#print axioms Airbender.Compiler.constant_tag_head_bounded
+#print axioms Airbender.Compiler.ROMColumns.Unified.Column0.column_value
+#print axioms Airbender.Compiler.ROMColumns.Unified.Column1.column_value
+#print axioms Airbender.Compiler.ROMColumns.Unified.Column2.column_value
+#print axioms Airbender.Compiler.ROMColumns.Unified.Column3.column_value
+#print axioms Airbender.Compiler.ROMColumns.Unified.Column4.column_value
+#print axioms Airbender.Compiler.ROMColumns.Unified.Column5.column_value
+#print axioms Airbender.Compiler.ROMColumns.Unified.Column6.column_value
+#print axioms Airbender.Compiler.ROMColumns.Unified.Column7.column_value
+#print axioms Airbender.Compiler.ROMColumns.Unified.Column8.column_value
+#print axioms Airbender.Compiler.ROMColumns.Unified.Column9.column_value
+#print axioms Airbender.Compiler.ROMNative.UnifiedValues.column0
+#print axioms Airbender.Compiler.ROMNative.UnifiedValues.column1
+#print axioms Airbender.Compiler.ROMNative.UnifiedValues.column2
+#print axioms Airbender.Compiler.ROMNative.UnifiedValues.column3
+#print axioms Airbender.Compiler.ROMNative.UnifiedValues.column4
+#print axioms Airbender.Compiler.ROMNative.UnifiedValues.column5
+#print axioms Airbender.Compiler.ROMNative.UnifiedValues.column6
+#print axioms Airbender.Compiler.ROMNative.UnifiedValues.column7
+#print axioms Airbender.Compiler.ROMNative.UnifiedValues.column8
+#print axioms Airbender.Compiler.ROMNative.UnifiedValues.column9
+#print axioms Airbender.Compiler.ROMNative.UnifiedTag.shape
+#print axioms Airbender.Compiler.ROMNative.UnifiedTag.tag_value
+#print axioms Airbender.Compiler.ROMNative.UnifiedTag.rom_region
+#print axioms Airbender.Compiler.ROMNative.Unified.rom_column
+#print axioms Airbender.Compiler.ROMNative.Unified.rom_row
+#print axioms Airbender.Compiler.ROMNative.Unified.active_rom_refinement
+#print axioms Airbender.Compiler.ROMNative.Unified.public_rom_refinement
+#print axioms Airbender.Compiler.ROMNative.Unified.uncached_public_rom_refinement
+#print axioms Airbender.Compiler.ROMNative.Unified.cached_public_rom_refinement
+#print axioms Tests.GKRUnifiedROM.previous_fixed_row_excluded
+#print axioms Tests.GKRUnifiedROM.next_fixed_row_excluded
+#print axioms Tests.GKRUnifiedROM.decoder_row_excluded
+#print axioms Tests.GKRUnifiedROM.both_rom_endpoints_selected
