@@ -41,6 +41,9 @@ STAGES = {
     'query_frame': [[sys.executable, 'scripts/gkr_query_frame_instances.py', '--check', '--build']],
     'materialized_ranges': [[sys.executable, 'scripts/gkr_materialized_range_instances.py', '--check', '--build']],
     'materialized_witness': [[sys.executable, 'scripts/gkr_materialized_witness_instances.py', '--check', '--build']],
+    'memory_frames': [[sys.executable, 'scripts/gkr_memory_frame_instances.py', '--check', '--build']],
+    'memory_execute': [[sys.executable, 'scripts/gkr_memory_execute_instances.py', '--check', '--build']],
+    'framed_witness': [[sys.executable, 'scripts/gkr_framed_witness_instances.py', '--check', '--build']],
     'roots': [],
     'audit': [[sys.executable, 'scripts/audit_gkr_compiler_axioms.py']],
 }
@@ -49,7 +52,7 @@ TESTS = ['GKRCompiler', 'GKRProtocol', 'Tests.GKRCompilerCertificate', 'Tests.GK
          'Tests.GKRLookupReduction', 'Tests.GKRBaseEncoding', 'Tests.GKRLookupSource',
          'Tests.GKRSourceTable', 'Tests.GKRNativeProduct', 'Tests.GKRMemorySource',
          'Tests.GKRHelperSources', 'Tests.GKRFullArithmetic', 'Tests.GKRFunctional', 'Tests.GKRHelperValidity',
-         'Tests.GKRCleanArithmetic', 'Tests.GKRMaterializedCounters']
+         'Tests.GKRCleanArithmetic', 'Tests.GKRMaterializedCounters', 'Tests.GKRMemoryFrames']
 
 
 def main():
