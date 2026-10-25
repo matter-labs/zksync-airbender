@@ -742,6 +742,12 @@ import GKRProtocol.WorkerPortsNative.BlakeRoundCached
 import GKRProtocol.WorkerPortsNative.BlakeRoundUncached
 import GKRProtocol.WorkerPortsNative.KeccakCached
 import GKRProtocol.WorkerPortsNative.KeccakUncached
+import GKRProtocol.InitializationTokens
+import GKRProtocol.InitializationPublic
+import Tests.GKRInitializationTokens
+import GKRProtocol.InitializationPortsNative.UnifiedCached
+import GKRProtocol.InitializationPortsNative.UnifiedUncached
+
 
 
 
@@ -11841,3 +11847,34 @@ import GKRProtocol.WorkerPortsNative.KeccakUncached
 #print axioms Airbender.Compiler.WorkerPortsNative.KeccakUncached.write_products_from_base
 #print axioms Airbender.Compiler.WorkerPortsNative.KeccakUncached.read_output_logical
 #print axioms Airbender.Compiler.WorkerPortsNative.KeccakUncached.write_output_logical
+
+-- Unified initialization/teardown tokens and public address laws.
+#print axioms Airbender.Compiler.source_boundary_leaf
+#print axioms Airbender.Compiler.inline_public_addresses
+#print axioms Airbender.Compiler.inline_public_bounds
+#print axioms Airbender.Compiler.inline_public_word_bounds
+#print axioms Tests.GKRInitializationTokens.final_inline_address_is_bounded
+#print axioms Tests.GKRInitializationTokens.next_inline_window_overflows_word
+#print axioms Tests.GKRInitializationTokens.low_address_keeps_word_alignment
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedCached.geometry
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedCached.source_read_tokens
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedCached.read_products_from_base
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedCached.source_write_tokens
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedCached.write_products_from_base
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedCached.raw_columns
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedCached.public_leaf
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedCached.read_output_tokens
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedCached.write_output_tokens
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedCached.read_output_public
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedCached.write_output_public
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedUncached.geometry
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedUncached.source_read_tokens
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedUncached.read_products_from_base
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedUncached.source_write_tokens
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedUncached.write_products_from_base
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedUncached.raw_columns
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedUncached.public_leaf
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedUncached.read_output_tokens
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedUncached.write_output_tokens
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedUncached.read_output_public
+#print axioms Airbender.Compiler.InitializationPortsNative.UnifiedUncached.write_output_public

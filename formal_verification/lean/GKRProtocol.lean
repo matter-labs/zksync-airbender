@@ -563,3 +563,9 @@ import GKRProtocol.WorkerPortsNative.BlakeRoundCached
 import GKRProtocol.WorkerPortsNative.BlakeRoundUncached
 import GKRProtocol.WorkerPortsNative.KeccakCached
 import GKRProtocol.WorkerPortsNative.KeccakUncached
+
+-- Unified initialization/teardown products and public address adapters.
+import GKRProtocol.InitializationTokens
+import GKRProtocol.InitializationPublic
+import GKRProtocol.InitializationPortsNative.UnifiedCached
+import GKRProtocol.InitializationPortsNative.UnifiedUncached

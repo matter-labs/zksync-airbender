@@ -7,7 +7,7 @@ field-role checks also pass. Source table geometry and consumed setup coordinate
 are checked. Source RAM/initialization products are also checked. Literal materialized lookup tables and uniform counter witnesses are now bound
 to complete native graph witnesses. The same witnesses also preserve source RAM/initialization trace products.
 Retained Clean lookup composition is now instantiated for all 22 configurations.
-Public initialization/setup binding and final execution composition remain open.
+Public setup enforcement/ROM binding and final execution composition remain open.
 Source-derived timestamp/alignment query identities and their generic clock/range
 semantics are checked. Source primitive/history contracts now construct valid
 helper witnesses and the whole native graph in all 22 configurations.
@@ -711,11 +711,37 @@ arbitrary satisfying assignments, using the same execute masks and challenges.
 No sampled fingerprint equality is used to infer exact matching.
 
 All forty-four executor/worker RAM outputs now have logical token identities.
-The four unified initialization/teardown outputs still preserve their raw source
-products; their public address/image adapter and pooled execution composition
-remain open. Four request-token controls retain the full CSR address, distinguish
+The four unified initialization/teardown outputs also have raw boundary-token
+identities and the public address adapter described below. Public setup
+enforcement/ROM binding and pooled execution composition remain open. Four request-token controls retain the full CSR address, distinguish
 issued/empty clocks and reject a changed CSR. The exact combined 6,425-root
 audit passes with only standard Lean axioms.
+
+## Unified initialization tokens and public addresses
+
+`InitializationPortsNative` binds both cache modes' four initialization/teardown
+outputs to exact raw boundary tokens for arbitrary extension rings and
+challenges. The teardown values/timestamps come from the actual native memory
+columns. Neither token construction nor product preservation truncates them.
+
+`InitializationPublic` derives the existing public leaf addresses from explicit
+virtual-setup laws: low address `(4 * row) % 65536`, base high address
+`row / 16384 + window * 512`, and the next inline set in `window + 1`.
+The row/window bounds prove that both address limbs fit in 16 bits and in
+BabyBear; field-to-natural conversion therefore preserves the address.
+`read_output_public` and `write_output_public` compose this with the full native
+relations. The 8,388,608-row domain stays symbolic.
+
+These address laws remain an external public-setup interface. This adapter does
+not prove that the Rust virtual-setup generator or verifier enforces them.
+The current `NativeProductImport.initPayload` and source initialization request
+model specialize the per-set high bits to the set index. Rust's forward loop
+instead reads `inits_and_teardowns_top_bits[set]`. Thus these initialization
+output roots currently certify that specialization, not arbitrary native public
+window selections. This interpretation gap must be closed before claiming full
+initialization preservation. Actual ROM/public-image binding and construction
+of the pooled execution interface also remain open. Boundary controls check the last valid window pair,
+its first overflow and word alignment.
 
 ## Reproduction and freshness
 
@@ -731,7 +757,7 @@ add block-span checks, complete column assembly and the fixed-table adapter.
 Generic argument and lookup-closure proof modules contain at most eight queries
 each.
 
-`audit_gkr_compiler_axioms.py` reads the exact registered 6,425-root inventory
+`audit_gkr_compiler_axioms.py` reads the exact registered 6,454-root inventory
 from `Airbender/Checks/Axioms.lean`, builds its imports sequentially and checks
 every report and permitted axiom. The checkpoint's `audit` stage invokes it.
 Keep axiom reports and full independent kernel replay distinct.
@@ -816,10 +842,12 @@ decoder masks, scratch aliases, authored fields and source projection.
 
 ## Required remaining work
 
-1. Complete initialization/public-image adapters, then construct the pooled
-   logical execution interface. All forty-four executor/worker RAM outputs are
-   bound to retained logical tokens, including PC-state and virtual CSR markers;
-   all forty-eight native RAM/initialization outputs preserve raw source products.
+1. Bind the public virtual-setup laws and actual ROM image, then construct the
+   pooled logical execution interface. All forty-eight modeled RAM/initialization
+   outputs have token identities, including PC-state and virtual CSR markers.
+   Correct the initialization interpreter's set-index specialization to retain
+   the actual per-set public top bits before asserting full native coverage.
+   Initialization public addresses follow from the explicit row/window laws.
 2. Retain the actual setup and external memory interfaces when instantiating
    those adapters. Uniform lookup counters and all native trace product
    identities are now checked in every retained configuration.
