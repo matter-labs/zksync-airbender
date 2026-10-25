@@ -676,6 +676,7 @@ import Airbender.Proofs.Bigint.Claims
 import Airbender.Proofs.UnifiedReduced.Claims
 import Tests.GKRCleanLookupArguments
 import Tests.GKRMemoryTokens
+import Tests.GKRFixedLookups
 
 import Airbender.Proofs.SubwordMemory.Claims
 import Airbender.Proofs.SubwordMemory.Stores
@@ -11458,3 +11459,52 @@ import Clean.Specs.Keccak256
 #print axioms Tests.GKRMemoryTokens.distinct_tokens_can_have_equal_sampled_fingerprints
 #print axioms Tests.GKRMemoryTokens.raw_data_limb_is_not_truncated
 #print axioms Tests.GKRMemoryTokens.pc_state_uses_separate_address_space
+
+-- Tagged Jump/MUL setup projections and retained constraint composition.
+#print axioms Airbender.Compiler.getFromBlocks_before_suffix
+#print axioms Airbender.Compiler.column_slice_value
+#print axioms Airbender.Compiler.column_block_value
+#print axioms Airbender.Compiler.constant_block_get
+#print axioms Airbender.Compiler.periodic_block_overlap
+#print axioms Airbender.Compiler.MaterializedLookupSetup.generic_cell_value
+#print axioms Airbender.Compiler.constant_tag_blocks
+#print axioms Airbender.Compiler.MaterializedLookupSetup.constant_tag_value
+#print axioms Airbender.Compiler.materialized_pair_contains
+#print axioms Airbender.Compiler.materialized_triple_contains
+#print axioms Airbender.Compiler.clean_pair_lookup
+#print axioms Airbender.Compiler.clean_triple_lookup
+#print axioms Airbender.Compiler.FixedSetupNative.JumpBranch.tag1_region
+#print axioms Airbender.Compiler.FixedSetupNative.JumpBranch.tag2_region
+#print axioms Airbender.Compiler.FixedSetupNative.JumpBranch.tag5_region
+#print axioms Airbender.Compiler.FixedSetupNative.JumpBranch.tag31_region
+#print axioms Airbender.Compiler.FixedSetupNative.JumpBranch.tag46_region
+#print axioms Airbender.Compiler.FixedSetupNative.JumpBranch.tag0_region
+#print axioms Airbender.Compiler.FixedSetupNative.JumpBranch.tag1_contains
+#print axioms Airbender.Compiler.FixedSetupNative.JumpBranch.tag2_contains
+#print axioms Airbender.Compiler.FixedSetupNative.JumpBranch.tag5_contains
+#print axioms Airbender.Compiler.FixedSetupNative.JumpBranch.tag31_contains
+#print axioms Airbender.Compiler.CleanClosedNative.JumpBranchUncached.clock_lookup_inventory
+#print axioms Airbender.Compiler.CleanClosedNative.JumpBranchUncached.retained_clock_from_source
+#print axioms Airbender.Compiler.CleanWitnessNative.JumpBranchUncached.complete_trace_clean_extends
+#print axioms Airbender.Compiler.CleanClosedNative.JumpBranchCached.clock_lookup_inventory
+#print axioms Airbender.Compiler.CleanClosedNative.JumpBranchCached.retained_clock_from_source
+#print axioms Airbender.Compiler.CleanWitnessNative.JumpBranchCached.complete_trace_clean_extends
+#print axioms Airbender.Compiler.FixedSetupNative.MulDiv.tag1_region
+#print axioms Airbender.Compiler.FixedSetupNative.MulDiv.tag10_region
+#print axioms Airbender.Compiler.FixedSetupNative.MulDiv.tag26_region
+#print axioms Airbender.Compiler.FixedSetupNative.MulDiv.tag41_region
+#print axioms Airbender.Compiler.FixedSetupNative.MulDiv.tag46_region
+#print axioms Airbender.Compiler.FixedSetupNative.MulDiv.tag0_region
+#print axioms Airbender.Compiler.FixedSetupNative.MulDiv.tag1_contains
+#print axioms Airbender.Compiler.FixedSetupNative.MulDiv.tag41_contains
+#print axioms Airbender.Compiler.FixedSetupNative.MulDiv.range13_value_bound
+#print axioms Airbender.Compiler.CleanClosedNative.MulDivUncached.clock_lookup_inventory
+#print axioms Airbender.Compiler.CleanClosedNative.MulDivUncached.retained_clock_from_source
+#print axioms Airbender.Compiler.CleanWitnessNative.MulDivUncached.complete_trace_clean_extends
+#print axioms Airbender.Compiler.CleanClosedNative.MulDivCached.clock_lookup_inventory
+#print axioms Airbender.Compiler.CleanClosedNative.MulDivCached.retained_clock_from_source
+#print axioms Airbender.Compiler.CleanWitnessNative.MulDivCached.complete_trace_clean_extends
+#print axioms Tests.GKRFixedLookups.rejects_shifted_sign_region
+#print axioms Tests.GKRFixedLookups.rejects_cleanup_column_swap
+#print axioms Tests.GKRFixedLookups.decoder_region_has_distinct_tag
+#print axioms Tests.GKRFixedLookups.native_range13_last_value

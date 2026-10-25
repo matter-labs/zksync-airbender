@@ -81,14 +81,16 @@ All fourteen executor configurations also bind their twenty-eight native RAM
 outputs to the retained logical read/write token products and PC-state tokens,
 preserving raw limbs and execute masks. These output identities follow from
 the complete native graph relations for arbitrary satisfying assignments.
-The six fixed-table configurations (Jump/branch, MUL/DIV, shift/binop) still need
-region/projection adapters. Worker delegation/marker tokens, initialization/public
+Jump/branch and MUL/DIV also have checked fixed-region table projections and
+complete retained constraint/trace composition in both cache modes, bringing
+that coverage to twenty configurations. Shift/binop's two configurations still
+need their dynamic-tag adapter. Worker delegation/marker tokens, initialization/public
 image binding, and pooled logical execution composition remain open.
 
-The combined compiler audit covers 6,082 roots using only standard Lean axioms.
+The combined compiler audit covers 6,129 roots using only standard Lean axioms.
 The normal root build, ten materialized-counter controls and five memory-frame
 controls pass, along with five retained lookup-argument/boundary controls and
-four memory-token controls.
+four memory-token controls and four fixed-table controls.
 Isolated source-preserving native lookup, memory-cache, timestamp-helper and
 native arithmetic-borrow
 mutations trigger normal Lake rebuilding and kernel rejection; restoration

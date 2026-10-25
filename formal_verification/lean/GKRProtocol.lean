@@ -536,3 +536,15 @@ import GKRProtocol.MemoryPortsNative.SubwordMemoryUncached
 import GKRProtocol.MemoryPortsNative.SubwordMemoryCached
 import GKRProtocol.MemoryPortsNative.UnifiedUncached
 import GKRProtocol.MemoryPortsNative.UnifiedCached
+
+-- Tagged Jump/MUL setup projections and retained constraint composition.
+import GKRProtocol.FixedSetupNative.JumpBranchMembership
+import GKRProtocol.CleanClosedNative.JumpBranchUncached
+import GKRProtocol.CleanWitnessNative.JumpBranchUncached
+import GKRProtocol.CleanClosedNative.JumpBranchCached
+import GKRProtocol.CleanWitnessNative.JumpBranchCached
+import GKRProtocol.FixedSetupNative.MulDivMembership
+import GKRProtocol.CleanClosedNative.MulDivUncached
+import GKRProtocol.CleanWitnessNative.MulDivUncached
+import GKRProtocol.CleanClosedNative.MulDivCached
+import GKRProtocol.CleanWitnessNative.MulDivCached
