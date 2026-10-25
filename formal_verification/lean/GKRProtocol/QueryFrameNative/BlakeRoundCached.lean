@@ -1,0 +1,40 @@
+import GKRProtocol.QueryFrameImport
+import GKRProtocol.CounterFrameNative.BlakeRoundCached
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedInputs
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedPart0
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedPart1
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedPart2
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedPart3
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedPart4
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedPart5
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedPart6
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedPart7
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedPart8
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedPart9
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedPart10
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedPart11
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedPart12
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedPart13
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedPart14
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedPart15
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedPart16
+import GKRProtocol.QueryFrameNative.BlakeRoundCachedPart17
+
+namespace Airbender.Compiler.QueryFrameNative.BlakeRoundCached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 32768
+set_option maxHeartbeats 4000000
+
+import_query_frame native certificate "artifacts/compiler/lookup/blake-round-cached.json"
+  queries (Airbender.Compiler.LookupSourceNative.BlakeRoundCached.native.genericQueries)
+  base_model Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native
+  lookup_model Airbender.Compiler.LookupNative.BlakeRoundCached.native
+  query_model Airbender.Compiler.LookupSourceNative.BlakeRoundCached.native
+  source_model Airbender.Compiler.SourceContractNative.BlakeRoundCached.native
+  history_model Airbender.Compiler.HistoryErasureNative.BlakeRoundCached.native
+  helper_model Airbender.Compiler.HelperValidityNative.BlakeRoundCached.native
+  counter_model Airbender.Compiler.CounterFrameNative.BlakeRoundCached.native inputs 763 phase 2 start 0 stop 1152
+
+end Airbender.Compiler.QueryFrameNative.BlakeRoundCached

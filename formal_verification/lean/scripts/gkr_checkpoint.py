@@ -34,14 +34,22 @@ STAGES = {
     'helper_validity': [[sys.executable, 'scripts/gkr_helper_validity_instances.py', '--check', '--build']],
     'clean_arithmetic': [[sys.executable, 'scripts/gkr_clean_arithmetic.py', '--check', '--build']],
     'clean_links': [[sys.executable, 'scripts/gkr_clean_links.py', '--check', '--build']],
+    'materialized_setup': [[sys.executable, 'scripts/gkr_materialized_setup.py', '--check', '--build']],
+    'materialized_tables': [[sys.executable, 'scripts/gkr_materialized_instances.py', '--check', '--build']],
+    'counter_frame': [[sys.executable, 'scripts/gkr_counter_frame_instances.py', '--check', '--build']],
+    'oracle_frame': [[sys.executable, 'scripts/gkr_oracle_frame_instances.py', '--check', '--build']],
+    'query_frame': [[sys.executable, 'scripts/gkr_query_frame_instances.py', '--check', '--build']],
+    'materialized_ranges': [[sys.executable, 'scripts/gkr_materialized_range_instances.py', '--check', '--build']],
+    'materialized_witness': [[sys.executable, 'scripts/gkr_materialized_witness_instances.py', '--check', '--build']],
     'roots': [],
+    'audit': [[sys.executable, 'scripts/audit_gkr_compiler_axioms.py']],
 }
 TESTS = ['GKRCompiler', 'GKRProtocol', 'Tests.GKRCompilerCertificate', 'Tests.GKRCompilerWiring',
          'Tests.GKRLookupFields', 'Tests.GKRConsumerTypes', 'Tests.GKRCacheBindings',
          'Tests.GKRLookupReduction', 'Tests.GKRBaseEncoding', 'Tests.GKRLookupSource',
          'Tests.GKRSourceTable', 'Tests.GKRNativeProduct', 'Tests.GKRMemorySource',
          'Tests.GKRHelperSources', 'Tests.GKRFullArithmetic', 'Tests.GKRFunctional', 'Tests.GKRHelperValidity',
-         'Tests.GKRCleanArithmetic']
+         'Tests.GKRCleanArithmetic', 'Tests.GKRMaterializedCounters']
 
 
 def main():
