@@ -44,6 +44,7 @@ STAGES = {
     'memory_frames': [[sys.executable, 'scripts/gkr_memory_frame_instances.py', '--check', '--build']],
     'memory_execute': [[sys.executable, 'scripts/gkr_memory_execute_instances.py', '--check', '--build']],
     'framed_witness': [[sys.executable, 'scripts/gkr_framed_witness_instances.py', '--check', '--build']],
+    'memory_tokens': [[sys.executable, 'scripts/gkr_memory_ports_instances.py', '--check', '--build']],
     'clean_scalars': [[sys.executable, 'scripts/gkr_clean_scalar_instances.py', '--check', '--build']],
     'clean_arguments': [[sys.executable, 'scripts/gkr_clean_argument_instances.py', '--check', '--build']],
     'clean_generic_arguments': [[sys.executable, 'scripts/gkr_clean_generic_arguments.py', '--check', '--build']],

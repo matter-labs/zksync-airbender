@@ -520,3 +520,19 @@ import GKRProtocol.CleanArgumentsNative.KeccakCached
 import GKRProtocol.CleanGenericArgumentsNative.KeccakCached
 import GKRProtocol.CleanClosedNative.KeccakCached
 import GKRProtocol.CleanWitnessNative.KeccakCached
+
+-- Actual executor RAM products in the retained logical token format.
+import GKRProtocol.MemoryPortsNative.AddSubUncached
+import GKRProtocol.MemoryPortsNative.AddSubCached
+import GKRProtocol.MemoryPortsNative.JumpBranchUncached
+import GKRProtocol.MemoryPortsNative.JumpBranchCached
+import GKRProtocol.MemoryPortsNative.MulDivUncached
+import GKRProtocol.MemoryPortsNative.MulDivCached
+import GKRProtocol.MemoryPortsNative.ShiftBinopUncached
+import GKRProtocol.MemoryPortsNative.ShiftBinopCached
+import GKRProtocol.MemoryPortsNative.WordMemoryUncached
+import GKRProtocol.MemoryPortsNative.WordMemoryCached
+import GKRProtocol.MemoryPortsNative.SubwordMemoryUncached
+import GKRProtocol.MemoryPortsNative.SubwordMemoryCached
+import GKRProtocol.MemoryPortsNative.UnifiedUncached
+import GKRProtocol.MemoryPortsNative.UnifiedCached

@@ -77,12 +77,18 @@ complete retained Clean constraints in sixteen configurations: ADD/SUB, word
 memory, subword memory, unified, Bigint, Blake2-G, Blake2-round, and Keccak in
 both cache modes. The same full native trace witnesses satisfy these constraints
 and preserve the lookup aggregates and RAM/initialization products.
+All fourteen executor configurations also bind their twenty-eight native RAM
+outputs to the retained logical read/write token products and PC-state tokens,
+preserving raw limbs and execute masks. These output identities follow from
+the complete native graph relations for arbitrary satisfying assignments.
 The six fixed-table configurations (Jump/branch, MUL/DIV, shift/binop) still need
-region/projection adapters. Pooled logical-token/execution composition remains open.
+region/projection adapters. Worker delegation/marker tokens, initialization/public
+image binding, and pooled logical execution composition remain open.
 
-The combined compiler audit covers 5,942 roots using only standard Lean axioms.
+The combined compiler audit covers 6,082 roots using only standard Lean axioms.
 The normal root build, ten materialized-counter controls and five memory-frame
-controls pass, along with five new retained lookup-argument/boundary controls.
+controls pass, along with five retained lookup-argument/boundary controls and
+four memory-token controls.
 Isolated source-preserving native lookup, memory-cache, timestamp-helper and
 native arithmetic-borrow
 mutations trigger normal Lake rebuilding and kernel rejection; restoration
