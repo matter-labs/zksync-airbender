@@ -166,4 +166,47 @@ theorem clock_step_complete {initial final : Trace.Timestamp}
         congrArg (fun n : Nat => (n : Source.BaseField)) high
     linear_combination -field
 
+/-- The actual delegation quotient fixes the invocation clock's low two bits,
+without assuming a compiled clock congruence. -/
+theorem invocation_clock_sound (execute low : Source.BaseField)
+    (bit : execute * (execute - 1) = 0)
+    (ranged : (((4 : Source.BaseField)⁻¹ * (low - execute)).val) < 524288) :
+    low.val % 4 = execute.val := by
+  obtain ⟨active, activeBound, activeEquation⟩ := Arithmetic.boolean_nat bit
+  let quotient : Source.BaseField := (4 : Source.BaseField)⁻¹ * (low - execute)
+  have quotientBound : quotient.val < 524288 := ranged
+  have nonzero : (4 : Source.BaseField) ≠ 0 := by decide +kernel
+  have field : ((4 * quotient.val + active : Nat) : Source.BaseField) = low := by
+    simp only [Nat.cast_add, Nat.cast_mul, Nat.cast_ofNat, ZMod.natCast_zmod_val]
+    rw [← activeEquation]
+    dsimp [quotient]
+    rw [← mul_assoc, mul_inv_cancel₀ nonzero, one_mul]
+    ring
+  have natural : 4 * quotient.val + active = low.val :=
+    Arithmetic.bounded_nat_eq (F := Source.BaseField) (p := babyBearModulus)
+      (by change 4 * quotient.val + active < 2013265921; omega) (ZMod.val_lt low)
+      (by simpa only [ZMod.natCast_zmod_val] using field)
+  have activeValue : execute.val = active := by
+    rw [activeEquation, ZMod.val_natCast_of_lt (show active < babyBearModulus by
+      change active < 2013265921; omega)]
+  rw [activeValue]
+  omega
+
+theorem invocation_clock_complete (execute low : Source.BaseField) (bounded : low.val < 524288)
+    (clockShape : low.val % 4 = execute.val) :
+    (((4 : Source.BaseField)⁻¹ * (low - execute)).val) < 524288 := by
+  let quotient := low.val / 4
+  have quotientBound : quotient < 524288 := lt_of_le_of_lt (Nat.div_le_self _ _) bounded
+  have natural : execute.val + 4 * quotient = low.val := by
+    simpa only [← clockShape] using Nat.mod_add_div low.val 4
+  have field : execute + 4 * (quotient : Source.BaseField) = low := by
+    simpa only [Nat.cast_add, Nat.cast_mul, Nat.cast_ofNat, ZMod.natCast_zmod_val] using
+      congrArg (fun n : Nat => (n : Source.BaseField)) natural
+  have nonzero : (4 : Source.BaseField) ≠ 0 := by decide +kernel
+  have recovered : (4 : Source.BaseField)⁻¹ * (low - execute) = quotient := by
+    rw [show low - execute = 4 * (quotient : Source.BaseField) by linear_combination -field]
+    rw [← mul_assoc, inv_mul_cancel₀ nonzero, one_mul]
+  rw [recovered, ZMod.val_natCast_of_lt (show quotient < babyBearModulus from lt_trans quotientBound (by decide))]
+  exact quotientBound
+
 end Airbender.Compiler

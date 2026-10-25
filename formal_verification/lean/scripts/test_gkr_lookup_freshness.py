@@ -16,12 +16,13 @@ from export_gkr_translations import LEAN
 from gkr_lookup_source_certificate import synthesis as source_synthesis
 from gkr_memory_certificate import synthesis as memory_synthesis
 from gkr_helper_instances import synthesis as helper_synthesis
+from gkr_full_arithmetic_certificate import synthesize as full_arithmetic_synthesis
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--work-dir", type=Path, required=True)
-    parser.add_argument("--stage", choices=("metadata", "consumed", "memory", "helper"), default="metadata")
+    parser.add_argument("--stage", choices=("metadata", "consumed", "memory", "helper", "full_arithmetic"), default="metadata")
     args = parser.parse_args()
     verify()
     work = args.work_dir.resolve()
@@ -91,6 +92,25 @@ import_compiler_lookup_fields native from "pair.json"
                   f'  selectors {encoded}\n'
                   '  word_bits 2 native_model Probe.native\n'
                   '  typing Airbender.Compiler.ConsumerNative.AddSubCached.native.typing\n')
+    elif args.stage == "full_arithmetic":
+        original_pair = json.loads(inputs["pair.json"].read_text())
+        selectors = full_arithmetic_synthesis(original_pair, json.loads(inputs["source.json"].read_text()))
+        encoded = json.dumps(json.dumps(selectors, separators=(",", ":")))
+        count = selectors["counts"]
+        first_borrow_source = len(original_pair["source"]["statements"]) + len(original_pair["source"]["booleans"]) + 2
+        dimensions = (f'inputs {count["input_variables"]} variables {len(selectors["addresses"])} '
+                      f'sources {count["source_obligations"]} gates {count["relations"]}')
+        module = ('import GKRProtocol.FullArithmeticImport\n'
+                  'open Airbender Airbender.Compiler\n'
+                  'set_option warningAsError true\n'
+                  'set_option Elab.async false\n'
+                  'set_option maxRecDepth 32768\n'
+                  'set_option maxHeartbeats 4000000\n'
+                  'namespace Probe\n'
+                  'import_full_compiler_arithmetic bridge from "pair.json" source "source.json"\n'
+                  f'  selectors {encoded}\n'
+                  f'check_full_compiler_arithmetic bridge {dimensions} phase 2 '
+                  f'start {first_borrow_source} stop {first_borrow_source + 1}\n')
     elif args.stage == "helper":
         selectors = helper_synthesis(json.loads(inputs["pair.json"].read_text()),
                                      json.loads(inputs["source.json"].read_text()),
@@ -131,6 +151,8 @@ import_compiler_lookup_fields native from "pair.json"
             raise RuntimeError(f"Failure was not in the source-memory fingerprint checker; see {log}")
         if not success and args.stage == "helper" and "candidate9" not in text:
             raise RuntimeError(f"Failure was not in the consumed timestamp-helper checker; see {log}")
+        if not success and args.stage == "full_arithmetic" and f".backward ⟨{first_borrow_source}," not in text:
+            raise RuntimeError(f"Failure was not in the full native backward helper checker; see {log}")
         print(f"PASS {label}: {'valid proof' if success else 'dependency rebuilt and kernel rejected corruption'}", flush=True)
 
     run("warm", True)
@@ -166,7 +188,7 @@ import_compiler_lookup_fields native from "pair.json"
             cache = next(cache[1]["MemoryTuple"] for layer in pair["circuit"]["layers"]
                          for cache in layer["cached_relations"] if "MemoryTuple" in cache[1])
             cache["timestamp_offset"] += 1
-        else:
+        elif args.stage == "helper":
             # Change the consumed low-comparison cache for the first memory
             # port, retaining the original source and timestamp query metadata.
             selected = next(operand for operand in selectors["operands"] if operand["source_index"] == 2)
@@ -177,12 +199,27 @@ import_compiler_lookup_fields native from "pair.json"
                 raise ValueError("timestamp helper fixture requires one actual scalar cache")
             row = choices[0]["relation"]["input"]
             row["constant"] = (row["constant"] + 268435454) % 2013265921
+        else:
+            # Erase one actual native helper assertion, keeping the original
+            # source, higher-level native statements, metadata and gate count.
+            borrow = pair["circuit"]["aux_layout_data"]["shuffle_ram_timestamp_comparison_aux_vars"][0]["intermediate_borrow"]
+            gates = [gate["enforced_relation"] for layer in pair["circuit"]["layers"]
+                     for gate in layer["gates"] + layer["gates_with_external_connections"]]
+            candidates = [gate["EnforceSingleMaxQuadraticConstraint"] for gate in gates
+                          if "EnforceSingleMaxQuadraticConstraint" in gate]
+            selected = next(gate for gate in candidates
+                            if gate["input"]["constant"] == 0
+                            and gate["input"]["linear_terms"] == [[1744830467, borrow]]
+                            and gate["input"]["quadratic_terms"] == [[borrow, [[268435454, borrow]]]])
+            selected["input"] = {"constant": 0, "linear_terms": [], "quadratic_terms": []}
+            selected["expression"] = {"Constant": 0}
         assert geometry == (pair["source"]["num_variables"], pair["circuit"]["trace_len"],
                             len(pair["circuit"]["layers"]), pair["circuit"]["memory_layout"]["total_width"],
                             pair["circuit"]["witness_layout"]["total_width"])
         pair_path.write_text(json.dumps(pair, separators=(",", ":")) + "\n")
         label = {"metadata": "changed-native-coefficient", "consumed": "changed-consumed-operand",
-                 "memory": "changed-memory-timestamp", "helper": "changed-helper-timestamp"}[args.stage]
+                 "memory": "changed-memory-timestamp", "helper": "changed-helper-timestamp",
+                 "full_arithmetic": "erased-native-borrow-assertion"}[args.stage]
         run(label, False)
     finally:
         pair_path.write_bytes(original)

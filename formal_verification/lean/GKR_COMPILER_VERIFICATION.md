@@ -358,6 +358,36 @@ The combined 1,988 compiler roots pass the direct standard-axiom audit.
 Full native witness construction, including composition of these helper facts
 with every emitted arithmetic assertion, remains required.
 
+## Complete base-field arithmetic
+
+All 22 complete base-field arithmetic instances pass. The importer reconstructs
+every base-field gate, scalar cache and scalar materializer. Its source consists
+of the original equations/Boolean obligations and independently derived
+clock/borrow assertions. `full_arithmetic_preserved` derives all these source
+obligations from the full native base-field relation;
+`full_arithmetic_extends` constructs a witness for that entire relation under
+those obligations. `full_arithmetic_equivalent` combines both directions.
+The complete extension-field graph and forward discharge of the helper
+assertions from source primitive/history contracts remain required.
+
+The finite input domain preserves original logical variables, including those
+placed in computed base-field cells, and explicit auxiliary input columns.
+Those coordinates form an initial segment of the native bank, so their
+preservation follows structurally. The certificate supplies only computed
+extension polynomials and ideal witnesses; it cannot replace a source or native
+equation. Distinct-address, forward and backward checks are split into modules
+of at most 32 cases and assembled with proved finite conjunctions. This avoids
+retaining the whole large BLAKE-round reduction in one kernel job.
+
+The instances cover 2,191 native relations, 1,870 source equations (including
+240 independently reconstructed helper assertions), and 3,914 logical/auxiliary
+input coordinates. All 2,229 combined compiler audit roots report only standard
+Lean axioms. Five concrete controls check a changed computed value, a dropped
+borrow assertion, derivation of the borrow bit from accepted native arithmetic,
+and preservation of the actual input addresses. A separate freshness control
+zeros the actual native borrow assertion while retaining the source; normal Lake
+rebuilding rejects its backward identity, and restoration passes.
+
 ## Reproduction and freshness
 
 Run heavy commands one at a time through the repository's bounded worker,
@@ -378,6 +408,7 @@ python3 scripts/gkr_table_instances.py --check --build
 python3 scripts/gkr_product_instances.py --check --build
 python3 scripts/gkr_memory_certificate.py --check --build
 python3 scripts/gkr_helper_instances.py --check --build
+python3 scripts/gkr_full_arithmetic_certificate.py --check --build
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerCertificate:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerWiring:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRLookupFields:olean
@@ -409,6 +440,9 @@ cache's timestamp offset while retaining the source, ports and certificate.
 The source-memory fingerprint checker must reject the rebuilt proof.
 With `--stage helper`, it changes the consumed low-comparison cache coefficient
 while retaining the source and timestamp query metadata; the source-helper
+checker must reject the dependency-aware rebuild.
+With `--stage full_arithmetic`, it zeros an actual native borrow assertion while
+retaining the original source and helper-query metadata. The complete arithmetic
 checker must reject the dependency-aware rebuild.
 
 `Tests/GKRCompilerCertificate.lean` starts from the actual ADD/SUB translation
