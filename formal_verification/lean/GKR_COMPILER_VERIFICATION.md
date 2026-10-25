@@ -433,7 +433,7 @@ to establish argument acceptance.
 
 Five actual ADD/SUB controls reject duplicate extension writes, missing
 dependencies, overwriting base cells and a changed base affine recipe, and
-check lookup construction at zero challenges. The combined 3,348-root axiom
+check lookup construction at zero challenges. The combined 3,548-root axiom
 report is checked separately from full independent kernel replay.
 
 ## Source primitive and inactive-history witnesses
@@ -468,6 +468,35 @@ exhibit failure of zero history at clock zero, and check inactive masked-effect
 preservation. Large transport checks are proved per field and assembled by
 `BoolChecks`, keeping the same resource limits as the preceding stages.
 
+## Connection to the retained Clean models
+
+`CleanArithmeticImport.lean` reconstructs the exact Clean expression trees for
+the actual post-compiler structured statements, using the existing signed
+BabyBear coefficient interpretation. Ideal witnesses against the complete native
+base-field relation prove all 2,070 assertions across the 22 configurations.
+The source assertions and both sides of each polynomial equality come from the
+actual artifact; the certificate supplies only ideal witnesses.
+
+Each logical placement is checked against the actual native address bank.
+The exact placement keys equal a consecutive range, and every arithmetic
+expression stays within that range. No used arithmetic variable falls through
+the projection's default case. Individual physical checks keep large profiles
+within the existing memory limits.
+
+`CleanLinksNative` checks that these assertion lists equal the arithmetic in
+each existing circuit model's `importedConstraints` and full `clockConstraints`.
+Both cache modes therefore feed the same retained model through their own actual
+physical placements. The resulting constraint theorems take explicit primitive
+lookup-membership premises; they do not derive those memberships from sampled
+lookup-output equalities. ROM/setup tables retain their existing arbitrary
+interface parameters. Binding source queries and helper ranges to those
+memberships and composing the global execution relation remain further work.
+
+Two actual ADD/SUB controls reject replacing a retained Clean expression and
+changing its logical placement. These checks, the complete native arithmetic
+replay, the model-list equalities and the combined axiom audit are separate
+validation steps.
+
 ## Reproduction and freshness
 
 Run heavy commands one at a time through the repository's bounded worker,
@@ -494,7 +523,10 @@ python3 scripts/gkr_functional_links.py --check --build
 python3 scripts/gkr_source_contract_instances.py --check --build
 python3 scripts/gkr_history_erasure_instances.py --check --build
 python3 scripts/gkr_helper_validity_instances.py --check --build
+python3 scripts/gkr_clean_arithmetic.py --check --build
+python3 scripts/gkr_clean_links.py --check --build
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRHelperValidity:olean
+LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCleanArithmetic:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerCertificate:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerWiring:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRLookupFields:olean
@@ -548,8 +580,9 @@ decoder masks, scratch aliases, authored fields and source projection.
 2. Compose valid authored queries, helper witnesses and materialized setup/count
    interpretation into lookup/memory argument acceptance. Helper membership and
    inactive-history construction from explicit source contracts are checked.
-3. Connect the complete native relation to the retained post-compiler Clean
-   model and compose with existing circuit/execution roots.
+3. Discharge the retained Clean model's primitive lookup premises from the
+   source-query/helper proofs, then compose with existing circuit/execution
+   roots. Its complete arithmetic lists are now connected to the native relation.
 4. Keep algebraic fingerprint preservation separate from cryptographic
    soundness. A sampled product equality alone cannot establish exact lookup or
    RAM membership.

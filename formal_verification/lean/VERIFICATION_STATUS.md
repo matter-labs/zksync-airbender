@@ -51,7 +51,14 @@ the final argument-acceptance composition remain open. Current
 production source inputs have no relative timestamp groups; unsupported grouped
 profiles are rejected.
 
-The combined compiler audit covers 3,348 roots using only standard Lean axioms.
+The complete native base-field relation now also implies all 2,070 arithmetic
+assertions in the retained post-compiler Clean models, in both cache modes.
+Their exact logical placements and arithmetic inventories are checked, including
+the models' full clock constraints. The resulting constraint theorems retain
+explicit primitive lookup-membership premises; deriving those premises and the
+final execution composition remains open.
+
+The combined compiler audit covers 3,548 roots using only standard Lean axioms.
 Isolated source-preserving native lookup, memory-cache, timestamp-helper and
 native arithmetic-borrow
 mutations trigger normal Lake rebuilding and kernel rejection; restoration
