@@ -102,8 +102,14 @@ Public commitment authentication and ROM/image binding remain external. These
 results validate the captured compiler instances; they are not a universal
 Rust-compiler correctness theorem.
 
-The combined compiler audit passes all 6,527 registered roots using only the
-standard Lean axioms. All 22 source/compiler pairs also pass the provenance guard.
+Both word-memory cache modes also bind active full native ROM queries to
+actual reads of the public Sail image. The proof checks every ROM column and
+excludes native decoder/padding rows by their actual discriminator. Unified and
+subword ROM/decoder bridges and the pooled logical execution interface remain.
+
+The combined compiler audit passes all 6,538 registered roots using only the
+standard Lean axioms, including the native word-ROM/public-image bridge.
+All 22 source/compiler pairs also pass the provenance guard.
 The normal root build, ten materialized-counter controls and five memory-frame
 controls pass, along with five retained lookup-argument/boundary controls and
 four memory-token controls and four fixed-table controls. Shift additionally

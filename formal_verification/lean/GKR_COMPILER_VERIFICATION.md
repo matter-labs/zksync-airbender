@@ -756,7 +756,7 @@ add block-span checks, complete column assembly and the fixed-table adapter.
 Generic argument and lookup-closure proof modules contain at most eight queries
 each.
 
-`audit_gkr_compiler_axioms.py` reads the exact registered 6,527-root inventory
+`audit_gkr_compiler_axioms.py` reads the exact registered 6,538-root inventory
 from `Airbender/Checks/Axioms.lean`, builds its imports sequentially and checks
 every report and permitted axiom. The checkpoint's `audit` stage invokes it.
 Keep axiom reports and full independent kernel replay distinct.
@@ -864,6 +864,19 @@ Controls cover reversed/sparse windows, changing one set, the last valid high
 word and overflow at 128. `check_gkr_window_semantics.py` guards four reviewed
 Rust sources; source hashes do not prove execution of Rust or authenticate
 public setup commitments.
+
+## Full native word-ROM queries and public bytes
+
+`ROMNative/WordMemory.lean` checks all nine columns of the actual full native
+ROM region against the independently imported ROM view. The native tag column
+proves every active tag-34 query lies inside that region; decoder and committed
+padding rows are excluded. The resulting membership theorem feeds the existing
+public-image read proof. Both cache modes' exact `CleanClosedNative.nativeSetup`
+tables therefore satisfy `Trace.ROM.Reads` under `Trace.ROM.ImportedImage`.
+No table equality or witness load result is assumed. Controls distinguish
+decoder/padding rows and check the final ROM address and zero image padding.
+Commitment authentication remains external; unified/subword and decoder query
+bridges are still required for the full pooled execution interface.
 
 ## Required remaining work
 

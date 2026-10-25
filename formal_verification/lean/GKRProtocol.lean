@@ -574,3 +574,6 @@ import GKRProtocol.InitializationPortsNative.UnifiedUncached
 import GKRProtocol.WindowedPublic
 import GKRProtocol.WindowedNative.UnifiedUncachedPublic
 import GKRProtocol.WindowedNative.UnifiedCachedPublic
+
+-- Full native word-ROM queries read the bound public image.
+import GKRProtocol.ROMNative.WordMemoryPublic
