@@ -5400,6 +5400,9 @@ import Tests.GKRNativeROM
 import GKRProtocol.ROMNative.UnifiedPublic
 import Tests.GKRUnifiedROM
 
+import GKRProtocol.ROMNative.SubwordPublic
+import Tests.GKRSubwordNative
+
 -- GKR compiler translation validation.
 #print axioms Airbender.Compiler.equal_sound
 #print axioms Airbender.Compiler.check_valid
@@ -12017,3 +12020,102 @@ import Tests.GKRUnifiedROM
 #print axioms Tests.GKRUnifiedROM.next_fixed_row_excluded
 #print axioms Tests.GKRUnifiedROM.decoder_row_excluded
 #print axioms Tests.GKRUnifiedROM.both_rom_endpoints_selected
+
+-- Full native subword/public-image refinement.
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column0.prefix_value
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column0.region_value0
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column0.region_value1
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column0.region_value2
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column0.region_value3
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column0.region_value4
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column0.region_value5
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column0.region_value6
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column1.prefix_value
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column1.region_value0
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column1.region_value1
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column1.region_value2
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column1.region_value3
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column1.region_value4
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column1.region_value5
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column1.region_value6
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column2.prefix_value
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column2.region_value0
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column2.region_value1
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column2.region_value2
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column2.region_value3
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column2.region_value4
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column2.region_value5
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column2.region_value6
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column3.prefix_value
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column3.region_value0
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column3.region_value1
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column3.region_value2
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column3.region_value3
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column3.region_value4
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column3.region_value5
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column3.region_value6
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column4.prefix_value
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column4.region_value0
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column4.region_value1
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column4.region_value2
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column4.region_value3
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column4.region_value4
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column4.region_value5
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column4.region_value6
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column5.prefix_value
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column5.region_value0
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column5.region_value1
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column5.region_value2
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column5.region_value3
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column5.region_value4
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column5.region_value5
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column5.region_value6
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column6.prefix_value
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column6.region_value0
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column6.region_value1
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column6.region_value2
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column6.region_value3
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column6.region_value4
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column6.region_value5
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column6.region_value6
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column7.prefix_value
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column7.region_value0
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column7.region_value1
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column7.region_value2
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column7.region_value3
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column7.region_value4
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column7.region_value5
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column7.region_value6
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column8.prefix_value
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column8.region_value0
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column8.region_value1
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column8.region_value2
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column8.region_value3
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column8.region_value4
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column8.region_value5
+#print axioms Airbender.Compiler.SubwordPrefixNative.Column8.region_value6
+#print axioms Airbender.Compiler.ROMNative.SubwordRows.region0_column
+#print axioms Airbender.Compiler.ROMNative.SubwordRows.region0_row
+#print axioms Airbender.Compiler.ROMNative.SubwordRows.region1_column
+#print axioms Airbender.Compiler.ROMNative.SubwordRows.region1_row
+#print axioms Airbender.Compiler.ROMNative.SubwordRows.region2_column
+#print axioms Airbender.Compiler.ROMNative.SubwordRows.region2_row
+#print axioms Airbender.Compiler.ROMNative.SubwordRows.region3_column
+#print axioms Airbender.Compiler.ROMNative.SubwordRows.region3_row
+#print axioms Airbender.Compiler.ROMNative.SubwordRows.region4_column
+#print axioms Airbender.Compiler.ROMNative.SubwordRows.region4_row
+#print axioms Airbender.Compiler.ROMNative.SubwordRows.region5_column
+#print axioms Airbender.Compiler.ROMNative.SubwordRows.region5_row
+#print axioms Airbender.Compiler.ROMNative.SubwordRows.region6_column
+#print axioms Airbender.Compiler.ROMNative.SubwordRows.region6_row
+#print axioms Airbender.Compiler.ROMNative.SubwordRows.prefix_row
+#print axioms Airbender.Compiler.ROMNative.SubwordBoundary.decoder_tag
+#print axioms Airbender.Compiler.ROMNative.SubwordBoundary.padding_row
+#print axioms Airbender.Compiler.ROMNative.SubwordBoundary.full_table_refinement
+#print axioms Airbender.Compiler.ROMNative.SubwordPublic.public_table_refinement
+#print axioms Airbender.Compiler.ROMNative.SubwordPublic.uncached_public_table_refinement
+#print axioms Airbender.Compiler.ROMNative.SubwordPublic.cached_public_table_refinement
+#print axioms Tests.GKRSubwordNative.half_rom_tag
+#print axioms Tests.GKRSubwordNative.byte_rom_tag
+#print axioms Tests.GKRSubwordNative.decoder_keeps_distinct_tag
+#print axioms Tests.GKRSubwordNative.committed_padding_is_disabled

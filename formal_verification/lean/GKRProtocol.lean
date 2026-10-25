@@ -580,3 +580,6 @@ import GKRProtocol.ROMNative.WordMemoryPublic
 
 -- Full native unified ROM query refinement to the public-image table.
 import GKRProtocol.ROMNative.UnifiedPublic
+
+-- Complete native subword non-decoder table refinement to the public image.
+import GKRProtocol.ROMNative.SubwordPublic

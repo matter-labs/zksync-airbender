@@ -16,14 +16,14 @@ def block_length(block):
     return block.get('length', len(block.get('values', [])) * block.get('repetitions', 1))
 
 
-def plans(artifact, column):
+def plans(artifact, column, prefix=PREFIX, chunk_size=CHUNK):
     blocks = artifact['columns'][column]['blocks']
     source = [0]
     for block in blocks:
         source.append(source[-1] + block_length(block))
-    if PREFIX not in source:
+    if prefix not in source:
         raise ValueError('fixed Shift prefix cuts a source block')
-    stop = source.index(PREFIX)
+    stop = source.index(prefix)
     targets = []
     for kind, region in enumerate(artifact['tables']):
         start, end = region['offset'], region['offset'] + region['length']
@@ -47,8 +47,8 @@ def plans(artifact, column):
             raise ValueError('Shift region coverage changed')
         targets.append((kind, pieces))
     result = []
-    for first in range(0, stop, CHUNK):
-        last = min(first + CHUNK, stop)
+    for first in range(0, stop, chunk_size):
+        last = min(first + chunk_size, stop)
         lo, hi = source[first], source[last]
         selected = []
         for kind, pieces in targets:
