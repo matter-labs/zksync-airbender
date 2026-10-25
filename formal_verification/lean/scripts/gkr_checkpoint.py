@@ -33,6 +33,7 @@ def main():
         [sys.executable, "scripts/gkr_product_instances.py", "--check", "--build"],
         [sys.executable, "scripts/gkr_memory_certificate.py", "--check", "--build"],
         [sys.executable, "scripts/gkr_helper_instances.py", "--check", "--build"],
+        [sys.executable, "scripts/gkr_full_arithmetic_certificate.py", "--check", "--build"],
     ]
     for command in commands:
         subprocess.run(command, cwd=LEAN, env=environment, check=True)
@@ -40,7 +41,7 @@ def main():
                    "Tests.GKRCompilerWiring", "Tests.GKRLookupFields",
                    "Tests.GKRConsumerTypes", "Tests.GKRCacheBindings",
                    "Tests.GKRLookupReduction", "Tests.GKRBaseEncoding", "Tests.GKRLookupSource",
-                   "Tests.GKRSourceTable", "Tests.GKRNativeProduct", "Tests.GKRMemorySource", "Tests.GKRHelperSources"]:
+                   "Tests.GKRSourceTable", "Tests.GKRNativeProduct", "Tests.GKRMemorySource", "Tests.GKRHelperSources", "Tests.GKRFullArithmetic"]:
         print("CHECKPOINT", target, flush=True)
         subprocess.run(["lake", "--no-cache", "build", "+" + target + ":olean"],
                        cwd=LEAN, env=environment, check=True)

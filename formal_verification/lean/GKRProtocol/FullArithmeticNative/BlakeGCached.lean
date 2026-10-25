@@ -1,0 +1,21 @@
+import GKRProtocol.FullArithmeticNative.BlakeGCachedFoundation
+import GKRProtocol.FullArithmeticNative.BlakeGCachedUniquePart0
+import GKRProtocol.FullArithmeticNative.BlakeGCachedUniquePart1
+import GKRProtocol.FullArithmeticNative.BlakeGCachedUniquePart2
+import GKRProtocol.FullArithmeticNative.BlakeGCachedUniquePart3
+import GKRProtocol.FullArithmeticNative.BlakeGCachedUniquePart4
+import GKRProtocol.FullArithmeticNative.BlakeGCachedForwardPart0
+import GKRProtocol.FullArithmeticNative.BlakeGCachedForwardPart1
+import GKRProtocol.FullArithmeticNative.BlakeGCachedBackwardPart0
+import GKRProtocol.FullArithmeticNative.BlakeGCachedBackwardPart1
+
+namespace Airbender.Compiler.FullArithmeticNative.BlakeGCached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 32768
+set_option maxHeartbeats 4000000
+
+finalize_full_compiler_arithmetic native inputs 113 variables 138 sources 34 gates 59
+
+end Airbender.Compiler.FullArithmeticNative.BlakeGCached

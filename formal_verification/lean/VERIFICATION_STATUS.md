@@ -15,9 +15,12 @@ and the [fixed scope](FORMAL_VERIFICATION_PLAN.md).
 The [GKR compiler preservation effort](GKR_COMPILER_VERIFICATION.md) is active.
 All 22 production configurations (eleven families, both cache modes) have checked
 source-arithmetic preservation, graph wiring, consumer field roles, cache
-semantics and source lookup-field identities. Arithmetic witness extension
-currently covers the selected source arithmetic slice; full native witness
-construction remains open.
+semantics and source lookup-field identities. Both directions of the complete
+base-field arithmetic relation are checked, covering every native arithmetic
+gate, scalar cache and scalar materializer. Forward extension currently requires
+the independently source-derived clock/borrow assertions; deriving them from
+source contracts and constructing the complete extension-field witness remain
+open.
 
 All 4,436 consumed authored lookup fields agree with 836 original requests.
 Another 474 timestamp/alignment query occurrences agree with independently
@@ -40,8 +43,9 @@ assertion and construction of the complete graph witness remain open. Current
 production source inputs have no relative timestamp groups; unsupported grouped
 profiles are rejected.
 
-The combined compiler audit covers 1,988 roots using only standard Lean axioms.
-Isolated source-preserving native lookup, memory-cache and timestamp-helper
+The combined compiler audit covers 2,229 roots using only standard Lean axioms.
+Isolated source-preserving native lookup, memory-cache, timestamp-helper and
+native arithmetic-borrow
 mutations trigger normal Lake rebuilding and kernel rejection; restoration
 passes. A prior mutation exposed ineffective deprecated dependency keys, now
 replaced by `needs`. Actual artifact provenance, input freshness, direct axiom
