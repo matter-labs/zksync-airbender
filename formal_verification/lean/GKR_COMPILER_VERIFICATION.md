@@ -258,7 +258,9 @@ variable. The combined 1,010 compiler roots pass a direct standard-axiom audit.
 materialized memory term, product aggregation, mask, extension copy and
 initialization/teardown pair. Memory caches retain their actual affine input
 addresses. Initialization tuples preserve RAM address space, virtual setup
-columns, set-index high-address offsets and teardown timestamp/value columns.
+columns, set selectors and teardown timestamp/value columns. The original
+interpreter specialized public top bits to set indices; the window-parametric
+interpreter below retains the actual supplied values.
 Retired product consumers fail closed.
 
 `ProductReduction.lean` follows actual ports and retains mask addresses in the
@@ -732,16 +734,13 @@ BabyBear; field-to-natural conversion therefore preserves the address.
 `read_output_public` and `write_output_public` compose this with the full native
 relations. The 8,388,608-row domain stays symbolic.
 
-These address laws remain an external public-setup interface. This adapter does
-not prove that the Rust virtual-setup generator or verifier enforces them.
-The current `NativeProductImport.initPayload` and source initialization request
-model specialize the per-set high bits to the set index. Rust's forward loop
-instead reads `inits_and_teardowns_top_bits[set]`. Thus these initialization
-output roots currently certify that specialization, not arbitrary native public
-window selections. This interpretation gap must be closed before claiming full
-initialization preservation. Actual ROM/public-image binding and construction
-of the pooled execution interface also remain open. Boundary controls check the last valid window pair,
-its first overflow and word alignment.
+This older adapter is a specialization: `NativeProductImport.initPayload` and
+the original source initialization request model use set-index high bits. The
+actual native forward loop reads `inits_and_teardowns_top_bits[set]`. The
+window-parametric interpreter and full trace witnesses below close that
+interpretation gap. The original adjacent-window boundary controls remain
+valid specialization checks. Public setup commitment authentication and
+ROM/public-image binding remain explicit protocol interfaces.
 
 ## Reproduction and freshness
 
@@ -757,7 +756,7 @@ add block-span checks, complete column assembly and the fixed-table adapter.
 Generic argument and lookup-closure proof modules contain at most eight queries
 each.
 
-`audit_gkr_compiler_axioms.py` reads the exact registered 6,454-root inventory
+`audit_gkr_compiler_axioms.py` reads the exact registered 6,527-root inventory
 from `Airbender/Checks/Axioms.lean`, builds its imports sequentially and checks
 every report and permitted axiom. The checkpoint's `audit` stage invokes it.
 Keep axiom reports and full independent kernel replay distinct.
@@ -840,14 +839,40 @@ cache-layer errors, duplicate producers/placements, dangling output ports and
 stale producer tables; lookup controls reject changed table selectors, padding,
 decoder masks, scratch aliases, authored fields and source projection.
 
+## Actual native initialization windows
+
+`InitializationWindowImport.lean` reconstructs both inline initialization pair
+relations from actual artifact set selectors, setup ports, scalar columns and
+outputs. Each high address uses the supplied `publicTops set * 512`, matching
+the reviewed Rust forward-loop interpretation. `publicTops = id` is kernel-checked
+to recover the prior specialized gates. The row virtual high column is
+`row / 16384`; it contains no public-window contribution.
+
+Both `WindowedNative/Unified*Witness.lean` modules construct complete native
+trace witnesses, retain original source variables, arithmetic/helper/counter
+and literal table setup laws, satisfy all window-parametric product relations,
+and compose the retained Clean constraints. Counter witnesses are chosen before
+both public windows and algebraic challenges. Exact dependency agreement checks
+prove all lookup and execution-RAM outputs unchanged. Initialization outputs
+are the new boundary token products, with no division or denominator assumption.
+
+`WindowedNative/Unified*Public.lean` connects those same witnesses to retained
+initialization leaves after selecting `initializationVirtualOracle` for row
+addresses. Each set may independently choose any window below 128; adjacency
+and ordering are not required. Natural address bounds prevent field aliasing.
+Controls cover reversed/sparse windows, changing one set, the last valid high
+word and overflow at 128. `check_gkr_window_semantics.py` guards four reviewed
+Rust sources; source hashes do not prove execution of Rust or authenticate
+public setup commitments.
+
 ## Required remaining work
 
 1. Bind the public virtual-setup laws and actual ROM image, then construct the
    pooled logical execution interface. All forty-eight modeled RAM/initialization
    outputs have token identities, including PC-state and virtual CSR markers.
-   Correct the initialization interpreter's set-index specialization to retain
-   the actual per-set public top bits before asserting full native coverage.
-   Initialization public addresses follow from the explicit row/window laws.
+   Actual per-set initialization windows and row-only virtual setup are now
+   retained in both unified configurations; commitment authentication remains
+   an external protocol boundary.
 2. Retain the actual setup and external memory interfaces when instantiating
    those adapters. Uniform lookup counters and all native trace product
    identities are now checked in every retained configuration.

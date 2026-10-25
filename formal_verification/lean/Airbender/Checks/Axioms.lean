@@ -5389,6 +5389,11 @@ import GKRProtocol.InitializationPortsNative.UnifiedUncached
 #print axioms Airbender.Blake2Round.Proofs.successful_position
 #print axioms Airbender.Keccak.Proofs.successful_position
 
+import GKRProtocol.WindowedPublic
+import GKRProtocol.WindowedNative.UnifiedUncachedPublic
+import GKRProtocol.WindowedNative.UnifiedCachedPublic
+import Tests.GKRWindowedInitialization
+
 -- GKR compiler translation validation.
 #print axioms Airbender.Compiler.equal_sound
 #print axioms Airbender.Compiler.check_valid
@@ -11878,3 +11883,79 @@ import GKRProtocol.InitializationPortsNative.UnifiedUncached
 #print axioms Airbender.Compiler.InitializationPortsNative.UnifiedUncached.write_output_tokens
 #print axioms Airbender.Compiler.InitializationPortsNative.UnifiedUncached.read_output_public
 #print axioms Airbender.Compiler.InitializationPortsNative.UnifiedUncached.write_output_public
+
+-- Actual native per-set initialization windows.
+#print axioms Airbender.Compiler.FunctionalStep.Valid.replace
+#print axioms Airbender.Compiler.FunctionalProgram.Valid.replace
+#print axioms Airbender.Compiler.FunctionalStep.output_agrees
+#print axioms Airbender.Compiler.windowed_boundary_specialization
+#print axioms Airbender.Compiler.windowed_boundary_leaf
+#print axioms Airbender.Compiler.windowed_initial_fingerprint
+#print axioms Airbender.Compiler.windowed_terminal_fingerprint
+#print axioms Airbender.Compiler.windowed_public_addresses
+#print axioms Airbender.Compiler.windowed_public_word_bounds
+#print axioms Airbender.Compiler.windowed_public_bounds
+#print axioms Airbender.Compiler.windowed_public_leaf
+#print axioms Tests.GKRWindowedInitialization.reversed_sparse_windows_supported
+#print axioms Tests.GKRWindowedInitialization.independent_window_changes_address
+#print axioms Tests.GKRWindowedInitialization.top_bit_128_overflows_word
+#print axioms Tests.GKRWindowedInitialization.virtual_high_has_no_public_window
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.specialization0
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.specialization1
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.valid
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.canonical_steps
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.canonical_base
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.canonical_affines
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.canonical_lookups
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.canonical_products
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.gate0_tokens
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.gate1_tokens
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.read_output_tokens
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.write_output_tokens
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.canonical_read_tokens
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.canonical_write_tokens
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.graph_extends
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.canonical_old_witness
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.complete_row_extends
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.complete_trace_extends
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.complete_trace_clean_extends
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.GenericLookup_output0_unchanged
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.GenericLookup_output1_unchanged
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.Lookup16Bits_output0_unchanged
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.Lookup16Bits_output1_unchanged
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.LookupTimestamps_output0_unchanged
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.LookupTimestamps_output1_unchanged
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.PermutationProduct_output0_unchanged
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.PermutationProduct_output1_unchanged
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.specialization0
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.specialization1
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.valid
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.canonical_steps
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.canonical_base
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.canonical_affines
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.canonical_lookups
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.canonical_products
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.gate0_tokens
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.gate1_tokens
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.read_output_tokens
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.write_output_tokens
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.canonical_read_tokens
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.canonical_write_tokens
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.graph_extends
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.canonical_old_witness
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.complete_row_extends
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.complete_trace_extends
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.complete_trace_clean_extends
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.GenericLookup_output0_unchanged
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.GenericLookup_output1_unchanged
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.Lookup16Bits_output0_unchanged
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.Lookup16Bits_output1_unchanged
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.LookupTimestamps_output0_unchanged
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.LookupTimestamps_output1_unchanged
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.PermutationProduct_output0_unchanged
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.PermutationProduct_output1_unchanged
+
+#print axioms Airbender.Compiler.initialization_virtual_low
+#print axioms Airbender.Compiler.initialization_virtual_high
+#print axioms Airbender.Compiler.WindowedNative.UnifiedUncached.public_boundary_outputs
+#print axioms Airbender.Compiler.WindowedNative.UnifiedCached.public_boundary_outputs
