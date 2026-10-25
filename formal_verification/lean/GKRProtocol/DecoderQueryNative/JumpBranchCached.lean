@@ -1,0 +1,98 @@
+import GKRProtocol.DecoderQueryFrame
+import GKRProtocol.MaterializedWitnessNative.JumpBranchCached
+import GKRProtocol.CleanGenericSetup
+import GKRProtocol.MaterializedNative.JumpBranchCached
+import GKRProtocol.PackedDecoderNormalization
+import GKRProtocol.DecoderArgumentsNative.JumpBranchCached
+import GKRProtocol.DecoderTail.JumpBranch.Membership
+
+namespace Airbender.Compiler.DecoderQueryNative.JumpBranchCached
+open Airbender Airbender.Compiler Airbender.Trace.NativeDecoder
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 65536
+set_option maxHeartbeats 8000000
+
+noncomputable def expressions : Vector (_root_.Expression Source.BaseField) 10 :=
+  #v[Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression1, Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression2, Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression3, Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression4, Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression5, Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression6, Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression7, Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression8, Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression9, Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression10]
+
+theorem payload_inventory : expressions.toList = Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.payloadExpressions := by rfl
+
+noncomputable def values (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField) :
+    Vector Source.BaseField 10 := expressions.map (fun expression => expression.eval (Airbender.Compiler.CleanArithmeticNative.JumpBranchCached.native.environment physical data))
+
+theorem normalization_geometry (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField) :
+    normalizeDecoderFields jumpBranchSetup (values physical data) =
+      activeQuery ((decoderExpressions Airbender.JumpBranchSlt.importedConstraintsTraceColumns Airbender.JumpBranchSlt.importedConstraintsDecoderColumns).map
+        (fun expression => expression.eval (Airbender.Compiler.CleanArithmeticNative.JumpBranchCached.native.environment physical data))) := by
+  apply Vector.ext
+  intro column bound
+  interval_cases column <;>
+    simp [normalizeDecoderFields, values, expressions, activeQuery, _root_.Expression.eval,
+      jumpBranchSetup, jumpBranchDecoderDataColumnsMask, jumpBranchDecoderDataTagged,
+      Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression1, Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression2, Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression3, Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression4, Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression5, Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression6, Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression7, Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression8, Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression9, Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression10]
+
+theorem normalized_values (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField) :
+    normalizeDecoderFields jumpBranchSetup (values physical data) =
+      activeQuery (Trace.nativeDecoderQuery Airbender.JumpBranchSlt.importedConstraintsTraceColumns Airbender.JumpBranchSlt.importedConstraintsDecoderColumns
+        (fun index => (Airbender.Compiler.CleanArithmeticNative.JumpBranchCached.native.environment physical data).get index)) :=
+  (normalization_geometry physical data).trans
+    (congrArg activeQuery (decoder_expressions_value Airbender.JumpBranchSlt.importedConstraintsTraceColumns Airbender.JumpBranchSlt.importedConstraintsDecoderColumns (Airbender.Compiler.CleanArithmeticNative.JumpBranchCached.native.environment physical data)))
+
+theorem source_payload (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
+    (arithmetic : ∀ gate ∈ Airbender.Compiler.FullArithmeticNative.JumpBranchCached.native.artifact.gates, gate.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.JumpBranchCached.native.bank.address) = 0) :
+    (values physical data).toList = Airbender.Compiler.LookupSourceNative.JumpBranchCached.native.query12.fields.map (fun field => field.value ((physical ∘ Airbender.Compiler.LookupSourceNative.JumpBranchCached.native.bank.address) ∘ Airbender.Compiler.LookupNative.JumpBranchCached.native.sourcePlacement)) := by
+  rw [values, Vector.toList_map, payload_inventory]
+  exact Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.payload_fields physical data arithmetic
+
+theorem program_membership (capacity : FieldCapacity.NoWrap babyBearModulus 65536)
+    (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
+    (typed : ((Airbender.Compiler.CleanArithmeticNative.JumpBranchCached.native.environment physical data).get Airbender.JumpBranchSlt.importedConstraintsTraceColumns.initialPC[0]).val < 65536)
+    (present : (Airbender.Compiler.DecoderTail.JumpBranch.Membership.nativeSetup.imported.data.table "Airbender.Native.JumpBranchSlt").Contains #[] (values physical data)) :
+    (Trace.decoderTable pooledProgram .jumpBranchSlt).Contains #[]
+      (Trace.nativeDecoderQuery Airbender.JumpBranchSlt.importedConstraintsTraceColumns Airbender.JumpBranchSlt.importedConstraintsDecoderColumns (fun index => (Airbender.Compiler.CleanArithmeticNative.JumpBranchCached.native.environment physical data).get index)) := by
+  exact Airbender.Compiler.DecoderTail.JumpBranch.Membership.lookup_sound capacity (values physical data) _ typed (normalized_values physical data) present
+
+theorem program_from_source_membership (capacity : FieldCapacity.NoWrap babyBearModulus 65536)
+    (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
+    (arithmetic : ∀ gate ∈ Airbender.Compiler.FullArithmeticNative.JumpBranchCached.native.artifact.gates, gate.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.JumpBranchCached.native.bank.address) = 0)
+    (typed : ((Airbender.Compiler.CleanArithmeticNative.JumpBranchCached.native.environment physical data).get Airbender.JumpBranchSlt.importedConstraintsTraceColumns.initialPC[0]).val < 65536)
+    (member : Airbender.Compiler.MaterializedNative.JumpBranchCached.native.model.Contains Airbender.Compiler.TableNative.JumpBranchCached.native.genericSetupColumns
+      (Airbender.Compiler.LookupSourceNative.JumpBranchCached.native.query12.fields.map (fun field => field.value ((physical ∘ Airbender.Compiler.LookupSourceNative.JumpBranchCached.native.bank.address) ∘ Airbender.Compiler.LookupNative.JumpBranchCached.native.sourcePlacement)))) :
+    (Trace.decoderTable pooledProgram .jumpBranchSlt).Contains #[]
+      (Trace.nativeDecoderQuery Airbender.JumpBranchSlt.importedConstraintsTraceColumns Airbender.JumpBranchSlt.importedConstraintsDecoderColumns (fun index => (Airbender.Compiler.CleanArithmeticNative.JumpBranchCached.native.environment physical data).get index)) := by
+  have columns : Airbender.Compiler.TableNative.JumpBranchCached.native.genericSetupColumns = (List.range 10).map SourceSetupColumn.generic := by decide +kernel
+  have payload := source_payload physical data arithmetic
+  rw [← payload] at member
+  have present := Airbender.Compiler.MaterializedNative.JumpBranchCached.native.model.generic_clean_contains Airbender.Compiler.TableNative.JumpBranchCached.native.genericSetupColumns columns (values physical data) member "Airbender.Native.JumpBranchSlt" #[]
+  exact program_membership capacity physical data typed present
+
+theorem decoder_query_member : Airbender.Compiler.LookupSourceNative.JumpBranchCached.native.query12 ∈ Airbender.Compiler.LookupSourceNative.JumpBranchCached.native.genericQueries := by
+  have same : Airbender.Compiler.LookupSourceNative.JumpBranchCached.native.genericQueries.get ⟨4, by decide⟩ = Airbender.Compiler.LookupSourceNative.JumpBranchCached.native.query12 := by rfl
+  exact same ▸ List.get_mem Airbender.Compiler.LookupSourceNative.JumpBranchCached.native.genericQueries ⟨4, by decide⟩
+
+theorem program_from_framed_source (capacity : FieldCapacity.NoWrap babyBearModulus 65536)
+    (sourceValue : Fin Airbender.Compiler.FullArithmeticNative.JumpBranchCached.native.inputs.length → Source.BaseField) (counts : Fin Airbender.Compiler.TableNative.JumpBranchCached.native.multiplicityColumns.length → Source.BaseField)
+    (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
+    (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.JumpBranchCached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.JumpBranchCached.native.assigned (Airbender.Compiler.HelperValidityNative.JumpBranchCached.native.canonical sourceValue) counts wire)
+    (arithmetic : ∀ gate ∈ Airbender.Compiler.FullArithmeticNative.JumpBranchCached.native.artifact.gates, gate.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.JumpBranchCached.native.bank.address) = 0)
+    (typed : ((Airbender.Compiler.CleanArithmeticNative.JumpBranchCached.native.environment physical data).get Airbender.JumpBranchSlt.importedConstraintsTraceColumns.initialPC[0]).val < 65536)
+    (enabled : (Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.expression0).eval (Airbender.Compiler.CleanArithmeticNative.JumpBranchCached.native.environment physical data) ≠ 0)
+    (valid : Airbender.Compiler.MaterializedWitnessNative.JumpBranchCached.AuthoredLookupValid sourceValue) :
+    (Trace.decoderTable pooledProgram .jumpBranchSlt).Contains #[]
+      (Trace.nativeDecoderQuery Airbender.JumpBranchSlt.importedConstraintsTraceColumns Airbender.JumpBranchSlt.importedConstraintsDecoderColumns (fun index => (Airbender.Compiler.CleanArithmeticNative.JumpBranchCached.native.environment physical data).get index)) := by
+  have framed : ∀ field ∈ Airbender.Compiler.LookupSourceNative.JumpBranchCached.native.query12.usedFields, field.value ((physical ∘ Airbender.Compiler.LookupSourceNative.JumpBranchCached.native.bank.address) ∘ Airbender.Compiler.LookupNative.JumpBranchCached.native.sourcePlacement) = field.value (sourceValue ∘ Airbender.Compiler.FullArithmeticNative.JumpBranchCached.native.originalProjection) := by
+    intro field included
+    apply Airbender.Compiler.QueryFrameNative.JumpBranchCached.native.fields_preserved sourceValue counts physical inputAgreement field
+    exact List.mem_flatMap.mpr ⟨Airbender.Compiler.LookupSourceNative.JumpBranchCached.native.query12, List.mem_append_left _ decoder_query_member, included⟩
+  have weight := decoder_weight_congr Airbender.Compiler.LookupSourceNative.JumpBranchCached.native.query12 _ _ framed
+  rw [Airbender.Compiler.DecoderArgumentsNative.JumpBranchCached.native.execute_weight physical data arithmetic] at weight
+  have nonzero : Airbender.Compiler.LookupSourceNative.JumpBranchCached.native.query12.weight (RingHom.id _) (sourceValue ∘ Airbender.Compiler.FullArithmeticNative.JumpBranchCached.native.originalProjection) ≠ 0 := by
+    rw [← weight]
+    exact enabled
+  have present := valid.1 _ decoder_query_member nonzero
+  have payload := decoder_fields_congr Airbender.Compiler.LookupSourceNative.JumpBranchCached.native.query12 _ _ framed
+  have moved := (congrArg (fun fields => Airbender.Compiler.MaterializedNative.JumpBranchCached.native.model.Contains Airbender.Compiler.TableNative.JumpBranchCached.native.genericSetupColumns fields) payload).mpr present
+  exact program_from_source_membership capacity physical data arithmetic typed moved
+
+end Airbender.Compiler.DecoderQueryNative.JumpBranchCached

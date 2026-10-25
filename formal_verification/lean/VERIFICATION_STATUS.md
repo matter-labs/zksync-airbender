@@ -116,11 +116,16 @@ permutation, decoder exclusion and zero padding. The decoder-tag guards remain
 explicit. All fourteen executor configurations also bind their packed decoder
 queries to retained decoder expressions: 144 physical fields and each query's
 payload, execute weight and algebraic lookup expression. The full native decoder
-setup/program bridge and pooled logical execution interface remain.
+setup bridge now also passes for all seven executor families: actual prefix
+discriminators, every decoder/padding field and packing-mask normalization.
+All fourteen compiled query adapters compose this with the Sail-derived selected
+program tables, including coordinate-wise canonical witness framing. Their
+source membership, active query, typed-PC and capacity conditions stay explicit.
+General public-program/image binding and pooled logical execution remain.
 
-The combined compiler audit passes all 7,176 registered roots using only the
+The combined compiler audit passes all 7,654 registered roots using only the
 standard Lean axioms, including the subword/unified table refinements and all
-fourteen decoder query identities.
+fourteen decoder query identities and full setup/program adapters.
 All 22 source/compiler pairs also pass the provenance guard.
 The normal root build, ten materialized-counter controls and five memory-frame
 controls pass, along with five retained lookup-argument/boundary controls and

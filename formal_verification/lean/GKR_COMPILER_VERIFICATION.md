@@ -757,7 +757,7 @@ add block-span checks, complete column assembly and the fixed-table adapter.
 Generic argument and lookup-closure proof modules contain at most eight queries
 each.
 
-`audit_gkr_compiler_axioms.py` reads the exact registered 7,176-root inventory
+`audit_gkr_compiler_axioms.py` reads the exact registered 7,654-root inventory
 from `Airbender/Checks/Axioms.lean`, builds its imports sequentially and checks
 every report and permitted axiom. The checkpoint's `audit` stage invokes it.
 Keep axiom reports and full independent kernel replay distinct.
@@ -952,12 +952,37 @@ Controls reject a constant execute weight, dropping a present `funct3`, changing
 the selector-mask coefficient, and a wrong table discriminator. The checkpoint
 runner replays these checks with `--stage decoder_arguments`.
 
+## Full native decoder setup and program membership
+
+`DecoderTail` checks every real decoder row and committed padding column in all
+seven executor families. Existing full-prefix certificates isolate the expensive
+unified and Shift tails; the other exact block boundaries have direct prefix
+length/coverage certificates. A proved finite recoding rule handles the few
+short constant-array seams in unified. No whole-table sampling is used.
+
+`PackedDecoderNormalization` checks the field interpretation of the actual
+packing masks, including omitted `funct3` fields and separate untagged tables.
+`DecoderSetupRefinement` transports full native table membership to the existing
+`PackedSetup.lookup` interface. The actual leading discriminator columns and
+complete decoder/padding rows discharge its instance hypotheses. The retained
+Sail-derived decoder soundness theorems then supply program membership under
+their explicit typed-PC and field-capacity premises.
+
+All fourteen `DecoderQueryNative` instances connect the actual compiled query
+expressions to this normalization. Source payload identities and coordinate-wise
+canonical-frame preservation carry source lookup validity through the same
+constructed witness. The enabled query therefore belongs to the retained
+`pooledProgram` family table (or `unifiedProgram` for unified), without inferring
+membership from an algebraic fingerprint. The source membership, nonzero execute
+weight and typed-PC conditions remain explicit. General public-image/program
+binding and final pooled execution composition are the next integration steps.
+
 ## Required remaining work
 
-1. Connect full native decoder setup membership to the existing packed-decoder
-   and public-program proofs, retaining typed PC and selector obligations. The
-   query-field, weight and fingerprint identities now pass in all fourteen
-   executor configurations.
+1. Bind the retained selected programs to the execution model's public image
+   and program interfaces. All fourteen compiled decoder query adapters now
+   reach the retained program membership theorems, including actual full native
+   setup, packing masks and canonical witness frames.
 2. Construct the pooled logical execution interface using the actual setup,
    per-set initialization windows and external memory tokens. All forty-eight
    modeled RAM/initialization outputs already have token identities.
