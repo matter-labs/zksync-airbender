@@ -732,6 +732,17 @@ import GKRProtocol.CleanClosedNative.ShiftBinopCached
 import GKRProtocol.CleanClosedNative.ShiftBinopUncached
 import GKRProtocol.CleanWitnessNative.ShiftBinopCached
 import GKRProtocol.CleanWitnessNative.ShiftBinopUncached
+import GKRProtocol.MemoryValueCongruence
+import Tests.GKRWorkerTokens
+import GKRProtocol.WorkerPortsNative.BigintCached
+import GKRProtocol.WorkerPortsNative.BigintUncached
+import GKRProtocol.WorkerPortsNative.BlakeGCached
+import GKRProtocol.WorkerPortsNative.BlakeGUncached
+import GKRProtocol.WorkerPortsNative.BlakeRoundCached
+import GKRProtocol.WorkerPortsNative.BlakeRoundUncached
+import GKRProtocol.WorkerPortsNative.KeccakCached
+import GKRProtocol.WorkerPortsNative.KeccakUncached
+
 
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
@@ -11712,3 +11723,121 @@ import GKRProtocol.CleanWitnessNative.ShiftBinopUncached
 #print axioms Tests.GKRBlockCoverage.changed_part_changes_a_row
 
 #print axioms Airbender.Compiler.ShiftSetupNative.dummy_row_zero
+
+-- Worker RAM and virtual-CSR request token transport.
+#print axioms Airbender.Compiler.Source.MemoryField.value_congr
+#print axioms Airbender.Compiler.Source.MemoryField.value_congr_scoped
+#print axioms Tests.GKRWorkerTokens.marker_keeps_full_csr
+#print axioms Tests.GKRWorkerTokens.marker_clock_is_not_erased
+#print axioms Tests.GKRWorkerTokens.different_csr_is_a_different_token
+#print axioms Tests.GKRWorkerTokens.empty_marker_retains_virtual_address
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintCached.original_columns
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintCached.history_columns
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintCached.source_read_tokens
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintCached.source_write_tokens
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintCached.original_assignment
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintCached.history_assignment
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintCached.history_indices
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintCached.row_token_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintCached.read_tokens_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintCached.read_products_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintCached.write_tokens_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintCached.write_products_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintCached.read_output_logical
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintCached.write_output_logical
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintUncached.original_columns
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintUncached.history_columns
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintUncached.source_read_tokens
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintUncached.source_write_tokens
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintUncached.original_assignment
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintUncached.history_assignment
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintUncached.history_indices
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintUncached.row_token_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintUncached.read_tokens_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintUncached.read_products_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintUncached.write_tokens_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintUncached.write_products_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintUncached.read_output_logical
+#print axioms Airbender.Compiler.WorkerPortsNative.BigintUncached.write_output_logical
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGCached.original_columns
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGCached.history_columns
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGCached.source_read_tokens
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGCached.source_write_tokens
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGCached.original_assignment
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGCached.history_assignment
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGCached.history_indices
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGCached.row_token_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGCached.read_tokens_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGCached.read_products_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGCached.write_tokens_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGCached.write_products_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGCached.read_output_logical
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGCached.write_output_logical
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGUncached.original_columns
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGUncached.history_columns
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGUncached.source_read_tokens
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGUncached.source_write_tokens
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGUncached.original_assignment
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGUncached.history_assignment
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGUncached.history_indices
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGUncached.row_token_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGUncached.read_tokens_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGUncached.read_products_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGUncached.write_tokens_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGUncached.write_products_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGUncached.read_output_logical
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeGUncached.write_output_logical
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundCached.history_columns
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundCached.source_read_tokens
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundCached.source_write_tokens
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundCached.original_assignment
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundCached.history_assignment
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundCached.history_indices
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundCached.row_token_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundCached.read_tokens_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundCached.read_products_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundCached.write_tokens_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundCached.write_products_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundCached.read_output_logical
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundCached.write_output_logical
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundUncached.history_columns
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundUncached.source_read_tokens
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundUncached.source_write_tokens
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundUncached.original_assignment
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundUncached.history_assignment
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundUncached.history_indices
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundUncached.row_token_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundUncached.read_tokens_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundUncached.read_products_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundUncached.write_tokens_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundUncached.write_products_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundUncached.read_output_logical
+#print axioms Airbender.Compiler.WorkerPortsNative.BlakeRoundUncached.write_output_logical
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakCached.original_columns
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakCached.history_columns
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakCached.source_read_tokens
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakCached.source_write_tokens
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakCached.original_assignment
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakCached.history_assignment
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakCached.history_indices
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakCached.row_token_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakCached.read_tokens_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakCached.read_products_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakCached.write_tokens_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakCached.write_products_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakCached.read_output_logical
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakCached.write_output_logical
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakUncached.original_columns
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakUncached.history_columns
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakUncached.source_read_tokens
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakUncached.source_write_tokens
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakUncached.original_assignment
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakUncached.history_assignment
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakUncached.history_indices
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakUncached.row_token_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakUncached.read_tokens_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakUncached.read_products_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakUncached.write_tokens_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakUncached.write_products_from_base
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakUncached.read_output_logical
+#print axioms Airbender.Compiler.WorkerPortsNative.KeccakUncached.write_output_logical

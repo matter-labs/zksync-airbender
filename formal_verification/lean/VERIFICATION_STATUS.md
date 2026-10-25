@@ -86,12 +86,14 @@ complete retained constraint/trace composition in both cache modes, bringing
 that coverage to twenty configurations. Shift/binop now also has complete
 fixed-prefix, decoder-exclusion and zero-padding refinements in both cache modes,
 closing retained constraint/trace composition for all 22 configurations.
-Worker delegation/marker tokens, initialization/public image binding, and pooled
+All eight worker configurations also bind sixteen native memory outputs to
+retained RAM and issued/empty CSR request tokens, including actual generated
+history timestamp placements. Initialization/public image binding and pooled
 logical execution composition remain open. These results validate the captured
 compiler instances; they are not a universal Rust-compiler correctness theorem.
 
-The combined compiler audit passes all 6,309 roots using only standard Lean
-axioms, after normal dependency rebuilding for the Shift importer changes.
+The combined compiler audit passes all 6,425 roots using only standard Lean
+axioms, including the complete worker-token bridge and request-marker controls.
 The normal root build, ten materialized-counter controls and five memory-frame
 controls pass, along with five retained lookup-argument/boundary controls and
 four memory-token controls and four fixed-table controls. Shift additionally

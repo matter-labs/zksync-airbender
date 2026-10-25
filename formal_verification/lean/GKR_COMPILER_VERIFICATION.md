@@ -7,8 +7,7 @@ field-role checks also pass. Source table geometry and consumed setup coordinate
 are checked. Source RAM/initialization products are also checked. Literal materialized lookup tables and uniform counter witnesses are now bound
 to complete native graph witnesses. The same witnesses also preserve source RAM/initialization trace products.
 Retained Clean lookup composition is now instantiated for all 22 configurations.
-Worker/marker token binding, public initialization/setup binding and final
-execution composition remain open.
+Public initialization/setup binding and final execution composition remain open.
 Source-derived timestamp/alignment query identities and their generic clock/range
 semantics are checked. Source primitive/history contracts now construct valid
 helper witnesses and the whole native graph in all 22 configurations.
@@ -592,10 +591,10 @@ those native relations, independently of the constructive witness theorem.
 Four controls preserve a raw data limb above 16 bits, distinguish logical
 tokens with equal sampled fingerprints, and retain the separate PC space.
 The normal root/control replay and exact combined 6,082-root audit pass using
-only standard Lean axioms. Worker delegation/marker tokens, initialization/public
-image binding, and construction of the pooled logical execution interface
-remain open. Exact logical matching is still distinct from a sampled product
-equality.
+only standard Lean axioms. Worker token binding is completed below;
+initialization/public-image binding and construction of the pooled logical
+execution interface remain open. Exact logical matching is still distinct from
+a sampled product equality.
 
 ## Connection to the retained Clean models
 
@@ -662,10 +661,10 @@ supply replacement table values or a coverage assertion.
 `ShiftSetupNative.clean_contains` uses the query's actual zero padding column to
 exclude decoder rows, then maps every native padding row to the retained dummy
 row. Decoder exclusion follows from the physical padding/family-mask column,
-independently of the lookup's dynamic tag. The same full native graph witnesses satisfy all retained
-constraints, lookup aggregates and RAM products in all 22 configurations. Worker
-and marker tokens, initialization/public-image binding and the pooled logical
-execution adapter remain open.
+independently of the lookup's dynamic tag. The same full native graph witnesses
+satisfy all retained constraints, lookup aggregates and RAM products in all 22 configurations. Worker
+and marker tokens are also bound as described below. Initialization/public-image
+binding and the pooled logical execution adapter remain open.
 
 These are translation-validation instances for the captured compiler inputs,
 including the actual exported setup. They do not prove correctness of the Rust
@@ -695,6 +694,29 @@ native padding-to-dummy refinement. The complete column assembly stayed below
 The exact combined 6,309-root audit passes with only `propext`,
 `Classical.choice` and `Quot.sound` as applicable, after normal dependency replay.
 
+## Worker products and virtual CSR markers
+
+`WorkerPortsNative` binds all eight Bigint, BLAKE-G, BLAKE-round and Keccak
+configurations to the existing delegation RAM ports and request tokens. Both
+read and write identities preserve all raw limbs. The read side includes the
+issued CSR request at the invocation clock; the write side includes its empty
+zero-clock token. CSR addresses remain full natural numbers.
+
+The bridge checks original-column placement and every compiler-generated
+history timestamp against the retained port metadata. BLAKE-round's history
+checks use four-port modules with exact final coverage. `MemoryValueCongruence`
+transports only the original/history coordinates consumed by each source field.
+The sixteen native output identities follow from the full graph relations for
+arbitrary satisfying assignments, using the same execute masks and challenges.
+No sampled fingerprint equality is used to infer exact matching.
+
+All forty-four executor/worker RAM outputs now have logical token identities.
+The four unified initialization/teardown outputs still preserve their raw source
+products; their public address/image adapter and pooled execution composition
+remain open. Four request-token controls retain the full CSR address, distinguish
+issued/empty clocks and reject a changed CSR. The exact combined 6,425-root
+audit passes with only standard Lean axioms.
+
 ## Reproduction and freshness
 
 The materialized stages are registered in `gkr_checkpoint.py`: full setup,
@@ -709,7 +731,7 @@ add block-span checks, complete column assembly and the fixed-table adapter.
 Generic argument and lookup-closure proof modules contain at most eight queries
 each.
 
-`audit_gkr_compiler_axioms.py` reads the exact registered 6,309-root inventory
+`audit_gkr_compiler_axioms.py` reads the exact registered 6,425-root inventory
 from `Airbender/Checks/Axioms.lean`, builds its imports sequentially and checks
 every report and permitted axiom. The checkpoint's `audit` stage invokes it.
 Keep axiom reports and full independent kernel replay distinct.
@@ -794,9 +816,9 @@ decoder masks, scratch aliases, authored fields and source projection.
 
 ## Required remaining work
 
-1. Complete worker delegation/marker and initialization/public-image adapters,
-   then construct the pooled logical execution interface. The twenty-eight
-   executor RAM outputs are already bound to the retained logical token products;
+1. Complete initialization/public-image adapters, then construct the pooled
+   logical execution interface. All forty-four executor/worker RAM outputs are
+   bound to retained logical tokens, including PC-state and virtual CSR markers;
    all forty-eight native RAM/initialization outputs preserve raw source products.
 2. Retain the actual setup and external memory interfaces when instantiating
    those adapters. Uniform lookup counters and all native trace product

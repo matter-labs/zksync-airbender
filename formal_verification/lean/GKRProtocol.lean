@@ -552,3 +552,14 @@ import GKRProtocol.CleanClosedNative.MulDivUncached
 import GKRProtocol.CleanWitnessNative.MulDivUncached
 import GKRProtocol.CleanClosedNative.MulDivCached
 import GKRProtocol.CleanWitnessNative.MulDivCached
+
+-- Worker memory products, including issued/empty CSR request markers.
+import GKRProtocol.MemoryValueCongruence
+import GKRProtocol.WorkerPortsNative.BigintCached
+import GKRProtocol.WorkerPortsNative.BigintUncached
+import GKRProtocol.WorkerPortsNative.BlakeGCached
+import GKRProtocol.WorkerPortsNative.BlakeGUncached
+import GKRProtocol.WorkerPortsNative.BlakeRoundCached
+import GKRProtocol.WorkerPortsNative.BlakeRoundUncached
+import GKRProtocol.WorkerPortsNative.KeccakCached
+import GKRProtocol.WorkerPortsNative.KeccakUncached
