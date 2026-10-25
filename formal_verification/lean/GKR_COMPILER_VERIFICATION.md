@@ -367,8 +367,8 @@ clock/borrow assertions. `full_arithmetic_preserved` derives all these source
 obligations from the full native base-field relation;
 `full_arithmetic_extends` constructs a witness for that entire relation under
 those obligations. `full_arithmetic_equivalent` combines both directions.
-The complete extension-field graph and forward discharge of the helper
-assertions from source primitive/history contracts remain required.
+The following additional stage constructs the extension-field graph and
+discharges these arithmetic helper assertions from a source clock contract.
 
 The finite input domain preserves original logical variables, including those
 placed in computed base-field cells, and explicit auxiliary input columns.
@@ -387,6 +387,53 @@ borrow assertion, derivation of the borrow bit from accepted native arithmetic,
 and preservation of the actual input addresses. A separate freshness control
 zeros the actual native borrow assertion while retaining the source; normal Lake
 rebuilding rejects its backward identity, and restoration passes.
+
+## Whole native graph and source contracts
+
+All 22 configurations have a canonical witness for every emitted base-field
+relation, affine definition, lookup operation and memory/initialization product
+operation. The instances cover 2,681 extension steps, 363 base affine definitions,
+1,616 native lookup operations and 780 native product operations. Extension
+copies occur in both semantic operation lists and have one physical write.
+
+`Functional.lean` proves execution and preservation of earlier relations for a
+program with fresh extension outputs and available inputs. Each actual step's
+field roles, unique outputs and dependencies are kernel checked. Operations
+evaluate all right-hand sides before writing their outputs. This construction
+uses no division or nonzero-challenge premise. `BaseAffine.lean` connects each
+base affine definition to its actual complete-arithmetic relation; these
+definitions are derived from accepted base arithmetic rather than assumed.
+
+`FunctionalLinksImport.lean` derives physical copy equations from complete base
+arithmetic, transports them to the existing source-model coordinate banks, and
+checks equality of the actual affine-definition inventories. Its canonical
+typed assignment therefore satisfies the source-output reductions: all 60
+lookup pairs and all 48 RAM/initialization scalars retain their independently
+captured source formulas. No native lookup/product/cache/copy equation is an
+additional premise of these canonical-output theorems.
+
+`SourceContractImport.lean` separates original source equations from the added
+clock and borrow assertions. Kernel scope checks prove that fresh borrow
+coordinates cannot change original equations or clock expressions. Canonical
+borrows are Boolean; the added clock assertions follow from bounded integer
+timestamps and advance by four in the original executor state. Worker profiles
+without an executor state require no such clock-advance premise. Thus
+`source_contract_graph_extends` constructs the whole graph from original source
+arithmetic and this source clock contract. It preserves all coordinates outside
+the fresh borrow set, including all 3,286 original logical coordinates across
+the two cache modes.
+
+This construction establishes the emitted gate equations and their source
+output formulas. Acceptance of the lookup/memory arguments additionally needs
+valid source primitive queries, history witnesses and materialized setup/count
+interpretation. Inactive histories require a canonical witness where helpers
+are unconditional; preserving arbitrary inactive history cells is not claimed
+to establish argument acceptance.
+
+Five actual ADD/SUB controls reject duplicate extension writes, missing
+dependencies, overwriting base cells and a changed base affine recipe, and
+check lookup construction at zero challenges. The combined 2,948-root axiom
+report is checked separately from full independent kernel replay.
 
 ## Reproduction and freshness
 
@@ -409,6 +456,9 @@ python3 scripts/gkr_product_instances.py --check --build
 python3 scripts/gkr_memory_certificate.py --check --build
 python3 scripts/gkr_helper_instances.py --check --build
 python3 scripts/gkr_full_arithmetic_certificate.py --check --build
+python3 scripts/gkr_functional_instances.py --check --build
+python3 scripts/gkr_functional_links.py --check --build
+python3 scripts/gkr_source_contract_instances.py --check --build
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerCertificate:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRCompilerWiring:olean
 LEAN_NUM_THREADS=1 lake --no-cache build +Tests.GKRLookupFields:olean
@@ -459,12 +509,11 @@ decoder masks, scratch aliases, authored fields and source projection.
 
 1. Instantiate the explicit table-value/multiplicity interpretation with the
    retained materialized setup and witness-generation boundary.
-2. Compose the source-derived clock/alignment semantics and added arithmetic
-   assertions with the complete native witness construction under explicit
-   source primitive-query and memory-history contracts. Source RAM tuple
-   identities, helper query identities and exact multiset coverage are checked.
-3. Prove complete witness extension under explicit source primitive-query and
-   memory-history contracts, then compose with existing circuit/execution roots.
+2. Discharge helper query membership from source primitive/history contracts,
+   choosing inactive history witnesses where needed. Gate construction and the
+   added arithmetic assertions are checked; argument acceptance remains open.
+3. Connect the complete native relation to the retained post-compiler Clean
+   model and compose with existing circuit/execution roots.
 4. Keep algebraic fingerprint preservation separate from cryptographic
    soundness. A sampled product equality alone cannot establish exact lookup or
    RAM membership.

@@ -18,9 +18,10 @@ source-arithmetic preservation, graph wiring, consumer field roles, cache
 semantics and source lookup-field identities. Both directions of the complete
 base-field arithmetic relation are checked, covering every native arithmetic
 gate, scalar cache and scalar materializer. Forward extension currently requires
-the independently source-derived clock/borrow assertions; deriving them from
-source contracts and constructing the complete extension-field witness remain
-open.
+the independently source-derived clock/borrow assertions. An additional checked
+stage derives these assertions from the original bounded integer clock contract
+and canonical fresh borrows, then constructs the entire extension-field graph.
+It preserves original inputs and all other coordinates outside the borrow set.
 
 All 4,436 consumed authored lookup fields agree with 836 original requests.
 Another 474 timestamp/alignment query occurrences agree with independently
@@ -38,12 +39,14 @@ native projections. Borrows are distinct and avoid original/history cells.
 
 Generic helper proofs derive strict integer clock order and alignment, construct
 valid subtraction borrows and range bounds, and derive added executor assertions
-from integer clock advance by four. Full composition with every native arithmetic
-assertion and construction of the complete graph witness remain open. Current
+from integer clock advance by four. These facts now compose with every native
+arithmetic assertion and complete graph construction in all 22 configurations.
+Helper query membership and inactive history witness construction still need
+source primitive/history contracts. Current
 production source inputs have no relative timestamp groups; unsupported grouped
 profiles are rejected.
 
-The combined compiler audit covers 2,229 roots using only standard Lean axioms.
+The combined compiler audit covers 2,948 roots using only standard Lean axioms.
 Isolated source-preserving native lookup, memory-cache, timestamp-helper and
 native arithmetic-borrow
 mutations trigger normal Lake rebuilding and kernel rejection; restoration
