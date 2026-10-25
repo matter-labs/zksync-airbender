@@ -563,6 +563,39 @@ still requires exact logical token matching; sampled products do not derive it.
 The remaining fixed-table lookup premises and final execution adapter are
 described below.
 
+## Executor products and logical memory tokens
+
+`MemoryTokens.lean` encodes all seven source tuple fields into the existing
+`Trace.MemoryToken` format, retaining each raw field limb through `Nat.pair`.
+The token fingerprint equals the source row fingerprint for every extension
+ring and challenge. Native PC-space tuples use address space two, with their
+PC in the data limbs; the PC-state encoding is injective and transfers exact
+token matching back to PC-state matching. Active/inactive token products retain
+the original Boolean execute mask.
+
+`MemoryPortsNative` checks all fourteen executor configurations: ADD/SUB,
+Jump/branch, MUL/DIV, shift/binop, word memory, subword memory, and unified,
+with and without caches. Exact source row lists equal the retained model's
+read/write tokens followed by the PC-state token. Checked original-column
+placement and index coverage bind those lists to the actual native base
+assignment. Byte packing and selector-based register/RAM address encodings
+retain their field arithmetic; no word bounds are assumed by this adapter.
+
+The public `read_output_logical` and `write_output_logical` theorems derive all
+twenty-eight actual executor RAM output identities directly from the complete
+native arithmetic, affine/product relations, and checked base-field roles.
+Their right sides are the retained logical token fingerprint products, masked
+by the retained execute column. They apply to arbitrary assignments satisfying
+those native relations, independently of the constructive witness theorem.
+
+Four controls preserve a raw data limb above 16 bits, distinguish logical
+tokens with equal sampled fingerprints, and retain the separate PC space.
+The normal root/control replay and exact combined 6,082-root audit pass using
+only standard Lean axioms. Worker delegation/marker tokens, initialization/public
+image binding, and construction of the pooled logical execution interface
+remain open. Exact logical matching is still distinct from a sampled product
+equality.
+
 ## Connection to the retained Clean models
 
 `CleanArithmeticImport.lean` reconstructs the exact Clean expression trees for
@@ -638,7 +671,7 @@ The retained-model stages add scalar refinements, argument transport, full-width
 generic arguments, lookup closure, and composed trace witnesses. Generic argument
 and lookup-closure proof modules contain at most eight queries each.
 
-`audit_gkr_compiler_axioms.py` reads the exact registered 5,942-root inventory
+`audit_gkr_compiler_axioms.py` reads the exact registered 6,082-root inventory
 from `Airbender/Checks/Axioms.lean`, builds its imports sequentially and checks
 every report and permitted axiom. The checkpoint's `audit` stage invokes it.
 Keep axiom reports and full independent kernel replay distinct.
@@ -719,9 +752,10 @@ decoder masks, scratch aliases, authored fields and source projection.
 
 ## Required remaining work
 
-1. Bind the exact raw source memory products to the existing pooled logical
-   token/execution interfaces. All native RAM/initialization outputs now preserve
-   these products under the same constructed graph witnesses as the lookup result.
+1. Complete worker delegation/marker and initialization/public-image adapters,
+   then construct the pooled logical execution interface. The twenty-eight
+   executor RAM outputs are already bound to the retained logical token products;
+   all forty-eight native RAM/initialization outputs preserve raw source products.
 2. Retain the actual setup and external memory interfaces when instantiating
    those adapters. Uniform lookup counters and all native trace product
    identities are now checked in every retained configuration.
