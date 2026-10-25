@@ -583,3 +583,5 @@ import GKRProtocol.ROMNative.UnifiedPublic
 
 -- Complete native subword non-decoder table refinement to the public image.
 import GKRProtocol.ROMNative.SubwordPublic
+
+import GKRProtocol.ROMNative.UnifiedFullPublic

@@ -88,7 +88,7 @@ fixed-prefix, decoder-exclusion and zero-padding refinements in both cache modes
 closing retained constraint/trace composition for all 22 configurations.
 All eight worker configurations also bind sixteen native memory outputs to
 retained RAM and issued/empty CSR request tokens, including actual generated
-history timestamp placements. Initialization/public image binding and pooled
+history timestamp placements. Packed decoder/public-program binding and pooled
 logical execution composition remain open. Both unified configurations also
 bind all four initialization/teardown outputs to raw boundary tokens and to
 public leaf addresses under explicit row/window setup laws. All 48 memory outputs now have token identities. The actual native
@@ -98,9 +98,10 @@ have complete window-parametric trace witnesses with counters chosen before
 public windows and challenges, and preserve lookup and execution-RAM outputs.
 Constructing row-only virtual setup gives the retained public initialization
 leaf tokens, including independent, reversed and sparse window choices.
-Public commitment authentication and ROM/image binding remain external. These
-results validate the captured compiler instances; they are not a universal
-Rust-compiler correctness theorem.
+Public commitment authentication remains external. The ROM/image refinements
+below bind actual retained tables to the public bytes. These results validate
+the captured compiler instances; they are not a universal Rust-compiler
+correctness theorem.
 
 Both word-memory cache modes also bind active full native ROM queries to
 actual reads of the public Sail image. The proof checks every ROM column and
@@ -108,11 +109,14 @@ excludes native decoder/padding rows by their actual discriminator. Unified ROM 
 cache modes, checking every physical field and excluding neighboring fixed,
 decoder and padding regions. The full native subword non-decoder table now also refines its retained public
 image table in both cache modes, including all fixed/ROM rows and committed
-zero padding. The decoder-tag guard is explicit. Remaining unified fixed
-queries, decoder bridges and the pooled logical execution interface remain.
+zero padding. The entire unified native non-decoder table now also refines its
+retained public-image table in both cache modes. All ten columns and the full
+2,097,537-row prefix are checked, including the physical-to-logical ROM/rotation
+permutation, decoder exclusion and zero padding. The decoder-tag guards remain
+explicit. Packed decoder bridges and the pooled logical execution interface remain.
 
-The combined compiler audit passes all 6,672 registered roots using only the
-standard Lean axioms, including the complete subword non-decoder refinement.
+The combined compiler audit passes all 6,955 registered roots using only the
+standard Lean axioms, including complete subword and unified non-decoder refinements.
 All 22 source/compiler pairs also pass the provenance guard.
 The normal root build, ten materialized-counter controls and five memory-frame
 controls pass, along with five retained lookup-argument/boundary controls and
