@@ -106,11 +106,13 @@ Both word-memory cache modes also bind active full native ROM queries to
 actual reads of the public Sail image. The proof checks every ROM column and
 excludes native decoder/padding rows by their actual discriminator. Unified ROM queries now also refine the retained public-image table in both
 cache modes, checking every physical field and excluding neighboring fixed,
-decoder and padding regions. Subword, the remaining unified fixed queries,
-decoder bridges and the pooled logical execution interface remain.
+decoder and padding regions. The full native subword non-decoder table now also refines its retained public
+image table in both cache modes, including all fixed/ROM rows and committed
+zero padding. The decoder-tag guard is explicit. Remaining unified fixed
+queries, decoder bridges and the pooled logical execution interface remain.
 
-The combined compiler audit passes all 6,575 registered roots using only the
-standard Lean axioms, including word-memory and unified ROM public-image bridges.
+The combined compiler audit passes all 6,672 registered roots using only the
+standard Lean axioms, including the complete subword non-decoder refinement.
 All 22 source/compiler pairs also pass the provenance guard.
 The normal root build, ten materialized-counter controls and five memory-frame
 controls pass, along with five retained lookup-argument/boundary controls and

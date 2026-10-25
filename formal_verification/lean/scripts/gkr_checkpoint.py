@@ -59,6 +59,11 @@ STAGES = {
                     [sys.executable, 'scripts/gkr_rom_values.py', '--check'],
                     ['lake', '--no-cache', 'build', '+GKRProtocol.ROMNative.UnifiedPublic:olean'],
                     ['lake', '--no-cache', 'build', '+Tests.GKRUnifiedROM:olean']],
+    'subword_public': [[sys.executable, 'scripts/gkr_subword_prefix.py', '--check', '--build'],
+                       [sys.executable, 'scripts/gkr_subword_rows.py', '--check'],
+                       [sys.executable, 'scripts/gkr_subword_boundary.py', '--check'],
+                       ['lake', '--no-cache', 'build', '+GKRProtocol.ROMNative.SubwordPublic:olean'],
+                       ['lake', '--no-cache', 'build', '+Tests.GKRSubwordNative:olean']],
     'fixed_setup': [[sys.executable, 'scripts/gkr_fixed_setup_instances.py', '--check', '--build']],
     'clean_fixed_lookup': [[sys.executable, 'scripts/gkr_clean_fixed_instances.py', '--check', '--build']],
     'clean_scalars': [[sys.executable, 'scripts/gkr_clean_scalar_instances.py', '--check', '--build']],
@@ -79,7 +84,7 @@ TESTS = ['GKRCompiler', 'GKRProtocol', 'Tests.GKRCompilerCertificate', 'Tests.GK
          'Tests.GKRSourceTable', 'Tests.GKRNativeProduct', 'Tests.GKRMemorySource',
          'Tests.GKRHelperSources', 'Tests.GKRFullArithmetic', 'Tests.GKRFunctional', 'Tests.GKRHelperValidity',
          'Tests.GKRCleanArithmetic', 'Tests.GKRMaterializedCounters', 'Tests.GKRMemoryFrames',
-         'Tests.GKRBlockNormalization', 'Tests.GKRBlockCoverage', 'Tests.GKRShiftSetup', 'Tests.GKRWorkerTokens', 'Tests.GKRInitializationTokens', 'Tests.GKRWindowedInitialization', 'Tests.GKRNativeROM', 'Tests.GKRUnifiedROM']
+         'Tests.GKRBlockNormalization', 'Tests.GKRBlockCoverage', 'Tests.GKRShiftSetup', 'Tests.GKRWorkerTokens', 'Tests.GKRInitializationTokens', 'Tests.GKRWindowedInitialization', 'Tests.GKRNativeROM', 'Tests.GKRUnifiedROM', 'Tests.GKRSubwordNative']
 
 
 def main():
