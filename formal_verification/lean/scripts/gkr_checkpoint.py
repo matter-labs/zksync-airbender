@@ -46,6 +46,7 @@ STAGES = {
     'framed_witness': [[sys.executable, 'scripts/gkr_framed_witness_instances.py', '--check', '--build']],
     'memory_tokens': [[sys.executable, 'scripts/gkr_memory_ports_instances.py', '--check', '--build']],
     'worker_tokens': [[sys.executable, 'scripts/gkr_worker_ports_instances.py', '--check', '--build']],
+    'initialization_tokens': [[sys.executable, 'scripts/gkr_initialization_ports_instances.py', '--check', '--build']],
     'fixed_setup': [[sys.executable, 'scripts/gkr_fixed_setup_instances.py', '--check', '--build']],
     'clean_fixed_lookup': [[sys.executable, 'scripts/gkr_clean_fixed_instances.py', '--check', '--build']],
     'clean_scalars': [[sys.executable, 'scripts/gkr_clean_scalar_instances.py', '--check', '--build']],
@@ -66,7 +67,7 @@ TESTS = ['GKRCompiler', 'GKRProtocol', 'Tests.GKRCompilerCertificate', 'Tests.GK
          'Tests.GKRSourceTable', 'Tests.GKRNativeProduct', 'Tests.GKRMemorySource',
          'Tests.GKRHelperSources', 'Tests.GKRFullArithmetic', 'Tests.GKRFunctional', 'Tests.GKRHelperValidity',
          'Tests.GKRCleanArithmetic', 'Tests.GKRMaterializedCounters', 'Tests.GKRMemoryFrames',
-         'Tests.GKRBlockNormalization', 'Tests.GKRBlockCoverage', 'Tests.GKRShiftSetup', 'Tests.GKRWorkerTokens']
+         'Tests.GKRBlockNormalization', 'Tests.GKRBlockCoverage', 'Tests.GKRShiftSetup', 'Tests.GKRWorkerTokens', 'Tests.GKRInitializationTokens']
 
 
 def main():
