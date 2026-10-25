@@ -70,6 +70,22 @@ STAGES = {
                        ['lake', '--no-cache', 'build', '+Tests.GKRUnifiedFullNative:olean']],
     'decoder_arguments': [[sys.executable, 'scripts/gkr_decoder_arguments.py', '--check', '--build'],
                           ['lake', '--no-cache', 'build', '+Tests.GKRDecoderArguments:olean']],
+    'decoder_setup': [[sys.executable, 'scripts/check_gkr_decoder_setup_scaffolds.py'],
+                      ['lake', '--no-cache', 'build', '+GKRProtocol.DecoderQueryNative.AddSubUncached:olean'],
+                      ['lake', '--no-cache', 'build', '+GKRProtocol.DecoderQueryNative.AddSubCached:olean'],
+                      ['lake', '--no-cache', 'build', '+GKRProtocol.DecoderQueryNative.JumpBranchUncached:olean'],
+                      ['lake', '--no-cache', 'build', '+GKRProtocol.DecoderQueryNative.JumpBranchCached:olean'],
+                      ['lake', '--no-cache', 'build', '+GKRProtocol.DecoderQueryNative.MulDivUncached:olean'],
+                      ['lake', '--no-cache', 'build', '+GKRProtocol.DecoderQueryNative.MulDivCached:olean'],
+                      ['lake', '--no-cache', 'build', '+GKRProtocol.DecoderQueryNative.ShiftBinopUncached:olean'],
+                      ['lake', '--no-cache', 'build', '+GKRProtocol.DecoderQueryNative.ShiftBinopCached:olean'],
+                      ['lake', '--no-cache', 'build', '+GKRProtocol.DecoderQueryNative.WordMemoryUncached:olean'],
+                      ['lake', '--no-cache', 'build', '+GKRProtocol.DecoderQueryNative.WordMemoryCached:olean'],
+                      ['lake', '--no-cache', 'build', '+GKRProtocol.DecoderQueryNative.SubwordMemoryUncached:olean'],
+                      ['lake', '--no-cache', 'build', '+GKRProtocol.DecoderQueryNative.SubwordMemoryCached:olean'],
+                      ['lake', '--no-cache', 'build', '+GKRProtocol.DecoderQueryNative.UnifiedUncached:olean'],
+                      ['lake', '--no-cache', 'build', '+GKRProtocol.DecoderQueryNative.UnifiedCached:olean'],
+                      ['lake', '--no-cache', 'build', '+Tests.GKRDecoderSetup:olean']],
     'fixed_setup': [[sys.executable, 'scripts/gkr_fixed_setup_instances.py', '--check', '--build']],
     'clean_fixed_lookup': [[sys.executable, 'scripts/gkr_clean_fixed_instances.py', '--check', '--build']],
     'clean_scalars': [[sys.executable, 'scripts/gkr_clean_scalar_instances.py', '--check', '--build']],
@@ -90,7 +106,7 @@ TESTS = ['GKRCompiler', 'GKRProtocol', 'Tests.GKRCompilerCertificate', 'Tests.GK
          'Tests.GKRSourceTable', 'Tests.GKRNativeProduct', 'Tests.GKRMemorySource',
          'Tests.GKRHelperSources', 'Tests.GKRFullArithmetic', 'Tests.GKRFunctional', 'Tests.GKRHelperValidity',
          'Tests.GKRCleanArithmetic', 'Tests.GKRMaterializedCounters', 'Tests.GKRMemoryFrames',
-         'Tests.GKRBlockNormalization', 'Tests.GKRBlockCoverage', 'Tests.GKRShiftSetup', 'Tests.GKRWorkerTokens', 'Tests.GKRInitializationTokens', 'Tests.GKRWindowedInitialization', 'Tests.GKRNativeROM', 'Tests.GKRUnifiedROM', 'Tests.GKRSubwordNative', 'Tests.GKRBlockSpans', 'Tests.GKRUnifiedFullNative', 'Tests.GKRDecoderArguments']
+         'Tests.GKRBlockNormalization', 'Tests.GKRBlockCoverage', 'Tests.GKRShiftSetup', 'Tests.GKRWorkerTokens', 'Tests.GKRInitializationTokens', 'Tests.GKRWindowedInitialization', 'Tests.GKRNativeROM', 'Tests.GKRUnifiedROM', 'Tests.GKRSubwordNative', 'Tests.GKRBlockSpans', 'Tests.GKRUnifiedFullNative', 'Tests.GKRDecoderArguments', 'Tests.GKRDecoderSetup']
 
 
 def main():

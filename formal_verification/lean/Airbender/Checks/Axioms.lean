@@ -5429,6 +5429,106 @@ import GKRProtocol.DecoderArgumentsNative.UnifiedUncached
 import GKRProtocol.DecoderArgumentsNative.UnifiedCached
 import Tests.GKRDecoderArguments
 
+import GKRProtocol.BlockTail
+import GKRProtocol.DecoderTailNormalization
+import GKRProtocol.PackedDecoderNormalization
+import GKRProtocol.DecoderSetupRefinement
+import GKRProtocol.DecoderQueryFrame
+import GKRProtocol.DecoderTail.AddSub.Column0
+import GKRProtocol.DecoderTail.AddSub.Column1
+import GKRProtocol.DecoderTail.AddSub.Column2
+import GKRProtocol.DecoderTail.AddSub.Column3
+import GKRProtocol.DecoderTail.AddSub.Column4
+import GKRProtocol.DecoderTail.AddSub.Column5
+import GKRProtocol.DecoderTail.AddSub.Column6
+import GKRProtocol.DecoderTail.AddSub.Column7
+import GKRProtocol.DecoderTail.AddSub.Membership
+import GKRProtocol.DecoderTail.AddSub.Rows
+import GKRProtocol.DecoderTail.JumpBranch.Column0
+import GKRProtocol.DecoderTail.JumpBranch.Column1
+import GKRProtocol.DecoderTail.JumpBranch.Column2
+import GKRProtocol.DecoderTail.JumpBranch.Column3
+import GKRProtocol.DecoderTail.JumpBranch.Column4
+import GKRProtocol.DecoderTail.JumpBranch.Column5
+import GKRProtocol.DecoderTail.JumpBranch.Column6
+import GKRProtocol.DecoderTail.JumpBranch.Column7
+import GKRProtocol.DecoderTail.JumpBranch.Column8
+import GKRProtocol.DecoderTail.JumpBranch.Column9
+import GKRProtocol.DecoderTail.JumpBranch.Membership
+import GKRProtocol.DecoderTail.JumpBranch.Rows
+import GKRProtocol.DecoderTail.MulDiv.Column0
+import GKRProtocol.DecoderTail.MulDiv.Column1
+import GKRProtocol.DecoderTail.MulDiv.Column2
+import GKRProtocol.DecoderTail.MulDiv.Column3
+import GKRProtocol.DecoderTail.MulDiv.Column4
+import GKRProtocol.DecoderTail.MulDiv.Column5
+import GKRProtocol.DecoderTail.MulDiv.Column6
+import GKRProtocol.DecoderTail.MulDiv.Column7
+import GKRProtocol.DecoderTail.MulDiv.Column8
+import GKRProtocol.DecoderTail.MulDiv.Membership
+import GKRProtocol.DecoderTail.MulDiv.Rows
+import GKRProtocol.DecoderTail.ShiftBinop.Column0
+import GKRProtocol.DecoderTail.ShiftBinop.Column1
+import GKRProtocol.DecoderTail.ShiftBinop.Column2
+import GKRProtocol.DecoderTail.ShiftBinop.Column3
+import GKRProtocol.DecoderTail.ShiftBinop.Column4
+import GKRProtocol.DecoderTail.ShiftBinop.Column5
+import GKRProtocol.DecoderTail.ShiftBinop.Column6
+import GKRProtocol.DecoderTail.ShiftBinop.Column7
+import GKRProtocol.DecoderTail.ShiftBinop.Column8
+import GKRProtocol.DecoderTail.ShiftBinop.Column9
+import GKRProtocol.DecoderTail.ShiftBinop.Membership
+import GKRProtocol.DecoderTail.ShiftBinop.Rows
+import GKRProtocol.DecoderTail.SubwordMemory.Column0
+import GKRProtocol.DecoderTail.SubwordMemory.Column1
+import GKRProtocol.DecoderTail.SubwordMemory.Column2
+import GKRProtocol.DecoderTail.SubwordMemory.Column3
+import GKRProtocol.DecoderTail.SubwordMemory.Column4
+import GKRProtocol.DecoderTail.SubwordMemory.Column5
+import GKRProtocol.DecoderTail.SubwordMemory.Column6
+import GKRProtocol.DecoderTail.SubwordMemory.Column7
+import GKRProtocol.DecoderTail.SubwordMemory.Column8
+import GKRProtocol.DecoderTail.SubwordMemory.Membership
+import GKRProtocol.DecoderTail.SubwordMemory.Rows
+import GKRProtocol.DecoderTail.Unified.Column0
+import GKRProtocol.DecoderTail.Unified.Column1
+import GKRProtocol.DecoderTail.Unified.Column2
+import GKRProtocol.DecoderTail.Unified.Column3
+import GKRProtocol.DecoderTail.Unified.Column4
+import GKRProtocol.DecoderTail.Unified.Column5
+import GKRProtocol.DecoderTail.Unified.Column6
+import GKRProtocol.DecoderTail.Unified.Column7
+import GKRProtocol.DecoderTail.Unified.Column8
+import GKRProtocol.DecoderTail.Unified.Column9
+import GKRProtocol.DecoderTail.Unified.Membership
+import GKRProtocol.DecoderTail.Unified.Rows
+import GKRProtocol.DecoderTail.WordMemory.Column0
+import GKRProtocol.DecoderTail.WordMemory.Column1
+import GKRProtocol.DecoderTail.WordMemory.Column2
+import GKRProtocol.DecoderTail.WordMemory.Column3
+import GKRProtocol.DecoderTail.WordMemory.Column4
+import GKRProtocol.DecoderTail.WordMemory.Column5
+import GKRProtocol.DecoderTail.WordMemory.Column6
+import GKRProtocol.DecoderTail.WordMemory.Column7
+import GKRProtocol.DecoderTail.WordMemory.Column8
+import GKRProtocol.DecoderTail.WordMemory.Membership
+import GKRProtocol.DecoderTail.WordMemory.Rows
+import GKRProtocol.DecoderQueryNative.AddSubCached
+import GKRProtocol.DecoderQueryNative.AddSubUncached
+import GKRProtocol.DecoderQueryNative.JumpBranchCached
+import GKRProtocol.DecoderQueryNative.JumpBranchUncached
+import GKRProtocol.DecoderQueryNative.MulDivCached
+import GKRProtocol.DecoderQueryNative.MulDivUncached
+import GKRProtocol.DecoderQueryNative.ShiftBinopCached
+import GKRProtocol.DecoderQueryNative.ShiftBinopUncached
+import GKRProtocol.DecoderQueryNative.SubwordMemoryCached
+import GKRProtocol.DecoderQueryNative.SubwordMemoryUncached
+import GKRProtocol.DecoderQueryNative.UnifiedCached
+import GKRProtocol.DecoderQueryNative.UnifiedUncached
+import GKRProtocol.DecoderQueryNative.WordMemoryCached
+import GKRProtocol.DecoderQueryNative.WordMemoryUncached
+import Tests.GKRDecoderSetup
+
 -- GKR compiler translation validation.
 #print axioms Airbender.Compiler.equal_sound
 #print axioms Airbender.Compiler.check_valid
@@ -12651,3 +12751,482 @@ import Tests.GKRDecoderArguments
 #print axioms Tests.GKRDecoderArguments.omitted_funct3_rejected
 #print axioms Tests.GKRDecoderArguments.changed_mask_rejected
 #print axioms Tests.GKRDecoderArguments.wrong_tag_rejected
+
+#print axioms Airbender.Compiler.block_suffix_congr
+#print axioms Airbender.Compiler.column_tail_value
+#print axioms Airbender.Compiler.block_value_outside
+#print axioms Airbender.Compiler.normalize_tiny_block_length
+#print axioms Airbender.Compiler.normalize_tiny_block_value
+#print axioms Airbender.Compiler.normalize_tiny_blocks_value
+#print axioms Airbender.Compiler.normalize_decoder_tail_sound
+#print axioms Airbender.Compiler.normalize_decoder_fields_cast
+#print axioms Airbender.Compiler.decoder_active_tag
+#print axioms Airbender.Compiler.decoder_full_lookup_of_rows
+#print axioms Airbender.Compiler.decoder_fields_congr
+#print axioms Airbender.Compiler.decoder_weight_congr
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column0.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column0.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column0.tail_value
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column0.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column0.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column1.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column1.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column1.tail_value
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column1.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column1.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column2.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column2.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column2.tail_value
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column2.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column2.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column3.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column3.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column3.tail_value
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column3.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column3.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column4.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column4.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column4.tail_value
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column4.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column4.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column5.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column5.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column5.tail_value
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column5.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column5.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column6.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column6.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column6.tail_value
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column6.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column6.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column7.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column7.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column7.tail_value
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column7.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Column7.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Membership.leading_rows
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Membership.tail_rows
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Membership.full_lookup
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Membership.lookup_sound
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Rows.real_column_length
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Rows.tail_column
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Rows.packed_row
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Rows.raw_tail_row
+#print axioms Airbender.Compiler.DecoderTail.AddSub.Rows.normalized_tail_row
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column0.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column0.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column0.tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column0.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column0.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column1.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column1.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column1.tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column1.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column1.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column2.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column2.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column2.tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column2.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column2.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column3.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column3.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column3.tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column3.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column3.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column4.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column4.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column4.tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column4.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column4.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column5.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column5.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column5.tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column5.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column5.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column6.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column6.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column6.tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column6.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column6.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column7.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column7.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column7.tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column7.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column7.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column8.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column8.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column8.tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column8.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column8.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column9.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column9.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column9.tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column9.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Column9.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Membership.tag_shape
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Membership.prefix_tag_length
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Membership.prefix_tag
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Membership.leading_rows
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Membership.tail_rows
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Membership.full_lookup
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Membership.lookup_sound
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Rows.real_column_length
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Rows.tail_column
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Rows.packed_row
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Rows.raw_tail_row
+#print axioms Airbender.Compiler.DecoderTail.JumpBranch.Rows.normalized_tail_row
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column0.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column0.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column0.tail_value
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column0.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column0.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column1.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column1.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column1.tail_value
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column1.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column1.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column2.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column2.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column2.tail_value
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column2.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column2.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column3.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column3.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column3.tail_value
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column3.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column3.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column4.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column4.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column4.tail_value
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column4.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column4.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column5.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column5.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column5.tail_value
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column5.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column5.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column6.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column6.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column6.tail_value
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column6.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column6.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column7.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column7.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column7.tail_value
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column7.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column7.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column8.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column8.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column8.tail_value
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column8.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Column8.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Membership.tag_shape
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Membership.prefix_tag_length
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Membership.prefix_tag
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Membership.leading_rows
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Membership.tail_rows
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Membership.full_lookup
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Membership.lookup_sound
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Rows.real_column_length
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Rows.tail_column
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Rows.packed_row
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Rows.raw_tail_row
+#print axioms Airbender.Compiler.DecoderTail.MulDiv.Rows.normalized_tail_row
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column0.tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column0.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column0.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column1.tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column1.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column1.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column2.tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column2.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column2.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column3.tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column3.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column3.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column4.tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column4.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column4.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column5.tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column5.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column5.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column6.tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column6.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column6.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column7.tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column7.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column7.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column8.tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column8.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column8.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column9.tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column9.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Column9.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Membership.tag_shape
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Membership.prefix_tag_length
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Membership.prefix_tag
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Membership.leading_rows
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Membership.tail_rows
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Membership.full_lookup
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Membership.lookup_sound
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Rows.real_column_length
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Rows.tail_column
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Rows.packed_row
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Rows.raw_tail_row
+#print axioms Airbender.Compiler.DecoderTail.ShiftBinop.Rows.normalized_tail_row
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column0.tail_value
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column0.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column0.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column1.tail_value
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column1.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column1.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column2.tail_value
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column2.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column2.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column3.tail_value
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column3.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column3.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column4.tail_value
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column4.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column4.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column5.tail_value
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column5.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column5.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column6.tail_value
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column6.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column6.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column7.tail_value
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column7.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column7.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column8.tail_value
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column8.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Column8.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Membership.tag_shape
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Membership.prefix_tag_length
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Membership.prefix_tag
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Membership.leading_rows
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Membership.tail_rows
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Membership.full_lookup
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Membership.lookup_sound
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Rows.real_column_length
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Rows.tail_column
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Rows.packed_row
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Rows.raw_tail_row
+#print axioms Airbender.Compiler.DecoderTail.SubwordMemory.Rows.normalized_tail_row
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column0.tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column0.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column0.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column1.tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column1.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column1.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column2.tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column2.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column2.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column3.tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column3.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column3.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column4.tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column4.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column4.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column5.tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column5.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column5.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column6.tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column6.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column6.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column7.tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column7.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column7.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column8.tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column8.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column8.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column9.tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column9.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.Unified.Column9.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.Unified.Membership.tag_shape
+#print axioms Airbender.Compiler.DecoderTail.Unified.Membership.prefix_tag_length
+#print axioms Airbender.Compiler.DecoderTail.Unified.Membership.prefix_tag
+#print axioms Airbender.Compiler.DecoderTail.Unified.Membership.active_tag
+#print axioms Airbender.Compiler.DecoderTail.Unified.Membership.full_lookup
+#print axioms Airbender.Compiler.DecoderTail.Unified.Membership.lookup_sound
+#print axioms Airbender.Compiler.DecoderTail.Unified.Rows.normalize_identity
+#print axioms Airbender.Compiler.DecoderTail.Unified.Rows.normalize_fields_identity
+#print axioms Airbender.Compiler.DecoderTail.Unified.Rows.real_column_length
+#print axioms Airbender.Compiler.DecoderTail.Unified.Rows.tail_column
+#print axioms Airbender.Compiler.DecoderTail.Unified.Rows.packed_row
+#print axioms Airbender.Compiler.DecoderTail.Unified.Rows.decoder_tail_row
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column0.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column0.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column0.tail_value
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column0.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column0.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column1.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column1.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column1.tail_value
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column1.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column1.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column2.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column2.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column2.tail_value
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column2.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column2.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column3.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column3.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column3.tail_value
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column3.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column3.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column4.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column4.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column4.tail_value
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column4.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column4.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column5.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column5.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column5.tail_value
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column5.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column5.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column6.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column6.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column6.tail_value
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column6.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column6.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column7.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column7.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column7.tail_value
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column7.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column7.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column8.sourceShape
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column8.prefixLength
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column8.tail_value
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column8.tail_checked
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Column8.decoder_tail_value
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Membership.tag_shape
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Membership.prefix_tag_length
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Membership.prefix_tag
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Membership.leading_rows
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Membership.tail_rows
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Membership.full_lookup
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Membership.lookup_sound
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Rows.real_column_length
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Rows.tail_column
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Rows.packed_row
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Rows.raw_tail_row
+#print axioms Airbender.Compiler.DecoderTail.WordMemory.Rows.normalized_tail_row
+#print axioms Airbender.Compiler.DecoderQueryNative.AddSubCached.payload_inventory
+#print axioms Airbender.Compiler.DecoderQueryNative.AddSubCached.normalization_geometry
+#print axioms Airbender.Compiler.DecoderQueryNative.AddSubCached.normalized_values
+#print axioms Airbender.Compiler.DecoderQueryNative.AddSubCached.source_payload
+#print axioms Airbender.Compiler.DecoderQueryNative.AddSubCached.program_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.AddSubCached.program_from_source_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.AddSubCached.decoder_query_member
+#print axioms Airbender.Compiler.DecoderQueryNative.AddSubCached.program_from_framed_source
+#print axioms Airbender.Compiler.DecoderQueryNative.AddSubUncached.payload_inventory
+#print axioms Airbender.Compiler.DecoderQueryNative.AddSubUncached.normalization_geometry
+#print axioms Airbender.Compiler.DecoderQueryNative.AddSubUncached.normalized_values
+#print axioms Airbender.Compiler.DecoderQueryNative.AddSubUncached.source_payload
+#print axioms Airbender.Compiler.DecoderQueryNative.AddSubUncached.program_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.AddSubUncached.program_from_source_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.AddSubUncached.decoder_query_member
+#print axioms Airbender.Compiler.DecoderQueryNative.AddSubUncached.program_from_framed_source
+#print axioms Airbender.Compiler.DecoderQueryNative.JumpBranchCached.payload_inventory
+#print axioms Airbender.Compiler.DecoderQueryNative.JumpBranchCached.normalization_geometry
+#print axioms Airbender.Compiler.DecoderQueryNative.JumpBranchCached.normalized_values
+#print axioms Airbender.Compiler.DecoderQueryNative.JumpBranchCached.source_payload
+#print axioms Airbender.Compiler.DecoderQueryNative.JumpBranchCached.program_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.JumpBranchCached.program_from_source_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.JumpBranchCached.decoder_query_member
+#print axioms Airbender.Compiler.DecoderQueryNative.JumpBranchCached.program_from_framed_source
+#print axioms Airbender.Compiler.DecoderQueryNative.JumpBranchUncached.payload_inventory
+#print axioms Airbender.Compiler.DecoderQueryNative.JumpBranchUncached.normalization_geometry
+#print axioms Airbender.Compiler.DecoderQueryNative.JumpBranchUncached.normalized_values
+#print axioms Airbender.Compiler.DecoderQueryNative.JumpBranchUncached.source_payload
+#print axioms Airbender.Compiler.DecoderQueryNative.JumpBranchUncached.program_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.JumpBranchUncached.program_from_source_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.JumpBranchUncached.decoder_query_member
+#print axioms Airbender.Compiler.DecoderQueryNative.JumpBranchUncached.program_from_framed_source
+#print axioms Airbender.Compiler.DecoderQueryNative.MulDivCached.payload_inventory
+#print axioms Airbender.Compiler.DecoderQueryNative.MulDivCached.normalization_geometry
+#print axioms Airbender.Compiler.DecoderQueryNative.MulDivCached.normalized_values
+#print axioms Airbender.Compiler.DecoderQueryNative.MulDivCached.source_payload
+#print axioms Airbender.Compiler.DecoderQueryNative.MulDivCached.program_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.MulDivCached.program_from_source_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.MulDivCached.decoder_query_member
+#print axioms Airbender.Compiler.DecoderQueryNative.MulDivCached.program_from_framed_source
+#print axioms Airbender.Compiler.DecoderQueryNative.MulDivUncached.payload_inventory
+#print axioms Airbender.Compiler.DecoderQueryNative.MulDivUncached.normalization_geometry
+#print axioms Airbender.Compiler.DecoderQueryNative.MulDivUncached.normalized_values
+#print axioms Airbender.Compiler.DecoderQueryNative.MulDivUncached.source_payload
+#print axioms Airbender.Compiler.DecoderQueryNative.MulDivUncached.program_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.MulDivUncached.program_from_source_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.MulDivUncached.decoder_query_member
+#print axioms Airbender.Compiler.DecoderQueryNative.MulDivUncached.program_from_framed_source
+#print axioms Airbender.Compiler.DecoderQueryNative.ShiftBinopCached.payload_inventory
+#print axioms Airbender.Compiler.DecoderQueryNative.ShiftBinopCached.normalization_geometry
+#print axioms Airbender.Compiler.DecoderQueryNative.ShiftBinopCached.normalized_values
+#print axioms Airbender.Compiler.DecoderQueryNative.ShiftBinopCached.source_payload
+#print axioms Airbender.Compiler.DecoderQueryNative.ShiftBinopCached.program_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.ShiftBinopCached.program_from_source_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.ShiftBinopCached.decoder_query_member
+#print axioms Airbender.Compiler.DecoderQueryNative.ShiftBinopCached.program_from_framed_source
+#print axioms Airbender.Compiler.DecoderQueryNative.ShiftBinopUncached.payload_inventory
+#print axioms Airbender.Compiler.DecoderQueryNative.ShiftBinopUncached.normalization_geometry
+#print axioms Airbender.Compiler.DecoderQueryNative.ShiftBinopUncached.normalized_values
+#print axioms Airbender.Compiler.DecoderQueryNative.ShiftBinopUncached.source_payload
+#print axioms Airbender.Compiler.DecoderQueryNative.ShiftBinopUncached.program_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.ShiftBinopUncached.program_from_source_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.ShiftBinopUncached.decoder_query_member
+#print axioms Airbender.Compiler.DecoderQueryNative.ShiftBinopUncached.program_from_framed_source
+#print axioms Airbender.Compiler.DecoderQueryNative.SubwordMemoryCached.payload_inventory
+#print axioms Airbender.Compiler.DecoderQueryNative.SubwordMemoryCached.normalization_geometry
+#print axioms Airbender.Compiler.DecoderQueryNative.SubwordMemoryCached.normalized_values
+#print axioms Airbender.Compiler.DecoderQueryNative.SubwordMemoryCached.source_payload
+#print axioms Airbender.Compiler.DecoderQueryNative.SubwordMemoryCached.program_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.SubwordMemoryCached.program_from_source_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.SubwordMemoryCached.decoder_query_member
+#print axioms Airbender.Compiler.DecoderQueryNative.SubwordMemoryCached.program_from_framed_source
+#print axioms Airbender.Compiler.DecoderQueryNative.SubwordMemoryUncached.payload_inventory
+#print axioms Airbender.Compiler.DecoderQueryNative.SubwordMemoryUncached.normalization_geometry
+#print axioms Airbender.Compiler.DecoderQueryNative.SubwordMemoryUncached.normalized_values
+#print axioms Airbender.Compiler.DecoderQueryNative.SubwordMemoryUncached.source_payload
+#print axioms Airbender.Compiler.DecoderQueryNative.SubwordMemoryUncached.program_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.SubwordMemoryUncached.program_from_source_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.SubwordMemoryUncached.decoder_query_member
+#print axioms Airbender.Compiler.DecoderQueryNative.SubwordMemoryUncached.program_from_framed_source
+#print axioms Airbender.Compiler.DecoderQueryNative.UnifiedCached.payload_inventory
+#print axioms Airbender.Compiler.DecoderQueryNative.UnifiedCached.normalization_geometry
+#print axioms Airbender.Compiler.DecoderQueryNative.UnifiedCached.normalized_values
+#print axioms Airbender.Compiler.DecoderQueryNative.UnifiedCached.source_payload
+#print axioms Airbender.Compiler.DecoderQueryNative.UnifiedCached.program_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.UnifiedCached.program_from_source_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.UnifiedCached.decoder_query_member
+#print axioms Airbender.Compiler.DecoderQueryNative.UnifiedCached.program_from_framed_source
+#print axioms Airbender.Compiler.DecoderQueryNative.UnifiedUncached.payload_inventory
+#print axioms Airbender.Compiler.DecoderQueryNative.UnifiedUncached.normalization_geometry
+#print axioms Airbender.Compiler.DecoderQueryNative.UnifiedUncached.normalized_values
+#print axioms Airbender.Compiler.DecoderQueryNative.UnifiedUncached.source_payload
+#print axioms Airbender.Compiler.DecoderQueryNative.UnifiedUncached.program_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.UnifiedUncached.program_from_source_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.UnifiedUncached.decoder_query_member
+#print axioms Airbender.Compiler.DecoderQueryNative.UnifiedUncached.program_from_framed_source
+#print axioms Airbender.Compiler.DecoderQueryNative.WordMemoryCached.payload_inventory
+#print axioms Airbender.Compiler.DecoderQueryNative.WordMemoryCached.normalization_geometry
+#print axioms Airbender.Compiler.DecoderQueryNative.WordMemoryCached.normalized_values
+#print axioms Airbender.Compiler.DecoderQueryNative.WordMemoryCached.source_payload
+#print axioms Airbender.Compiler.DecoderQueryNative.WordMemoryCached.program_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.WordMemoryCached.program_from_source_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.WordMemoryCached.decoder_query_member
+#print axioms Airbender.Compiler.DecoderQueryNative.WordMemoryCached.program_from_framed_source
+#print axioms Airbender.Compiler.DecoderQueryNative.WordMemoryUncached.payload_inventory
+#print axioms Airbender.Compiler.DecoderQueryNative.WordMemoryUncached.normalization_geometry
+#print axioms Airbender.Compiler.DecoderQueryNative.WordMemoryUncached.normalized_values
+#print axioms Airbender.Compiler.DecoderQueryNative.WordMemoryUncached.source_payload
+#print axioms Airbender.Compiler.DecoderQueryNative.WordMemoryUncached.program_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.WordMemoryUncached.program_from_source_membership
+#print axioms Airbender.Compiler.DecoderQueryNative.WordMemoryUncached.decoder_query_member
+#print axioms Airbender.Compiler.DecoderQueryNative.WordMemoryUncached.program_from_framed_source
+#print axioms Tests.GKRDecoderSetup.constant_seam_recoded
+#print axioms Tests.GKRDecoderSetup.nonconstant_seam_retained
+#print axioms Tests.GKRDecoderSetup.changed_constant_rejected
+#print axioms Tests.GKRDecoderSetup.unified_padding_starts_at_actual_boundary
+#print axioms Tests.GKRDecoderSetup.unified_last_committed_row
+#print axioms Tests.GKRDecoderSetup.addsub_padding_retains_sentinel
