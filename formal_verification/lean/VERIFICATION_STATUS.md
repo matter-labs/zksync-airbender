@@ -104,11 +104,13 @@ Rust-compiler correctness theorem.
 
 Both word-memory cache modes also bind active full native ROM queries to
 actual reads of the public Sail image. The proof checks every ROM column and
-excludes native decoder/padding rows by their actual discriminator. Unified and
-subword ROM/decoder bridges and the pooled logical execution interface remain.
+excludes native decoder/padding rows by their actual discriminator. Unified ROM queries now also refine the retained public-image table in both
+cache modes, checking every physical field and excluding neighboring fixed,
+decoder and padding regions. Subword, the remaining unified fixed queries,
+decoder bridges and the pooled logical execution interface remain.
 
-The combined compiler audit passes all 6,538 registered roots using only the
-standard Lean axioms, including the native word-ROM/public-image bridge.
+The combined compiler audit passes all 6,575 registered roots using only the
+standard Lean axioms, including word-memory and unified ROM public-image bridges.
 All 22 source/compiler pairs also pass the provenance guard.
 The normal root build, ten materialized-counter controls and five memory-frame
 controls pass, along with five retained lookup-argument/boundary controls and
