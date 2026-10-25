@@ -113,10 +113,14 @@ zero padding. The entire unified native non-decoder table now also refines its
 retained public-image table in both cache modes. All ten columns and the full
 2,097,537-row prefix are checked, including the physical-to-logical ROM/rotation
 permutation, decoder exclusion and zero padding. The decoder-tag guards remain
-explicit. Packed decoder bridges and the pooled logical execution interface remain.
+explicit. All fourteen executor configurations also bind their packed decoder
+queries to retained decoder expressions: 144 physical fields and each query's
+payload, execute weight and algebraic lookup expression. The full native decoder
+setup/program bridge and pooled logical execution interface remain.
 
-The combined compiler audit passes all 6,955 registered roots using only the
-standard Lean axioms, including complete subword and unified non-decoder refinements.
+The combined compiler audit passes all 7,176 registered roots using only the
+standard Lean axioms, including the subword/unified table refinements and all
+fourteen decoder query identities.
 All 22 source/compiler pairs also pass the provenance guard.
 The normal root build, ten materialized-counter controls and five memory-frame
 controls pass, along with five retained lookup-argument/boundary controls and

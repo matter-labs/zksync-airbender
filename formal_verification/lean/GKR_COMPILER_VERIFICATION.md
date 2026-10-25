@@ -757,7 +757,7 @@ add block-span checks, complete column assembly and the fixed-table adapter.
 Generic argument and lookup-closure proof modules contain at most eight queries
 each.
 
-`audit_gkr_compiler_axioms.py` reads the exact registered 6,955-root inventory
+`audit_gkr_compiler_axioms.py` reads the exact registered 7,176-root inventory
 from `Airbender/Checks/Axioms.lean`, builds its imports sequentially and checks
 every report and permitted axiom. The checkpoint's `audit` stage invokes it.
 Keep axiom reports and full independent kernel replay distinct.
@@ -933,10 +933,31 @@ are reproducible through `check_gkr_unified_scaffolds.py`; the checkpoint runner
 replays this boundary with `--stage unified_public`. The decoder-tag guard,
 public-image premise and commitment-authentication boundary remain explicit.
 
+## Native decoder query identities
+
+`DecoderArguments` constructs the retained nine-field decoder query from its
+imported column descriptors, restoring an omitted `funct3` as zero and preserving
+the selector-bit sum. `DecoderArgumentsImport` checks these expressions against
+the actual lowered decoder operands and composes the existing source-field and
+copy-relation proofs. All fourteen executor configurations pass: 144 physical
+fields, including execute weights and table discriminators.
+
+Each instance also checks the complete source-query payload and mask inventory.
+It preserves the weighted decoder lookup expression for every extension ring
+and algebraic challenge, under the complete native arithmetic relation. These
+identities assume no decoder table membership. Full native setup membership must
+still be connected to the existing packed-decoder and public-program proofs.
+
+Controls reject a constant execute weight, dropping a present `funct3`, changing
+the selector-mask coefficient, and a wrong table discriminator. The checkpoint
+runner replays these checks with `--stage decoder_arguments`.
+
 ## Required remaining work
 
-1. Connect packed native decoder queries to the existing public-program proofs,
-   retaining typed PC and selector obligations.
+1. Connect full native decoder setup membership to the existing packed-decoder
+   and public-program proofs, retaining typed PC and selector obligations. The
+   query-field, weight and fingerprint identities now pass in all fourteen
+   executor configurations.
 2. Construct the pooled logical execution interface using the actual setup,
    per-set initialization windows and external memory tokens. All forty-eight
    modeled RAM/initialization outputs already have token identities.

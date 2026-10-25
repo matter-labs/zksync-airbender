@@ -585,3 +585,18 @@ import GKRProtocol.ROMNative.UnifiedPublic
 import GKRProtocol.ROMNative.SubwordPublic
 
 import GKRProtocol.ROMNative.UnifiedFullPublic
+
+import GKRProtocol.DecoderArgumentsNative.AddSubUncached
+import GKRProtocol.DecoderArgumentsNative.AddSubCached
+import GKRProtocol.DecoderArgumentsNative.JumpBranchUncached
+import GKRProtocol.DecoderArgumentsNative.JumpBranchCached
+import GKRProtocol.DecoderArgumentsNative.MulDivUncached
+import GKRProtocol.DecoderArgumentsNative.MulDivCached
+import GKRProtocol.DecoderArgumentsNative.ShiftBinopUncached
+import GKRProtocol.DecoderArgumentsNative.ShiftBinopCached
+import GKRProtocol.DecoderArgumentsNative.WordMemoryUncached
+import GKRProtocol.DecoderArgumentsNative.WordMemoryCached
+import GKRProtocol.DecoderArgumentsNative.SubwordMemoryUncached
+import GKRProtocol.DecoderArgumentsNative.SubwordMemoryCached
+import GKRProtocol.DecoderArgumentsNative.UnifiedUncached
+import GKRProtocol.DecoderArgumentsNative.UnifiedCached
