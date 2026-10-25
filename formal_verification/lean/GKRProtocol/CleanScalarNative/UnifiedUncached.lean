@@ -1,0 +1,13 @@
+import GKRProtocol.CleanScalarImport
+import GKRProtocol.MaterializedNative.UnifiedUncached
+
+namespace Airbender.Compiler.CleanScalarNative.UnifiedUncached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 65536
+set_option maxHeartbeats 4000000
+
+import_clean_scalar_setup native model Airbender.Compiler.MaterializedNative.UnifiedUncached.native.model
+
+end Airbender.Compiler.CleanScalarNative.UnifiedUncached

@@ -70,11 +70,19 @@ All source RAM/initialization fields are now framed through the canonical
 history/borrow/counter choices in all 22 configurations. The same complete
 native witnesses preserve all 48 actual memory product ports and their full
 trace products against the raw source memory view, including external cells.
-Pooled logical-token/execution composition remains open.
+All 146 retained range arguments, 474 timestamp/alignment arguments, and 4,146
+scalar fields of generic queries are bound to the actual source/native values.
+Scalar table refinements and full-width literal setup membership discharge the
+complete retained Clean constraints in sixteen configurations: ADD/SUB, word
+memory, subword memory, unified, Bigint, Blake2-G, Blake2-round, and Keccak in
+both cache modes. The same full native trace witnesses satisfy these constraints
+and preserve the lookup aggregates and RAM/initialization products.
+The six fixed-table configurations (Jump/branch, MUL/DIV, shift/binop) still need
+region/projection adapters. Pooled logical-token/execution composition remains open.
 
-The combined compiler audit covers 4,887 roots using only standard Lean axioms.
+The combined compiler audit covers 5,942 roots using only standard Lean axioms.
 The normal root build, ten materialized-counter controls and five memory-frame
-controls pass.
+controls pass, along with five new retained lookup-argument/boundary controls.
 Isolated source-preserving native lookup, memory-cache, timestamp-helper and
 native arithmetic-borrow
 mutations trigger normal Lake rebuilding and kernel rejection; restoration

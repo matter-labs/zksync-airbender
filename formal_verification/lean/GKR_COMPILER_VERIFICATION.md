@@ -6,7 +6,8 @@ production circuit families, with and without caches. All 22 native consumer
 field-role checks also pass. Source table geometry and consumed setup coordinates
 are checked. Source RAM/initialization products are also checked. Literal materialized lookup tables and uniform counter witnesses are now bound
 to complete native graph witnesses. The same witnesses also preserve source RAM/initialization trace products.
-Retained Clean lookup and execution composition remain open.
+Retained Clean lookup composition is now instantiated for sixteen configurations.
+Fixed-table projection adapters and the final execution composition remain open.
 Source-derived timestamp/alignment query identities and their generic clock/range
 semantics are checked. Source primitive/history contracts now construct valid
 helper witnesses and the whole native graph in all 22 configurations.
@@ -559,7 +560,8 @@ These are exact algebraic source-to-native product identities, so a pooled
 source product equation transfers by substitution across circuit families.
 No per-family RAM balance is assumed. The existing pooled execution interface
 still requires exact logical token matching; sampled products do not derive it.
-Retained Clean lookup premises and the final execution adapter remain open.
+The remaining fixed-table lookup premises and final execution adapter are
+described below.
 
 ## Connection to the retained Clean models
 
@@ -579,16 +581,50 @@ within the existing memory limits.
 `CleanLinksNative` checks that these assertion lists equal the arithmetic in
 each existing circuit model's `importedConstraints` and full `clockConstraints`.
 Both cache modes therefore feed the same retained model through their own actual
-physical placements. The resulting constraint theorems take explicit primitive
-lookup-membership premises; they do not derive those memberships from sampled
-lookup-output equalities. ROM/setup tables retain their existing arbitrary
-interface parameters. Binding source queries and helper ranges to those
-memberships and composing the global execution relation remain further work.
+physical placements. These arithmetic-only adapters retain explicit primitive
+lookup-membership premises.
+
+`CleanArgumentsNative` binds all 146 retained range arguments and 474
+timestamp/alignment arguments to the independently checked source/native fields.
+`CleanGenericArgumentsNative` also binds all 4,146 scalar fields of full-width generic queries,
+including table selectors and zero padding. The scalar setup refinement embeds
+each actual range/timestamp row into the retained table's larger padded domain.
+The generic refinement retains every column of the actual materialized setup.
+Neither refinement depends on prover-supplied table arrays.
+
+`CleanClosedNative.retained_clock_from_source` discharges every primitive premise
+for ADD/SUB, word memory, subword memory, unified, Bigint, Blake2-G, Blake2-round,
+and Keccak, in both cache modes. It uses actual enabled authored setup membership,
+source input agreement, full native arithmetic, and the independently established
+helper bounds. Worker pointer-alignment queries and the complete retained clock
+lookup inventories are included. ROM/setup parameters are instantiated with
+the actual full literal setup table.
+
+`CleanWitnessNative.complete_trace_clean_extends` composes these sixteen adapters
+with the existing complete native trace witnesses. The same base/extension
+assignments satisfy the whole actual native graph and retained Clean constraints,
+preserve source RAM/initialization products, and cancel the lookup aggregates.
+The base-field counter assignment is still chosen before the extension ring or
+challenges. These are algebraic preservation and construction results; no sampled
+output equality is used to infer exact lookup or memory matching.
+
+Jump/branch, MUL/DIV, and shift/binop have checked argument transport in both
+cache modes, but still need their fixed-table projection adapters. Their retained
+tables select regions of the native generic setup, which also contains decoder
+rows. Replacing those fixed tables with the whole setup would change the claim.
+The logical execution adapter and public setup bindings also remain open.
 
 Two actual ADD/SUB controls reject replacing a retained Clean expression and
 changing its logical placement. These checks, the complete native arithmetic
 replay, the model-list equalities and the combined axiom audit are separate
 validation steps.
+
+Five further controls reject changed range/helper arguments and a changed setup
+selector, accept the actual range table's last value, and reject its first overflow.
+The normal root/control replay and exact combined 5,942-root compiler audit pass,
+with only standard Lean axioms. The full generic-argument run used 1,368.64 MiB
+physical and 3,887.75 MiB resident memory. Large lookup-closure runs resumed
+normally after the existing 900-second time checkpoint; no caps were raised.
 
 ## Reproduction and freshness
 
@@ -598,8 +634,11 @@ complete trace witnesses. Run stages within the existing bounded worker;
 `gkr_query_frame_instances.py` also selects a family/cache mode. The BLAKE round
 query proofs use 64-field modules and exact final coverage, so normal Lake
 replay retains completed chunks when a run reaches its time budget.
+The retained-model stages add scalar refinements, argument transport, full-width
+generic arguments, lookup closure, and composed trace witnesses. Generic argument
+and lookup-closure proof modules contain at most eight queries each.
 
-`audit_gkr_compiler_axioms.py` reads the exact registered 4,887-root inventory
+`audit_gkr_compiler_axioms.py` reads the exact registered 5,942-root inventory
 from `Airbender/Checks/Axioms.lean`, builds its imports sequentially and checks
 every report and permitted axiom. The checkpoint's `audit` stage invokes it.
 Keep axiom reports and full independent kernel replay distinct.
@@ -686,9 +725,10 @@ decoder masks, scratch aliases, authored fields and source projection.
 2. Retain the actual setup and external memory interfaces when instantiating
    those adapters. Uniform lookup counters and all native trace product
    identities are now checked in every retained configuration.
-3. Discharge the retained Clean model's primitive lookup premises from the
-   source-query/helper proofs, then compose with existing circuit/execution
-   roots. Its complete arithmetic lists are now connected to the native relation.
+3. Complete the fixed-table projection adapters for Jump/branch, MUL/DIV and
+   shift/binop, then compose all retained circuit models with the execution
+   roots. The sixteen other configurations have complete retained constraint
+   and native trace witness composition.
 4. Keep algebraic fingerprint preservation separate from cryptographic
    soundness. A sampled product equality alone cannot establish exact lookup or
    RAM membership.
