@@ -569,3 +569,8 @@ import GKRProtocol.InitializationTokens
 import GKRProtocol.InitializationPublic
 import GKRProtocol.InitializationPortsNative.UnifiedCached
 import GKRProtocol.InitializationPortsNative.UnifiedUncached
+
+-- Actual per-set native initialization windows and complete trace witnesses.
+import GKRProtocol.WindowedPublic
+import GKRProtocol.WindowedNative.UnifiedUncachedPublic
+import GKRProtocol.WindowedNative.UnifiedCachedPublic

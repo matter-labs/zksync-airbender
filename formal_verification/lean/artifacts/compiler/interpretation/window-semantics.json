@@ -1,0 +1,46 @@
+{
+  "format_version": 1,
+  "scope": "Reviewed Rust interpretation and drift guard; hashes are not a proof of Rust execution or cryptographic soundness. Lean checks the window-parametric relations reconstructed from the retained artifacts.",
+  "sources": {
+    "prover/src/gkr/prover/forward_loop/mod.rs": {
+      "inspected_spans": [
+        [
+          742,
+          762
+        ]
+      ],
+      "observation": "Selects the supplied per-set top bits using the artifact set indices.",
+      "sha256": "450f21fe1407496d3953e7a67392ccad56e7c729bf6592daa53cbe4aaacc208d"
+    },
+    "prover/src/gkr/prover/forward_loop/utils.rs": {
+      "inspected_spans": [
+        [
+          674,
+          737
+        ]
+      ],
+      "observation": "Adds the public high bits shifted by the geometry-derived offset to each flattened RAM factor.",
+      "sha256": "a258c95873aacb5b54fd007ca10c4b6386a9a8a1611dc217d14c5beba7fb9ae0"
+    },
+    "prover/src/gkr/prover/mod.rs": {
+      "inspected_spans": [
+        [
+          1494,
+          1554
+        ]
+      ],
+      "observation": "Connects the actual materialized row-address virtual columns to GKR base storage.",
+      "sha256": "1fff419f0069749356a5461b53f069c836205218972ce3bd440f19c85680f7b5"
+    },
+    "prover/src/gkr/virtual_polys/init_and_teardown_base.rs": {
+      "inspected_spans": [
+        [
+          45,
+          85
+        ]
+      ],
+      "observation": "Materializes row-only virtual low/high address columns, without adding public windows.",
+      "sha256": "f853db635a75077ac50c8c112c5fe71683a973dfc3da143270bfe97e25f0f00f"
+    }
+  }
+}

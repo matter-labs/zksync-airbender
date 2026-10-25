@@ -91,15 +91,19 @@ retained RAM and issued/empty CSR request tokens, including actual generated
 history timestamp placements. Initialization/public image binding and pooled
 logical execution composition remain open. Both unified configurations also
 bind all four initialization/teardown outputs to raw boundary tokens and to
-public leaf addresses under explicit row/window setup laws. Thus all 48 modeled memory outputs have token identities. The initialization
-interpreter currently specializes per-set top bits to the set index; Rust reads
-a supplied per-set array. That gap, public setup enforcement and ROM/image
-binding remain open. These results validate the captured
-compiler instances; they are not a universal Rust-compiler correctness theorem.
+public leaf addresses under explicit row/window setup laws. All 48 memory outputs now have token identities. The actual native
+initialization interpretation retains arbitrary supplied per-set top bits;
+set-index offsets are proved as a specialization. Both unified configurations
+have complete window-parametric trace witnesses with counters chosen before
+public windows and challenges, and preserve lookup and execution-RAM outputs.
+Constructing row-only virtual setup gives the retained public initialization
+leaf tokens, including independent, reversed and sparse window choices.
+Public commitment authentication and ROM/image binding remain external. These
+results validate the captured compiler instances; they are not a universal
+Rust-compiler correctness theorem.
 
-The combined compiler audit passes all 6,454 roots using only standard Lean
-axioms. This audits the stated modeled semantics; it does not close the native
-initialization-window interpretation gap above.
+The combined compiler audit passes all 6,527 registered roots using only the
+standard Lean axioms. All 22 source/compiler pairs also pass the provenance guard.
 The normal root build, ten materialized-counter controls and five memory-frame
 controls pass, along with five retained lookup-argument/boundary controls and
 four memory-token controls and four fixed-table controls. Shift additionally
