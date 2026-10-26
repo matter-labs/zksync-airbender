@@ -62,8 +62,7 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
     hash_buf_size_const: TokenStream,
     values_per_leaf_expr: TokenStream,
     fold_steps_expr: TokenStream,
-    oracle_depth_expr: TokenStream,
-    oracle_cap_expr: TokenStream,
+    merkle_verify: TokenStream,
 ) -> TokenStream {
     let quartic_struct = MW::quartic_struct();
 
@@ -106,16 +105,100 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
 
         let init_buf = hash_buf.assume_init_subarray::<#hash_buf_size_const>();
         hash_leaf_data_into_state(&mut ts.hasher, init_buf, #leaf_ext_words_expr);
-        if !verify_merkle_path::<I>(
-            &mut ts.hasher, tree_index, #oracle_depth_expr, #oracle_cap_expr, nd_source,
-        ) {
-            return Err(E::whir_merkle_path_failed(q));
-        }
+        #merkle_verify
 
         // The leaf words were read as reduced field elements: they are the leaf values as is.
         let leaf: &[#quartic_struct] = unsafe { init_buf.transmute_subslice(0, #values_per_leaf_expr) };
 
         #fold_computation
+    }
+}
+
+/// The plain per-query Merkle path check of a single-oracle query body.
+fn merkle_path_verify(oracle_depth_expr: TokenStream, oracle_cap_expr: TokenStream) -> TokenStream {
+    quote! {
+        if !verify_merkle_path::<I>(
+            &mut ts.hasher, tree_index, #oracle_depth_expr, #oracle_cap_expr, nd_source,
+        ) {
+            return Err(E::whir_merkle_path_failed(q));
+        }
+    }
+}
+
+/// The pruned-multiproof step of a single-oracle query body: the loop runs
+/// over the queries in tree order (`tree_index`, `prev_index_equal`,
+/// `next_index` set per sorted query, `q` the draw position) with a
+/// `multiproof_stack` of `max_depth_const` capacity.
+fn merkle_multiproof_verify(
+    oracle_depth_expr: TokenStream,
+    oracle_cap_expr: TokenStream,
+    max_depth_const: TokenStream,
+) -> TokenStream {
+    quote! {
+        if !verify_merkle_multiproof_leaf::<I, #max_depth_const>(
+            &mut ts.hasher, &mut multiproof_stack, tree_index, prev_index_equal, next_index,
+            #oracle_depth_expr, #oracle_cap_expr, nd_source,
+        ) {
+            return Err(E::whir_merkle_path_failed(q));
+        }
+    }
+}
+
+/// The prologue of a round's multiproof query loop: the queries' tree
+/// indices in draw order, their sorting (`perm`, with the tree indices along
+/// it in `sorted`), and the delinearization power of every draw position
+/// (`delin_powers`, the running product the plain loop advances per query),
+/// so the sorted loop can process the queries in tree order and still weigh
+/// each by its draw position.
+fn multiproof_loop_prologue(
+    num_queries_expr: TokenStream,
+    capacity_const: TokenStream,
+    tree_index_expr: TokenStream,
+    index_bits_expr: TokenStream,
+    advance_current_delin: &TokenStream,
+    quartic_struct: &TokenStream,
+) -> TokenStream {
+    quote! {
+        let mut tree_indices: LazyVec<usize, #capacity_const> = LazyVec::new();
+        {
+            let mut q = 0;
+            while q < #num_queries_expr {
+                let query_index = *query_indices.get(q);
+                tree_indices.push(#tree_index_expr);
+                q += 1;
+            }
+        }
+        let mut perm: LazyVec<usize, #capacity_const> = LazyVec::new();
+        let mut sorted: LazyVec<usize, #capacity_const> = LazyVec::new();
+        sort_queries_by_tree_index::<#capacity_const>(
+            &tree_indices, #index_bits_expr, &mut perm, &mut sorted,
+        );
+        let mut delin_powers: LazyVec<#quartic_struct, #capacity_const> = LazyVec::new();
+        {
+            let mut q = 0;
+            while q < #num_queries_expr {
+                #advance_current_delin;
+                delin_powers.push(current_delinearization_challenge);
+                q += 1;
+            }
+        }
+    }
+}
+
+/// The per-iteration head of a multiproof query loop over `j` (sorted
+/// position): the draw position `q`, the tree index and its neighbours, and
+/// the query's delinearization power.
+fn multiproof_loop_head(num_queries_expr: TokenStream) -> TokenStream {
+    quote! {
+        let q = *perm.get(j);
+        let tree_index = *sorted.get(j);
+        let prev_index_equal = j > 0 && *sorted.get(j - 1) == tree_index;
+        let next_index = if j + 1 < #num_queries_expr {
+            *sorted.get(j + 1)
+        } else {
+            NO_NEXT_INDEX
+        };
+        let query_index = *query_indices.get(q);
     }
 }
 
@@ -151,6 +234,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
         params.fold_steps,
     );
     let virtual_packing = params.fold_steps == 0;
+    let initial_multiproof = whir_schedule.merkle_multiproof_for_round(0);
     let max_ood_samples = whir_schedule
         .internal_rounds
         .iter()
@@ -211,6 +295,9 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
 
     // Build unrolled per-oracle query calls with const-generic LEAF_WORDS
     let mut unrolled_oracle_queries = TokenStream::new();
+    // The same under a pruned multiproof (one walk stack per oracle).
+    let mut unrolled_multiproof_oracle_queries = TokenStream::new();
+    let mut multiproof_stacks = TokenStream::new();
     {
         let mut gamma_offset_acc = 0usize;
         for (oracle_type, oracle_info) in oracles.iter() {
@@ -218,6 +305,38 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             let leaf_words = num_cols * params.values_per_leaf;
             let gamma_off = gamma_offset_acc;
             let depth = oracle_info.depth;
+
+            if num_cols > 0 && initial_multiproof {
+                let stack = quote::format_ident!("multiproof_stack_{}", oracle_type.clone() as usize);
+                multiproof_stacks.extend(quote! {
+                    let mut #stack = MerkleMultiproofStack::<#depth>::new();
+                });
+                if virtual_packing {
+                    unrolled_multiproof_oracle_queries.extend(quote! {
+                        process_oracle_query_single_value_multiproof::<I, E, WHIR_HASH_BUF_SIZE, #leaf_words, #depth>(
+                            &mut ts.hasher, hash_buf,
+                            #num_cols, &mut #stack, tree_index, prev_index_equal, next_index,
+                            #depth,
+                            initial_transcript. #oracle_type (),
+                            &gamma_powers[..], #gamma_off,
+                            &mut acc0, q,
+                            nd_source,
+                        )?;
+                    });
+                } else {
+                    unrolled_multiproof_oracle_queries.extend(quote! {
+                        process_oracle_query_multiproof::<I, E, WHIR_HASH_BUF_SIZE, #leaf_words, #depth>(
+                            &mut ts.hasher, hash_buf,
+                            #num_cols, &mut #stack, tree_index, prev_index_equal, next_index,
+                            #depth,
+                            initial_transcript. #oracle_type (),
+                            &gamma_powers[..], #gamma_off,
+                            &mut acc0, &mut acc1, q,
+                            nd_source,
+                        )?;
+                    });
+                }
+            }
 
             if num_cols > 0 {
                 if virtual_packing {
@@ -320,9 +439,138 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 }
                 Ok(())
             }
+
+            /// [`process_oracle_query_single_value`] under a pruned Merkle
+            /// multiproof (see `process_oracle_query_multiproof`).
+            #[inline(always)]
+            #[allow(clippy::too_many_arguments)]
+            pub unsafe fn process_oracle_query_single_value_multiproof<I: NonDeterminismSource<#field_struct>, E: ErrorCreator, const BUF_SIZE: usize, const LEAF_WORDS: usize, const MAX_DEPTH: usize>(
+                hasher: &mut ::verifier_common::blake2s_u32::DelegatedBlake2sState,
+                hash_buf: &mut AlignedArray64<MaybeUninit<u32>, BUF_SIZE>,
+                num_columns: usize,
+                stack: &mut MerkleMultiproofStack<MAX_DEPTH>,
+                tree_index: usize,
+                prev_index_equal: bool,
+                next_index: usize,
+                depth: usize,
+                cap: &[u32],
+                gamma_powers: &[#quartic_struct],
+                gamma_offset: usize,
+                acc: &mut #quartic_struct,
+                query: usize,
+                nd_source: &mut I,
+            ) -> Result<(), E::Error> {
+                use ::verifier_common::whir::hash_leaf_data_into_state;
+
+                let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
+                let mut col = 0;
+                while col < num_columns {
+                    let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
+                    let raw = read_reduced_field_el::<I>(nd_source);
+                    *buf.get_unchecked_mut(col) = raw.as_u32_raw_repr();
+                    let base_val = raw;
+                    #fma_into_acc;
+                    col += 1;
+                }
+
+                let block_end = LEAF_WORDS.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
+                if block_end > LEAF_WORDS {
+                    hash_buf.zero_range(LEAF_WORDS, block_end);
+                }
+                let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+                hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
+                if !verify_merkle_multiproof_leaf::<I, MAX_DEPTH>(
+                    hasher, stack, tree_index, prev_index_equal, next_index, depth, cap, nd_source,
+                ) {
+                    return Err(E::whir_merkle_path_failed(query));
+                }
+                Ok(())
+            }
         }
     } else {
         TokenStream::new()
+    };
+
+    // The base query loop: per draw under plain paths; under a pruned
+    // multiproof per sorted query, with the delinearization powers looked
+    // up by draw position (the sums they weigh are order-independent).
+    let plain_query_loop = quote! {
+        let mut q = 0;
+        while q < INITIAL_NUM_QUERIES {
+            #advance_current_delin;
+
+            let query_index = *query_indices.get(q);
+            let base_root_inv = extended_generator_inv.pow(query_index as u32);
+            let tree_index = compute_tree_index(
+                query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE,
+            );
+
+            let mut acc0 = #quartic_zero;
+            #acc1_decl
+
+            #unrolled_oracle_queries
+
+            #fold_computation
+
+            let mut query_point_base = extended_generator.pow(query_index as u32);
+            query_point_base.exp_power_of_2(WHIR_FOLD_STEPS[0]);
+            push_whir_base_pow_entry(
+                accumulator,
+                query_point_base,
+                current_delinearization_challenge,
+            );
+
+            let mut t = folded;
+            #mul_delin;
+            #add_correction;
+
+            q += 1;
+        }
+    };
+    let query_loop = if initial_multiproof {
+        let prologue = multiproof_loop_prologue(
+            quote! { INITIAL_NUM_QUERIES },
+            quote! { INITIAL_NUM_QUERIES },
+            quote! { compute_tree_index(query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE) },
+            quote! { INITIAL_QUERY_INDEX_BITS },
+            &advance_current_delin,
+            &quartic_struct,
+        );
+        let head = multiproof_loop_head(quote! { INITIAL_NUM_QUERIES });
+        quote! {
+            #prologue
+            #multiproof_stacks
+
+            let mut j = 0;
+            while j < INITIAL_NUM_QUERIES {
+                #head
+                let current_delinearization_challenge = *delin_powers.get(q);
+                let base_root_inv = extended_generator_inv.pow(query_index as u32);
+
+                let mut acc0 = #quartic_zero;
+                #acc1_decl
+
+                #unrolled_multiproof_oracle_queries
+
+                #fold_computation
+
+                let mut query_point_base = extended_generator.pow(query_index as u32);
+                query_point_base.exp_power_of_2(WHIR_FOLD_STEPS[0]);
+                push_whir_base_pow_entry(
+                    accumulator,
+                    query_point_base,
+                    current_delinearization_challenge,
+                );
+
+                let mut t = folded;
+                #mul_delin;
+                #add_correction;
+
+                j += 1;
+            }
+        }
+    } else {
+        plain_query_loop
     };
 
     // The OOD sampling shared by every round (emitted once, into the whir.rs
@@ -437,12 +685,18 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             read_and_verify_pow,
             draw_query_indices,
         };
+        #[allow(unused_imports)]
+        use ::verifier_common::whir::multiproof::{
+            MerkleMultiproofStack, sort_queries_by_tree_index, verify_merkle_multiproof_leaf,
+            NO_NEXT_INDEX,
+        };
+        #[allow(unused_imports)]
         use super::common::{
             verify_whir_sumcheck_step, materialize_gamma_powers,
             #fold_fn_imports
             read_reduced_field_el, draw_fresh_single_field_el,
             compute_tree_index,
-            process_oracle_query,
+            process_oracle_query, process_oracle_query_multiproof,
             fold_whir_accumulator, push_whir_base_pow_entry, push_whir_pow_entry,
         };
         use ::verifier_common::errors::ErrorCreator;
@@ -519,37 +773,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 let extended_generator = #field_struct::TWO_ADICITY_GENERATORS[INITIAL_RS_DOMAIN_LOG2];
                 let extended_generator_inv = #field_struct::TWO_ADICITY_GENERATORS_INVERSED[INITIAL_RS_DOMAIN_LOG2];
 
-                let mut q = 0;
-                while q < INITIAL_NUM_QUERIES {
-                    #advance_current_delin;
-
-                    let query_index = *query_indices.get(q);
-                    let base_root_inv = extended_generator_inv.pow(query_index as u32);
-                    let tree_index = compute_tree_index(
-                        query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE,
-                    );
-
-                    let mut acc0 = #quartic_zero;
-                    #acc1_decl
-
-                    #unrolled_oracle_queries
-
-                    #fold_computation
-
-                    let mut query_point_base = extended_generator.pow(query_index as u32);
-                    query_point_base.exp_power_of_2(WHIR_FOLD_STEPS[0]);
-                    push_whir_base_pow_entry(
-                        accumulator,
-                        query_point_base,
-                        current_delinearization_challenge,
-                    );
-
-                    let mut t = folded;
-                    #mul_delin;
-                    #add_correction;
-
-                    q += 1;
-                }
+                #query_loop
 
                 #add_claim;
 
@@ -635,9 +859,71 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
         quote! { INTERNAL_HASH_BUF_SIZE },
         quote! { values_per_leaf },
         quote! { fold_steps },
-        quote! { oracle_depth },
-        quote! { prev_oracle_cap },
+        merkle_path_verify(quote! { oracle_depth }, quote! { prev_oracle_cap }),
     );
+
+    // Pruned multiproofs: emitted only when some internal round uses them
+    // (then dispatched per round on `INTERNAL_MERKLE_MULTIPROOF`).
+    let internal_multiproof: Vec<bool> = (0..num_internal_rounds)
+        .map(|i| whir_schedule.merkle_multiproof_for_round(i + 1))
+        .collect();
+    let any_internal_multiproof = internal_multiproof.iter().any(|&b| b);
+    let internal_multiproof_mask: usize = internal_multiproof
+        .iter()
+        .enumerate()
+        .filter(|(_, &b)| b)
+        .map(|(i, _)| 1usize << i)
+        .sum();
+    let multiproof_query_body = generate_single_oracle_query_body::<MW>(
+        quote! { leaf_ext_words },
+        quote! { INTERNAL_HASH_BUF_SIZE },
+        quote! { values_per_leaf },
+        quote! { fold_steps },
+        merkle_multiproof_verify(
+            quote! { oracle_depth },
+            quote! { prev_oracle_cap },
+            quote! { MAX_INTERNAL_ORACLE_DEPTH },
+        ),
+    );
+    let multiproof_prologue = multiproof_loop_prologue(
+        quote! { num_queries },
+        quote! { MAX_INTERNAL_NUM_QUERIES },
+        quote! { compute_tree_index(query_index, num_cosets, num_cosets_log2, coset_tree_size) },
+        quote! { query_index_bits },
+        &advance_current_delin,
+        &quartic_struct,
+    );
+    let multiproof_head = multiproof_loop_head(quote! { num_queries });
+    let multiproof_query_loop = if any_internal_multiproof {
+        quote! {
+            #multiproof_prologue
+            let mut multiproof_stack = MerkleMultiproofStack::<MAX_INTERNAL_ORACLE_DEPTH>::new();
+
+            let mut j = 0;
+            while j < num_queries {
+                #multiproof_head
+                let current_delinearization_challenge = *delin_powers.get(q);
+
+                #multiproof_query_body
+
+                let mut query_point_base = extended_generator.pow(query_index as u32);
+                query_point_base.exp_power_of_2(fold_steps);
+                push_whir_base_pow_entry(
+                    accumulator,
+                    query_point_base,
+                    current_delinearization_challenge,
+                );
+
+                let mut t = folded;
+                #mul_delin;
+                #add_correction;
+
+                j += 1;
+            }
+        }
+    } else {
+        quote! { unreachable!() }
+    };
 
     // Per-round fold setup: coefficient form precomputes the monomial tensor;
     // evaluation form precomputes the high-power offsets and fold scratch buffers.
@@ -703,6 +989,22 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
         const INTERNAL_HASH_BUF_SIZE: usize = MAX_INTERNAL_LEAF_EXT_WORDS.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
         const MAX_INTERNAL_NUM_QUERIES: usize = #max_internal_num_queries;
         const MAX_INTERNAL_DRAW_WORDS: usize = #max_internal_draw_words;
+        /// Bit `ir` set: internal round `ir + 1`'s openings come as a pruned
+        /// Merkle multiproof (`WhirSchedule::merkle_multiproof_for_round`).
+        /// A bitmask, not a `[bool; N]`: a runtime-indexed byte array would
+        /// need a byte load, which the reduced machine has not.
+        const INTERNAL_MERKLE_MULTIPROOF_MASK: usize = #internal_multiproof_mask;
+        const MAX_INTERNAL_ORACLE_DEPTH: usize = {
+            let mut max = 0;
+            let mut i = 0;
+            while i < NUM_INTERNAL_ROUNDS {
+                if WHIR_ORACLE_DEPTHS[i] > max {
+                    max = WHIR_ORACLE_DEPTHS[i];
+                }
+                i += 1;
+            }
+            max
+        };
         const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] =
             [#(#internal_draw_words_vec),*];
 
@@ -775,30 +1077,34 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
 
                 #internal_fold_setup
 
-                let mut q = 0;
-                while q < num_queries {
-                    #advance_current_delin;
+                if (INTERNAL_MERKLE_MULTIPROOF_MASK >> ir) & 1 == 1 {
+                    #multiproof_query_loop
+                } else {
+                    let mut q = 0;
+                    while q < num_queries {
+                        #advance_current_delin;
 
-                    let query_index = *query_indices.get(q);
-                    let tree_index = compute_tree_index(
-                        query_index, num_cosets, num_cosets_log2, coset_tree_size,
-                    );
+                        let query_index = *query_indices.get(q);
+                        let tree_index = compute_tree_index(
+                            query_index, num_cosets, num_cosets_log2, coset_tree_size,
+                        );
 
-                    #query_body
+                        #query_body
 
-                    let mut query_point_base = extended_generator.pow(query_index as u32);
-                    query_point_base.exp_power_of_2(fold_steps);
-                    push_whir_base_pow_entry(
-                        accumulator,
-                        query_point_base,
-                        current_delinearization_challenge,
-                    );
+                        let mut query_point_base = extended_generator.pow(query_index as u32);
+                        query_point_base.exp_power_of_2(fold_steps);
+                        push_whir_base_pow_entry(
+                            accumulator,
+                            query_point_base,
+                            current_delinearization_challenge,
+                        );
 
-                    let mut t = folded;
-                    #mul_delin;
-                    #add_correction;
+                        let mut t = folded;
+                        #mul_delin;
+                        #add_correction;
 
-                    q += 1;
+                        q += 1;
+                    }
                 }
 
                 #add_claim;
@@ -856,14 +1162,87 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
     let pow_bits = params.pow_bits;
     let last_oracle_depth_idx = final_round_idx - 1;
 
+    let final_multiproof = whir_schedule.merkle_multiproof_for_round(final_round_idx);
+    let merkle_verify = if final_multiproof {
+        merkle_multiproof_verify(
+            quote! { oracle_depth },
+            quote! { prev_oracle_cap },
+            quote! { FINAL_ORACLE_DEPTH },
+        )
+    } else {
+        merkle_path_verify(quote! { oracle_depth }, quote! { prev_oracle_cap })
+    };
     let query_body = generate_single_oracle_query_body::<MW>(
         quote! { FINAL_LEAF_EXT_WORDS },
         quote! { FINAL_HASH_BUF_SIZE },
         quote! { FINAL_VALUES_PER_LEAF },
         quote! { FINAL_FOLD_STEPS },
-        quote! { oracle_depth },
-        quote! { prev_oracle_cap },
+        merkle_verify,
     );
+    // The final round has no delinearization: the sorted loop only needs
+    // the permutation (the fold agreement check below is per query, in
+    // whichever order the folded values were stored).
+    let final_query_loop = if final_multiproof {
+        quote! {
+            let mut tree_indices: LazyVec<usize, FINAL_NUM_QUERIES> = LazyVec::new();
+            {
+                let mut q = 0;
+                while q < FINAL_NUM_QUERIES {
+                    let query_index = *query_indices.get(q);
+                    tree_indices.push(compute_tree_index(
+                        query_index, FINAL_NUM_COSETS, FINAL_NUM_COSETS_LOG2, FINAL_COSET_TREE_SIZE,
+                    ));
+                    q += 1;
+                }
+            }
+            let mut perm: LazyVec<usize, FINAL_NUM_QUERIES> = LazyVec::new();
+            let mut sorted: LazyVec<usize, FINAL_NUM_QUERIES> = LazyVec::new();
+            sort_queries_by_tree_index::<FINAL_NUM_QUERIES>(
+                &tree_indices, FINAL_QUERY_INDEX_BITS, &mut perm, &mut sorted,
+            );
+            let mut multiproof_stack = MerkleMultiproofStack::<FINAL_ORACLE_DEPTH>::new();
+
+            let mut j = 0;
+            while j < FINAL_NUM_QUERIES {
+                let q = *perm.get(j);
+                let tree_index = *sorted.get(j);
+                let prev_index_equal = j > 0 && *sorted.get(j - 1) == tree_index;
+                let next_index = if j + 1 < FINAL_NUM_QUERIES {
+                    *sorted.get(j + 1)
+                } else {
+                    NO_NEXT_INDEX
+                };
+                let query_index = *query_indices.get(q);
+                let base_root = extended_generator.pow(query_index as u32);
+
+                #query_body
+
+                folded_values.push(folded);
+                query_base_roots.push(base_root);
+
+                j += 1;
+            }
+        }
+    } else {
+        quote! {
+            let mut q = 0;
+            while q < FINAL_NUM_QUERIES {
+                let query_index = *query_indices.get(q);
+                let base_root = extended_generator.pow(query_index as u32);
+
+                let tree_index = compute_tree_index(
+                    query_index, FINAL_NUM_COSETS, FINAL_NUM_COSETS_LOG2, FINAL_COSET_TREE_SIZE,
+                );
+
+                #query_body
+
+                folded_values.push(folded);
+                query_base_roots.push(base_root);
+
+                q += 1;
+            }
+        }
+    };
 
     // Per-round fold setup (final round): coefficient form precomputes the monomial
     // tensor; evaluation form precomputes high-power offsets and fold scratch.
@@ -905,6 +1284,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
         const FINAL_POW_BITS: u32 = #pow_bits;
         const FINAL_FOLDING_POW_BITS: u32 = #final_folding_pow_bits;
         const FINAL_ORACLE_DEPTH_IDX: usize = #last_oracle_depth_idx;
+        const FINAL_ORACLE_DEPTH: usize = WHIR_ORACLE_DEPTHS[FINAL_ORACLE_DEPTH_IDX];
 
         pub fn verify_final_whir_round<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
             ts: &mut TranscriptState,
@@ -975,22 +1355,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
                 let mut query_base_roots: LazyVec<#field_struct, FINAL_NUM_QUERIES> =
                     LazyVec::new();
 
-                let mut q = 0;
-                while q < FINAL_NUM_QUERIES {
-                    let query_index = *query_indices.get(q);
-                    let base_root = extended_generator.pow(query_index as u32);
-
-                    let tree_index = compute_tree_index(
-                        query_index, FINAL_NUM_COSETS, FINAL_NUM_COSETS_LOG2, FINAL_COSET_TREE_SIZE,
-                    );
-
-                    #query_body
-
-                    folded_values.push(folded);
-                    query_base_roots.push(base_root);
-
-                    q += 1;
-                }
+                #final_query_loop
 
 
                 let mut q = 0;

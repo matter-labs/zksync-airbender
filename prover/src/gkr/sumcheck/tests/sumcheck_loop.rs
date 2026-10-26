@@ -39,6 +39,7 @@ fn test_prover_config() -> prover_config::ProverConfig {
                 ..Default::default()
             },
             internal_rounds: vec![],
+            merkle_multiproofs: false,
         },
         same_size_sumcheck_schedule: prover_config::naive_same_size_schedule(),
         dimension_reducing_sumcheck_schedule: Default::default(),

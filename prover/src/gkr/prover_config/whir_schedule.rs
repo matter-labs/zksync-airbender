@@ -152,9 +152,27 @@ pub struct WhirSchedule {
     pub cap_size: usize,
     pub base_round: WhirBaseRoundSchedule,
     pub internal_rounds: Vec<WhirInternalRound>,
+    /// Open the queried leaves of a round's oracle(s) with ONE pruned Merkle
+    /// multiproof instead of a path per query: the verifier sorts the queries
+    /// by tree index, walks them in that order and hashes every distinct
+    /// ancestor once (siblings that are themselves on a queried path come
+    /// from the walk, not the proof).
+    /// Applied per round by [`Self::merkle_multiproof_for_round`]; the proof
+    /// structure is unchanged (the flattener prunes), only the verifier and
+    /// the ND layout differ.
+    #[serde(default)]
+    pub merkle_multiproofs: bool,
 }
 
 impl WhirSchedule {
+    /// Whether round `round_idx`'s openings are flattened and verified as a
+    /// pruned multiproof: enabled by `merkle_multiproofs`, and only when the
+    /// round draws at least twice as many queries as the cap has nodes (below
+    /// that the shared ancestors are too few to pay for the bookkeeping).
+    pub fn merkle_multiproof_for_round(&self, round_idx: usize) -> bool {
+        self.merkle_multiproofs && self.queries_per_round()[round_idx] >= 2 * self.cap_size
+    }
+
     /// Build a schedule from the pre-refactor arrays: the base round is
     /// `(base_lde_factor, steps[0], queries[0], pows[0])` with an explicit
     /// `pack_log2` packing; intermediate oracle `i` is
@@ -204,6 +222,7 @@ impl WhirSchedule {
             cap_size,
             base_round,
             internal_rounds,
+            merkle_multiproofs: false,
         }
     }
 
@@ -339,6 +358,8 @@ pub(crate) mod legacy_compat {
     pub(crate) struct WhirScheduleRepr {
         pub cap_size: usize,
         #[serde(default)]
+        pub merkle_multiproofs: bool,
+        #[serde(default)]
         pub base_round: Option<WhirBaseRoundSchedule>,
         #[serde(default)]
         pub internal_rounds: Option<Vec<WhirInternalRound>>,
@@ -361,6 +382,7 @@ pub(crate) mod legacy_compat {
                     cap_size: repr.cap_size,
                     base_round,
                     internal_rounds,
+                    merkle_multiproofs: repr.merkle_multiproofs,
                 },
                 (None, None) => WhirSchedule::from_legacy_arrays(
                     repr.base_lde_factor

@@ -425,13 +425,19 @@ fn one_off_prover_config(
     let compiled: cs::gkr_compiler::GKRCircuitArtifact<BabyBearField> =
         serde_json::from_reader(std::io::BufReader::new(file))
             .unwrap_or_else(|e| panic!("{layout_path}: {e}"));
-    let config = example_configs::prover_config(
+    let mut config = example_configs::prover_config(
         soundness_mode(),
         level,
         compiled.trace_len.trailing_zeros() as usize,
         packing,
         Some(&BaseColumns::of(&compiled)),
     );
+    // `GKR_MERKLE_MULTIPROOF=1`: flatten and verify the query openings of the
+    // rounds that qualify (`WhirSchedule::merkle_multiproof_for_round`) as
+    // pruned multiproofs (the proof itself is unchanged).
+    if std::env::var("GKR_MERKLE_MULTIPROOF").map_or(false, |v| v.trim() == "1") {
+        config.whir_schedule.merkle_multiproofs = true;
+    }
     let out = format!("test_proofs/{stem}_{}_prover_config.json", proof_suffix(level));
     let mut dst = std::fs::File::create(&out).unwrap_or_else(|e| panic!("{out}: {e}"));
     serde_json::to_writer_pretty(&mut dst, &config).unwrap();

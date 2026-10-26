@@ -313,6 +313,38 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             });
         }
 
+        /// Read one base leaf (two values per column), batch it into
+        /// `acc0` / `acc1` and leave its hash in the hasher state.
+        #[inline(always)]
+        #[allow(clippy::too_many_arguments)]
+        pub unsafe fn read_and_hash_oracle_leaf<I: NonDeterminismSource<#field_struct>, const BUF_SIZE: usize, const LEAF_WORDS: usize>(
+            hasher: &mut DelegatedBlake2sState,
+            hash_buf: &mut ::verifier_common::blake2s_u32::AlignedArray64<core::mem::MaybeUninit<u32>, BUF_SIZE>,
+            num_columns: usize,
+            gamma_powers: &[#quartic_struct],
+            gamma_offset: usize,
+            acc0: &mut #quartic_struct,
+            acc1: &mut #quartic_struct,
+            nd_source: &mut I,
+        ) {
+            use ::verifier_common::whir::hash_leaf_data_into_state;
+
+            let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
+            read_and_batch_leaf::<I>(
+                &mut buf[..LEAF_WORDS], num_columns,
+                gamma_powers, gamma_offset, acc0, acc1, nd_source,
+            );
+
+            let block_end = LEAF_WORDS.next_multiple_of(
+                ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS,
+            );
+            if block_end > LEAF_WORDS {
+                hash_buf.zero_range(LEAF_WORDS, block_end);
+            }
+            let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+            hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
+        }
+
         #[inline(always)]
         #[allow(clippy::too_many_arguments)]
         pub unsafe fn process_oracle_query<I: NonDeterminismSource<#field_struct>, E: ErrorCreator, const BUF_SIZE: usize, const LEAF_WORDS: usize>(
@@ -329,23 +361,48 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             query: usize,
             nd_source: &mut I,
         ) -> Result<(), E::Error> {
-            use ::verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
+            use ::verifier_common::whir::verify_merkle_path;
 
-            let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
-            read_and_batch_leaf::<I>(
-                &mut buf[..LEAF_WORDS], num_columns,
-                gamma_powers, gamma_offset, acc0, acc1, nd_source,
+            read_and_hash_oracle_leaf::<I, BUF_SIZE, LEAF_WORDS>(
+                hasher, hash_buf, num_columns, gamma_powers, gamma_offset, acc0, acc1, nd_source,
             );
-
-            let block_end = LEAF_WORDS.next_multiple_of(
-                ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS,
-            );
-            if block_end > LEAF_WORDS {
-                hash_buf.zero_range(LEAF_WORDS, block_end);
-            }
-            let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
-            hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
             if !verify_merkle_path::<I>(hasher, query_index, depth, cap, nd_source) {
+                return Err(E::whir_merkle_path_failed(query));
+            }
+            Ok(())
+        }
+
+        /// [`process_oracle_query`] for a round opened as a pruned Merkle
+        /// multiproof: the queries come in tree order, and the leaf's path is
+        /// walked only up to the first ancestor a later query shares (see
+        /// `verifier_common::whir::multiproof`).
+        #[inline(always)]
+        #[allow(clippy::too_many_arguments)]
+        pub unsafe fn process_oracle_query_multiproof<I: NonDeterminismSource<#field_struct>, E: ErrorCreator, const BUF_SIZE: usize, const LEAF_WORDS: usize, const MAX_DEPTH: usize>(
+            hasher: &mut DelegatedBlake2sState,
+            hash_buf: &mut ::verifier_common::blake2s_u32::AlignedArray64<core::mem::MaybeUninit<u32>, BUF_SIZE>,
+            num_columns: usize,
+            stack: &mut ::verifier_common::whir::multiproof::MerkleMultiproofStack<MAX_DEPTH>,
+            tree_index: usize,
+            prev_index_equal: bool,
+            next_index: usize,
+            depth: usize,
+            cap: &[u32],
+            gamma_powers: &[#quartic_struct],
+            gamma_offset: usize,
+            acc0: &mut #quartic_struct,
+            acc1: &mut #quartic_struct,
+            query: usize,
+            nd_source: &mut I,
+        ) -> Result<(), E::Error> {
+            use ::verifier_common::whir::multiproof::verify_merkle_multiproof_leaf;
+
+            read_and_hash_oracle_leaf::<I, BUF_SIZE, LEAF_WORDS>(
+                hasher, hash_buf, num_columns, gamma_powers, gamma_offset, acc0, acc1, nd_source,
+            );
+            if !verify_merkle_multiproof_leaf::<I, MAX_DEPTH>(
+                hasher, stack, tree_index, prev_index_equal, next_index, depth, cap, nd_source,
+            ) {
                 return Err(E::whir_merkle_path_failed(query));
             }
             Ok(())
