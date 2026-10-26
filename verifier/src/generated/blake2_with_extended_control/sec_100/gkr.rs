@@ -26015,6 +26015,22 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR MAIN LAYER 0");
         }
+        {
+            let mut extra_coordinates: [BabyBearExt4; PACK_LOG2] = [BabyBearExt4::ZERO; PACK_LOG2];
+            draw_fresh_field_els_into::<PACKED_EXTRA_DRAW_BUF>(ts, &mut extra_coordinates);
+            let merged_len = ::verifier_common::gkr::merge_packed_claims(
+                state.prev_claims.as_mut_slice(),
+                &PACKED_CLAIM_SET_LENS,
+                &extra_coordinates,
+            );
+            debug_assert_eq!(merged_len, TOTAL_ORACLE_COLS);
+            let mut i = 0;
+            while i < PACK_LOG2 {
+                state.prev_point[state.prev_point_len + i] = extra_coordinates[i];
+                i += 1;
+            }
+            state.prev_point_len += PACK_LOG2;
+        }
         read_and_verify_pow::<I>(ts, BATCHED_PROXIMITY_POW_BITS, nd_source);
         state.batching_challenge = draw_single_field_el_after_pow(ts);
         let mut permutation_read_product: BabyBearExt4 = BabyBearExt4::ONE;

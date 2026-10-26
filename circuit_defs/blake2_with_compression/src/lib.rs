@@ -17,9 +17,14 @@ impl<F: PrimeField> circuit_common::DelegationCircuit<F>
     const DELEGATION_TYPE_ID: u16 =
         common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER
             as u16;
-    fn prover_config(level: circuit_common::SecurityLevel) -> circuit_common::ProverConfig {
-        circuit_common::default_prover_config(20, level)
-    }
+    // the LOGICAL trace length for the purposes of GKR (rows of the circuit
+    // trace); the polynomials WHIR commits may be larger when the base
+    // commitment packs columns (`BASE_PACKING`)
+    const TRACE_LEN_LOG2: u32 = 20;
+    // packed by 2^2 columns into 2^22-variate committed polynomials, opened
+    // with one value per packed column per base leaf (virtual packing)
+    const BASE_PACKING: circuit_common::BasePacking =
+        circuit_common::BasePacking::physical_and_virtual(2);
 
     fn circuit_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS) {
         define_blake2_with_extended_control_delegation_circuit(cs);

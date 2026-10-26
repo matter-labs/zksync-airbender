@@ -110,7 +110,8 @@ impl BaseCommitmentVariant {
     /// virtual packing.
     pub fn proof_name_infix(self) -> String {
         match self {
-            Self::Packed { pack_log2: 0 } => String::new(),
+            // `_pack0` (not the empty infix): the circuit's own production
+            // fixture is the plain `sec_100` name
             Self::Packed { pack_log2 } => format!("_pack{pack_log2}"),
             Self::VirtualPacking { pack_log2: 0 } => "_virtual".to_string(),
             Self::VirtualPacking { pack_log2 } => format!("_pack{pack_log2}_virtual"),

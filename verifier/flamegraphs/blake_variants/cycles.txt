@@ -1,5 +1,5 @@
 # variant  physical_packing_log2  values_per_column_per_leaf  cycles
-blake2_with_extended_control_sec_100  0  2  2546735
+blake2_with_extended_control_sec_100_pack0  0  2  2546735
 blake2_with_extended_control_sec_100_virtual  0  1  2021485
 blake2_with_extended_control_sec_100_pack1  1  2  1787019
 blake2_with_extended_control_sec_100_pack1_virtual  1  1  1556322

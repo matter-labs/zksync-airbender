@@ -4,7 +4,7 @@ use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use prover::definitions::GKRExternalChallenges;
 use prover::gkr::prover::{GKRProof, WhirSchedule};
-use prover::gkr::prover_config::ProverConfig;
+use prover::gkr::prover_config::{ProverConfig, SoundnessMode};
 use prover::merkle_trees::DefaultTreeConstructor;
 
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
@@ -42,15 +42,22 @@ pub struct CircuitData {
 
 impl CircuitData {
     /// The serialized prover config the circuit definition generated next to
-    /// its production layout (`<production_path>/generated/prover_config_<level>.json`,
-    /// written by the circuit's artifact generator from its `prover_config`):
-    /// the config the circuit is proved with, and thus the one its verifier is
-    /// generated for.
+    /// its production layout
+    /// (`<production_path>/generated/prover_config_<level>_<mode>.json`,
+    /// written by the circuit's artifact generator from its geometry) in the
+    /// DEFAULT soundness mode: the config the circuit is proved with, and
+    /// thus the one its verifier is generated for.
     pub fn prover_config_path_for(&self, level: SecurityLevel) -> String {
+        self.prover_config_path_for_mode(level, SoundnessMode::DEFAULT)
+    }
+
+    /// [`Self::prover_config_path_for`] for any soundness mode.
+    pub fn prover_config_path_for_mode(&self, level: SecurityLevel, mode: SoundnessMode) -> String {
         format!(
-            "{}/generated/prover_config_{}.json",
+            "{}/generated/prover_config_{}_{}.json",
             self.production_path,
-            level.dir_suffix()
+            level.dir_suffix(),
+            mode.file_suffix()
         )
     }
 
@@ -306,10 +313,12 @@ pub mod blake_variants {
                 .collect()
         }
 
-        /// `""`, `"_pack{k}"`, `"_virtual"`, `"_pack{k}_virtual"`.
+        /// `"_pack{k}"` (two values per leaf, `k = 0` included so that the
+        /// sweep never names the circuit's OWN production fixture, which is
+        /// the plain `sec_100`), `"_virtual"`, `"_pack{k}_virtual"`.
         pub fn infix(&self) -> String {
             let mut infix = String::new();
-            if self.pack_log2 > 0 {
+            if self.pack_log2 > 0 || self.fold_log2 == 1 {
                 infix.push_str(&format!("_pack{}", self.pack_log2));
             }
             if self.fold_log2 == 0 {
@@ -395,22 +404,27 @@ pub mod blake_variants {
 mod fixture_maintenance {
     use super::*;
 
-    /// Rewrite every circuit's serialized prover config
-    /// (`<circuit>/generated/prover_config_<level>.json`) in the CURRENT
-    /// `ProverConfig` layout: read it back (the decoder accepts the legacy
-    /// layout too) and serialize it exactly as `circuit_common::save_prover_configs`
-    /// does. Run after a `ProverConfig` / `WhirSchedule` layout change:
+    /// Rewrite every circuit's serialized prover configs
+    /// (`<circuit>/generated/prover_config_<level>_<mode>.json`) in the
+    /// CURRENT `ProverConfig` layout: read each back (the decoder accepts the
+    /// legacy layout too) and serialize it exactly as
+    /// `circuit_common::save_prover_configs` does. Run after a `ProverConfig`
+    /// / `WhirSchedule` layout change:
     /// `cargo test -p verifier_common --lib -- --ignored rewrite_prover_config_fixtures_in_current_layout`.
+    /// (The configs' CONTENT is regenerated from the circuit geometries by the
+    /// `setups` crate's `regenerate_prover_config_fixtures` test.)
     #[test]
     #[ignore]
     fn rewrite_prover_config_fixtures_in_current_layout() {
         for circuit in CIRCUITS.iter() {
             for level in SecurityLevel::ALL.iter() {
-                let path = circuit.prover_config_path_for(*level);
-                let config: ProverConfig = deserialize_from_file(&path);
-                config.validate_for_whir_message_size(config.whir_message_size_log2());
-                let mut dst = std::fs::File::create(&path).unwrap();
-                serde_json::to_writer_pretty(&mut dst, &config).unwrap();
+                for mode in SoundnessMode::ALL.iter() {
+                    let path = circuit.prover_config_path_for_mode(*level, *mode);
+                    let config: ProverConfig = deserialize_from_file(&path);
+                    config.validate_for_whir_message_size(config.whir_message_size_log2());
+                    let mut dst = std::fs::File::create(&path).unwrap();
+                    serde_json::to_writer_pretty(&mut dst, &config).unwrap();
+                }
             }
         }
     }

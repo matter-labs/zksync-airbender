@@ -48,6 +48,7 @@ pub use prover;
 
 pub mod circuits;
 pub mod program_setups;
+pub mod prover_config_fixtures;
 pub mod unrolled_circuits;
 pub use self::circuits::*;
 pub use self::unrolled_circuits::*;

@@ -7,6 +7,7 @@ pub mod example_configs;
 pub mod pow_bits;
 pub mod whir_schedule;
 
+pub use example_configs::{BaseColumns, BasePacking, SoundnessMode, WhirInput};
 pub use whir_schedule::{WhirBaseRoundSchedule, WhirInternalRound, WhirSchedule};
 
 /// One step of a sumcheck schedule: how many variables the step binds and

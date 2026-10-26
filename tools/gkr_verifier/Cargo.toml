@@ -132,6 +132,10 @@ name = "blake2_with_extended_control_sec_100_virtual"
 path = "src/bin/blake2_with_extended_control_sec_100_virtual.rs"
 
 [[bin]]
+name = "blake2_with_extended_control_sec_100_pack0"
+path = "src/bin/blake2_with_extended_control_sec_100_pack0.rs"
+
+[[bin]]
 name = "blake2_with_extended_control_sec_100_pack1"
 path = "src/bin/blake2_with_extended_control_sec_100_pack1.rs"
 

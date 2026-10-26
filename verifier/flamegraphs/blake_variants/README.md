@@ -6,7 +6,7 @@ Proof size = flattened non-determinism stream (u32 words). Flamegraph: `gkr_flam
 
 | variant | physical packing | values per column per leaf | proof u32 words | verifier cycles | cycles vs default |
 |---|---|---|---|---|---|
-| sec_100 | 2^0 | 2 | 193140 | 2546735 | 1.00x |
+| sec_100_pack0 | 2^0 | 2 | 193140 | 2546735 | 1.00x |
 | sec_100_virtual | 2^0 | 1 | 128939 | 2021485 | 0.79x |
 | sec_100_pack1 | 2^1 | 2 | 128496 | 1787019 | 0.70x |
 | sec_100_pack1_virtual | 2^1 | 1 | 99319 | 1556322 | 0.61x |

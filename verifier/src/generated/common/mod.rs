@@ -641,7 +641,7 @@ pub fn eval_multilinear_with_monomial_tensor(
     }
     result
 }
-pub const MAX_HIGH_POWERS: usize = 16usize;
+pub const MAX_HIGH_POWERS: usize = 32usize;
 #[inline(always)]
 pub fn bitreverse_inplace<T: Copy>(arr: &mut [T]) {
     let n = arr.len();

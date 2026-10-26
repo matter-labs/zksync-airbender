@@ -72,6 +72,11 @@ pub fn assert_unpacked_prover_config(prover_config: &ProverConfig) {
         prover_config.pack_log2(),
         prover_config.whir_message_size_log2(),
     );
+    assert!(
+        !prover_config.is_virtual_packing(),
+        "GPU prover does not implement virtual packing (WhirBaseRoundSchedule::fold_log2 = 0, one \
+         value per column per base leaf); prove such configs with the CPU prover"
+    );
 }
 
 fn commit_memory_inner<'a>(

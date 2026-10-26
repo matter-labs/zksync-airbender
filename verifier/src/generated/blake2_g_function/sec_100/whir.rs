@@ -34,6 +34,48 @@ use verifier_common::structs::{CommitBuf, TranscriptState};
 use verifier_common::whir::{
     draw_query_indices, read_and_verify_pow, read_commit_return_merkle_cap,
 };
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn process_oracle_query_single_value<
+    I: NonDeterminismSource<BabyBearField>,
+    E: ErrorCreator,
+    const BUF_SIZE: usize,
+    const LEAF_WORDS: usize,
+>(
+    hasher: &mut ::verifier_common::blake2s_u32::DelegatedBlake2sState,
+    hash_buf: &mut AlignedArray64<MaybeUninit<u32>, BUF_SIZE>,
+    num_columns: usize,
+    query_index: usize,
+    depth: usize,
+    cap: &[u32],
+    gamma_powers: &[BabyBearExt4],
+    gamma_offset: usize,
+    acc: &mut BabyBearExt4,
+    query: usize,
+    nd_source: &mut I,
+) -> Result<(), E::Error> {
+    use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
+    let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
+    let mut col = 0;
+    while col < num_columns {
+        let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
+        let raw = read_reduced_field_el::<I>(nd_source);
+        *buf.get_unchecked_mut(col) = raw.as_u32_raw_repr();
+        let base_val = raw;
+        field_ops::add_assign_product_with_base(&mut *acc, &gamma, &base_val);
+        col += 1;
+    }
+    let block_end = LEAF_WORDS.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
+    if block_end > LEAF_WORDS {
+        hash_buf.zero_range(LEAF_WORDS, block_end);
+    }
+    let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+    hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
+    if !verify_merkle_path::<I>(hasher, query_index, depth, cap, nd_source) {
+        return Err(E::whir_merkle_path_failed(query));
+    }
+    Ok(())
+}
 pub const MAX_OOD_SAMPLES: usize = 1usize;
 const OOD_DRAW_BUF: usize = (MAX_OOD_SAMPLES * super::common::EXT_DEGREE + 1)
     .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
@@ -106,14 +148,14 @@ pub fn accumulate_ood_samples<const MAX_POW: usize, const MAX_OOD: usize>(
     }
     (claim_correction, current)
 }
-const INITIAL_QUERY_INDEX_BITS: usize = 22usize;
+const INITIAL_QUERY_INDEX_BITS: usize = 23usize;
 const INITIAL_NUM_QUERIES: usize = 89usize;
 const INITIAL_POW_BITS: u32 = 26u32;
-const INITIAL_DRAW_WORDS: usize = 64usize;
+const INITIAL_DRAW_WORDS: usize = 72usize;
 const INITIAL_RS_DOMAIN_LOG2: usize = 23usize;
 const NUM_COSETS: usize = 2usize;
 const NUM_COSETS_LOG2: usize = 1usize;
-const COSET_TREE_SIZE: usize = 2097152usize;
+const COSET_TREE_SIZE: usize = 4194304usize;
 pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     initial_transcript: &ConcreteInitialTranscript,
     ts: &mut TranscriptState,
@@ -142,21 +184,6 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 field_ops::add_assign(&mut claim, &term);
                 col_idx += 1;
             }
-        }
-        let mut folding_challenges: LazyVec<BabyBearExt4, { WHIR_FOLD_STEPS[0] }> = LazyVec::new();
-        let mut round_idx = 0;
-        while round_idx < WHIR_FOLD_STEPS[0] {
-            let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
-                ts,
-                claim,
-                round_idx,
-                WHIR_FOLDING_POW_BITS[0],
-                nd_source,
-            )?;
-            claim = new_claim;
-            folding_challenges.push(alpha);
-            fold_whir_accumulator(accumulator, alpha, z_initial);
-            round_idx += 1;
         }
         const CAP_COMMIT_BUF: usize = {
             let total = WHIR_CAP_WORDS;
@@ -196,60 +223,46 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
             let tree_index =
                 compute_tree_index(query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE);
             let mut acc0 = BabyBearExt4::ZERO;
-            let mut acc1 = BabyBearExt4::ZERO;
-            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 110usize>(
+            process_oracle_query_single_value::<I, E, WHIR_HASH_BUF_SIZE, 55usize>(
                 &mut ts.hasher,
                 hash_buf,
                 55usize,
                 tree_index,
-                18usize,
+                19usize,
                 initial_transcript.memory_caps_slice(),
                 &gamma_powers[..],
                 0usize,
                 &mut acc0,
-                &mut acc1,
                 q,
                 nd_source,
             )?;
-            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 114usize>(
+            process_oracle_query_single_value::<I, E, WHIR_HASH_BUF_SIZE, 57usize>(
                 &mut ts.hasher,
                 hash_buf,
                 57usize,
                 tree_index,
-                18usize,
+                19usize,
                 initial_transcript.witness_caps_slice(),
                 &gamma_powers[..],
                 55usize,
                 &mut acc0,
-                &mut acc1,
                 q,
                 nd_source,
             )?;
-            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 18usize>(
+            process_oracle_query_single_value::<I, E, WHIR_HASH_BUF_SIZE, 9usize>(
                 &mut ts.hasher,
                 hash_buf,
                 9usize,
                 tree_index,
-                18usize,
+                19usize,
                 initial_transcript.setup_caps_slice(),
                 &gamma_powers[..],
                 112usize,
                 &mut acc0,
-                &mut acc1,
                 q,
                 nd_source,
             )?;
-            let mut sum = acc0;
-            field_ops::add_assign(&mut sum, &acc1);
-            let mut diff = acc0;
-            field_ops::sub_assign(&mut diff, &acc1);
-            let mut alpha_r = unsafe { *folding_challenges.get_unchecked(0) };
-            field_ops::mul_assign_by_base(&mut alpha_r, &base_root_inv);
-            let mut scaled_diff = diff;
-            field_ops::mul_assign(&mut scaled_diff, &alpha_r);
-            let mut folded = sum;
-            field_ops::add_assign(&mut folded, &scaled_diff);
-            field_ops::mul_assign_by_base(&mut folded, &BabyBearField::HALF);
+            let folded = acc0;
             let mut query_point_base = extended_generator.pow(query_index as u32);
             query_point_base.exp_power_of_2(WHIR_FOLD_STEPS[0]);
             push_whir_base_pow_entry(
@@ -269,18 +282,18 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
 use super::common::EXT_DEGREE;
 use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
 pub const NUM_INTERNAL_ROUNDS: usize = 3usize;
-const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] = [22usize, 22usize, 21usize];
-const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] = [64usize, 2048usize, 32768usize];
-const INTERNAL_NUM_COSETS_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [6usize, 11usize, 15usize];
+const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] = [21usize, 22usize, 21usize];
+const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] = [32usize, 2048usize, 32768usize];
+const INTERNAL_NUM_COSETS_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [5usize, 11usize, 15usize];
 const INTERNAL_COSET_TREE_SIZE: [usize; NUM_INTERNAL_ROUNDS] = [65536usize, 2048usize, 64usize];
 const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [27usize, 27usize, 26usize];
-const MAX_INTERNAL_FOLD_STEPS: usize = 5usize;
-const MAX_INTERNAL_VALUES_PER_LEAF: usize = 32usize;
+const MAX_INTERNAL_FOLD_STEPS: usize = 6usize;
+const MAX_INTERNAL_VALUES_PER_LEAF: usize = 64usize;
 const MAX_INTERNAL_LEAF_EXT_WORDS: usize = MAX_INTERNAL_VALUES_PER_LEAF * EXT_DEGREE;
 const INTERNAL_HASH_BUF_SIZE: usize = MAX_INTERNAL_LEAF_EXT_WORDS
     .div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS)
     * BLAKE2S_BLOCK_SIZE_U32_WORDS;
-const MAX_INTERNAL_NUM_QUERIES: usize = 15usize;
+const MAX_INTERNAL_NUM_QUERIES: usize = 18usize;
 const MAX_INTERNAL_DRAW_WORDS: usize = 16usize;
 const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] = [16usize, 8usize, 8usize];
 pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
@@ -667,7 +680,7 @@ const _: () = assert!(
         .len(),
     "WHIR stats labels array is too small for NUM_INTERNAL_ROUNDS"
 );
-pub const WHIR_HASH_BUF_SIZE: usize = 128usize;
+pub const WHIR_HASH_BUF_SIZE: usize = 256usize;
 pub fn verify_whir<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     initial_transcript: &ConcreteInitialTranscript,
     ts: &mut TranscriptState,

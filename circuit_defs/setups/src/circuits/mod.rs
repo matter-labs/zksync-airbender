@@ -67,7 +67,10 @@ pub fn make_setup_for_delegation_circuit<C: circuit_common::DelegationCircuit<Ba
     DelegationCircuitSetup {
         delegation_type: C::DELEGATION_TYPE_ID,
         trace_len: 1 << C::trace_len_log2(),
-        prover_configs: circuit_common::prover_configs_for_all_levels(C::prover_config),
+        // from the compiled circuit: the source of the committed column widths
+        prover_configs: circuit_common::prover_configs_for_all_levels(|level| {
+            C::prover_config_in_mode(&circuit, level, circuit_common::SoundnessMode::DEFAULT)
+        }),
         compiled_circuit: circuit,
         table_driver,
         setup,
