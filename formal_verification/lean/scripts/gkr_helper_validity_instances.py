@@ -14,7 +14,7 @@ def module(name, case):
     root = LEAN / 'artifacts/compiler'
     arity = len(synthesize(json.loads((root / (name + '.json')).read_text()),
                            json.loads((root / (name + '-source.json')).read_text()))['inputs'])
-    target = 'GKRProtocol.HelperValidityNative.' + case
+    target = 'Airbender.Proofs.GKRProtocol.HelperValidityNative.' + case
     namespace = 'Airbender.Compiler.HelperValidityNative.' + case
     base = 'Airbender.Compiler.FullArithmeticNative.' + case + '.native'
     source = 'Airbender.Compiler.SourceContractNative.' + case + '.native'
@@ -22,7 +22,7 @@ def module(name, case):
     helper = 'Airbender.Compiler.HelperNative.' + case + '.native'
     lookup = 'Airbender.Compiler.LookupNative.' + case + '.native'
     product = 'Airbender.Compiler.ProductNative.' + case + '.native'
-    content = (f'import GKRProtocol.HelperValidityImport\nimport GKRProtocol.HistoryErasureNative.{case}\nimport GKRProtocol.HelperNative.{case}\n\n'
+    content = (f'import Airbender.Import.GKRProtocol.HelperValidityImport\nimport Airbender.Proofs.GKRProtocol.HistoryErasureNative.{case}\nimport Airbender.Proofs.GKRProtocol.HelperNative.{case}\n\n'
         f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
         'set_option warningAsError true\nset_option Elab.async false\n'
         'set_option maxRecDepth 32768\nset_option maxHeartbeats 4000000\n\n'

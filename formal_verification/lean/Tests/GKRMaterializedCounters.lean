@@ -1,7 +1,7 @@
-import GKRProtocol.CounterMasked
-import GKRProtocol.MaterializedRangeNative.AddSubUncached
-import GKRProtocol.OracleFrameNative.AddSubUncached
-import GKRProtocol.QueryFrameNative.AddSubUncached
+import Airbender.Proofs.GKRProtocol.CounterMasked
+import Airbender.Proofs.GKRProtocol.MaterializedRangeNative.AddSubUncached
+import Airbender.Proofs.GKRProtocol.OracleFrameNative.AddSubUncached
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.AddSubUncached
 import Airbender.Proofs.BabyBear
 
 namespace Tests.GKRMaterializedCounters

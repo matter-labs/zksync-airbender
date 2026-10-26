@@ -1,0 +1,13 @@
+import Airbender.Import.GKRProtocol.CleanScalarImport
+import Airbender.Proofs.GKRProtocol.MaterializedNative.BlakeGUncached
+
+namespace Airbender.Compiler.CleanScalarNative.BlakeGUncached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 65536
+set_option maxHeartbeats 4000000
+
+import_clean_scalar_setup native model Airbender.Compiler.MaterializedNative.BlakeGUncached.native.model
+
+end Airbender.Compiler.CleanScalarNative.BlakeGUncached

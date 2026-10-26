@@ -17,7 +17,7 @@ def module(name, case, pair):
     source = 'Airbender.Compiler.LookupSourceNative.' + case + '.native'
     memory = 'Airbender.Compiler.MemoryNative.' + case + '.native'
     helper = 'Airbender.Compiler.HelperNative.' + case + '.native'
-    imports = ['GKRProtocol.FunctionalLinksImport'] + ['GKRProtocol.' + stem + '.' + case
+    imports = ['Airbender.Import.GKRProtocol.FunctionalLinksImport'] + ['Airbender.Proofs.GKRProtocol.' + stem + '.' + case
         for stem in ['FunctionalNative', 'LookupSourceNative', 'MemoryNative', 'HelperNative']]
     text = ''.join('import ' + item + '\n' for item in imports)
     namespace = 'Airbender.Compiler.FunctionalLinksNative.' + case
@@ -69,7 +69,7 @@ def module(name, case, pair):
                  f'    (native.{kind}Defined hom challenges gamma baseValue arithmetic)\n'
                  f'    (native.{kind}Copies baseValue arithmetic)\n'
                  f'    (by rw [native.assignment_value]; exact {graph}.{native_holds} hom challenges gamma baseValue)\n')
-    return 'GKRProtocol.FunctionalLinksNative.' + case, text + '\nend ' + namespace + '\n'
+    return 'Airbender.Proofs.GKRProtocol.FunctionalLinksNative.' + case, text + '\nend ' + namespace + '\n'
 
 
 def main():

@@ -1,4 +1,4 @@
-import GKRCompiler.Native.AddSubUncached
+import Airbender.Proofs.GKRCompiler.Native.AddSubUncached
 
 namespace Tests.GKRCompilerCertificate
 open Airbender Airbender.Compiler

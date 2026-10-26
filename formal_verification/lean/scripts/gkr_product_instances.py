@@ -24,11 +24,11 @@ def main():
             continue
         for mode in ("uncached", "cached"):
             case, name = stem + mode.title(), family + "-" + mode
-            module = "GKRProtocol.ProductNative." + case
-            path = LEAN / "GKRProtocol/ProductNative" / (case + ".lean")
+            module = "Airbender.Proofs.GKRProtocol.ProductNative." + case
+            path = LEAN / "Airbender/Proofs/GKRProtocol/ProductNative" / (case + ".lean")
             content = (
-                "import GKRProtocol.NativeProductImport\n"
-                f"import GKRProtocol.ConsumerNative.{case}\n\n"
+                "import Airbender.Import.GKRProtocol.NativeProductImport\n"
+                f"import Airbender.Proofs.GKRProtocol.ConsumerNative.{case}\n\n"
                 f"namespace Airbender.Compiler.ProductNative.{case}\n"
                 "open Airbender Airbender.Compiler\n"
                 "set_option warningAsError true\n"

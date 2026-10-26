@@ -12,7 +12,7 @@ from gkr_wiring_instances import CASES
 
 
 def ram_count(case):
-    source = (LEAN / 'GKRProtocol/MemoryNative' / (case + '.lean')).read_text()
+    source = (LEAN / 'Airbender/Proofs/GKRProtocol/MemoryNative' / (case + '.lean')).read_text()
     data = json.loads(json.loads(re.search(r'selectors ("(?:[^"\\]|\\.)*")', source).group(1)))
     return 7 * sum(len(data['groups'][stem]['source_labels']) for stem in ['memoryRead', 'memoryWrite'])
 
@@ -25,17 +25,17 @@ def module(name, case, phase=3, start=0, stop=None):
     if stop is None:
         stop = size
     suffix = 'Inputs' if phase == 0 else 'Part' + str(start // 64) if phase == 1 else ''
-    target = 'GKRProtocol.MemoryFrameNative.' + case + suffix
+    target = 'Airbender.Proofs.GKRProtocol.MemoryFrameNative.' + case + suffix
     namespace = 'Airbender.Compiler.MemoryFrameNative.' + case
     prefix = 'Airbender.Compiler.'
     models = [('base_model', 'FullArithmeticNative'), ('memory_model', 'MemoryNative'),
               ('source_model', 'SourceContractNative'), ('history_model', 'HistoryErasureNative'),
               ('helper_model', 'HelperValidityNative'), ('counter_model', 'CounterFrameNative')]
-    imports = f'import GKRProtocol.MemoryFrameImport\nimport GKRProtocol.CounterFrameNative.{case}\n'
+    imports = f'import Airbender.Import.GKRProtocol.MemoryFrameImport\nimport Airbender.Proofs.GKRProtocol.CounterFrameNative.{case}\n'
     if phase in [1, 2]:
-        imports += f'import GKRProtocol.MemoryFrameNative.{case}Inputs\n'
+        imports += f'import Airbender.Proofs.GKRProtocol.MemoryFrameNative.{case}Inputs\n'
     if phase == 2:
-        imports += ''.join(f'import GKRProtocol.MemoryFrameNative.{case}Part{index}\n' for index in range((size + 63) // 64))
+        imports += ''.join(f'import Airbender.Proofs.GKRProtocol.MemoryFrameNative.{case}Part{index}\n' for index in range((size + 63) // 64))
     content = (imports + '\n'
         f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
         'set_option warningAsError true\nset_option Elab.async false\n'

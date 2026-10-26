@@ -1,4 +1,4 @@
-import GKRProtocol.BlockNormalization
+import Airbender.Proofs.GKRProtocol.BlockNormalization
 
 namespace Tests.GKRBlockNormalization
 open Airbender Airbender.Compiler

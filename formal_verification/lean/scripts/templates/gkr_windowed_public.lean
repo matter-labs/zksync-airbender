@@ -1,5 +1,5 @@
-import GKRProtocol.WindowedNative.UnifiedUncachedWitness
-import GKRProtocol.VirtualInitialization
+import Airbender.Proofs.GKRProtocol.WindowedNative.UnifiedUncachedWitness
+import Airbender.Proofs.GKRProtocol.VirtualInitialization
 
 namespace Airbender.Compiler.WindowedNative.UnifiedUncached
 open Airbender Airbender.Compiler

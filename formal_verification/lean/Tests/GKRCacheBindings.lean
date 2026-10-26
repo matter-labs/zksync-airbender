@@ -1,4 +1,4 @@
-import GKRProtocol.CacheNative.AddSubCached
+import Airbender.Proofs.GKRProtocol.CacheNative.AddSubCached
 
 namespace Tests.GKRCacheBindings
 open Airbender Airbender.Compiler

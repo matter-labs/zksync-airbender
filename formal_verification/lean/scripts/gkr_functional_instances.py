@@ -76,7 +76,7 @@ def modules(name, case, pair):
     steps = sum('SingleColumnLookup' not in cache for cache in caches) + sum(kind not in BASE for kind in gates)
     bases = sum('SingleColumnLookup' in cache for cache in caches) + sum(
         kind in {'CopyInBaseField', 'MaterializeSingleLookupInput'} for kind in gates)
-    prefix = 'GKRProtocol.FunctionalNative.' + case
+    prefix = 'Airbender.Proofs.GKRProtocol.FunctionalNative.' + case
     namespace = 'Airbender.Compiler.FunctionalNative.' + case
     arguments = (f'native from "artifacts/compiler/{name}.json"\n'
                  f'  typing Airbender.Compiler.ConsumerNative.{case}.native.typing\n'
@@ -92,9 +92,9 @@ def modules(name, case, pair):
                 + command + '\n\n' + f'end {namespace}\n')
 
     foundation = prefix + 'Foundation'
-    result = [(foundation, wrap(['GKRProtocol.FunctionalImport',
-               'GKRProtocol.FullArithmeticNative.' + case,
-               'GKRProtocol.LookupNative.' + case, 'GKRProtocol.ProductNative.' + case],
+    result = [(foundation, wrap(['Airbender.Import.GKRProtocol.FunctionalImport',
+               'Airbender.Proofs.GKRProtocol.FullArithmeticNative.' + case,
+               'Airbender.Proofs.GKRProtocol.LookupNative.' + case, 'Airbender.Proofs.GKRProtocol.ProductNative.' + case],
                'import_functional_graph ' + arguments))]
     parts = []
     for phase, (label, count) in enumerate([('Steps', steps), ('Base', bases)]):
@@ -106,7 +106,7 @@ def modules(name, case, pair):
     assembly = selectors(circuit)
     assert assembly['steps'] == steps and len(assembly['base']) == bases
     assembly_text = json.dumps(json.dumps(assembly, separators=(',', ':')))
-    result.append((prefix, wrap([foundation] + parts + ['GKRProtocol.FunctionalFinalize'],
+    result.append((prefix, wrap([foundation] + parts + ['Airbender.Import.GKRProtocol.FunctionalFinalize'],
         f'finalize_checked_functional_graph native selectors {assembly_text}\n'
         f'  lookup Airbender.Compiler.LookupNative.{case}.native\n'
         f'  product Airbender.Compiler.ProductNative.{case}.native\n'

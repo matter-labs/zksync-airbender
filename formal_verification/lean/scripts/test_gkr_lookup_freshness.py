@@ -52,9 +52,9 @@ def main():
     for name, path in (("pairInput", "pair.json"), ("sourceInput", "source.json"), ("certificateInput", "certificate.json")):
         config += f'\n[[input_file]]\nname = "{name}"\npath = "{path}"\ntext = true\n'
     (work / "lakefile.toml").write_text(config)
-    module = '''import GKRProtocol.LookupSourceImport
-import GKRProtocol.NativeLookupImport
-import GKRProtocol.ConsumerNative.AddSubCached
+    module = '''import Airbender.Import.GKRProtocol.LookupSourceImport
+import Airbender.Import.GKRProtocol.NativeLookupImport
+import Airbender.Proofs.GKRProtocol.ConsumerNative.AddSubCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
@@ -79,8 +79,8 @@ import_compiler_lookup_fields native from "pair.json"
         selectors = memory_synthesis(json.loads(inputs["pair.json"].read_text()),
                                      json.loads(inputs["source.json"].read_text()))
         encoded = json.dumps(json.dumps(selectors, separators=(",", ":")))
-        module = ('import GKRProtocol.MemoryImport\n'
-                  'import GKRProtocol.ConsumerNative.AddSubCached\n'
+        module = ('import Airbender.Import.GKRProtocol.MemoryImport\n'
+                  'import Airbender.Proofs.GKRProtocol.ConsumerNative.AddSubCached\n'
                   'open Airbender Airbender.Compiler\n'
                   'set_option warningAsError true\n'
                   'set_option Elab.async false\n'
@@ -100,7 +100,7 @@ import_compiler_lookup_fields native from "pair.json"
         first_borrow_source = len(original_pair["source"]["statements"]) + len(original_pair["source"]["booleans"]) + 2
         dimensions = (f'inputs {count["input_variables"]} variables {len(selectors["addresses"])} '
                       f'sources {count["source_obligations"]} gates {count["relations"]}')
-        module = ('import GKRProtocol.FullArithmeticImport\n'
+        module = ('import Airbender.Import.GKRProtocol.FullArithmeticImport\n'
                   'open Airbender Airbender.Compiler\n'
                   'set_option warningAsError true\n'
                   'set_option Elab.async false\n'
@@ -116,9 +116,9 @@ import_compiler_lookup_fields native from "pair.json"
                                      json.loads(inputs["source.json"].read_text()),
                                      json.loads(inputs["certificate.json"].read_text()))
         encoded = json.dumps(json.dumps(selectors, separators=(",", ":")))
-        module = ('import GKRProtocol.HelperImport\n'
-                  'import GKRProtocol.NativeLookupImport\n'
-                  'import GKRProtocol.MemoryNative.AddSubCached\n'
+        module = ('import Airbender.Import.GKRProtocol.HelperImport\n'
+                  'import Airbender.Import.GKRProtocol.NativeLookupImport\n'
+                  'import Airbender.Proofs.GKRProtocol.MemoryNative.AddSubCached\n'
                   'open Airbender Airbender.Compiler\n'
                   'set_option warningAsError true\n'
                   'set_option Elab.async false\n'

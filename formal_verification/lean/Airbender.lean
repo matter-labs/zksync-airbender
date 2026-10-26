@@ -38,3 +38,5 @@ import Airbender.Review.Trace.Initialization
 
 import Airbender.Review.Trace.UnifiedReduced.PathExecution
 import Airbender.Review.Trace.UnifiedReduced.PathSpanExecution
+
+import Airbender.Review.Compiler.Theorems

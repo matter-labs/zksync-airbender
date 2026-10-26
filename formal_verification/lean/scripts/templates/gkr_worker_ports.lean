@@ -1,7 +1,7 @@
-import GKRProtocol.MemoryValueCongruence
-import GKRProtocol.CleanArithmeticNative.BigintUncached
-import GKRProtocol.MemoryNative.BigintUncached
-import GKRProtocol.MemoryTokens
+import Airbender.Proofs.GKRProtocol.MemoryValueCongruence
+import Airbender.Proofs.GKRProtocol.CleanArithmeticNative.BigintUncached
+import Airbender.Proofs.GKRProtocol.MemoryNative.BigintUncached
+import Airbender.Proofs.GKRProtocol.MemoryTokens
 import Airbender.Review.Helpers.Delegation.Requests
 
 namespace Airbender.Compiler.WorkerPortsNative.BigintUncached

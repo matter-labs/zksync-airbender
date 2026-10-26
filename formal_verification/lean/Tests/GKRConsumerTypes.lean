@@ -1,4 +1,4 @@
-import GKRProtocol.ConsumerNative.AddSubCached
+import Airbender.Proofs.GKRProtocol.ConsumerNative.AddSubCached
 
 namespace Tests.GKRConsumerTypes
 open Airbender Airbender.Compiler

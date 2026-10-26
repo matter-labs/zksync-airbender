@@ -1,0 +1,40 @@
+import Airbender.Import.GKRProtocol.QueryFrameImport
+import Airbender.Proofs.GKRProtocol.CounterFrameNative.BlakeRoundCached
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedInputs
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedPart0
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedPart1
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedPart2
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedPart3
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedPart4
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedPart5
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedPart6
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedPart7
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedPart8
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedPart9
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedPart10
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedPart11
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedPart12
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedPart13
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedPart14
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedPart15
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedPart16
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundCachedPart17
+
+namespace Airbender.Compiler.QueryFrameNative.BlakeRoundCached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 32768
+set_option maxHeartbeats 4000000
+
+import_query_frame native certificate "artifacts/compiler/lookup/blake-round-cached.json"
+  queries (Airbender.Compiler.LookupSourceNative.BlakeRoundCached.native.genericQueries)
+  base_model Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native
+  lookup_model Airbender.Compiler.LookupNative.BlakeRoundCached.native
+  query_model Airbender.Compiler.LookupSourceNative.BlakeRoundCached.native
+  source_model Airbender.Compiler.SourceContractNative.BlakeRoundCached.native
+  history_model Airbender.Compiler.HistoryErasureNative.BlakeRoundCached.native
+  helper_model Airbender.Compiler.HelperValidityNative.BlakeRoundCached.native
+  counter_model Airbender.Compiler.CounterFrameNative.BlakeRoundCached.native inputs 763 phase 2 start 0 stop 1152
+
+end Airbender.Compiler.QueryFrameNative.BlakeRoundCached

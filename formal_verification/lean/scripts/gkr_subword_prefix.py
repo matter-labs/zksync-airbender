@@ -22,8 +22,8 @@ def modules(column):
           'set_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n')
     targets=[]
     for begin in range(0,len(chunks),PER_MODULE):
-        name=f'GKRProtocol.SubwordPrefixParts.Column{column}.Part{begin//PER_MODULE}'
-        text=('import GKRProtocol.BlockPartsImport\nimport Airbender.Data.GKRSetup.SubwordMemory\n'
+        name=f'Airbender.Proofs.GKRProtocol.SubwordPrefixParts.Column{column}.Part{begin//PER_MODULE}'
+        text=('import Airbender.Import.GKRProtocol.BlockPartsImport\nimport Airbender.Data.GKRSetup.SubwordMemory\n'
               'import Airbender.Review.Helpers.Tables.Subword\n\nnamespace '+ns+'\n'+opts)
         for i in range(begin,min(begin+PER_MODULE,len(chunks))):
             first,last,lo,hi,pieces=chunks[i]
@@ -37,8 +37,8 @@ def modules(column):
             text+=f'theorem chunkChecked{i} : normalizeSetupBlocks original{i} = normalizeSetupBlocks target{i} := by\n  {proof}\n\n'
             text+=f'theorem chunkLength{i} : (original{i}.map Setup.Block.length).sum = {hi-lo} := by decide +kernel\n\n'
         text+='end '+ns+'\n';targets.append((name,text))
-    name=f'GKRProtocol.SubwordPrefixNative.Column{column}'
-    text=''.join('import '+n+'\n' for n,_ in targets)+'import GKRProtocol.BlockCoverageImport\n\nnamespace '+ns+'\n'+opts
+    name=f'Airbender.Proofs.GKRProtocol.SubwordPrefixNative.Column{column}'
+    text=''.join('import '+n+'\n' for n,_ in targets)+'import Airbender.Import.GKRProtocol.BlockCoverageImport\n\nnamespace '+ns+'\n'+opts
     text+=f'column_blocks_part suffix from {full} start {stop} stop {len(artifact["columns"][column]["blocks"])}\n'
     for stem in ['original','target']:
         text+=f'noncomputable def {stem}s : List (List Setup.Block) := ['+', '.join(stem+str(i) for i in range(len(chunks)))+']\n\n'

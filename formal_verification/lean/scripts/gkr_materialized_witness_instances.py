@@ -73,7 +73,7 @@ def module(name, case):
             body += f"    have reduced := {o['fields']}.timestampSourceReduction hom challenges gamma assignment helperDefined\n"
             body += f"      ({o['links']}.helperCopies baseValue arithmetic) holds\n"
             body += f"    change ({o['lookup']}.timestampOutput).value (assignment.value {typing} hom) =\n"
-            helper_source = (LEAN / 'GKRProtocol/HelperNative' / (case + '.lean')).read_text()
+            helper_source = (LEAN / 'Airbender/Proofs/GKRProtocol/HelperNative' / (case + '.lean')).read_text()
             cert = json.loads(json.loads(re.search(r'selectors ("(?:[^"\\]|\\.)*")', helper_source).group(1)))
             setup_leaf = cert['setup_leaf']
             body += f"      ({o['fields']}.fields.map (fun field => RationalPair.leaf 1 (hom (field.value ({o['fields']}.sourceValues baseValue)) + gamma)) ++\n"
@@ -95,10 +95,10 @@ def module(name, case):
                 body += f"    simp only [{o['frame']}.queries, List.mem_append]\n"
             branch = 'member' if len(query_groups) == 1 else ('Or.inl member' if query_groups.index(kind) == 0 else 'Or.inr member')
             body += '    exact ' + branch + '\n'
-    target = 'GKRProtocol.MaterializedWitnessNative.' + case
-    content = (f'import GKRProtocol.NativeWitness\nimport GKRProtocol.OracleFrameNative.{case}\n'
-               f'import GKRProtocol.QueryFrameNative.{case}\nimport GKRProtocol.FunctionalLinksNative.{case}\n'
-               f'import GKRProtocol.MaterializedRangeNative.{case}\nimport GKRProtocol.GroupedTrace\n\n'
+    target = 'Airbender.Proofs.GKRProtocol.MaterializedWitnessNative.' + case
+    content = (f'import Airbender.Proofs.GKRProtocol.NativeWitness\nimport Airbender.Proofs.GKRProtocol.OracleFrameNative.{case}\n'
+               f'import Airbender.Proofs.GKRProtocol.QueryFrameNative.{case}\nimport Airbender.Proofs.GKRProtocol.FunctionalLinksNative.{case}\n'
+               f'import Airbender.Proofs.GKRProtocol.MaterializedRangeNative.{case}\nimport Airbender.Proofs.GKRProtocol.GroupedTrace\n\n'
                f'namespace Airbender.Compiler.MaterializedWitnessNative.{case}\nopen Airbender Airbender.Compiler\n'
                'set_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 4000000\n\n' +
                '\n'.join(checks) + '\n' + prop + head + ' ∧\n      OutputsPreserved hom challenges gamma sourceValue counts row values := by\n' + body +

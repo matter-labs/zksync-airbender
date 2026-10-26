@@ -136,13 +136,13 @@ def pilot(column=1, begin=0, end=None, assemble=True, source_start=0, source_end
     assert source_end-source_start<=CHUNK,'one bounded source chunk per module foundation'
     ns=namespace or f'Airbender.Compiler.UnifiedPrefixNative.Column{column}'
     full=f'Data.GKRSetup.Unified.setupColumn{column}'
-    text=('import GKRProtocol.BlockSpans\nimport GKRProtocol.BlockCoverageImport\nimport Airbender.Data.GKRSetup.Unified\n'
+    text=('import Airbender.Proofs.GKRProtocol.BlockSpans\nimport Airbender.Import.GKRProtocol.BlockCoverageImport\nimport Airbender.Data.GKRSetup.Unified\n'
       'import Airbender.Review.Circuits.UnifiedReduced.Tables.NativeFixedData\nimport Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ROMData\n\nnamespace '+ns+'\n'
       'open Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n')
     source_header=f'column_blocks_part original from {full} start {source_start} stop {source_end}\ncolumn_blocks_part suffix from {full} start {source_end} stop {len(blocks)}\n\n'
     if assemble:text+=source_header
     else:
-        dependency=foundation_module or f'GKRProtocol.UnifiedPrefixParts.Column{column}.Foundation'
+        dependency=foundation_module or f'Airbender.Proofs.GKRProtocol.UnifiedPrefixParts.Column{column}.Foundation'
         text=f'import {dependency}\n\nnamespace {ns}\nopen Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
 
     if end is None:end=stop
@@ -171,7 +171,7 @@ def pilot(column=1, begin=0, end=None, assemble=True, source_start=0, source_end
         text+=f'theorem length{i} : (target{i}.map Setup.Block.length).sum = {src}.length := by decide +kernel\n\n'
     if not assemble:
         text+='end '+ns+'\n'
-        return f'GKRProtocol.UnifiedPrefixParts.Column{column}.Part{begin//8}',text
+        return f'Airbender.Proofs.GKRProtocol.UnifiedPrefixParts.Column{column}.Part{begin//8}',text
     text+='noncomputable def sources : List Setup.Block := ['+', '.join(f'source{i}' for i in range(stop))+']\n\n'
     text+='noncomputable def targets : List (List Setup.Block) := ['+', '.join(f'target{i}' for i in range(stop))+']\n\n'
     text+='theorem sourcesAgree : original = sources := by rfl\n\n'
@@ -179,14 +179,14 @@ def pilot(column=1, begin=0, end=None, assemble=True, source_start=0, source_end
     for i in reversed(range(stop)):proof=f'List.Forall₂.cons (⟨length{i}, follows{i}⟩) ({proof})'
     text+='theorem spansChecked : List.Forall₂ (fun source target => (target.map Setup.Block.length).sum = source.length ∧ blockTargetsFollow source 0 target) sources targets :=\n  '+proof+'\n\n'
     text+='theorem span_value (index : Nat) : Setup.getFromBlocks original index = Setup.getFromBlocks targets.flatten index := by\n  rw [sourcesAgree]\n  exact block_partitions_agree sources targets spansChecked index\n\nend '+ns+'\n'
-    return f'GKRProtocol.UnifiedPrefixNative.Column{column}',text
+    return f'Airbender.Proofs.GKRProtocol.UnifiedPrefixNative.Column{column}',text
 
 
 def pilot_assembly(column=1):
     artifact,blocks,positions,stop,groups,regions=plans(column)
     assert stop<=CHUNK
     ns=f'Airbender.Compiler.UnifiedPrefixNative.Column{column}';full=f'Data.GKRSetup.Unified.setupColumn{column}'
-    text=f'import GKRProtocol.UnifiedPrefixParts.Column{column}.Part0\n'+''.join(f'import GKRProtocol.UnifiedPrefixParts.Column{column}.Unit{i}\n' for i in range(8,stop))
+    text=f'import Airbender.Proofs.GKRProtocol.UnifiedPrefixParts.Column{column}.Part0\n'+''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedPrefixParts.Column{column}.Unit{i}\n' for i in range(8,stop))
     text+='\nnamespace '+ns+'\nopen Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
     text+='noncomputable def sources : List Setup.Block := ['+', '.join(f'source{i}' for i in range(stop))+']\n\n'
     text+='noncomputable def targets : List (List Setup.Block) := ['+', '.join(f'target{i}' for i in range(stop))+']\n\n'
@@ -212,13 +212,13 @@ def pilot_assembly(column=1):
     text+=f'theorem prefix_value (index : Fin {PREFIX}) : {full}.get? index.val = Setup.getFromBlocks regionBlocks index.val := by\n'
     text+=f'  change Setup.getFromBlocks {full}.blocks.toList index.val = _\n  rw [sourceShape, getFromBlocks_before_suffix original suffix index.val (by rw [originalLength]; have := index.isLt; omega)]\n'
     text+='  rw [sourcesAgree, block_partitions_agree sources targets spansChecked, ← targetShape]\n  exact getFromBlocks_before_suffix regionBlocks extra index.val (by rw [regionTotal]; exact index.isLt)\n\nend '+ns+'\n'
-    return f'GKRProtocol.UnifiedPrefixNative.Column{column}',text
+    return f'Airbender.Proofs.GKRProtocol.UnifiedPrefixNative.Column{column}',text
 
 
 def foundation(column=1):
     name,text=pilot(column,0,0,assemble=True)
     text=text[:text.index('noncomputable def sources')]+f'end Airbender.Compiler.UnifiedPrefixNative.Column{column}\n'
-    return f'GKRProtocol.UnifiedPrefixParts.Column{column}.Foundation',text
+    return f'Airbender.Proofs.GKRProtocol.UnifiedPrefixParts.Column{column}.Foundation',text
 
 
 def main():
@@ -236,7 +236,7 @@ def main():
     for unit in ([] if args.assembly else args.unit if args.unit is not None else range(8,stop)):
         if not 0<=unit<stop:raise ValueError('source block unit outside actual prefix')
         _,text=pilot(args.column,unit,unit+1,assemble=False)
-        generated.append((f'GKRProtocol.UnifiedPrefixParts.Column{args.column}.Unit{unit}',text))
+        generated.append((f'Airbender.Proofs.GKRProtocol.UnifiedPrefixParts.Column{args.column}.Unit{unit}',text))
     for name,text in generated:
         path=LEAN/(name.replace('.','/')+'.lean')
         if args.check and (not path.exists() or path.read_text()!=text):raise ValueError('unified prefix span scaffold changed: '+name)

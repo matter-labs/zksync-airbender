@@ -1,4 +1,4 @@
-import GKRProtocol.ShiftSetupNative
+import Airbender.Proofs.GKRProtocol.ShiftSetupNative
 
 namespace Tests.GKRShiftSetup
 open Airbender Airbender.Compiler

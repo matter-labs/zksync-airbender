@@ -10,7 +10,7 @@ def module(column):
     parent=f'UnifiedPrefixNative.Column{column}' if column==1 else f'UnifiedAllPrefix.Column{column}'
     original='original' if column==1 else 'originals.flatten'
     owner=f'Airbender.Compiler.DecoderTail.Unified.Column{column}'
-    text=(f'import GKRProtocol.DecoderTailNormalization\nimport GKRProtocol.{parent}\n'
+    text=(f'import Airbender.Proofs.GKRProtocol.DecoderTailNormalization\nimport Airbender.Proofs.GKRProtocol.{parent}\n'
         'import Airbender.Review.Helpers.Decoder.SetupData.Unified\n\n'
         f'namespace {owner}\nopen Airbender Airbender.Compiler Airbender.Compiler.{parent}\n'
         'set_option warningAsError true\nset_option Elab.async false\n'
@@ -29,7 +29,7 @@ def module(column):
     text+='theorem tail_checked : normalizeDecoderTail (extra ++ suffix) = normalizeDecoderTail targetTail := by\n  rfl\n\n'
     text+=f'theorem decoder_tail_value (index : Nat) :\n    Data.GKRSetup.Unified.setupColumn{column}.get? (2097537 + index) = Setup.getFromBlocks targetTail index :=\n'
     text+='  (tail_value index).trans ((normalize_decoder_tail_sound (extra ++ suffix) index).symm.trans\n    ((congrArg (fun blocks => Setup.getFromBlocks blocks index) tail_checked).trans\n      (normalize_decoder_tail_sound targetTail index)))\n\nend '+owner+'\n'
-    return f'GKRProtocol.DecoderTail.Unified.Column{column}',text
+    return f'Airbender.Proofs.GKRProtocol.DecoderTail.Unified.Column{column}',text
 
 
 def main():

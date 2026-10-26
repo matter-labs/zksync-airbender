@@ -21,7 +21,7 @@ for mode in args.mode or ['uncached','cached']:
     if kind=='InitsOrTeardownsInitialPair':chosen.append((selection['product_steps'][product],product))
     product+=1
  ns='Airbender.Compiler.WindowedNative.'+case
- text=(f'import GKRProtocol.InitializationWindowImport\nimport GKRProtocol.FunctionalNative.{case}\n\nnamespace {ns}\nopen Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
+ text=(f'import Airbender.Import.GKRProtocol.InitializationWindowImport\nimport Airbender.Proofs.GKRProtocol.FunctionalNative.{case}\n\nnamespace {ns}\nopen Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
        f'import_initialization_windows native from "artifacts/compiler/unified-{mode}.json"\n\n')
  old=f'Airbender.Compiler.FunctionalNative.{case}.native'
  replacements={step:i for i,(step,_) in enumerate(chosen)}
@@ -38,14 +38,14 @@ for mode in args.mode or ['uncached','cached']:
         f'theorem valid (publicTops : Nat → Nat) : (program publicTops).Valid {old}.isBase [] :=\n  {old}.valid.replace (program_shape publicTops)\n\n'
         f'noncomputable def canonical {{R : Type}} [CommRing R] (publicTops : Nat → Nat)\n    (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R) (physical : GKRAddress → Source.BaseField) : GKRAddress → R :=\n  Functional.read {old}.isBase (hom ∘ physical)\n    ((program publicTops).execute hom challenges gamma {old}.isBase (hom ∘ physical) (fun _ => 0))\n\n'
         f'theorem canonical_steps {{R : Type}} [CommRing R] (publicTops : Nat → Nat)\n    (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R) (physical : GKRAddress → Source.BaseField) :\n    ∀ step ∈ program publicTops, step.Holds hom challenges gamma (canonical publicTops hom challenges gamma physical) :=\n  (FunctionalProgram.execute_sound (valid publicTops) hom challenges gamma (hom ∘ physical) (fun _ => 0)).1\n\nend {ns}\n')
- path=Path('GKRProtocol/WindowedNative')/(case+'Foundation.lean')
+ path=Path('Airbender/Proofs/GKRProtocol/WindowedNative')/(case+'Foundation.lean')
  if args.check and (not path.exists() or path.read_text()!=text):raise ValueError('windowed foundation changed: '+case)
  if args.write:path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text)
- print('GKRProtocol.WindowedNative.'+case+'Foundation',flush=True)
- if args.build:subprocess.run(['lake','--no-cache','build','+GKRProtocol.WindowedNative.'+case+'Foundation:olean'],env=dict(os.environ,LEAN_NUM_THREADS='1'),check=True)
+ print('Airbender.Proofs.GKRProtocol.WindowedNative.'+case+'Foundation',flush=True)
+ if args.build:subprocess.run(['lake','--no-cache','build','+Airbender.Proofs.GKRProtocol.WindowedNative.'+case+'Foundation:olean'],env=dict(os.environ,LEAN_NUM_THREADS='1'),check=True)
 
 
- text=(f'import GKRProtocol.WindowedNative.{case}Foundation\nimport GKRProtocol.BaseAffine\n\nnamespace {ns}\nopen Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n')
+ text=(f'import Airbender.Proofs.GKRProtocol.WindowedNative.{case}Foundation\nimport Airbender.Proofs.GKRProtocol.BaseAffine\n\nnamespace {ns}\nopen Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n')
  common=('    {R : Type} [CommRing R] (publicTops : Nat → Nat)\n'
          '    (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)\n'
          '    (physical : GKRAddress → Source.BaseField)')
@@ -85,8 +85,8 @@ for mode in args.mode or ['uncached','cached']:
  checks='PredicateChecks.nil'
  for i in reversed(range(len(selection['affine_steps']))):checks=f'PredicateChecks.cons (affineHolds{i} publicTops hom challenges gamma physical arithmetic) ({checks})'
  text+='theorem canonical_affines\n'+common+'\n'+arithmetic+f' :\n    ∀ definition ∈ {old}.definitions, definition.Holds hom challenges {value} :=\n  PredicateChecks.all ({checks})\n\nend {ns}\n'
- path=Path('GKRProtocol/WindowedNative')/(case+'.lean')
+ path=Path('Airbender/Proofs/GKRProtocol/WindowedNative')/(case+'.lean')
  if args.check and (not path.exists() or path.read_text()!=text):raise ValueError('windowed graph changed: '+case)
  if args.write:path.write_text(text)
- print('GKRProtocol.WindowedNative.'+case,flush=True)
- if args.build:subprocess.run(['lake','--no-cache','build','+GKRProtocol.WindowedNative.'+case+':olean'],env=dict(os.environ,LEAN_NUM_THREADS='1'),check=True)
+ print('Airbender.Proofs.GKRProtocol.WindowedNative.'+case,flush=True)
+ if args.build:subprocess.run(['lake','--no-cache','build','+Airbender.Proofs.GKRProtocol.WindowedNative.'+case+':olean'],env=dict(os.environ,LEAN_NUM_THREADS='1'),check=True)

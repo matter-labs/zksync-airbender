@@ -1,4 +1,4 @@
-import GKRProtocol.UnifiedPrefixParts.Column1.Foundation
+import Airbender.Proofs.GKRProtocol.UnifiedPrefixParts.Column1.Foundation
 
 namespace Tests.GKRBlockSpans
 open Airbender Airbender.Compiler

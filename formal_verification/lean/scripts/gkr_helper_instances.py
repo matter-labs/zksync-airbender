@@ -54,11 +54,11 @@ def main():
             result = synthesis(json.loads((root / (name + ".json")).read_text()),
                                json.loads((root / (name + "-source.json")).read_text()),
                                json.loads((root / "lookup" / (name + ".json")).read_text()))
-            module = "GKRProtocol.HelperNative." + case
+            module = "Airbender.Proofs.GKRProtocol.HelperNative." + case
             selectors = json.dumps(json.dumps(result, separators=(",", ":")))
-            content = ("import GKRProtocol.HelperImport\n"
-                       f"import GKRProtocol.MemoryNative.{case}\n"
-                       f"import GKRProtocol.LookupNative.{case}\n\n"
+            content = ("import Airbender.Import.GKRProtocol.HelperImport\n"
+                       f"import Airbender.Proofs.GKRProtocol.MemoryNative.{case}\n"
+                       f"import Airbender.Proofs.GKRProtocol.LookupNative.{case}\n\n"
                        f"namespace Airbender.Compiler.HelperNative.{case}\n"
                        "open Airbender Airbender.Compiler\n"
                        "set_option warningAsError true\n"
@@ -72,7 +72,7 @@ def main():
                        f"  lookup_model Airbender.Compiler.LookupNative.{case}.native\n"
                        f"  typing Airbender.Compiler.ConsumerNative.{case}.native.typing\n\n"
                        f"end Airbender.Compiler.HelperNative.{case}\n")
-            destination = LEAN / "GKRProtocol/HelperNative" / (case + ".lean")
+            destination = LEAN / "Airbender/Proofs/GKRProtocol/HelperNative" / (case + ".lean")
             if args.check and (not destination.exists() or destination.read_text() != content):
                 raise ValueError(f"source helper selectors changed: {case}")
             if args.write and (not destination.exists() or destination.read_text() != content):

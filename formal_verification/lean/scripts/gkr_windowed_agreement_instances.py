@@ -51,7 +51,7 @@ def module(mode):
             pidx+=1
         if kind=='MaterializedVectorLookupInput':records.append((idx,outs,deps,False));idx+=1
     assert idx==sel['steps']
-    text=(f'import GKRProtocol.WindowedNative.{case}\nimport GKRProtocol.FunctionalAgreement\n\n'
+    text=(f'import Airbender.Proofs.GKRProtocol.WindowedNative.{case}\nimport Airbender.Proofs.GKRProtocol.FunctionalAgreement\n\n'
           f'namespace Airbender.Compiler.WindowedNative.{case}\nopen Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n')
     common=('    {R : Type} [CommRing R] (publicTops : Nat → Nat)\n'
             '    (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)\n'
@@ -97,7 +97,7 @@ def module(mode):
             assert key(a) in known,(group,a)
             text+=f'theorem {group}_output{i}_unchanged\n'+common+f' :\n    {left} {address(a)} = {right} {address(a)} :=\n  {known[key(a)]} publicTops hom challenges gamma physical\n\n'
     text+=f'end Airbender.Compiler.WindowedNative.{case}\n'
-    return 'GKRProtocol.WindowedNative.'+case+'Agreement',text
+    return 'Airbender.Proofs.GKRProtocol.WindowedNative.'+case+'Agreement',text
 
 
 def main():

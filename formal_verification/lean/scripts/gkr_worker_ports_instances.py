@@ -43,7 +43,7 @@ def module(family, mode):
                  f'    {direction}_tokens_from_base physical data]\n\n')
     # The checked native product-reduction argument is identical to the executor
     # case. Replace only the retained token view and its physical binding lemma.
-    executor = (LEAN / 'GKRProtocol/MemoryPortsNative/AddSubUncached.lean').read_text()
+    executor = (LEAN / 'Airbender/Proofs/GKRProtocol/MemoryPortsNative/AddSubUncached.lean').read_text()
     executor = executor.replace('AddSubUncached', case).replace('Airbender.AddSub.', 'Airbender.'+model+'.')
     output = executor[executor.index('theorem read_output_logical'):executor.index('\nend Airbender.Compiler.MemoryPortsNative.')]
     for direction, point in [('read','initial'),('write','final')]:
@@ -65,9 +65,9 @@ def module(family, mode):
         else:write_output=block
     text += read_output + write_output
     text += f'\nend Airbender.Compiler.WorkerPortsNative.{case}\n'
-    text = text.replace('import GKRProtocol.MemoryTokens\n',
-                        f'import GKRProtocol.MemoryTokens\nimport GKRProtocol.FunctionalLinksNative.{case}\nimport GKRProtocol.NativeWitness\n')
-    return 'GKRProtocol.WorkerPortsNative.' + case, text
+    text = text.replace('import Airbender.Proofs.GKRProtocol.MemoryTokens\n',
+                        f'import Airbender.Proofs.GKRProtocol.MemoryTokens\nimport Airbender.Proofs.GKRProtocol.FunctionalLinksNative.{case}\nimport Airbender.Proofs.GKRProtocol.NativeWitness\n')
+    return 'Airbender.Proofs.GKRProtocol.WorkerPortsNative.' + case, text
 
 
 def modules(family, mode):
@@ -84,14 +84,14 @@ def modules(family, mode):
     relation=statement[statement.index('(fun index =>')+1:statement.index('))) = true := by decide +kernel')]
     # The extracted relation includes the outer lambda and its inner all check.
     relation=relation+')'
-    shared='GKRProtocol.WorkerPortsParts.'+case+'.Shared'
+    shared='Airbender.Proofs.GKRProtocol.WorkerPortsParts.'+case+'.Shared'
     prefix=text[:a]+f'noncomputable def historyPredicate : Fin Airbender.{model}.importedConstraintsMemoryPorts.size → Bool := '+relation+'\n\nend '+namespace+'\n'
     yield shared,prefix
     parts=[]
     for first in range(0,size,4):
-        stop=min(first+4,size);part='GKRProtocol.WorkerPortsParts.'+case+'.Part'+str(first//4)
+        stop=min(first+4,size);part='Airbender.Proofs.GKRProtocol.WorkerPortsParts.'+case+'.Part'+str(first//4)
         parts.append(part)
-        body=(f'import {shared}\nimport GKRProtocol.WorkerPortsChecks\n\nnamespace {namespace}\n'
+        body=(f'import {shared}\nimport Airbender.Import.GKRProtocol.WorkerPortsChecks\n\nnamespace {namespace}\n'
               'open Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\n'
               'set_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
               f'worker_checks_part historyPart{first} input_list (List.finRange Airbender.{model}.importedConstraintsMemoryPorts.size)\n'

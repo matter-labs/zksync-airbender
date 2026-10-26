@@ -1,4 +1,4 @@
-import GKRProtocol.TableNative.AddSubCached
+import Airbender.Proofs.GKRProtocol.TableNative.AddSubCached
 
 namespace Tests.GKRSourceTable
 open Airbender Airbender.Compiler

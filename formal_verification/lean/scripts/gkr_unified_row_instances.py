@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Compose the two unified compiler frames, actual decoder and public setup."""
 import argparse
+from compiler_review_layout import split_row
 import os
 import subprocess
 from export_gkr_translations import LEAN
@@ -15,10 +16,10 @@ def module(case):
     text=text.replace('Airbender.AddSub.','Airbender.UnifiedReduced.')
     text=text.replace('Trace.PooledFamily','Trace.UnifiedFamily').replace('⟨.addSub,','⟨.machine,')
     text=text.replace('import Airbender.Review.Helpers.Decoder.PooledProgram',
-                      'import GKRProtocol.UnifiedProgramProfile\nimport GKRProtocol.UnifiedPublicConstraints')
+                      'import Airbender.Proofs.GKRProtocol.UnifiedProgramProfile\nimport Airbender.Proofs.GKRProtocol.UnifiedPublicConstraints')
     for unused in ['PublicConstraints','ROMNative.WordFullPublic','ROMNative.SubwordPublic']:
-        text=text.replace('import GKRProtocol.'+unused+'\n','')
-    text='import GKRProtocol.WindowedNative.'+case+'Public\n'+text
+        text=text.replace('import Airbender.Proofs.GKRProtocol.'+unused+'\n','')
+    text='import Airbender.Proofs.GKRProtocol.WindowedNative.'+case+'Public\n'+text
     windowed=f'''/-- The actual independently chosen initialization windows preserve the same
 source frame used by execution. Their native products remain in the witness. -/
 def ofWindowedWitness (publicTops : Nat → Nat) {{R : Type}} [CommRing R]
@@ -59,7 +60,7 @@ theorem constraints (cert : Certificate) {{before : Reference.RiscV.Sail.State}}
     (fun _ present guard => ROMNative.UnifiedFullPublic.public_table_refinement image present guard)
 '''
     text=text.replace(marker,'\n'+public+marker)
-    return 'GKRProtocol.UnifiedRowNative.'+case,text
+    return 'Airbender.Proofs.GKRProtocol.UnifiedRowNative.'+case,text
 
 
 def main():
@@ -67,7 +68,12 @@ def main():
     for flag in ['write','check','build']:parser.add_argument('--'+flag,action='store_true')
     args=parser.parse_args()
     for mode in ['Uncached','Cached']:
-        name,text=module('Unified'+mode);path=LEAN/(name.replace('.','/')+'.lean')
+        name,text=module('Unified'+mode)
+        for target,content in split_row(name,text).items():
+            path=LEAN/(target.replace('.','/')+'.lean')
+            if args.check and (not path.exists() or path.read_text()!=content):raise ValueError('compiler row binding changed: '+target)
+            if args.write and (not path.exists() or path.read_text()!=content):path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content)
+        text=split_row(name,text)[name];path=LEAN/(name.replace('.','/')+'.lean')
         if args.check and (not path.exists() or path.read_text()!=text):raise ValueError('unified compiler row changed: '+name)
         if args.write and (not path.exists() or path.read_text()!=text):path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text)
         print(name,flush=True)

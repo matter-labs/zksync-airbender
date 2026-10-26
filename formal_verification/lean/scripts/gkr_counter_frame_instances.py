@@ -14,7 +14,7 @@ def module(name, case):
     root = LEAN / 'artifacts/compiler'
     arity = len(synthesize(json.loads((root / (name + '.json')).read_text()),
                            json.loads((root / (name + '-source.json')).read_text()))['inputs'])
-    target = 'GKRProtocol.CounterFrameNative.' + case
+    target = 'Airbender.Proofs.GKRProtocol.CounterFrameNative.' + case
     namespace = 'Airbender.Compiler.CounterFrameNative.' + case
     base = 'Airbender.Compiler.FullArithmeticNative.' + case + '.native'
     source = 'Airbender.Compiler.SourceContractNative.' + case + '.native'
@@ -25,7 +25,7 @@ def module(name, case):
     graph = 'Airbender.Compiler.FunctionalNative.' + case + '.native'
     lookup = 'Airbender.Compiler.LookupNative.' + case + '.native'
     product = 'Airbender.Compiler.ProductNative.' + case + '.native'
-    content = (f'import GKRProtocol.CounterFrameImport\nimport GKRProtocol.HelperValidityNative.{case}\nimport GKRProtocol.TableNative.{case}\n\n'
+    content = (f'import Airbender.Import.GKRProtocol.CounterFrameImport\nimport Airbender.Proofs.GKRProtocol.HelperValidityNative.{case}\nimport Airbender.Proofs.GKRProtocol.TableNative.{case}\n\n'
         f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
         'set_option warningAsError true\nset_option Elab.async false\n'
         'set_option maxRecDepth 32768\nset_option maxHeartbeats 4000000\n\n'

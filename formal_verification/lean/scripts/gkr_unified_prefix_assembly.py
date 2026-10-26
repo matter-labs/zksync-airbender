@@ -14,9 +14,9 @@ def special_chunks(column):
         last=min(first+CHUNK,stop)
         if all(e['mode']=='identical' for group in groups[first:last] for e in group):continue
         k=first//CHUNK;owner=f'Airbender.Compiler.UnifiedSpecialChunks.Column{column}.Chunk{k}'
-        stem=f'GKRProtocol.UnifiedSpecialParts.Column{column}.Chunk{k}'
-        name=f'GKRProtocol.UnifiedSpecialNative.Column{column}.Chunk{k}'
-        text=''.join(f'import {stem}.Part{i}\n' for i in range((last-first+7)//8))+'import GKRProtocol.ChunkLengths\n\nnamespace '+owner+'\n'
+        stem=f'Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column{column}.Chunk{k}'
+        name=f'Airbender.Proofs.GKRProtocol.UnifiedSpecialNative.Column{column}.Chunk{k}'
+        text=''.join(f'import {stem}.Part{i}\n' for i in range((last-first+7)//8))+'import Airbender.Proofs.GKRProtocol.ChunkLengths\n\nnamespace '+owner+'\n'
         text+='open Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 16000000\n\n'
         text+='noncomputable def sources : List Setup.Block := ['+', '.join(f'source{i}' for i in range(first,last))+']\n\n'
         text+='noncomputable def targets : List (List Setup.Block) := ['+', '.join(f'target{i}' for i in range(first,last))+']\n\n'
@@ -35,11 +35,11 @@ def column_module(column):
     for first in range(0,stop,CHUNK):
         last=min(first+CHUNK,stop);k=first//CHUNK
         (equal if all(e['mode']=='identical' for group in groups[first:last] for e in group) else special).append(k)
-    name=f'GKRProtocol.UnifiedAllPrefix.Column{column}';owner=f'Airbender.Compiler.UnifiedAllPrefix.Column{column}'
-    text=''.join(f'import GKRProtocol.UnifiedEqualParts.Column{column}.Part{i}\n' for i in range((len(equal)+PER_MODULE-1)//PER_MODULE))
-    text+=''.join(f'import GKRProtocol.UnifiedSpecialNative.Column{column}.Chunk{k}\n' for k in special)
-    text+=''.join(f'import GKRProtocol.UnifiedSpecialLengths.Column{column}.Chunk{k}\n' for k in special)
-    text+='import GKRProtocol.BlockCoverageImport\nimport GKRProtocol.ChunkSpans\n\nnamespace '+owner+'\n'
+    name=f'Airbender.Proofs.GKRProtocol.UnifiedAllPrefix.Column{column}';owner=f'Airbender.Compiler.UnifiedAllPrefix.Column{column}'
+    text=''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column{column}.Part{i}\n' for i in range((len(equal)+PER_MODULE-1)//PER_MODULE))
+    text+=''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedSpecialNative.Column{column}.Chunk{k}\n' for k in special)
+    text+=''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedSpecialLengths.Column{column}.Chunk{k}\n' for k in special)
+    text+='import Airbender.Import.GKRProtocol.BlockCoverageImport\nimport Airbender.Proofs.GKRProtocol.ChunkSpans\n\nnamespace '+owner+'\n'
     text+='open Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 131072\nset_option maxHeartbeats 16000000\n\n'
     full=f'Data.GKRSetup.Unified.setupColumn{column}'
     def ns(k):return f'Airbender.Compiler.UnifiedEqualChunks.Column{column}' if k in equal else f'Airbender.Compiler.UnifiedSpecialChunks.Column{column}.Chunk{k}'

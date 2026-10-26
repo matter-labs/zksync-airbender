@@ -7,7 +7,7 @@ from export_gkr_translations import LEAN
 
 def content():
     artifact=json.loads((LEAN/'artifacts/setup/subword-memory.json').read_text())
-    out='import GKRProtocol.ROMNative.SubwordRows\n\nnamespace Airbender.Compiler.ROMNative.SubwordBoundary\nopen Airbender Airbender.Compiler Airbender.Setup\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
+    out='import Airbender.Proofs.GKRProtocol.ROMNative.SubwordRows\n\nnamespace Airbender.Compiler.ROMNative.SubwordBoundary\nopen Airbender Airbender.Compiler Airbender.Setup\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
     out+='abbrev nativeSetup := SubwordRows.nativeSetup\n\n'
     for col in range(9):
         full=f'Data.GKRSetup.SubwordMemory.setupColumn{col}';last=len(artifact['columns'][col]['blocks'])-1
@@ -34,10 +34,10 @@ def content():
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     for flag in ['write','check']:parser.add_argument('--'+flag,action='store_true')
-    args=parser.parse_args();path=LEAN/'GKRProtocol/ROMNative/SubwordBoundary.lean';text=content()
+    args=parser.parse_args();path=LEAN/'Airbender/Proofs/GKRProtocol/ROMNative/SubwordBoundary.lean';text=content()
     if args.check and (not path.exists() or path.read_text()!=text):raise ValueError('subword boundary scaffold changed')
     if args.write and (not path.exists() or path.read_text()!=text):path.write_text(text)
-    print('GKRProtocol.ROMNative.SubwordBoundary')
+    print('Airbender.Proofs.GKRProtocol.ROMNative.SubwordBoundary')
 
 
 if __name__=='__main__':main()

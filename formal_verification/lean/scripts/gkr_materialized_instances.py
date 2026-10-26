@@ -12,9 +12,9 @@ from gkr_wiring_instances import CASES
 def module(family, stem, mode):
     width = len(json.loads((LEAN / 'artifacts/setup' / (family + '.json')).read_text())['columns'])
     case = stem + mode.title()
-    target = 'GKRProtocol.MaterializedNative.' + case
+    target = 'Airbender.Proofs.GKRProtocol.MaterializedNative.' + case
     namespace = 'Airbender.Compiler.MaterializedNative.' + case
-    content = (f'import GKRProtocol.MaterializedImport\nimport GKRProtocol.TableNative.{case}\n'
+    content = (f'import Airbender.Import.GKRProtocol.MaterializedImport\nimport Airbender.Proofs.GKRProtocol.TableNative.{case}\n'
         f'import Airbender.Data.GKRSetup.{stem}\n\n'
         f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
         'set_option warningAsError true\nset_option Elab.async false\n'

@@ -1,4 +1,4 @@
-import GKRProtocol.ROMNative.WordMemoryPublic
+import Airbender.Proofs.GKRProtocol.ROMNative.WordMemoryPublic
 
 namespace Tests.GKRNativeROM
 open Airbender Airbender.Compiler

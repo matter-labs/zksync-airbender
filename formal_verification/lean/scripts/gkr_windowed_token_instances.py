@@ -44,7 +44,7 @@ def module(mode):
         text+=f'  exact gate{gateIndex}_tokens publicTops hom challenges physical values baseLaw (products (nativeGate{gateIndex} publicTops) ({membership(4+gateIndex)}))\n\n'
         text+=f'theorem canonical_{direction}_tokens {{R : Type}} [CommRing R] (publicTops : Nat → Nat)\n    (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)\n    (physical : GKRAddress → Source.BaseField) :\n    canonical publicTops hom challenges gamma physical (.InnerLayer {wire["layer"]} {wire["offset"]}) =\n      (((List.finRange 2).map (fun set => windowedBoundaryToken (Airbender.Compiler.MemoryNative.{case}.native.sourceValues physical) publicTops .{stage} set.val 512)).map (memoryTokenFingerprint hom challenges)).prod :=\n  {direction}_output_tokens publicTops hom challenges physical _ (canonical_base publicTops hom challenges gamma physical) (canonical_products publicTops hom challenges gamma physical)\n\n'
     text+='end '+ns+'\n'
-    return 'GKRProtocol.WindowedNative.'+case+'Tokens',text
+    return 'Airbender.Proofs.GKRProtocol.WindowedNative.'+case+'Tokens',text
 
 
 def main():

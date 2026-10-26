@@ -1,0 +1,27 @@
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedFoundation
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedUniquePart0
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedUniquePart1
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedUniquePart2
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedUniquePart3
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedUniquePart4
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedForwardPart0
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedForwardPart1
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedForwardPart2
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedForwardPart3
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedForwardPart4
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedBackwardPart0
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedBackwardPart1
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedBackwardPart2
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedBackwardPart3
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedBackwardPart4
+
+namespace Airbender.Compiler.FullArithmeticNative.UnifiedCached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 32768
+set_option maxHeartbeats 4000000
+
+finalize_full_compiler_arithmetic native inputs 145 variables 155 sources 129 gates 139
+
+end Airbender.Compiler.FullArithmeticNative.UnifiedCached

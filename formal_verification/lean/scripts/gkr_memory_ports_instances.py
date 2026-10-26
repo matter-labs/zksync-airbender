@@ -17,9 +17,9 @@ def module(name, case, model):
     clean = 'Airbender.Compiler.CleanArithmeticNative.' + case + '.native'
     pair = json.loads((LEAN / 'artifacts/compiler' / (name + '.json')).read_text())
     source_count = pair['source']['num_variables']
-    text = (f'import GKRProtocol.CleanArithmeticNative.{case}\n'
-            f'import GKRProtocol.MemoryTokens\nimport GKRProtocol.MemoryNative.{case}\n'
-            f'import GKRProtocol.FunctionalLinksNative.{case}\nimport GKRProtocol.NativeWitness\n'
+    text = (f'import Airbender.Proofs.GKRProtocol.CleanArithmeticNative.{case}\n'
+            f'import Airbender.Proofs.GKRProtocol.MemoryTokens\nimport Airbender.Proofs.GKRProtocol.MemoryNative.{case}\n'
+            f'import Airbender.Proofs.GKRProtocol.FunctionalLinksNative.{case}\nimport Airbender.Proofs.GKRProtocol.NativeWitness\n'
             f'import Airbender.Review.Circuits.{model}.Artifact\n\n'
             f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
             'set_option warningAsError true\nset_option Elab.async false\n'
@@ -124,7 +124,7 @@ def module(name, case, model):
                  f'  rw [executeSame, {direction}_products_from_base hom challenges physical data] at reduced\n'
                  '  exact reduced\n\n')
     text += f'end {namespace}\n'
-    return 'GKRProtocol.MemoryPortsNative.' + case, text
+    return 'Airbender.Proofs.GKRProtocol.MemoryPortsNative.' + case, text
 
 
 def main():

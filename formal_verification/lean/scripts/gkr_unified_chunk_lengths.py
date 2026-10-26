@@ -12,15 +12,15 @@ def modules(column):
         if all(e['mode']=='identical' for group in groups[first:last] for e in group):continue
         chunk=first//CHUNK;owner=f'Airbender.Compiler.UnifiedSpecialLengths.Column{column}.Chunk{chunk}'
         original=f'Airbender.Compiler.UnifiedSpecialChunks.Column{column}.Chunk{chunk}.original'
-        name=f'GKRProtocol.UnifiedSpecialLengths.Column{column}.Chunk{chunk}'
-        text=f'import GKRProtocol.UnifiedSpecialParts.Column{column}.Chunk{chunk}.Foundation\n\nnamespace {owner}\nopen Airbender\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 16000000\n\n'
+        name=f'Airbender.Proofs.GKRProtocol.UnifiedSpecialLengths.Column{column}.Chunk{chunk}'
+        text=f'import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column{column}.Chunk{chunk}.Foundation\n\nnamespace {owner}\nopen Airbender\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 16000000\n\n'
         if sum(len(block.get('values',[])) for block in blocks[first:last])>4096:
             # Bound reductions of the two large literal-array chunks independently.
             parts=[]
             for begin in range(first,last,16):
                 end=min(begin+16,last);part=(begin-first)//16;parts.append(f'part{part}')
                 part_name=name+f'Part{part}'
-                dependencies=''.join(f'import GKRProtocol.UnifiedSpecialParts.Column{column}.Chunk{chunk}.Part{k}\n' for k in range((begin-first)//8,(end-first+7)//8))
+                dependencies=''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column{column}.Chunk{chunk}.Part{k}\n' for k in range((begin-first)//8,(end-first+7)//8))
                 part_text=dependencies+text[text.index('\nnamespace '):]
                 source_owner=f'Airbender.Compiler.UnifiedSpecialChunks.Column{column}.Chunk{chunk}'
                 part_text+=f'open {source_owner}\n\n'

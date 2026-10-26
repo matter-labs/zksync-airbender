@@ -1,4 +1,4 @@
-import GKRCompiler.WiringNative.AddSubCached
+import Airbender.Proofs.GKRCompiler.WiringNative.AddSubCached
 
 namespace Tests.GKRCompilerWiring
 open Airbender Airbender.Compiler

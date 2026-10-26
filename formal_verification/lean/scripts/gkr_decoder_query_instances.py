@@ -44,8 +44,8 @@ def module(family,stem,model,mode):
     args=f'Airbender.Compiler.DecoderArgumentsNative.{case}.native';clean=f'Airbender.Compiler.CleanArithmeticNative.{case}.native'
     trace=f'Airbender.{model}.importedConstraintsTraceColumns';decoder=f'Airbender.{model}.importedConstraintsDecoderColumns'
     member=f'Airbender.Compiler.DecoderTail.{stem}.Membership'
-    name='GKRProtocol.DecoderQueryNative.'+case;owner='Airbender.Compiler.DecoderQueryNative.'+case
-    text=f'import GKRProtocol.DecoderQueryFrame\nimport GKRProtocol.MaterializedWitnessNative.{case}\nimport GKRProtocol.CleanGenericSetup\nimport GKRProtocol.MaterializedNative.{case}\nimport GKRProtocol.PackedDecoderNormalization\nimport GKRProtocol.DecoderArgumentsNative.{case}\nimport GKRProtocol.DecoderTail.{stem}.Membership\n\nnamespace {owner}\nopen Airbender Airbender.Compiler Airbender.Trace.NativeDecoder\n'
+    name='Airbender.Proofs.GKRProtocol.DecoderQueryNative.'+case;owner='Airbender.Compiler.DecoderQueryNative.'+case
+    text=f'import Airbender.Proofs.GKRProtocol.DecoderQueryFrame\nimport Airbender.Proofs.GKRProtocol.MaterializedWitnessNative.{case}\nimport Airbender.Proofs.GKRProtocol.CleanGenericSetup\nimport Airbender.Proofs.GKRProtocol.MaterializedNative.{case}\nimport Airbender.Proofs.GKRProtocol.PackedDecoderNormalization\nimport Airbender.Proofs.GKRProtocol.DecoderArgumentsNative.{case}\nimport Airbender.Proofs.GKRProtocol.DecoderTail.{stem}.Membership\n\nnamespace {owner}\nopen Airbender Airbender.Compiler Airbender.Trace.NativeDecoder\n'
     text+='set_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
     text+=f'noncomputable def expressions : Vector (_root_.Expression Source.BaseField) {width} :=\n  #v['+', '.join(f'{args}.expression{i}' for i in range(1,width+1))+']\n\n'
     text+=f'theorem payload_inventory : expressions.toList = {args}.payloadExpressions := by rfl\n\n'

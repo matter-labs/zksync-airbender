@@ -1,6 +1,6 @@
-import GKRProtocol.CleanArgumentsNative.AddSubUncached
-import GKRProtocol.CleanGenericArgumentsNative.WordMemoryUncached
-import GKRProtocol.CleanPrimitiveLookups
+import Airbender.Proofs.GKRProtocol.CleanArgumentsNative.AddSubUncached
+import Airbender.Proofs.GKRProtocol.CleanGenericArgumentsNative.WordMemoryUncached
+import Airbender.Proofs.GKRProtocol.CleanPrimitiveLookups
 import Airbender.Proofs.Constraints
 
 namespace Tests.GKRCleanLookupArguments

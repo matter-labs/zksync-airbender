@@ -9,10 +9,10 @@ from gkr_shift_prefix_instances import LEAN, plans, REGIONS, PER_MODULE
 
 def module(artifact, column):
     stop, chunks = plans(artifact, column)
-    target = f'GKRProtocol.ShiftPrefixNative.Column{column}'
-    text = ''.join(f'import GKRProtocol.ShiftPrefixParts.Column{column}.Part{i}\n'
+    target = f'Airbender.Proofs.GKRProtocol.ShiftPrefixNative.Column{column}'
+    text = ''.join(f'import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column{column}.Part{i}\n'
                    for i in range((len(chunks) + PER_MODULE - 1) // PER_MODULE))
-    text += 'import Airbender.Review.Helpers.Tables.Bytes\nimport GKRProtocol.BlockCoverageImport\n\n'
+    text += 'import Airbender.Review.Helpers.Tables.Bytes\nimport Airbender.Import.GKRProtocol.BlockCoverageImport\n\n'
     text += (f'namespace Airbender.Compiler.ShiftPrefixNative.Column{column}\n'
              'open Airbender Airbender.Compiler\nset_option warningAsError true\n'
              'set_option Elab.async false\nset_option maxRecDepth 131072\n'

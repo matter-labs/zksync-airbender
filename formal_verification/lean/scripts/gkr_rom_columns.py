@@ -29,15 +29,15 @@ def modules(column):
       'set_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n')
     targets=[]
     for start in range(0,len(chunks),PER_MODULE):
-        target=f'GKRProtocol.ROMParts.Unified.Column{column}.Part{start//PER_MODULE}'
-        text=f'import GKRProtocol.BlockPartsImport\nimport Airbender.Data.GKRSetup.Unified\n\nnamespace {ns}\n'+opts
+        target=f'Airbender.Proofs.GKRProtocol.ROMParts.Unified.Column{column}.Part{start//PER_MODULE}'
+        text=f'import Airbender.Import.GKRProtocol.BlockPartsImport\nimport Airbender.Data.GKRSetup.Unified\n\nnamespace {ns}\n'+opts
         for i in range(start,min(start+PER_MODULE,len(chunks))):
             lo,hi=chunks[i]
             text+=f'column_blocks_part front{i} from {full} start {lo} stop {hi}\n\n'
             text+=f'theorem frontLength{i} : (front{i}.map Setup.Block.length).sum = {positions[hi]-positions[lo]} := by decide +kernel\n\n'
         text+='end '+ns+'\n';targets.append((target,text))
-    target=f'GKRProtocol.ROMColumns.Unified.Column{column}'
-    text=''.join('import '+t+'\n' for t,_ in targets)+'import GKRProtocol.BlockCoverageImport\nimport GKRProtocol.ColumnSlices\nimport Airbender.Data.GKRSetup.Unified\n\nnamespace '+ns+'\n'+opts
+    target=f'Airbender.Proofs.GKRProtocol.ROMColumns.Unified.Column{column}'
+    text=''.join('import '+t+'\n' for t,_ in targets)+'import Airbender.Import.GKRProtocol.BlockCoverageImport\nimport Airbender.Proofs.GKRProtocol.ColumnSlices\nimport Airbender.Data.GKRSetup.Unified\n\nnamespace '+ns+'\n'+opts
     text+=f'column_blocks_part selected from {full} start {first} stop {stop}\n'
     text+=f'column_blocks_part back from {full} start {stop} stop {len(blocks)}\n\n'
     fronts=', '.join('front'+str(i) for i in range(len(chunks)))

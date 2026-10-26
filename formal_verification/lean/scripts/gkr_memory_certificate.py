@@ -299,13 +299,13 @@ def main():
             result = synthesis(json.loads((root / (name + ".json")).read_text()),
                                json.loads((root / (name + "-source.json")).read_text()))
             case = stem + mode.title()
-            module = "GKRProtocol.MemoryNative." + case
+            module = "Airbender.Proofs.GKRProtocol.MemoryNative." + case
             if args.write or args.check:
-                destination = LEAN / "GKRProtocol/MemoryNative" / (case + ".lean")
+                destination = LEAN / "Airbender/Proofs/GKRProtocol/MemoryNative" / (case + ".lean")
                 selectors = json.dumps(json.dumps(result, separators=(",", ":")))
                 content = (
-                    "import GKRProtocol.MemoryImport\n"
-                    f"import GKRProtocol.ProductNative.{case}\n\n"
+                    "import Airbender.Import.GKRProtocol.MemoryImport\n"
+                    f"import Airbender.Proofs.GKRProtocol.ProductNative.{case}\n\n"
                     f"namespace Airbender.Compiler.MemoryNative.{case}\n"
                     "open Airbender Airbender.Compiler\n"
                     "set_option warningAsError true\n"

@@ -11,10 +11,10 @@ from gkr_wiring_instances import CASES
 
 def module(family, stem, mode):
     case = stem + mode.title()
-    target = 'GKRProtocol.MaterializedRangeNative.' + case
+    target = 'Airbender.Proofs.GKRProtocol.MaterializedRangeNative.' + case
     namespace = 'Airbender.Compiler.MaterializedRangeNative.' + case
     model = 'Airbender.Compiler.MaterializedNative.' + case + '.native.model'
-    content = (f'import GKRProtocol.MaterializedRangeImport\nimport GKRProtocol.MaterializedNative.{case}\n\n'
+    content = (f'import Airbender.Import.GKRProtocol.MaterializedRangeImport\nimport Airbender.Proofs.GKRProtocol.MaterializedNative.{case}\n\n'
         f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
         'set_option warningAsError true\nset_option Elab.async false\n'
         'set_option maxRecDepth 65536\nset_option maxHeartbeats 4000000\n\n'

@@ -16,7 +16,7 @@ SPECS = {
 def module(family, case, entries):
     ns='Airbender.Compiler.FixedSetupNative.'+case
     native='Airbender.Compiler.MaterializedNative.'+case+'Uncached.native.model'
-    text=(f'import GKRProtocol.ColumnSlices\nimport GKRProtocol.TaggedSetup\nimport GKRProtocol.MaterializedNative.{case}Uncached\n'
+    text=(f'import Airbender.Proofs.GKRProtocol.ColumnSlices\nimport Airbender.Proofs.GKRProtocol.TaggedSetup\nimport Airbender.Proofs.GKRProtocol.MaterializedNative.{case}Uncached\n'
           'import Airbender.Review.Helpers.Tables.PairData\n\n'+f'namespace {ns}\nopen Airbender Airbender.Compiler\n'
           'set_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 4000000\n\n'
           f'abbrev nativeSetup := {native}\n\n')
@@ -63,7 +63,7 @@ def module(family, case, entries):
      offset+=length
     text+='end '+ns+'\n'
 
-    return 'GKRProtocol.FixedSetupNative.' + case, text
+    return 'Airbender.Proofs.GKRProtocol.FixedSetupNative.' + case, text
 
 
 def membership_module(family, case, raw_entries):
@@ -82,7 +82,7 @@ def membership_module(family, case, raw_entries):
         entries.append((tag, data, table, label, region['offset'], region['length'], arity))
     width = len(artifact['columns'])
     ns='Airbender.Compiler.FixedSetupNative.'+case
-    text=(f'import GKRProtocol.FixedMembership\nimport GKRProtocol.FixedSetupNative.{case}Values\n'
+    text=(f'import Airbender.Proofs.GKRProtocol.FixedMembership\nimport Airbender.Proofs.GKRProtocol.FixedSetupNative.{case}Values\n'
           'import Airbender.Review.Circuits.JumpBranchSlt.Tables.Control\nimport Airbender.Proofs.Tables.ImportedRanges\n\n'
           f'namespace {ns}\nopen Airbender Airbender.Compiler\n'
           'set_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 4000000\n\n')
@@ -117,7 +117,7 @@ def membership_module(family, case, raw_entries):
 
 '''
     text+='end '+ns+'\n'
-    return 'GKRProtocol.FixedSetupNative.' + case + 'Membership', text
+    return 'Airbender.Proofs.GKRProtocol.FixedSetupNative.' + case + 'Membership', text
 
 
 def main():

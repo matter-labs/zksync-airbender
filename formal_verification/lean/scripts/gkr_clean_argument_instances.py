@@ -11,12 +11,12 @@ from gkr_wiring_instances import CASES
 
 def module(family, stem, mode):
     name, case = family + '-' + mode, stem + mode.title()
-    target = 'GKRProtocol.CleanArgumentsNative.' + case
-    helper = (LEAN / 'GKRProtocol/HelperNative' / (case + '.lean')).read_text()
+    target = 'Airbender.Proofs.GKRProtocol.CleanArgumentsNative.' + case
+    helper = (LEAN / 'Airbender/Proofs/GKRProtocol/HelperNative' / (case + '.lean')).read_text()
     indices = json.loads(re.search(r'selectors ("(?:[^"\\]|\\.)*")', helper).group(1))
     prefix = 'Airbender.Compiler.'
-    content = (f'import GKRProtocol.CleanLookupArgumentsImport\nimport GKRProtocol.CleanHelperArgumentsImport\n'
-        f'import GKRProtocol.CleanArithmeticNative.{case}\nimport GKRProtocol.FunctionalLinksNative.{case}\n\n'
+    content = (f'import Airbender.Import.GKRProtocol.CleanLookupArgumentsImport\nimport Airbender.Import.GKRProtocol.CleanHelperArgumentsImport\n'
+        f'import Airbender.Proofs.GKRProtocol.CleanArithmeticNative.{case}\nimport Airbender.Proofs.GKRProtocol.FunctionalLinksNative.{case}\n\n'
         f'namespace Airbender.Compiler.CleanArgumentsNative.{case}\nopen Airbender Airbender.Compiler\n'
         'set_option warningAsError true\nset_option Elab.async false\n'
         'set_option maxRecDepth 32768\nset_option maxHeartbeats 4000000\n\n'

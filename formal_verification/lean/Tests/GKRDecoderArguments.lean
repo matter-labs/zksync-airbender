@@ -1,4 +1,4 @@
-import GKRProtocol.DecoderArgumentsNative.UnifiedUncached
+import Airbender.Proofs.GKRProtocol.DecoderArgumentsNative.UnifiedUncached
 
 namespace Tests.GKRDecoderArguments
 open Airbender Airbender.Compiler

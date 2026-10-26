@@ -1,0 +1,30 @@
+import Airbender.Proofs.GKRCompiler.WiringParts.BigintUncachedGeometry
+import Airbender.Proofs.GKRCompiler.WiringParts.BigintUncachedUnique0
+import Airbender.Proofs.GKRCompiler.WiringParts.BigintUncachedUnique1
+import Airbender.Proofs.GKRCompiler.WiringParts.BigintUncachedUnique2
+import Airbender.Proofs.GKRCompiler.WiringParts.BigintUncachedUnique3
+import Airbender.Proofs.GKRCompiler.WiringParts.BigintUncachedUnique4
+import Airbender.Proofs.GKRCompiler.WiringParts.BigintUncachedUnique5
+import Airbender.Proofs.GKRCompiler.WiringParts.BigintUncachedPlacement0
+import Airbender.Proofs.GKRCompiler.WiringParts.BigintUncachedPlacement1
+import Airbender.Proofs.GKRCompiler.WiringParts.BigintUncachedPlacement2
+import Airbender.Proofs.GKRCompiler.WiringParts.BigintUncachedPlacement3
+import Airbender.Proofs.GKRCompiler.WiringParts.BigintUncachedGates0
+import Airbender.Proofs.GKRCompiler.WiringParts.BigintUncachedGates1
+import Airbender.Proofs.GKRCompiler.WiringParts.BigintUncachedGates2
+import Airbender.Proofs.GKRCompiler.WiringParts.BigintUncachedGates3
+import Airbender.Proofs.GKRCompiler.WiringParts.BigintUncachedGates4
+import Airbender.Proofs.GKRCompiler.WiringParts.BigintUncachedGates5
+
+namespace Airbender.Compiler.WiringNative.BigintUncached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 32768
+set_option maxHeartbeats 4000000
+
+import_compiler_wiring native from "artifacts/compiler/bigint-uncached.json" phase "assemble" start 0 count 0
+
+theorem wiring_valid : native.graph.Valid := native.sound
+
+end Airbender.Compiler.WiringNative.BigintUncached

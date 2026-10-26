@@ -15,7 +15,7 @@ def module(name, case, model_name, width):
         raise ValueError('fixed-table projection adapter is not implemented: ' + name)
     pair = json.loads((LEAN / 'artifacts/compiler' / (name + '.json')).read_text())
     cert = json.loads((LEAN / 'artifacts/compiler/lookup' / (name + '.json')).read_text())
-    prior = (LEAN / 'GKRProtocol/MaterializedWitnessNative' / (case + '.lean')).read_text()
+    prior = (LEAN / 'Airbender/Proofs/GKRProtocol/MaterializedWitnessNative' / (case + '.lean')).read_text()
     arity = re.search(r'\(sourceValue : Fin (\d+)', prior).group(1)
     prefix = 'Airbender.Compiler.'
     o = {key: prefix + model + '.' + case + '.native' for key, model in [
@@ -26,11 +26,11 @@ def module(name, case, model_name, width):
         ('scalars', 'CleanScalarNative'), ('clean', 'CleanArithmeticNative')]}
     setup_model = o['setup'] + '.model'
     namespace = prefix + 'CleanClosedNative.' + case
-    imports = ['GKRProtocol.CleanArgumentsNative.' + case, 'GKRProtocol.CleanScalarNative.' + case,
-               'GKRProtocol.CleanPrimitiveLookups', 'GKRProtocol.CleanLinksNative.' + case,
-               'GKRProtocol.MaterializedWitnessNative.' + case]
+    imports = ['Airbender.Proofs.GKRProtocol.CleanArgumentsNative.' + case, 'Airbender.Proofs.GKRProtocol.CleanScalarNative.' + case,
+               'Airbender.Proofs.GKRProtocol.CleanPrimitiveLookups', 'Airbender.Proofs.GKRProtocol.CleanLinksNative.' + case,
+               'Airbender.Proofs.GKRProtocol.MaterializedWitnessNative.' + case]
     if width:
-        imports += ['GKRProtocol.CleanGenericArgumentsNative.' + case, 'GKRProtocol.CleanGenericSetup']
+        imports += ['Airbender.Proofs.GKRProtocol.CleanGenericArgumentsNative.' + case, 'Airbender.Proofs.GKRProtocol.CleanGenericSetup']
     s = ''.join('import ' + item + '\n' for item in imports)
     s += (f'\nnamespace {namespace}\nopen Airbender Airbender.Compiler\n'
           'set_option warningAsError true\nset_option Elab.async false\n'
@@ -119,7 +119,7 @@ def module(name, case, model_name, width):
     for proof in reversed(proofs):
         tree = f'(PredicateChecks.cons ({proof}) {tree})'
     s += f'  exact PredicateChecks.all {tree}\n\nend {namespace}\n'
-    return 'GKRProtocol.CleanClosedNative.' + case, s
+    return 'Airbender.Proofs.GKRProtocol.CleanClosedNative.' + case, s
 
 
 def modules(name, case, model_name, width):
@@ -132,14 +132,14 @@ def modules(name, case, model_name, width):
     range_start = text.index('theorem range_lookup') if 'theorem range_lookup' in text else generic_blocks[0].start()
     namespace = 'Airbender.Compiler.CleanClosedNative.' + case
     end = '\nend ' + namespace + '\n'
-    shared = 'GKRProtocol.CleanClosedParts.' + case + '.Shared'
+    shared = 'Airbender.Proofs.GKRProtocol.CleanClosedParts.' + case + '.Shared'
     yield shared, text[:range_start] + end
     parts = []
     header = (f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
               'set_option warningAsError true\nset_option Elab.async false\n'
               'set_option maxRecDepth 65536\nset_option maxHeartbeats 4000000\n\n')
     for start in range(0, len(generic_blocks), 8):
-        part = 'GKRProtocol.CleanClosedParts.' + case + '.Part' + str(start // 8)
+        part = 'Airbender.Proofs.GKRProtocol.CleanClosedParts.' + case + '.Part' + str(start // 8)
         parts.append(part)
         finish = min(start + 8, len(generic_blocks))
         stop = generic_blocks[finish].start() if finish < len(generic_blocks) else boundary

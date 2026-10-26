@@ -14,12 +14,12 @@ def module(name, case):
     root = LEAN / 'artifacts/compiler'
     arity = len(synthesize(json.loads((root / (name + '.json')).read_text()),
                            json.loads((root / (name + '-source.json')).read_text()))['inputs'])
-    target = 'GKRProtocol.MemoryExecuteNative.' + case
+    target = 'Airbender.Proofs.GKRProtocol.MemoryExecuteNative.' + case
     namespace = 'Airbender.Compiler.MemoryExecuteNative.' + case
     models = [('base_model', 'FullArithmeticNative'), ('memory_model', 'MemoryNative'),
               ('helper_model', 'HelperValidityNative'), ('helper_fields', 'HelperNative'),
               ('frame_model', 'MemoryFrameNative')]
-    content = (f'import GKRProtocol.MemoryExecuteImport\nimport GKRProtocol.MemoryFrameNative.{case}\n\n'
+    content = (f'import Airbender.Import.GKRProtocol.MemoryExecuteImport\nimport Airbender.Proofs.GKRProtocol.MemoryFrameNative.{case}\n\n'
         f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
         'set_option warningAsError true\nset_option Elab.async false\n'
         'set_option maxRecDepth 32768\nset_option maxHeartbeats 4000000\n\n'
