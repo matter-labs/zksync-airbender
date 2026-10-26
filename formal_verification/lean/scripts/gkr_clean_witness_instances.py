@@ -13,7 +13,7 @@ def module(case, model, width):
     lookup = 'Airbender.Compiler.MaterializedWitnessNative.' + case
     closed = 'Airbender.Compiler.CleanClosedNative.' + case
     clean = 'Airbender.Compiler.CleanArithmeticNative.' + case + '.native'
-    text = (LEAN / 'GKRProtocol/FramedWitnessNative' / (case + '.lean')).read_text()
+    text = (LEAN / 'Airbender/Proofs/GKRProtocol/FramedWitnessNative' / (case + '.lean')).read_text()
     start = text.index('theorem complete_trace_extends')
     stop = text.index(' := by', start)
     theorem = text[start:stop]
@@ -34,13 +34,13 @@ def module(case, model, width):
             f'  exact {closed}.retained_clock_from_source (sourceValue row) (counts row) (baseValue row) (data row)\n'
             '    inputsAt arithmetic helpers (authored row)\n')
     namespace = 'Airbender.Compiler.CleanWitnessNative.' + case
-    content = (f'import GKRProtocol.CleanClosedNative.{case}\nimport GKRProtocol.FramedWitnessNative.{case}\n\n'
+    content = (f'import Airbender.Proofs.GKRProtocol.CleanClosedNative.{case}\nimport Airbender.Proofs.GKRProtocol.FramedWitnessNative.{case}\n\n'
                f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
                f'open {lookup} {framed}\n'
                'set_option warningAsError true\nset_option Elab.async false\n'
                'set_option maxRecDepth 65536\nset_option maxHeartbeats 4000000\n\n' +
                header + ' :\n' + result + ' := by\n' + body + f'\nend {namespace}\n')
-    return 'GKRProtocol.CleanWitnessNative.' + case, content
+    return 'Airbender.Proofs.GKRProtocol.CleanWitnessNative.' + case, content
 
 
 def main():

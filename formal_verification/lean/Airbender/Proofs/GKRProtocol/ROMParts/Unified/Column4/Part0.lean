@@ -1,0 +1,43 @@
+import Airbender.Import.GKRProtocol.BlockPartsImport
+import Airbender.Data.GKRSetup.Unified
+
+namespace Airbender.Compiler.ROMColumns.Unified.Column4
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 65536
+set_option maxHeartbeats 8000000
+
+column_blocks_part front0 from Data.GKRSetup.Unified.setupColumn4 start 0 stop 128
+
+theorem frontLength0 : (front0.map Setup.Block.length).sum = 330291 := by decide +kernel
+
+column_blocks_part front1 from Data.GKRSetup.Unified.setupColumn4 start 128 stop 256
+
+theorem frontLength1 : (front1.map Setup.Block.length).sum = 2296 := by decide +kernel
+
+column_blocks_part front2 from Data.GKRSetup.Unified.setupColumn4 start 256 stop 384
+
+theorem frontLength2 : (front2.map Setup.Block.length).sum = 2304 := by decide +kernel
+
+column_blocks_part front3 from Data.GKRSetup.Unified.setupColumn4 start 384 stop 512
+
+theorem frontLength3 : (front3.map Setup.Block.length).sum = 2290 := by decide +kernel
+
+column_blocks_part front4 from Data.GKRSetup.Unified.setupColumn4 start 512 stop 640
+
+theorem frontLength4 : (front4.map Setup.Block.length).sum = 2304 := by decide +kernel
+
+column_blocks_part front5 from Data.GKRSetup.Unified.setupColumn4 start 640 stop 768
+
+theorem frontLength5 : (front5.map Setup.Block.length).sum = 2288 := by decide +kernel
+
+column_blocks_part front6 from Data.GKRSetup.Unified.setupColumn4 start 768 stop 896
+
+theorem frontLength6 : (front6.map Setup.Block.length).sum = 2296 := by decide +kernel
+
+column_blocks_part front7 from Data.GKRSetup.Unified.setupColumn4 start 896 stop 1024
+
+theorem frontLength7 : (front7.map Setup.Block.length).sum = 2080 := by decide +kernel
+
+end Airbender.Compiler.ROMColumns.Unified.Column4

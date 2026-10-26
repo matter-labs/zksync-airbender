@@ -14,9 +14,9 @@ def module(name, case):
     root = LEAN / 'artifacts/compiler'
     arity = len(synthesize(json.loads((root / (name + '.json')).read_text()),
                            json.loads((root / (name + '-source.json')).read_text()))['inputs'])
-    target = 'GKRProtocol.HistoryErasureNative.' + case
+    target = 'Airbender.Proofs.GKRProtocol.HistoryErasureNative.' + case
     namespace = 'Airbender.Compiler.HistoryErasureNative.' + case
-    content = (f'import GKRProtocol.HistoryErasureImport\nimport GKRProtocol.SourceContractNative.{case}\n\n'
+    content = (f'import Airbender.Import.GKRProtocol.HistoryErasureImport\nimport Airbender.Proofs.GKRProtocol.SourceContractNative.{case}\n\n'
         f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
         'set_option warningAsError true\nset_option Elab.async false\n'
         'set_option maxRecDepth 32768\nset_option maxHeartbeats 4000000\n\n'

@@ -13,7 +13,7 @@ WIDTHS = [None, None, None, None, 9, 9, 10, 3, 9, 6, 8]
 
 
 def module(case, model, width):
-    target = 'GKRProtocol.CleanLinksNative.' + case
+    target = 'Airbender.Proofs.GKRProtocol.CleanLinksNative.' + case
     namespace = 'Airbender.Compiler.CleanLinksNative.' + case
     native = 'Airbender.Compiler.CleanArithmeticNative.' + case + '.native'
     base = 'Airbender.Compiler.FullArithmeticNative.' + case + '.native'
@@ -21,7 +21,7 @@ def module(case, model, width):
     setup = 'setup ' if width else ''
     operations = f'(Airbender.{model}.importedConstraints (p := babyBearModulus){" setup" if width else ""})'
     clock_operations = f'(Airbender.{model}.clockConstraints (p := babyBearModulus){" setup" if width else ""})'
-    content = (f'import GKRProtocol.CleanBindings\nimport GKRProtocol.CleanArithmeticNative.{case}\n'
+    content = (f'import Airbender.Proofs.GKRProtocol.CleanBindings\nimport Airbender.Proofs.GKRProtocol.CleanArithmeticNative.{case}\n'
         f'import Airbender.Review.Circuits.{model}.Artifact\n\n'
         f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
         'set_option warningAsError true\nset_option Elab.async false\n'

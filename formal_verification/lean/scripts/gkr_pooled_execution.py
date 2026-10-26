@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Assemble the twelve actual compiler-row bridges into pooled execution."""
+from compiler_review_layout import pooled_execution_proof
 from pathlib import Path
 from export_gkr_translations import LEAN
 from gkr_pooled_row_instances import CASES
@@ -7,8 +8,8 @@ from gkr_pooled_row_instances import CASES
 
 def module():
     cases=[stem+mode for stem,_ in CASES for mode in ['Uncached','Cached']]
-    text=''.join('import GKRProtocol.PooledRowNative.'+case+'\n' for case in cases)
-    text+='''import GKRProtocol.PublicProgram
+    text=''.join('import Airbender.Proofs.GKRProtocol.PooledRowNative.'+case+'\n' for case in cases)
+    text+='''import Airbender.Proofs.GKRProtocol.PublicProgram
 import Airbender.Proofs.Tables.DecoderPCLow
 import Airbender.Proofs.Trace.PooledOracleComposition
 
@@ -165,13 +166,13 @@ theorem native_execution {trace : PooledTrace babyBearModulus}
 
 end Airbender.Compiler.PooledExecution
 '''
-    return text
+    return pooled_execution_proof(text)
 
 if __name__=='__main__':
     import argparse
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check',action='store_true')
     parser.add_argument('--write',action='store_true')
-    args=parser.parse_args();path=LEAN/'GKRProtocol/PooledExecution.lean';text=module()
+    args=parser.parse_args();path=LEAN/'Airbender/Proofs/GKRProtocol/PooledExecution.lean';text=module()
     if args.check and (not path.exists() or path.read_text()!=text):raise ValueError('pooled execution assembly changed')
     if args.write and (not path.exists() or path.read_text()!=text):path.write_text(text)

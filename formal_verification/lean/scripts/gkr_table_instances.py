@@ -24,11 +24,11 @@ def main():
             continue
         for mode in ("uncached", "cached"):
             case, name = stem + mode.title(), family + "-" + mode
-            module = "GKRProtocol.TableNative." + case
-            path = LEAN / "GKRProtocol/TableNative" / (case + ".lean")
+            module = "Airbender.Proofs.GKRProtocol.TableNative." + case
+            path = LEAN / "Airbender/Proofs/GKRProtocol/TableNative" / (case + ".lean")
             content = (
-                "import GKRProtocol.TableImport\n"
-                f"import GKRProtocol.LookupSourceNative.{case}\n\n"
+                "import Airbender.Import.GKRProtocol.TableImport\n"
+                f"import Airbender.Proofs.GKRProtocol.LookupSourceNative.{case}\n\n"
                 f"namespace Airbender.Compiler.TableNative.{case}\n"
                 "open Airbender Airbender.Compiler\n"
                 "set_option warningAsError true\n"

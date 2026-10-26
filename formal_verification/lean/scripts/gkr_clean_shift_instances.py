@@ -11,7 +11,7 @@ from gkr_clean_closed_instances import module as full_table_module
 def module(mode):
     case='ShiftBinop'+mode.title()
     target,text=full_table_module('shift-binop-'+mode,case,'ShiftBinop',10)
-    text=text.replace('import GKRProtocol.CleanGenericSetup','import GKRProtocol.ShiftSetupNative')
+    text=text.replace('import Airbender.Proofs.GKRProtocol.CleanGenericSetup','import Airbender.Proofs.GKRProtocol.ShiftSetupNative')
     text=text.replace(f'Airbender.Compiler.MaterializedNative.{case}.native.model.imported.data.table "Airbender.Native.ShiftBinop"','Verification.shiftBinopTable (p := babyBearModulus)')
     text=text.replace('(Airbender.ShiftBinop.clockConstraints (p := babyBearModulus) nativeSetup)','(Airbender.ShiftBinop.clockConstraints (p := babyBearModulus))')
     text=text.replace(f'Airbender.Compiler.CleanLinksNative.{case}.retained_clock_constraints nativeSetup ',f'Airbender.Compiler.CleanLinksNative.{case}.retained_clock_constraints ')

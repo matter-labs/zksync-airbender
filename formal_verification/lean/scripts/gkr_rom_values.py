@@ -8,7 +8,7 @@ from gkr_rom_columns import length
 
 def content():
     artifact=json.loads((LEAN/'artifacts/setup/unified.json').read_text())
-    out=''.join(f'import GKRProtocol.ROMColumns.Unified.Column{i}\n' for i in range(10))
+    out=''.join(f'import Airbender.Proofs.GKRProtocol.ROMColumns.Unified.Column{i}\n' for i in range(10))
     out+='import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ROMData\nimport Airbender.Proofs.Tables.ZeroTail\n\n'
     out+='namespace Airbender.Compiler.ROMNative.UnifiedValues\nopen Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
     cutoff={1:4,2:4,3:1,4:0,5:3,6:3,7:3,8:0}
@@ -44,10 +44,10 @@ def content():
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     for flag in ['write','check']:parser.add_argument('--'+flag,action='store_true')
-    args=parser.parse_args();path=LEAN/'GKRProtocol/ROMNative/UnifiedValues.lean';text=content()
+    args=parser.parse_args();path=LEAN/'Airbender/Proofs/GKRProtocol/ROMNative/UnifiedValues.lean';text=content()
     if args.check and (not path.exists() or path.read_text()!=text):raise ValueError('unified ROM values scaffold changed')
     if args.write and (not path.exists() or path.read_text()!=text):path.write_text(text)
-    print('GKRProtocol.ROMNative.UnifiedValues')
+    print('Airbender.Proofs.GKRProtocol.ROMNative.UnifiedValues')
 
 
 if __name__=='__main__':main()

@@ -1,4 +1,4 @@
-import GKRProtocol.MemoryTokens
+import Airbender.Proofs.GKRProtocol.MemoryTokens
 import Airbender.Review.Helpers.Delegation.Requests
 
 namespace Tests.GKRWorkerTokens

@@ -1,5 +1,5 @@
-import GKRProtocol.HelperNative.AddSubCached
-import GKRProtocol.HelperSemantics
+import Airbender.Proofs.GKRProtocol.HelperNative.AddSubCached
+import Airbender.Proofs.GKRProtocol.HelperSemantics
 
 namespace Tests.GKRHelperSources
 open Airbender Airbender.Compiler

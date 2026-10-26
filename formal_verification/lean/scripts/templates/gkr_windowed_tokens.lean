@@ -1,6 +1,6 @@
-import GKRProtocol.WindowedNative.UnifiedUncached
-import GKRProtocol.WindowedInitialization
-import GKRProtocol.MemoryNative.UnifiedUncached
+import Airbender.Proofs.GKRProtocol.WindowedNative.UnifiedUncached
+import Airbender.Proofs.GKRProtocol.WindowedInitialization
+import Airbender.Proofs.GKRProtocol.MemoryNative.UnifiedUncached
 
 namespace Airbender.Compiler.WindowedNative.UnifiedUncached
 open Airbender Airbender.Compiler

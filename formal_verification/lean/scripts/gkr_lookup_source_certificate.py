@@ -273,17 +273,17 @@ def main():
                 case = stem + mode.title()
                 selectors = json.dumps(json.dumps(certificate, separators=(",", ":")))
                 size = len(certificate["operands"])
-                native_imports = ["GKRProtocol.LookupSourceImport", f"GKRProtocol.Native.{case}",
-                                  f"GKRProtocol.LookupNative.{case}"]
+                native_imports = ["Airbender.Import.GKRProtocol.LookupSourceImport", f"Airbender.Proofs.GKRProtocol.Native.{case}",
+                                  f"Airbender.Proofs.GKRProtocol.LookupNative.{case}"]
                 modules = [(case, native_imports, 3, 0, size)]
                 if family == "blake-round":
                     foundation = case + "Foundation"
-                    parts = [(case + f"Part{index}", [f"GKRProtocol.LookupSourceNative.{foundation}"],
+                    parts = [(case + f"Part{index}", [f"Airbender.Proofs.GKRProtocol.LookupSourceNative.{foundation}"],
                               1, start, min(start + 32, size)) for index, start in enumerate(range(0, size, 32))]
                     modules = [(foundation, native_imports, 0, 0, 0)] + parts + [
-                        (case, [f"GKRProtocol.LookupSourceNative.{part[0]}" for part in parts], 2, 0, 0)]
+                        (case, [f"Airbender.Proofs.GKRProtocol.LookupSourceNative.{part[0]}" for part in parts], 2, 0, 0)]
                 for module, imports, phase, start, stop in modules:
-                    destination = LEAN / "GKRProtocol/LookupSourceNative" / (module + ".lean")
+                    destination = LEAN / "Airbender/Proofs/GKRProtocol/LookupSourceNative" / (module + ".lean")
                     content = ("".join(f"import {dependency}\n" for dependency in imports) + "\n" +
                         f"namespace Airbender.Compiler.LookupSourceNative.{case}\n"
                         "open Airbender Airbender.Compiler\n"

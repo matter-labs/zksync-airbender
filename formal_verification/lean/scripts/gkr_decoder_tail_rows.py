@@ -12,9 +12,9 @@ def module(family):
     case,data_module,setup,_=SPECS[family]
     data=json.loads((LEAN/f'artifacts/setup/{family}.json').read_text())
     width=len(data['columns']);offset=data['circuit']['offset_for_decoder_table'];total=data['trace_len'];tail=total-offset
-    owner=f'Airbender.Compiler.DecoderTail.{case}.Rows';name=f'GKRProtocol.DecoderTail.{case}.Rows'
-    text=''.join(f'import GKRProtocol.DecoderTail.{case}.Column{i}\n' for i in range(width))
-    text+='import GKRProtocol.PackedDecoderNormalization\n'+f'import GKRProtocol.MaterializedNative.{case}Uncached\n\nnamespace {owner}\nopen Airbender Airbender.Compiler Airbender.Trace.NativeDecoder\n'
+    owner=f'Airbender.Compiler.DecoderTail.{case}.Rows';name=f'Airbender.Proofs.GKRProtocol.DecoderTail.{case}.Rows'
+    text=''.join(f'import Airbender.Proofs.GKRProtocol.DecoderTail.{case}.Column{i}\n' for i in range(width))
+    text+='import Airbender.Proofs.GKRProtocol.PackedDecoderNormalization\n'+f'import Airbender.Proofs.GKRProtocol.MaterializedNative.{case}Uncached\n\nnamespace {owner}\nopen Airbender Airbender.Compiler Airbender.Trace.NativeDecoder\n'
     text+='set_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
     text+=f'abbrev nativeSetup := Airbender.Compiler.MaterializedNative.{case}Uncached.native.model\n\n'
     text+=f'def nativeRow (row : Fin {total}) : Vector Source.BaseField {width} := (nativeSetup.imported.data.row row).map (fun n : Int => (n : Source.BaseField))\n\n'

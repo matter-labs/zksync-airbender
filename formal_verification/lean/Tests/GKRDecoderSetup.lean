@@ -1,5 +1,5 @@
-import GKRProtocol.DecoderTail.Unified.Rows
-import GKRProtocol.DecoderTail.AddSub.Rows
+import Airbender.Proofs.GKRProtocol.DecoderTail.Unified.Rows
+import Airbender.Proofs.GKRProtocol.DecoderTail.AddSub.Rows
 
 namespace Tests.GKRDecoderSetup
 open Airbender Airbender.Compiler Airbender.Trace.NativeDecoder

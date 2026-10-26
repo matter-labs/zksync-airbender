@@ -14,16 +14,16 @@ def module(family,case,model,mode):
     name=family+'-'+mode
     pair=json.loads((LEAN/'artifacts/compiler'/f'{name}.json').read_text())
     if not pair['source']['remaining_inputs']['executor']:return None
-    target='GKRProtocol.DecoderArgumentsNative.'+case
+    target='Airbender.Proofs.GKRProtocol.DecoderArgumentsNative.'+case
     namespace='Airbender.Compiler.DecoderArgumentsNative.'+case
     certificate=json.loads((LEAN/'artifacts/compiler/lookup'/f'{name}.json').read_text())
     decoders=[operand for operand in synthesis(pair,certificate)['operands'] if operand['kind']=='decoder']
     if len(decoders)!=1:raise ValueError('decoder query inventory changed: '+case)
     query=decoders[0]['native_leaf']
-    text=('import GKRProtocol.DecoderArgumentsImport\n'
-        f'import GKRProtocol.CleanArithmeticNative.{case}\n'
-        f'import GKRProtocol.FunctionalLinksNative.{case}\n'
-        f'import GKRProtocol.LookupSourceNative.{case}\n'
+    text=('import Airbender.Import.GKRProtocol.DecoderArgumentsImport\n'
+        f'import Airbender.Proofs.GKRProtocol.CleanArithmeticNative.{case}\n'
+        f'import Airbender.Proofs.GKRProtocol.FunctionalLinksNative.{case}\n'
+        f'import Airbender.Proofs.GKRProtocol.LookupSourceNative.{case}\n'
         f'import Airbender.Review.Circuits.{model}.Artifact\n\n'
         f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
         'set_option warningAsError true\nset_option Elab.async false\n'

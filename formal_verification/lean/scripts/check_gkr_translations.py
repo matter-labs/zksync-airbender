@@ -23,6 +23,46 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
+def check_library_ownership(lake):
+    """Input dependencies must belong to the library that actually builds a reader.
+
+    Lean 4.31 Lake resolves libraries in reverse declaration order. Roots alone
+    do not make a module buildable: their globs must also cover it (or its root).
+    """
+    def prefix(root, module):
+        return module == root or module.startswith(root + ".")
+
+    def matches(glob, module):
+        if glob.endswith(".*"):
+            return prefix(glob[:-2], module)
+        if glob.endswith(".+"):
+            return module != glob[:-2] and prefix(glob[:-2], module)
+        return glob == module
+
+    def owner(module):
+        for library in reversed(lake["lean_lib"]):
+            roots = library.get("roots", [library["name"]])
+            globs = library.get("globs", roots)
+            if (any(matches(glob, module) for glob in globs) or
+                    any(prefix(root, module) and any(matches(glob, root) for glob in globs)
+                        for root in roots)):
+                return library["name"]
+        return None
+
+    for module, expected in (
+        ("Airbender.Import.GKRCompiler.Import", "GKRCompiler"),
+        ("Airbender.Import.GKRCompiler.WiringImport", "GKRCompiler"),
+        ("Airbender.Import.Compiler.Arithmetic.AddSubUncached", "GKRCompiler"),
+        ("Airbender.Import.Compiler.ArithmeticInstances", "GKRCompiler"),
+        ("Airbender.Proofs.GKRCompiler.Native.AddSubUncached", "GKRCompiler"),
+        ("Airbender.Import.GKRProtocol.Source", "GKRProtocol"),
+        ("Airbender.Import.Compiler.Rows.AddSubUncached", "GKRProtocol"),
+        ("Airbender.Proofs.GKRProtocol.Native.AddSubUncached", "GKRProtocol"),
+    ):
+        if owner(module) != expected:
+            raise ValueError(f"Compiler reader/library ownership changed: {module}")
+
+
 def check(directory=LEAN / "artifacts/compiler", repo=ROOT):
     directory, repo = Path(directory), Path(repo)
     manifest = read(directory / "manifest.json")
@@ -50,6 +90,7 @@ def check(directory=LEAN / "artifacts/compiler", repo=ROOT):
     if {path.name for path in directory.glob("*.json")} != expected_files:
         raise ValueError("Compiler artifact inventory differs")
     lake = tomllib.loads((repo / "formal_verification/lean/lakefile.toml").read_text())
+    check_library_ownership(lake)
     targets = {entry["name"]: entry["path"] for entry in lake["input_file"]}
     compiler = next(entry for entry in lake["lean_lib"] if entry["name"] == "GKRCompiler")
     if "needs" not in compiler or "extraDepTargets" in compiler:

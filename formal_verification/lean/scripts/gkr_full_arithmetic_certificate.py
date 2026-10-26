@@ -165,7 +165,7 @@ def synthesize(pair,snapshot):
 
 
 def modules(name, case, result):
-    prefix = "GKRProtocol.FullArithmeticNative." + case
+    prefix = "Airbender.Proofs.GKRProtocol.FullArithmeticNative." + case
     namespace = "Airbender.Compiler.FullArithmeticNative." + case
     dimensions = (f'inputs {len(result["inputs"])} variables {len(result["addresses"])} '
                   f'sources {result["counts"]["source_obligations"]} gates {result["counts"]["relations"]}')
@@ -182,7 +182,7 @@ def modules(name, case, result):
                 f"end {namespace}\n")
 
     foundation = prefix + "Foundation"
-    result_modules = [(foundation, wrap(["GKRProtocol.FullArithmeticImport"],
+    result_modules = [(foundation, wrap(["Airbender.Import.GKRProtocol.FullArithmeticImport"],
         f'import_full_compiler_arithmetic native from "artifacts/compiler/{name}.json"\n'
         f'  source "artifacts/compiler/{name}-source.json"\n  selectors {selectors}'))]
     parts = []

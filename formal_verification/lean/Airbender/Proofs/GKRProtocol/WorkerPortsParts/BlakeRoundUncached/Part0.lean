@@ -1,0 +1,14 @@
+import Airbender.Proofs.GKRProtocol.WorkerPortsParts.BlakeRoundUncached.Shared
+import Airbender.Import.GKRProtocol.WorkerPortsChecks
+
+namespace Airbender.Compiler.WorkerPortsNative.BlakeRoundUncached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 65536
+set_option maxHeartbeats 8000000
+
+worker_checks_part historyPart0 input_list (List.finRange Airbender.Blake2Round.importedConstraintsMemoryPorts.size)
+  test_fn historyPredicate start 0 stop 4
+
+end Airbender.Compiler.WorkerPortsNative.BlakeRoundUncached

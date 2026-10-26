@@ -1,4 +1,4 @@
-import GKRProtocol.FunctionalNative.AddSubCached
+import Airbender.Proofs.GKRProtocol.FunctionalNative.AddSubCached
 
 namespace Tests.GKRFunctional
 open Airbender Airbender.Compiler

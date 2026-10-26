@@ -1,4 +1,4 @@
-import GKRProtocol.MemoryTokens
+import Airbender.Proofs.GKRProtocol.MemoryTokens
 
 namespace Tests.GKRMemoryTokens
 open Airbender Airbender.Compiler

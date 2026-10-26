@@ -13,7 +13,7 @@ import tempfile
 
 from export_gkr_translations import LEAN
 
-EXPECTED_ROOTS = 7760
+EXPECTED_ROOTS = 7766
 ALLOWED_AXIOMS = {'propext', 'Classical.choice', 'Quot.sound'}
 MARKER = '-- GKR compiler translation validation.'
 REPORT = re.compile(r"^'([^']+)' (?:depends on axioms: \[([^\]]*)\]|does not depend on any axioms)\s*$", re.M)
@@ -31,7 +31,7 @@ def main():
     if len(roots) != len(set(roots)) or len(roots) != EXPECTED_ROOTS:
         raise ValueError(f'compiler root inventory changed: {len(roots)}, expected {EXPECTED_ROOTS}')
     modules = list(dict.fromkeys(line.removeprefix('import ') for line in registry.splitlines()
-                                if line.startswith(('import GKR', 'import Tests.GKR'))))
+                                if line.startswith(('import Airbender.Proofs.GKR', 'import Airbender.Import.GKR', 'import Airbender.Review.Compiler.', 'import Tests.GKR'))))
     environment = dict(os.environ, LEAN_NUM_THREADS='1')
     for module in modules:
         subprocess.run(['lake', '--no-cache', 'build', '+' + module + ':olean'],

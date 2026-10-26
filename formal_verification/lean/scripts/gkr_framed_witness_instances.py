@@ -65,9 +65,9 @@ def module(name, case):
             ''.join('  ' + line + '\n' for line in derivation.splitlines()) +
             '  refine ⟨baseValue, values, ?_, externalAgreement⟩\n'
             '  exact ⟨inputAgreement, arithmetic, baseLaw, affine, lookups, products, countsAt, setupAt, helpers, outputs⟩\n')
-    target = 'GKRProtocol.FramedWitnessNative.' + case
+    target = 'Airbender.Proofs.GKRProtocol.FramedWitnessNative.' + case
     namespace = 'Airbender.Compiler.FramedWitnessNative.' + case
-    content = (f'import GKRProtocol.MaterializedWitnessNative.{case}\nimport GKRProtocol.MemoryExecuteNative.{case}\n\n'
+    content = (f'import Airbender.Proofs.GKRProtocol.MaterializedWitnessNative.{case}\nimport Airbender.Proofs.GKRProtocol.MemoryExecuteNative.{case}\n\n'
                f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
                f'open Airbender.Compiler.MaterializedWitnessNative.{case}\n'
                'set_option warningAsError true\nset_option Elab.async false\n'

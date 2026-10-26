@@ -14,7 +14,7 @@ def main():
     for mode in args.mode or ['uncached','cached']:
         case='Unified'+mode.title()
         text=(LEAN/'scripts/templates/gkr_windowed_public.lean').read_text().replace('UnifiedUncached',case)
-        target='GKRProtocol.WindowedNative.'+case+'Public';path=LEAN/(target.replace('.','/')+'.lean')
+        target='Airbender.Proofs.GKRProtocol.WindowedNative.'+case+'Public';path=LEAN/(target.replace('.','/')+'.lean')
         if args.check and (not path.exists() or path.read_text()!=text):raise ValueError('windowed public bridge changed: '+case)
         if args.write:path.write_text(text)
         print(target,flush=True)

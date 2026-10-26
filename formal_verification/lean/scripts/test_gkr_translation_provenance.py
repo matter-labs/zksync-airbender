@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
+import tomllib
 import unittest
 
 import check_gkr_translations as checker
@@ -11,6 +12,20 @@ from export_gkr_translations import LEAN, digest
 
 
 class CompilerProvenance(unittest.TestCase):
+    def test_import_glob_required_for_reader_dependencies(self):
+        lake = tomllib.loads((LEAN / "lakefile.toml").read_text())
+        compiler = next(lib for lib in lake["lean_lib"] if lib["name"] == "GKRCompiler")
+        compiler["globs"] = ["Airbender.Proofs.GKRCompiler"]
+        with self.assertRaisesRegex(ValueError, "reader/library ownership changed"):
+            checker.check_library_ownership(lake)
+
+    def test_protocol_rows_keep_their_input_dependencies(self):
+        lake = tomllib.loads((LEAN / "lakefile.toml").read_text())
+        protocol = next(lib for lib in lake["lean_lib"] if lib["name"] == "GKRProtocol")
+        protocol["globs"].remove("Airbender.Import.Compiler.Rows.+")
+        with self.assertRaisesRegex(ValueError, "reader/library ownership changed"):
+            checker.check_library_ownership(lake)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

@@ -1,4 +1,4 @@
-import GKRProtocol.MemoryNative.AddSubCached
+import Airbender.Proofs.GKRProtocol.MemoryNative.AddSubCached
 
 namespace Tests.GKRMemorySource
 open Airbender Airbender.Compiler

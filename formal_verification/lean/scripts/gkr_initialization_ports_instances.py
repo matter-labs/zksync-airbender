@@ -10,8 +10,8 @@ def module(mode):
     case='Unified'+mode.title()
     ns='Airbender.Compiler.InitializationPortsNative.'+case
     memory=f'Airbender.Compiler.MemoryNative.{case}.native'
-    text=(f'import GKRProtocol.InitializationPublic\nimport GKRProtocol.MemoryNative.{case}\n'
-          f'import GKRProtocol.FunctionalLinksNative.{case}\nimport GKRProtocol.NativeWitness\n'
+    text=(f'import Airbender.Proofs.GKRProtocol.InitializationPublic\nimport Airbender.Proofs.GKRProtocol.MemoryNative.{case}\n'
+          f'import Airbender.Proofs.GKRProtocol.FunctionalLinksNative.{case}\nimport Airbender.Proofs.GKRProtocol.NativeWitness\n'
           'import Airbender.Review.Circuits.Initialization.Artifact\n\n'
           f'namespace {ns}\nopen Airbender Airbender.Compiler\n'
           'set_option warningAsError true\nset_option Elab.async false\n'
@@ -53,7 +53,7 @@ def module(mode):
            f'  exact source_boundary_leaf Initialization.unified.layout parameters ({memory}.sourceValues physical)\n'
            '    (fun _ column => physical (.BaseLayerMemory column)) stageKind set row addresses.1 addresses.2 bounds.1 bounds.2\n'
            '      raw.1 raw.2.1 raw.2.2.1 raw.2.2.2\n\n')
-    executor=(LEAN/'GKRProtocol/MemoryPortsNative/UnifiedUncached.lean').read_text().replace('UnifiedUncached',case)
+    executor=(LEAN/'Airbender/Proofs/GKRProtocol/MemoryPortsNative/UnifiedUncached.lean').read_text().replace('UnifiedUncached',case)
     for direction,stage in [('read','terminal'),('write','initial')]:
         first=executor.index('theorem '+direction+'_output_logical')
         last=executor.find('theorem write_output_logical',first+1) if direction=='read' else executor.index('\nend Airbender.Compiler.MemoryPortsNative.')
@@ -100,7 +100,7 @@ def module(mode):
                f'    exact public_leaf physical parameters row window windowBound windows low high .{stage} set\n'
                '  rw [identity]\n  simp only [List.map_map, Function.comp_def]\n\n')
     text+=f'end {ns}\n'
-    return 'GKRProtocol.InitializationPortsNative.'+case,text
+    return 'Airbender.Proofs.GKRProtocol.InitializationPortsNative.'+case,text
 
 
 def main():

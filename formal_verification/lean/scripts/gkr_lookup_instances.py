@@ -17,7 +17,7 @@ def main():
         if args.family and family not in args.family:
             continue
         for suffix in ("Uncached", "Cached"):
-            name = "GKRProtocol.Native." + stem + suffix
+            name = "Airbender.Proofs.GKRProtocol.Native." + stem + suffix
             print("LOOKUP FIELDS", name, flush=True)
             subprocess.run(["lake", "--no-cache", "build", "+" + name + ":olean"],
                            cwd=LEAN, env=environment, check=True)

@@ -1,0 +1,13 @@
+import Airbender.Import.GKRProtocol.MaterializedRangeImport
+import Airbender.Proofs.GKRProtocol.MaterializedNative.UnifiedCached
+
+namespace Airbender.Compiler.MaterializedRangeNative.UnifiedCached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 65536
+set_option maxHeartbeats 4000000
+
+import_materialized_ranges native model Airbender.Compiler.MaterializedNative.UnifiedCached.native.model
+
+end Airbender.Compiler.MaterializedRangeNative.UnifiedCached

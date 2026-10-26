@@ -1,4 +1,0 @@
-import GKRProtocol.UnifiedRegionParts.Column3.Part0
-import GKRProtocol.UnifiedRegionParts.Column3.Part1
-import GKRProtocol.UnifiedRegionParts.Column3.Part2
-import GKRProtocol.UnifiedRegionParts.Column3.Part3

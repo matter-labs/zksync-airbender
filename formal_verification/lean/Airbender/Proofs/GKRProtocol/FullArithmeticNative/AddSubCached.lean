@@ -1,0 +1,17 @@
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.AddSubCachedFoundation
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.AddSubCachedUniquePart0
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.AddSubCachedUniquePart1
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.AddSubCachedForwardPart0
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.AddSubCachedForwardPart1
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.AddSubCachedBackwardPart0
+
+namespace Airbender.Compiler.FullArithmeticNative.AddSubCached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 32768
+set_option maxHeartbeats 4000000
+
+finalize_full_compiler_arithmetic native inputs 48 variables 58 sources 30 gates 40
+
+end Airbender.Compiler.FullArithmeticNative.AddSubCached

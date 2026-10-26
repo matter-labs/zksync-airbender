@@ -95,11 +95,11 @@ def synthesize(pair, snapshot):
 
 
 def module(name, case, result):
-    target = 'GKRProtocol.CleanArithmeticNative.' + case
+    target = 'Airbender.Proofs.GKRProtocol.CleanArithmeticNative.' + case
     namespace = 'Airbender.Compiler.CleanArithmeticNative.' + case
     selectors = json.dumps(json.dumps({'format_version': 1, 'witnesses': result['witnesses']},
                                      separators=(',', ':')))
-    content = (f'import GKRProtocol.CleanArithmeticImport\nimport GKRProtocol.FullArithmeticNative.{case}\n\n'
+    content = (f'import Airbender.Import.GKRProtocol.CleanArithmeticImport\nimport Airbender.Proofs.GKRProtocol.FullArithmeticNative.{case}\n\n'
         f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
         'set_option warningAsError true\nset_option Elab.async false\n'
         'set_option maxRecDepth 32768\nset_option maxHeartbeats 4000000\n\n'

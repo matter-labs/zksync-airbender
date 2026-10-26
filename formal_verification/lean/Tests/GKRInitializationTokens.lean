@@ -1,4 +1,4 @@
-import GKRProtocol.InitializationPublic
+import Airbender.Proofs.GKRProtocol.InitializationPublic
 
 namespace Tests.GKRInitializationTokens
 open Airbender Airbender.Compiler

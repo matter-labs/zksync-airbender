@@ -15,8 +15,8 @@ MODELS={'jump-branch':'JumpBranchSlt'}
 def module(family):
     case,data_module,setup,_=SPECS[family];kind=KINDS[family]
     data=json.loads((LEAN/f'artifacts/setup/{family}.json').read_text());width=len(data['columns']);offset=data['circuit']['offset_for_decoder_table'];total=data['trace_len'];tail=total-offset
-    owner=f'Airbender.Compiler.DecoderTail.{case}.Membership';target=f'GKRProtocol.DecoderTail.{case}.Membership'
-    text=f'import GKRProtocol.DecoderTail.{case}.Rows\nimport GKRProtocol.DecoderSetupRefinement\nimport Airbender.Proofs.Tables.Decoder.{data_module}\n\nnamespace {owner}\nopen Airbender Airbender.Compiler Airbender.Trace.NativeDecoder\n'
+    owner=f'Airbender.Compiler.DecoderTail.{case}.Membership';target=f'Airbender.Proofs.GKRProtocol.DecoderTail.{case}.Membership'
+    text=f'import Airbender.Proofs.GKRProtocol.DecoderTail.{case}.Rows\nimport Airbender.Proofs.GKRProtocol.DecoderSetupRefinement\nimport Airbender.Proofs.Tables.Decoder.{data_module}\n\nnamespace {owner}\nopen Airbender Airbender.Compiler Airbender.Trace.NativeDecoder\n'
     text+='set_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\nabbrev nativeSetup := Rows.nativeSetup\n\n'
     if offset:
         blocks=data['columns'][-1]['blocks'];stop=0;size=0

@@ -8,8 +8,8 @@ from gkr_subword_prefix import REGIONS
 
 def content():
     artifact=json.loads((LEAN/'artifacts/setup/subword-memory.json').read_text())
-    out=''.join(f'import GKRProtocol.SubwordPrefixNative.Column{i}\n' for i in range(9))
-    out+='import GKRProtocol.MaterializedNative.SubwordMemoryUncached\n\nnamespace Airbender.Compiler.ROMNative.SubwordRows\nopen Airbender Airbender.Compiler Airbender.Setup\n'
+    out=''.join(f'import Airbender.Proofs.GKRProtocol.SubwordPrefixNative.Column{i}\n' for i in range(9))
+    out+='import Airbender.Proofs.GKRProtocol.MaterializedNative.SubwordMemoryUncached\n\nnamespace Airbender.Compiler.ROMNative.SubwordRows\nopen Airbender Airbender.Compiler Airbender.Setup\n'
     out+='set_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
     out+='abbrev nativeSetup := Airbender.Compiler.MaterializedNative.SubwordMemoryUncached.native.model\n\n'
     out+='def nativeRow (row : Fin 16777216) : Vector Source.BaseField 9 := (nativeSetup.imported.data.row row).map (fun n : Int => (n : Source.BaseField))\n\n'
@@ -54,10 +54,10 @@ def content():
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     for flag in ['write','check']:parser.add_argument('--'+flag,action='store_true')
-    args=parser.parse_args();path=LEAN/'GKRProtocol/ROMNative/SubwordRows.lean';text=content()
+    args=parser.parse_args();path=LEAN/'Airbender/Proofs/GKRProtocol/ROMNative/SubwordRows.lean';text=content()
     if args.check and (not path.exists() or path.read_text()!=text):raise ValueError('subword row scaffold changed')
     if args.write and (not path.exists() or path.read_text()!=text):path.write_text(text)
-    print('GKRProtocol.ROMNative.SubwordRows')
+    print('Airbender.Proofs.GKRProtocol.ROMNative.SubwordRows')
 
 
 if __name__=='__main__':main()

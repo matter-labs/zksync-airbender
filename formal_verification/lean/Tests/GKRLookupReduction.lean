@@ -1,4 +1,4 @@
-import GKRProtocol.NativeLookup
+import Airbender.Proofs.GKRProtocol.NativeLookup
 
 namespace Tests.GKRLookupReduction
 open Airbender Airbender.Compiler

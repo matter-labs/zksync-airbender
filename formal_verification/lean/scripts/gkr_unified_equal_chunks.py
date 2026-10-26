@@ -16,9 +16,9 @@ def modules(column):
         last=min(first+CHUNK,stop)
         if all(e['mode']=='identical' for group in groups[first:last] for e in group):selected.append((first,last))
     for begin in range(0,len(selected),PER_MODULE):
-        name=f'GKRProtocol.UnifiedEqualParts.Column{column}.Part{begin//PER_MODULE}'
+        name=f'Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column{column}.Part{begin//PER_MODULE}'
         ns=f'Airbender.Compiler.UnifiedEqualChunks.Column{column}'
-        text=('import GKRProtocol.BlockPartsImport\nimport Airbender.Data.GKRSetup.Unified\n'
+        text=('import Airbender.Import.GKRProtocol.BlockPartsImport\nimport Airbender.Data.GKRSetup.Unified\n'
           'import Airbender.Review.Circuits.UnifiedReduced.Tables.NativeFixedData\nimport Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ROMData\n\nnamespace '+ns+'\n'
           'open Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n')
         for first,last in selected[begin:begin+PER_MODULE]:

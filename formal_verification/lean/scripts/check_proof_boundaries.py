@@ -46,6 +46,7 @@ def closure(root):
 
 
 def check():
+    check_compiler_layout()
     for core in CORES:
         if core not in MODULES:
             raise ValueError(f'missing core: {core}')
@@ -61,6 +62,25 @@ def check():
                     name.startswith('Airbender.Proofs.Blake2Round.NativeDiagonalQueries')):
                 raise ValueError('worker imports composed operation proof: ' + ' -> '.join(path))
     return len(CORES), len(LOCAL_WORKERS)
+
+
+def check_compiler_layout():
+    """Keep public compiler semantics independent of their proof calculations."""
+    for legacy in ('GKRCompiler', 'GKRProtocol'):
+        if (ROOT / legacy).exists() or (ROOT / (legacy + '.lean')).exists():
+            raise ValueError('compiler module outside Review/Import/Proofs: ' + legacy)
+    for name, path in MODULES.items():
+        if not name.startswith('Airbender.Review.Compiler.') or name.endswith('.Theorems'):
+            continue
+        if re.search(r'^(?:(?:private|protected)\s+)?(?:theorem|lemma)\s', path.read_text(), re.M):
+            raise ValueError('supporting theorem in compiler review definitions: ' + name)
+        for dependency in IMPORTS[name]:
+            if dependency.startswith('Airbender.Proofs.'):
+                raise ValueError('compiler definitions import calculations: ' + name + ' -> ' + dependency)
+    for name, path in MODULES.items():
+        if name.startswith(('Airbender.Proofs.GKRCompiler.', 'Airbender.Proofs.GKRProtocol.')):
+            if re.search(r'^(?:syntax|elab_rules|elab)\b', path.read_text(), re.M):
+                raise ValueError('compiler reader/elaborator belongs in Import: ' + name)
 
 
 if __name__ == '__main__':

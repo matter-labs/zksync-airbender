@@ -19,9 +19,9 @@ def module(name, case):
     graph = 'Airbender.Compiler.FunctionalNative.' + case + '.native'
     lookup = 'Airbender.Compiler.LookupNative.' + case + '.native'
     product = 'Airbender.Compiler.ProductNative.' + case + '.native'
-    target = 'GKRProtocol.SourceContractNative.' + case
+    target = 'Airbender.Proofs.GKRProtocol.SourceContractNative.' + case
     namespace = 'Airbender.Compiler.SourceContractNative.' + case
-    content = (f'import GKRProtocol.SourceContractImport\nimport GKRProtocol.FunctionalNative.{case}\n\n'
+    content = (f'import Airbender.Import.GKRProtocol.SourceContractImport\nimport Airbender.Proofs.GKRProtocol.FunctionalNative.{case}\n\n'
         f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
         'set_option warningAsError true\nset_option Elab.async false\n'
         'set_option maxRecDepth 32768\nset_option maxHeartbeats 4000000\n\n'

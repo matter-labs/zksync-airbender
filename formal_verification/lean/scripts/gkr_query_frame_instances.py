@@ -18,7 +18,7 @@ def module(name, case, phase=3, start=0, stop=None):
     if stop is None:
         stop = size
     suffix = 'Inputs' if phase == 0 else 'Part' + str(start // 64) if phase == 1 else ''
-    target = 'GKRProtocol.QueryFrameNative.' + case + suffix
+    target = 'Airbender.Proofs.GKRProtocol.QueryFrameNative.' + case + suffix
     namespace = 'Airbender.Compiler.QueryFrameNative.' + case
     prefix = 'Airbender.Compiler.'
     pair = json.loads((root / (name + '.json')).read_text())
@@ -28,11 +28,11 @@ def module(name, case, phase=3, start=0, stop=None):
         if stem:
             query_names.append(prefix + 'LookupSourceNative.' + case + '.native.' + stem + 'Queries')
     query_term = ' ++ '.join(query_names) or '[]'
-    imports = f'import GKRProtocol.QueryFrameImport\nimport GKRProtocol.CounterFrameNative.{case}\n'
+    imports = f'import Airbender.Import.GKRProtocol.QueryFrameImport\nimport Airbender.Proofs.GKRProtocol.CounterFrameNative.{case}\n'
     if phase in [1, 2]:
-        imports += f'import GKRProtocol.QueryFrameNative.{case}Inputs\n'
+        imports += f'import Airbender.Proofs.GKRProtocol.QueryFrameNative.{case}Inputs\n'
     if phase == 2:
-        imports += ''.join(f'import GKRProtocol.QueryFrameNative.{case}Part{index}\n' for index in range((size + 63) // 64))
+        imports += ''.join(f'import Airbender.Proofs.GKRProtocol.QueryFrameNative.{case}Part{index}\n' for index in range((size + 63) // 64))
     content = (imports + '\n'
         f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
         'set_option warningAsError true\nset_option Elab.async false\n'

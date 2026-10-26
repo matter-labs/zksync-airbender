@@ -1,4 +1,4 @@
-import GKRProtocol.HelperValidityNative.AddSubUncached
+import Airbender.Proofs.GKRProtocol.HelperValidityNative.AddSubUncached
 
 namespace Tests.GKRHelperValidity
 open Airbender Airbender.Compiler

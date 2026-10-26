@@ -6,7 +6,7 @@ from gkr_unified_prefix import plans
 
 
 def content():
-    out='import GKRProtocol.ROMNative.UnifiedRows\nimport GKRProtocol.ROMNative.UnifiedTag\n\nnamespace Airbender.Compiler.ROMNative.UnifiedBoundary\nopen Airbender Airbender.Compiler Airbender.Setup\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\nabbrev nativeSetup := UnifiedRows.nativeSetup\n\n'
+    out='import Airbender.Proofs.GKRProtocol.ROMNative.UnifiedRows\nimport Airbender.Proofs.GKRProtocol.ROMNative.UnifiedTag\n\nnamespace Airbender.Compiler.ROMNative.UnifiedBoundary\nopen Airbender Airbender.Compiler Airbender.Setup\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\nabbrev nativeSetup := UnifiedRows.nativeSetup\n\n'
     for col in range(10):
         artifact,blocks,positions,stop,groups,regions=plans(col)
         owner=f'UnifiedPrefixNative.Column{col}' if col==1 else f'UnifiedAllPrefix.Column{col}'
@@ -41,9 +41,9 @@ def content():
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     for flag in ['write','check']:parser.add_argument('--'+flag,action='store_true')
-    args=parser.parse_args();path=LEAN/'GKRProtocol/ROMNative/UnifiedBoundary.lean';text=content()
+    args=parser.parse_args();path=LEAN/'Airbender/Proofs/GKRProtocol/ROMNative/UnifiedBoundary.lean';text=content()
     if args.check and (not path.exists() or path.read_text()!=text):raise ValueError('unified boundary scaffold changed')
     if args.write and (not path.exists() or path.read_text()!=text):path.write_text(text)
-    print('GKRProtocol.ROMNative.UnifiedBoundary')
+    print('Airbender.Proofs.GKRProtocol.ROMNative.UnifiedBoundary')
 
 if __name__=='__main__':main()

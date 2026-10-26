@@ -23,11 +23,11 @@ def modules(name, case):
               'set_option maxRecDepth 32768\nset_option maxHeartbeats 4000000\n\n')
     parts = []
     for start in range(0, len(queries), 8):
-        target = 'GKRProtocol.CleanGenericArgumentsParts.' + case + '.Part' + str(start // 8)
+        target = 'Airbender.Proofs.GKRProtocol.CleanGenericArgumentsParts.' + case + '.Part' + str(start // 8)
         parts.append(target)
-        text = ('import GKRProtocol.CleanGenericArgumentsImport\n'
-                f'import GKRProtocol.CleanArithmeticNative.{case}\n'
-                f'import GKRProtocol.FunctionalLinksNative.{case}\n\n' + header +
+        text = ('import Airbender.Import.GKRProtocol.CleanGenericArgumentsImport\n'
+                f'import Airbender.Proofs.GKRProtocol.CleanArithmeticNative.{case}\n'
+                f'import Airbender.Proofs.GKRProtocol.FunctionalLinksNative.{case}\n\n' + header +
                 f'import_clean_generic_arguments part{start // 8} from "artifacts/compiler/{name}.json"\n'
                 f'  certificate "artifacts/compiler/lookup/{name}.json"\n')
         for key, model in [('clean_model', 'CleanArithmeticNative'), ('base_model', 'FullArithmeticNative'),
@@ -49,7 +49,7 @@ def modules(name, case):
     width = pair['circuit']['generic_lookup_tables_width']
     text += (f'noncomputable def genericExpressions : List (Vector (_root_.Expression Source.BaseField) {width}) :=\n'
              '  [' + ', '.join(names) + ']\n\n' + f'end {namespace}\n')
-    yield 'GKRProtocol.CleanGenericArgumentsNative.' + case, text
+    yield 'Airbender.Proofs.GKRProtocol.CleanGenericArgumentsNative.' + case, text
 
 
 def main():

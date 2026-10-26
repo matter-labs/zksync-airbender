@@ -1,5 +1,5 @@
-import GKRProtocol.FixedSetupNative.JumpBranchMembership
-import GKRProtocol.FixedSetupNative.MulDivMembership
+import Airbender.Proofs.GKRProtocol.FixedSetupNative.JumpBranchMembership
+import Airbender.Proofs.GKRProtocol.FixedSetupNative.MulDivMembership
 
 namespace Tests.GKRFixedLookups
 open Airbender Airbender.Compiler

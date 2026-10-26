@@ -1,4 +1,4 @@
-import GKRProtocol.LookupSourceNative.AddSubCached
+import Airbender.Proofs.GKRProtocol.LookupSourceNative.AddSubCached
 
 namespace Tests.GKRLookupSource
 open Airbender Airbender.Compiler

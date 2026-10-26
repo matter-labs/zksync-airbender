@@ -14,7 +14,7 @@ def module(name, case):
     root = LEAN / 'artifacts/compiler'
     arity = len(synthesize(json.loads((root / (name + '.json')).read_text()),
                            json.loads((root / (name + '-source.json')).read_text()))['inputs'])
-    target = 'GKRProtocol.OracleFrameNative.' + case
+    target = 'Airbender.Proofs.GKRProtocol.OracleFrameNative.' + case
     namespace = 'Airbender.Compiler.OracleFrameNative.' + case
     prefix = 'Airbender.Compiler.'
     base = prefix + 'FullArithmeticNative.' + case + '.native'
@@ -29,7 +29,7 @@ def module(name, case):
     lookup = prefix + 'LookupNative.' + case + '.native'
     product = prefix + 'ProductNative.' + case + '.native'
     typing = prefix + 'ConsumerNative.' + case + '.native.typing'
-    content = (f'import GKRProtocol.OracleFrameImport\nimport GKRProtocol.CounterFrameNative.{case}\nimport GKRProtocol.MaterializedNative.{case}\n\n'
+    content = (f'import Airbender.Import.GKRProtocol.OracleFrameImport\nimport Airbender.Proofs.GKRProtocol.CounterFrameNative.{case}\nimport Airbender.Proofs.GKRProtocol.MaterializedNative.{case}\n\n'
         f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
         'set_option warningAsError true\nset_option Elab.async false\n'
         'set_option maxRecDepth 32768\nset_option maxHeartbeats 4000000\n\n'

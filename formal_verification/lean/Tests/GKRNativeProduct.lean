@@ -1,4 +1,4 @@
-import GKRProtocol.ProductNative.UnifiedUncached
+import Airbender.Proofs.GKRProtocol.ProductNative.UnifiedUncached
 
 namespace Tests.GKRNativeProduct
 open Airbender Airbender.Compiler

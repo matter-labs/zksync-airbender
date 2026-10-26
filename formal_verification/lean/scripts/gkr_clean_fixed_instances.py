@@ -32,10 +32,10 @@ def module(family, stem, model_name, mode):
         ('clean', 'CleanArithmeticNative')]}
     native_fixed = prefix + 'FixedSetupNative.' + stem
     namespace = prefix + 'CleanClosedNative.' + case
-    imports = ['GKRProtocol.CleanArgumentsNative.' + case, 'GKRProtocol.CleanScalarNative.' + case,
-               'GKRProtocol.CleanGenericArgumentsNative.' + case, 'GKRProtocol.FixedPrimitives',
-               'GKRProtocol.FixedSetupNative.' + stem + 'Membership', 'GKRProtocol.CleanLinksNative.' + case,
-               'GKRProtocol.MaterializedWitnessNative.' + case, 'Airbender.Proofs.Constraints']
+    imports = ['Airbender.Proofs.GKRProtocol.CleanArgumentsNative.' + case, 'Airbender.Proofs.GKRProtocol.CleanScalarNative.' + case,
+               'Airbender.Proofs.GKRProtocol.CleanGenericArgumentsNative.' + case, 'Airbender.Proofs.GKRProtocol.FixedPrimitives',
+               'Airbender.Proofs.GKRProtocol.FixedSetupNative.' + stem + 'Membership', 'Airbender.Proofs.GKRProtocol.CleanLinksNative.' + case,
+               'Airbender.Proofs.GKRProtocol.MaterializedWitnessNative.' + case, 'Airbender.Proofs.Constraints']
     text = ''.join('import ' + item + '\n' for item in imports)
     text += (f'\nnamespace {namespace}\nopen Airbender Airbender.Compiler\n'
              'set_option warningAsError true\nset_option Elab.async false\n'
@@ -112,7 +112,7 @@ def module(family, stem, model_name, mode):
              f'    FlatOperation.ConstraintsHoldFlat {environment} {operations} := by\n'
              f'  apply {prefix}CleanLinksNative.{case}.retained_clock_constraints physical data arithmetic\n'
              f'  rw [clock_lookup_inventory]\n  exact PredicateChecks.all {tree}\n\nend {namespace}\n')
-    return 'GKRProtocol.CleanClosedNative.' + case, text
+    return 'Airbender.Proofs.GKRProtocol.CleanClosedNative.' + case, text
 
 
 def main():

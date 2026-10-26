@@ -41,10 +41,10 @@ def content():
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     for flag in ['write','check']:parser.add_argument('--'+flag,action='store_true')
-    args=parser.parse_args();text=content();path=LEAN/'GKRProtocol/UnifiedLogicalRegions.lean'
+    args=parser.parse_args();text=content();path=LEAN/'Airbender/Proofs/GKRProtocol/UnifiedLogicalRegions.lean'
     if args.check and (not path.exists() or path.read_text()!=text):raise ValueError('unified logical region scaffold changed')
     if args.write and (not path.exists() or path.read_text()!=text):path.write_text(text)
-    print('GKRProtocol.UnifiedLogicalRegions')
+    print('Airbender.Proofs.GKRProtocol.UnifiedLogicalRegions')
 
 
 if __name__=='__main__':main()

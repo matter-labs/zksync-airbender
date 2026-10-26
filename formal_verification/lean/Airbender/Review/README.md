@@ -9,6 +9,7 @@ assumptions for human review; supporting proof calculations live in Proofs.
 
 | Result | Where to review it |
 | --- | --- |
+| Captured GKR arithmetic preserves source obligations; framed executor rows compose to Sail execution. | [Compiler claims and boundaries](Compiler/README.md) |
 | Matching plus timestamp/initialization conditions forces complete memory histories and latest-write reads. | [Logical memory result](Helpers/Memory/README.md#logical-memory-result) |
 | Public bytes and original Sail decoding bind the instruction and metadata used by retirement. | [Decoder connections](Helpers/Decoder/README.md#checked-connections) |
 | Accepted selected circuit rows have the stated reference effects under their visible interfaces. | [Circuit results](Circuits/README.md#checked-results) |

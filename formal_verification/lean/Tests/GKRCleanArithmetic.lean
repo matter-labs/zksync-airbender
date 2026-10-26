@@ -1,4 +1,4 @@
-import GKRProtocol.CleanArithmeticNative.AddSubUncached
+import Airbender.Proofs.GKRProtocol.CleanArithmeticNative.AddSubUncached
 
 namespace Tests.GKRCleanArithmetic
 open Airbender Airbender.Compiler

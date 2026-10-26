@@ -12,8 +12,8 @@ def column_module(column):
     artifact=json.loads((LEAN/'artifacts/setup/unified.json').read_text())
     stem=f'UnifiedPrefixNative.Column{column}' if column==1 else f'UnifiedAllPrefix.Column{column}'
     owner=f'Airbender.Compiler.{stem}'
-    name=f'GKRProtocol.UnifiedRegionColumns.Column{column}'
-    out=f'import GKRProtocol.{stem}\nimport GKRProtocol.SixteenRegions\n\nnamespace Airbender.Compiler.UnifiedRegionColumns.Column{column}\nopen Airbender Airbender.Compiler {owner}\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
+    name=f'Airbender.Proofs.GKRProtocol.UnifiedRegionColumns.Column{column}'
+    out=f'import Airbender.Proofs.GKRProtocol.{stem}\nimport Airbender.Proofs.GKRProtocol.SixteenRegions\n\nnamespace Airbender.Compiler.UnifiedRegionColumns.Column{column}\nopen Airbender Airbender.Compiler {owner}\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
     cols=[f'(UnifiedReduced.Setup.{DATA[r["id"]]}.columns[({column} : Nat)])' for r in artifact['tables']]
     for i,region in enumerate(artifact['tables']):
         size=region['length'];offset=region['offset'];data=cols[i]
@@ -38,9 +38,9 @@ def rows_module():
     by_tag={r['id']:r for r in artifact['tables']};starts={};pos=0
     for tag in TAGS:starts[tag]=pos;pos+=by_tag[tag]['length']
     starts[34]=pos
-    name='GKRProtocol.ROMNative.UnifiedRows'
-    out=''.join(f'import GKRProtocol.UnifiedRegionColumns.Column{i}\n' for i in range(10))
-    out+='import GKRProtocol.MaterializedNative.UnifiedUncached\nimport GKRProtocol.UnifiedLogicalRegions\n\nnamespace Airbender.Compiler.ROMNative.UnifiedRows\nopen Airbender Airbender.Compiler Airbender.Setup\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
+    name='Airbender.Proofs.GKRProtocol.ROMNative.UnifiedRows'
+    out=''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedRegionColumns.Column{i}\n' for i in range(10))
+    out+='import Airbender.Proofs.GKRProtocol.MaterializedNative.UnifiedUncached\nimport Airbender.Proofs.GKRProtocol.UnifiedLogicalRegions\n\nnamespace Airbender.Compiler.ROMNative.UnifiedRows\nopen Airbender Airbender.Compiler Airbender.Setup\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
     out+='abbrev nativeSetup := Airbender.Compiler.MaterializedNative.UnifiedUncached.native.model\n\ndef nativeRow (row : Fin 8388608) : Vector Source.BaseField 10 := (nativeSetup.imported.data.row row).map (fun n : Int => (n : Source.BaseField))\n\n'
     for i,region in enumerate(artifact['tables']):
         size=region['length'];offset=region['offset'];data=f'UnifiedReduced.Setup.{DATA[region["id"]]}'
@@ -84,8 +84,8 @@ def main():
             ending='end Airbender.Compiler.UnifiedRegionColumns.Column'+str(column)+'\n'
             chunks=re.split(r'(?=noncomputable def front[0-9]+ :)',text[len(beginning):-len(ending)])
             chunks=[chunk for chunk in chunks if chunk]
-            for i in range(0,16,4):modules.append((f'GKRProtocol.UnifiedRegionParts.Column{column}.Part{i//4}',beginning+''.join(chunks[i:i+4])+ending))
-            modules.append((name,''.join(f'import GKRProtocol.UnifiedRegionParts.Column{column}.Part{i}\n' for i in range(4))))
+            for i in range(0,16,4):modules.append((f'Airbender.Proofs.GKRProtocol.UnifiedRegionParts.Column{column}.Part{i//4}',beginning+''.join(chunks[i:i+4])+ending))
+            modules.append((name,''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedRegionParts.Column{column}.Part{i}\n' for i in range(4))))
     for name,text in modules:
         path=LEAN/(name.replace('.','/')+'.lean')
         if args.check and (not path.exists() or path.read_text()!=text):raise ValueError('unified row scaffold changed: '+name)

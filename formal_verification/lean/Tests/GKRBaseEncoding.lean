@@ -1,6 +1,6 @@
-import GKRProtocol.BaseEncoding
-import GKRProtocol.CacheNative.AddSubCached
-import GKRProtocol.ConsumerNative.AddSubCached
+import Airbender.Proofs.GKRProtocol.BaseEncoding
+import Airbender.Proofs.GKRProtocol.CacheNative.AddSubCached
+import Airbender.Proofs.GKRProtocol.ConsumerNative.AddSubCached
 
 namespace Tests.GKRBaseEncoding
 open Airbender Airbender.Compiler

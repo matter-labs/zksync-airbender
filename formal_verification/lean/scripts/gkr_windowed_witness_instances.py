@@ -12,8 +12,8 @@ def module(mode):
     win='Airbender.Compiler.WindowedNative.'+case
     lookup='Airbender.Compiler.MaterializedWitnessNative.'+case
     frame='Airbender.Compiler.FramedWitnessNative.'+case
-    framed=(LEAN/'GKRProtocol/FramedWitnessNative'/f'{case}.lean').read_text()
-    material=(LEAN/'GKRProtocol/MaterializedWitnessNative'/f'{case}.lean').read_text()
+    framed=(LEAN/'Airbender/Proofs/GKRProtocol/FramedWitnessNative'/f'{case}.lean').read_text()
+    material=(LEAN/'Airbender/Proofs/GKRProtocol/MaterializedWitnessNative'/f'{case}.lean').read_text()
     row=material[material.index('def RowWitness'):material.index('\ntheorem native_lookup_trace_extends')]
     row=row.replace('def RowWitness {R','def ActualRowWitness (publicTops : Nat → Nat) {R')
     row=row.replace(f'Airbender.Compiler.ProductNative.{case}.native.gates',f'{win}.productGates publicTops')
@@ -25,8 +25,8 @@ def module(mode):
     for method in ['canonical','canonical_base','canonical_affines','canonical_lookups','canonical_products']:
         graph=graph.replace(f'{old}.{method} hom',f'{win}.{method} publicTops hom')
     graph=graph.replace('refine ⟨baseValue, values, ?_, externalAgreement⟩','refine ⟨baseValue, values, ?_, rfl, externalAgreement⟩')
-    text=(f'import GKRProtocol.WindowedNative.{case}Tokens\nimport GKRProtocol.WindowedNative.{case}Agreement\n'
-          f'import GKRProtocol.CleanWitnessNative.{case}\n\nnamespace {win}\n'
+    text=(f'import Airbender.Proofs.GKRProtocol.WindowedNative.{case}Tokens\nimport Airbender.Proofs.GKRProtocol.WindowedNative.{case}Agreement\n'
+          f'import Airbender.Proofs.GKRProtocol.CleanWitnessNative.{case}\n\nnamespace {win}\n'
           'open Airbender Airbender.Compiler\n'+f'open {lookup}\n'
           'set_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'+row+'\n'+graph)
     boundary=(LEAN/'scripts/templates/gkr_windowed_witness_boundary.lean').read_text()
@@ -64,7 +64,7 @@ def module(mode):
     complete=complete.replace('  intro R _ hom challenges gamma', '  intro publicTops R _ hom challenges gamma')
     text+='\n'+complete
     # Clean proof only consumes the base-field clauses of the same new witness.
-    clean=(LEAN/'GKRProtocol/CleanWitnessNative'/f'{case}.lean').read_text()
+    clean=(LEAN/'Airbender/Proofs/GKRProtocol/CleanWitnessNative'/f'{case}.lean').read_text()
     clean=clean[clean.index('theorem complete_trace_clean_extends'):clean.index('\nend ')]
     clean=clean.replace('      ∀ {R : Type}', '      ∀ (publicTops : Nat → Nat) {R : Type}')
     clean=clean.replace('CompleteRowWitness hom challenges gamma (sourceValue row) (counts row) row (fallback row) (baseValue row) (values row)',
@@ -74,7 +74,7 @@ def module(mode):
     clean=clean.replace('constructed hom challenges gamma', 'constructed publicTops hom challenges gamma')
     
     text+='\n'+clean+f'\nend {win}\n'
-    return 'GKRProtocol.WindowedNative.'+case+'Witness',text
+    return 'Airbender.Proofs.GKRProtocol.WindowedNative.'+case+'Witness',text
 
 
 def main():

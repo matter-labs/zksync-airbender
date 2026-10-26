@@ -18,6 +18,12 @@ assumptions. Supporting arithmetic and assembly proofs belong in Proofs; a
 separate public wrapper for every internal subcircuit calculation is unnecessary.
 Existing compatibility names and native BabyBear entrypoints remain useful.
 
+The [compiler review](Airbender/Review/Compiler/README.md) exposes four principal
+claims and their semantic definitions. Native JSON readers and concrete capture
+bindings live in Import; certificate checks and supporting calculations live in
+Proofs. The captured-instance scope and the framing/lookup/matching premises
+remain explicit.
+
 [Pooled soundness](Airbender/Review/Trace/Soundness.lean) derives successful
 ordinary execution and native terminal PC/cells from initialized matching.
 [Unified full execution](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean)
@@ -108,8 +114,9 @@ or discharge separate register value/teardown obligations. See the
 
 RAM GKR gates compute encoded token products. Equality of sampled products does
 not deterministically imply token-multiset equality or establish cryptographic
-soundness. Rust/setup correspondence, compiled/cached gate refinement, verifier
-refinement, cryptographic enforcement and completeness remain separate work.
+soundness. Captured compiled/cached gate refinement is now checked as recorded in
+the compiler review. Universal Rust/setup correspondence, verifier refinement,
+cryptographic enforcement and whole-system completeness remain separate work.
 
 ## Public state, profiles and external inputs
 

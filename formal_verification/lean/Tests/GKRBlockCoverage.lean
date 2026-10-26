@@ -1,4 +1,4 @@
-import GKRProtocol.BlockCoverageImport
+import Airbender.Import.GKRProtocol.BlockCoverageImport
 
 namespace Tests.GKRBlockCoverage
 open Airbender Airbender.Compiler

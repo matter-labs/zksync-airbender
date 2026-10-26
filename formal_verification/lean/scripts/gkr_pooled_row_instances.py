@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Compose actual framed compiler rows with public pooled constraints/decoding."""
 import argparse
+from compiler_review_layout import split_row
 import os
 import subprocess
 from export_gkr_translations import LEAN
@@ -23,17 +24,18 @@ def module(case, family):
     arguments=ns('DecoderArgumentsNative')+'.native'
     model={'addSub':'AddSub','jumpBranchSlt':'JumpBranchSlt','mulDiv':'MulDiv',
            'shiftBinop':'ShiftBinop','wordMemory':'WordMemory','subwordMemory':'SubwordMemory'}[family]
-    text=f'''import GKRProtocol.CleanClosedNative.{case}
-import GKRProtocol.DecoderQueryNative.{case}
-import GKRProtocol.FramedWitnessNative.{case}
-import GKRProtocol.PublicConstraints
-import GKRProtocol.ROMNative.WordFullPublic
-import GKRProtocol.ROMNative.SubwordPublic
+    text=f'''import Airbender.Proofs.GKRProtocol.CleanClosedNative.{case}
+import Airbender.Proofs.GKRProtocol.DecoderQueryNative.{case}
+import Airbender.Proofs.GKRProtocol.FramedWitnessNative.{case}
+import Airbender.Proofs.GKRProtocol.PublicConstraints
+import Airbender.Proofs.GKRProtocol.ROMNative.WordFullPublic
+import Airbender.Proofs.GKRProtocol.ROMNative.SubwordPublic
 import Airbender.Review.Helpers.Decoder.PooledProgram
 
 namespace {owner}
 open Airbender Airbender.Compiler
 set_option warningAsError true
+set_option linter.unusedVariables false
 set_option Elab.async false
 set_option maxRecDepth 65536
 set_option maxHeartbeats 4000000
@@ -115,7 +117,7 @@ end {owner}
 '''
     if family=='subwordMemory':
         text=text.replace('(physical : Trace.initialImage', '(_physical : Trace.initialImage').replace('(domain : ROMNative.WordFullPublic.CoversROM', '(_domain : ROMNative.WordFullPublic.CoversROM')
-    return 'GKRProtocol.PooledRowNative.'+case,text
+    return 'Airbender.Proofs.GKRProtocol.PooledRowNative.'+case,text
 
 
 def main():
@@ -127,7 +129,12 @@ def main():
         for mode in ['Uncached','Cached']:
             case=stem+mode
             if args.case and case!=args.case:continue
-            name,text=module(case,family);path=LEAN/(name.replace('.','/')+'.lean')
+            name,text=module(case,family)
+            for target,content in split_row(name,text).items():
+                path=LEAN/(target.replace('.','/')+'.lean')
+                if args.check and (not path.exists() or path.read_text()!=content):raise ValueError('compiler row binding changed: '+target)
+                if args.write and (not path.exists() or path.read_text()!=content):path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content)
+            text=split_row(name,text)[name];path=LEAN/(name.replace('.','/')+'.lean')
             if args.check and (not path.exists() or path.read_text()!=text):raise ValueError('pooled compiler row changed: '+name)
             if args.write and (not path.exists() or path.read_text()!=text):path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text)
             print(name,flush=True)

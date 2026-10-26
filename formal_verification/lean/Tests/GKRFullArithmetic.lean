@@ -1,4 +1,4 @@
-import GKRProtocol.FullArithmeticNative.AddSubCached
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.AddSubCached
 
 namespace Tests.GKRFullArithmetic
 open Airbender Airbender.Compiler

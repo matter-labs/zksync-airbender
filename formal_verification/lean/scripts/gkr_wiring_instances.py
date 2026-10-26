@@ -43,21 +43,21 @@ def generated():
             nc = sum(len(layer["cached_relations"]) for layer in pair["circuit"]["layers"])
             outputs = [body.get("output") for gate in gates for body in gate.values() if "output" in body]
             np = nc + sum(len(output) if isinstance(output, list) else 1 for output in outputs)
-            data = "GKRCompiler.WiringData." + case
-            files[data] = module(case, path, ["GKRCompiler.WiringImport"], "data")
+            data = "Airbender.Proofs.GKRCompiler.WiringData." + case
+            files[data] = module(case, path, ["Airbender.Import.GKRCompiler.WiringImport"], "data")
             jobs.append(data)
-            geometry = "GKRCompiler.WiringParts." + case + "Geometry"
+            geometry = "Airbender.Proofs.GKRCompiler.WiringParts." + case + "Geometry"
             files[geometry] = module(case, path, [data], "geometry")
             jobs.append(geometry)
             imports = [geometry]
             for phase, count in (("unique", np), ("placement", pair["source"]["num_variables"]),
                                  ("gates", len(gates)), ("caches", nc)):
                 for first in range(0, count, 64):
-                    name = "GKRCompiler.WiringParts." + case + phase.title() + str(first // 64)
+                    name = "Airbender.Proofs.GKRCompiler.WiringParts." + case + phase.title() + str(first // 64)
                     files[name] = module(case, path, [data], phase, first, min(64, count - first))
                     jobs.append(name)
                     imports.append(name)
-            name = "GKRCompiler.WiringNative." + case
+            name = "Airbender.Proofs.GKRCompiler.WiringNative." + case
             files[name] = module(case, path, imports, "assemble", public=True)
             jobs.append(name)
     return files, jobs
@@ -79,7 +79,7 @@ def main():
             path.write_text(content)
     actual = {str(path.relative_to(LEAN).with_suffix("")).replace("/", ".")
               for folder in ("WiringData", "WiringParts", "WiringNative")
-              for path in (LEAN / "GKRCompiler" / folder).glob("*.lean")}
+              for path in (LEAN / "Airbender/Proofs/GKRCompiler" / folder).glob("*.lean")}
     if actual != set(files):
         raise SystemExit("Unexpected wiring scaffolding files; review before removing stale shards")
     if args.build:

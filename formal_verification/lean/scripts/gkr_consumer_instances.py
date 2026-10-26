@@ -20,14 +20,14 @@ def main():
         for suffix in ("Uncached", "Cached"):
             namespace = {"typing": "ConsumerNative", "cache": "CacheNative", "lookup": "LookupNative",
                          "source": "LookupSourceNative"}[args.stage]
-            name = "GKRProtocol." + namespace + "." + stem + suffix
+            name = "Airbender.Proofs.GKRProtocol." + namespace + "." + stem + suffix
             if args.stage == "source" and family == "blake-round":
-                module_root = LEAN / "GKRProtocol/LookupSourceNative"
+                module_root = LEAN / "Airbender/Proofs/GKRProtocol/LookupSourceNative"
                 prefix = stem + suffix
                 parts = sorted(module_root.glob(prefix + "Part*.lean"),
                                key=lambda path: int(path.stem.removeprefix(prefix + "Part")))
                 for module in [module_root / (prefix + "Foundation.lean"), *parts]:
-                    target = "GKRProtocol.LookupSourceNative." + module.stem
+                    target = "Airbender.Proofs.GKRProtocol.LookupSourceNative." + module.stem
                     print("SOURCE SHARD", target, flush=True)
                     subprocess.run(["lake", "--no-cache", "build", "+" + target + ":olean"],
                                    cwd=LEAN, env=environment, check=True)

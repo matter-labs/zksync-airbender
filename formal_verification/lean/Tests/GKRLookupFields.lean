@@ -1,6 +1,6 @@
-import GKRProtocol.Native.AddSubCached
-import GKRProtocol.Native.JumpBranchCached
-import GKRProtocol.Native.BigintCached
+import Airbender.Proofs.GKRProtocol.Native.AddSubCached
+import Airbender.Proofs.GKRProtocol.Native.JumpBranchCached
+import Airbender.Proofs.GKRProtocol.Native.BigintCached
 
 namespace Tests.GKRLookupFields
 open Airbender Airbender.Compiler

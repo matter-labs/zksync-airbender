@@ -1,4 +1,4 @@
-import GKRProtocol.FramedWitnessNative.AddSubUncached
+import Airbender.Proofs.GKRProtocol.FramedWitnessNative.AddSubUncached
 
 namespace Tests.GKRMemoryFrames
 open Airbender Airbender.Compiler

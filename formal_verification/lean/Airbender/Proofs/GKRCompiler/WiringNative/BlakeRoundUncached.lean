@@ -1,0 +1,45 @@
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedGeometry
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedUnique0
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedUnique1
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedUnique2
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedUnique3
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedUnique4
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedUnique5
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedUnique6
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedUnique7
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedUnique8
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedUnique9
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedUnique10
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedPlacement0
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedPlacement1
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedPlacement2
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedPlacement3
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedPlacement4
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedPlacement5
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedPlacement6
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedPlacement7
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedPlacement8
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedPlacement9
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedGates0
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedGates1
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedGates2
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedGates3
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedGates4
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedGates5
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedGates6
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedGates7
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedGates8
+import Airbender.Proofs.GKRCompiler.WiringParts.BlakeRoundUncachedGates9
+
+namespace Airbender.Compiler.WiringNative.BlakeRoundUncached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 32768
+set_option maxHeartbeats 4000000
+
+import_compiler_wiring native from "artifacts/compiler/blake-round-uncached.json" phase "assemble" start 0 count 0
+
+theorem wiring_valid : native.graph.Valid := native.sound
+
+end Airbender.Compiler.WiringNative.BlakeRoundUncached

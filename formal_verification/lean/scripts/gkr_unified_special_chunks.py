@@ -14,7 +14,7 @@ def modules(column):
         if all(e['mode']=='identical' for group in groups[first:last] for e in group):continue
         chunk=first//CHUNK
         owner=f'Airbender.Compiler.UnifiedSpecialChunks.Column{column}.Chunk{chunk}'
-        prefix=f'GKRProtocol.UnifiedSpecialParts.Column{column}.Chunk{chunk}'
+        prefix=f'Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column{column}.Chunk{chunk}'
         _,text=pilot(column,first,first,assemble=True,source_start=first,source_end=last,namespace=owner)
         text=text[:text.index('noncomputable def sources')]+'end '+owner+'\n'
         text='\n'.join(line for line in text.split('\n') if not line.startswith('column_blocks_part suffix '))

@@ -70,9 +70,9 @@ def modules(artifact, column):
     targets = []
     for begin in range(0, len(chunks), PER_MODULE):
         part = begin // PER_MODULE
-        target = 'GKRProtocol.ShiftPrefixParts.Column' + str(column) + '.Part' + str(part)
+        target = 'Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column' + str(column) + '.Part' + str(part)
         targets.append(target)
-        text = ('import GKRProtocol.BlockPartsImport\nimport Airbender.Data.GKRSetup.ShiftBinop\n'
+        text = ('import Airbender.Import.GKRProtocol.BlockPartsImport\nimport Airbender.Data.GKRSetup.ShiftBinop\n'
                 'import Airbender.Review.Helpers.Tables.ShiftData\n\n' +
                 f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
                 'set_option warningAsError true\nset_option Elab.async false\n'

@@ -1,5 +1,16 @@
 # GKR compiler semantic preservation
 
+For human review, start with the [four principal claims and their definitions](Airbender/Review/Compiler/README.md).
+Readers and capture bindings are under `Airbender/Import`; supporting calculations
+and generated certificates are under `Airbender/Proofs`. This document retains
+detailed scope, supporting results and historical validation evidence.
+
+The review/import/proof refactor was validated on 26 October 2026: all 34 compiler
+checkpoint targets (three module roots and 31 Tests) pass, as does the exact
+7,766-root axiom audit using only standard Lean axioms. Generator, source-pin,
+layout and provenance controls pass. Compiler Review contains six Lean files
+(288 lines), exposing four principal claims and their definitions.
+
 Semantic preservation is checked for the 22 retained production compilations. Arithmetic translation, graph wiring
 and source lookup-field encoding have kernel-checked instances for all eleven
 production circuit families, with and without caches. All 22 native consumer
@@ -10,7 +21,7 @@ Retained Clean lookup composition is now instantiated for all 22 configurations.
 Public initialization and word/unified/subword ROM-image bindings are checked.
 Full native decoder and selected public-program bindings are checked.
 All fourteen executor row adapters and both whole-trace execution roots pass.
-The exact 7,760-root audit, public-execution checkpoint and normal root/control
+The exact 7,766-root audit, public-execution checkpoint and normal root/control
 builds pass.
 Source-derived timestamp/alignment query identities and their generic clock/range
 semantics are checked. Source primitive/history contracts now construct valid
@@ -46,7 +57,7 @@ setup freshness jobs.
 
 ## Checked arithmetic claims
 
-`GKRCompiler/Polynomial.lean` proves a computable sparse polynomial equality
+`Airbender/Proofs/GKRCompiler/Polynomial.lean` proves a computable sparse polynomial equality
 checker sound over any commutative ring. `Certificate.lean` checks polynomial
 ideal identities and proves backward preservation and constructive witness
 extension. `Arithmetic.lean` connects those identities to original expressions,
@@ -78,7 +89,7 @@ only those standard Lean axioms as applicable.
 
 ## Wiring and source lookup fields
 
-`GKRCompiler/Wiring.lean` checks unique producers, bounded adjacent-layer reads,
+`Airbender/Proofs/GKRCompiler/Wiring.lean` checks unique producers, bounded adjacent-layer reads,
 cache dependencies, original source placements, the scratch-storage bijection
 and complete final-output port coverage. Its importer enumerates every native
 relation variant and rejects the retired batched arithmetic relation. Large
@@ -86,7 +97,7 @@ instances split individual producer, placement, gate and cache checks across
 small modules. `gkr_wiring_instances.py` checks the generated scaffolding and
 builds its 304 module targets strictly sequentially.
 
-`GKRProtocol/Source.lean` types the complete semantic compiler input capture.
+`Airbender/Import/GKRProtocol/Source.lean` types the complete semantic compiler input capture.
 `SourceFields.lean` independently defines authored lookup/range requests,
 decoder columns and family-mask packing, table selectors and zero padding,
 with proved polynomial interpretation. `LookupImport.lean` reconstructs actual
@@ -109,7 +120,7 @@ compiler-generated memory constraints remain required.
 
 ## Native consumer field roles
 
-`GKRProtocol/Typing.lean` checks the field roles of every input and output against
+`Airbender/Proofs/GKRProtocol/Typing.lean` checks the field roles of every input and output against
 the actual graph and its unique producer addresses. It also checks source and
 scratch cells are base-field values and final outputs are extension-field
 values. Every gate and cache, including assertion gates without output ports,
