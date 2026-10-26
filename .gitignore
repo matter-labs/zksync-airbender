@@ -18,8 +18,8 @@ __pycache__/
 *.rscw
 *.tree
 
-# Blake base-commitment packing experiment verifier binaries (the sweep variants of
-# `blake2_with_extended_control`): build them locally with tools/gkr_verifier/dump_bin.sh,
-# never commit them.
-tools/gkr_verifier/circuit_verifiers/*/blake2_with_extended_control_pack*.elf
-tools/gkr_verifier/circuit_verifiers/*/blake2_with_extended_control_virtual.elf
+# Base-commitment packing experiment verifier binaries (the blake sweep variants, the
+# one-off `*_virtual` / `*_pack<k>` experiments): build them locally with
+# tools/gkr_verifier/dump_bin.sh, never commit them.
+tools/gkr_verifier/circuit_verifiers/*/*_pack*.elf
+tools/gkr_verifier/circuit_verifiers/*/*_virtual.elf

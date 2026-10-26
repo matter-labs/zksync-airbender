@@ -196,8 +196,16 @@ impl<F: PrimeField + TwoAdicField> SingleCosetRSQueryable<F> for ColumnMajorBase
                     }
                 }
             }
+            // any other power of two: the same bit-reversed stride layout
             a => {
-                panic!("unsupported: {} values per leaf", a);
+                let offsets = offsets_vec_for_leaf_construction(trace_len, a);
+                for src_poly in self.original_values_normal_order.iter() {
+                    for (j, offset) in offsets.iter().enumerate() {
+                        let i = *offset + index;
+                        let value = src_poly.get(i);
+                        result[j].push(value);
+                    }
+                }
             }
         }
 
@@ -646,8 +654,14 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
                     result.push(value);
                 }
             }
+            // any other power of two: the same bit-reversed stride layout
             a => {
-                panic!("unsupported: {} values per leaf", a);
+                let offsets = offsets_vec_for_leaf_construction(trace_len, a);
+                for offset in offsets.iter() {
+                    let i = *offset + index;
+                    let value = self.values_normal_order.get(i);
+                    result.push(value);
+                }
             }
         }
 

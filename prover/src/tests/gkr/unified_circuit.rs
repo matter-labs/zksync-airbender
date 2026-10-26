@@ -10,7 +10,9 @@ fn gkr_run_unified_test_sec_100() {
 }
 
 fn run_unified_test(level: SecurityLevel) {
-    let proof_suffix = level.dir_suffix();
+    // `sec_100` in the default soundness mode, `sec_100_<mode>` otherwise (or GKR_PROOF_SUFFIX)
+    let proof_suffix = super::orchestration::common::proof_suffix(level);
+    let proof_suffix = proof_suffix.as_str();
     let worker = Worker::new_with_num_threads(8);
 
     // Blake variant selection. Both variants run the same `multi_family_smoke`

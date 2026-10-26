@@ -397,10 +397,10 @@ fn commit_memory_cap(
     let trace_len = columns[0].len();
     assert!(trace_len.is_power_of_two());
     let trace_len_log2 = trace_len.trailing_zeros() as usize;
-    let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
-        trace_len_log2,
-        level,
-    );
+    // the unified circuit's config of the current soundness mode (what `prove_unified_circuit`
+    // proves with), so the cap is bit-identical to the proof's
+    let prover_config = super::common::fixture_prover_config("unified_reduced_machine", level);
+    assert_eq!(prover_config.trace_len_log2, trace_len_log2);
     let twiddles: Twiddles<BabyBearField, Global> = Twiddles::new(trace_len, worker);
     let mem = commit_trace_part::<BabyBearField, BabyBearField, DefaultTreeConstructor, _>(
         &crate::gkr::prover::backend::NaiveBackend,
@@ -864,10 +864,9 @@ pub fn prove_built_unified_trace(
 ) {
     let trace_len: usize = unified_circuit.trace_len;
 
-    let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
-        trace_len.trailing_zeros() as usize,
-        level,
-    );
+    // the circuit definition's config of the current soundness mode
+    let prover_config = super::common::fixture_prover_config("unified_reduced_machine", level);
+    assert_eq!(1usize << prover_config.trace_len_log2, trace_len);
     let unified_twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
     let unified_setup = GKRSetup::construct(
         unified_table_driver,

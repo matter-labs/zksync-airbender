@@ -366,12 +366,81 @@ pub fn soundness_mode() -> crate::definitions::SoundnessMode {
 /// `sec_100` for the default mode (the production fixtures keep their names),
 /// `sec_100_<mode>` otherwise (`verifier_common::test_circuits::fixture_suffix`).
 pub fn proof_suffix(level: crate::definitions::SecurityLevel) -> String {
+    // one-off experiments name their proofs explicitly so the fixtures stay intact
+    if let Ok(suffix) = std::env::var("GKR_PROOF_SUFFIX") {
+        if !suffix.trim().is_empty() {
+            return suffix.trim().to_string();
+        }
+    }
     let mode = soundness_mode();
     if mode == crate::definitions::SoundnessMode::DEFAULT {
         level.dir_suffix().to_string()
     } else {
         format!("{}_{}", level.dir_suffix(), mode.file_suffix())
     }
+}
+
+/// `GKR_BASE_PACKING_OVERRIDE=none|virtual|pack<k>|pack<k>_virtual`: a ONE-OFF
+/// experiment proving every circuit of the run with that base packing (and the
+/// current [`soundness_mode`]) instead of its definition's; the config is
+/// computed on the fly from the circuit's layout and written next to the proof
+/// (`test_proofs/<stem>_<suffix>_prover_config.json`) so the verifier generator
+/// can pick it up. Pair it with `GKR_PROOF_SUFFIX` so the fixtures stay intact.
+pub fn base_packing_override() -> Option<crate::gkr::prover_config::BasePacking> {
+    use crate::gkr::prover_config::BasePacking;
+    let raw = std::env::var("GKR_BASE_PACKING_OVERRIDE").ok()?;
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let (physical, virtual_) = match raw {
+        "none" => (0, false),
+        "virtual" => (0, true),
+        other => {
+            let (pack, virtual_) = match other.strip_suffix("_virtual") {
+                Some(pack) => (pack, true),
+                None => (other, false),
+            };
+            let k = pack
+                .strip_prefix("pack")
+                .and_then(|k| k.parse::<usize>().ok())
+                .unwrap_or_else(|| panic!("unknown GKR_BASE_PACKING_OVERRIDE `{raw}`"));
+            (k, virtual_)
+        }
+    };
+    Some(BasePacking {
+        physical_packing_log2: physical,
+        virtual_packing: virtual_,
+    })
+}
+
+fn one_off_prover_config(
+    stem: &str,
+    level: crate::definitions::SecurityLevel,
+    packing: crate::gkr::prover_config::BasePacking,
+) -> crate::gkr::prover_config::ProverConfig {
+    use crate::gkr::prover_config::{example_configs, BaseColumns};
+    let layout_path = format!("{}/generated/layout.json", circuit_definition_dir(stem));
+    let file = std::fs::File::open(&layout_path).unwrap_or_else(|e| panic!("{layout_path}: {e}"));
+    let compiled: cs::gkr_compiler::GKRCircuitArtifact<BabyBearField> =
+        serde_json::from_reader(std::io::BufReader::new(file))
+            .unwrap_or_else(|e| panic!("{layout_path}: {e}"));
+    let config = example_configs::prover_config(
+        soundness_mode(),
+        level,
+        compiled.trace_len.trailing_zeros() as usize,
+        packing,
+        Some(&BaseColumns::of(&compiled)),
+    );
+    let out = format!("test_proofs/{stem}_{}_prover_config.json", proof_suffix(level));
+    let mut dst = std::fs::File::create(&out).unwrap_or_else(|e| panic!("{out}: {e}"));
+    serde_json::to_writer_pretty(&mut dst, &config).unwrap();
+    println!(
+        "one-off prover config for {stem}: {:?} in {:?}, written to {out}",
+        packing,
+        soundness_mode()
+    );
+    config
 }
 
 /// The circuit-definition crate of a proof stem (relative to `prover/`).
@@ -406,6 +475,15 @@ pub fn fixture_prover_config(
     stem: &str,
     level: crate::definitions::SecurityLevel,
 ) -> crate::gkr::prover_config::ProverConfig {
+    // the override only applies to the circuits selected for proving: the others
+    // never prove, and their shape may have no certified schedule
+    if let Some(packing) = base_packing_override() {
+        let selected = parse_circuits_filter()
+            .is_none_or(|filter| filter.contains(stem));
+        if selected {
+            return one_off_prover_config(stem, level, packing);
+        }
+    }
     let path = format!(
         "{}/generated/prover_config_{}_{}.json",
         circuit_definition_dir(stem),

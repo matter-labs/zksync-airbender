@@ -152,6 +152,44 @@ fn run_transpiler_on_with_output(
     exact_cycles
 }
 
+/// ONE-OFF: run the proof `prover/test_proofs/<ONE_OFF_CIRCUIT>_<ONE_OFF_PROOF_SUFFIX>_gkr_proof.json`
+/// on the verifier program `ONE_OFF_ELF`; the flamegraph is
+/// `gkr_flamegraph_<circuit>_<suffix>.svg`.
+#[test]
+#[ignore = "one-off experiments; driven by ONE_OFF_CIRCUIT / ONE_OFF_PROOF_SUFFIX / ONE_OFF_ELF"]
+fn one_off_from_env() {
+    let name = std::env::var("ONE_OFF_CIRCUIT").expect("ONE_OFF_CIRCUIT");
+    let suffix = std::env::var("ONE_OFF_PROOF_SUFFIX").expect("ONE_OFF_PROOF_SUFFIX");
+    let elf_path = std::env::var("ONE_OFF_ELF").expect("ONE_OFF_ELF");
+    let circuit = common::circuit_by_name(&name);
+    let proof_path = format!(
+        "{}/../prover/test_proofs/{}_{}_gkr_proof.json",
+        env!("CARGO_MANIFEST_DIR"),
+        name,
+        suffix
+    );
+    let proof: prover::gkr::prover::GKRProof<
+        BabyBearField,
+        field::baby_bear::ext4::BabyBearExt4,
+        prover::merkle_trees::DefaultTreeConstructor,
+    > = serde_json::from_reader(std::io::BufReader::new(
+        std::fs::File::open(&proof_path).unwrap_or_else(|e| panic!("{proof_path}: {e}")),
+    ))
+    .unwrap();
+    let compiled = circuit.compiled_circuit();
+    let nds = verifier_common::gkr::flatten::flatten_gkr_proof_for_nds::<
+        BabyBearField,
+        field::baby_bear::ext4::BabyBearExt4,
+        prover::merkle_trees::DefaultTreeConstructor,
+    >(&proof, &compiled);
+    run_transpiler_on(
+        &format!("{}_{}", name, suffix),
+        nds,
+        proof.external_challenges,
+        elf_path,
+    );
+}
+
 macro_rules! generate_transpiler_tests {
     ($($name:ident; $prod_path:expr),* $(,)?) => {
         paste::paste! {

@@ -624,11 +624,12 @@ mod tests {
         // 123 - (message + 1) - ceil_log2(ceiling), lifted to 100
         let expected = [(23, 128, 8), (24, 128, 9), (22, 512, 9), (20, 1024, 8)];
         for (message, ceiling, bits) in expected {
-            let entry = ENTRIES
+            for entry in ENTRIES
                 .iter()
-                .find(|e| e.message_size_log2 == message && e.max_committed_polys == ceiling)
-                .unwrap();
-            assert_eq!(entry.batching_pow_bits(), bits, "2^{message}");
+                .filter(|e| e.message_size_log2 == message && e.max_committed_polys == ceiling)
+            {
+                assert_eq!(entry.batching_pow_bits(), bits, "2^{message}");
+            }
         }
     }
 

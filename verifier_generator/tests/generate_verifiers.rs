@@ -320,6 +320,32 @@ fn blake2_with_extended_control_variants() {
     }
 }
 
+/// ONE-OFF: generate a verifier for `ONE_OFF_CIRCUIT` from the prover config
+/// file `ONE_OFF_CONFIG` (e.g. the `test_proofs/<circuit>_<suffix>_prover_config.json`
+/// a `GKR_BASE_PACKING_OVERRIDE` prover run writes) into
+/// `verifier/src/generated/<circuit>/<ONE_OFF_DIR_SUFFIX>/`.
+#[test]
+#[ignore = "one-off experiments; driven by ONE_OFF_CIRCUIT / ONE_OFF_CONFIG / ONE_OFF_DIR_SUFFIX"]
+fn one_off_from_prover_config_file() {
+    let name = std::env::var("ONE_OFF_CIRCUIT").expect("ONE_OFF_CIRCUIT");
+    let config_path = std::env::var("ONE_OFF_CONFIG").expect("ONE_OFF_CONFIG");
+    let dir_suffix = std::env::var("ONE_OFF_DIR_SUFFIX").expect("ONE_OFF_DIR_SUFFIX");
+    let circuit = CIRCUITS.iter().find(|c| c.name == name).expect("registered circuit");
+    let file = std::fs::File::open(&config_path).unwrap_or_else(|e| panic!("{config_path}: {e}"));
+    let prover_config: prover::gkr::prover_config::ProverConfig =
+        serde_json::from_reader(std::io::BufReader::new(file)).unwrap();
+    assert_eq!(
+        circuit.compiled_circuit().trace_len.trailing_zeros() as usize,
+        prover_config.trace_len_log2,
+    );
+    prover_config.validate_for_whir_message_size(prover_config.whir_message_size_log2());
+    generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
+        circuit,
+        &prover_config,
+        &dir_suffix,
+    );
+}
+
 macro_rules! generate_circuit_tests {
     ($($name:ident; $prod_path:expr),* $(,)?) => {
         $(

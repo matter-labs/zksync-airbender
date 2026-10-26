@@ -37,10 +37,9 @@ macro_rules! generate_native_tests {
                 fn [<$name _pessimistic_conjecture>]() {
                     run_native(stringify!($name), SecurityLevel::Sec100, SoundnessMode::PessimisticConjecture);
                 }
-                /// Needs the `<circuit>_sec_100_ethproofs_soundcalc` proof fixture
-                /// (proved with the circuit's EthproofsSoundnessCalc config).
+                /// The `<circuit>_sec_100_ethproofs_soundcalc` proof fixture (proved with
+                /// the circuit's EthproofsSoundnessCalc config) on the verifier of that mode.
                 #[test]
-                #[ignore = "ethproofs_soundcalc proof fixtures are not generated yet"]
                 fn [<$name _ethproofs_soundcalc>]() {
                     run_native(stringify!($name), SecurityLevel::Sec100, SoundnessMode::EthproofsSoundnessCalc);
                 }
