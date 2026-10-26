@@ -1,5 +1,5 @@
 //! End-to-end check of the PACKED base commitment on the CPU verifier: the
-//! generated `blake2_with_extended_control/sec_100_pack4` verifier (see
+//! generated `blake2_with_extended_control/pessimistic_conjecture_pack4` verifier (see
 //! `generate_verifiers.rs::blake2_with_extended_control_pack4`) against the
 //! `pack_log2 = 4` proof fixture. The generated module is included by path
 //! (as `full_statement_verifier` does), so regenerate before running this.
@@ -10,7 +10,7 @@
 use verifier_common::errors::DebugErrorCreator;
 use verifier_common::test_circuits::packed_fixture;
 
-#[path = "../../verifier/src/generated/blake2_with_extended_control/sec_100_pack4/mod.rs"]
+#[path = "../../verifier/src/generated/blake2_with_extended_control/pessimistic_conjecture_pack4/mod.rs"]
 #[allow(dead_code, unused_imports, clippy::all)]
 mod packed_verifier;
 

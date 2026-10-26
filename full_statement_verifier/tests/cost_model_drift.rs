@@ -10,7 +10,6 @@ mod trace;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 use verifier_common::prover::gkr::prover::GKRProof;
-use verifier_common::prover::gkr::prover_config::example_configs::config_for_100_bits_under_pessimistic_conjecture;
 use verifier_common::prover::merkle_trees::DefaultTreeConstructor;
 
 const EXPECTED: &[(&str, u64)] = &[
@@ -59,17 +58,18 @@ fn guest_cycles(circuit: &str) -> u64 {
 
     // A stale proof and stale guest can agree with each other while both lag
     // behind the current prover. Check the fixture before executing the guest.
-    let whir = &proof.whir_proof;
-    assert!(whir.final_monomials.len().is_power_of_two());
-    let trace_len_log2 = whir.whir_schedule.total_poly_size_reduction()
-        + whir.final_monomials.len().ilog2() as usize;
+    let circuit_data = verifier_common::test_circuits::CIRCUITS
+        .iter()
+        .find(|c| c.name == circuit)
+        .unwrap_or_else(|| panic!("{circuit}: not a registered fixture circuit"));
+    let level = verifier_common::test_circuits::SecurityLevel::Sec100;
     assert_eq!(
-        whir.whir_schedule,
-        config_for_100_bits_under_pessimistic_conjecture(trace_len_log2).whir_schedule,
+        proof.whir_proof.whir_schedule,
+        circuit_data.whir_schedule_for(level).clone(),
         "{circuit}: stale proof fixture; regenerate the Sec100 proofs and per-circuit verifier binaries together"
     );
 
-    let elf_path = format!("{root}/tools/gkr_verifier/{circuit}_sec_100.elf");
+    let elf_path = circuit_data.elf_path_for(level);
     assert!(
         std::path::Path::new(&elf_path).exists(),
         "open {elf_path}: no such file"

@@ -662,7 +662,7 @@ fn test_program_prover_recursion_layer_verify() {
     // Stage 2: prove the fsv base-layer verifier over the base proof's stream.
     let (fsv_binary, fsv_text) = ProgramSource::elf(
         artifact_root()
-            .join("tools/gkr_verifier/fsv_unrolled_base_layer_sec_100_blake2_with_compression.elf"),
+            .join("tools/gkr_verifier/full_statement_verifiers/fsv_unrolled_base_layer_sec_100_blake2_with_compression.elf"),
     )
     .load_unpadded();
     let stream = build_unrolled_stream(&base_setups, &base_proof);

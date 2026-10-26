@@ -14,7 +14,11 @@ fn repo_root() -> PathBuf {
 /// `dump_bin.sh` scripts.
 fn artifact_dirs() -> Vec<PathBuf> {
     let root = repo_root();
-    let mut dirs = vec![root.join("tools/gkr_verifier")];
+    let mut dirs = vec![
+        root.join("tools/gkr_verifier/full_statement_verifiers"),
+        root.join("tools/gkr_verifier/circuit_verifiers/pessimistic_conjecture"),
+        root.join("tools/gkr_verifier/circuit_verifiers/ethproofs_soundcalc"),
+    ];
     for base in [
         root.join("examples"),
         root.join("riscv_transpiler/examples"),

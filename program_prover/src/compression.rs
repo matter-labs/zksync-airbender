@@ -72,7 +72,7 @@ pub struct L1CompressionResult {
 ///
 /// * `input_proof` / `input_setups` — the converged pipeline artifact (must
 ///   carry a recursion chain; must be exactly 1 unified + 1 delegation proof).
-/// * `fsv_dir` — the checked-in verifier programs, `tools/gkr_verifier`.
+/// * `fsv_dir` — the checked-in verifier programs, `tools/gkr_verifier/full_statement_verifiers`.
 /// * `proth120_circuit_layout_path` — the compiled
 ///   `unified_reduced_machine_layout_gkr_proth120.json`.
 /// * `feeder_storage` — the WHIR oracle storage policy of the BabyBear feeder
@@ -336,7 +336,7 @@ mod diagnostics {
         ));
         let stream = build_unified_stream(&setups, &proof);
         let (bin, text) = load_fsv_program(
-            "../tools/gkr_verifier",
+            "../tools/gkr_verifier/full_statement_verifiers",
             FsvProgram::UnifiedRecursionLayer,
             BlakeMode::BlakeSpecialOpcodes,
         );

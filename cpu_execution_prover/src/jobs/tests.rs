@@ -98,7 +98,7 @@ fn prove(
 #[test]
 fn a_delegation_proof_verifies_natively() {
     use execution_prover::backend::CircuitPrecomputation;
-    use full_statement_verifier::imports::blake2_g_function_sec_100;
+    use full_statement_verifier::imports::pessimistic_conjecture::blake2_g_function;
     use verifier_common::errors::DebugErrorCreator;
 
     let (precomputations, proved) = prove(|caps| caps);
@@ -112,7 +112,7 @@ fn a_delegation_proof_verifies_natively() {
         .stack_size(1 << 27)
         .spawn(move || {
             let mut source = stream.into_iter();
-            blake2_g_function_sec_100::verify::<_, DebugErrorCreator>(&challenges, &mut source)
+            blake2_g_function::verify::<_, DebugErrorCreator>(&challenges, &mut source)
                 .expect("the verifier rejected a proof this handler produced");
         })
         .unwrap()

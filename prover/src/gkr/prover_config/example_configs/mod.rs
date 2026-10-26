@@ -24,7 +24,6 @@
 use crate::definitions::*;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::PrimeField;
-use serde::{Deserialize, Serialize};
 
 use super::pow_bits::physically_committed_polys;
 use super::*;
@@ -39,42 +38,7 @@ pub use ethproofs_soundcalc::{
 pub use pessimistic_conjecture::*;
 pub use special_configs::*;
 
-/// Which soundness accounting a default configuration is computed under.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum SoundnessMode {
-    /// The in-house capacity-conjecture accounting
-    /// ([`PessimisticConjectureMode`](crate::gkr::whir::proximity_testing_modes::PessimisticConjectureMode):
-    /// one query at rate `ρ` is worth `log2(1/ρ)` bits, plus 20 % extra
-    /// queries; no folding-challenge or OOD proof of work): the production
-    /// ladders of [`pessimistic_conjecture`].
-    PessimisticConjecture,
-    /// Schedules certified at the security level by `ethereum/soundcalc`
-    /// (commit `2af5e7d`, 2026-09-21): a unique-decoding base round, Johnson
-    /// bound later rounds with an explicit multiplicity, a proof of work on
-    /// every folding challenge and on the single OOD sample of every oracle.
-    /// See [`ethproofs_soundcalc`].
-    EthproofsSoundnessCalc,
-}
-
-impl SoundnessMode {
-    pub const ALL: &'static [SoundnessMode] = &[
-        SoundnessMode::PessimisticConjecture,
-        SoundnessMode::EthproofsSoundnessCalc,
-    ];
-
-    /// The mode of the configs proved and verified by default (every tracked
-    /// proof / verifier fixture).
-    pub const DEFAULT: SoundnessMode = SoundnessMode::PessimisticConjecture;
-
-    /// Suffix of the serialized config files
-    /// (`generated/prover_config_<level>_<suffix>.json`).
-    pub fn file_suffix(self) -> &'static str {
-        match self {
-            SoundnessMode::PessimisticConjecture => "pessimistic_conjecture",
-            SoundnessMode::EthproofsSoundnessCalc => "ethproofs_soundcalc",
-        }
-    }
-}
+pub use crate::definitions::SoundnessMode;
 
 /// How a circuit's base columns are committed. Physical and virtual packing
 /// are independent: physical packing commits `2^physical_packing_log2`

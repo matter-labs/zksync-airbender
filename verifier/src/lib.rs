@@ -13,7 +13,8 @@ mod __generated {
         ($($name:ident; $prod_path:expr),* $(,)?) => {
             $(
                 pub mod $name {
-                    pub mod sec_100;
+                    pub mod pessimistic_conjecture;
+                    pub mod ethproofs_soundcalc;
                 }
             )*
         };

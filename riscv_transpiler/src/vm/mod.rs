@@ -692,7 +692,7 @@ pub(crate) mod test {
     #[serial_test::serial]
     fn test_pretty_show_assembly() {
         let text = crate::elf::read_elf_from_path(
-            Path::new("../tools/gkr_verifier/add_sub_lui_auipc_mop_sec_100.elf"),
+            Path::new("../tools/gkr_verifier/circuit_verifiers/pessimistic_conjecture/add_sub_lui_auipc_mop.elf"),
             crate::elf::ElfReadMode::Legacy,
         )
         .unwrap()

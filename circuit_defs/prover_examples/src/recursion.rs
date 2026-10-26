@@ -64,7 +64,7 @@ mod tests {
     const UNIFIED_CYCLES_BOUND: usize = 1 << 27;
     const RAM_BOUND: usize = 1 << 30;
 
-    const FSV_DIR: &str = "../../tools/gkr_verifier";
+    const FSV_DIR: &str = "../../tools/gkr_verifier/full_statement_verifiers";
 
     // ---- pure helpers -------------------------------------------------------
 
@@ -899,12 +899,9 @@ mod tests {
         let stream = build_unified_stream(&setups, &proof);
 
         let program = ProgramConfig {
-            binary_path: format!(
-                "{FSV_DIR}/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.bin"
-            ),
-            text_section_path: format!(
-                "{FSV_DIR}/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.text"
-            ),
+            program: riscv_transpiler::elf::ProgramSource::elf(format!(
+                "{FSV_DIR}/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.elf"
+            )),
             non_determinism_reads: stream,
             cycles_bound: 1 << 22,
             ram_bound_bytes: 1 << 30,

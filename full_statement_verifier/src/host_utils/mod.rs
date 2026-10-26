@@ -1,6 +1,7 @@
 pub mod cost_model;
 pub mod fixture_codec;
 
+use verifier_common::prover::definitions::{SecurityLevel, SoundnessMode};
 use crate::program_proof::ProgramProof;
 use crate::recursion_chain::{self, RecursionChain};
 use setups::Setups;
@@ -38,8 +39,18 @@ fn flattened_caps(setups: &Setups) -> impl Iterator<Item = &[u32]> {
         .map(|params| MerkleTreeCap::flatten_single(&params.setup_caps))
 }
 
+/// [`native_verify_unrolled_in_mode`] in the default soundness mode.
 #[cfg(feature = "verifiers")]
 pub fn native_verify_unrolled(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
+    native_verify_unrolled_in_mode(stream, is_base, SoundnessMode::DEFAULT)
+}
+
+#[cfg(feature = "verifiers")]
+pub fn native_verify_unrolled_in_mode(
+    stream: Vec<u32>,
+    is_base: bool,
+    mode: SoundnessMode,
+) -> [u32; 16] {
     use verifier_common::errors::DebugErrorCreator;
     std::thread::Builder::new()
         .name("unrolled verifier".to_string())
@@ -47,17 +58,17 @@ pub fn native_verify_unrolled(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
         .spawn(move || {
             let mut it = stream.into_iter();
             let result = if is_base {
-                crate::unrolled_proof_statement::verify_unrolled_base_layer_sec_100::<
+                crate::unrolled_proof_statement::verify_unrolled_base_layer::<
                     _,
                     DebugErrorCreator,
                     USE_REDUCED_BLAKE2_ROUNDS,
-                >(&mut it)
+                >(&mut it, SecurityLevel::Sec100, mode)
             } else {
-                crate::unrolled_proof_statement::verify_unrolled_recursion_layer_sec_100::<
+                crate::unrolled_proof_statement::verify_unrolled_recursion_layer::<
                     _,
                     DebugErrorCreator,
                     USE_REDUCED_BLAKE2_ROUNDS,
-                >(&mut it)
+                >(&mut it, SecurityLevel::Sec100, mode)
             };
             result.expect("unrolled proof must verify")
         })
@@ -66,8 +77,18 @@ pub fn native_verify_unrolled(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
         .expect("verifier thread must not panic")
 }
 
+/// [`native_verify_unified_in_mode`] in the default soundness mode.
 #[cfg(feature = "verifiers")]
 pub fn native_verify_unified(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
+    native_verify_unified_in_mode(stream, is_base, SoundnessMode::DEFAULT)
+}
+
+#[cfg(feature = "verifiers")]
+pub fn native_verify_unified_in_mode(
+    stream: Vec<u32>,
+    is_base: bool,
+    mode: SoundnessMode,
+) -> [u32; 16] {
     use verifier_common::errors::DebugErrorCreator;
     std::thread::Builder::new()
         .name("unified verifier".to_string())
@@ -75,17 +96,17 @@ pub fn native_verify_unified(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
         .spawn(move || {
             let mut it = stream.into_iter();
             let result = if is_base {
-                crate::unified_circuit_statement::verify_unified_circuit_base_layer_sec_100::<
+                crate::unified_circuit_statement::verify_unified_circuit_base_layer::<
                     _,
                     DebugErrorCreator,
                     USE_REDUCED_BLAKE2_ROUNDS,
-                >(&mut it)
+                >(&mut it, SecurityLevel::Sec100, mode)
             } else {
-                crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100::<
+                crate::unified_circuit_statement::verify_unified_circuit_recursion_layer::<
                     _,
                     DebugErrorCreator,
                     USE_REDUCED_BLAKE2_ROUNDS,
-                >(&mut it)
+                >(&mut it, SecurityLevel::Sec100, mode)
             };
             result.expect("unified proof must verify")
         })

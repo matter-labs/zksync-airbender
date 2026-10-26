@@ -1,17 +1,20 @@
 mod common;
 
-use common::SecurityLevel;
+use common::{SecurityLevel, SoundnessMode};
 use field::baby_bear::base::BabyBearField;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::*;
 use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 use riscv_transpiler::vm::*;
 
-fn run_transpiler(name: &str, level: SecurityLevel) {
-    let (nds, external_challenges) = common::load_nds(name, level);
-    let elf_path = common::elf_path(name, level);
+/// The circuit's proof fixture of `mode` on its RISC-V verifier program of
+/// `mode` (`tools/gkr_verifier/circuit_verifiers/<mode>/<circuit>.elf`); the
+/// flamegraph is `gkr_flamegraph_<circuit>_<mode>.svg`.
+fn run_transpiler(name: &str, level: SecurityLevel, mode: SoundnessMode) {
+    let (nds, external_challenges) = common::load_nds_in_mode(name, level, mode);
+    let elf_path = common::elf_path_in_mode(name, level, mode);
     run_transpiler_on(
-        &format!("{}_{}", name, level.dir_suffix()),
+        &format!("{}_{}", name, mode.file_suffix()),
         nds,
         external_challenges,
         elf_path,
@@ -155,8 +158,13 @@ macro_rules! generate_transpiler_tests {
             $(
                 #[test]
                 #[ignore = "requires RISC-V binaries from tools/gkr_verifier"]
-                fn [<$name _sec_100>]() {
-                    run_transpiler(stringify!($name), SecurityLevel::Sec100);
+                fn [<$name _pessimistic_conjecture>]() {
+                    run_transpiler(stringify!($name), SecurityLevel::Sec100, SoundnessMode::PessimisticConjecture);
+                }
+                #[test]
+                #[ignore = "requires RISC-V binaries from tools/gkr_verifier and the ethproofs_soundcalc proof fixture"]
+                fn [<$name _ethproofs_soundcalc>]() {
+                    run_transpiler(stringify!($name), SecurityLevel::Sec100, SoundnessMode::EthproofsSoundnessCalc);
                 }
             )*
         }
@@ -167,18 +175,15 @@ verifier_common::gkr_circuits!(generate_transpiler_tests);
 /// The PACKED-base-commitment fixture (`blake2_with_extended_control` proved
 /// with `pack_log2 = 4`, see `verifier_common::test_circuits::packed_fixture`)
 /// on its own RISC-V verifier binary
-/// `tools/gkr_verifier/blake2_with_extended_control_sec_100_pack4.*`
-/// (build it with `dump_bin.sh blake2_with_extended_control_sec_100_pack4`).
-/// Compare its cycle count with `blake2_with_extended_control_sec_100`.
+/// `tools/gkr_verifier/circuit_verifiers/pessimistic_conjecture/blake2_with_extended_control_pack4.elf`
+/// (build it with `dump_bin.sh blake2_with_extended_control_pack4_pessimistic_conjecture`).
+/// Compare its cycle count with `blake2_with_extended_control_pessimistic_conjecture`.
 #[test]
 #[ignore = "requires RISC-V binaries from tools/gkr_verifier"]
 fn blake2_with_extended_control_sec_100_pack4() {
     use verifier_common::test_circuits::packed_fixture;
     let (nds, external_challenges) = packed_fixture::load_nds();
-    let elf_path = common::elf_path(packed_fixture::CIRCUIT_NAME, SecurityLevel::Sec100);
-    let suffix = format!("_{}", packed_fixture::DIR_SUFFIX);
-    let packed = elf_path.replace("_sec_100", &suffix);
-    assert_ne!(packed, elf_path, "unexpected binary path layout: {elf_path}");
+    let packed = packed_fixture::elf_path();
     run_transpiler_on(
         &format!(
             "{}_{}",
@@ -195,7 +200,7 @@ fn blake2_with_extended_control_sec_100_pack4() {
 /// `verifier_common::test_circuits::blake_variants::BlakeVariant` (physical
 /// packing 2^0..=2^4, two or one value(s) per column per base leaf) on its own
 /// RISC-V verifier program `tools/gkr_verifier/blake2_with_extended_control_sec_100{infix}.elf`
-/// (build them with `dump_bin.sh blake2_with_extended_control_sec_100...`).
+/// (build them with `dump_bin.sh blake2_with_extended_control_<variant>_pessimistic_conjecture`).
 /// Every verifier must accept its fixture; the cycle counts land in
 /// `flamegraphs/blake_variants/cycles.txt` next to one flamegraph per variant.
 /// `GKR_BLAKE_VARIANTS=_pack2,_pack3_virtual` (comma-separated infixes,

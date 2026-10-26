@@ -18,8 +18,8 @@ macro_rules! make_circuits {
             name: stringify!($name),
             production_path: $prod_path,
             security_levels: [SecurityLevel::Sec100],
-            prover_configs_cache: [OnceLock::new()],
-            nds_cache: [OnceLock::new()],
+            prover_configs_cache: [[const { OnceLock::new() }; NUM_SOUNDNESS_MODES]; NUM_SECURITY_LEVELS],
+            nds_cache: [[const { OnceLock::new() }; NUM_SOUNDNESS_MODES]; NUM_SECURITY_LEVELS],
         }),*]
     };
 }
@@ -29,15 +29,42 @@ pub static CIRCUITS: LazyLock<Vec<CircuitData>> = LazyLock::new(|| gkr_circuits!
 pub use prover::definitions::SecurityLevel;
 
 const NUM_SECURITY_LEVELS: usize = 1;
+const NUM_SOUNDNESS_MODES: usize = SoundnessMode::ALL.len();
+
+fn mode_index(mode: SoundnessMode) -> usize {
+    SoundnessMode::ALL
+        .iter()
+        .position(|m| *m == mode)
+        .expect("every soundness mode is listed in SoundnessMode::ALL")
+}
+
+/// The name of the generated-verifier folder (under a circuit's
+/// `verifier/src/generated/<circuit>/`) and of the `tools/gkr_verifier`
+/// circuit-verifier subfolder of a soundness mode. The security level is
+/// fixed at 100 bits, so it does not appear in the name.
+pub fn verifier_dir_name(mode: SoundnessMode) -> &'static str {
+    mode.file_suffix()
+}
+
+/// Suffix of the (level, mode) fixtures that predate the soundness modes —
+/// proof files and flamegraphs: the DEFAULT mode keeps the plain `sec_100`
+/// names of the production artifacts, every other mode appends its name.
+pub fn fixture_suffix(level: SecurityLevel, mode: SoundnessMode) -> String {
+    if mode == SoundnessMode::DEFAULT {
+        level.dir_suffix().to_string()
+    } else {
+        format!("{}_{}", level.dir_suffix(), mode.file_suffix())
+    }
+}
 
 pub struct CircuitData {
     pub name: &'static str,
     pub production_path: &'static str,
     #[allow(dead_code)]
     security_levels: [SecurityLevel; NUM_SECURITY_LEVELS],
-    prover_configs_cache: [OnceLock<ProverConfig>; NUM_SECURITY_LEVELS],
-    nds_cache: [OnceLock<(Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>)>;
-        NUM_SECURITY_LEVELS],
+    prover_configs_cache: [[OnceLock<ProverConfig>; NUM_SOUNDNESS_MODES]; NUM_SECURITY_LEVELS],
+    nds_cache: [[OnceLock<(Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>)>;
+        NUM_SOUNDNESS_MODES]; NUM_SECURITY_LEVELS],
 }
 
 impl CircuitData {
@@ -62,9 +89,13 @@ impl CircuitData {
     }
 
     pub fn prover_config_for(&self, level: SecurityLevel) -> &ProverConfig {
-        let idx = level as usize;
-        self.prover_configs_cache[idx].get_or_init(|| {
-            let path = self.prover_config_path_for(level);
+        self.prover_config_for_mode(level, SoundnessMode::DEFAULT)
+    }
+
+    /// The serialized config of `mode` (see [`Self::prover_config_path_for_mode`]).
+    pub fn prover_config_for_mode(&self, level: SecurityLevel, mode: SoundnessMode) -> &ProverConfig {
+        self.prover_configs_cache[level as usize][mode_index(mode)].get_or_init(|| {
+            let path = self.prover_config_path_for_mode(level, mode);
             let config: ProverConfig = deserialize_from_file(&path);
             assert_eq!(
                 1usize << config.trace_len_log2,
@@ -79,12 +110,23 @@ impl CircuitData {
         &self.prover_config_for(level).whir_schedule
     }
 
+    pub fn whir_schedule_for_mode(&self, level: SecurityLevel, mode: SoundnessMode) -> &WhirSchedule {
+        &self.prover_config_for_mode(level, mode).whir_schedule
+    }
+
     pub fn proof_path_for(&self, level: SecurityLevel) -> String {
+        self.proof_path_for_mode(level, SoundnessMode::DEFAULT)
+    }
+
+    /// The proof fixture proved with the config of `mode`
+    /// (`prover/test_proofs/<name>_<fixture_suffix>_gkr_proof.json`, see
+    /// [`fixture_suffix`]).
+    pub fn proof_path_for_mode(&self, level: SecurityLevel, mode: SoundnessMode) -> String {
         format!(
             "{}/prover/test_proofs/{}_{}_gkr_proof.json",
             REPO_ROOT,
             self.name,
-            level.dir_suffix()
+            fixture_suffix(level, mode)
         )
     }
 
@@ -106,18 +148,33 @@ impl CircuitData {
         }
     }
 
-    /// The verifier program's ELF (built by `tools/gkr_verifier/dump_bin.sh`).
+    /// The verifier program's ELF in the default mode (built by
+    /// `tools/gkr_verifier/dump_bin.sh`).
     pub fn elf_path_for(&self, level: SecurityLevel) -> String {
+        self.elf_path_for_mode(level, SoundnessMode::DEFAULT)
+    }
+
+    /// The verifier program's ELF of `mode`:
+    /// `tools/gkr_verifier/circuit_verifiers/<mode>/<name>.elf`.
+    pub fn elf_path_for_mode(&self, level: SecurityLevel, mode: SoundnessMode) -> String {
+        assert_eq!(level, SecurityLevel::Sec100, "the verifier programs are built for 100 bits");
         format!(
-            "{}/tools/gkr_verifier/{}_{}.elf",
+            "{}/tools/gkr_verifier/circuit_verifiers/{}/{}.elf",
             REPO_ROOT,
-            self.name,
-            level.dir_suffix()
+            verifier_dir_name(mode),
+            self.name
         )
     }
 
+    /// The circuit's generated-verifier root (`verifier/src/generated/<name>`),
+    /// holding one folder per soundness mode ([`Self::generated_dir_for_mode`])
+    /// plus the special variants.
     pub fn generated_dir(&self) -> String {
         format!("{}/verifier/src/generated/{}", REPO_ROOT, self.name)
+    }
+
+    pub fn generated_dir_for_mode(&self, mode: SoundnessMode) -> String {
+        format!("{}/{}", self.generated_dir(), verifier_dir_name(mode))
     }
 
     pub fn common_generated_dir() -> String {
@@ -128,7 +185,15 @@ impl CircuitData {
         &self,
         level: SecurityLevel,
     ) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
-        deserialize_from_file(&self.proof_path_for(level))
+        self.proof_for_mode(level, SoundnessMode::DEFAULT)
+    }
+
+    pub fn proof_for_mode(
+        &self,
+        level: SecurityLevel,
+        mode: SoundnessMode,
+    ) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
+        deserialize_from_file(&self.proof_path_for_mode(level, mode))
     }
 
     pub fn compiled_circuit(&self) -> GKRCircuitArtifact<BabyBearField> {
@@ -152,10 +217,18 @@ impl CircuitData {
         &self,
         level: SecurityLevel,
     ) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
-        self.nds_cache[level as usize]
+        self.load_nds_for_mode(level, SoundnessMode::DEFAULT)
+    }
+
+    pub fn load_nds_for_mode(
+        &self,
+        level: SecurityLevel,
+        mode: SoundnessMode,
+    ) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
+        self.nds_cache[level as usize][mode_index(mode)]
             .get_or_init(|| {
                 let circuit = self.compiled_circuit();
-                let proof = self.proof_for(level);
+                let proof = self.proof_for_mode(level, mode);
                 let nds = flatten_gkr_proof_for_nds::<
                     BabyBearField,
                     BabyBearExt4,
@@ -177,8 +250,9 @@ pub mod packed_fixture {
 
     pub const CIRCUIT_NAME: &str = "blake2_with_extended_control";
     pub const PACK_LOG2: usize = 4;
-    /// Output dir suffix (under the circuit's generated dir) of the packed verifier.
-    pub const DIR_SUFFIX: &str = "sec_100_pack4";
+    /// Output dir (under the circuit's generated dir) of the packed verifier:
+    /// a pessimistic-conjecture variant.
+    pub const DIR_SUFFIX: &str = "pessimistic_conjecture_pack4";
 
     pub fn circuit() -> &'static CircuitData {
         CIRCUITS
@@ -209,6 +283,18 @@ pub mod packed_fixture {
         format!("{}/{}", circuit().generated_dir(), DIR_SUFFIX)
     }
 
+    /// The packed verifier program:
+    /// `circuit_verifiers/pessimistic_conjecture/blake2_with_extended_control_pack4.elf`.
+    pub fn elf_path() -> String {
+        format!(
+            "{}/tools/gkr_verifier/circuit_verifiers/{}/{}_pack{}.elf",
+            REPO_ROOT,
+            verifier_dir_name(SoundnessMode::PessimisticConjecture),
+            CIRCUIT_NAME,
+            PACK_LOG2
+        )
+    }
+
     pub fn proof() -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
         deserialize_from_file(&proof_path())
     }
@@ -232,8 +318,9 @@ pub mod virtual_packing_fixture {
     use super::*;
 
     pub const CIRCUIT_NAME: &str = "blake2_with_extended_control";
-    /// Output dir suffix (under the circuit's generated dir) of the virtual-packing verifier.
-    pub const DIR_SUFFIX: &str = "sec_100_virtual";
+    /// Output dir (under the circuit's generated dir) of the virtual-packing
+    /// verifier: a pessimistic-conjecture variant.
+    pub const DIR_SUFFIX: &str = "pessimistic_conjecture_virtual";
 
     pub fn circuit() -> &'static CircuitData {
         CIRCUITS
@@ -323,15 +410,16 @@ pub mod blake_variants {
             infix
         }
 
-        /// Output dir suffix under the circuit's generated dir, and the
-        /// suffix of the RISC-V binaries: `sec_100{infix}`.
+        /// Output dir under the circuit's generated dir (the sweep is a
+        /// pessimistic-conjecture variant): `pessimistic_conjecture{infix}`.
         pub fn dir_suffix(&self) -> String {
-            format!("sec_100{}", self.infix())
+            format!("{}{}", verifier_dir_name(SoundnessMode::PessimisticConjecture), self.infix())
         }
 
-        /// `blake2_with_extended_control_sec_100{infix}`.
+        /// `blake2_with_extended_control_sec_100{infix}`: the proof fixture
+        /// and flamegraph stem.
         pub fn name(&self) -> String {
-            format!("{}_{}", CIRCUIT_NAME, self.dir_suffix())
+            format!("{}_sec_100{}", CIRCUIT_NAME, self.infix())
         }
 
         pub fn circuit() -> &'static CircuitData {
@@ -371,9 +459,16 @@ pub mod blake_variants {
         }
 
         /// The RISC-V verifier binaries `tools/gkr_verifier/<name>.{bin,text,elf}`.
-        /// The variant's verifier program (built by `tools/gkr_verifier/dump_bin.sh`).
+        /// The variant's verifier program (built by `tools/gkr_verifier/dump_bin.sh`):
+        /// `circuit_verifiers/pessimistic_conjecture/blake2_with_extended_control{infix}.elf`.
         pub fn elf_path(&self) -> String {
-            format!("{}/tools/gkr_verifier/{}.elf", REPO_ROOT, self.name())
+            format!(
+                "{}/tools/gkr_verifier/circuit_verifiers/{}/{}{}.elf",
+                REPO_ROOT,
+                verifier_dir_name(SoundnessMode::PessimisticConjecture),
+                CIRCUIT_NAME,
+                self.infix()
+            )
         }
 
         pub fn proof(&self) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {

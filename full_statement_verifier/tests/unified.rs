@@ -8,7 +8,7 @@ use common_constants::{
     REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
 };
 use full_statement_verifier::program_proof::ProgramProof;
-use full_statement_verifier::unified_circuit_statement::verify_unified_circuit_base_layer_sec_100;
+use full_statement_verifier::pessimistic_conjecture::verify_unified_circuit_base_layer;
 use verifier_common::cs::gkr_compiler::GKRCircuitArtifact;
 use verifier_common::errors::DebugErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
@@ -129,7 +129,7 @@ fn run_unified_base_layer(responses: Vec<u32>) -> Result<[u32; 16], ()> {
         .stack_size(1 << 27)
         .spawn(move || {
             let mut src = responses.into_iter();
-            verify_unified_circuit_base_layer_sec_100::<_, DebugErrorCreator, REDUCED_ROUNDS>(
+            verify_unified_circuit_base_layer::<_, DebugErrorCreator, REDUCED_ROUNDS>(
                 &mut src,
             )
         })
@@ -228,14 +228,14 @@ fn rejects_duplicated_multi_instance() {
     );
 }
 
-fn fsv_binary_section_path(ext: &str) -> String {
+fn fsv_elf_path() -> String {
     format!(
-        "{}/../tools/gkr_verifier/fsv_unified_base_layer_sec_100.{}",
+        "{}/../tools/gkr_verifier/full_statement_verifiers/fsv_unified_base_layer_sec_100.elf",
         env!("CARGO_MANIFEST_DIR"),
-        ext
     )
 }
 
+#[allow(dead_code)]
 fn load_binary_section(path: &str) -> Vec<u32> {
     let bytes = std::fs::read(path).unwrap_or_else(|_| {
         panic!("Missing {path} — run `cd tools/gkr_verifier && ./dump_bin.sh` (or gkr_test.sh `binaries`)")
@@ -269,8 +269,13 @@ fn unified_base_layer_transpiler_accepts_valid_proof() {
     let expected_output = run_unified_base_layer(oracle_responses.clone())
         .expect("fixture must verify natively before the transpiler run");
 
-    let binary = load_binary_section(&fsv_binary_section_path("bin"));
-    let text_section = load_binary_section(&fsv_binary_section_path("text"));
+    let elf_path = fsv_elf_path();
+    assert!(
+        std::path::Path::new(&elf_path).exists(),
+        "Missing {elf_path} — run `cd tools/gkr_verifier && ./dump_bin.sh fsv_unified_base_layer_sec_100` (or gkr_test.sh `binaries`)"
+    );
+    let (binary, text_section) =
+        full_statement_verifier::host_utils::load_program(std::path::Path::new(&elf_path));
 
     let instructions: Vec<Instruction> =
         preprocess_bytecode::<ReducedMachineDecoderConfig, true>(&text_section);

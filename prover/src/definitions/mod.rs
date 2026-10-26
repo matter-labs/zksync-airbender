@@ -48,6 +48,46 @@ impl SecurityLevel {
     }
 }
 
+/// Which soundness accounting a default prover configuration is computed under
+/// (`prover_config::example_configs`). Lives next to [`SecurityLevel`] so that
+/// `no_std` verifier crates can name it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum SoundnessMode {
+    /// The in-house capacity-conjecture accounting
+    /// ([`PessimisticConjectureMode`](crate::gkr::whir::proximity_testing_modes::PessimisticConjectureMode):
+    /// one query at rate `ρ` is worth `log2(1/ρ)` bits, plus 20 % extra
+    /// queries; no folding-challenge or OOD proof of work): the production
+    /// ladders of `example_configs::pessimistic_conjecture`.
+    PessimisticConjecture,
+    /// Schedules certified at the security level by `ethereum/soundcalc`
+    /// (commit `2af5e7d`, 2026-09-21): a unique-decoding base round, Johnson
+    /// bound later rounds with an explicit multiplicity, a proof of work on
+    /// every folding challenge and on the single OOD sample of every oracle.
+    /// See `example_configs::ethproofs_soundcalc`.
+    EthproofsSoundnessCalc,
+}
+
+impl SoundnessMode {
+    pub const ALL: &'static [SoundnessMode] = &[
+        SoundnessMode::PessimisticConjecture,
+        SoundnessMode::EthproofsSoundnessCalc,
+    ];
+
+    /// The mode of the configs proved and verified by default (every tracked
+    /// proof / verifier fixture).
+    pub const DEFAULT: SoundnessMode = SoundnessMode::PessimisticConjecture;
+
+    /// Suffix of the serialized config files
+    /// (`generated/prover_config_<level>_<suffix>.json`).
+    pub fn file_suffix(self) -> &'static str {
+        match self {
+            SoundnessMode::PessimisticConjecture => "pessimistic_conjecture",
+            SoundnessMode::EthproofsSoundnessCalc => "ethproofs_soundcalc",
+        }
+    }
+}
+
+
 use cs::definitions::gkr::AddressSpaceType;
 
 pub use self::hash_like_holder::*;

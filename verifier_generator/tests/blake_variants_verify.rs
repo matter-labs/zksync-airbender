@@ -1,5 +1,5 @@
 //! End-to-end checks of the blake base-round comparison sweep on the CPU
-//! verifier: every generated `blake2_with_extended_control/sec_100{infix}`
+//! verifier: every generated `blake2_with_extended_control/pessimistic_conjecture{infix}`
 //! verifier (see `generate_verifiers.rs::blake2_with_extended_control_variants`)
 //! against its proof fixture (the prover's
 //! `gkr_blake_delegation_variant_sweep_sec_100`). The generated modules are
@@ -14,34 +14,34 @@ use prover::definitions::GKRExternalChallenges;
 use verifier_common::errors::DebugErrorCreator;
 use verifier_common::test_circuits::blake_variants::BlakeVariant;
 
-#[path = "../../verifier/src/generated/blake2_with_extended_control/sec_100/mod.rs"]
+#[path = "../../verifier/src/generated/blake2_with_extended_control/pessimistic_conjecture_pack0/mod.rs"]
 #[allow(dead_code, unused_imports, clippy::all)]
 mod verifier_sec_100;
-#[path = "../../verifier/src/generated/blake2_with_extended_control/sec_100_virtual/mod.rs"]
+#[path = "../../verifier/src/generated/blake2_with_extended_control/pessimistic_conjecture_virtual/mod.rs"]
 #[allow(dead_code, unused_imports, clippy::all)]
 mod verifier_sec_100_virtual;
-#[path = "../../verifier/src/generated/blake2_with_extended_control/sec_100_pack1/mod.rs"]
+#[path = "../../verifier/src/generated/blake2_with_extended_control/pessimistic_conjecture_pack1/mod.rs"]
 #[allow(dead_code, unused_imports, clippy::all)]
 mod verifier_sec_100_pack1;
-#[path = "../../verifier/src/generated/blake2_with_extended_control/sec_100_pack1_virtual/mod.rs"]
+#[path = "../../verifier/src/generated/blake2_with_extended_control/pessimistic_conjecture_pack1_virtual/mod.rs"]
 #[allow(dead_code, unused_imports, clippy::all)]
 mod verifier_sec_100_pack1_virtual;
-#[path = "../../verifier/src/generated/blake2_with_extended_control/sec_100_pack2/mod.rs"]
+#[path = "../../verifier/src/generated/blake2_with_extended_control/pessimistic_conjecture_pack2/mod.rs"]
 #[allow(dead_code, unused_imports, clippy::all)]
 mod verifier_sec_100_pack2;
-#[path = "../../verifier/src/generated/blake2_with_extended_control/sec_100_pack2_virtual/mod.rs"]
+#[path = "../../verifier/src/generated/blake2_with_extended_control/pessimistic_conjecture_pack2_virtual/mod.rs"]
 #[allow(dead_code, unused_imports, clippy::all)]
 mod verifier_sec_100_pack2_virtual;
-#[path = "../../verifier/src/generated/blake2_with_extended_control/sec_100_pack3/mod.rs"]
+#[path = "../../verifier/src/generated/blake2_with_extended_control/pessimistic_conjecture_pack3/mod.rs"]
 #[allow(dead_code, unused_imports, clippy::all)]
 mod verifier_sec_100_pack3;
-#[path = "../../verifier/src/generated/blake2_with_extended_control/sec_100_pack3_virtual/mod.rs"]
+#[path = "../../verifier/src/generated/blake2_with_extended_control/pessimistic_conjecture_pack3_virtual/mod.rs"]
 #[allow(dead_code, unused_imports, clippy::all)]
 mod verifier_sec_100_pack3_virtual;
-#[path = "../../verifier/src/generated/blake2_with_extended_control/sec_100_pack4/mod.rs"]
+#[path = "../../verifier/src/generated/blake2_with_extended_control/pessimistic_conjecture_pack4/mod.rs"]
 #[allow(dead_code, unused_imports, clippy::all)]
 mod verifier_sec_100_pack4;
-#[path = "../../verifier/src/generated/blake2_with_extended_control/sec_100_pack4_virtual/mod.rs"]
+#[path = "../../verifier/src/generated/blake2_with_extended_control/pessimistic_conjecture_pack4_virtual/mod.rs"]
 #[allow(dead_code, unused_imports, clippy::all)]
 mod verifier_sec_100_pack4_virtual;
 

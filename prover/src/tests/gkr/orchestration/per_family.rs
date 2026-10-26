@@ -396,10 +396,9 @@ pub fn prove_non_mem_family<const CIRCUIT_TYPE: u8, C>(
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
 {
-    let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
-        trace_len.trailing_zeros() as usize,
-        level,
-    );
+    // the circuit definition's config of the current soundness mode
+    let prover_config = super::common::fixture_prover_config(circuit_stem, level);
+    assert_eq!(1usize << prover_config.trace_len_log2, trace_len);
     prove_non_mem_family_with_prover_config::<CIRCUIT_TYPE, C>(
         snapshotter,
         tape,
@@ -578,14 +577,17 @@ where
             );
         }
 
-        let proof = prove_built_family_trace(
+        // the circuit definition's config of the current soundness mode
+        let prover_config = super::common::fixture_prover_config(circuit_stem, level);
+        assert_eq!(1usize << prover_config.trace_len_log2, trace_len);
+        let proof = prove_built_family_trace_with_prover_config(
             &circuit,
             &table_driver,
             decoder_table_data,
             built.full_trace,
             trace_len,
             external_challenges,
-            level,
+            &prover_config,
             worker,
         );
 
@@ -672,10 +674,9 @@ pub fn prove_inits_and_teardowns(
         );
     }
 
-    let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
-        trace_len.trailing_zeros() as usize,
-        level,
-    );
+    // the circuit definition's config of the current soundness mode
+    let prover_config = super::common::fixture_prover_config("inits_and_teardowns", level);
+    assert_eq!(1usize << prover_config.trace_len_log2, circuit.trace_len);
     use crate::gkr::prover::{Backend, TwiddleSetOps};
     let backend = DefaultBabyBearBackend::default();
     let twiddles = <DefaultBabyBearBackend as Backend<BabyBearField, BabyBearExt4>>::make_twiddles(

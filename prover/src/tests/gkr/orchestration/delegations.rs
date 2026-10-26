@@ -69,6 +69,10 @@ impl DelegationProveOutput {
 /// Which base-round geometry a delegation test proves with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BaseCommitmentVariant {
+    /// The circuit definition's own config in the current soundness mode
+    /// (`common::fixture_prover_config`): the production fixture, plain
+    /// proof name.
+    Production,
     /// The standard config packed by `2^pack_log2`
     /// (`packed_config_for_security_level_under_pessimistic_conjecture`;
     /// `pack_log2 = 0` is the plain config).
@@ -80,14 +84,20 @@ pub enum BaseCommitmentVariant {
 }
 
 impl BaseCommitmentVariant {
-    pub const DEFAULT: Self = Self::Packed { pack_log2: 0 };
+    pub const DEFAULT: Self = Self::Production;
 
     pub fn prover_config(
         self,
+        stem: &str,
         trace_len_log2: usize,
         level: SecurityLevel,
     ) -> crate::gkr::prover_config::ProverConfig {
         match self {
+            Self::Production => {
+                let config = super::common::fixture_prover_config(stem, level);
+                assert_eq!(config.trace_len_log2, trace_len_log2, "{stem}");
+                config
+            }
             Self::Packed { pack_log2 } => {
                 example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
                     trace_len_log2,
@@ -110,6 +120,7 @@ impl BaseCommitmentVariant {
     /// virtual packing.
     pub fn proof_name_infix(self) -> String {
         match self {
+            Self::Production => String::new(),
             // `_pack0` (not the empty infix): the circuit's own production
             // fixture is the plain `sec_100` name
             Self::Packed { pack_log2 } => format!("_pack{pack_log2}"),
@@ -147,6 +158,7 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
     num_delegation_cycles: usize,
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
     level: SecurityLevel,
+    stem: &str,
     variant: BaseCommitmentVariant,
     should_prove: bool,
     proof_path: &str,
@@ -191,7 +203,7 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
     }
 
     let prover_config =
-        variant.prover_config(num_delegation_cycles.trailing_zeros() as usize, level);
+        variant.prover_config(stem, num_delegation_cycles.trailing_zeros() as usize, level);
     let pack_log2 = prover_config.pack_log2();
     // the packed commitment interpolates over the enlarged 2^(N + pack_log2) domain
     let twiddles: Twiddles<_, Global> =
@@ -377,6 +389,7 @@ where
         BLAKE_NUM_DELEGATION_CYCLES,
         external_challenges,
         level,
+        "blake2_with_extended_control",
         variant,
         should_prove,
         &format!(
@@ -459,6 +472,7 @@ where
         BIGINT_NUM_DELEGATION_CYCLES,
         external_challenges,
         level,
+        "bigint_with_extended_control",
         BaseCommitmentVariant::DEFAULT,
         should_prove,
         &format!(
@@ -540,6 +554,7 @@ where
         KECCAK_NUM_DELEGATION_CYCLES,
         external_challenges,
         level,
+        "keccak_special5",
         BaseCommitmentVariant::DEFAULT,
         should_prove,
         &format!(
@@ -625,6 +640,7 @@ where
         BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES,
         external_challenges,
         level,
+        "blake2_g_function",
         BaseCommitmentVariant::DEFAULT,
         should_prove,
         &format!(
@@ -726,6 +742,7 @@ where
         circuit.trace_len,
         external_challenges,
         level,
+        stem,
         BaseCommitmentVariant::DEFAULT,
         should_prove,
         &format!("test_proofs/{stem}_{proof_suffix}_gkr_proof.json"),

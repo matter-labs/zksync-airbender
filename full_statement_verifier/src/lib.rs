@@ -3,8 +3,12 @@
 pub use verifier_common;
 
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
-mod constants;
+pub mod delegation_circuits_setups;
 pub mod definitions;
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
+pub mod soundness_modes;
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
+pub use soundness_modes::{ethproofs_soundcalc, pessimistic_conjecture};
 
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub mod delegation_params;

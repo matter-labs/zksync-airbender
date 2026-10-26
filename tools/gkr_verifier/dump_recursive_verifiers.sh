@@ -18,7 +18,7 @@
 # We do NOT build the unified base-layer verifier — the recursion pipeline never
 # uses it (it only verifies a unified proof at the recursion layer).
 #
-# Output files are e.g. `fsv_unrolled_recursion_layer_sec_100_blake2_with_compression.elf`.
+# Output files are e.g. `full_statement_verifiers/fsv_unrolled_recursion_layer_sec_100_blake2_with_compression.elf`.
 # The naming contract lives in `verifier_common::fsv_binaries` (FsvProgram::file_stem);
 # drivers load the files via `full_statement_verifier::host_utils::load_fsv_program`,
 # selecting variants with the RECURSION_UNROLLED_BLAKE / RECURSION_BRIDGE_BLAKE /
@@ -50,8 +50,8 @@ build_variant() {
     mode="$2"
     echo "==> building ${circuit} (blake: ${mode}, variant: ${VARIANT})"
     ./dump_bin.sh --blake "${mode}" --variant "${VARIANT}" "${circuit}"
-    mv -f "${circuit}.elf" "${circuit}_${mode}.elf"
-    echo "    wrote ${circuit}_${mode}.elf"
+    mv -f "full_statement_verifiers/${circuit}.elf" "full_statement_verifiers/${circuit}_${mode}.elf"
+    echo "    wrote full_statement_verifiers/${circuit}_${mode}.elf"
 }
 
 # Unrolled-machine recursive verifiers: blake round function.

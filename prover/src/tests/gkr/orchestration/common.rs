@@ -345,6 +345,80 @@ pub fn hardcoded_external_challenges() -> GKRExternalChallenges<BabyBearField, B
 /// `None` (unset or empty) means no filter — prove every circuit applicable
 /// to the active mode. Orchestration prove fns use this to gate individual
 /// sub-circuit proves.
+/// The soundness mode the family / delegation proofs are produced in:
+/// `GKR_SOUNDNESS_MODE=pessimistic_conjecture` (default) or
+/// `ethproofs_soundcalc`. Every circuit is proved with the config its circuit
+/// definition serialized for that mode ([`fixture_prover_config`]), so the
+/// proofs match the verifiers generated from the same files.
+pub fn soundness_mode() -> crate::definitions::SoundnessMode {
+    use crate::definitions::SoundnessMode;
+    match std::env::var("GKR_SOUNDNESS_MODE").ok().as_deref() {
+        None | Some("") => SoundnessMode::DEFAULT,
+        Some(raw) => SoundnessMode::ALL
+            .iter()
+            .copied()
+            .find(|m| m.file_suffix() == raw.trim())
+            .unwrap_or_else(|| panic!("unknown GKR_SOUNDNESS_MODE `{raw}`")),
+    }
+}
+
+/// The proof-file suffix of `level` in the current [`soundness_mode`]:
+/// `sec_100` for the default mode (the production fixtures keep their names),
+/// `sec_100_<mode>` otherwise (`verifier_common::test_circuits::fixture_suffix`).
+pub fn proof_suffix(level: crate::definitions::SecurityLevel) -> String {
+    let mode = soundness_mode();
+    if mode == crate::definitions::SoundnessMode::DEFAULT {
+        level.dir_suffix().to_string()
+    } else {
+        format!("{}_{}", level.dir_suffix(), mode.file_suffix())
+    }
+}
+
+/// The circuit-definition crate of a proof stem (relative to `prover/`).
+fn circuit_definition_dir(stem: &str) -> &'static str {
+    match stem {
+        "add_sub_lui_auipc_mop" => "../circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
+        "bigint_with_extended_control" => "../circuit_defs/bigint_with_control",
+        "blake2_g_function" => "../circuit_defs/blake2_g_function",
+        "blake2_with_extended_control" => "../circuit_defs/blake2_with_compression",
+        "inits_and_teardowns" => "../circuit_defs/unrolled_circuits/inits_and_teardowns",
+        "jump_branch_slt" => "../circuit_defs/unrolled_circuits/jump_branch_slt",
+        "keccak_chi5" => "../circuit_defs/keccak_chi5",
+        "keccak_column_parity" => "../circuit_defs/keccak_column_parity",
+        "keccak_special5" => "../circuit_defs/keccak_special5",
+        "keccak_theta_rho" => "../circuit_defs/keccak_theta_rho",
+        "mem_subword_only" => "../circuit_defs/unrolled_circuits/load_store_subword_only",
+        "mem_word_only" => "../circuit_defs/unrolled_circuits/load_store_word_only",
+        "shift_binop" => "../circuit_defs/unrolled_circuits/shift_binary",
+        "unified_reduced_machine" => "../circuit_defs/unrolled_circuits/unified_reduced_machine",
+        "unsigned_mul_div" => "../circuit_defs/unrolled_circuits/mul_div_unsigned",
+        other => panic!("no circuit definition is registered for the proof stem {other}"),
+    }
+}
+
+/// The prover config the circuit definition of `stem` serialized for `level`
+/// in the current [`soundness_mode`]
+/// (`<crate>/generated/prover_config_<level>_<mode>.json`, written by the
+/// crate's artifact generator from its geometry and compiled circuit): the
+/// single source of a fixture proof's geometry, and the config the circuit's
+/// verifier of that mode is generated from.
+pub fn fixture_prover_config(
+    stem: &str,
+    level: crate::definitions::SecurityLevel,
+) -> crate::gkr::prover_config::ProverConfig {
+    let path = format!(
+        "{}/generated/prover_config_{}_{}.json",
+        circuit_definition_dir(stem),
+        level.dir_suffix(),
+        soundness_mode().file_suffix()
+    );
+    let file = std::fs::File::open(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
+    let config: crate::gkr::prover_config::ProverConfig =
+        serde_json::from_reader(std::io::BufReader::new(file))
+            .unwrap_or_else(|e| panic!("{path}: {e}"));
+    config
+}
+
 pub fn parse_circuits_filter() -> Option<std::collections::HashSet<String>> {
     let raw = std::env::var("GKR_CIRCUITS").ok()?;
     if raw.trim().is_empty() {

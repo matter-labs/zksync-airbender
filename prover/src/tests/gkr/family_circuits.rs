@@ -51,8 +51,10 @@ fn gkr_run_basic_unrolled_test_sec_100() {
             super::orchestration::common::ProgramConfig::hashed_fibonacci_blake_compression()
         }
         Some("bigint_with_control") => super::orchestration::common::ProgramConfig {
-            binary_path: "../examples/bigint_with_control/app.bin".into(),
-            text_section_path: "../examples/bigint_with_control/app.text".into(),
+            program: riscv_transpiler::elf::ProgramSource::legacy_binaries(
+                "../examples/bigint_with_control/app.bin",
+                "../examples/bigint_with_control/app.text",
+            ),
             non_determinism_reads: vec![],
             cycles_bound: 1 << 20,
             ram_bound_bytes: RAM_BOUND_BYTES,
@@ -191,7 +193,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
     _maybe_gpu_unrolled_comparison_hook: Option<Box<dyn Fn()>>,
     _maybe_gpu_delegation_comparison_hook: Option<Box<dyn Fn()>>,
 ) {
-    let proof_suffix = level.dir_suffix();
+    // `sec_100` in the default soundness mode, `sec_100_<mode>` otherwise
+    let proof_suffix = super::orchestration::common::proof_suffix(level);
+    let proof_suffix = proof_suffix.as_str();
     type CountersT = riscv_transpiler::vm::DelegationsAndFamiliesCounters;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;

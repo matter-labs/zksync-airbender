@@ -1,7 +1,8 @@
 use std::io::Write;
 
 use prover::field::baby_bear::base::BabyBearField;
-use verifier_common::test_circuits::{CircuitData, SecurityLevel, CIRCUITS};
+use verifier_common::test_circuits::{CircuitData, SecurityLevel, CIRCUITS, verifier_dir_name};
+use prover::gkr::prover_config::SoundnessMode;
 use verifier_generator::field_wrapper::FieldWrapper;
 use verifier_generator::gkr::GKRGeneratedFiles;
 use verifier_generator::{gkr, utils, whir, DefaultBabyBearField};
@@ -39,9 +40,11 @@ fn generate_common<MW: FieldWrapper>() {
     let max_fold_steps = CIRCUITS
         .iter()
         .flat_map(|c| {
-            LEVELS_TO_GENERATE
-                .iter()
-                .flat_map(move |&level| c.whir_schedule_for(level).fold_steps())
+            LEVELS_TO_GENERATE.iter().flat_map(move |&level| {
+                SoundnessMode::ALL
+                    .iter()
+                    .flat_map(move |&mode| c.whir_schedule_for_mode(level, mode).fold_steps())
+            })
         })
         .max()
         .unwrap();
@@ -153,12 +156,19 @@ fn ensure_common() {
     });
 }
 
+/// The verifier of `circuit` for the config of `mode` at `level`, generated
+/// into `verifier/src/generated/<circuit>/<mode>/`.
 fn generate_verifier_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
     circuit: &CircuitData,
     level: SecurityLevel,
+    mode: SoundnessMode,
 ) {
-    let prover_config = circuit.prover_config_for(level);
-    generate_verifier_for_circuit_with_config::<MW>(circuit, prover_config, level.dir_suffix());
+    let prover_config = circuit.prover_config_for_mode(level, mode);
+    generate_verifier_for_circuit_with_config::<MW>(
+        circuit,
+        prover_config,
+        verifier_dir_name(mode),
+    );
 }
 
 /// Like [`generate_verifier_for_circuit`] but with an EXPLICIT prover config,
@@ -226,7 +236,8 @@ fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBe
 /// BabyBear's two-adicity cap (base LDE 16; round-0 queries 87 -> 21), the
 /// schedule terminates at a plain-text 2^3 tail, and the base commitment is
 /// the MERGED memory+witness tree (one Merkle path per round-0 query instead
-/// of two). Generated into `.../unified_reduced_machine/sec_100_l1_feeder`.
+/// of two). Generated into `.../unified_reduced_machine/pessimistic_conjecture_l1_feeder`
+/// (a pessimistic-conjecture variant; no soundcalc twin has been designed).
 #[test]
 fn unified_reduced_machine_l1_feeder() {
     let circuit = CIRCUITS
@@ -242,13 +253,13 @@ fn unified_reduced_machine_l1_feeder() {
     generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
         circuit,
         &prover_config,
-        "sec_100_l1_feeder",
+        "pessimistic_conjecture_l1_feeder",
     );
 }
 
 /// Packed base commitment: the `blake2_with_extended_control` 2^20 circuit
 /// with `pack_log2 = 4` (2^24 WHIR message, the 2^24 WHIR schedule). Generated
-/// into `.../blake2_with_extended_control/sec_100_pack4`; the proof fixture
+/// into `.../blake2_with_extended_control/pessimistic_conjecture_pack4`; the proof fixture
 /// is verified by `tests/packed_verify.rs`.
 #[test]
 fn blake2_with_extended_control_pack4() {
@@ -268,7 +279,7 @@ fn blake2_with_extended_control_pack4() {
 
 /// Virtual-packing base round: the `blake2_with_extended_control` 2^20 circuit
 /// with `fold_log2 = 0` (one value per column per base leaf, no round-0
-/// sumcheck). Generated into `.../blake2_with_extended_control/sec_100_virtual`;
+/// sumcheck). Generated into `.../blake2_with_extended_control/pessimistic_conjecture_virtual`;
 /// the proof fixture is verified by `tests/virtual_packing_verify.rs`.
 #[test]
 fn blake2_with_extended_control_virtual() {
@@ -290,7 +301,7 @@ fn blake2_with_extended_control_virtual() {
 /// The blake base-round comparison sweep: a verifier per
 /// `verifier_common::test_circuits::blake_variants::BlakeVariant` (every
 /// physical packing 2^0..=2^4, two or one value(s) per column per base leaf),
-/// generated into `.../blake2_with_extended_control/sec_100{infix}`.
+/// generated into `.../blake2_with_extended_control/pessimistic_conjecture{infix}`.
 #[test]
 fn blake2_with_extended_control_variants() {
     use verifier_common::test_circuits::blake_variants::BlakeVariant;
@@ -316,7 +327,9 @@ macro_rules! generate_circuit_tests {
             fn $name() {
                 let circuit = CIRCUITS.iter().find(|c| c.name == stringify!($name)).unwrap();
                 for level in LEVELS_TO_GENERATE {
-                    generate_verifier_for_circuit::<DefaultBabyBearField>(circuit, *level);
+                    for mode in SoundnessMode::ALL {
+                        generate_verifier_for_circuit::<DefaultBabyBearField>(circuit, *level, *mode);
+                    }
                 }
             }
         )*

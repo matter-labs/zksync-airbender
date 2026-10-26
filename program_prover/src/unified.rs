@@ -1088,7 +1088,7 @@ pub(crate) mod test {
                 let mut it = families_setups.into_iter().chain(responses.into_iter());
 
                 let verification_result =
-                    full_statement_verifier::unified_circuit_statement::verify_unified_circuit_base_layer_sec_100::<
+                    full_statement_verifier::pessimistic_conjecture::verify_unified_circuit_base_layer::<
                         _,
                         DebugErrorCreator,
                         true,

@@ -362,14 +362,14 @@ fn rebuild_chain(chain_end_params: &[[u32; 8]]) -> Result<FsvRecursionChain, Str
     Ok(chain)
 }
 
-/// Directory holding the `fsv_*` verifier binaries. Overridable via `FSV_DIR`;
-/// defaults to the in-repo `tools/gkr_verifier` (this is a dev tool — the
-/// default assumes the binary runs near its source checkout).
+/// Directory holding the `fsv_*` verifier programs. Overridable via `FSV_DIR`;
+/// defaults to the in-repo `tools/gkr_verifier/full_statement_verifiers` (this
+/// is a dev tool — the default assumes the binary runs near its source checkout).
 fn fsv_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("FSV_DIR") {
         return PathBuf::from(dir);
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tools/gkr_verifier")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tools/gkr_verifier/full_statement_verifiers")
 }
 
 /// Advance a proof at some pipeline position to `target`. `state.proof` must be
@@ -1519,7 +1519,7 @@ mod program_source_tests {
         assert_eq!(dumps.bin_u32.len() * 4, dumps.bin_bytes.len());
         assert_eq!(dumps.text_u32.len() * 4, dumps.text_bytes.len());
 
-        let elf = root.join("tools/gkr_verifier/add_sub_lui_auipc_mop_sec_100.elf");
+        let elf = root.join("tools/gkr_verifier/circuit_verifiers/pessimistic_conjecture/add_sub_lui_auipc_mop.elf");
         let loaded = load_program(&ProgramSource::elf(&elf)).unwrap();
         let (bin_u32, text_u32) = ProgramSource::elf(&elf).load_unpadded();
         assert_eq!(loaded.bin_u32, bin_u32);

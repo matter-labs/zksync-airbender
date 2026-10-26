@@ -17,14 +17,21 @@ macro_rules! define_dispatch {
     ($($name:ident; $prod_path:expr),* $(,)?) => {
         macro_rules! with_circuit {
             ($circuit_name:expr, $level:expr, |$m:ident| $body:expr) => {
-                match ($circuit_name, $level) {
+                with_circuit!($circuit_name, $level, ::prover::gkr::prover_config::SoundnessMode::DEFAULT, |$m| $body)
+            };
+            ($circuit_name:expr, $level:expr, $mode:expr, |$m:ident| $body:expr) => {
+                match ($circuit_name, $level, $mode) {
                     $(
-                        (stringify!($name), ::prover::definitions::SecurityLevel::Sec100) => {
-                            use verifier::$name::sec_100 as $m;
+                        (stringify!($name), ::prover::definitions::SecurityLevel::Sec100, ::prover::gkr::prover_config::SoundnessMode::PessimisticConjecture) => {
+                            use verifier::$name::pessimistic_conjecture as $m;
+                            $body
+                        }
+                        (stringify!($name), ::prover::definitions::SecurityLevel::Sec100, ::prover::gkr::prover_config::SoundnessMode::EthproofsSoundnessCalc) => {
+                            use verifier::$name::ethproofs_soundcalc as $m;
                             $body
                         }
                     )*
-                    (other, _) => panic!("unknown or disabled circuit/level: {}", other),
+                    (other, _, _) => panic!("unknown or disabled circuit/level: {}", other),
                 }
             };
         }
@@ -32,6 +39,7 @@ macro_rules! define_dispatch {
 }
 verifier_common::gkr_circuits!(define_dispatch);
 
+pub use prover::gkr::prover_config::SoundnessMode;
 pub use verifier_common::test_circuits::SecurityLevel;
 
 pub fn load_nds(
@@ -41,8 +49,20 @@ pub fn load_nds(
     circuit_by_name(name).load_nds_for(level)
 }
 
+pub fn load_nds_in_mode(
+    name: &str,
+    level: SecurityLevel,
+    mode: SoundnessMode,
+) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
+    circuit_by_name(name).load_nds_for_mode(level, mode)
+}
+
 pub fn elf_path(name: &str, level: SecurityLevel) -> String {
     circuit_by_name(name).elf_path_for(level)
+}
+
+pub fn elf_path_in_mode(name: &str, level: SecurityLevel, mode: SoundnessMode) -> String {
+    circuit_by_name(name).elf_path_for_mode(level, mode)
 }
 
 pub fn circuit_by_name(name: &str) -> &'static CircuitData {
