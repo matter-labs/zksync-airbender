@@ -9,7 +9,7 @@ set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
 import_compiler_source_contract native from "artifacts/compiler/keccak-uncached.json"
-  source "artifacts/compiler/keccak-uncached-source.json" base_model Airbender.Compiler.FullArithmeticNative.KeccakUncached.native inputs 267
+  source "artifacts/compiler/keccak-uncached-source.json" base_model Airbender.Compiler.FullArithmeticNative.KeccakUncached.native inputs 266
 
 theorem source_contract_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

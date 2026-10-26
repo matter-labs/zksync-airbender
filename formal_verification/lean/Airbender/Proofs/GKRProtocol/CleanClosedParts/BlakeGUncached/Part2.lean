@@ -8,7 +8,7 @@ set_option maxRecDepth 65536
 set_option maxHeartbeats 4000000
 
 theorem generic_lookup16
-    (sourceValue : Fin 113 → Source.BaseField)
+    (sourceValue : Fin 112 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.BlakeGUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.BlakeGUncached.native.assigned (Airbender.Compiler.HelperValidityNative.BlakeGUncached.native.canonical sourceValue) counts wire)
@@ -56,7 +56,7 @@ theorem generic_lookup16
   exact valid
 
 theorem generic_lookup17
-    (sourceValue : Fin 113 → Source.BaseField)
+    (sourceValue : Fin 112 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.BlakeGUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.BlakeGUncached.native.assigned (Airbender.Compiler.HelperValidityNative.BlakeGUncached.native.canonical sourceValue) counts wire)
@@ -104,7 +104,7 @@ theorem generic_lookup17
   exact valid
 
 theorem generic_lookup18
-    (sourceValue : Fin 113 → Source.BaseField)
+    (sourceValue : Fin 112 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.BlakeGUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.BlakeGUncached.native.assigned (Airbender.Compiler.HelperValidityNative.BlakeGUncached.native.canonical sourceValue) counts wire)

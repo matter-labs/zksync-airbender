@@ -20,7 +20,7 @@ theorem timestampColumns : Airbender.Compiler.TableNative.BlakeGUncached.native.
 
 def OutputsPreserved {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 113 → Source.BaseField)
+    (sourceValue : Fin 112 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.BlakeGUncached.native.multiplicityColumns.length → Source.BaseField)
     (row : Fin Airbender.Compiler.MaterializedNative.BlakeGUncached.native.model.imported.data.length) (values : GKRAddress → R) : Prop :=
   (Airbender.Compiler.LookupNative.BlakeGUncached.native.genericOutput).value values =
@@ -34,7 +34,7 @@ def OutputsPreserved {R : Type} [CommRing R]
 
 theorem source_outputs_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 113 → Source.BaseField)
+    (sourceValue : Fin 112 → Source.BaseField)
     (original : Satisfies (Airbender.Compiler.SourceContractNative.BlakeGUncached.native.originals.map Expression.polynomial) sourceValue)
     (clockValid : Source.clockContract Airbender.Compiler.SourceContractNative.BlakeGUncached.native.clock (Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.helperPlacement.memory.project sourceValue))
     (primitives : Airbender.Compiler.HelperValidityNative.BlakeGUncached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.BlakeGUncached.native.execute.value (Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.helperPlacement.memory.project sourceValue))
@@ -71,7 +71,7 @@ theorem source_outputs_extends {R : Type} [CommRing R]
   · have tableCells : ∀ column ∈ Airbender.Compiler.TableNative.BlakeGUncached.native.genericSetupColumns, assignment.base column.address = Airbender.Compiler.MaterializedNative.BlakeGUncached.native.model.value row column := by
       intro column member
       exact setupAt column (of_decide_eq_true (List.all_eq_true.mp genericColumns column member))
-    have countCell : assignment.base (.BaseLayerWitness 57) = counts ⟨0, by decide⟩ := countsAt ⟨0, by decide⟩
+    have countCell : assignment.base (.BaseLayerWitness 56) = counts ⟨0, by decide⟩ := countsAt ⟨0, by decide⟩
     have reduced := Airbender.Compiler.TableNative.BlakeGUncached.native.genericSourceTableReduction hom challenges gamma assignment defined
       (Airbender.Compiler.FunctionalLinksNative.BlakeGUncached.native.lookupCopies baseValue arithmetic) holds (Airbender.Compiler.MaterializedNative.BlakeGUncached.native.model.value row) (counts ⟨0, by decide⟩) tableCells countCell
     rw [typedEq] at reduced
@@ -84,7 +84,7 @@ theorem source_outputs_extends {R : Type} [CommRing R]
   · have tableCells : ∀ column ∈ Airbender.Compiler.TableNative.BlakeGUncached.native.timestampSetupColumns, assignment.base column.address = Airbender.Compiler.MaterializedNative.BlakeGUncached.native.model.value row column := by
       intro column member
       exact setupAt column (of_decide_eq_true (List.all_eq_true.mp timestampColumns column member))
-    have countCell : assignment.base (.BaseLayerWitness 56) = counts ⟨1, by decide⟩ := countsAt ⟨1, by decide⟩
+    have countCell : assignment.base (.BaseLayerWitness 55) = counts ⟨1, by decide⟩ := countsAt ⟨1, by decide⟩
     have reduced := Airbender.Compiler.HelperNative.BlakeGUncached.native.timestampSourceReduction hom challenges gamma assignment helperDefined
       (Airbender.Compiler.FunctionalLinksNative.BlakeGUncached.native.helperCopies baseValue arithmetic) holds
     change (Airbender.Compiler.LookupNative.BlakeGUncached.native.timestampOutput).value (assignment.value Airbender.Compiler.ConsumerNative.BlakeGUncached.native.typing hom) =
@@ -108,12 +108,12 @@ noncomputable def outputPorts (group : Fin 2) : RationalPorts :=
 def setupColumns (group : Fin 2) : List SourceSetupColumn :=
   ([Airbender.Compiler.TableNative.BlakeGUncached.native.genericSetupColumns, Airbender.Compiler.TableNative.BlakeGUncached.native.timestampSetupColumns]).get group
 
-noncomputable def sourceRequests (sourceValue : Fin 113 → Source.BaseField) (group : Fin 2) : List MaterializedQuery :=
+noncomputable def sourceRequests (sourceValue : Fin 112 → Source.BaseField) (group : Fin 2) : List MaterializedQuery :=
   ([Airbender.Compiler.LookupSourceNative.BlakeGUncached.native.genericQueries.map (fun query => query.materialized (sourceValue ∘ Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.originalProjection)),
     Airbender.Compiler.HelperNative.BlakeGUncached.native.fields.map (fun field => MaterializedQuery.mk
       [field.value (Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.helperPlacement.project (Airbender.Compiler.HelperValidityNative.BlakeGUncached.native.canonical sourceValue))] 1)]).get group
 
-def AuthoredLookupValid (sourceValue : Fin 113 → Source.BaseField) : Prop :=
+def AuthoredLookupValid (sourceValue : Fin 112 → Source.BaseField) : Prop :=
   (∀ query ∈ Airbender.Compiler.LookupSourceNative.BlakeGUncached.native.genericQueries,
     query.weight (RingHom.id _) (sourceValue ∘ Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.originalProjection) ≠ 0 →
     Airbender.Compiler.MaterializedNative.BlakeGUncached.native.model.Contains Airbender.Compiler.TableNative.BlakeGUncached.native.genericSetupColumns
@@ -121,7 +121,7 @@ def AuthoredLookupValid (sourceValue : Fin 113 → Source.BaseField) : Prop :=
 
 theorem outputs_preserved_uniform {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 113 → Source.BaseField)
+    (sourceValue : Fin 112 → Source.BaseField)
     (counts : Fin 2 → Source.BaseField)
     (row : Fin Airbender.Compiler.MaterializedNative.BlakeGUncached.native.model.imported.data.length) (values : GKRAddress → R)
     (preserved : OutputsPreserved hom challenges gamma sourceValue counts row values) :
@@ -137,7 +137,7 @@ theorem outputs_preserved_uniform {R : Type} [CommRing R]
     have coordinate : (1 : Fin 2) = (⟨1, by decide⟩ : Fin Airbender.Compiler.TableNative.BlakeGUncached.native.multiplicityColumns.length) := by decide +kernel
     rw [coordinate]
 
-theorem source_requests_valid (sourceValue : Fin 113 → Source.BaseField)
+theorem source_requests_valid (sourceValue : Fin 112 → Source.BaseField)
     (primitives : Airbender.Compiler.HelperValidityNative.BlakeGUncached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.BlakeGUncached.native.execute.value (Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.helperPlacement.memory.project sourceValue))
       (Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.helperPlacement.memory.project sourceValue))
     (authored : AuthoredLookupValid sourceValue) :
@@ -160,7 +160,7 @@ theorem source_requests_valid (sourceValue : Fin 113 → Source.BaseField)
 
 def RowWitness {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 113 → Source.BaseField)
+    (sourceValue : Fin 112 → Source.BaseField)
     (counts : Fin 2 → Source.BaseField)
     (row : Fin Airbender.Compiler.MaterializedNative.BlakeGUncached.native.model.imported.data.length) (baseValue : GKRAddress → Source.BaseField)
     (values : GKRAddress → R) : Prop :=
@@ -176,7 +176,7 @@ def RowWitness {R : Type} [CommRing R]
       OutputsPreserved hom challenges gamma sourceValue counts row values
 
 theorem native_lookup_trace_extends
-    (sourceValue : Fin Airbender.Compiler.MaterializedNative.BlakeGUncached.native.model.imported.data.length → Fin 113 → Source.BaseField)
+    (sourceValue : Fin Airbender.Compiler.MaterializedNative.BlakeGUncached.native.model.imported.data.length → Fin 112 → Source.BaseField)
     (original : ∀ row, Satisfies (Airbender.Compiler.SourceContractNative.BlakeGUncached.native.originals.map Expression.polynomial) (sourceValue row))
     (clockValid : ∀ row, Source.clockContract Airbender.Compiler.SourceContractNative.BlakeGUncached.native.clock (Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.helperPlacement.memory.project (sourceValue row)))
     (primitives : ∀ row, Airbender.Compiler.HelperValidityNative.BlakeGUncached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.BlakeGUncached.native.execute.value (Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.helperPlacement.memory.project (sourceValue row)))

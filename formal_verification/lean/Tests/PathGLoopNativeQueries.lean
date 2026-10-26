@@ -1271,13 +1271,12 @@ private def gWorkerCoreAssignment (index : Fin 56) (column : Nat) : ZMod babyBea
   else if messageOffset : 11 ≤ column ∧ column < 13 then control.messageOffsets[column - 11]'(by omega)
   else if column = 14 ∨ column = 32 then 512
   else if column = 31 then 64
-  else if column = 83 then 31457280
   else 0
 
 /-- Exact equality for every coordinate outside the actual timestamp block;
 no witness value or assignment equality is assumed at an actual use. -/
 private theorem g_worker_core_coordinate (variant : Variant) (index : Fin 56)
-    (column : Nat) (notTimestamp : ¬ (84 ≤ column ∧ column < 111)) :
+    (column : Nat) (notTimestamp : ¬ (83 ≤ column ∧ column < 110)) :
     workerAssignment variant index column = gWorkerCoreAssignment index column := by
   simp only [workerAssignment, gWorkerCoreAssignment, notTimestamp, ↓reduceDIte]
 
@@ -1436,8 +1435,8 @@ private theorem query_worker_low_of_coordinates
     (assignment : Nat → ZMod babyBearModulus) (current : Nat) (prior : Fin 9 → Nat)
     (past : ∀ port : Fin 9, prior port < current + 3) (small : current + 3 < 916)
     (c1 : assignment 1 = ((current + 1 : Nat) : ZMod babyBearModulus))
-    (previousLo : ∀ port : Fin 9, assignment (84 + 3 * port.val) = (prior port : ZMod babyBearModulus))
-    (borrow : ∀ port : Fin 9, assignment (86 + 3 * port.val) = 1)
+    (previousLo : ∀ port : Fin 9, assignment (83 + 3 * port.val) = (prior port : ZMod babyBearModulus))
+    (borrow : ∀ port : Fin 9, assignment (85 + 3 * port.val) = 1)
     (port : Fin 9) :
     queryAt (FlatOperation.lookups (Blake2G.importedConstraintsTimestampLookups
       (p := babyBearModulus))) (1 + 2 * port.val)
@@ -1464,8 +1463,8 @@ private theorem query_worker_low_of_coordinates
 private theorem query_worker_high_of_coordinates
     (assignment : Nat → ZMod babyBearModulus)
     (c2 : assignment 2 = 0)
-    (previousHi : ∀ port : Fin 9, assignment (85 + 3 * port.val) = 0)
-    (borrow : ∀ port : Fin 9, assignment (86 + 3 * port.val) = 1)
+    (previousHi : ∀ port : Fin 9, assignment (84 + 3 * port.val) = 0)
+    (borrow : ∀ port : Fin 9, assignment (85 + 3 * port.val) = 1)
     (port : Fin 9) :
     queryAt (FlatOperation.lookups (Blake2G.importedConstraintsTimestampLookups
       (p := babyBearModulus))) (2 + 2 * port.val)
@@ -1493,9 +1492,9 @@ private theorem worker_timestamps_of_coordinates
     (c0 : assignment 0 = 1)
     (c1 : assignment 1 = ((current + 1 : Nat) : ZMod babyBearModulus))
     (c2 : assignment 2 = 0)
-    (previousLo : ∀ port : Fin 9, assignment (84 + 3 * port.val) = (prior port : ZMod babyBearModulus))
-    (previousHi : ∀ port : Fin 9, assignment (85 + 3 * port.val) = 0)
-    (borrow : ∀ port : Fin 9, assignment (86 + 3 * port.val) = 1)
+    (previousLo : ∀ port : Fin 9, assignment (83 + 3 * port.val) = (prior port : ZMod babyBearModulus))
+    (previousHi : ∀ port : Fin 9, assignment (84 + 3 * port.val) = 0)
+    (borrow : ∀ port : Fin 9, assignment (85 + 3 * port.val) = 1)
     (c13 : assignment 13 = 0) (c31 : assignment 31 = 64) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment assignment)
       Blake2G.importedConstraintsTimestampLookups := by

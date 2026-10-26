@@ -7,6 +7,6 @@ set_option Elab.async false
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-import_compiler_wiring native from "artifacts/compiler/keccak-uncached.json" phase "gates" start 256 count 54
+import_compiler_wiring native from "artifacts/compiler/keccak-uncached.json" phase "gates" start 256 count 49
 
 end Airbender.Compiler.WiringNative.KeccakUncached

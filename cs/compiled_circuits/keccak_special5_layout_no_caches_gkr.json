@@ -1163,7 +1163,7 @@
               },
               "setup": [
                 {
-                  "BaseLayerWitness": 174
+                  "BaseLayerWitness": 173
                 },
                 {
                   "VirtualSetup": "RangeCheckTimestamp"
@@ -1210,7 +1210,7 @@
                       [
                         133099247,
                         {
-                          "BaseLayerWitness": 160
+                          "BaseLayerWitness": 159
                         }
                       ]
                     ],
@@ -1236,7 +1236,7 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerWitness": 160
+                          "BaseLayerWitness": 159
                         }
                       ]
                     ],
@@ -1286,7 +1286,7 @@
                       [
                         133099247,
                         {
-                          "BaseLayerWitness": 161
+                          "BaseLayerWitness": 160
                         }
                       ]
                     ],
@@ -1312,7 +1312,7 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerWitness": 161
+                          "BaseLayerWitness": 160
                         }
                       ]
                     ],
@@ -1362,7 +1362,7 @@
                       [
                         133099247,
                         {
-                          "BaseLayerWitness": 162
+                          "BaseLayerWitness": 161
                         }
                       ]
                     ],
@@ -1388,7 +1388,7 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerWitness": 162
+                          "BaseLayerWitness": 161
                         }
                       ]
                     ],
@@ -1438,7 +1438,7 @@
                       [
                         133099247,
                         {
-                          "BaseLayerWitness": 163
+                          "BaseLayerWitness": 162
                         }
                       ]
                     ],
@@ -1464,7 +1464,7 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerWitness": 163
+                          "BaseLayerWitness": 162
                         }
                       ]
                     ],
@@ -1514,7 +1514,7 @@
                       [
                         133099247,
                         {
-                          "BaseLayerWitness": 164
+                          "BaseLayerWitness": 163
                         }
                       ]
                     ],
@@ -1540,7 +1540,7 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerWitness": 164
+                          "BaseLayerWitness": 163
                         }
                       ]
                     ],
@@ -1590,7 +1590,7 @@
                       [
                         133099247,
                         {
-                          "BaseLayerWitness": 165
+                          "BaseLayerWitness": 164
                         }
                       ]
                     ],
@@ -1616,7 +1616,7 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerWitness": 165
+                          "BaseLayerWitness": 164
                         }
                       ]
                     ],
@@ -1666,7 +1666,7 @@
                       [
                         133099247,
                         {
-                          "BaseLayerWitness": 166
+                          "BaseLayerWitness": 165
                         }
                       ]
                     ],
@@ -1692,7 +1692,7 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerWitness": 166
+                          "BaseLayerWitness": 165
                         }
                       ]
                     ],
@@ -1742,7 +1742,7 @@
                       [
                         133099247,
                         {
-                          "BaseLayerWitness": 167
+                          "BaseLayerWitness": 166
                         }
                       ]
                     ],
@@ -1768,7 +1768,7 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerWitness": 167
+                          "BaseLayerWitness": 166
                         }
                       ]
                     ],
@@ -1818,7 +1818,7 @@
                       [
                         133099247,
                         {
-                          "BaseLayerWitness": 168
+                          "BaseLayerWitness": 167
                         }
                       ]
                     ],
@@ -1844,7 +1844,7 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerWitness": 168
+                          "BaseLayerWitness": 167
                         }
                       ]
                     ],
@@ -1894,7 +1894,7 @@
                       [
                         133099247,
                         {
-                          "BaseLayerWitness": 169
+                          "BaseLayerWitness": 168
                         }
                       ]
                     ],
@@ -1920,7 +1920,7 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerWitness": 169
+                          "BaseLayerWitness": 168
                         }
                       ]
                     ],
@@ -1970,7 +1970,7 @@
                       [
                         133099247,
                         {
-                          "BaseLayerWitness": 170
+                          "BaseLayerWitness": 169
                         }
                       ]
                     ],
@@ -1996,7 +1996,7 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerWitness": 170
+                          "BaseLayerWitness": 169
                         }
                       ]
                     ],
@@ -2046,7 +2046,7 @@
                       [
                         133099247,
                         {
-                          "BaseLayerWitness": 171
+                          "BaseLayerWitness": 170
                         }
                       ]
                     ],
@@ -2072,7 +2072,7 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerWitness": 171
+                          "BaseLayerWitness": 170
                         }
                       ]
                     ],
@@ -2122,7 +2122,7 @@
                       [
                         133099247,
                         {
-                          "BaseLayerWitness": 172
+                          "BaseLayerWitness": 171
                         }
                       ]
                     ],
@@ -2148,7 +2148,7 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerWitness": 172
+                          "BaseLayerWitness": 171
                         }
                       ]
                     ],
@@ -2198,7 +2198,7 @@
                       [
                         133099247,
                         {
-                          "BaseLayerWitness": 173
+                          "BaseLayerWitness": 172
                         }
                       ]
                     ],
@@ -2224,7 +2224,7 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerWitness": 173
+                          "BaseLayerWitness": 172
                         }
                       ]
                     ],
@@ -2377,7 +2377,7 @@
               },
               "setup": [
                 {
-                  "BaseLayerWitness": 175
+                  "BaseLayerWitness": 174
                 },
                 [
                   {
@@ -46204,381 +46204,6 @@
                 "quadratic_terms": [
                   [
                     {
-                      "BaseLayerWitness": 15
-                    },
-                    [
-                      [
-                        268435454,
-                        {
-                          "BaseLayerWitness": 16
-                        }
-                      ]
-                    ]
-                  ]
-                ],
-                "linear_terms": [
-                  [
-                    1744830467,
-                    {
-                      "BaseLayerWitness": 159
-                    }
-                  ]
-                ],
-                "constant": 0
-              },
-              "expression": {
-                "Sum": [
-                  {
-                    "Product": [
-                      {
-                        "Constant": 1744830467
-                      },
-                      {
-                        "Place": {
-                          "BaseLayerWitness": 159
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "Product": [
-                      {
-                        "Place": {
-                          "BaseLayerWitness": 15
-                        }
-                      },
-                      {
-                        "Place": {
-                          "BaseLayerWitness": 16
-                        }
-                      }
-                    ]
-                  }
-                ]
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "EnforceSingleMaxQuadraticConstraint": {
-              "input": {
-                "quadratic_terms": [
-                  [
-                    {
-                      "BaseLayerWitness": 0
-                    },
-                    [
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 159
-                        }
-                      ]
-                    ]
-                  ],
-                  [
-                    {
-                      "BaseLayerWitness": 12
-                    },
-                    [
-                      [
-                        268435454,
-                        {
-                          "BaseLayerWitness": 159
-                        }
-                      ]
-                    ]
-                  ],
-                  [
-                    {
-                      "BaseLayerWitness": 13
-                    },
-                    [
-                      [
-                        536870908,
-                        {
-                          "BaseLayerWitness": 159
-                        }
-                      ]
-                    ]
-                  ],
-                  [
-                    {
-                      "BaseLayerWitness": 14
-                    },
-                    [
-                      [
-                        1073741816,
-                        {
-                          "BaseLayerWitness": 159
-                        }
-                      ]
-                    ]
-                  ]
-                ],
-                "linear_terms": [
-                  [
-                    268435454,
-                    {
-                      "BaseLayerWitness": 159
-                    }
-                  ]
-                ],
-                "constant": 0
-              },
-              "expression": {
-                "Product": [
-                  {
-                    "Place": {
-                      "BaseLayerWitness": 159
-                    }
-                  },
-                  {
-                    "Sum": [
-                      {
-                        "Constant": 268435454
-                      },
-                      {
-                        "Place": {
-                          "BaseLayerWitness": 12
-                        }
-                      },
-                      {
-                        "Product": [
-                          {
-                            "Constant": 536870908
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 13
-                            }
-                          }
-                        ]
-                      },
-                      {
-                        "Product": [
-                          {
-                            "Constant": 1073741816
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 14
-                            }
-                          }
-                        ]
-                      },
-                      {
-                        "Product": [
-                          {
-                            "Constant": 1744830467
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 0
-                            }
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "EnforceSingleMaxQuadraticConstraint": {
-              "input": {
-                "quadratic_terms": [
-                  [
-                    {
-                      "BaseLayerWitness": 1
-                    },
-                    [
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 7
-                        }
-                      ]
-                    ]
-                  ]
-                ],
-                "linear_terms": [
-                  [
-                    268435454,
-                    {
-                      "BaseLayerWitness": 1
-                    }
-                  ]
-                ],
-                "constant": 0
-              },
-              "expression": {
-                "Product": [
-                  {
-                    "Place": {
-                      "BaseLayerWitness": 1
-                    }
-                  },
-                  {
-                    "Sum": [
-                      {
-                        "Constant": 268435454
-                      },
-                      {
-                        "Product": [
-                          {
-                            "Constant": 1744830467
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 7
-                            }
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "EnforceSingleMaxQuadraticConstraint": {
-              "input": {
-                "quadratic_terms": [
-                  [
-                    {
-                      "BaseLayerWitness": 2
-                    },
-                    [
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 7
-                        }
-                      ]
-                    ]
-                  ]
-                ],
-                "linear_terms": [
-                  [
-                    268435454,
-                    {
-                      "BaseLayerWitness": 2
-                    }
-                  ]
-                ],
-                "constant": 0
-              },
-              "expression": {
-                "Product": [
-                  {
-                    "Place": {
-                      "BaseLayerWitness": 2
-                    }
-                  },
-                  {
-                    "Sum": [
-                      {
-                        "Constant": 268435454
-                      },
-                      {
-                        "Product": [
-                          {
-                            "Constant": 1744830467
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 7
-                            }
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "EnforceSingleMaxQuadraticConstraint": {
-              "input": {
-                "quadratic_terms": [
-                  [
-                    {
-                      "BaseLayerWitness": 7
-                    },
-                    [
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 159
-                        }
-                      ]
-                    ]
-                  ]
-                ],
-                "linear_terms": [
-                  [
-                    268435454,
-                    {
-                      "BaseLayerWitness": 159
-                    }
-                  ]
-                ],
-                "constant": 0
-              },
-              "expression": {
-                "Product": [
-                  {
-                    "Place": {
-                      "BaseLayerWitness": 159
-                    }
-                  },
-                  {
-                    "Sum": [
-                      {
-                        "Constant": 268435454
-                      },
-                      {
-                        "Product": [
-                          {
-                            "Constant": 1744830467
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 7
-                            }
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "EnforceSingleMaxQuadraticConstraint": {
-              "input": {
-                "quadratic_terms": [
-                  [
-                    {
                       "BaseLayerWitness": 0
                     },
                     [
@@ -47497,6 +47122,60 @@
                 "quadratic_terms": [
                   [
                     {
+                      "BaseLayerWitness": 159
+                    },
+                    [
+                      [
+                        268435454,
+                        {
+                          "BaseLayerWitness": 159
+                        }
+                      ]
+                    ]
+                  ]
+                ],
+                "linear_terms": [
+                  [
+                    1744830467,
+                    {
+                      "BaseLayerWitness": 159
+                    }
+                  ]
+                ],
+                "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 159
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 1744830467
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 159
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "EnforceSingleMaxQuadraticConstraint": {
+              "input": {
+                "quadratic_terms": [
+                  [
+                    {
                       "BaseLayerWitness": 160
                     },
                     [
@@ -48182,60 +47861,6 @@
                       {
                         "Place": {
                           "BaseLayerWitness": 172
-                        }
-                      }
-                    ]
-                  }
-                ]
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "EnforceSingleMaxQuadraticConstraint": {
-              "input": {
-                "quadratic_terms": [
-                  [
-                    {
-                      "BaseLayerWitness": 173
-                    },
-                    [
-                      [
-                        268435454,
-                        {
-                          "BaseLayerWitness": 173
-                        }
-                      ]
-                    ]
-                  ]
-                ],
-                "linear_terms": [
-                  [
-                    1744830467,
-                    {
-                      "BaseLayerWitness": 173
-                    }
-                  ]
-                ],
-                "constant": 0
-              },
-              "expression": {
-                "Product": [
-                  {
-                    "Place": {
-                      "BaseLayerWitness": 173
-                    }
-                  },
-                  {
-                    "Sum": [
-                      {
-                        "Constant": 1744830467
-                      },
-                      {
-                        "Place": {
-                          "BaseLayerWitness": 173
                         }
                       }
                     ]
@@ -51287,14 +50912,14 @@
       "end": 0
     },
     "multiplicities_columns_for_timestamp_range_check": {
+      "start": 173,
+      "end": 174
+    },
+    "multiplicities_columns_for_generic_lookup": {
       "start": 174,
       "end": 175
     },
-    "multiplicities_columns_for_generic_lookup": {
-      "start": 175,
-      "end": 176
-    },
-    "total_width": 176
+    "total_width": 175
   },
   "scratch_space_size": 0,
   "num_generic_lookups": 41,
@@ -51966,139 +51591,136 @@
       "BaseLayerWitness": 158
     },
     "222": {
-      "BaseLayerWitness": 159
-    },
-    "223": {
       "BaseLayerMemory": 0
     },
-    "224": {
+    "223": {
       "BaseLayerMemory": 1
     },
-    "225": {
-      "BaseLayerWitness": 160
+    "224": {
+      "BaseLayerWitness": 159
     },
-    "226": {
+    "225": {
       "BaseLayerMemory": 6
     },
-    "227": {
+    "226": {
       "BaseLayerMemory": 7
     },
-    "228": {
-      "BaseLayerWitness": 161
+    "227": {
+      "BaseLayerWitness": 160
     },
-    "229": {
+    "228": {
       "BaseLayerMemory": 10
     },
-    "230": {
+    "229": {
       "BaseLayerMemory": 11
     },
-    "231": {
-      "BaseLayerWitness": 162
+    "230": {
+      "BaseLayerWitness": 161
     },
-    "232": {
+    "231": {
       "BaseLayerMemory": 17
     },
-    "233": {
+    "232": {
       "BaseLayerMemory": 18
     },
-    "234": {
-      "BaseLayerWitness": 163
+    "233": {
+      "BaseLayerWitness": 162
     },
-    "235": {
+    "234": {
       "BaseLayerMemory": 23
     },
-    "236": {
+    "235": {
       "BaseLayerMemory": 24
     },
-    "237": {
-      "BaseLayerWitness": 164
+    "236": {
+      "BaseLayerWitness": 163
     },
-    "238": {
+    "237": {
       "BaseLayerMemory": 30
     },
-    "239": {
+    "238": {
       "BaseLayerMemory": 31
     },
-    "240": {
-      "BaseLayerWitness": 165
+    "239": {
+      "BaseLayerWitness": 164
     },
-    "241": {
+    "240": {
       "BaseLayerMemory": 36
     },
-    "242": {
+    "241": {
       "BaseLayerMemory": 37
     },
-    "243": {
-      "BaseLayerWitness": 166
+    "242": {
+      "BaseLayerWitness": 165
     },
-    "244": {
+    "243": {
       "BaseLayerMemory": 43
     },
-    "245": {
+    "244": {
       "BaseLayerMemory": 44
     },
-    "246": {
-      "BaseLayerWitness": 167
+    "245": {
+      "BaseLayerWitness": 166
     },
-    "247": {
+    "246": {
       "BaseLayerMemory": 49
     },
-    "248": {
+    "247": {
       "BaseLayerMemory": 50
     },
-    "249": {
-      "BaseLayerWitness": 168
+    "248": {
+      "BaseLayerWitness": 167
     },
-    "250": {
+    "249": {
       "BaseLayerMemory": 56
     },
-    "251": {
+    "250": {
       "BaseLayerMemory": 57
     },
-    "252": {
-      "BaseLayerWitness": 169
+    "251": {
+      "BaseLayerWitness": 168
     },
-    "253": {
+    "252": {
       "BaseLayerMemory": 62
     },
-    "254": {
+    "253": {
       "BaseLayerMemory": 63
     },
-    "255": {
-      "BaseLayerWitness": 170
+    "254": {
+      "BaseLayerWitness": 169
     },
-    "256": {
+    "255": {
       "BaseLayerMemory": 69
     },
-    "257": {
+    "256": {
       "BaseLayerMemory": 70
     },
-    "258": {
-      "BaseLayerWitness": 171
+    "257": {
+      "BaseLayerWitness": 170
     },
-    "259": {
+    "258": {
       "BaseLayerMemory": 75
     },
-    "260": {
+    "259": {
       "BaseLayerMemory": 76
     },
-    "261": {
-      "BaseLayerWitness": 172
+    "260": {
+      "BaseLayerWitness": 171
     },
-    "262": {
+    "261": {
       "BaseLayerMemory": 82
     },
-    "263": {
+    "262": {
       "BaseLayerMemory": 83
+    },
+    "263": {
+      "BaseLayerWitness": 172
     },
     "264": {
       "BaseLayerWitness": 173
     },
     "265": {
       "BaseLayerWitness": 174
-    },
-    "266": {
-      "BaseLayerWitness": 175
     }
   },
   "generic_lookup_tables_width": 8,
@@ -63462,101 +63084,6 @@
       "quadratic_terms": [
         [
           268435454,
-          78,
-          79
-        ]
-      ],
-      "linear_terms": [
-        [
-          1744830467,
-          222
-        ]
-      ],
-      "constant_term": 0
-    },
-    {
-      "quadratic_terms": [
-        [
-          1744830467,
-          63,
-          222
-        ],
-        [
-          268435454,
-          75,
-          222
-        ],
-        [
-          536870908,
-          76,
-          222
-        ],
-        [
-          1073741816,
-          77,
-          222
-        ]
-      ],
-      "linear_terms": [
-        [
-          268435454,
-          222
-        ]
-      ],
-      "constant_term": 0
-    },
-    {
-      "quadratic_terms": [
-        [
-          1744830467,
-          64,
-          70
-        ]
-      ],
-      "linear_terms": [
-        [
-          268435454,
-          64
-        ]
-      ],
-      "constant_term": 0
-    },
-    {
-      "quadratic_terms": [
-        [
-          1744830467,
-          65,
-          70
-        ]
-      ],
-      "linear_terms": [
-        [
-          268435454,
-          65
-        ]
-      ],
-      "constant_term": 0
-    },
-    {
-      "quadratic_terms": [
-        [
-          1744830467,
-          70,
-          222
-        ]
-      ],
-      "linear_terms": [
-        [
-          268435454,
-          222
-        ]
-      ],
-      "constant_term": 0
-    },
-    {
-      "quadratic_terms": [
-        [
-          268435454,
           63,
           63
         ]
@@ -63829,14 +63356,14 @@
       "quadratic_terms": [
         [
           268435454,
-          225,
-          225
+          224,
+          224
         ]
       ],
       "linear_terms": [
         [
           1744830467,
-          225
+          224
         ]
       ],
       "constant_term": 0
@@ -63845,14 +63372,14 @@
       "quadratic_terms": [
         [
           268435454,
-          228,
-          228
+          227,
+          227
         ]
       ],
       "linear_terms": [
         [
           1744830467,
-          228
+          227
         ]
       ],
       "constant_term": 0
@@ -63861,14 +63388,14 @@
       "quadratic_terms": [
         [
           268435454,
-          231,
-          231
+          230,
+          230
         ]
       ],
       "linear_terms": [
         [
           1744830467,
-          231
+          230
         ]
       ],
       "constant_term": 0
@@ -63877,14 +63404,14 @@
       "quadratic_terms": [
         [
           268435454,
-          234,
-          234
+          233,
+          233
         ]
       ],
       "linear_terms": [
         [
           1744830467,
-          234
+          233
         ]
       ],
       "constant_term": 0
@@ -63893,14 +63420,14 @@
       "quadratic_terms": [
         [
           268435454,
-          237,
-          237
+          236,
+          236
         ]
       ],
       "linear_terms": [
         [
           1744830467,
-          237
+          236
         ]
       ],
       "constant_term": 0
@@ -63909,14 +63436,14 @@
       "quadratic_terms": [
         [
           268435454,
-          240,
-          240
+          239,
+          239
         ]
       ],
       "linear_terms": [
         [
           1744830467,
-          240
+          239
         ]
       ],
       "constant_term": 0
@@ -63925,14 +63452,14 @@
       "quadratic_terms": [
         [
           268435454,
-          243,
-          243
+          242,
+          242
         ]
       ],
       "linear_terms": [
         [
           1744830467,
-          243
+          242
         ]
       ],
       "constant_term": 0
@@ -63941,14 +63468,14 @@
       "quadratic_terms": [
         [
           268435454,
-          246,
-          246
+          245,
+          245
         ]
       ],
       "linear_terms": [
         [
           1744830467,
-          246
+          245
         ]
       ],
       "constant_term": 0
@@ -63957,14 +63484,14 @@
       "quadratic_terms": [
         [
           268435454,
-          249,
-          249
+          248,
+          248
         ]
       ],
       "linear_terms": [
         [
           1744830467,
-          249
+          248
         ]
       ],
       "constant_term": 0
@@ -63973,14 +63500,14 @@
       "quadratic_terms": [
         [
           268435454,
-          252,
-          252
+          251,
+          251
         ]
       ],
       "linear_terms": [
         [
           1744830467,
-          252
+          251
         ]
       ],
       "constant_term": 0
@@ -63989,14 +63516,14 @@
       "quadratic_terms": [
         [
           268435454,
-          255,
-          255
+          254,
+          254
         ]
       ],
       "linear_terms": [
         [
           1744830467,
-          255
+          254
         ]
       ],
       "constant_term": 0
@@ -64005,14 +63532,14 @@
       "quadratic_terms": [
         [
           268435454,
-          258,
-          258
+          257,
+          257
         ]
       ],
       "linear_terms": [
         [
           1744830467,
-          258
+          257
         ]
       ],
       "constant_term": 0
@@ -64021,14 +63548,14 @@
       "quadratic_terms": [
         [
           268435454,
-          261,
-          261
+          260,
+          260
         ]
       ],
       "linear_terms": [
         [
           1744830467,
-          261
+          260
         ]
       ],
       "constant_term": 0
@@ -64037,14 +63564,14 @@
       "quadratic_terms": [
         [
           268435454,
-          264,
-          264
+          263,
+          263
         ]
       ],
       "linear_terms": [
         [
           1744830467,
-          264
+          263
         ]
       ],
       "constant_term": 0
@@ -106078,350 +105605,6 @@
     {
       "AssertZero": {
         "expr": {
-          "Sum": [
-            {
-              "Product": [
-                {
-                  "Var": 78
-                },
-                {
-                  "Var": 79
-                }
-              ]
-            },
-            {
-              "Product": [
-                {
-                  "Constant": 1744830467
-                },
-                {
-                  "Var": 222
-                }
-              ]
-            }
-          ]
-        },
-        "compiled_constraint": {
-          "terms": [
-            {
-              "Expression": {
-                "coeff": 268435454,
-                "inner": [
-                  78,
-                  79,
-                  18446744073709551615,
-                  18446744073709551615
-                ],
-                "degree": 2
-              }
-            },
-            {
-              "Expression": {
-                "coeff": 1744830467,
-                "inner": [
-                  222,
-                  18446744073709551615,
-                  18446744073709551615,
-                  18446744073709551615
-                ],
-                "degree": 1
-              }
-            }
-          ]
-        },
-        "prevent_optimizations": false
-      }
-    },
-    {
-      "AssertZero": {
-        "expr": {
-          "Product": [
-            {
-              "Var": 222
-            },
-            {
-              "Sum": [
-                {
-                  "Var": 75
-                },
-                {
-                  "Product": [
-                    {
-                      "Constant": 536870908
-                    },
-                    {
-                      "Var": 76
-                    }
-                  ]
-                },
-                {
-                  "Product": [
-                    {
-                      "Constant": 1073741816
-                    },
-                    {
-                      "Var": 77
-                    }
-                  ]
-                },
-                {
-                  "Constant": 268435454
-                },
-                {
-                  "Product": [
-                    {
-                      "Constant": 1744830467
-                    },
-                    {
-                      "Var": 63
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        },
-        "compiled_constraint": {
-          "terms": [
-            {
-              "Expression": {
-                "coeff": 1744830467,
-                "inner": [
-                  63,
-                  222,
-                  18446744073709551615,
-                  18446744073709551615
-                ],
-                "degree": 2
-              }
-            },
-            {
-              "Expression": {
-                "coeff": 268435454,
-                "inner": [
-                  75,
-                  222,
-                  18446744073709551615,
-                  18446744073709551615
-                ],
-                "degree": 2
-              }
-            },
-            {
-              "Expression": {
-                "coeff": 536870908,
-                "inner": [
-                  76,
-                  222,
-                  18446744073709551615,
-                  18446744073709551615
-                ],
-                "degree": 2
-              }
-            },
-            {
-              "Expression": {
-                "coeff": 1073741816,
-                "inner": [
-                  77,
-                  222,
-                  18446744073709551615,
-                  18446744073709551615
-                ],
-                "degree": 2
-              }
-            },
-            {
-              "Expression": {
-                "coeff": 268435454,
-                "inner": [
-                  222,
-                  18446744073709551615,
-                  18446744073709551615,
-                  18446744073709551615
-                ],
-                "degree": 1
-              }
-            }
-          ]
-        },
-        "prevent_optimizations": false
-      }
-    },
-    {
-      "AssertZero": {
-        "expr": {
-          "Product": [
-            {
-              "Var": 64
-            },
-            {
-              "Sum": [
-                {
-                  "Constant": 268435454
-                },
-                {
-                  "Product": [
-                    {
-                      "Constant": 1744830467
-                    },
-                    {
-                      "Var": 70
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        },
-        "compiled_constraint": {
-          "terms": [
-            {
-              "Expression": {
-                "coeff": 1744830467,
-                "inner": [
-                  64,
-                  70,
-                  18446744073709551615,
-                  18446744073709551615
-                ],
-                "degree": 2
-              }
-            },
-            {
-              "Expression": {
-                "coeff": 268435454,
-                "inner": [
-                  64,
-                  18446744073709551615,
-                  18446744073709551615,
-                  18446744073709551615
-                ],
-                "degree": 1
-              }
-            }
-          ]
-        },
-        "prevent_optimizations": false
-      }
-    },
-    {
-      "AssertZero": {
-        "expr": {
-          "Product": [
-            {
-              "Var": 65
-            },
-            {
-              "Sum": [
-                {
-                  "Constant": 268435454
-                },
-                {
-                  "Product": [
-                    {
-                      "Constant": 1744830467
-                    },
-                    {
-                      "Var": 70
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        },
-        "compiled_constraint": {
-          "terms": [
-            {
-              "Expression": {
-                "coeff": 1744830467,
-                "inner": [
-                  65,
-                  70,
-                  18446744073709551615,
-                  18446744073709551615
-                ],
-                "degree": 2
-              }
-            },
-            {
-              "Expression": {
-                "coeff": 268435454,
-                "inner": [
-                  65,
-                  18446744073709551615,
-                  18446744073709551615,
-                  18446744073709551615
-                ],
-                "degree": 1
-              }
-            }
-          ]
-        },
-        "prevent_optimizations": false
-      }
-    },
-    {
-      "AssertZero": {
-        "expr": {
-          "Product": [
-            {
-              "Var": 222
-            },
-            {
-              "Sum": [
-                {
-                  "Constant": 268435454
-                },
-                {
-                  "Product": [
-                    {
-                      "Constant": 1744830467
-                    },
-                    {
-                      "Var": 70
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        },
-        "compiled_constraint": {
-          "terms": [
-            {
-              "Expression": {
-                "coeff": 1744830467,
-                "inner": [
-                  70,
-                  222,
-                  18446744073709551615,
-                  18446744073709551615
-                ],
-                "degree": 2
-              }
-            },
-            {
-              "Expression": {
-                "coeff": 268435454,
-                "inner": [
-                  222,
-                  18446744073709551615,
-                  18446744073709551615,
-                  18446744073709551615
-                ],
-                "degree": 1
-              }
-            }
-          ]
-        },
-        "prevent_optimizations": false
-      }
-    },
-    {
-      "AssertZero": {
-        "expr": {
           "Product": [
             {
               "Var": 63
@@ -107274,12 +106457,12 @@
         "expr": {
           "Product": [
             {
-              "Var": 225
+              "Var": 224
             },
             {
               "Sum": [
                 {
-                  "Var": 225
+                  "Var": 224
                 },
                 {
                   "Constant": 1744830467
@@ -107294,8 +106477,8 @@
               "Expression": {
                 "coeff": 268435454,
                 "inner": [
-                  225,
-                  225,
+                  224,
+                  224,
                   18446744073709551615,
                   18446744073709551615
                 ],
@@ -107306,7 +106489,7 @@
               "Expression": {
                 "coeff": 1744830467,
                 "inner": [
-                  225,
+                  224,
                   18446744073709551615,
                   18446744073709551615,
                   18446744073709551615
@@ -107324,12 +106507,12 @@
         "expr": {
           "Product": [
             {
-              "Var": 228
+              "Var": 227
             },
             {
               "Sum": [
                 {
-                  "Var": 228
+                  "Var": 227
                 },
                 {
                   "Constant": 1744830467
@@ -107344,8 +106527,8 @@
               "Expression": {
                 "coeff": 268435454,
                 "inner": [
-                  228,
-                  228,
+                  227,
+                  227,
                   18446744073709551615,
                   18446744073709551615
                 ],
@@ -107356,7 +106539,7 @@
               "Expression": {
                 "coeff": 1744830467,
                 "inner": [
-                  228,
+                  227,
                   18446744073709551615,
                   18446744073709551615,
                   18446744073709551615
@@ -107374,12 +106557,12 @@
         "expr": {
           "Product": [
             {
-              "Var": 231
+              "Var": 230
             },
             {
               "Sum": [
                 {
-                  "Var": 231
+                  "Var": 230
                 },
                 {
                   "Constant": 1744830467
@@ -107394,8 +106577,8 @@
               "Expression": {
                 "coeff": 268435454,
                 "inner": [
-                  231,
-                  231,
+                  230,
+                  230,
                   18446744073709551615,
                   18446744073709551615
                 ],
@@ -107406,7 +106589,7 @@
               "Expression": {
                 "coeff": 1744830467,
                 "inner": [
-                  231,
+                  230,
                   18446744073709551615,
                   18446744073709551615,
                   18446744073709551615
@@ -107424,12 +106607,12 @@
         "expr": {
           "Product": [
             {
-              "Var": 234
+              "Var": 233
             },
             {
               "Sum": [
                 {
-                  "Var": 234
+                  "Var": 233
                 },
                 {
                   "Constant": 1744830467
@@ -107444,8 +106627,8 @@
               "Expression": {
                 "coeff": 268435454,
                 "inner": [
-                  234,
-                  234,
+                  233,
+                  233,
                   18446744073709551615,
                   18446744073709551615
                 ],
@@ -107456,7 +106639,7 @@
               "Expression": {
                 "coeff": 1744830467,
                 "inner": [
-                  234,
+                  233,
                   18446744073709551615,
                   18446744073709551615,
                   18446744073709551615
@@ -107474,12 +106657,12 @@
         "expr": {
           "Product": [
             {
-              "Var": 237
+              "Var": 236
             },
             {
               "Sum": [
                 {
-                  "Var": 237
+                  "Var": 236
                 },
                 {
                   "Constant": 1744830467
@@ -107494,8 +106677,8 @@
               "Expression": {
                 "coeff": 268435454,
                 "inner": [
-                  237,
-                  237,
+                  236,
+                  236,
                   18446744073709551615,
                   18446744073709551615
                 ],
@@ -107506,7 +106689,7 @@
               "Expression": {
                 "coeff": 1744830467,
                 "inner": [
-                  237,
+                  236,
                   18446744073709551615,
                   18446744073709551615,
                   18446744073709551615
@@ -107524,12 +106707,12 @@
         "expr": {
           "Product": [
             {
-              "Var": 240
+              "Var": 239
             },
             {
               "Sum": [
                 {
-                  "Var": 240
+                  "Var": 239
                 },
                 {
                   "Constant": 1744830467
@@ -107544,8 +106727,8 @@
               "Expression": {
                 "coeff": 268435454,
                 "inner": [
-                  240,
-                  240,
+                  239,
+                  239,
                   18446744073709551615,
                   18446744073709551615
                 ],
@@ -107556,7 +106739,7 @@
               "Expression": {
                 "coeff": 1744830467,
                 "inner": [
-                  240,
+                  239,
                   18446744073709551615,
                   18446744073709551615,
                   18446744073709551615
@@ -107574,12 +106757,12 @@
         "expr": {
           "Product": [
             {
-              "Var": 243
+              "Var": 242
             },
             {
               "Sum": [
                 {
-                  "Var": 243
+                  "Var": 242
                 },
                 {
                   "Constant": 1744830467
@@ -107594,8 +106777,8 @@
               "Expression": {
                 "coeff": 268435454,
                 "inner": [
-                  243,
-                  243,
+                  242,
+                  242,
                   18446744073709551615,
                   18446744073709551615
                 ],
@@ -107606,7 +106789,7 @@
               "Expression": {
                 "coeff": 1744830467,
                 "inner": [
-                  243,
+                  242,
                   18446744073709551615,
                   18446744073709551615,
                   18446744073709551615
@@ -107624,12 +106807,12 @@
         "expr": {
           "Product": [
             {
-              "Var": 246
+              "Var": 245
             },
             {
               "Sum": [
                 {
-                  "Var": 246
+                  "Var": 245
                 },
                 {
                   "Constant": 1744830467
@@ -107644,8 +106827,8 @@
               "Expression": {
                 "coeff": 268435454,
                 "inner": [
-                  246,
-                  246,
+                  245,
+                  245,
                   18446744073709551615,
                   18446744073709551615
                 ],
@@ -107656,7 +106839,7 @@
               "Expression": {
                 "coeff": 1744830467,
                 "inner": [
-                  246,
+                  245,
                   18446744073709551615,
                   18446744073709551615,
                   18446744073709551615
@@ -107674,12 +106857,12 @@
         "expr": {
           "Product": [
             {
-              "Var": 249
+              "Var": 248
             },
             {
               "Sum": [
                 {
-                  "Var": 249
+                  "Var": 248
                 },
                 {
                   "Constant": 1744830467
@@ -107694,8 +106877,8 @@
               "Expression": {
                 "coeff": 268435454,
                 "inner": [
-                  249,
-                  249,
+                  248,
+                  248,
                   18446744073709551615,
                   18446744073709551615
                 ],
@@ -107706,7 +106889,7 @@
               "Expression": {
                 "coeff": 1744830467,
                 "inner": [
-                  249,
+                  248,
                   18446744073709551615,
                   18446744073709551615,
                   18446744073709551615
@@ -107724,12 +106907,12 @@
         "expr": {
           "Product": [
             {
-              "Var": 252
+              "Var": 251
             },
             {
               "Sum": [
                 {
-                  "Var": 252
+                  "Var": 251
                 },
                 {
                   "Constant": 1744830467
@@ -107744,8 +106927,8 @@
               "Expression": {
                 "coeff": 268435454,
                 "inner": [
-                  252,
-                  252,
+                  251,
+                  251,
                   18446744073709551615,
                   18446744073709551615
                 ],
@@ -107756,7 +106939,7 @@
               "Expression": {
                 "coeff": 1744830467,
                 "inner": [
-                  252,
+                  251,
                   18446744073709551615,
                   18446744073709551615,
                   18446744073709551615
@@ -107774,12 +106957,12 @@
         "expr": {
           "Product": [
             {
-              "Var": 255
+              "Var": 254
             },
             {
               "Sum": [
                 {
-                  "Var": 255
+                  "Var": 254
                 },
                 {
                   "Constant": 1744830467
@@ -107794,8 +106977,8 @@
               "Expression": {
                 "coeff": 268435454,
                 "inner": [
-                  255,
-                  255,
+                  254,
+                  254,
                   18446744073709551615,
                   18446744073709551615
                 ],
@@ -107806,7 +106989,7 @@
               "Expression": {
                 "coeff": 1744830467,
                 "inner": [
-                  255,
+                  254,
                   18446744073709551615,
                   18446744073709551615,
                   18446744073709551615
@@ -107824,12 +107007,12 @@
         "expr": {
           "Product": [
             {
-              "Var": 258
+              "Var": 257
             },
             {
               "Sum": [
                 {
-                  "Var": 258
+                  "Var": 257
                 },
                 {
                   "Constant": 1744830467
@@ -107844,8 +107027,8 @@
               "Expression": {
                 "coeff": 268435454,
                 "inner": [
-                  258,
-                  258,
+                  257,
+                  257,
                   18446744073709551615,
                   18446744073709551615
                 ],
@@ -107856,7 +107039,7 @@
               "Expression": {
                 "coeff": 1744830467,
                 "inner": [
-                  258,
+                  257,
                   18446744073709551615,
                   18446744073709551615,
                   18446744073709551615
@@ -107874,12 +107057,12 @@
         "expr": {
           "Product": [
             {
-              "Var": 261
+              "Var": 260
             },
             {
               "Sum": [
                 {
-                  "Var": 261
+                  "Var": 260
                 },
                 {
                   "Constant": 1744830467
@@ -107894,8 +107077,8 @@
               "Expression": {
                 "coeff": 268435454,
                 "inner": [
-                  261,
-                  261,
+                  260,
+                  260,
                   18446744073709551615,
                   18446744073709551615
                 ],
@@ -107906,7 +107089,7 @@
               "Expression": {
                 "coeff": 1744830467,
                 "inner": [
-                  261,
+                  260,
                   18446744073709551615,
                   18446744073709551615,
                   18446744073709551615
@@ -107924,12 +107107,12 @@
         "expr": {
           "Product": [
             {
-              "Var": 264
+              "Var": 263
             },
             {
               "Sum": [
                 {
-                  "Var": 264
+                  "Var": 263
                 },
                 {
                   "Constant": 1744830467
@@ -107944,8 +107127,8 @@
               "Expression": {
                 "coeff": 268435454,
                 "inner": [
-                  264,
-                  264,
+                  263,
+                  263,
                   18446744073709551615,
                   18446744073709551615
                 ],
@@ -107956,7 +107139,7 @@
               "Expression": {
                 "coeff": 1744830467,
                 "inner": [
-                  264,
+                  263,
                   18446744073709551615,
                   18446744073709551615,
                   18446744073709551615
@@ -112144,7 +111327,7 @@
           [
             133099247,
             {
-              "BaseLayerWitness": 160
+              "BaseLayerWitness": 159
             }
           ]
         ],
@@ -112170,7 +111353,7 @@
           [
             1744830467,
             {
-              "BaseLayerWitness": 160
+              "BaseLayerWitness": 159
             }
           ]
         ],
@@ -112196,7 +111379,7 @@
           [
             133099247,
             {
-              "BaseLayerWitness": 161
+              "BaseLayerWitness": 160
             }
           ]
         ],
@@ -112222,7 +111405,7 @@
           [
             1744830467,
             {
-              "BaseLayerWitness": 161
+              "BaseLayerWitness": 160
             }
           ]
         ],
@@ -112248,7 +111431,7 @@
           [
             133099247,
             {
-              "BaseLayerWitness": 162
+              "BaseLayerWitness": 161
             }
           ]
         ],
@@ -112274,7 +111457,7 @@
           [
             1744830467,
             {
-              "BaseLayerWitness": 162
+              "BaseLayerWitness": 161
             }
           ]
         ],
@@ -112300,7 +111483,7 @@
           [
             133099247,
             {
-              "BaseLayerWitness": 163
+              "BaseLayerWitness": 162
             }
           ]
         ],
@@ -112326,7 +111509,7 @@
           [
             1744830467,
             {
-              "BaseLayerWitness": 163
+              "BaseLayerWitness": 162
             }
           ]
         ],
@@ -112352,7 +111535,7 @@
           [
             133099247,
             {
-              "BaseLayerWitness": 164
+              "BaseLayerWitness": 163
             }
           ]
         ],
@@ -112378,7 +111561,7 @@
           [
             1744830467,
             {
-              "BaseLayerWitness": 164
+              "BaseLayerWitness": 163
             }
           ]
         ],
@@ -112404,7 +111587,7 @@
           [
             133099247,
             {
-              "BaseLayerWitness": 165
+              "BaseLayerWitness": 164
             }
           ]
         ],
@@ -112430,7 +111613,7 @@
           [
             1744830467,
             {
-              "BaseLayerWitness": 165
+              "BaseLayerWitness": 164
             }
           ]
         ],
@@ -112456,7 +111639,7 @@
           [
             133099247,
             {
-              "BaseLayerWitness": 166
+              "BaseLayerWitness": 165
             }
           ]
         ],
@@ -112482,7 +111665,7 @@
           [
             1744830467,
             {
-              "BaseLayerWitness": 166
+              "BaseLayerWitness": 165
             }
           ]
         ],
@@ -112508,7 +111691,7 @@
           [
             133099247,
             {
-              "BaseLayerWitness": 167
+              "BaseLayerWitness": 166
             }
           ]
         ],
@@ -112534,7 +111717,7 @@
           [
             1744830467,
             {
-              "BaseLayerWitness": 167
+              "BaseLayerWitness": 166
             }
           ]
         ],
@@ -112560,7 +111743,7 @@
           [
             133099247,
             {
-              "BaseLayerWitness": 168
+              "BaseLayerWitness": 167
             }
           ]
         ],
@@ -112586,7 +111769,7 @@
           [
             1744830467,
             {
-              "BaseLayerWitness": 168
+              "BaseLayerWitness": 167
             }
           ]
         ],
@@ -112612,7 +111795,7 @@
           [
             133099247,
             {
-              "BaseLayerWitness": 169
+              "BaseLayerWitness": 168
             }
           ]
         ],
@@ -112638,7 +111821,7 @@
           [
             1744830467,
             {
-              "BaseLayerWitness": 169
+              "BaseLayerWitness": 168
             }
           ]
         ],
@@ -112664,7 +111847,7 @@
           [
             133099247,
             {
-              "BaseLayerWitness": 170
+              "BaseLayerWitness": 169
             }
           ]
         ],
@@ -112690,7 +111873,7 @@
           [
             1744830467,
             {
-              "BaseLayerWitness": 170
+              "BaseLayerWitness": 169
             }
           ]
         ],
@@ -112716,7 +111899,7 @@
           [
             133099247,
             {
-              "BaseLayerWitness": 171
+              "BaseLayerWitness": 170
             }
           ]
         ],
@@ -112742,7 +111925,7 @@
           [
             1744830467,
             {
-              "BaseLayerWitness": 171
+              "BaseLayerWitness": 170
             }
           ]
         ],
@@ -112768,7 +111951,7 @@
           [
             133099247,
             {
-              "BaseLayerWitness": 172
+              "BaseLayerWitness": 171
             }
           ]
         ],
@@ -112794,7 +111977,7 @@
           [
             1744830467,
             {
-              "BaseLayerWitness": 172
+              "BaseLayerWitness": 171
             }
           ]
         ],
@@ -112820,7 +112003,7 @@
           [
             133099247,
             {
-              "BaseLayerWitness": 173
+              "BaseLayerWitness": 172
             }
           ]
         ],
@@ -112846,7 +112029,7 @@
           [
             1744830467,
             {
-              "BaseLayerWitness": 173
+              "BaseLayerWitness": 172
             }
           ]
         ],
@@ -112955,11 +112138,11 @@
     "82": "Variable at cs/src/types.rs::258",
     "83": "Variable at cs/src/types.rs::258",
     "84": "Variable at cs/src/types.rs::258",
-    "85": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::689",
-    "86": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::693",
-    "87": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::693",
-    "88": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::693",
-    "89": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::693",
+    "85": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::682",
+    "86": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::686",
+    "87": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::686",
+    "88": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::686",
+    "89": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::686",
     "90": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::74",
     "91": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::74",
     "92": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::75",
@@ -112972,176 +112155,180 @@
     "99": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::74",
     "100": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::75",
     "101": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::75",
-    "102": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "103": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "104": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "105": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "106": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "107": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "108": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "109": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "110": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "111": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "112": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "113": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "114": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "115": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "116": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "117": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "118": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "119": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "120": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "121": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "122": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "123": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "124": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "125": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "126": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "127": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "128": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "129": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "130": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "131": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "132": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "133": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "134": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "135": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "136": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "137": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "138": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "139": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "140": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "141": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "142": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "143": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "144": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "145": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "146": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "147": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "148": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "149": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "150": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "151": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "152": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "153": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "154": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "155": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "156": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "157": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "158": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "159": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "160": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "161": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "162": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "163": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "164": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "165": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "166": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "167": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "168": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "169": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "170": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "171": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "172": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "173": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "174": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "175": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "176": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "177": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "178": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "179": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "180": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "181": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "182": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "183": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "184": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "185": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "186": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "187": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "188": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "189": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "190": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "191": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "192": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "193": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "194": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "195": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "196": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "197": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "198": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "199": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "200": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "201": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "202": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "203": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "204": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "205": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::713",
-    "206": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "207": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "208": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "209": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "210": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "211": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "212": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "213": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::714",
-    "214": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "215": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "216": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "217": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "218": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "219": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "220": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "221": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::715",
-    "222": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::1464",
-    "223": "ram or indirect query 0, register read_ts[0]",
-    "224": "ram or indirect query 0, register read_ts[1]",
-    "225": "indirect access query 0, register access intermediate timestamp borrow",
-    "226": "ram or indirect query 1, register read_ts[0]",
-    "227": "ram or indirect query 1, register read_ts[1]",
-    "228": "indirect access query 1, register access intermediate timestamp borrow",
-    "229": "indirect query 1, indirect access 0 read_ts[0]",
-    "230": "indirect query 1, indirect access 0 read_ts[1]",
-    "231": "indirect access query 1, indirect access 0 intermediate timestamp borrow",
-    "232": "indirect query 1, indirect access 1 read_ts[0]",
-    "233": "indirect query 1, indirect access 1 read_ts[1]",
-    "234": "indirect access query 1, indirect access 1 intermediate timestamp borrow",
-    "235": "indirect query 1, indirect access 2 read_ts[0]",
-    "236": "indirect query 1, indirect access 2 read_ts[1]",
-    "237": "indirect access query 1, indirect access 2 intermediate timestamp borrow",
-    "238": "indirect query 1, indirect access 3 read_ts[0]",
-    "239": "indirect query 1, indirect access 3 read_ts[1]",
-    "240": "indirect access query 1, indirect access 3 intermediate timestamp borrow",
-    "241": "indirect query 1, indirect access 4 read_ts[0]",
-    "242": "indirect query 1, indirect access 4 read_ts[1]",
-    "243": "indirect access query 1, indirect access 4 intermediate timestamp borrow",
-    "244": "indirect query 1, indirect access 5 read_ts[0]",
-    "245": "indirect query 1, indirect access 5 read_ts[1]",
-    "246": "indirect access query 1, indirect access 5 intermediate timestamp borrow",
-    "247": "indirect query 1, indirect access 6 read_ts[0]",
-    "248": "indirect query 1, indirect access 6 read_ts[1]",
-    "249": "indirect access query 1, indirect access 6 intermediate timestamp borrow",
-    "250": "indirect query 1, indirect access 7 read_ts[0]",
-    "251": "indirect query 1, indirect access 7 read_ts[1]",
-    "252": "indirect access query 1, indirect access 7 intermediate timestamp borrow",
-    "253": "indirect query 1, indirect access 8 read_ts[0]",
-    "254": "indirect query 1, indirect access 8 read_ts[1]",
-    "255": "indirect access query 1, indirect access 8 intermediate timestamp borrow",
-    "256": "indirect query 1, indirect access 9 read_ts[0]",
-    "257": "indirect query 1, indirect access 9 read_ts[1]",
-    "258": "indirect access query 1, indirect access 9 intermediate timestamp borrow",
-    "259": "indirect query 1, indirect access 10 read_ts[0]",
-    "260": "indirect query 1, indirect access 10 read_ts[1]",
-    "261": "indirect access query 1, indirect access 10 intermediate timestamp borrow",
-    "262": "indirect query 1, indirect access 11 read_ts[0]",
-    "263": "indirect query 1, indirect access 11 read_ts[1]",
-    "264": "indirect access query 1, indirect access 11 intermediate timestamp borrow",
-    "265": "Multiplicity for timestamp range check",
-    "266": "Multiplicity for generic lookup"
+    "102": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "103": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "104": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "105": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "106": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "107": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "108": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "109": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "110": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "111": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "112": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "113": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "114": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "115": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "116": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "117": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "118": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "119": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "120": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "121": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "122": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "123": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "124": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "125": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "126": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "127": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "128": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "129": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "130": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "131": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "132": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "133": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "134": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "135": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "136": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "137": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "138": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "139": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "140": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "141": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "142": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "143": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "144": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "145": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "146": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "147": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "148": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "149": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "150": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "151": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "152": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "153": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "154": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "155": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "156": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "157": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "158": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "159": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "160": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "161": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "162": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "163": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "164": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "165": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "166": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "167": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "168": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "169": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "170": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "171": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "172": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "173": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "174": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "175": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "176": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "177": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "178": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "179": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "180": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "181": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "182": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "183": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "184": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "185": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "186": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "187": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "188": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "189": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "190": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "191": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "192": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "193": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "194": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "195": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "196": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "197": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "198": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "199": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "200": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "201": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "202": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "203": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "204": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "205": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "206": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "207": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "208": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "209": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "210": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "211": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "212": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "213": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::707",
+    "214": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "215": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "216": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "217": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "218": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "219": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "220": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "221": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::708",
+    "222": "ram or indirect query 0, register read_ts[0]",
+    "223": "ram or indirect query 0, register read_ts[1]",
+    "224": "indirect access query 0, register access intermediate timestamp borrow",
+    "225": "ram or indirect query 1, register read_ts[0]",
+    "226": "ram or indirect query 1, register read_ts[1]",
+    "227": "indirect access query 1, register access intermediate timestamp borrow",
+    "228": "indirect query 1, indirect access 0 read_ts[0]",
+    "229": "indirect query 1, indirect access 0 read_ts[1]",
+    "230": "indirect access query 1, indirect access 0 intermediate timestamp borrow",
+    "231": "indirect query 1, indirect access 1 read_ts[0]",
+    "232": "indirect query 1, indirect access 1 read_ts[1]",
+    "233": "indirect access query 1, indirect access 1 intermediate timestamp borrow",
+    "234": "indirect query 1, indirect access 2 read_ts[0]",
+    "235": "indirect query 1, indirect access 2 read_ts[1]",
+    "236": "indirect access query 1, indirect access 2 intermediate timestamp borrow",
+    "237": "indirect query 1, indirect access 3 read_ts[0]",
+    "238": "indirect query 1, indirect access 3 read_ts[1]",
+    "239": "indirect access query 1, indirect access 3 intermediate timestamp borrow",
+    "240": "indirect query 1, indirect access 4 read_ts[0]",
+    "241": "indirect query 1, indirect access 4 read_ts[1]",
+    "242": "indirect access query 1, indirect access 4 intermediate timestamp borrow",
+    "243": "indirect query 1, indirect access 5 read_ts[0]",
+    "244": "indirect query 1, indirect access 5 read_ts[1]",
+    "245": "indirect access query 1, indirect access 5 intermediate timestamp borrow",
+    "246": "indirect query 1, indirect access 6 read_ts[0]",
+    "247": "indirect query 1, indirect access 6 read_ts[1]",
+    "248": "indirect access query 1, indirect access 6 intermediate timestamp borrow",
+    "249": "indirect query 1, indirect access 7 read_ts[0]",
+    "250": "indirect query 1, indirect access 7 read_ts[1]",
+    "251": "indirect access query 1, indirect access 7 intermediate timestamp borrow",
+    "252": "indirect query 1, indirect access 8 read_ts[0]",
+    "253": "indirect query 1, indirect access 8 read_ts[1]",
+    "254": "indirect access query 1, indirect access 8 intermediate timestamp borrow",
+    "255": "indirect query 1, indirect access 9 read_ts[0]",
+    "256": "indirect query 1, indirect access 9 read_ts[1]",
+    "257": "indirect access query 1, indirect access 9 intermediate timestamp borrow",
+    "258": "indirect query 1, indirect access 10 read_ts[0]",
+    "259": "indirect query 1, indirect access 10 read_ts[1]",
+    "260": "indirect access query 1, indirect access 10 intermediate timestamp borrow",
+    "261": "indirect query 1, indirect access 11 read_ts[0]",
+    "262": "indirect query 1, indirect access 11 read_ts[1]",
+    "263": "indirect access query 1, indirect access 11 intermediate timestamp borrow",
+    "264": "Multiplicity for timestamp range check",
+    "265": "Multiplicity for generic lookup"
   },
   "scratch_space_mapping": [],
   "scratch_space_mapping_rev": {},
   "aux_layout_data": {
     "shuffle_ram_timestamp_comparison_aux_vars": [
+      {
+        "intermediate_borrow": {
+          "BaseLayerWitness": 159
+        }
+      },
       {
         "intermediate_borrow": {
           "BaseLayerWitness": 160
@@ -113205,11 +112392,6 @@
       {
         "intermediate_borrow": {
           "BaseLayerWitness": 172
-        }
-      },
-      {
-        "intermediate_borrow": {
-          "BaseLayerWitness": 173
         }
       }
     ]

@@ -23,8 +23,9 @@ See [Review](Airbender/Review/README.md) and [trust boundaries](TRUST_AND_REVIEW
 
 1. Implementation enforcement: [F02 bigint commands](FINDINGS.md#f02--valid-bigint-operation-observations-do-not-establish-valid-calls)
    and [F04 worker RAM ports](FINDINGS.md#f04--a-valid-copy-mode-does-not-bind-native-worker-rom-to-public-bytes).
-   Their composition proofs retain explicit contracts. Native G/round/Keccak
-   control validity is checked after the circuit fixes.
+   Their composition proofs retain explicit contracts. Hash calls additionally
+   assume [controller validity and G base separation](Airbender/Review/Helpers/Context/ExternalBoundary/HashABI.lean);
+   the circuit patches were removed and native enforcement remains open.
 2. Complete full independent kernel replay and the final negative-control sweep.
 3. Validate remote CI, Linux controls and empty-cache reproduction on suitable
    hosts; CUDA/AVX-512 execution and a regenerated proof remain external checks.
@@ -36,9 +37,13 @@ Separately scoped work: [deferred milestones](FORMAL_VERIFICATION_PLAN.md#deferr
 
 - Earlier full suite at `5b17af422`: 1,842 modules and 176 concrete Tests pass.
   The subsequent native-control refresh has focused builds and audit reports.
-- Compiler layout refactor (26 October): all 34 roots/controls, generator/layout
+- Before the circuit rollback, compiler layout refactor `f099bb549`: all 34 roots/controls, generator/layout
   checks and the exact 7,766-root axiom audit pass; standard Lean axioms only.
   Full independent replay remains incomplete.
+- Rollback validation: conditional native-path theorem, eight affected native
+  tests and an 18-root axiom audit pass. Restored provenance, 22 fresh compiler
+  captures, eight provenance tests and all 293 regenerated compiler modules pass.
+  The focused 656-root compiler audit passes; both audits use standard Lean axioms only.
 
 [Detailed evidence history](VERIFICATION_HISTORY.md) ·
 [Compiler scope and evidence](GKR_COMPILER_VERIFICATION.md) ·

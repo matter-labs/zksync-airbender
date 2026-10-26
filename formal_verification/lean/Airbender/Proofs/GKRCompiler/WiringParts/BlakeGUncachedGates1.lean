@@ -7,6 +7,6 @@ set_option Elab.async false
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-import_compiler_wiring native from "artifacts/compiler/blake-g-uncached.json" phase "gates" start 64 count 46
+import_compiler_wiring native from "artifacts/compiler/blake-g-uncached.json" phase "gates" start 64 count 44
 
 end Airbender.Compiler.WiringNative.BlakeGUncached

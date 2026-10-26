@@ -14,11 +14,11 @@ import_helper_validity native from "artifacts/compiler/blake-g-cached-source.jso
   source_model Airbender.Compiler.SourceContractNative.BlakeGCached.native
   history_model Airbender.Compiler.HistoryErasureNative.BlakeGCached.native
   helper_model Airbender.Compiler.HelperNative.BlakeGCached.native
-  memory_model Airbender.Compiler.MemoryNative.BlakeGCached.native inputs 113
+  memory_model Airbender.Compiler.MemoryNative.BlakeGCached.native inputs 112
 
 theorem helper_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 113 → Source.BaseField)
+    (sourceValue : Fin 112 → Source.BaseField)
     (original : Satisfies (Airbender.Compiler.SourceContractNative.BlakeGCached.native.originals.map Expression.polynomial) sourceValue)
     (clockValid : Source.clockContract Airbender.Compiler.SourceContractNative.BlakeGCached.native.clock (Airbender.Compiler.FullArithmeticNative.BlakeGCached.native.helperPlacement.memory.project sourceValue))
     (primitives : native.profile.ExecutionValid (native.execute.value (Airbender.Compiler.FullArithmeticNative.BlakeGCached.native.helperPlacement.memory.project sourceValue))

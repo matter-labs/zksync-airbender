@@ -15,15 +15,15 @@ theorem timestamp_count {p : Nat} [Fact p.Prime] :
 
 theorem delegation_columns : importedConstraintsDelegationColumns =
     (⟨0, #v[1, 2], (Vector.ofFn (fun i : Fin 9 =>
-      Trace.TimestampPort.mk 2 #v[84 + 3 * i.val, 85 + 3 * i.val]
-        (86 + 3 * i.val))).toArray⟩ : Delegation.ClockColumns) := by decide
+      Trace.TimestampPort.mk 2 #v[83 + 3 * i.val, 84 + 3 * i.val]
+        (85 + 3 * i.val))).toArray⟩ : Delegation.ClockColumns) := by decide
 
 theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
     importedConstraintsDelegationColumns.ports := by
   simp [importedConstraintsMemoryPorts, importedConstraintsDelegationColumns]
 
 theorem constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9)) :
-    (FlatOperation.constraints (importedConstraints setup)).length = 34 := rfl
+    (FlatOperation.constraints (importedConstraints setup)).length = 32 := rfl
 
 theorem lookup_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9)) :
     (FlatOperation.lookups (importedConstraints setup)).length = 21 := rfl
@@ -78,15 +78,15 @@ theorem variable_roles :
     importedConstraintsVariableNames.lookup 68 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::436" ∧
     importedConstraintsVariableNames.lookup 75 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::552" ∧
     importedConstraintsVariableNames.lookup 76 = some "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs::554" ∧
-    importedConstraintsVariableNames.lookup 86 = some "indirect access query 0, register access intermediate timestamp borrow" ∧
-    importedConstraintsVariableNames.lookup 89 = some "indirect access query 0, indirect access 0 intermediate timestamp borrow" ∧
-    importedConstraintsVariableNames.lookup 92 = some "indirect access query 0, indirect access 1 intermediate timestamp borrow" ∧
-    importedConstraintsVariableNames.lookup 95 = some "indirect access query 0, indirect access 2 intermediate timestamp borrow" ∧
-    importedConstraintsVariableNames.lookup 98 = some "indirect access query 0, indirect access 3 intermediate timestamp borrow" ∧
-    importedConstraintsVariableNames.lookup 101 = some "indirect access query 1, register access intermediate timestamp borrow" ∧
-    importedConstraintsVariableNames.lookup 104 = some "indirect access query 1, indirect access 0 intermediate timestamp borrow" ∧
-    importedConstraintsVariableNames.lookup 107 = some "indirect access query 1, indirect access 1 intermediate timestamp borrow" ∧
-    importedConstraintsVariableNames.lookup 110 = some "indirect access query 2, register access intermediate timestamp borrow" := by
+    importedConstraintsVariableNames.lookup 85 = some "indirect access query 0, register access intermediate timestamp borrow" ∧
+    importedConstraintsVariableNames.lookup 88 = some "indirect access query 0, indirect access 0 intermediate timestamp borrow" ∧
+    importedConstraintsVariableNames.lookup 91 = some "indirect access query 0, indirect access 1 intermediate timestamp borrow" ∧
+    importedConstraintsVariableNames.lookup 94 = some "indirect access query 0, indirect access 2 intermediate timestamp borrow" ∧
+    importedConstraintsVariableNames.lookup 97 = some "indirect access query 0, indirect access 3 intermediate timestamp borrow" ∧
+    importedConstraintsVariableNames.lookup 100 = some "indirect access query 1, register access intermediate timestamp borrow" ∧
+    importedConstraintsVariableNames.lookup 103 = some "indirect access query 1, indirect access 0 intermediate timestamp borrow" ∧
+    importedConstraintsVariableNames.lookup 106 = some "indirect access query 1, indirect access 1 intermediate timestamp borrow" ∧
+    importedConstraintsVariableNames.lookup 109 = some "indirect access query 2, register access intermediate timestamp borrow" := by
   repeat' apply And.intro
   all_goals decide
 

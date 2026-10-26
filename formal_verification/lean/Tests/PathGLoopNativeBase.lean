@@ -207,10 +207,9 @@ def workerAssignment (variant : Variant) (index : Fin 56) (column : Nat) : ZMod 
   else if messageOffset : 11 ≤ column ∧ column < 13 then control.messageOffsets[column - 11]'(by omega)
   else if column = 14 ∨ column = 32 then 512
   else if column = 31 then 64
-  else if column = 83 then 31457280
-  else if timestamp : 84 ≤ column ∧ column < 111 then
-    if (column - 84) % 3 = 0 then workerReadStamp variant index ⟨(column - 84) / 3, by omega⟩
-    else if (column - 84) % 3 = 2 then 1 else 0
+  else if timestamp : 83 ≤ column ∧ column < 110 then
+    if (column - 83) % 3 = 0 then workerReadStamp variant index ⟨(column - 83) / 3, by omega⟩
+    else if (column - 83) % 3 = 2 then 1 else 0
   else 0
 
 def machineRows (variant : Variant) : List (Row babyBearModulus UnifiedFamily) :=
@@ -422,15 +421,6 @@ theorem worker_control (variant : Variant) (index : Fin 56) :
       (fun upper => Word.mk (Blake2G.Control.step (Blake2G.controllerAt true index.val)).register.lo upper)
       high.symm
 
-/-- The scheduled reduced controller satisfies the added native guard, including
-the final wrap from 183 to 128. -/
-private theorem worker_control_guard : ∀ index : Fin 56,
-    let read : ZMod babyBearModulus := (Blake2G.controlAt true index.val).lo
-    let written : ZMod babyBearModulus :=
-      (Blake2G.Control.step (Blake2G.controllerAt true index.val)).register.lo
-    (read + 1 - written) * (16 * (read + 1 - written) - 1280 + 3 * written) = 0 := by
-  decide +kernel
-
 /-- Every polynomial equation in the actual imported native G row is checked
 with its real assignment. Lookup membership is a separate later proof. -/
 theorem worker_equations (variant : Variant) (index : Fin 56) :
@@ -439,21 +429,11 @@ theorem worker_equations (variant : Variant) (index : Fin 56) :
       expression.eval (Verification.environment (workerAssignment variant index)) = 0 := by
   rw [List.forall_mem_iff_forall_getElem]
   intro equation bound
-  have short : equation < 34 := by simpa only [Blake2G.constraint_count] using bound
-  by_cases guard : equation = 11
-  · subst equation
-    dsimp only [Blake2G.importedConstraints, FlatOperation.constraints]
-    simp only [List.getElem_cons_zero, List.getElem_cons_succ]
-    norm_num [Expression.eval, Verification.environment, workerAssignment, -mul_eq_zero]
-    convert worker_control_guard index using 1
-    ring
+  have short : equation < 32 := by simpa only [Blake2G.constraint_count] using bound
   interval_cases equation
-  all_goals try contradiction
   all_goals dsimp only [Blake2G.importedConstraints, FlatOperation.constraints]
   all_goals simp only [List.getElem_cons_zero, List.getElem_cons_succ]
-  all_goals norm_num [Expression.eval, Verification.environment, workerAssignment,
-    babyBearModulus]
-  all_goals decide +kernel
+  all_goals norm_num [Expression.eval, Verification.environment, workerAssignment]
 
 /-- The participating CPU row's actual imported execute column is one. -/
 theorem machine_active (variant : Variant) (index : Fin 228) :

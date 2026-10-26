@@ -14,6 +14,6 @@ import_memory_execute native
   helper_model Airbender.Compiler.HelperValidityNative.KeccakUncached.native
   helper_fields Airbender.Compiler.HelperNative.KeccakUncached.native
   frame_model Airbender.Compiler.MemoryFrameNative.KeccakUncached.native
-  inputs 267
+  inputs 266
 
 end Airbender.Compiler.MemoryExecuteNative.KeccakUncached

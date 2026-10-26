@@ -14,7 +14,7 @@ import_lookup_oracle_frame native from "artifacts/compiler/blake-g-cached.json"
 
 theorem oracle_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 113 → Source.BaseField)
+    (sourceValue : Fin 112 → Source.BaseField)
     (original : Satisfies (Airbender.Compiler.SourceContractNative.BlakeGCached.native.originals.map Expression.polynomial) sourceValue)
     (clockValid : Source.clockContract Airbender.Compiler.SourceContractNative.BlakeGCached.native.clock (Airbender.Compiler.FullArithmeticNative.BlakeGCached.native.helperPlacement.memory.project sourceValue))
     (primitives : Airbender.Compiler.HelperValidityNative.BlakeGCached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.BlakeGCached.native.execute.value (Airbender.Compiler.FullArithmeticNative.BlakeGCached.native.helperPlacement.memory.project sourceValue))

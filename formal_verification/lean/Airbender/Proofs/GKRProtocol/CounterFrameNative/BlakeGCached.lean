@@ -12,11 +12,11 @@ set_option maxHeartbeats 4000000
 import_counter_frame native from "artifacts/compiler/blake-g-cached.json"
   base_model Airbender.Compiler.FullArithmeticNative.BlakeGCached.native
   table_model Airbender.Compiler.TableNative.BlakeGCached.native
-  helper_model Airbender.Compiler.HelperNative.BlakeGCached.native inputs 113
+  helper_model Airbender.Compiler.HelperNative.BlakeGCached.native inputs 112
 
 theorem counter_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 113 → Source.BaseField)
+    (sourceValue : Fin 112 → Source.BaseField)
     (original : Satisfies (Airbender.Compiler.SourceContractNative.BlakeGCached.native.originals.map Expression.polynomial) sourceValue)
     (clockValid : Source.clockContract Airbender.Compiler.SourceContractNative.BlakeGCached.native.clock (Airbender.Compiler.FullArithmeticNative.BlakeGCached.native.helperPlacement.memory.project sourceValue))
     (primitives : Airbender.Compiler.HelperValidityNative.BlakeGCached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.BlakeGCached.native.execute.value (Airbender.Compiler.FullArithmeticNative.BlakeGCached.native.helperPlacement.memory.project sourceValue))

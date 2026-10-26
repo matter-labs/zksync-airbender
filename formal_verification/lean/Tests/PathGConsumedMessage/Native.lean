@@ -175,15 +175,15 @@ private theorem last_worker_read_stamps (port : Fin 9) :
   fin_cases port <;> decide +kernel
 
 private def oldFinalWorkerStencil (column : Nat) : ZMod babyBearModulus :=
-  if timestamp : 84 ≤ column ∧ column < 111 then
-    if (column - 84) % 3 = 0 then lastWorkerStamps[(⟨(column - 84) / 3, by omega⟩ : Fin 9)]
-    else if (column - 84) % 3 = 2 then 1 else 0
+  if timestamp : 83 ≤ column ∧ column < 110 then
+    if (column - 83) % 3 = 0 then lastWorkerStamps[(⟨(column - 83) / 3, by omega⟩ : Fin 9)]
+    else if (column - 83) % 3 = 2 then 1 else 0
   else PathGLoopNative.workerAssignment .protectedMessage 55 column
 
 private theorem old_final_worker_assignment :
     PathGLoopNative.workerAssignment .protectedMessage 55 = oldFinalWorkerStencil := by
   funext column
-  by_cases timestamp : 84 ≤ column ∧ column < 111
+  by_cases timestamp : 83 ≤ column ∧ column < 110
   · have nonzero : column ≠ 0 := by omega
     have notOne : column ≠ 1 := by omega
     have notThree : column ≠ 3 := by omega
@@ -192,10 +192,9 @@ private theorem old_final_worker_assignment :
     have notMessage : ¬ (11 ≤ column ∧ column < 13) := by omega
     have notPointers : ¬ (column = 14 ∨ column = 32) := by omega
     have notThirtyOne : column ≠ 31 := by omega
-    have notInverse : column ≠ 83 := by omega
     simp only [oldFinalWorkerStencil, PathGLoopNative.workerAssignment, timestamp,
       nonzero, notOne, notThree, notFive, notState, notMessage, notPointers,
-      notThirtyOne, notInverse, and_self, ↓reduceIte, ↓reduceDIte, last_worker_read_stamps]
+      notThirtyOne, and_self, ↓reduceIte, ↓reduceDIte, last_worker_read_stamps]
   · simp only [oldFinalWorkerStencil, timestamp, ↓reduceDIte]
 
 private def newStoreStencil (column : Nat) : ZMod babyBearModulus :=
@@ -221,7 +220,7 @@ private def finalWorkerStencil (column : Nat) : ZMod babyBearModulus :=
   | 79 => 112
   | 80 => 14
   | 82 => 238
-  | 102 => 910
+  | 101 => 910
   | _ => oldFinalWorkerStencil column
 
 private theorem final_worker_assignment : finalWorkerAssignment = finalWorkerStencil := by

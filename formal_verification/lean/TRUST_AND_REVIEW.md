@@ -31,14 +31,14 @@ also composes complete bigint, BLAKE2 G, extended-round and Keccak references
 with the supported straight-line ordinary registry.
 [Native actual-path execution](Airbender/Review/Trace/UnifiedReduced/NativePathExecution.lean)
 composes branches, JAL/JALR and repeated-PC loops with complete delegations
-without an occurrence plan;
+under explicit hash controller/base contracts and without an occurrence plan;
 [complete spans](Airbender/Review/Trace/UnifiedReduced/PathSpanExecution.lean)
 derive the full native worker partition/count and algorithms in one history
 under their per-trace occurrence plan and complete protocol coverage.
 The earlier entrypoints, accepted two-COPY loop and complete native G-loop
 application passed the full ordinary source/runtime suite at `5b17af422`.
-The native enforcement refresh has focused kernel checks recorded in the
-verification status.
+The circuit enforcement patches have been removed. Their former focused build
+results do not establish native enforcement in the restored source.
 Separate declaration-origin auditing, transitive assurance controls and independent
 kernel replay are also required.
 
@@ -49,10 +49,14 @@ modeled lookup tables and exact logical matching. Reads, operand bounds,
 decoder selections and worker participation are derived. A local request observation
 is weaker than fulfilled worker effects or a complete reference span.
 
-The native actual-path entrypoint derives supported hash controller positions,
-round-mask validity and G base separation from the refreshed native constraints.
-It covers controllers loaded or computed through arbitrary supported ordinary
-instructions and requires no instruction/caller occurrence plan. Public program
+The native actual-path entrypoint explicitly assumes
+[HashCommands](Airbender/Review/Helpers/UnifiedReduced/NativeMemory.lean): supported
+hash controller reads and G base separation. Its
+[input contracts](Airbender/Review/Helpers/Context/ExternalBoundary/HashABI.lean)
+do not assert outputs or execution; this proof does not derive them from native
+acceptance. The round contract's zero low limb restricts the existing reference profile
+and is not claimed to be required by the Rust VM. Controllers may be loaded or
+computed through ordinary instructions; no occurrence plan is supplied. Public program
 bytes, initialized tracked memory, configuration/retirement and the separate
 bigint command contract remain explicit. The older full-CSR profile retains
 aligned straight-line code, and the older actual-path preparation profile retains

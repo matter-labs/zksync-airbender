@@ -17,6 +17,6 @@ import_query_frame native certificate "artifacts/compiler/lookup/keccak-uncached
   source_model Airbender.Compiler.SourceContractNative.KeccakUncached.native
   history_model Airbender.Compiler.HistoryErasureNative.KeccakUncached.native
   helper_model Airbender.Compiler.HelperValidityNative.KeccakUncached.native
-  counter_model Airbender.Compiler.CounterFrameNative.KeccakUncached.native inputs 267 phase 1 start 256 stop 320
+  counter_model Airbender.Compiler.CounterFrameNative.KeccakUncached.native inputs 266 phase 1 start 256 stop 320
 
 end Airbender.Compiler.QueryFrameNative.KeccakUncached

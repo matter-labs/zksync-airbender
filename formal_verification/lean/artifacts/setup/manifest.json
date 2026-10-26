@@ -1,93 +1,199 @@
 {
-  "schema_version": 2,
+  "artifacts": {
+    "add-sub.json": {
+      "circuit_sha256": "531cf5e36034d79c91732a64f14ea8985a012913dcbee071141b6b83a07061a2",
+      "columns": 8,
+      "sha256": "95345378dd636b1b4c2c48d9515199d714422b94771f75dc661de083cf35a121",
+      "trace_len": 16777216
+    },
+    "bigint.json": {
+      "circuit_sha256": "0e9d640e507b80c98eabd4376d644fd3c76f38a8f606b5761b711b991cc1ad09",
+      "columns": 3,
+      "sha256": "3adfafb9bec7fb3974af1ba4fc168436d031aa7d1ba147d3e99f89d56e68e81b",
+      "trace_len": 4194304
+    },
+    "blake-g.json": {
+      "circuit_sha256": "ad77ddd541114dadd6cf6ed90b95db77e2e9390a9459aacaadca162600bc107d",
+      "columns": 9,
+      "sha256": "eec4037dd36a90af7a99d84288fd79193a83f5f2b2e059617d22cc7b1fde8f1a",
+      "trace_len": 4194304
+    },
+    "blake-round.json": {
+      "circuit_sha256": "0dad602c664f12007cc4d0cd5142bad65693e84977a1ef0a44db3eaf1af55f9a",
+      "columns": 6,
+      "sha256": "333f3d6334e077a39cac5bc562bc98ac6b2ec95163d0cc0375e7206929259909",
+      "trace_len": 1048576
+    },
+    "decoder-smoke.json": {
+      "circuit_sha256": "4c796f7e40087966fb4c2abec803f53bf4426e83b19eee89be8e9fa1057a6b74",
+      "columns": 9,
+      "sha256": "fa68f92ff6664dc7def7c012f6cc24dce07533de427f7597cb9049ddc90b8487",
+      "trace_len": 524288
+    },
+    "inits-and-teardowns.json": {
+      "circuit_sha256": "ea075390369cd0875dabaedfa51d225ba27e8acedffd770df2b65e177394595e",
+      "columns": 0,
+      "sha256": "e6bc84ff8f96346f0c44cae8e10bcc74f38555a5bcbf2c79be40d359001a1e24",
+      "trace_len": 16777216
+    },
+    "jump-branch.json": {
+      "circuit_sha256": "69e7977a855214ff9f46e494b2ef80050125d65b75ff7eca3fc1bf36d5c0deae",
+      "columns": 10,
+      "sha256": "2e4a13a1508b86288e7ff88f47070001a28864f3946dc6e31ea874f7e85e3e9e",
+      "trace_len": 16777216
+    },
+    "keccak.json": {
+      "circuit_sha256": "ee76cfb772d2c4814ac9f0d7f2729360295fd2ed64ba8057aeedf9ac5c7db808",
+      "columns": 8,
+      "sha256": "84dfb734f5889aff4b6912c90dfdb5222906d37fcfc33566928f94a253146153",
+      "trace_len": 4194304
+    },
+    "mul-div.json": {
+      "circuit_sha256": "3562afadc4bda407866d2605d4fc118f766245e907c7f0ef7f899437b254d79e",
+      "columns": 9,
+      "sha256": "99b68f095ff9e3a552562633222a3b32eafcff42b6add769ef79d7aff8b7eb12",
+      "trace_len": 8388608
+    },
+    "shift-binop.json": {
+      "circuit_sha256": "9504df2f38cc96db1fa7e9cfb19fd97644101d0a13ef19cd5e3cc10a6b64c60d",
+      "columns": 10,
+      "sha256": "0da4edbe7692cdfd3ed0338c48a6fb99fb8a90ba5e7d303fb93f0019ae9bc44b",
+      "trace_len": 16777216
+    },
+    "subword-memory.json": {
+      "circuit_sha256": "a08f335db45f0d766ece66f3384cfa8abf16c8e1f34f8c24d3f622506d9f9f98",
+      "columns": 9,
+      "sha256": "9c577823c9af078799bc73f0d766ee40bf33d6ba8e2a15b6e164d4a0a33d5525",
+      "trace_len": 16777216
+    },
+    "unified.json": {
+      "circuit_sha256": "1e795abc4a1cada2868058db53d789957ba389906029ff44daf65322c453132a",
+      "columns": 10,
+      "sha256": "2ae9f5d82f965769b2cebcbdd2cf06f831401c0d579e05ae271c52f70402e011",
+      "trace_len": 8388608
+    },
+    "word-memory.json": {
+      "circuit_sha256": "2d80230a980047ae69955eba5e0521b81a22cdbe14716f6aaa03f09fac45f967",
+      "columns": 9,
+      "sha256": "3d948b663a5fc7c2dfb64c85f991e3b63090b91a714fa58a9c7de0bb6a45a032",
+      "trace_len": 16777216
+    }
+  },
   "base_commit": "4518846625730fabc4cd83744d4bd983a5e42b97",
+  "cargo_lock_sha256": "29c6b3525e29078020568b978cc06ed27f641d17ae2e16572cd67ded21e281b6",
+  "cargo_lock_source": "formal_verification/lean/artifacts/setup/native-cargo.lock",
+  "circuit_identities": {
+    "add-sub.json": {
+      "kind": "production",
+      "retained_path": "cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json"
+    },
+    "bigint.json": {
+      "kind": "production",
+      "retained_path": "cs/compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json"
+    },
+    "blake-g.json": {
+      "kind": "production",
+      "retained_path": "cs/compiled_circuits/blake2_g_function_layout_no_caches_gkr.json"
+    },
+    "blake-round.json": {
+      "kind": "production",
+      "retained_path": "cs/compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json"
+    },
+    "decoder-smoke.json": {
+      "base_path": "cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
+      "base_sha256": "e5aadac65c19335d5adf39b24afad8fca54ca404305058a190004177b325fc49",
+      "constructor_path": "prover/src/gkr/prover/setup_tests.rs",
+      "constructor_sha256": "cc6cd4020a5987a026d597ec76679f0a1d907be889720e2422833debcbeeadc7",
+      "constructor_test": "gkr::prover::setup::tests::setup_json_roundtrip_preserves_materialized_columns_and_program",
+      "derived_circuit_sha256": "4c796f7e40087966fb4c2abec803f53bf4426e83b19eee89be8e9fa1057a6b74",
+      "kind": "native-derived-fixture",
+      "scope": "Native test derives a tagged 2^19-row ADD/SUB-based fixture, not the production whole circuit. Fresh exact-test reconstruction and complete JSON comparison establish current fixture identity."
+    },
+    "inits-and-teardowns.json": {
+      "kind": "production",
+      "retained_path": "cs/compiled_circuits/inits_and_teardowns_layout_no_caches_gkr.json"
+    },
+    "jump-branch.json": {
+      "kind": "production",
+      "retained_path": "cs/compiled_circuits/jump_branch_slt_layout_no_caches_gkr.json"
+    },
+    "keccak.json": {
+      "kind": "production",
+      "retained_path": "cs/compiled_circuits/keccak_special5_layout_no_caches_gkr.json"
+    },
+    "mul-div.json": {
+      "kind": "production",
+      "retained_path": "cs/compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json"
+    },
+    "shift-binop.json": {
+      "kind": "production",
+      "retained_path": "cs/compiled_circuits/shift_binop_layout_no_caches_gkr.json"
+    },
+    "subword-memory.json": {
+      "kind": "production",
+      "retained_path": "cs/compiled_circuits/mem_subword_only_layout_no_caches_gkr.json"
+    },
+    "unified.json": {
+      "kind": "production",
+      "retained_path": "cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json"
+    },
+    "word-memory.json": {
+      "kind": "production",
+      "retained_path": "cs/compiled_circuits/mem_word_only_layout_no_caches_gkr.json"
+    }
+  },
+  "ordinary_profile": "FullUnsigned",
   "program_words_unpadded": [
     19,
     4227219,
     111,
     7438771
   ],
-  "ordinary_profile": "FullUnsigned",
-  "unified_profile": "Reduced",
-  "artifacts": {
-    "add-sub.json": {
-      "sha256": "95345378dd636b1b4c2c48d9515199d714422b94771f75dc661de083cf35a121",
-      "trace_len": 16777216,
-      "columns": 8,
-      "circuit_sha256": "531cf5e36034d79c91732a64f14ea8985a012913dcbee071141b6b83a07061a2"
-    },
-    "bigint.json": {
-      "sha256": "3adfafb9bec7fb3974af1ba4fc168436d031aa7d1ba147d3e99f89d56e68e81b",
-      "trace_len": 4194304,
-      "columns": 3,
-      "circuit_sha256": "0e9d640e507b80c98eabd4376d644fd3c76f38a8f606b5761b711b991cc1ad09"
-    },
-    "blake-g.json": {
-      "sha256": "d9d7fb0456565f79421f214b50f58cd93bf477278530fc7fe21ba4183274f88e",
-      "trace_len": 4194304,
-      "columns": 9,
-      "circuit_sha256": "ba5c0dc72db42575d3b386ee579c2d1252a754d6c620c62431f62aa40bc2bdab"
-    },
-    "blake-round.json": {
-      "sha256": "87542465ad3b042bb67134c2fef8ddf8716315344630d7eebe72a149e3dbeaca",
-      "trace_len": 1048576,
-      "columns": 6,
-      "circuit_sha256": "520940d3880739bbf0f33bd571fc032a094e85ac9e7e4c6630b974017644d7e7"
-    },
-    "decoder-smoke.json": {
-      "sha256": "fa68f92ff6664dc7def7c012f6cc24dce07533de427f7597cb9049ddc90b8487",
-      "trace_len": 524288,
-      "columns": 9,
-      "circuit_sha256": "4c796f7e40087966fb4c2abec803f53bf4426e83b19eee89be8e9fa1057a6b74"
-    },
-    "inits-and-teardowns.json": {
-      "sha256": "e6bc84ff8f96346f0c44cae8e10bcc74f38555a5bcbf2c79be40d359001a1e24",
-      "trace_len": 16777216,
-      "columns": 0,
-      "circuit_sha256": "ea075390369cd0875dabaedfa51d225ba27e8acedffd770df2b65e177394595e"
-    },
-    "jump-branch.json": {
-      "sha256": "2e4a13a1508b86288e7ff88f47070001a28864f3946dc6e31ea874f7e85e3e9e",
-      "trace_len": 16777216,
-      "columns": 10,
-      "circuit_sha256": "69e7977a855214ff9f46e494b2ef80050125d65b75ff7eca3fc1bf36d5c0deae"
-    },
-    "keccak.json": {
-      "sha256": "293e19fe69c7b7a5060db8179fd3feee5190a0b1d1c5ca40e8393f84e3835e60",
-      "trace_len": 4194304,
-      "columns": 8,
-      "circuit_sha256": "d2513ccb52a9ca213fe6595a5a06ebf5cf4fd7b167d2a00d0f4a2d2d6a9eead8"
-    },
-    "mul-div.json": {
-      "sha256": "99b68f095ff9e3a552562633222a3b32eafcff42b6add769ef79d7aff8b7eb12",
-      "trace_len": 8388608,
-      "columns": 9,
-      "circuit_sha256": "3562afadc4bda407866d2605d4fc118f766245e907c7f0ef7f899437b254d79e"
-    },
-    "shift-binop.json": {
-      "sha256": "0da4edbe7692cdfd3ed0338c48a6fb99fb8a90ba5e7d303fb93f0019ae9bc44b",
-      "trace_len": 16777216,
-      "columns": 10,
-      "circuit_sha256": "9504df2f38cc96db1fa7e9cfb19fd97644101d0a13ef19cd5e3cc10a6b64c60d"
-    },
-    "subword-memory.json": {
-      "sha256": "9c577823c9af078799bc73f0d766ee40bf33d6ba8e2a15b6e164d4a0a33d5525",
-      "trace_len": 16777216,
-      "columns": 9,
-      "circuit_sha256": "a08f335db45f0d766ece66f3384cfa8abf16c8e1f34f8c24d3f622506d9f9f98"
-    },
-    "unified.json": {
-      "sha256": "2ae9f5d82f965769b2cebcbdd2cf06f831401c0d579e05ae271c52f70402e011",
-      "trace_len": 8388608,
-      "columns": 10,
-      "circuit_sha256": "1e795abc4a1cada2868058db53d789957ba389906029ff44daf65322c453132a"
-    },
-    "word-memory.json": {
-      "sha256": "3d948b663a5fc7c2dfb64c85f991e3b63090b91a714fa58a9c7de0bb6a45a032",
-      "trace_len": 16777216,
-      "columns": 9,
-      "circuit_sha256": "2d80230a980047ae69955eba5e0521b81a22cdbe14716f6aaa03f09fac45f967"
-    }
+  "schema_version": 2,
+  "source_inventory": {
+    "empty_files_are_not_coverage": true,
+    "local_crates": [
+      "blake2s_u32",
+      "circuit_defs/bigint_with_control",
+      "circuit_defs/blake2_g_function",
+      "circuit_defs/blake2_with_compression",
+      "circuit_defs/circuit_common",
+      "circuit_defs/keccak_chi5",
+      "circuit_defs/keccak_column_parity",
+      "circuit_defs/keccak_special5",
+      "circuit_defs/keccak_theta_rho",
+      "circuit_defs/setups",
+      "circuit_defs/trace_and_split",
+      "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
+      "circuit_defs/unrolled_circuits/inits_and_teardowns",
+      "circuit_defs/unrolled_circuits/jump_branch_slt",
+      "circuit_defs/unrolled_circuits/load_store_subword_only",
+      "circuit_defs/unrolled_circuits/load_store_word_only",
+      "circuit_defs/unrolled_circuits/mul_div_unsigned",
+      "circuit_defs/unrolled_circuits/shift_binary",
+      "circuit_defs/unrolled_circuits/unified_reduced_machine",
+      "common_constants",
+      "cs",
+      "execution_prover",
+      "execution_prover_model",
+      "fft",
+      "field",
+      "non_determinism_source",
+      "prover",
+      "riscv_common",
+      "riscv_transpiler",
+      "test_utils",
+      "transcript",
+      "verifier_common",
+      "witness_eval_generator",
+      "worker"
+    ],
+    "policy": "Conservative complete nonempty source/include inventory of local Cargo dependency, build, dev, optional and target branches; active inputs cross-checked separately with native dep-info. No generated Sail input is included.",
+    "root_crates": [
+      "cs",
+      "execution_prover",
+      "prover"
+    ]
   },
   "source_sha256": {
     ".cargo/config.toml": "f1018bbdcd74cffa1c2372b32edcabf46e8c1d1fceb171aea9767ab679307a26",
@@ -252,11 +358,11 @@
     "cs/src/gkr_circuits/binary_shifts_family/mod.rs": "a31c9e8580df3bdbe4071f7d5b0e7707a289e03d9e400d17ce0b655e19da6f67",
     "cs/src/gkr_circuits/decoder_trait.rs": "6b58da0323f18df69f536b23bccd9114956e7f5d6fed521c7075d2841b127caf",
     "cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs": "766bb7822df3333910ab8e19265fce3aaafb22e1e4dfb2cd09cea21602da1b4f",
-    "cs/src/gkr_circuits/delegation/blake2_g_function/mod.rs": "fb3a63be6816361e418fb9a2e5c2aa08bc0994dd54a8141de08b6b8d0388ec4d",
-    "cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy.rs": "3a55933bf9871a73771da7c774e05a6b963f6e249de1345fe23a5c58fe2e4fdf",
+    "cs/src/gkr_circuits/delegation/blake2_g_function/mod.rs": "141aecca123143c358791c83bc916f89111aa37845f9371fe1b2e228cd452b3e",
+    "cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy.rs": "a60f96a377258bcd9f46566d7bfc2c1a12cefda181c8441daf144c19f6e271cd",
     "cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/legacy/g_function.rs": "e898413c31550a6e1908cb262ec1a57b962bbb79cdb90d579c8d75a04106ddbe",
-    "cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs": "bb1e3813f535d0e06e16c2bc0c5f20e7866891570c086661568add99a1cc1555",
-    "cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/wider_tables.rs": "169df62aab525e7fdd88cb7e3dba70a17b4bc93beb48d4a881718b6a5bca85e2",
+    "cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs": "21f6eb6c35d3144cc1a3687e06d25923f1bd949f662c4eff0dea9f21b4ac079c",
+    "cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/wider_tables.rs": "d302cc6871c627b0e8eee2f52e3c378babd80daa60cf6716cb29f113da70c2e8",
     "cs/src/gkr_circuits/delegation/keccak_chi5/mod.rs": "117169b4d9819cafdf976b6c304b7091c5518f6faca1aeb82afbf172aa6f65ae",
     "cs/src/gkr_circuits/delegation/keccak_chi5/test.rs": "7505db3860f36c7152a4c70bd23982e3b52c0a2f6acd63a083b0cd8e5b4505f6",
     "cs/src/gkr_circuits/delegation/keccak_column_parity/mod.rs": "1e53e1db072daf72254fa9c58a3210b97db8d7d13662a766161e3418b6e99647",
@@ -264,7 +370,7 @@
     "cs/src/gkr_circuits/delegation/keccak_f1600_artifacts.rs": "af6d40dc46730048be62218b88d091267087cc1094cf44da9b73ecaefae1dd2b",
     "cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs": "9760f40f2edbce12f2b0d2b024dce8a9994004fa2166f7ac9f32cff8416a3e71",
     "cs/src/gkr_circuits/delegation/keccak_special5/debug_info.rs": "822698e54bff397a67913eaedcc02c0314780bcecc170df354e8558cf1eb8cd3",
-    "cs/src/gkr_circuits/delegation/keccak_special5/mod.rs": "674594ea258ebb55611542ea6d4153f91b72429df99fca3d227381d5f7a5b72a",
+    "cs/src/gkr_circuits/delegation/keccak_special5/mod.rs": "075ffff69186bbacab9e06e64dc0079ab26724410da6d9246a8317e1ec42bad7",
     "cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs": "6c9ff522687adb73410bed120a35e4fbf5d7a12c4231de2ffbd873f1919c7b6d",
     "cs/src/gkr_circuits/delegation/keccak_theta_rho/test.rs": "670d71ec7b2e13077ed922d96685b7cf78277a0ad9c2469afdb230d1d2db78e5",
     "cs/src/gkr_circuits/delegation/mod.rs": "1e97f4a60e525d0b122af83a6a9d144a680adce9cc881eb8439cde21fb0cfaa6",
@@ -804,111 +910,5 @@
     "worker/Cargo.toml": "cc747ee641faa2681e4401f1973dd4ac535eb0a00d71c4fd4c8e842403057f6e",
     "worker/src/lib.rs": "01877ae8b19aa6d70ec7fb5bd007dae34f3fb5b054a3deff3ab6d0d5ad2a3506"
   },
-  "source_inventory": {
-    "policy": "Conservative complete nonempty source/include inventory of local Cargo dependency, build, dev, optional and target branches; active inputs cross-checked separately with native dep-info. No generated Sail input is included.",
-    "root_crates": [
-      "cs",
-      "execution_prover",
-      "prover"
-    ],
-    "local_crates": [
-      "blake2s_u32",
-      "circuit_defs/bigint_with_control",
-      "circuit_defs/blake2_g_function",
-      "circuit_defs/blake2_with_compression",
-      "circuit_defs/circuit_common",
-      "circuit_defs/keccak_chi5",
-      "circuit_defs/keccak_column_parity",
-      "circuit_defs/keccak_special5",
-      "circuit_defs/keccak_theta_rho",
-      "circuit_defs/setups",
-      "circuit_defs/trace_and_split",
-      "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
-      "circuit_defs/unrolled_circuits/inits_and_teardowns",
-      "circuit_defs/unrolled_circuits/jump_branch_slt",
-      "circuit_defs/unrolled_circuits/load_store_subword_only",
-      "circuit_defs/unrolled_circuits/load_store_word_only",
-      "circuit_defs/unrolled_circuits/mul_div_unsigned",
-      "circuit_defs/unrolled_circuits/shift_binary",
-      "circuit_defs/unrolled_circuits/unified_reduced_machine",
-      "common_constants",
-      "cs",
-      "execution_prover",
-      "execution_prover_model",
-      "fft",
-      "field",
-      "non_determinism_source",
-      "prover",
-      "riscv_common",
-      "riscv_transpiler",
-      "test_utils",
-      "transcript",
-      "verifier_common",
-      "witness_eval_generator",
-      "worker"
-    ],
-    "empty_files_are_not_coverage": true
-  },
-  "cargo_lock_sha256": "29c6b3525e29078020568b978cc06ed27f641d17ae2e16572cd67ded21e281b6",
-  "circuit_identities": {
-    "add-sub.json": {
-      "kind": "production",
-      "retained_path": "cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json"
-    },
-    "bigint.json": {
-      "kind": "production",
-      "retained_path": "cs/compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json"
-    },
-    "blake-g.json": {
-      "kind": "production",
-      "retained_path": "cs/compiled_circuits/blake2_g_function_layout_no_caches_gkr.json"
-    },
-    "blake-round.json": {
-      "kind": "production",
-      "retained_path": "cs/compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json"
-    },
-    "keccak.json": {
-      "kind": "production",
-      "retained_path": "cs/compiled_circuits/keccak_special5_layout_no_caches_gkr.json"
-    },
-    "shift-binop.json": {
-      "kind": "production",
-      "retained_path": "cs/compiled_circuits/shift_binop_layout_no_caches_gkr.json"
-    },
-    "jump-branch.json": {
-      "kind": "production",
-      "retained_path": "cs/compiled_circuits/jump_branch_slt_layout_no_caches_gkr.json"
-    },
-    "mul-div.json": {
-      "kind": "production",
-      "retained_path": "cs/compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json"
-    },
-    "word-memory.json": {
-      "kind": "production",
-      "retained_path": "cs/compiled_circuits/mem_word_only_layout_no_caches_gkr.json"
-    },
-    "subword-memory.json": {
-      "kind": "production",
-      "retained_path": "cs/compiled_circuits/mem_subword_only_layout_no_caches_gkr.json"
-    },
-    "unified.json": {
-      "kind": "production",
-      "retained_path": "cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json"
-    },
-    "inits-and-teardowns.json": {
-      "kind": "production",
-      "retained_path": "cs/compiled_circuits/inits_and_teardowns_layout_no_caches_gkr.json"
-    },
-    "decoder-smoke.json": {
-      "kind": "native-derived-fixture",
-      "base_path": "cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
-      "base_sha256": "e5aadac65c19335d5adf39b24afad8fca54ca404305058a190004177b325fc49",
-      "constructor_path": "prover/src/gkr/prover/setup_tests.rs",
-      "constructor_sha256": "cc6cd4020a5987a026d597ec76679f0a1d907be889720e2422833debcbeeadc7",
-      "constructor_test": "gkr::prover::setup::tests::setup_json_roundtrip_preserves_materialized_columns_and_program",
-      "derived_circuit_sha256": "4c796f7e40087966fb4c2abec803f53bf4426e83b19eee89be8e9fa1057a6b74",
-      "scope": "Native test derives a tagged 2^19-row ADD/SUB-based fixture, not the production whole circuit. Fresh exact-test reconstruction and complete JSON comparison establish current fixture identity."
-    }
-  },
-  "cargo_lock_source": "formal_verification/lean/artifacts/setup/native-cargo.lock"
+  "unified_profile": "Reduced"
 }

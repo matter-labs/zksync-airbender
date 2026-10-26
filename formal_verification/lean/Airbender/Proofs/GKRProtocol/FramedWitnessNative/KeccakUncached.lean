@@ -11,7 +11,7 @@ set_option maxHeartbeats 4000000
 
 theorem framed_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 267 → Source.BaseField)
+    (sourceValue : Fin 266 → Source.BaseField)
     (original : Satisfies (Airbender.Compiler.SourceContractNative.KeccakUncached.native.originals.map Expression.polynomial) sourceValue)
     (clockValid : Source.clockContract Airbender.Compiler.SourceContractNative.KeccakUncached.native.clock (Airbender.Compiler.FullArithmeticNative.KeccakUncached.native.helperPlacement.memory.project sourceValue))
     (primitives : Airbender.Compiler.HelperValidityNative.KeccakUncached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.KeccakUncached.native.execute.value (Airbender.Compiler.FullArithmeticNative.KeccakUncached.native.helperPlacement.memory.project sourceValue))
@@ -72,7 +72,7 @@ theorem framed_graph_extends {R : Type} [CommRing R]
     · have tableCells : ∀ column ∈ Airbender.Compiler.TableNative.KeccakUncached.native.genericSetupColumns, assignment.base column.address = Airbender.Compiler.MaterializedNative.KeccakUncached.native.model.value row column := by
         intro column member
         exact setupAt column (of_decide_eq_true (List.all_eq_true.mp genericColumns column member))
-      have countCell : assignment.base (.BaseLayerWitness 175) = counts ⟨0, by decide⟩ := countsAt ⟨0, by decide⟩
+      have countCell : assignment.base (.BaseLayerWitness 174) = counts ⟨0, by decide⟩ := countsAt ⟨0, by decide⟩
       have reduced := Airbender.Compiler.TableNative.KeccakUncached.native.genericSourceTableReduction hom challenges gamma assignment defined
         (Airbender.Compiler.FunctionalLinksNative.KeccakUncached.native.lookupCopies baseValue arithmetic) holds (Airbender.Compiler.MaterializedNative.KeccakUncached.native.model.value row) (counts ⟨0, by decide⟩) tableCells countCell
       rw [typedEq] at reduced
@@ -85,7 +85,7 @@ theorem framed_graph_extends {R : Type} [CommRing R]
     · have tableCells : ∀ column ∈ Airbender.Compiler.TableNative.KeccakUncached.native.timestampSetupColumns, assignment.base column.address = Airbender.Compiler.MaterializedNative.KeccakUncached.native.model.value row column := by
         intro column member
         exact setupAt column (of_decide_eq_true (List.all_eq_true.mp timestampColumns column member))
-      have countCell : assignment.base (.BaseLayerWitness 174) = counts ⟨1, by decide⟩ := countsAt ⟨1, by decide⟩
+      have countCell : assignment.base (.BaseLayerWitness 173) = counts ⟨1, by decide⟩ := countsAt ⟨1, by decide⟩
       have reduced := Airbender.Compiler.HelperNative.KeccakUncached.native.timestampSourceReduction hom challenges gamma assignment helperDefined
         (Airbender.Compiler.FunctionalLinksNative.KeccakUncached.native.helperCopies baseValue arithmetic) holds
       change (Airbender.Compiler.LookupNative.KeccakUncached.native.timestampOutput).value (assignment.value Airbender.Compiler.ConsumerNative.KeccakUncached.native.typing hom) =
@@ -107,14 +107,14 @@ theorem framed_graph_extends {R : Type} [CommRing R]
 
 def MemoryOutputsPreserved {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R)
-    (sourceValue : Fin 267 → Source.BaseField)
+    (sourceValue : Fin 266 → Source.BaseField)
     (fallback : GKRAddress → Source.BaseField) (values : GKRAddress → R) : Prop :=
   values (GKRAddress.InnerLayer 6 2) = maskProduct (hom (Airbender.Compiler.MemoryNative.KeccakUncached.native.sourceExecute.value (Airbender.Compiler.MemoryFrameNative.KeccakUncached.native.sourceMemoryValues sourceValue fallback))) ((Airbender.Compiler.MemoryNative.KeccakUncached.native.memoryReadRows.map (fun entry => entry.fingerprint (Airbender.Compiler.MemoryFrameNative.KeccakUncached.native.sourceMemoryValues sourceValue fallback) hom challenges)).prod)
   ∧ values (GKRAddress.InnerLayer 6 3) = maskProduct (hom (Airbender.Compiler.MemoryNative.KeccakUncached.native.sourceExecute.value (Airbender.Compiler.MemoryFrameNative.KeccakUncached.native.sourceMemoryValues sourceValue fallback))) ((Airbender.Compiler.MemoryNative.KeccakUncached.native.memoryWriteRows.map (fun entry => entry.fingerprint (Airbender.Compiler.MemoryFrameNative.KeccakUncached.native.sourceMemoryValues sourceValue fallback) hom challenges)).prod)
 
 theorem memory_outputs_preserved {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 267 → Source.BaseField)
+    (sourceValue : Fin 266 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.KeccakUncached.native.multiplicityColumns.length → Source.BaseField)
     (row : Fin Airbender.Compiler.MaterializedNative.KeccakUncached.native.model.imported.data.length) (fallback : GKRAddress → Source.BaseField)
     (baseValue : GKRAddress → Source.BaseField) (values : GKRAddress → R)
@@ -179,7 +179,7 @@ theorem memory_outputs_preserved {R : Type} [CommRing R]
 
 theorem complete_row_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 267 → Source.BaseField)
+    (sourceValue : Fin 266 → Source.BaseField)
     (original : Satisfies (Airbender.Compiler.SourceContractNative.KeccakUncached.native.originals.map Expression.polynomial) sourceValue)
     (clockValid : Source.clockContract Airbender.Compiler.SourceContractNative.KeccakUncached.native.clock (Airbender.Compiler.FullArithmeticNative.KeccakUncached.native.helperPlacement.memory.project sourceValue))
     (primitives : Airbender.Compiler.HelperValidityNative.KeccakUncached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.KeccakUncached.native.execute.value (Airbender.Compiler.FullArithmeticNative.KeccakUncached.native.helperPlacement.memory.project sourceValue))
@@ -198,7 +198,7 @@ theorem complete_row_extends {R : Type} [CommRing R]
 
 def CompleteRowWitness {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 267 → Source.BaseField)
+    (sourceValue : Fin 266 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.KeccakUncached.native.multiplicityColumns.length → Source.BaseField)
     (row : Fin Airbender.Compiler.MaterializedNative.KeccakUncached.native.model.imported.data.length) (fallback : GKRAddress → Source.BaseField)
     (baseValue : GKRAddress → Source.BaseField) (values : GKRAddress → R) : Prop :=
@@ -208,7 +208,7 @@ def CompleteRowWitness {R : Type} [CommRing R]
   MemoryOutputsPreserved hom challenges sourceValue fallback values
 
 theorem complete_trace_extends
-    (sourceValue : Fin Airbender.Compiler.MaterializedNative.KeccakUncached.native.model.imported.data.length → Fin 267 → Source.BaseField)
+    (sourceValue : Fin Airbender.Compiler.MaterializedNative.KeccakUncached.native.model.imported.data.length → Fin 266 → Source.BaseField)
     (original : ∀ row, Satisfies (Airbender.Compiler.SourceContractNative.KeccakUncached.native.originals.map Expression.polynomial) (sourceValue row))
     (clockValid : ∀ row, Source.clockContract Airbender.Compiler.SourceContractNative.KeccakUncached.native.clock (Airbender.Compiler.FullArithmeticNative.KeccakUncached.native.helperPlacement.memory.project (sourceValue row)))
     (primitives : ∀ row, Airbender.Compiler.HelperValidityNative.KeccakUncached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.KeccakUncached.native.execute.value (Airbender.Compiler.FullArithmeticNative.KeccakUncached.native.helperPlacement.memory.project (sourceValue row)))
@@ -249,7 +249,7 @@ theorem complete_trace_extends
 
 theorem memory_trace_products_preserved {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin Airbender.Compiler.MaterializedNative.KeccakUncached.native.model.imported.data.length → Fin 267 → Source.BaseField)
+    (sourceValue : Fin Airbender.Compiler.MaterializedNative.KeccakUncached.native.model.imported.data.length → Fin 266 → Source.BaseField)
     (counts : Fin Airbender.Compiler.MaterializedNative.KeccakUncached.native.model.imported.data.length → Fin Airbender.Compiler.TableNative.KeccakUncached.native.multiplicityColumns.length → Source.BaseField)
     (fallback : Fin Airbender.Compiler.MaterializedNative.KeccakUncached.native.model.imported.data.length → GKRAddress → Source.BaseField)
     (baseValue : Fin Airbender.Compiler.MaterializedNative.KeccakUncached.native.model.imported.data.length → GKRAddress → Source.BaseField)

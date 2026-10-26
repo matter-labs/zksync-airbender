@@ -45,8 +45,6 @@ pub use self::wider_tables::{
 /// Everything that the arithmetizations get from the common beginning of the circuit, see
 /// [`allocate_inputs_and_control`].
 pub(crate) struct Blake2RoundFunctionInputs {
-    pub(crate) execute: Variable,
-    pub(crate) control_read_low: Variable,
     /// Read values of the 8 words of the state.
     pub(crate) input_state: Vec<[Variable; 2]>,
     /// Write values of the 8 words of the state, not assigned or constrained yet.
@@ -73,7 +71,7 @@ pub(crate) struct Blake2RoundFunctionInputs {
 pub(crate) fn allocate_inputs_and_control<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
 ) -> Blake2RoundFunctionInputs {
-    let (execute, _invocation_timestamp) =
+    let (_execute, _invocation_timestamp) =
         cs.allocate_delegation_state(BLAKE2S_DELEGATION_CSR_REGISTER as u16);
 
     // we do not expect any variable offsets, so we allocate all register and indirect reads/writes right away
@@ -242,8 +240,7 @@ pub(crate) fn allocate_inputs_and_control<F: PrimeField, CS: Circuit<F>>(
         .try_into()
         .unwrap();
 
-    // Successful-call mask validity is enforced after the arithmetic in both
-    // arithmetizations, retaining the existing arithmetic column identities.
+    // TODO: for all cases that we care round bitmask is exclusive, consider adding a constraint for it
     {
         for (i, el) in round_bitmask.iter().enumerate() {
             if let Some(value) = el.get_value(&*cs) {
@@ -306,8 +303,6 @@ pub(crate) fn allocate_inputs_and_control<F: PrimeField, CS: Circuit<F>>(
     // );
 
     Blake2RoundFunctionInputs {
-        execute,
-        control_read_low: x12_vars[0],
         input_state,
         output_placeholder_state,
         input_extended_state,
@@ -320,27 +315,6 @@ pub(crate) fn allocate_inputs_and_control<F: PrimeField, CS: Circuit<F>>(
         compression_mode,
         perform_final_xor,
     }
-}
-
-/// Native successful-call conditions shared by both round arithmetizations.
-/// Padding retains its zero control and masks.
-pub(crate) fn enforce_successful_control<F: PrimeField, CS: Circuit<F>>(
-    cs: &mut CS,
-    execute: Variable,
-    control_read_low: Variable,
-    control_bitmask: [Boolean; BLAKE2S_NUM_CONTROL_BITS],
-    round_bitmask: [Boolean; BLAKE2S_MAX_ROUNDS],
-) {
-    cs.add_constraint_expr(Expr::var(execute) * Expr::var(control_read_low));
-    let rounds = Expr::sum(round_bitmask.iter().map(|&flag| Expr::from(flag)).collect());
-    cs.add_constraint_expr(Expr::var(execute) * (rounds - Expr::one()));
-    let full_only_rounds = Expr::sum(
-        round_bitmask[7..]
-            .iter()
-            .map(|&flag| Expr::from(flag))
-            .collect(),
-    );
-    cs.add_constraint_expr(Expr::from(control_bitmask[REDUCE_ROUNDS_BIT_IDX]) * full_only_rounds);
 }
 
 #[cfg(test)]

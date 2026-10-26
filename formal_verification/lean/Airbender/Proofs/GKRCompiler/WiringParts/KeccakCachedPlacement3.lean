@@ -7,6 +7,6 @@ set_option Elab.async false
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-import_compiler_wiring native from "artifacts/compiler/keccak-cached.json" phase "placement" start 192 count 31
+import_compiler_wiring native from "artifacts/compiler/keccak-cached.json" phase "placement" start 192 count 30
 
 end Airbender.Compiler.WiringNative.KeccakCached

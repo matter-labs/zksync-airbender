@@ -516,7 +516,7 @@ pub fn define_keccak_special5_delegation_circuit<
 
     // UNPACK THE CONTROL INTO FLAGS THAT WE NEED
     // TODO: ADD CONSTANTS
-    let (precompile_bitmask, iter_bitmask, precompile, iter, round, round_bits) = {
+    let (precompile_bitmask, iter_bitmask, precompile, iter, round) = {
         // new control is precompile (3) || iter (3) || round (5), all are packed!!
         // we only unpack
         let precompile_bitmask: [Boolean; 7] = from_fn(|_| cs.add_boolean_variable());
@@ -632,14 +632,7 @@ pub fn define_keccak_special5_delegation_circuit<
             cs.add_constraint_expr(Expr::from(Boolean::Is(execute).toggle()) * iter_bitmask_sum);
         }
 
-        (
-            precompile_bitmask,
-            iter_bitmask,
-            precompile,
-            iter,
-            round,
-            round_bits,
-        )
+        (precompile_bitmask, iter_bitmask, precompile, iter, round)
     };
 
     // we place bitmasks into individual Booleans for simplicity
@@ -1457,22 +1450,6 @@ pub fn define_keccak_special5_delegation_circuit<
             &*p6_copies,
         ],
     );
-
-    // Rounds0..23 are valid for every mode; round24 is the final Iota.
-    // Allocate the high-band indicator last so existing arithmetic IDs stay.
-    let high_round =
-        cs.add_variable_from_expr(Expr::from(round_bits[3]) * Expr::from(round_bits[4]));
-    let low_round = Expr::from(round_bits[0])
-        + Expr::from(round_bits[1]) * F::from_u32_unchecked(2)
-        + Expr::from(round_bits[2]) * F::from_u32_unchecked(4);
-    cs.add_constraint_expr(
-        Expr::var(high_round) * (low_round + Expr::one() - Expr::from(is_iota_columnxor)),
-    );
-    // Column mixing is a single operation; the terminal Iota also has one
-    // iteration in the pinned successful-call protocol.
-    cs.add_constraint_expr(Expr::from(is_columnmix1) * (Expr::one() - Expr::from(is_iter0)));
-    cs.add_constraint_expr(Expr::from(is_columnmix2) * (Expr::one() - Expr::from(is_iter0)));
-    cs.add_constraint_expr(Expr::var(high_round) * (Expr::one() - Expr::from(is_iter0)));
 
     if DEBUG {
         unsafe {

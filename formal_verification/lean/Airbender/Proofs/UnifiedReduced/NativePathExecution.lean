@@ -7,14 +7,15 @@ open Arithmetic Trace Trace.Proofs Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option Elab.async false
 
-/-- One actual caller cycle derives its full independent call and original
-    retirement from public code, native validity and shared native history.
-    Ordinary gaps retain their actual register/link/RAM mutations. -/
+/-- One actual caller cycle derives its full independent call and retirement
+under the explicit input-validity contracts and shared native history.
+Ordinary gaps retain their actual register/link/RAM mutations. -/
 theorem native_full_caller_cycle_at
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry} {initial : State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
     (code : CodeProfile data program cells) (commands : BigintCommands data)
+    (hashes : HashCommands data)
     (effects : MixedMemoryEffects data initial cells)
     {events : List MemoryAccess} {finalState : State}
     (permutation : events.Perm (data.mixedSteps.map transferEvent))
@@ -56,8 +57,8 @@ theorem native_full_caller_cycle_at
       ⟨port, by simpa using included, rfl⟩, rfl⟩)
     obtain ⟨cell, _, address, read, _⟩ := actual _ event
     exact ⟨cell, address, read⟩
-  have raw := native_worker_call accepted inputs code.ram commands present localHistory grouped observed
-  have rebased := native_worker_call accepted inputs code.ram commands present
+  have raw := native_worker_call accepted inputs code.ram commands hashes present localHistory grouped observed
+  have rebased := native_worker_call accepted inputs code.ram commands hashes present
     (retired_state_history localHistory row.start.word.toBitVec) grouped (fun port included => by
       obtain ⟨cell, address, read⟩ := observed port included
       exact ⟨cell, address, cell_read_PC cell (cell_read_nextPC cell read _) _⟩)
@@ -71,24 +72,24 @@ theorem native_full_caller_cycle_at
   exact ⟨before, after, past, current, future, entry, included, query, pc, original,
     family ▸ raw, _, family ▸ rebased, caller_pc_retirement effects.requests member⟩
 
-/-- Whole actual-path execution with branches, jumps and repeated-PC loops.
-    Native controller transport and every local family reference are derived;
-    the final state realizes the exact native terminal PC and all tracked cells. -/
+/-- Conditional actual-path execution with branches, jumps and repeated-PC
+loops. Hash controller membership/G base separation and bigint commands are
+explicit; native arithmetic and shared history derive the local effects. -/
 theorem native_path_execution [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : State} {ca oa : List (BitVec 32)} {cells : List Cell}
     (accepted : MixedMemoryAccepted data program) (inputs : NativeMemoryInputs data program initial ca oa cells)
     (profile : RetirementProfile data program initial cells)
     (pc : run (SailRV32.Functions.get_arch_pc ()) initial = .ok data.machine.initial.word.toBitVec initial)
-    (commands : BigintCommands data) :
+    (commands : BigintCommands data) (hashes : HashCommands data) :
     Realizes (FullStep program data.program) data.machine initial cells := by
-  have memory := native_memory_inputs accepted inputs
+  have memory := native_memory_inputs accepted inputs hashes
   have effects := mixed_memory_effects accepted memory
   have ledger := ExternalBoundary.Requests.Proofs.native_binding accepted.toRequestChecks effects.requests
   obtain ⟨events, finalState, permutation, order, history, _, _, terminal⟩ := effects.execution
   exact full_execution_at accepted memory profile.code effects.requests pc ledger permutation order history
     (fun _ member ordinary => ordinary_cycle_at accepted memory profile effects permutation order history member ordinary)
-    (fun _ member => native_full_caller_cycle_at accepted memory profile.code commands effects permutation order history member)
+    (fun _ member => native_full_caller_cycle_at accepted memory profile.code commands hashes effects permutation order history member)
     terminal
 
 end Airbender.UnifiedReduced.Caller.Proofs

@@ -10,6 +10,6 @@ set_option maxHeartbeats 4000000
 
 import_history_erasure native from "artifacts/compiler/blake-g-uncached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native
-  source_model Airbender.Compiler.SourceContractNative.BlakeGUncached.native inputs 113
+  source_model Airbender.Compiler.SourceContractNative.BlakeGUncached.native inputs 112
 
 end Airbender.Compiler.HistoryErasureNative.BlakeGUncached

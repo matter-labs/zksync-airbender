@@ -14,6 +14,6 @@ import_memory_execute native
   helper_model Airbender.Compiler.HelperValidityNative.BlakeGUncached.native
   helper_fields Airbender.Compiler.HelperNative.BlakeGUncached.native
   frame_model Airbender.Compiler.MemoryFrameNative.BlakeGUncached.native
-  inputs 113
+  inputs 112
 
 end Airbender.Compiler.MemoryExecuteNative.BlakeGUncached
