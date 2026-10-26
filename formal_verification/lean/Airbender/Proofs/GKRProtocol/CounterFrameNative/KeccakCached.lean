@@ -12,11 +12,11 @@ set_option maxHeartbeats 4000000
 import_counter_frame native from "artifacts/compiler/keccak-cached.json"
   base_model Airbender.Compiler.FullArithmeticNative.KeccakCached.native
   table_model Airbender.Compiler.TableNative.KeccakCached.native
-  helper_model Airbender.Compiler.HelperNative.KeccakCached.native inputs 267
+  helper_model Airbender.Compiler.HelperNative.KeccakCached.native inputs 266
 
 theorem counter_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 267 → Source.BaseField)
+    (sourceValue : Fin 266 → Source.BaseField)
     (original : Satisfies (Airbender.Compiler.SourceContractNative.KeccakCached.native.originals.map Expression.polynomial) sourceValue)
     (clockValid : Source.clockContract Airbender.Compiler.SourceContractNative.KeccakCached.native.clock (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.helperPlacement.memory.project sourceValue))
     (primitives : Airbender.Compiler.HelperValidityNative.KeccakCached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.KeccakCached.native.execute.value (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.helperPlacement.memory.project sourceValue))

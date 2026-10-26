@@ -45,7 +45,7 @@ def finalWorkerAssignment (column : Nat) : ZMod babyBearModulus :=
   | 79 => 112
   | 80 => 14
   | 82 => 238
-  | 102 => 910
+  | 101 => 910
   | _ => PathGLoopNative.workerAssignment .protectedMessage 55 column
 
 def workerAssignment (index : Fin 56) : Nat → ZMod babyBearModulus :=

@@ -15,6 +15,6 @@ import_memory_frame native from "artifacts/compiler/blake-g-uncached-source.json
   history_model Airbender.Compiler.HistoryErasureNative.BlakeGUncached.native
   helper_model Airbender.Compiler.HelperValidityNative.BlakeGUncached.native
   counter_model Airbender.Compiler.CounterFrameNative.BlakeGUncached.native
-  inputs 113 phase 3 start 0 stop 140
+  inputs 112 phase 3 start 0 stop 140
 
 end Airbender.Compiler.MemoryFrameNative.BlakeGUncached

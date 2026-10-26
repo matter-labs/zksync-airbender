@@ -14,11 +14,11 @@ import_helper_validity native from "artifacts/compiler/keccak-cached-source.json
   source_model Airbender.Compiler.SourceContractNative.KeccakCached.native
   history_model Airbender.Compiler.HistoryErasureNative.KeccakCached.native
   helper_model Airbender.Compiler.HelperNative.KeccakCached.native
-  memory_model Airbender.Compiler.MemoryNative.KeccakCached.native inputs 267
+  memory_model Airbender.Compiler.MemoryNative.KeccakCached.native inputs 266
 
 theorem helper_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 267 → Source.BaseField)
+    (sourceValue : Fin 266 → Source.BaseField)
     (original : Satisfies (Airbender.Compiler.SourceContractNative.KeccakCached.native.originals.map Expression.polynomial) sourceValue)
     (clockValid : Source.clockContract Airbender.Compiler.SourceContractNative.KeccakCached.native.clock (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.helperPlacement.memory.project sourceValue))
     (primitives : native.profile.ExecutionValid (native.execute.value (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.helperPlacement.memory.project sourceValue))

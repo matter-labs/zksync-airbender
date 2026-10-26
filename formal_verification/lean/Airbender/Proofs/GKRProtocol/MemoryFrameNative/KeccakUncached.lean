@@ -15,6 +15,6 @@ import_memory_frame native from "artifacts/compiler/keccak-uncached-source.json"
   history_model Airbender.Compiler.HistoryErasureNative.KeccakUncached.native
   helper_model Airbender.Compiler.HelperValidityNative.KeccakUncached.native
   counter_model Airbender.Compiler.CounterFrameNative.KeccakUncached.native
-  inputs 267 phase 3 start 0 stop 210
+  inputs 266 phase 3 start 0 stop 210
 
 end Airbender.Compiler.MemoryFrameNative.KeccakUncached

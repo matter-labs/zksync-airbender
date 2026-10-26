@@ -8,7 +8,7 @@ set_option maxRecDepth 65536
 set_option maxHeartbeats 4000000
 
 theorem generic_lookup32
-    (sourceValue : Fin 267 → Source.BaseField)
+    (sourceValue : Fin 266 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.KeccakUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.KeccakUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.KeccakUncached.native.assigned (Airbender.Compiler.HelperValidityNative.KeccakUncached.native.canonical sourceValue) counts wire)
@@ -53,7 +53,7 @@ theorem generic_lookup32
   exact valid
 
 theorem generic_lookup33
-    (sourceValue : Fin 267 → Source.BaseField)
+    (sourceValue : Fin 266 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.KeccakUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.KeccakUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.KeccakUncached.native.assigned (Airbender.Compiler.HelperValidityNative.KeccakUncached.native.canonical sourceValue) counts wire)
@@ -98,7 +98,7 @@ theorem generic_lookup33
   exact valid
 
 theorem generic_lookup34
-    (sourceValue : Fin 267 → Source.BaseField)
+    (sourceValue : Fin 266 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.KeccakUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.KeccakUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.KeccakUncached.native.assigned (Airbender.Compiler.HelperValidityNative.KeccakUncached.native.canonical sourceValue) counts wire)
@@ -143,7 +143,7 @@ theorem generic_lookup34
   exact valid
 
 theorem generic_lookup35
-    (sourceValue : Fin 267 → Source.BaseField)
+    (sourceValue : Fin 266 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.KeccakUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.KeccakUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.KeccakUncached.native.assigned (Airbender.Compiler.HelperValidityNative.KeccakUncached.native.canonical sourceValue) counts wire)
@@ -188,7 +188,7 @@ theorem generic_lookup35
   exact valid
 
 theorem generic_lookup36
-    (sourceValue : Fin 267 → Source.BaseField)
+    (sourceValue : Fin 266 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.KeccakUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.KeccakUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.KeccakUncached.native.assigned (Airbender.Compiler.HelperValidityNative.KeccakUncached.native.canonical sourceValue) counts wire)
@@ -233,7 +233,7 @@ theorem generic_lookup36
   exact valid
 
 theorem generic_lookup37
-    (sourceValue : Fin 267 → Source.BaseField)
+    (sourceValue : Fin 266 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.KeccakUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.KeccakUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.KeccakUncached.native.assigned (Airbender.Compiler.HelperValidityNative.KeccakUncached.native.canonical sourceValue) counts wire)
@@ -278,7 +278,7 @@ theorem generic_lookup37
   exact valid
 
 theorem generic_lookup38
-    (sourceValue : Fin 267 → Source.BaseField)
+    (sourceValue : Fin 266 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.KeccakUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.KeccakUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.KeccakUncached.native.assigned (Airbender.Compiler.HelperValidityNative.KeccakUncached.native.canonical sourceValue) counts wire)
@@ -323,7 +323,7 @@ theorem generic_lookup38
   exact valid
 
 theorem generic_lookup39
-    (sourceValue : Fin 267 → Source.BaseField)
+    (sourceValue : Fin 266 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.KeccakUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.KeccakUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.KeccakUncached.native.assigned (Airbender.Compiler.HelperValidityNative.KeccakUncached.native.canonical sourceValue) counts wire)

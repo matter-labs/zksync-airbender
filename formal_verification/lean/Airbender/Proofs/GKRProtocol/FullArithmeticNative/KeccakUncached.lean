@@ -14,7 +14,6 @@ import Airbender.Proofs.GKRProtocol.FullArithmeticNative.KeccakUncachedForwardPa
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.KeccakUncachedForwardPart3
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.KeccakUncachedForwardPart4
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.KeccakUncachedForwardPart5
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.KeccakUncachedForwardPart6
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.KeccakUncachedBackwardPart0
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.KeccakUncachedBackwardPart1
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.KeccakUncachedBackwardPart2
@@ -29,6 +28,6 @@ set_option Elab.async false
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-finalize_full_compiler_arithmetic native inputs 267 variables 272 sources 192 gates 197
+finalize_full_compiler_arithmetic native inputs 266 variables 271 sources 187 gates 192
 
 end Airbender.Compiler.FullArithmeticNative.KeccakUncached

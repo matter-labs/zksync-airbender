@@ -7,7 +7,6 @@ import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGCachedUniquePart4
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGCachedForwardPart0
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGCachedForwardPart1
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGCachedBackwardPart0
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGCachedBackwardPart1
 
 namespace Airbender.Compiler.FullArithmeticNative.BlakeGCached
 open Airbender Airbender.Compiler
@@ -16,6 +15,6 @@ set_option Elab.async false
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-finalize_full_compiler_arithmetic native inputs 113 variables 138 sources 34 gates 59
+finalize_full_compiler_arithmetic native inputs 112 variables 137 sources 32 gates 57
 
 end Airbender.Compiler.FullArithmeticNative.BlakeGCached

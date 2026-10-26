@@ -10,7 +10,7 @@ set_option maxRecDepth 65536
 set_option maxHeartbeats 4000000
 
 theorem complete_trace_clean_extends
-    (sourceValue : Fin Airbender.Compiler.MaterializedNative.KeccakCached.native.model.imported.data.length → Fin 267 → Source.BaseField)
+    (sourceValue : Fin Airbender.Compiler.MaterializedNative.KeccakCached.native.model.imported.data.length → Fin 266 → Source.BaseField)
     (original : ∀ row, Satisfies (Airbender.Compiler.SourceContractNative.KeccakCached.native.originals.map Expression.polynomial) (sourceValue row))
     (clockValid : ∀ row, Source.clockContract Airbender.Compiler.SourceContractNative.KeccakCached.native.clock (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.helperPlacement.memory.project (sourceValue row)))
     (primitives : ∀ row, Airbender.Compiler.HelperValidityNative.KeccakCached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.KeccakCached.native.execute.value (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.helperPlacement.memory.project (sourceValue row)))

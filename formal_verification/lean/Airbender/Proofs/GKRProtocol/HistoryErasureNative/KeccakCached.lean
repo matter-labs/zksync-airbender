@@ -10,6 +10,6 @@ set_option maxHeartbeats 4000000
 
 import_history_erasure native from "artifacts/compiler/keccak-cached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.KeccakCached.native
-  source_model Airbender.Compiler.SourceContractNative.KeccakCached.native inputs 267
+  source_model Airbender.Compiler.SourceContractNative.KeccakCached.native inputs 266
 
 end Airbender.Compiler.HistoryErasureNative.KeccakCached

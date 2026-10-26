@@ -62,13 +62,13 @@
         "copy_equations": 4,
         "decoder_requests": 0,
         "generic_requests": 19,
-        "lower_variables": 88,
+        "lower_variables": 87,
         "range16_requests": 0,
-        "source_variables": 84
+        "source_variables": 83
       },
-      "pair_sha256": "d0263645535fbf490754d84b81d3bfe649f8a9abd36096aed3fccb1c4df308dc",
-      "sha256": "9b5a9b17ee9bc18ef14419863194707fda815c7b452fd1665491a2e41a7593ab",
-      "source_sha256": "1e08a14fd066af71f5d3b551f85b78f7511aa29ad6fe2b61a40eaf8059954476"
+      "pair_sha256": "318cf38ad0c42849b622dc1a87049e7743bb70fc54f38b93db4befb9b3e3bbcd",
+      "sha256": "964170e616f73ba57863689ea6e10ef0fd8d72d06eb45a10814779642e34a019",
+      "source_sha256": "29ca46e5d4ea971d63625cab83e418faa1f687849fb75763bc45b7345c95e252"
     },
     "blake-g-uncached": {
       "counts": {
@@ -76,13 +76,13 @@
         "copy_equations": 4,
         "decoder_requests": 0,
         "generic_requests": 19,
-        "lower_variables": 88,
+        "lower_variables": 87,
         "range16_requests": 0,
-        "source_variables": 84
+        "source_variables": 83
       },
-      "pair_sha256": "e8941905f4937b7366c19fc079d2e204d7c0bc0aceaa145ee48019dae245bf1d",
-      "sha256": "9b5a9b17ee9bc18ef14419863194707fda815c7b452fd1665491a2e41a7593ab",
-      "source_sha256": "bc88a2db552c9b42bd3e30119b1951debd0aa76b9e4a1470c6c26a17faba85b5"
+      "pair_sha256": "114baa15c0d08469f2f68ccb5e60e3547589b043492c8af2b9e383d02cd8ce1e",
+      "sha256": "964170e616f73ba57863689ea6e10ef0fd8d72d06eb45a10814779642e34a019",
+      "source_sha256": "c21d6fcba6248faf25c6ade3d58c3654fc90bc70c6fbfce7d48e5f56ce95b8ed"
     },
     "blake-round-cached": {
       "counts": {
@@ -94,9 +94,9 @@
         "range16_requests": 0,
         "source_variables": 632
       },
-      "pair_sha256": "3fb9027133b61bb509a3cbad98c6858146b2a349b21ed8c72f4b04ef5e191aa2",
+      "pair_sha256": "5d0f3e235bb350fb63eff089947e0256fbb3c46960ab388a0eb0e03dcce44564",
       "sha256": "f71c6d8c7d255e0c7c1c76bf531dd16ae5a974b31d1559789816ae97301b3fb8",
-      "source_sha256": "7eefc236f62c07d0278d12c98954324181bf6af93cc85e9c7e056c1ab684a3f2"
+      "source_sha256": "caee97d1319d326c11ce76e17891e1c11a4ce36a1418ca8f0c7dfaa719c027b8"
     },
     "blake-round-uncached": {
       "counts": {
@@ -108,9 +108,9 @@
         "range16_requests": 0,
         "source_variables": 632
       },
-      "pair_sha256": "73840275f642b253f3744547395a039d4f2a1e713fc0ac616eab75e42630f63a",
+      "pair_sha256": "fd983e494d646f3494032978af17646abf71c76ebde63fb895d3070ff53ca281",
       "sha256": "f71c6d8c7d255e0c7c1c76bf531dd16ae5a974b31d1559789816ae97301b3fb8",
-      "source_sha256": "3200df9283c5be615494ace0eaf2210c58330c6fb0f2a5a10e5e7b60668b2ee1"
+      "source_sha256": "4ff3cb4a82ea2658bca095886aee18adece4839aed58f3711a3c97bd25cc669a"
     },
     "jump-branch-cached": {
       "counts": {
@@ -146,13 +146,13 @@
         "copy_equations": 5,
         "decoder_requests": 0,
         "generic_requests": 41,
-        "lower_variables": 229,
+        "lower_variables": 228,
         "range16_requests": 0,
-        "source_variables": 223
+        "source_variables": 222
       },
-      "pair_sha256": "8919dab45cd9c847c7272c456727dea9b32db35dff91b3602d7080ccb0cb84e5",
-      "sha256": "30bd271f2a5f37d471466b41de87bd51ddb7b0cd9c14c5fb36fc1cd5b5f1b1b3",
-      "source_sha256": "b43d6f5b01b00fba86ae225e793e759ed21d0b1497b0e764e3a0ba64b2296da4"
+      "pair_sha256": "03d1bef0959d5de68aaeb13a5d00ca09194726286945fb9e3b9a8c2f1621319b",
+      "sha256": "53c9f09070b518bef72f75ace575a552541d42e65eba1af4ef1eaf7bb467caa4",
+      "source_sha256": "5e4b970a83853367b7ed0ad76436bea9db4af9dbd7ca550c3a2dd8064ebfe64e"
     },
     "keccak-uncached": {
       "counts": {
@@ -160,13 +160,13 @@
         "copy_equations": 4,
         "decoder_requests": 0,
         "generic_requests": 41,
-        "lower_variables": 227,
+        "lower_variables": 226,
         "range16_requests": 0,
-        "source_variables": 223
+        "source_variables": 222
       },
-      "pair_sha256": "29e96ffc158a907835ed61b052b8c228849d6780f396cbd5110eb97887495c5a",
-      "sha256": "910618c7455dbeb3d221534037fcceb073e5dbcda6ac15452420f59f51311e02",
-      "source_sha256": "53aeef446c2cbed1ede6004c3f2fd9c97eadf3ce3ed8fd2115dcc90252daebbc"
+      "pair_sha256": "cce331e7e6e2cdfd38b5b27e6885cd6fcb1b64bd7e21ced6d40c0dec0d144d0d",
+      "sha256": "3ea08f5e7233f901708da6c84f497a2768cf532c4de8b8183d2a9d7d2b431af2",
+      "source_sha256": "4adaf3649b2fa5890b0b6be2ab8c3f2dbf22fc5341d7bee31bbdfcdd599aab9e"
     },
     "mul-div-cached": {
       "counts": {
@@ -310,7 +310,7 @@
     }
   },
   "format_version": 1,
-  "parent_manifest_sha256": "3a6ec84e45b29eb358c94b89284b55e0ee3a653466261562ad2089e4ed0c727a",
+  "parent_manifest_sha256": "bc915fbe5cd91b8445b04cbf018853b04c9b1aa5672edf07e06ff4b842e8d09a",
   "scope": "source lookup/range16/decoder fields only; graph reduction, cache binding and RAM remain required",
   "synthesizer_inputs": {
     "cs/src/definitions/table_type.rs": "8add95beeb27ae1156257bc3d213bb18fe0ac5bade89e538391c1539244c3455",

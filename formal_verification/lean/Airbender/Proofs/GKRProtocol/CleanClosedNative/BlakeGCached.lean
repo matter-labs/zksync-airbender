@@ -10,7 +10,7 @@ set_option maxRecDepth 65536
 set_option maxHeartbeats 4000000
 
 theorem retained_clock_from_source
-    (sourceValue : Fin 113 → Source.BaseField)
+    (sourceValue : Fin 112 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.BlakeGCached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.BlakeGCached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.BlakeGCached.native.assigned (Airbender.Compiler.HelperValidityNative.BlakeGCached.native.canonical sourceValue) counts wire)

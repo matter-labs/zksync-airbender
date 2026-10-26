@@ -14,6 +14,6 @@ import_memory_execute native
   helper_model Airbender.Compiler.HelperValidityNative.KeccakCached.native
   helper_fields Airbender.Compiler.HelperNative.KeccakCached.native
   frame_model Airbender.Compiler.MemoryFrameNative.KeccakCached.native
-  inputs 267
+  inputs 266
 
 end Airbender.Compiler.MemoryExecuteNative.KeccakCached

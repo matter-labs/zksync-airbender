@@ -75,6 +75,13 @@ not a claim that every open PR or every backend has been audited.
 | [PR #316](https://github.com/matter-labs/zksync-airbender/pull/316) — reduced-load alignment / recursive word 7 | **Reported implementation bugs in another circuit/verifier path.** The patch adds alignment constraints and rejects recursive output words omitted from hashing. | Check the affected v2 path and tests before claiming a repair; the current richer v3 FV relation and its existing alignment proof do not certify that path. |
 | [Private PR #8](https://github.com/matter-labs/zksync-airbender-private/pull/8) — FRI degree slack | **Reported protocol bug with a proposed protocol change.** Producer/verifier patches and comments were reviewed; reported CPU tests do not establish protocol soundness or reproducible recursive artifacts. | Cryptographic analysis, producer/verifier agreement and artifact reproducibility remain open for that target. No degree-bound assumption is treated as a fix. |
 
+**Hash input contracts (26 October).** The G, extended-round and Keccak circuit
+patches have been removed. Their controller/base conditions are now explicit
+[temporary assumptions](Airbender/Review/Helpers/Context/ExternalBoundary/HashABI.lean)
+in conditional actual-path execution, extending the F07/F08 scope boundaries.
+Circuit/VM assessment and implementation fixes remain with the owner. The round
+zero low limb is an existing proof-profile restriction, not an established VM rule.
+
 F01's typed verifier-PC interface and F05's contribution-mask interface have
 inspected implementation mechanisms, with Rust/argument refinement still external;
 their conditional logical results remain checked. F06 is an explicit project/Sail

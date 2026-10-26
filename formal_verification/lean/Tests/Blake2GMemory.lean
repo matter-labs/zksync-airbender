@@ -17,8 +17,7 @@ private def row (column : Nat) : ZMod babyBearModulus :=
   else if column = 9 then 8
   else if column = 10 then 12
   else if column = 14 ∨ column = 31 ∨ column = 32 then 64
-  else if column = 83 then 31457280
-  else if 84 ≤ column ∧ column < 111 ∧ (column - 84) % 3 = 2 then 1
+  else if 83 ≤ column ∧ column < 110 ∧ (column - 83) % 3 = 2 then 1
   else 0
 
 private abbrev table : Table (ZMod babyBearModulus) (fields 9) :=
@@ -230,7 +229,7 @@ theorem native_full_reference_call :
 
 
 private def boundaryRow (column : Nat) : ZMod babyBearModulus :=
-  if 84 ≤ column ∧ column < 111 ∧ (column - 84) % 3 = 0 then 1 else row column
+  if 83 ≤ column ∧ column < 110 ∧ (column - 83) % 3 = 0 then 1 else row column
 
 private theorem boundaryTableQuery (i : Fin 19) :
     ((FlatOperation.lookups (Blake2G.importedConstraints table)).get

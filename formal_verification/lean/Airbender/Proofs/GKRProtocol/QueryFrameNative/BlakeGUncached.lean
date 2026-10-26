@@ -16,6 +16,6 @@ import_query_frame native certificate "artifacts/compiler/lookup/blake-g-uncache
   source_model Airbender.Compiler.SourceContractNative.BlakeGUncached.native
   history_model Airbender.Compiler.HistoryErasureNative.BlakeGUncached.native
   helper_model Airbender.Compiler.HelperValidityNative.BlakeGUncached.native
-  counter_model Airbender.Compiler.CounterFrameNative.BlakeGUncached.native inputs 113 phase 3 start 0 stop 171
+  counter_model Airbender.Compiler.CounterFrameNative.BlakeGUncached.native inputs 112 phase 3 start 0 stop 171
 
 end Airbender.Compiler.QueryFrameNative.BlakeGUncached

@@ -25,9 +25,13 @@ ledger is supplied.
 
 [Native actual-path execution](NativePathExecution.lean) composes branches, JAL,
 JALR and repeated-PC loops with complete calls from all four worker families.
-Native constraints derive supported hash controller positions, round masks and
-G base separation, including when controllers are loaded or computed through
-ordinary instructions. No occurrence plan is supplied. The conclusion realizes
+The explicit [HashCommands](../../Helpers/UnifiedReduced/NativeMemory.lean)
+contract assumes supported controller reads and G base separation. The
+[individual input conditions](../../Helpers/Context/ExternalBoundary/HashABI.lean)
+are not proved from the restored native circuits; they contain no outputs or
+desired execution. The round low-limb restriction belongs to the existing
+reference profile. Controllers may be loaded or computed through ordinary
+instructions. No occurrence plan is supplied. The conclusion realizes
 the native terminal PC and every tracked cell. Public program/initialized memory,
 configuration/retirement and the separate bigint command contract remain explicit.
 The older [prepared actual-path interface](PathExecution.lean) retains its

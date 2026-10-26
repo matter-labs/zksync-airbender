@@ -5390,8 +5390,8 @@ import Airbender.Proofs.GKRProtocol.UnifiedRowNative.UnifiedUncached
 #print axioms Tests.PathGLoop.protected_no_algorithm
 #print axioms Tests.PathGLoop.protected_no_grouped_result
 #print axioms Tests.PathGLoop.protected_no_gap_certificate
-#print axioms Tests.NativeProtocolGap.rejected
-#print axioms Tests.NativeProtocolGap.equal_bases_rejected
+#print axioms Tests.NativeProtocolGap.control80_rejected_by_contract
+#print axioms Tests.NativeProtocolGap.equal_bases_rejected_by_contract
 #print axioms Tests.PathGConsumedMessage.accepted
 #print axioms Tests.PathGConsumedMessage.inputs
 #print axioms Tests.PathGConsumedMessage.no_algorithm
@@ -5408,11 +5408,17 @@ import Airbender.Proofs.GKRProtocol.UnifiedRowNative.UnifiedUncached
 #print axioms Airbender.UnifiedReduced.Caller.path_span_call_count_positive
 
 #print axioms Airbender.UnifiedReduced.Caller.native_path_execution_soundness
-#print axioms Airbender.Blake2G.Proofs.successful_position
-#print axioms Airbender.Blake2G.Proofs.successful_bases
-#print axioms Airbender.Blake2Round.Proofs.successful_mask
-#print axioms Airbender.Blake2Round.Proofs.successful_position
-#print axioms Airbender.Keccak.Proofs.successful_position
+#print axioms Airbender.ExternalBoundary.HashABI.GControl
+#print axioms Airbender.ExternalBoundary.HashABI.GBases
+#print axioms Airbender.ExternalBoundary.HashABI.RoundControl
+#print axioms Airbender.ExternalBoundary.HashABI.KeccakControl
+#print axioms Airbender.UnifiedReduced.Caller.HashCommands
+#print axioms Airbender.UnifiedReduced.Caller.HashCommands.mk
+#print axioms Airbender.UnifiedReduced.Caller.HashCommands.gControl
+#print axioms Airbender.UnifiedReduced.Caller.HashCommands.gBases
+#print axioms Airbender.UnifiedReduced.Caller.HashCommands.roundControl
+#print axioms Airbender.UnifiedReduced.Caller.HashCommands.keccakControl
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.native_round_masks
 
 import Airbender.Proofs.GKRProtocol.WindowedPublic
 import Airbender.Proofs.GKRProtocol.WindowedNative.UnifiedUncachedPublic

@@ -57,8 +57,6 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
     // ABI: memory accesses, parsed control register and the final round flag are the same for
     // all arithmetizations
     let Blake2RoundFunctionInputs {
-        execute,
-        control_read_low,
         input_state,
         output_placeholder_state,
         mut input_extended_state,
@@ -644,14 +642,6 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
             }
         }
     }
-
-    super::enforce_successful_control(
-        cs,
-        execute,
-        control_read_low,
-        control_bitmask,
-        round_bitmask,
-    );
 
     (output_placeholder_state, output_placeholder_extended_state)
 }

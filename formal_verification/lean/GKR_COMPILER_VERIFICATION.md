@@ -5,10 +5,19 @@ Readers and capture bindings are under `Airbender/Import`; supporting calculatio
 and generated certificates are under `Airbender/Proofs`. This document retains
 detailed scope, supporting results and historical validation evidence.
 
-The review/import/proof refactor was validated on 26 October 2026: all 34 compiler
-checkpoint targets (three module roots and 31 Tests) pass, as does the exact
+The hash circuit patches were subsequently removed. Compiler captures have been
+re-exported from the restored source. Hash execution uses the explicit
+[input contracts](Airbender/Review/Helpers/Context/ExternalBoundary/HashABI.lean);
+they are not native-enforcement results. All 293 changed compiler proof modules
+and the focused audit of 656 registered claims in their namespaces pass, using
+only standard Lean axioms. Four obsolete generated shards were removed. The
+complete 34-target/7,766-root checkpoint was not replayed after the rollback;
+the result below is historical. See [verification status](VERIFICATION_STATUS.md).
+
+Before that rollback, refactor `f099bb549` passed all 34 compiler
+checkpoint targets (three module roots and 31 Tests), plus the exact
 7,766-root axiom audit using only standard Lean axioms. Generator, source-pin,
-layout and provenance controls pass. Compiler Review contains six Lean files
+layout and provenance controls also passed. Compiler Review contains six Lean files
 (288 lines), exposing four principal claims and their definitions.
 
 Semantic preservation is checked for the 22 retained production compilations. Arithmetic translation, graph wiring

@@ -1199,6 +1199,28 @@ private theorem no_bigint_commands (variant : Variant) : BigintCommands (data va
   obtain ⟨i, _, rfl⟩ := List.mem_map.mp member
   cases family
 
+/-- These concrete traces satisfy the temporary controller/base contracts.
+This checks the assumptions on the witness; it does not derive them from
+arbitrary native acceptance. -/
+private theorem hash_commands (variant : Variant) : HashCommands (data variant) := by
+  constructor
+  · intro w member
+    obtain ⟨i, _, same⟩ := List.mem_map.mp member
+    cases same
+    refine ⟨true, i, ?_⟩
+    fin_cases i <;> cases variant <;> decide +kernel
+  · intro w member
+    obtain ⟨i, _, same⟩ := List.mem_map.mp member
+    cases same
+    unfold ExternalBoundary.HashABI.GBases
+    fin_cases i <;> cases variant <;> decide +kernel
+  · intro w member
+    obtain ⟨i, _, same⟩ := List.mem_map.mp member
+    cases same
+  · intro w member
+    obtain ⟨i, _, same⟩ := List.mem_map.mp member
+    cases same
+
 /-- All three programs execute original instructions and complete G calls;
 the scratch/protected SW7 effects remain in these actual FullStep executions. -/
 theorem full_execution (variant : Variant) :
@@ -1206,7 +1228,7 @@ theorem full_execution (variant : Variant) :
       (data variant).machine (before variant) cells :=
   native_path_execution_soundness (Tests.PathGLoopNative.accepted variant)
     (Tests.PathGLoopNative.inputs variant).toNative
-    (profile variant) (initial_pc variant) (no_bigint_commands variant)
+    (profile variant) (initial_pc variant) (no_bigint_commands variant) (hash_commands variant)
 
 /-- The baseline groups all56 actual positions through real JAL/BNE loops. -/
 theorem baseline_grouped :

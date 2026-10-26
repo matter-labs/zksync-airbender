@@ -30,7 +30,7 @@ theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.cloc
   simp [importedConstraintsMemoryPorts, importedConstraintsDelegationColumns]
 
 theorem constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 6)) :
-    (FlatOperation.constraints (importedConstraints setup)).length = 223 := rfl
+    (FlatOperation.constraints (importedConstraints setup)).length = 220 := rfl
 
 theorem lookup_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 6)) :
     (FlatOperation.lookups (importedConstraints setup)).length = 194 := rfl
