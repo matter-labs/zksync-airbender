@@ -647,8 +647,8 @@ where
     let gpu_setup_host = Arc::new(
         GpuGKRSetupHost::precompute_from_cpu_setup(
             &setup,
-            whir_schedule.base_lde_factor.trailing_zeros(),
-            whir_schedule.whir_steps_schedule[0] as u32,
+            whir_schedule.base_lde_factor_log2() as u32,
+            whir_schedule.base_folding_log2() as u32,
             whir_schedule.cap_size.trailing_zeros(),
             &context,
         )
@@ -666,7 +666,7 @@ where
         .memory_commitment
         .commitment
         .cap;
-    let lde_factor = whir_schedule.base_lde_factor;
+    let lde_factor = whir_schedule.base_lde_factor();
     let subcap_size = combined_cap.cap.len() / lde_factor;
     let memory_tree_caps = combined_cap
         .cap
@@ -747,8 +747,8 @@ where
     let gpu_setup_host = Arc::new(
         GpuGKRSetupHost::precompute_from_cpu_setup(
             &setup,
-            whir_schedule.base_lde_factor.trailing_zeros(),
-            whir_schedule.whir_steps_schedule[0] as u32,
+            whir_schedule.base_lde_factor_log2() as u32,
+            whir_schedule.base_folding_log2() as u32,
             whir_schedule.cap_size.trailing_zeros(),
             &context,
         )
@@ -954,8 +954,8 @@ fn prepare_unified_fixture(
     let gpu_setup_host = Arc::new(
         GpuGKRSetupHost::precompute_from_cpu_setup(
             &setup,
-            whir_schedule.base_lde_factor.trailing_zeros(),
-            whir_schedule.whir_steps_schedule[0] as u32,
+            whir_schedule.base_lde_factor_log2() as u32,
+            whir_schedule.base_folding_log2() as u32,
             whir_schedule.cap_size.trailing_zeros(),
             &context,
         )
@@ -1016,7 +1016,7 @@ fn prepare_unified_fixture(
     // Per-coset memory tree caps from the CPU proof (needed for the prove signature).
     let memory_tree_caps = if let Some(ref cpu_proof) = expected_cpu_proof {
         let combined_cap = &cpu_proof.whir_proof.memory_commitment.commitment.cap;
-        let lde_factor = whir_schedule.base_lde_factor;
+        let lde_factor = whir_schedule.base_lde_factor();
         let subcap_size = combined_cap.cap.len() / lde_factor;
         combined_cap
             .cap

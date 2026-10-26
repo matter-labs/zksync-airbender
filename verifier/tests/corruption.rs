@@ -330,23 +330,21 @@ fn test_rejects_corrupted_ood_sample(name: &str) {
     let circuit_data = common::circuit_by_name(name);
     let mut proof = circuit_data.proof_for(SecurityLevel::Sec100);
     assert!(
-        !proof.whir_proof.ood_samples.is_empty(),
+        !proof.whir_proof.intermediate_whir_oracles[0]
+            .ood_samples
+            .is_empty(),
         "{}: proof must have OOD samples",
         name
     );
-    proof.whir_proof.ood_samples[0].add_assign(&BabyBearExt4::ONE);
+    proof.whir_proof.intermediate_whir_oracles[0].ood_samples[0].add_assign(&BabyBearExt4::ONE);
     assert_rejects_via_panic(name, SecurityLevel::Sec100, "corrupted OOD sample", &proof);
 }
 
 fn test_rejects_corrupted_pow_nonce(name: &str) {
     let circuit_data = common::circuit_by_name(name);
     let mut proof = circuit_data.proof_for(SecurityLevel::Sec100);
-    assert!(
-        !proof.whir_proof.pow_nonces.is_empty(),
-        "{}: proof must have PoW nonces",
-        name
-    );
-    proof.whir_proof.pow_nonces[0] ^= 1;
+    // the round-0 query-draw nonce
+    proof.whir_proof.base_queries_pow_nonce ^= 1;
     assert_rejects_via_panic(name, SecurityLevel::Sec100, "corrupted PoW nonce", &proof);
 }
 
@@ -362,7 +360,7 @@ fn test_rejects_corrupted_lookup_pow_nonce(name: &str, level: SecurityLevel) {
 fn test_rejects_corrupted_batched_proximity_pow_nonce(name: &str, level: SecurityLevel) {
     let circuit_data = common::circuit_by_name(name);
     let mut proof = circuit_data.proof_for(level);
-    proof.batched_proximity_check_pow_nonce ^= 1;
+    proof.whir_proof.batching_challenge_pow_nonce ^= 1;
     assert_rejects_any(name, level, "corrupted batched-proximity PoW nonce", &proof);
 }
 

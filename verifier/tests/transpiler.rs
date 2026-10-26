@@ -20,9 +20,8 @@ fn run_transpiler(name: &str, level: SecurityLevel) {
     );
 }
 
-/// Run the RISC-V verifier binary at `bin_path`/`text_path` (symbols from
-/// `elf_path`) on the flattened proof `nds`, asserting success and printing the
-/// exact cycle count + a flamegraph.
+/// [`run_transpiler_on_with_output`] writing `gkr_flamegraph_<name>.svg` into
+/// the current directory (the tracked per-circuit flamegraphs).
 fn run_transpiler_on(
     name: &str,
     nds: Vec<u32>,
@@ -33,7 +32,38 @@ fn run_transpiler_on(
     bin_path: String,
     text_path: String,
     elf_path: String,
-) {
+) -> u64 {
+    let output_path = std::env::current_dir()
+        .unwrap()
+        .join(format!("gkr_flamegraph_{}.svg", name));
+    run_transpiler_on_with_output(
+        name,
+        nds,
+        external_challenges,
+        bin_path,
+        text_path,
+        elf_path,
+        output_path,
+    )
+}
+
+/// Run the RISC-V verifier binary at `bin_path`/`text_path` (symbols from
+/// `elf_path`) on the flattened proof `nds`, asserting success and printing the
+/// exact cycle count + writing a flamegraph to `output_path`. Returns the
+/// cycle count.
+#[allow(clippy::too_many_arguments)]
+fn run_transpiler_on_with_output(
+    name: &str,
+    nds: Vec<u32>,
+    external_challenges: prover::definitions::GKRExternalChallenges<
+        BabyBearField,
+        field::baby_bear::ext4::BabyBearExt4,
+    >,
+    bin_path: String,
+    text_path: String,
+    elf_path: String,
+    output_path: std::path::PathBuf,
+) -> u64 {
     println!("{}: oracle data length: {} u32 words", name, nds.len());
 
     let binary = common::load_binary_section(&bin_path);
@@ -61,9 +91,9 @@ fn run_transpiler_on(
     let mut non_determinism = QuasiUARTSource::new_with_reads(oracle_responses);
 
     let symbols_path = std::path::PathBuf::from(&elf_path);
-    let output_path = std::env::current_dir()
-        .unwrap()
-        .join(format!("gkr_flamegraph_{}.svg", name));
+    if let Some(dir) = output_path.parent() {
+        std::fs::create_dir_all(dir).unwrap();
+    }
     let mut fg_config =
         riscv_transpiler::vm::FlamegraphConfig::new(symbols_path, output_path.clone());
     fg_config.frequency_recip = 1;
@@ -132,6 +162,7 @@ fn run_transpiler_on(
 
     println!("{}: completed successfully in transpiler", name);
     println!("Flamegraph written to {}", output_path.display());
+    exact_cycles
 }
 
 macro_rules! generate_transpiler_tests {
@@ -180,4 +211,63 @@ fn blake2_with_extended_control_sec_100_pack4() {
         packed(text_path),
         packed(elf_path),
     );
+}
+
+/// The blake base-round comparison sweep: every
+/// `verifier_common::test_circuits::blake_variants::BlakeVariant` (physical
+/// packing 2^0..=2^4, two or one value(s) per column per base leaf) on its own
+/// RISC-V verifier binary `tools/gkr_verifier/blake2_with_extended_control_sec_100{infix}.*`
+/// (build them with `dump_bin.sh blake2_with_extended_control_sec_100...`).
+/// Every verifier must accept its fixture; the cycle counts land in
+/// `flamegraphs/blake_variants/cycles.txt` next to one flamegraph per variant.
+/// `GKR_BLAKE_VARIANTS=_pack2,_pack3_virtual` (comma-separated infixes,
+/// `default` for the plain config) restricts the sweep.
+#[test]
+#[ignore = "requires RISC-V binaries from tools/gkr_verifier"]
+fn blake2_with_extended_control_sec_100_variants() {
+    use verifier_common::test_circuits::blake_variants::BlakeVariant;
+    let selected: Option<std::collections::HashSet<String>> = std::env::var("GKR_BLAKE_VARIANTS")
+        .ok()
+        .map(|raw| raw.split(',').map(|s| s.trim().to_string()).collect());
+    let out_dir = std::env::current_dir()
+        .unwrap()
+        .join("flamegraphs")
+        .join("blake_variants");
+    std::fs::create_dir_all(&out_dir).unwrap();
+    let mut summary = String::from(
+        "# variant  physical_packing_log2  values_per_column_per_leaf  cycles\n",
+    );
+    for variant in BlakeVariant::all() {
+        let infix = variant.infix();
+        let selected_here = selected
+            .as_ref()
+            .is_none_or(|set| set.contains(&infix) || (infix.is_empty() && set.contains("default")));
+        if !selected_here {
+            continue;
+        }
+        let name = variant.name();
+        let (nds, external_challenges) = variant.load_nds();
+        let (bin_path, text_path, elf_path) = variant.binary_paths();
+        let cycles = run_transpiler_on_with_output(
+            &name,
+            nds,
+            external_challenges,
+            bin_path,
+            text_path,
+            elf_path,
+            out_dir.join(format!("gkr_flamegraph_{}.svg", name)),
+        );
+        summary.push_str(&format!(
+            "{}  {}  {}  {}\n",
+            name,
+            variant.pack_log2,
+            1usize << variant.fold_log2,
+            cycles
+        ));
+        println!("[blake-variants] {name}: {cycles} cycles");
+    }
+    let summary_path = out_dir.join("cycles.txt");
+    std::fs::write(&summary_path, &summary).unwrap();
+    println!("[blake-variants] summary written to {}", summary_path.display());
+    print!("{summary}");
 }

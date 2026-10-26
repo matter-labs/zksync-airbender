@@ -65,11 +65,11 @@ impl<'a> MemoryCommitmentJob<'a> {
 /// unpacked proof that the verifier generated from the same config rejects.
 pub fn assert_unpacked_prover_config(prover_config: &ProverConfig) {
     assert_eq!(
-        prover_config.pack_log2,
+        prover_config.pack_log2(),
         0,
         "GPU prover does not implement base-commitment packing: ProverConfig::pack_log2 = {} \
          (WHIR message 2^{}); prove packed configs with the CPU prover",
-        prover_config.pack_log2,
+        prover_config.pack_log2(),
         prover_config.whir_message_size_log2(),
     );
 }
@@ -86,11 +86,15 @@ fn commit_memory_inner<'a>(
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     assert_unpacked_prover_config(prover_config);
     assert_eq!(
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.whir_schedule.whir_steps_schedule[0]
+        prover_config
+            .base_oracles_values_per_leaf()
+            .trailing_zeros() as usize,
+        prover_config.whir_schedule.base_folding_log2()
     );
-    let log_lde_factor = prover_config.lde_factor.trailing_zeros();
-    let log_rows_per_leaf = prover_config.base_oracles_values_per_leaf.trailing_zeros();
+    let log_lde_factor = prover_config.lde_factor().trailing_zeros();
+    let log_rows_per_leaf = prover_config
+        .base_oracles_values_per_leaf()
+        .trailing_zeros();
     let log_tree_cap_size = prover_config.cap_size.trailing_zeros();
     let trace_len = compiled_circuit.trace_len;
     assert!(trace_len.is_power_of_two());
@@ -397,7 +401,7 @@ mod tests {
     fn cpu_unpacked_prover_config_is_accepted() {
         let config =
             config_for_security_level_under_pessimistic_conjecture(20, SecurityLevel::Sec100);
-        assert_eq!(config.pack_log2, 0);
+        assert_eq!(config.pack_log2(), 0);
         assert_unpacked_prover_config(&config);
     }
 
@@ -409,7 +413,7 @@ mod tests {
             4,
             SecurityLevel::Sec100,
         );
-        assert_eq!(config.pack_log2, 4);
+        assert_eq!(config.pack_log2(), 4);
         assert_unpacked_prover_config(&config);
     }
 }

@@ -784,11 +784,11 @@ mod tests {
         println!(
             "[l1-feeder] config: base lde {}, whir steps {:?}, queries {:?}, pow {:?}, \
              intermediate lde factors {:?}",
-            feeder_config.lde_factor,
-            feeder_config.whir_schedule.whir_steps_schedule,
-            feeder_config.whir_schedule.whir_queries_schedule,
-            feeder_config.whir_schedule.whir_pow_schedule,
-            feeder_config.whir_schedule.whir_steps_lde_factors,
+            feeder_config.lde_factor(),
+            feeder_config.whir_schedule.fold_steps(),
+            feeder_config.whir_schedule.queries_per_round(),
+            feeder_config.whir_schedule.queries_pow_bits_per_round(),
+            feeder_config.whir_schedule.intermediate_lde_factors(),
         );
 
         const MAX_LAYERS: usize = 5;

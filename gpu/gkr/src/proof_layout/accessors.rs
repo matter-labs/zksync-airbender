@@ -395,9 +395,15 @@ impl ProofLayout {
     /// from the slab — the gather kernels write `query_indices` /
     /// `query_leaves` / `query_paths` for each base oracle in
     /// row-major-per-query layout matching what the verifier consumes.
+    /// Parse the WHIR proof from the D2H'd slab. `whir_schedule` is the
+    /// schedule the slab was laid out for: it splits the slab's flat
+    /// per-round streams (sumcheck polynomials, OOD samples, query-draw PoW
+    /// nonces) into the per-oracle proof structure and is stored on the
+    /// proof; the batching-challenge PoW nonce is filled by the caller.
     pub fn parse_whir_proof(
         &self,
         slab: &[u8],
+        whir_schedule: &WhirSchedule,
     ) -> WhirPolyCommitProof<BF, E4, DefaultTreeConstructor> {
         let digest_bytes_of = |bytes: &[u32]| -> Vec<[u32; DIGEST_U32_WORDS]> {
             bytes.as_chunks::<DIGEST_U32_WORDS>().0.to_vec()
@@ -453,75 +459,81 @@ impl ProofLayout {
         let setup_commitment = base(WhirBaseLayerKind::Setup, base_indices);
         let memory_commitment = base(WhirBaseLayerKind::Memory, base_indices);
         let witness_commitment = base(WhirBaseLayerKind::Witness, base_indices);
-        let intermediate_whir_oracles: Vec<
+        let mut intermediate_whir_oracles: Vec<
             WhirIntermediateCommitmentAndQueries<BF, E4, DefaultTreeConstructor>,
-        > = self
-            .whir
-            .intermediate
-            .iter()
-            .enumerate()
-            .map(|(round, inter)| {
-                let cap_flat = self.whir_intermediate_cap_host(slab, round);
-                let cap = digest_bytes_of(cap_flat);
-                let indices = self.whir_intermediate_query_indices_host(slab, round);
-                let leaves = self.whir_intermediate_query_leaves_host(slab, round);
-                let paths_flat = self.whir_intermediate_query_paths_host(slab, round);
-                let query_count = inter.query_count;
-                let leaf_values_len = inter.leaf_values_len;
-                let path_len = inter.path_len;
-                let queries: Vec<ExtensionFieldQuery<BF, E4, DefaultTreeConstructor>> = (0
-                    ..query_count)
-                    .map(|q| {
-                        let leaf_start = q * leaf_values_len;
-                        let leaf_end = leaf_start + leaf_values_len;
-                        let path_start_u32 = q * path_len * DIGEST_U32_WORDS;
-                        let path_end_u32 = path_start_u32 + path_len * DIGEST_U32_WORDS;
-                        ExtensionFieldQuery {
-                            index: indices[q] as usize,
-                            leaf_values_concatenated: leaves[leaf_start..leaf_end].to_vec(),
-                            path: digest_bytes_of(&paths_flat[path_start_u32..path_end_u32]),
-                            _marker: PhantomData,
-                        }
-                    })
-                    .collect();
-                WhirIntermediateCommitmentAndQueries {
-                    commitment: WhirCommitment {
-                        cap: MerkleTreeCapVarLength { cap },
-                        _marker: PhantomData,
-                    },
-                    queries,
-                }
-            })
-            .collect();
+        > =
+            self.whir
+                .intermediate
+                .iter()
+                .enumerate()
+                .map(|(round, inter)| {
+                    let cap_flat = self.whir_intermediate_cap_host(slab, round);
+                    let cap = digest_bytes_of(cap_flat);
+                    let indices = self.whir_intermediate_query_indices_host(slab, round);
+                    let leaves = self.whir_intermediate_query_leaves_host(slab, round);
+                    let paths_flat = self.whir_intermediate_query_paths_host(slab, round);
+                    let query_count = inter.query_count;
+                    let leaf_values_len = inter.leaf_values_len;
+                    let path_len = inter.path_len;
+                    let queries: Vec<ExtensionFieldQuery<BF, E4, DefaultTreeConstructor>> = (0
+                        ..query_count)
+                        .map(|q| {
+                            let leaf_start = q * leaf_values_len;
+                            let leaf_end = leaf_start + leaf_values_len;
+                            let path_start_u32 = q * path_len * DIGEST_U32_WORDS;
+                            let path_end_u32 = path_start_u32 + path_len * DIGEST_U32_WORDS;
+                            ExtensionFieldQuery {
+                                index: indices[q] as usize,
+                                leaf_values_concatenated: leaves[leaf_start..leaf_end].to_vec(),
+                                path: digest_bytes_of(&paths_flat[path_start_u32..path_end_u32]),
+                                _marker: PhantomData,
+                            }
+                        })
+                        .collect();
+                    let mut oracle = WhirIntermediateCommitmentAndQueries::with_commitment(
+                        MerkleTreeCapVarLength { cap },
+                    );
+                    oracle.queries = queries;
+                    oracle
+                })
+                .collect();
+        // The device writes the per-round streams flat, in transcript order:
+        // every round's sumcheck polynomials, one OOD sample per intermediate
+        // oracle, one query-draw PoW nonce per round. Split them by the
+        // schedule's round shape (the GPU prover implements no OOD / folding
+        // PoW and exactly one OOD sample per oracle).
         let ood_samples = self.whir_ood_samples_host(slab).to_vec();
         let sumcheck_polys: Vec<[E4; 3]> = self
             .whir_sumcheck_polys_host(slab)
             .as_chunks::<3>()
             .0
             .to_vec();
-        let original_evaluation_point = self.whir_original_evaluation_point_host(slab).to_vec();
-        let batching_challenge = self.whir_batching_challenge_host(slab)[0];
-        let [c0, c1, c2] = sumcheck_polys[0];
-        let mut p_at_one = c0;
-        p_at_one.add_assign(&c1);
-        p_at_one.add_assign(&c2);
-        let mut batched_opening = c0;
-        batched_opening.add_assign(&p_at_one);
         let pow_nonces = self.whir_pow_nonces_host(slab).to_vec();
         let final_monomials = self.whir_final_monomials_host(slab).to_vec();
+        let fold_steps = whir_schedule.fold_steps();
+        assert_eq!(fold_steps.len(), intermediate_whir_oracles.len() + 1);
+        assert_eq!(ood_samples.len(), intermediate_whir_oracles.len());
+        assert_eq!(pow_nonces.len(), fold_steps.len());
+        assert_eq!(sumcheck_polys.len(), fold_steps.iter().sum::<usize>());
+        let mut polys = sumcheck_polys.into_iter();
+        let base_sumcheck_polys: Vec<[E4; 3]> = polys.by_ref().take(fold_steps[0]).collect();
+        for (i, oracle) in intermediate_whir_oracles.iter_mut().enumerate() {
+            oracle.ood_samples = vec![ood_samples[i]];
+            oracle.sumcheck_polys = polys.by_ref().take(fold_steps[i + 1]).collect();
+            oracle.queries_pow_nonce = pow_nonces[i + 1];
+        }
         WhirPolyCommitProof {
             setup_commitment,
             memory_commitment,
             witness_commitment,
+            // filled by the caller from the slab
+            batching_challenge_pow_nonce: 0,
+            base_sumcheck_polys,
+            base_folding_pow_nonces: vec![],
+            base_queries_pow_nonce: pow_nonces[0],
             intermediate_whir_oracles,
-            ood_samples,
-            sumcheck_polys,
-            pow_nonces,
             final_monomials,
-            whir_schedule: WhirSchedule::default(),
-            batching_challenge: Some(batching_challenge),
-            original_evaluation_point: Some(original_evaluation_point),
-            batched_opening: Some(batched_opening),
+            whir_schedule: whir_schedule.clone(),
         }
     }
 

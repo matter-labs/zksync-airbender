@@ -73,10 +73,14 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
         }
 
         #[inline(always)]
+        /// One WHIR sumcheck step: read and check the round polynomial, commit it,
+        /// draw the folding challenge (after a `folding_pow_bits`-bit proof of work
+        /// when the round gates its folding draws).
         pub fn verify_whir_sumcheck_step<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
             ts: &mut TranscriptState,
             claim: #quartic_struct,
             round: usize,
+            folding_pow_bits: u32,
             nd_source: &mut I,
         ) -> Result<(#quartic_struct, #quartic_struct), E::Error> {
             const WHIR_SC_DATA_WORDS: usize = 3 * EXT_DEGREE;
@@ -113,7 +117,12 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
 
             ts.commit(&mut buf, WHIR_SC_DATA_WORDS);
 
-            let alpha = draw_single_field_el(ts);
+            let alpha = if folding_pow_bits > 0 {
+                ::verifier_common::whir::read_and_verify_pow::<I>(ts, folding_pow_bits, nd_source);
+                draw_single_field_el_after_pow(ts)
+            } else {
+                draw_single_field_el(ts)
+            };
 
             let mut new_claim = c2;
             #mul_claim_alpha;

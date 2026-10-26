@@ -41,9 +41,8 @@ fn generate_common<MW: FieldWrapper>() {
         .flat_map(|c| {
             LEVELS_TO_GENERATE
                 .iter()
-                .flat_map(move |&level| c.whir_schedule_for(level).whir_steps_schedule.iter())
+                .flat_map(move |&level| c.whir_schedule_for(level).fold_steps())
         })
-        .copied()
         .max()
         .unwrap();
 
@@ -116,7 +115,7 @@ fn generate_whir_verifier<MW: FieldWrapper>(
     let whir_final = whir::generate_whir_final_round::<MW>(whir_schedule, message_size_log2);
 
     // Compute max hash buf size across all WHIR rounds (padded to 16-word boundary)
-    let initial_vpf = 1usize << whir_schedule.whir_steps_schedule[0];
+    let initial_vpf = whir_schedule.base_values_per_leaf();
     let initial_hbs = gkr_files
         .oracles
         .values()
@@ -125,18 +124,15 @@ fn generate_whir_verifier<MW: FieldWrapper>(
         .unwrap_or(0)
         .div_ceil(16)
         * 16;
-    let num_whir_rounds = whir_schedule.whir_steps_schedule.len();
+    let fold_steps = whir_schedule.fold_steps();
+    let num_whir_rounds = fold_steps.len();
     let internal_hbs = if num_whir_rounds > 2 {
-        let max_fold = *whir_schedule.whir_steps_schedule[1..num_whir_rounds - 1]
-            .iter()
-            .max()
-            .unwrap();
+        let max_fold = *fold_steps[1..num_whir_rounds - 1].iter().max().unwrap();
         ((1usize << max_fold) * 4).div_ceil(16) * 16
     } else {
         0
     };
-    let final_hbs =
-        ((1usize << whir_schedule.whir_steps_schedule[num_whir_rounds - 1]) * 4).div_ceil(16) * 16;
+    let final_hbs = ((1usize << fold_steps[num_whir_rounds - 1]) * 4).div_ceil(16) * 16;
     let whir_hash_buf_size = initial_hbs.max(internal_hbs).max(final_hbs);
 
     let whir_verify = whir::generate_whir_verify::<MW>(whir_hash_buf_size);
@@ -268,6 +264,49 @@ fn blake2_with_extended_control_pack4() {
         &prover_config,
         packed_fixture::DIR_SUFFIX,
     );
+}
+
+/// Virtual-packing base round: the `blake2_with_extended_control` 2^20 circuit
+/// with `fold_log2 = 0` (one value per column per base leaf, no round-0
+/// sumcheck). Generated into `.../blake2_with_extended_control/sec_100_virtual`;
+/// the proof fixture is verified by `tests/virtual_packing_verify.rs`.
+#[test]
+fn blake2_with_extended_control_virtual() {
+    use verifier_common::test_circuits::virtual_packing_fixture;
+    let circuit = virtual_packing_fixture::circuit();
+    let prover_config = virtual_packing_fixture::prover_config();
+    assert_eq!(
+        circuit.compiled_circuit().trace_len.trailing_zeros() as usize,
+        prover_config.trace_len_log2,
+    );
+    assert!(prover_config.is_virtual_packing());
+    generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
+        circuit,
+        &prover_config,
+        virtual_packing_fixture::DIR_SUFFIX,
+    );
+}
+
+/// The blake base-round comparison sweep: a verifier per
+/// `verifier_common::test_circuits::blake_variants::BlakeVariant` (every
+/// physical packing 2^0..=2^4, two or one value(s) per column per base leaf),
+/// generated into `.../blake2_with_extended_control/sec_100{infix}`.
+#[test]
+fn blake2_with_extended_control_variants() {
+    use verifier_common::test_circuits::blake_variants::BlakeVariant;
+    let circuit = BlakeVariant::circuit();
+    for variant in BlakeVariant::all() {
+        let prover_config = variant.prover_config();
+        assert_eq!(
+            circuit.compiled_circuit().trace_len.trailing_zeros() as usize,
+            prover_config.trace_len_log2,
+        );
+        generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
+            circuit,
+            &prover_config,
+            &variant.dir_suffix(),
+        );
+    }
 }
 
 macro_rules! generate_circuit_tests {

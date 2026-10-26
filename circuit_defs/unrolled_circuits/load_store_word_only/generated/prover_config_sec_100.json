@@ -1,43 +1,65 @@
 {
   "trace_len_log2": 24,
-  "lde_factor": 2,
   "cap_size": 16,
-  "base_oracles_values_per_leaf": 2,
   "sumcheck_explicit_output_size_log_2": 4,
   "security_level": "Sec100",
   "whir_schedule": {
-    "base_lde_factor": 2,
     "cap_size": 16,
-    "whir_steps_schedule": [
-      1,
-      5,
-      5,
-      5,
-      4,
-      3
-    ],
-    "whir_queries_schedule": [
-      89,
-      23,
-      10,
-      7,
-      5,
-      5
-    ],
-    "whir_steps_lde_factors": [
-      16,
-      512,
-      16384,
-      524288,
-      524288
-    ],
-    "whir_pow_schedule": [
-      26,
-      24,
-      25,
-      19,
-      21,
-      21
+    "base_round": {
+      "lde_factor_log2": 1,
+      "physical_packing_log2": 0,
+      "fold_log2": 1,
+      "batching_pow_bits": null,
+      "folding_pow_bits": 0,
+      "num_queries": 89,
+      "queries_pow_bits": 26
+    },
+    "internal_rounds": [
+      {
+        "lde_factor_log2": 4,
+        "folding_log2": 5,
+        "num_queries": 23,
+        "queries_pow_bits": 24,
+        "folding_pow_bits": 0,
+        "num_ood_samples": 1,
+        "ood_pow_bits": 0
+      },
+      {
+        "lde_factor_log2": 9,
+        "folding_log2": 5,
+        "num_queries": 10,
+        "queries_pow_bits": 25,
+        "folding_pow_bits": 0,
+        "num_ood_samples": 1,
+        "ood_pow_bits": 0
+      },
+      {
+        "lde_factor_log2": 14,
+        "folding_log2": 5,
+        "num_queries": 7,
+        "queries_pow_bits": 19,
+        "folding_pow_bits": 0,
+        "num_ood_samples": 1,
+        "ood_pow_bits": 0
+      },
+      {
+        "lde_factor_log2": 19,
+        "folding_log2": 4,
+        "num_queries": 5,
+        "queries_pow_bits": 21,
+        "folding_pow_bits": 0,
+        "num_ood_samples": 1,
+        "ood_pow_bits": 0
+      },
+      {
+        "lde_factor_log2": 19,
+        "folding_log2": 3,
+        "num_queries": 5,
+        "queries_pow_bits": 21,
+        "folding_pow_bits": 0,
+        "num_ood_samples": 1,
+        "ood_pow_bits": 0
+      }
     ]
   },
   "same_size_sumcheck_schedule": [
@@ -124,6 +146,5 @@
     "Tail"
   ],
   "dimension_reducing_sumcheck_schedule": {},
-  "pack_log2": 0,
   "commitment_mode": "SeparateMemoryAndWitness"
 }

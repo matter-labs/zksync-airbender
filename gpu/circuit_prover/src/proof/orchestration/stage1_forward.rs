@@ -92,8 +92,10 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
         .unwrap_or(GpuGKRTraceGeometry {
             log_domain_size: compiled_circuit.trace_len.trailing_zeros(),
             // Setup-less circuits use the same geometry as memory and witness.
-            log_lde_factor: prover_config.lde_factor.trailing_zeros(),
-            log_rows_per_leaf: prover_config.base_oracles_values_per_leaf.trailing_zeros(),
+            log_lde_factor: prover_config.lde_factor().trailing_zeros(),
+            log_rows_per_leaf: prover_config
+                .base_oracles_values_per_leaf()
+                .trailing_zeros(),
             log_tree_cap_size: prover_config.cap_size.trailing_zeros(),
         });
 
@@ -114,7 +116,9 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
     let memory_layer_geometry = GpuGKRTraceGeometry {
         log_domain_size: compiled_circuit.trace_len.trailing_zeros(),
         log_lde_factor: bundle.memory.host.log_lde_factor,
-        log_rows_per_leaf: prover_config.base_oracles_values_per_leaf.trailing_zeros(),
+        log_rows_per_leaf: prover_config
+            .base_oracles_values_per_leaf()
+            .trailing_zeros(),
         log_tree_cap_size: bundle.memory.host.log_tree_cap_size,
     };
     let witness_layer_geometry = setup_geometry;

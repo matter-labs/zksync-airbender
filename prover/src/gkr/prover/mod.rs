@@ -6,7 +6,6 @@ use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 use cs::utils::split_timestamp;
 use field::TwoAdicField;
 use field::{Field, FieldExtension, PrimeField};
-use transcript::Keccak256Transcript;
 use worker::WorkerGeometry;
 
 use super::*;
@@ -32,8 +31,7 @@ use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::commitment_utils;
 use crate::gkr::prover::sumcheck_loop::flatten_claim_point;
 use crate::gkr::prover::transcript_utils::{
-    commit_field_els, draw_fresh_random_field_els, draw_random_field_els,
-    draw_random_field_els_with_pow,
+    commit_field_els, draw_random_field_els, draw_random_field_els_with_pow,
 };
 use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
 use crate::gkr::prover_config::{pow_bits, ProverConfig};
@@ -437,6 +435,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckIntermediateProofValue
 #[serde(
     bound = "F: serde::Serialize + serde::de::DeserializeOwned, E: serde::Serialize + serde::de::DeserializeOwned"
 )]
+#[serde(from = "gkr_proof_legacy_compat::GKRProofRepr<F, E, T>")]
 pub struct GKRProof<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -451,9 +450,6 @@ pub struct GKRProof<
     pub grand_product_accumulator_computed: E,
     pub inits_and_teardowns_top_bits: Vec<u32>,
     pub lookup_challenges_pow_nonce: u64,
-    pub batched_proximity_check_pow_nonce: u64,
-    #[serde(default)]
-    pub intermediate_transcript_seed: Option<[u8; 32]>,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>>
@@ -473,25 +469,62 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
-pub struct WhirSchedule {
-    pub base_lde_factor: usize,
-    pub cap_size: usize,
-    pub whir_steps_schedule: Vec<usize>,
-    pub whir_queries_schedule: Vec<usize>,
-    pub whir_steps_lde_factors: Vec<usize>,
-    pub whir_pow_schedule: Vec<u32>,
-}
+// LEGACY-COMPAT (delete once every tracked proof fixture has been regenerated
+// with the refactored layout): a pre-refactor `GKRProof` carried the WHIR
+// batching-challenge PoW nonce (`batched_proximity_check_pow_nonce`, now
+// `WhirPolyCommitProof::batching_challenge_pow_nonce`) and an
+// `intermediate_transcript_seed` (the retired GKR->WHIR handoff, ignored).
+mod gkr_proof_legacy_compat {
+    use super::*;
 
-impl WhirSchedule {
-    pub fn total_queries(&self) -> usize {
-        self.whir_queries_schedule.iter().sum()
+    #[serde_with::serde_as]
+    #[derive(serde::Deserialize)]
+    #[serde(
+        bound = "F: serde::Serialize + serde::de::DeserializeOwned, E: serde::Serialize + serde::de::DeserializeOwned"
+    )]
+    pub(crate) struct GKRProofRepr<
+        F: PrimeField,
+        E: FieldExtension<F> + Field,
+        T: ColumnMajorMerkleTreeConstructor<F>,
+    > {
+        external_challenges: GKRExternalChallenges<F, E>,
+        #[serde_as(as = "Vec<(_, _)>")]
+        final_explicit_evaluations: BTreeMap<OutputType, [Vec<E>; 2]>,
+        #[serde_as(as = "Vec<(_, _)>")]
+        sumcheck_intermediate_values: BTreeMap<usize, SumcheckIntermediateProofValues<F, E>>,
+        whir_proof: WhirPolyCommitProof<F, E, T>,
+        grand_product_accumulator_computed: E,
+        inits_and_teardowns_top_bits: Vec<u32>,
+        lookup_challenges_pow_nonce: u64,
+        #[serde(default)]
+        batched_proximity_check_pow_nonce: Option<u64>,
+        #[serde(default)]
+        #[allow(dead_code)]
+        intermediate_transcript_seed: Option<[u8; 32]>,
     }
 
-    pub fn total_poly_size_reduction(&self) -> usize {
-        self.whir_steps_schedule.iter().sum()
+    impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>>
+        From<GKRProofRepr<F, E, T>> for GKRProof<F, E, T>
+    {
+        fn from(repr: GKRProofRepr<F, E, T>) -> Self {
+            let mut whir_proof = repr.whir_proof;
+            if let Some(nonce) = repr.batched_proximity_check_pow_nonce {
+                whir_proof.batching_challenge_pow_nonce = nonce;
+            }
+            Self {
+                external_challenges: repr.external_challenges,
+                final_explicit_evaluations: repr.final_explicit_evaluations,
+                sumcheck_intermediate_values: repr.sumcheck_intermediate_values,
+                whir_proof,
+                grand_product_accumulator_computed: repr.grand_product_accumulator_computed,
+                inits_and_teardowns_top_bits: repr.inits_and_teardowns_top_bits,
+                lookup_challenges_pow_nonce: repr.lookup_challenges_pow_nonce,
+            }
+        }
     }
 }
+
+pub use crate::gkr::prover_config::WhirSchedule;
 
 pub(crate) fn split_destinations<T: Sized>(
     dest: Vec<&'_ mut [T]>,
@@ -572,7 +605,7 @@ fn default_storage_for(
     match operation_mode {
         OperationMode::SingleChunk { .. } => WhirOracleStorage::fully_recompute(),
         OperationMode::MultipleChunks => {
-            if prover_config.pack_log2 > 0 {
+            if prover_config.pack_log2() > 0 {
                 WhirOracleStorage::fully_recompute()
             } else {
                 WhirOracleStorage::fully_in_memory()
@@ -1085,9 +1118,9 @@ fn prove_configured_with_gkr_merged_precommitted_impl<
         );
 
     let wit_oracle = ColumnMajorBaseOracleForLDE::empty(
-        prover_config.base_oracles_values_per_leaf,
+        prover_config.base_oracles_values_per_leaf(),
         prover_config.whir_message_size_log2(),
-        prover_config.lde_factor,
+        prover_config.lde_factor(),
     );
 
     prove_configured_with_gkr_from_forward_eval::<F, E, T, TR, B, GB>(
@@ -1183,7 +1216,7 @@ fn prove_configured_with_gkr_impl<
         [lookup_alpha, lookup_additive_part],
     ) = {
         // 1. The base commitment: by the config's commitment mode (packed by
-        //    `prover_config.pack_log2` when non-zero). Packed polynomials are
+        //    `prover_config.pack_log2()` when non-zero). Packed polynomials are
         //    2^(N + pack_log2) and their LDE codeword (x base_lde_factor) is very
         //    large: `Recompute` builds a coset-by-coset commitment (keeps only
         //    the packed monomial forms + the small top tree) and serves round-0
@@ -1240,9 +1273,9 @@ fn prove_configured_with_gkr_impl<
                 (
                     merged_oracle,
                     ColumnMajorBaseOracleForLDE::empty(
-                        prover_config.base_oracles_values_per_leaf,
+                        prover_config.base_oracles_values_per_leaf(),
                         prover_config.whir_message_size_log2(),
-                        prover_config.lde_factor,
+                        prover_config.lde_factor(),
                     ),
                 )
             }
@@ -1844,7 +1877,7 @@ fn prove_configured_with_gkr_from_forward_eval<
     let Some(base_layer_entries) = claim_point_entries.get(&0) else {
         panic!("Missing claim point for committed polys");
     };
-    let mut base_layer_z = flatten_claim_point(base_layer_entries);
+    let base_layer_z = flatten_claim_point(base_layer_entries);
 
     let mut _eq_at_z: Box<[E]> = vec![].into_boxed_slice();
     #[cfg(feature = "gkr_self_checks")]
@@ -1951,10 +1984,6 @@ fn prove_configured_with_gkr_from_forward_eval<
         );
     }
 
-    // The WHIR message size: the committed (packed) column length, from the
-    // config (the entry asserted `trace_len == 2^prover_config.trace_len_log2`).
-    let trace_len_log2_for_whir = prover_config.whir_message_size_log2();
-
     // and for WHIR we may need to reshuffle/merge claims depending on the mode:
     // the merged modes committed memory and witness as ONE column set
     let (mem_polys_claims, wit_polys_claims, setup_polys_claims) =
@@ -1971,142 +2000,9 @@ fn prove_configured_with_gkr_from_forward_eval<
             }
         };
 
-    // Packed base commitments (`ProverConfig::pack_log2 > 0`): every committed
-    // column set (memory, witness, setup) was packed by `2^pack_log2`
-    // consecutive columns, so its claims must be merged in the same manner.
-    let pack_log2 = prover_config.pack_log2;
-    let (mem_polys_claims, wit_polys_claims, setup_polys_claims) = if pack_log2 > 0 {
-        // We already have all prover-controlled variables in the transcript, so we can just draw
-        // extra coordinates' values here. The GKR phase ENDS with a draw (the last layer's
-        // batching challenge) and nothing is committed in between, so the draw must be a
-        // FRESH one: the Blake2s transcript emits the current seed words as the first output
-        // block of every draw, and a plain draw here would re-emit the words of that last
-        // challenge as the first packing coordinate. `draw_fresh` advances the seed past
-        // the digest the preceding draw emitted first (a no-op difference for the Keccak
-        // transcript, whose every draw hashes before reading). The verifier mirrors this.
-        let extra_coordinates: Vec<E> =
-            draw_fresh_random_field_els::<F, E, TR>(&mut seed, pack_log2);
-
-        // now recursively merge every committed set (an empty set stays empty)
-        let [mem_polys_claims, wit_polys_claims, setup_polys_claims] =
-            [mem_polys_claims, wit_polys_claims, setup_polys_claims]
-                .map(|input| merge_claims(&input, &extra_coordinates));
-
-        // and we need to update claim point: the pack index occupies the HIGH
-        // bits of the packed enumeration (sub-polys are concatenated block by
-        // block), so under LSB binding the packing coordinates EXTEND the
-        // claim point at the top.
-        base_layer_z.extend_from_slice(&extra_coordinates);
-        debug_assert_eq!(base_layer_z.len(), trace_len_log2_for_whir);
-
-        #[cfg(feature = "gkr_self_checks")]
-        {
-            use crate::gkr::prover::stages::commitment_utils::compute_column_major_monomial_form_from_main_domain;
-            use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
-
-            // Reconstruct every packed polynomial from the committed base oracles
-            // and check that its multilinear evaluation at the (now extended)
-            // claim point matches the merged claim we just derived. We take the
-            // FIRST coset (offset == 1, i.e. the base evaluation domain), invert
-            // its NTT to recover the packed poly's monomial coefficients, turn
-            // those into hypercube evaluations, and evaluate at `base_layer_z`.
-            let eq_at_point =
-                crate::gkr::sumcheck::eq_poly::make_eq_poly_in_full_lsb::<E>(&base_layer_z, worker);
-            let eq_at_point = eq_at_point.last().expect("eq poly has a full layer");
-            for (oracle, claims) in [
-                (&mem_oracle, &mem_polys_claims),
-                (&wit_oracle, &wit_polys_claims),
-            ] {
-                assert_eq!(
-                    oracle.num_columns(),
-                    claims.len(),
-                    "one committed packed column per merged claim"
-                );
-                for (column_index, expected_claim) in claims.iter().enumerate() {
-                    // Reduce the base-domain column to monomial coefficients: evals
-                    // need IFFT, monomials are already there.
-                    let column = oracle.main_domain_column(column_index);
-                    let mut hypercube_evals = if column.is_monomials() {
-                        column.into_owned()
-                    } else {
-                        compute_column_major_monomial_form_from_main_domain::<F, F, Global>(
-                            &column.as_slice(),
-                            twiddles.plain(),
-                        )
-                    };
-                    // monomials -> hypercube evaluations of the packed multilinear.
-                    // The packing is reversal-free under the LSB convention
-                    // (`evals_into_coeffs` straight over the concatenated blocks),
-                    // so the inverse is just `coeffs_into_hypercube_evals` —
-                    // mirroring `whir_fold`'s own reversal-free claim recomputation.
-                    let size_log2 = hypercube_evals.len().trailing_zeros();
-                    multivariate_coeffs_into_hypercube_evals(&mut hypercube_evals, size_log2);
-                    // re-evaluate at the extended claim point and compare
-                    assert_eq!(hypercube_evals.len(), eq_at_point.len());
-                    let reevaluated =
-                        evaluate_with_precomputed_eq::<F, E>(&hypercube_evals, eq_at_point);
-                    assert_eq!(
-                        reevaluated, *expected_claim,
-                        "packed-commitment self-check: reconstructed evaluation must match merged claim"
-                    );
-                }
-            }
-        }
-
-        (mem_polys_claims, wit_polys_claims, setup_polys_claims)
-    } else {
-        (mem_polys_claims, wit_polys_claims, setup_polys_claims)
-    };
-
-    // The WHIR batching challenge is gated behind a proof-of-work; the GKR sumcheck
-    // transcript above already committed everything that feeds this draw. The bit count
-    // scales with the number of batched base-oracle columns l and the size of the
-    // batched (packed, in the packed mode) polynomials, so it is computed per-circuit
-    // here (and identically baked by the verifier generator).
-    let merged_memory_and_witness = prover_config.merged_memory_and_witness();
-    let batched_proximity_pow_bits = pow_bits::batched_proximity_check_pow_bits::<F, E>(
-        prover_config.security_level.security_bits(),
-        trace_len_log2_for_whir,
-        prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
-        pow_bits::committed_base_oracle_columns(
-            compiled_circuit,
-            pack_log2,
-            merged_memory_and_witness,
-        ),
-    );
-
-    let (batched_proximity_check_pow_nonce, whir_batching_challenges): (u64, Vec<E>) =
-        draw_random_field_els_with_pow::<F, E, TR>(
-            &mut seed,
-            1,
-            batched_proximity_pow_bits,
-            worker,
-        );
-    let whir_batching_challenge = whir_batching_challenges[0];
-
     // The base oracles carry their storage policy in their enum variant; the
     // intermediate (folded) oracle policy is configured independently.
     let intermediate_oracle_mode = storage.intermediate_oracles;
-
-    let intermediate_transcript_seed =
-        if core::any::TypeId::of::<TR>() == core::any::TypeId::of::<Keccak256Transcript>() {
-            // some unsafe magic
-            assert_eq!(
-                core::any::TypeId::of::<F>(),
-                core::any::TypeId::of::<::field::Proth120>()
-            );
-            assert_eq!(
-                core::any::TypeId::of::<E>(),
-                core::any::TypeId::of::<::field::Proth120>()
-            );
-            let seed_copy: <Keccak256Transcript as ::transcript::Transcript<
-                ::field::Proth120,
-                ::field::Proth120,
-            >>::Seed = unsafe { core::mem::transmute_copy(&seed) };
-            Some(seed_copy.0)
-        } else {
-            None
-        };
 
     println!(
         "[timing] GKR phase (layers + sumcheck loops): {:.3?}",
@@ -2125,8 +2021,7 @@ fn prove_configured_with_gkr_from_forward_eval<
         setup_polys_claims,
         gkr_storage,
         prover_config,
-        base_layer_z.clone(),
-        whir_batching_challenge,
+        base_layer_z,
         twiddles,
         seed,
         backend,
@@ -2233,8 +2128,6 @@ fn prove_configured_with_gkr_from_forward_eval<
         grand_product_accumulator_computed,
         inits_and_teardowns_top_bits: inits_and_teardowns_top_bits.to_vec(),
         lookup_challenges_pow_nonce,
-        batched_proximity_check_pow_nonce,
-        intermediate_transcript_seed,
     }
 }
 

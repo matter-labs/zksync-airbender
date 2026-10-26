@@ -77,24 +77,16 @@ pub(super) fn assert_whir_proof_eq_for_test(
     // Committed-state values and lengths first: a length mismatch would make the
     // per-round ladder below misalign.
     assert_eq!(
-        actual.batching_challenge, expected.batching_challenge,
-        "WHIR batching challenge diverged"
-    );
-    assert_eq!(
-        actual.original_evaluation_point, expected.original_evaluation_point,
-        "WHIR original evaluation point diverged"
-    );
-    assert_eq!(
-        actual.batched_opening, expected.batched_opening,
-        "WHIR batched opening diverged"
-    );
-    assert_eq!(
         actual.whir_schedule, expected.whir_schedule,
         "WHIR schedule diverged"
     );
     assert_eq!(
-        actual.sumcheck_polys.len(),
-        expected.sumcheck_polys.len(),
+        actual.batching_challenge_pow_nonce, expected.batching_challenge_pow_nonce,
+        "WHIR batching-challenge PoW nonce diverged"
+    );
+    assert_eq!(
+        actual.all_sumcheck_polys().count(),
+        expected.all_sumcheck_polys().count(),
         "WHIR sumcheck round count diverged",
     );
     assert_eq!(
@@ -103,13 +95,13 @@ pub(super) fn assert_whir_proof_eq_for_test(
         "WHIR intermediate oracle count diverged",
     );
     assert_eq!(
-        actual.ood_samples.len(),
-        expected.ood_samples.len(),
+        actual.all_ood_samples().count(),
+        expected.all_ood_samples().count(),
         "WHIR OOD sample count diverged",
     );
     assert_eq!(
-        actual.pow_nonces.len(),
-        expected.pow_nonces.len(),
+        actual.queries_pow_nonces().len(),
+        expected.queries_pow_nonces().len(),
         "WHIR PoW nonce count diverged",
     );
     assert_eq!(
@@ -154,16 +146,16 @@ pub(super) fn assert_whir_proof_eq_for_test(
     // Transcript order, so the first failing assert names the cause rather than
     // a downstream symptom.
     let mut round_idx = 0usize;
-    let group_count = expected.whir_schedule.whir_steps_schedule.len();
-    for (group_idx, &steps) in expected
-        .whir_schedule
-        .whir_steps_schedule
-        .iter()
-        .enumerate()
-    {
+    let fold_steps = expected.whir_schedule.fold_steps();
+    let group_count = fold_steps.len();
+    let actual_polys: Vec<[E4; 3]> = actual.all_sumcheck_polys().copied().collect();
+    let expected_polys: Vec<[E4; 3]> = expected.all_sumcheck_polys().copied().collect();
+    let actual_nonces = actual.queries_pow_nonces();
+    let expected_nonces = expected.queries_pow_nonces();
+    for (group_idx, &steps) in fold_steps.iter().enumerate() {
         for _ in 0..steps {
             assert_eq!(
-                actual.sumcheck_polys[round_idx], expected.sumcheck_polys[round_idx],
+                actual_polys[round_idx], expected_polys[round_idx],
                 "WHIR sumcheck polynomial diverged at round {round_idx}",
             );
             round_idx += 1;
@@ -175,7 +167,8 @@ pub(super) fn assert_whir_proof_eq_for_test(
                 "WHIR intermediate oracle cap diverged at oracle {group_idx}",
             );
             assert_eq!(
-                actual.ood_samples[group_idx], expected.ood_samples[group_idx],
+                actual.intermediate_whir_oracles[group_idx].ood_samples,
+                expected.intermediate_whir_oracles[group_idx].ood_samples,
                 "WHIR OOD sample diverged at oracle {group_idx}",
             );
         } else {
@@ -185,13 +178,13 @@ pub(super) fn assert_whir_proof_eq_for_test(
             );
         }
         assert_eq!(
-            actual.pow_nonces[group_idx], expected.pow_nonces[group_idx],
+            actual_nonces[group_idx], expected_nonces[group_idx],
             "WHIR PoW nonce diverged at round {group_idx}",
         );
     }
     assert_eq!(
         round_idx,
-        expected.sumcheck_polys.len(),
+        expected_polys.len(),
         "WHIR schedule does not account for every sumcheck round",
     );
 
@@ -282,16 +275,8 @@ pub(super) fn assert_gkr_proof_eq_for_test(
     }
     assert_whir_proof_eq_for_test(&actual.whir_proof, &expected.whir_proof);
     assert_eq!(
-        actual.intermediate_transcript_seed, expected.intermediate_transcript_seed,
-        "intermediate transcript seed diverged",
-    );
-    assert_eq!(
         actual.lookup_challenges_pow_nonce, expected.lookup_challenges_pow_nonce,
         "lookup-challenges PoW nonce diverged",
-    );
-    assert_eq!(
-        actual.batched_proximity_check_pow_nonce, expected.batched_proximity_check_pow_nonce,
-        "batched-proximity-check PoW nonce diverged",
     );
     assert_serialized_proof_bytes_eq(expected, actual);
 }
@@ -330,9 +315,9 @@ pub(super) fn assert_gkr_proof_structure_for_test(
         );
     }
     assert_eq!(
-        proof.whir_proof.pow_nonces.len(),
-        whir_schedule.whir_pow_schedule.len(),
-        "proof must contain one PoW nonce per WHIR round",
+        proof.whir_proof.queries_pow_nonces().len(),
+        whir_schedule.num_rounds(),
+        "proof must contain one query-draw PoW nonce per WHIR round",
     );
 }
 

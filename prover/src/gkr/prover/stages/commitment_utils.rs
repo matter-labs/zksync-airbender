@@ -959,11 +959,13 @@ pub fn commit_trace_part_for_config<
         backend,
         input_on_hypercube,
         twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+        prover_config.lde_factor(),
+        prover_config
+            .base_oracles_values_per_leaf()
+            .trailing_zeros() as usize,
         prover_config.cap_size,
         prover_config.trace_len_log2,
-        prover_config.pack_log2,
+        prover_config.pack_log2(),
         pool,
         worker,
     )

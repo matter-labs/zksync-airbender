@@ -269,10 +269,7 @@ impl BasicUnrolledFixture {
         let (mem_log_lde_factor, mem_log_tree_cap_size) = match self.gpu_setup_host.as_ref() {
             Some(host) => (host.log_lde_factor, host.log_tree_cap_size),
             None => (
-                self.prover_config
-                    .whir_schedule
-                    .base_lde_factor
-                    .trailing_zeros(),
+                self.prover_config.whir_schedule.base_lde_factor_log2() as u32,
                 self.prover_config.whir_schedule.cap_size.trailing_zeros(),
             ),
         };

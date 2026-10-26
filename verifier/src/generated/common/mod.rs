@@ -527,10 +527,14 @@ pub fn compute_tree_index(
     }
 }
 #[inline(always)]
+#[doc = r" One WHIR sumcheck step: read and check the round polynomial, commit it,"]
+#[doc = r" draw the folding challenge (after a `folding_pow_bits`-bit proof of work"]
+#[doc = r" when the round gates its folding draws)."]
 pub fn verify_whir_sumcheck_step<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     ts: &mut TranscriptState,
     claim: BabyBearExt4,
     round: usize,
+    folding_pow_bits: u32,
     nd_source: &mut I,
 ) -> Result<(BabyBearExt4, BabyBearExt4), E::Error> {
     const WHIR_SC_DATA_WORDS: usize = 3 * EXT_DEGREE;
@@ -560,7 +564,12 @@ pub fn verify_whir_sumcheck_step<I: NonDeterminismSource<BabyBearField>, E: Erro
         return Err(E::whir_sumcheck_failed(round));
     }
     ts.commit(&mut buf, WHIR_SC_DATA_WORDS);
-    let alpha = draw_single_field_el(ts);
+    let alpha = if folding_pow_bits > 0 {
+        ::verifier_common::whir::read_and_verify_pow::<I>(ts, folding_pow_bits, nd_source);
+        draw_single_field_el_after_pow(ts)
+    } else {
+        draw_single_field_el(ts)
+    };
     let mut new_claim = c2;
     field_ops::mul_assign(&mut new_claim, &alpha);
     field_ops::add_assign(&mut new_claim, &c1);

@@ -133,9 +133,9 @@ pub fn compress_fixed_point_to_l1(
         "[l1-compression] feeder config: base lde {}, whir steps {:?}, queries {:?}, pow {:?}; \
          feeder oracle storage: {feeder_storage:?}",
         feeder_config.lde_factor,
-        feeder_config.whir_schedule.whir_steps_schedule,
-        feeder_config.whir_schedule.whir_queries_schedule,
-        feeder_config.whir_schedule.whir_pow_schedule,
+        feeder_config.whir_schedule.fold_steps(),
+        feeder_config.whir_schedule.queries_per_round(),
+        feeder_config.whir_schedule.queries_pow_bits_per_round(),
     );
 
     // ── Stages 1 and 2: BabyBear feeder layers (merged commitments). ──

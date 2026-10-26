@@ -70,7 +70,7 @@ pub fn prove_l1_wrap_in_recompute_mode(
     let level = prover::definitions::SecurityLevel::Sec100;
     let prover_config = evm_production_packed_prover_config(level);
     // the base-commitment packing is a property of the prover config
-    let pack_log2 = prover_config.pack_log2;
+    let pack_log2 = prover_config.pack_log2();
     let trace_len = 1usize << prover_config.trace_len_log2;
 
     // 1. Run the program on the reduced machine and capture the execution.
@@ -117,8 +117,8 @@ pub fn prove_l1_wrap_in_recompute_mode(
     //    shared between programs would have.
     let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &unified_circuit);
 
-    let lde_factor = prover_config.lde_factor;
-    let values_per_leaf = prover_config.base_oracles_values_per_leaf;
+    let lde_factor = prover_config.lde_factor();
+    let values_per_leaf = prover_config.base_oracles_values_per_leaf();
 
     println!("L1 wrap: committing setup by coset recomputation (packed)");
     let setup_inputs: Vec<&[Proth120]> = setup.hypercube_evals.iter().map(|el| &el[..]).collect();

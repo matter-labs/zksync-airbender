@@ -70,7 +70,7 @@ use crate::gkr::prover::gkr_backend::BatchedBaseColumn;
 use crate::gkr::prover::stages::commitment_utils::ColumnMajorCosetBoundTracePart;
 use crate::gkr::prover::transcript_utils::{
     add_whir_commitment_to_transcript, commit_field_els, draw_fresh_random_field_els,
-    draw_query_bits, draw_random_field_els,
+    draw_query_bits, draw_random_field_els, draw_random_field_els_with_pow,
 };
 use crate::gkr::prover_config::ProverConfig;
 use crate::gkr::sumcheck::access_and_fold::GKRStorage;
@@ -138,6 +138,14 @@ impl<F: PrimeField + TwoAdicField> SingleCosetRSQueryable<F> for ColumnMajorBase
             .collect();
 
         match values_per_leaf {
+            // one value per column per leaf (virtual packing): the leaf at
+            // `index` is the point `index` itself
+            1 => {
+                for src_poly in self.original_values_normal_order.iter() {
+                    let value = src_poly.get(index);
+                    result[0].push(value);
+                }
+            }
             2 => {
                 let offsets = offsets_for_leaf_construction::<2>(trace_len);
                 for src_poly in self.original_values_normal_order.iter() {
@@ -594,6 +602,10 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
         let mut result: Vec<E> = Vec::with_capacity(values_per_leaf);
 
         match values_per_leaf {
+            // one value per leaf: the leaf at `index` is the point `index` itself
+            1 => {
+                result.push(self.values_normal_order.get(index));
+            }
             2 => {
                 let offsets = offsets_for_leaf_construction::<2>(trace_len);
                 for offset in offsets.iter() {
@@ -1098,8 +1110,11 @@ pub fn whir_fold<
     // separate oracles, which decides how the base columns are grouped into
     // committed (packed) columns; the oracles are asserted to have that shape.
     prover_config: &ProverConfig,
-    original_evaluation_point: Vec<E>,
-    batching_challenge: E,
+    // The GKR claim point over the `trace_len_log2` BASE variables. Under
+    // explicit packing the `pack_log2` extra claim-point coordinates are drawn
+    // and the per-set claims merged HERE (the packing is a property of the
+    // WHIR base round), as is the batching-challenge draw.
+    base_layer_z: Vec<E>,
     twiddles: &B::TwiddleSet,
     mut transcript_seed: TR::Seed,
     // Compute backend for the in-memory-path heavy ops (intermediate-oracle LDEs,
@@ -1120,10 +1135,64 @@ pub fn whir_fold<
 ) -> WhirPolyCommitProof<F, E, T> {
     let two_inv = F::TWO.inverse().unwrap();
     let whir_schedule = &prover_config.whir_schedule;
-    let pack_log2 = prover_config.pack_log2;
+    let pack_log2 = prover_config.pack_log2();
     let merged_memory_and_witness = prover_config.merged_memory_and_witness();
     let tree_cap_size = whir_schedule.cap_size;
     let trace_len_log2 = prover_config.whir_message_size_log2();
+    let security_bits = prover_config.security_level.security_bits();
+    let base_round = &whir_schedule.base_round;
+
+    // Explicit packing: every committed set's claims are merged by
+    // `pack_log2` fresh claim-point coordinates (the pack index occupies the
+    // HIGH variables of the packed enumeration, so they EXTEND the claim point
+    // at the top). The GKR phase ENDS with a draw (the last layer's batching
+    // challenge) and nothing is committed in between, so the draw must be a
+    // FRESH one: the Blake2s transcript emits the current seed words as the
+    // first output block of every draw, and a plain draw here would re-emit
+    // the words of that last challenge as the first packing coordinate
+    // (`draw_fresh` advances the seed first; a no-op difference for the
+    // Keccak transcript, whose every draw hashes before reading). The
+    // verifier mirrors this.
+    let mut original_evaluation_point = base_layer_z;
+    assert_eq!(
+        original_evaluation_point.len(),
+        prover_config.trace_len_log2,
+        "the claim point has one entry per base variable"
+    );
+    let (mem_polys_claims, wit_polys_claims, setup_polys_claims) = if pack_log2 > 0 {
+        let extra_coordinates: Vec<E> =
+            draw_fresh_random_field_els::<F, E, TR>(&mut transcript_seed, pack_log2);
+        let [mem_polys_claims, wit_polys_claims, setup_polys_claims] =
+            [mem_polys_claims, wit_polys_claims, setup_polys_claims]
+                .map(|input| crate::gkr::prover::merge_claims(&input, &extra_coordinates));
+        original_evaluation_point.extend_from_slice(&extra_coordinates);
+        (mem_polys_claims, wit_polys_claims, setup_polys_claims)
+    } else {
+        (mem_polys_claims, wit_polys_claims, setup_polys_claims)
+    };
+
+    // The batching challenge — the batched-proximity challenge under explicit
+    // packing, the initial `2^k`-ary folding challenge under virtual packing —
+    // is gated behind a proof-of-work whose bit count scales with the number
+    // of committed (packed) columns and the batched polynomial size
+    // (`WhirBaseRoundSchedule::batching_pow_bits`, identically baked by the
+    // verifier generator). Everything that feeds this draw is already in the
+    // transcript.
+    let total_committed_columns =
+        mem_oracle.num_columns() + wit_oracle.num_columns() + setup.num_columns();
+    let batching_pow_bits = base_round.batching_pow_bits::<F, E>(
+        security_bits,
+        trace_len_log2,
+        total_committed_columns,
+    );
+    let (batching_challenge_pow_nonce, batching_challenges): (u64, Vec<E>) =
+        draw_random_field_els_with_pow::<F, E, TR>(
+            &mut transcript_seed,
+            1,
+            batching_pow_bits,
+            worker,
+        );
+    let batching_challenge = batching_challenges[0];
 
     let evals_refs = [&mem_polys_claims, &wit_polys_claims, &setup_polys_claims];
     // Per-set accessors (0 = memory, 1 = witness, 2 = setup). The setup set is served
@@ -1181,38 +1250,21 @@ pub fn whir_fold<
         witness_commitment,
         memory_commitment,
         setup_commitment,
-        sumcheck_polys: vec![],
-        intermediate_whir_oracles: Vec::with_capacity(whir_schedule.whir_steps_lde_factors.len()),
-        ood_samples: vec![],
-        pow_nonces: vec![],
+        batching_challenge_pow_nonce,
+        base_sumcheck_polys: vec![],
+        base_folding_pow_nonces: vec![],
+        base_queries_pow_nonce: 0,
+        intermediate_whir_oracles: Vec::with_capacity(whir_schedule.internal_rounds.len()),
         final_monomials: vec![],
         whir_schedule: whir_schedule.clone(),
-        // GKR->WHIR handoff values (see WhirPolyCommitProof). `batched_opening` is filled once
-        // `batched_claim` is computed below.
-        batching_challenge: Some(batching_challenge),
-        original_evaluation_point: Some(original_evaluation_point.clone()),
-        batched_opening: None,
     };
 
-    let mut final_poly_log2 = trace_len_log2;
-    for el in whir_schedule.whir_steps_schedule.iter() {
-        assert!(*el <= final_poly_log2);
-        final_poly_log2 -= *el;
-    }
-
-    assert!(whir_schedule.base_lde_factor.is_power_of_two());
-    let num_whir_steps = whir_schedule.whir_steps_lde_factors.len();
-    assert_eq!(
-        whir_schedule.whir_steps_schedule.len(),
-        whir_schedule.whir_steps_lde_factors.len() + 1
-    );
-    assert_eq!(
-        whir_schedule.whir_steps_schedule.len(),
-        whir_schedule.whir_queries_schedule.len()
-    );
-    assert_eq!(
-        whir_schedule.whir_steps_schedule.len(),
-        whir_schedule.whir_pow_schedule.len()
+    #[cfg(feature = "gkr_self_checks")]
+    let final_poly_log2 = whir_schedule.final_poly_size_log2(trace_len_log2);
+    let num_whir_steps = whir_schedule.internal_rounds.len();
+    assert!(
+        num_whir_steps >= 1,
+        "a WHIR schedule needs at least one internal round"
     );
 
     let mut rs_oracle;
@@ -1365,9 +1417,6 @@ pub fn whir_fold<
             batched_claim.add_assign(&result);
         }
     }
-    // Record the initial batched opening (= the committed-state `batched_opening`) so a
-    // verifier-calldata serializer needn't recompute it from the transcript replay.
-    proof.batched_opening = Some(batched_claim);
     drop(mem_polys_claims);
     drop(wit_polys_claims);
     drop(setup_polys_claims);
@@ -1376,13 +1425,9 @@ pub fn whir_fold<
 
     // our initial sumcheck claim is `batched_claim` = \sum_{hypercube} eq(x, `original_evaluation_point`) batched_poly(x)
 
-    let num_rounds = whir_schedule.whir_steps_schedule.len();
+    let num_rounds = whir_schedule.num_rounds();
     assert!(num_rounds >= 2);
-
-    let mut whir_steps_schedule = whir_schedule.whir_steps_schedule.iter().peekable();
-    let mut whir_queries_schedule = whir_schedule.whir_queries_schedule.iter();
-    let mut whir_steps_lde_factors = whir_schedule.whir_steps_lde_factors.iter();
-    let mut whir_pow_schedule = whir_schedule.whir_pow_schedule.iter();
+    let internal_rounds = &whir_schedule.internal_rounds;
 
     // as we will eventually continue to mix-in additional equality polys into sumcheck kernel,
     // so we can NOT easily use the same trick with splitting out eq poly highest coordinate in sumcheck.
@@ -1408,14 +1453,20 @@ pub fn whir_fold<
 
     // initial round where we fold and query existing oracles
     {
-        let num_initial_folding_rounds = *whir_steps_schedule.next().unwrap();
-        let num_queries = *whir_queries_schedule.next().unwrap();
-        let pow_bits = *whir_pow_schedule.next().unwrap();
-        println!("Initial round: fold by {}", 1 << num_initial_folding_rounds);
+        let num_initial_folding_rounds = whir_schedule.base_folding_log2();
+        let num_queries = base_round.num_queries;
+        let pow_bits = base_round.queries_pow_bits;
+        let folding_pow_bits = base_round.folding_pow_bits;
+        if whir_schedule.is_virtual_packing() {
+            println!(
+                "Initial round: virtual packing (one value per column per leaf, no round-0 fold)"
+            );
+        } else {
+            println!("Initial round: fold by {}", 1 << num_initial_folding_rounds);
+        }
 
         assert!(num_initial_folding_rounds <= poly_size_log2);
-        let rs_domain_log2 =
-            trace_len_log2 + (whir_schedule.base_lde_factor.trailing_zeros() as usize);
+        let rs_domain_log2 = trace_len_log2 + whir_schedule.base_lde_factor_log2();
         let query_domain_log2 = rs_domain_log2 - num_initial_folding_rounds;
 
         // Even though we can do all the same trick as in our GKR kernels and only evaluate sum of half-size,
@@ -1445,7 +1496,7 @@ pub fn whir_fold<
             let evaluation_point = E::from_base(two_inv);
             let univariate_coeffs = special_lagrange_interpolate(f0, f1, f_half, evaluation_point);
             // commit
-            proof.sumcheck_polys.push(univariate_coeffs);
+            proof.base_sumcheck_polys.push(univariate_coeffs);
             commit_field_els::<F, E, TR>(&mut transcript_seed, &univariate_coeffs);
 
             #[cfg(feature = "gkr_self_checks")]
@@ -1461,9 +1512,13 @@ pub fn whir_fold<
                 assert_eq!(v, claim);
             }
 
-            // draw folding challenge
-            let folding_challenges = draw_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
-            let folding_challenge = folding_challenges[0];
+            // draw folding challenge (under PoW when configured)
+            let folding_challenge = draw_folding_challenge::<F, E, TR>(
+                &mut transcript_seed,
+                folding_pow_bits,
+                &mut proof.base_folding_pow_nonces,
+                worker,
+            );
             folding_challenges_in_round.push(folding_challenge);
 
             let next_claim = evaluate_small_univariate_poly(&univariate_coeffs, &folding_challenge);
@@ -1517,8 +1572,10 @@ pub fn whir_fold<
         // compute RS for folded one (we will NOT query it this round)
         println!("  computing next RS code word oracle...");
         {
-            let lde_factor = *whir_steps_lde_factors.next().unwrap();
-            let next_folding_steps = *whir_steps_schedule.peek().unwrap();
+            // intermediate oracle 0: its LDE factor and leaf width (one fold of
+            // ITS round worth of values) are the first internal round's
+            let lde_factor = internal_rounds[0].lde_factor();
+            let next_folding_steps = internal_rounds[0].folding_log2;
             let t_build = std::time::Instant::now();
             let (cap, next_oracle, split) = build_intermediate_oracle::<F, E, T, B>(
                 backend,
@@ -1539,13 +1596,7 @@ pub fn whir_fold<
                 format_build_split(split),
                 t_build.elapsed()
             );
-            let c = WhirIntermediateCommitmentAndQueries {
-                commitment: WhirCommitment {
-                    cap,
-                    _marker: core::marker::PhantomData,
-                },
-                queries: vec![],
-            };
+            let c = WhirIntermediateCommitmentAndQueries::with_commitment(cap);
             add_whir_commitment_to_transcript::<F, E, TR, T>(&mut transcript_seed, &c.commitment);
             proof.intermediate_whir_oracles.push(c);
             rs_oracle = next_oracle;
@@ -1553,25 +1604,21 @@ pub fn whir_fold<
 
         let mut contributions_to_eq_poly = vec![];
 
-        // draw OOD sample
-        let ood_points: Vec<E> = draw_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
-        let ood_point = ood_points[0];
-        // compute OOD value
-        let ood_value = {
-            let t_ood = std::time::Instant::now();
-            let v = evaluate_monomial_form(&sumchecked_poly_monomial_form[..], &ood_point, worker);
-            println!("  [timing] OOD evaluation: {:.3?}", t_ood.elapsed());
-            v
-        };
-        commit_field_els::<F, E, TR>(&mut transcript_seed, &[ood_value]);
+        // draw the OOD sample(s) of the just-committed oracle (under PoW when
+        // configured) and commit their claimed evaluations
+        let (ood_points, ood_values) = sample_out_of_domain::<F, E, T, TR>(
+            &mut transcript_seed,
+            proof.intermediate_whir_oracles.last_mut().unwrap(),
+            &internal_rounds[0],
+            &sumchecked_poly_monomial_form,
+            worker,
+        );
         #[cfg(feature = "gkr_self_checks")]
-        {
-            let pows = make_pows(ood_point, evals_pp.len().trailing_zeros() as usize);
+        for (ood_point, ood_value) in ood_points.iter().zip(ood_values.iter()) {
+            let pows = make_pows(*ood_point, evals_pp.len().trailing_zeros() as usize);
             let value = evaluate_multivariate(evals_pp.as_slice(), &pows, worker);
-            assert_eq!(value, ood_value);
+            assert_eq!(value, *ood_value);
         }
-
-        proof.ood_samples.push(ood_value);
 
         // now can draw challenges
 
@@ -1603,7 +1650,7 @@ pub fn whir_fold<
             "  [timing] PoW grind ({pow_bits} bits): {:.3?}",
             t_pow.elapsed()
         );
-        proof.pow_nonces.push(nonce);
+        proof.base_queries_pow_nonce = nonce;
         println!("  generating {num_queries} query indexes...");
         let mut query_indexes = vec![];
         for _ in 0..num_queries {
@@ -1618,17 +1665,17 @@ pub fn whir_fold<
         let delinearization_challenge = delinearization_challenges[0];
         delinearization_challenges_per_round.push(delinearization_challenge);
 
-        // we will have OOD sample contribution
-        contributions_to_eq_poly.push((ood_point, delinearization_challenge));
-
+        // the OOD sample contributions: the j-th sample is weighted by
+        // delinearization_challenge^(j + 1), and the queries continue the powers
         let mut claim_correction = E::ZERO;
-        {
-            let mut t = ood_value;
-            t.mul_assign(&delinearization_challenge);
-            claim_correction.add_assign(&t);
-        }
         let mut current_delinearization_challenge = delinearization_challenge;
-        current_delinearization_challenge.square();
+        for (ood_point, ood_value) in ood_points.iter().zip(ood_values.iter()) {
+            contributions_to_eq_poly.push((*ood_point, current_delinearization_challenge));
+            let mut t = *ood_value;
+            t.mul_assign(&current_delinearization_challenge);
+            claim_correction.add_assign(&t);
+            current_delinearization_challenge.mul_assign(&delinearization_challenge);
+        }
 
         // Request ALL round-0 queries from every base oracle at once. A recompute
         // oracle groups them by the coset they land in and rebuilds each touched
@@ -1792,10 +1839,12 @@ pub fn whir_fold<
     // - update claim and eq poly
     for internal_round in 0..num_internal_whir_steps {
         let t_round = std::time::Instant::now();
-        // commit
-        let num_folding_steps = *whir_steps_schedule.next().unwrap();
-        let num_queries = *whir_queries_schedule.next().unwrap();
-        let pow_bits = *whir_pow_schedule.next().unwrap();
+        // this round folds and queries intermediate oracle `internal_round`
+        let round_schedule = &internal_rounds[internal_round];
+        let num_folding_steps = round_schedule.folding_log2;
+        let num_queries = round_schedule.num_queries;
+        let pow_bits = round_schedule.queries_pow_bits;
+        let folding_pow_bits = round_schedule.folding_pow_bits;
         assert!(num_folding_steps <= poly_size_log2);
 
         println!(
@@ -1839,7 +1888,9 @@ pub fn whir_fold<
                 c.add_assign(d);
             }
             // commit
-            proof.sumcheck_polys.push(univariate_coeffs);
+            proof.intermediate_whir_oracles[internal_round]
+                .sumcheck_polys
+                .push(univariate_coeffs);
             commit_field_els::<F, E, TR>(&mut transcript_seed, &univariate_coeffs);
 
             #[cfg(feature = "gkr_self_checks")]
@@ -1860,8 +1911,12 @@ pub fn whir_fold<
                 assert_eq!(v, claim);
             }
 
-            let folding_challenges = draw_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
-            let folding_challenge = folding_challenges[0];
+            let folding_challenge = draw_folding_challenge::<F, E, TR>(
+                &mut transcript_seed,
+                folding_pow_bits,
+                &mut proof.intermediate_whir_oracles[internal_round].folding_pow_nonces,
+                worker,
+            );
             folding_challenges_in_round.push(folding_challenge);
 
             let next_claim = evaluate_small_univariate_poly(&univariate_coeffs, &folding_challenge);
@@ -1905,8 +1960,11 @@ pub fn whir_fold<
 
         println!("  computing next RS code word oracle...");
         let rs_oracle_to_query = {
-            let lde_factor = *whir_steps_lde_factors.next().unwrap();
-            let next_folding_steps = *whir_steps_schedule.peek().unwrap();
+            // the next intermediate oracle: its LDE factor and leaf width are
+            // its own round's
+            let next_round = &internal_rounds[internal_round + 1];
+            let lde_factor = next_round.lde_factor();
+            let next_folding_steps = next_round.folding_log2;
             let t_build = std::time::Instant::now();
             let (cap, next_oracle, split) = build_intermediate_oracle::<F, E, T, B>(
                 backend,
@@ -1928,37 +1986,27 @@ pub fn whir_fold<
                 format_build_split(split),
                 t_build.elapsed()
             );
-            let c = WhirIntermediateCommitmentAndQueries {
-                commitment: WhirCommitment {
-                    cap,
-                    _marker: core::marker::PhantomData,
-                },
-                queries: vec![],
-            };
+            let c = WhirIntermediateCommitmentAndQueries::with_commitment(cap);
             add_whir_commitment_to_transcript::<F, E, TR, T>(&mut transcript_seed, &c.commitment);
             proof.intermediate_whir_oracles.push(c);
             core::mem::replace(&mut rs_oracle, next_oracle)
         };
 
-        // draw OOD sample
-        let ood_points: Vec<E> = draw_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
-        let ood_point = ood_points[0];
-        // compute OOD value
-        let ood_value = {
-            let t_ood = std::time::Instant::now();
-            let v = evaluate_monomial_form(&sumchecked_poly_monomial_form[..], &ood_point, worker);
-            println!("  [timing] OOD evaluation: {:.3?}", t_ood.elapsed());
-            v
-        };
-        commit_field_els::<F, E, TR>(&mut transcript_seed, &[ood_value]);
+        // draw the OOD sample(s) of the just-committed oracle (under PoW when
+        // configured) and commit their claimed evaluations
+        let (ood_points, ood_values) = sample_out_of_domain::<F, E, T, TR>(
+            &mut transcript_seed,
+            proof.intermediate_whir_oracles.last_mut().unwrap(),
+            &internal_rounds[internal_round + 1],
+            &sumchecked_poly_monomial_form,
+            worker,
+        );
         #[cfg(feature = "gkr_self_checks")]
-        {
-            let pows = make_pows(ood_point, evals_pp.len().trailing_zeros() as usize);
+        for (ood_point, ood_value) in ood_points.iter().zip(ood_values.iter()) {
+            let pows = make_pows(*ood_point, evals_pp.len().trailing_zeros() as usize);
             let value = evaluate_multivariate(evals_pp.as_slice(), &pows, worker);
-            assert_eq!(value, ood_value);
+            assert_eq!(value, *ood_value);
         }
-
-        proof.ood_samples.push(ood_value);
 
         let mut contributions_to_eq_poly = vec![];
 
@@ -1986,7 +2034,7 @@ pub fn whir_fold<
             "  [timing] PoW grind ({pow_bits} bits): {:.3?}",
             t_pow.elapsed()
         );
-        proof.pow_nonces.push(nonce);
+        proof.intermediate_whir_oracles[internal_round].queries_pow_nonce = nonce;
         println!("  generating {num_queries} query indexes...");
         let mut query_indexes = vec![];
         for _ in 0..num_queries {
@@ -2001,17 +2049,17 @@ pub fn whir_fold<
         let delinearization_challenge = delinearization_challenges[0];
         delinearization_challenges_per_round.push(delinearization_challenge);
 
-        // we will have OOD sample contribution
-        contributions_to_eq_poly.push((ood_point, delinearization_challenge));
-
+        // the OOD sample contributions: the j-th sample is weighted by
+        // delinearization_challenge^(j + 1), and the queries continue the powers
         let mut claim_correction = E::ZERO;
-        {
-            let mut t = ood_value;
-            t.mul_assign(&delinearization_challenge);
-            claim_correction.add_assign(&t);
-        }
         let mut current_delinearization_challenge = delinearization_challenge;
-        current_delinearization_challenge.square();
+        for (ood_point, ood_value) in ood_points.iter().zip(ood_values.iter()) {
+            contributions_to_eq_poly.push((*ood_point, current_delinearization_challenge));
+            let mut t = *ood_value;
+            t.mul_assign(&current_delinearization_challenge);
+            claim_correction.add_assign(&t);
+            current_delinearization_challenge.mul_assign(&delinearization_challenge);
+        }
 
         // Batch-serve all of this round's queries from the previous oracle (a
         // coset-by-coset oracle recomputes each touched coset group once), then
@@ -2104,9 +2152,12 @@ pub fn whir_fold<
     // check consistency between them, and perform final explicit sumcheck
     let t_round = std::time::Instant::now();
     {
-        let num_folding_steps = *whir_steps_schedule.next().unwrap();
-        let num_queries = *whir_queries_schedule.next().unwrap();
-        let pow_bits = *whir_pow_schedule.next().unwrap();
+        // the final round folds and queries the LAST intermediate oracle
+        let round_schedule = internal_rounds.last().unwrap();
+        let num_folding_steps = round_schedule.folding_log2;
+        let num_queries = round_schedule.num_queries;
+        let pow_bits = round_schedule.queries_pow_bits;
+        let folding_pow_bits = round_schedule.folding_pow_bits;
         assert!(num_folding_steps <= poly_size_log2);
 
         println!("Final round: fold by {}", 1 << num_folding_steps);
@@ -2138,7 +2189,12 @@ pub fn whir_fold<
                 c.add_assign(d);
             }
             // commit
-            proof.sumcheck_polys.push(univariate_coeffs);
+            proof
+                .intermediate_whir_oracles
+                .last_mut()
+                .unwrap()
+                .sumcheck_polys
+                .push(univariate_coeffs);
             commit_field_els::<F, E, TR>(&mut transcript_seed, &univariate_coeffs);
 
             #[cfg(feature = "gkr_self_checks")]
@@ -2159,8 +2215,16 @@ pub fn whir_fold<
                 assert_eq!(v, claim, "diverged at round {}", _folding_round);
             }
 
-            let folding_challenges = draw_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
-            let folding_challenge = folding_challenges[0];
+            let folding_challenge = draw_folding_challenge::<F, E, TR>(
+                &mut transcript_seed,
+                folding_pow_bits,
+                &mut proof
+                    .intermediate_whir_oracles
+                    .last_mut()
+                    .unwrap()
+                    .folding_pow_nonces,
+                worker,
+            );
             folding_challenges_in_round.push(folding_challenge);
 
             #[cfg(feature = "gkr_self_checks")]
@@ -2232,7 +2296,11 @@ pub fn whir_fold<
             "  [timing] PoW grind ({pow_bits} bits): {:.3?}",
             t_pow.elapsed()
         );
-        proof.pow_nonces.push(nonce);
+        proof
+            .intermediate_whir_oracles
+            .last_mut()
+            .unwrap()
+            .queries_pow_nonce = nonce;
         println!("  generating {num_queries} query indexes...");
         let mut query_indexes = vec![];
         for _ in 0..num_queries {
@@ -2297,11 +2365,6 @@ pub fn whir_fold<
         }
     }
 
-    assert!(whir_steps_lde_factors.next().is_none());
-    assert!(whir_steps_schedule.next().is_none());
-    assert!(whir_queries_schedule.next().is_none());
-    assert!(whir_pow_schedule.next().is_none());
-
     println!("  [timing] final round total: {:.3?}", t_round.elapsed());
 
     proof.final_monomials = sumchecked_poly_monomial_form;
@@ -2322,6 +2385,76 @@ pub fn whir_fold<
     evals_pp.release::<F>(pool);
 
     proof
+}
+
+/// Draw one WHIR folding challenge, under a `pow_bits`-bit proof-of-work
+/// (nonce pushed to `nonces`) when the round gates its folding draws, as a
+/// plain draw otherwise.
+fn draw_folding_challenge<F, E, TR>(
+    seed: &mut TR::Seed,
+    pow_bits: u32,
+    nonces: &mut Vec<u64>,
+    worker: &Worker,
+) -> E
+where
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    TR: Transcript<F, E>,
+{
+    if pow_bits > 0 {
+        let (nonce, challenges) =
+            draw_random_field_els_with_pow::<F, E, TR>(seed, 1, pow_bits, worker);
+        nonces.push(nonce);
+        challenges[0]
+    } else {
+        draw_random_field_els::<F, E, TR>(seed, 1)[0]
+    }
+}
+
+/// The out-of-domain sampling of a just-committed intermediate oracle: draw
+/// the round's `num_ood_samples` points (under PoW when gated; the nonce is
+/// recorded on the oracle), evaluate the committed polynomial (monomial form)
+/// at each, commit the claimed values and record them on the oracle. Returns
+/// the points and the values.
+fn sample_out_of_domain<F, E, T, TR>(
+    seed: &mut TR::Seed,
+    oracle: &mut WhirIntermediateCommitmentAndQueries<F, E, T>,
+    round: &crate::gkr::prover_config::WhirInternalRound,
+    monomial_form: &[E],
+    worker: &Worker,
+) -> (Vec<E>, Vec<E>)
+where
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    TR: Transcript<F, E>,
+{
+    let num_samples = round.num_ood_samples;
+    assert!(num_samples >= 1);
+    let points: Vec<E> = if round.ood_pow_bits > 0 {
+        let (nonce, points) = draw_random_field_els_with_pow::<F, E, TR>(
+            seed,
+            num_samples,
+            round.ood_pow_bits,
+            worker,
+        );
+        oracle.ood_pow_nonce = Some(nonce);
+        points
+    } else {
+        draw_random_field_els::<F, E, TR>(seed, num_samples)
+    };
+    let t_ood = std::time::Instant::now();
+    let values: Vec<E> = points
+        .iter()
+        .map(|point| evaluate_monomial_form(monomial_form, point, worker))
+        .collect();
+    println!(
+        "  [timing] OOD evaluation ({num_samples} sample(s)): {:.3?}",
+        t_ood.elapsed()
+    );
+    commit_field_els::<F, E, TR>(seed, &values);
+    oracle.ood_samples = values.clone();
+    (points, values)
 }
 
 /// Per-round query-leaf folding (coefficient leaves + monomial-tensor
@@ -4483,14 +4616,15 @@ mod test {
 
         let [a, b, c] = original_claims.try_into().unwrap();
 
-        let whir_schedule = WhirSchedule {
-            base_lde_factor: 2,
-            cap_size: 1,
-            whir_steps_schedule: vec![1, 2, 3],
-            whir_queries_schedule: vec![4, 4, 4],
-            whir_steps_lde_factors: vec![8, 16],
-            whir_pow_schedule: vec![10, 10, 10],
-        };
+        let whir_schedule = WhirSchedule::from_legacy_arrays(
+            2,
+            1,
+            0,
+            &[1, 2, 3],
+            &[4, 4, 4],
+            &[8, 16],
+            &[10, 10, 10],
+        );
 
         let setup_commitment = crate::gkr::prover::SetupCommitment::InMemory(setup);
         let mut gkr_storage = GKRStorage::<F, E>::default();
@@ -4525,7 +4659,6 @@ mod test {
                 crate::definitions::SecurityLevel::Sec100,
             ),
             original_evaluation_point,
-            E::from_base(F::from_u32_with_reduction(7)),
             &twiddles,
             ::transcript::Seed::default(),
             &crate::gkr::prover::backend::NaiveBackend,

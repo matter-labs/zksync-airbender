@@ -77,7 +77,7 @@ summary — the contract document is the source of truth.
   `GPU_SUPPORTED_SECURITY_LEVELS` / `UnsupportedGpuSecurityLevel`. The GPU
   prover implements only the unpacked base commitment: `prove()`, its DR
   preflight and `gpu_trace`'s memory commitments reject
-  `ProverConfig::pack_log2 != 0` via
+  `ProverConfig::pack_log2() != 0` via
   `gpu_trace::trace::memory::assert_unpacked_prover_config` before enqueuing
   any commitment or proof kernel (the preflight before constructing transfers).
 - `src/proof/`:

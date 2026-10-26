@@ -220,6 +220,202 @@ pub mod packed_fixture {
     }
 }
 
+/// The VIRTUAL-PACKING test fixture: the `blake2_with_extended_control`
+/// delegation circuit (2^20 trace) proved with the virtual-packing base round
+/// (`fold_log2 = 0`: one value per column per base leaf, no round-0 sumcheck,
+/// the batched polynomial re-committed as intermediate oracle 0 at the same
+/// domain size).
+pub mod virtual_packing_fixture {
+    use super::*;
+
+    pub const CIRCUIT_NAME: &str = "blake2_with_extended_control";
+    /// Output dir suffix (under the circuit's generated dir) of the virtual-packing verifier.
+    pub const DIR_SUFFIX: &str = "sec_100_virtual";
+
+    pub fn circuit() -> &'static CircuitData {
+        CIRCUITS
+            .iter()
+            .find(|c| c.name == CIRCUIT_NAME)
+            .expect("virtual-packing fixture circuit is registered")
+    }
+
+    /// The 2^20 sec-100 config with the virtual-packing twin of its WHIR
+    /// schedule — exactly the config the prover's
+    /// `gkr_blake_delegation_virtual_packing_test_sec_100` proves the fixture with.
+    pub fn prover_config() -> ProverConfig {
+        prover::gkr::prover_config::example_configs::virtual_packing_config_for_security_level_under_pessimistic_conjecture(
+            20,
+            SecurityLevel::Sec100,
+        )
+    }
+
+    pub fn proof_path() -> String {
+        format!(
+            "{}/prover/test_proofs/{}_sec_100_virtual_gkr_proof.json",
+            REPO_ROOT, CIRCUIT_NAME
+        )
+    }
+
+    pub fn generated_dir() -> String {
+        format!("{}/{}", circuit().generated_dir(), DIR_SUFFIX)
+    }
+
+    pub fn proof() -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
+        deserialize_from_file(&proof_path())
+    }
+
+    pub fn load_nds() -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
+        let circuit = circuit().compiled_circuit();
+        let proof = proof();
+        let nds = flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+            &proof, &circuit,
+        );
+        (nds, proof.external_challenges)
+    }
+}
+
+/// The blake base-round comparison sweep fixtures: the
+/// `blake2_with_extended_control` delegation circuit (2^20 trace) proved with
+/// every physical packing `2^0 ..= 2^4` and two (`fold_log2 = 1`) or one
+/// (`fold_log2 = 0`, virtual packing) value(s) per committed column per base
+/// leaf. Names follow the prover's `BaseCommitmentVariant::proof_name_infix`:
+/// `sec_100`, `sec_100_pack{k}`, `sec_100_virtual`, `sec_100_pack{k}_virtual`.
+pub mod blake_variants {
+    use super::*;
+
+    pub const CIRCUIT_NAME: &str = "blake2_with_extended_control";
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct BlakeVariant {
+        pub pack_log2: usize,
+        /// `1`: two values per column per base leaf (the current mode);
+        /// `0`: one value (virtual packing).
+        pub fold_log2: usize,
+    }
+
+    impl BlakeVariant {
+        /// Every (packing, fold) point of the sweep, packing-major.
+        pub fn all() -> Vec<Self> {
+            (0..=4)
+                .flat_map(|pack_log2| {
+                    [
+                        Self { pack_log2, fold_log2: 1 },
+                        Self { pack_log2, fold_log2: 0 },
+                    ]
+                })
+                .collect()
+        }
+
+        /// `""`, `"_pack{k}"`, `"_virtual"`, `"_pack{k}_virtual"`.
+        pub fn infix(&self) -> String {
+            let mut infix = String::new();
+            if self.pack_log2 > 0 {
+                infix.push_str(&format!("_pack{}", self.pack_log2));
+            }
+            if self.fold_log2 == 0 {
+                infix.push_str("_virtual");
+            }
+            infix
+        }
+
+        /// Output dir suffix under the circuit's generated dir, and the
+        /// suffix of the RISC-V binaries: `sec_100{infix}`.
+        pub fn dir_suffix(&self) -> String {
+            format!("sec_100{}", self.infix())
+        }
+
+        /// `blake2_with_extended_control_sec_100{infix}`.
+        pub fn name(&self) -> String {
+            format!("{}_{}", CIRCUIT_NAME, self.dir_suffix())
+        }
+
+        pub fn circuit() -> &'static CircuitData {
+            CIRCUITS
+                .iter()
+                .find(|c| c.name == CIRCUIT_NAME)
+                .expect("blake sweep circuit is registered")
+        }
+
+        pub fn prover_config(&self) -> ProverConfig {
+            use prover::gkr::prover_config::example_configs::*;
+            match self.fold_log2 {
+                1 => packed_config_for_security_level_under_pessimistic_conjecture(
+                    20,
+                    self.pack_log2,
+                    SecurityLevel::Sec100,
+                ),
+                0 => virtual_packed_config_for_security_level_under_pessimistic_conjecture(
+                    20,
+                    self.pack_log2,
+                    SecurityLevel::Sec100,
+                ),
+                other => panic!("the blake sweep covers fold_log2 0 and 1, not {other}"),
+            }
+        }
+
+        pub fn proof_path(&self) -> String {
+            format!(
+                "{}/prover/test_proofs/{}_gkr_proof.json",
+                REPO_ROOT,
+                self.name()
+            )
+        }
+
+        pub fn generated_dir(&self) -> String {
+            format!("{}/{}", Self::circuit().generated_dir(), self.dir_suffix())
+        }
+
+        /// The RISC-V verifier binaries `tools/gkr_verifier/<name>.{bin,text,elf}`.
+        pub fn binary_paths(&self) -> (String, String, String) {
+            let base = format!("{}/tools/gkr_verifier/{}", REPO_ROOT, self.name());
+            (
+                format!("{}.bin", base),
+                format!("{}.text", base),
+                format!("{}.elf", base),
+            )
+        }
+
+        pub fn proof(&self) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
+            deserialize_from_file(&self.proof_path())
+        }
+
+        pub fn load_nds(&self) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
+            let circuit = Self::circuit().compiled_circuit();
+            let proof = self.proof();
+            let nds =
+                flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+                    &proof, &circuit,
+                );
+            (nds, proof.external_challenges)
+        }
+    }
+}
+
+#[cfg(test)]
+mod fixture_maintenance {
+    use super::*;
+
+    /// Rewrite every circuit's serialized prover config
+    /// (`<circuit>/generated/prover_config_<level>.json`) in the CURRENT
+    /// `ProverConfig` layout: read it back (the decoder accepts the legacy
+    /// layout too) and serialize it exactly as `circuit_common::save_prover_configs`
+    /// does. Run after a `ProverConfig` / `WhirSchedule` layout change:
+    /// `cargo test -p verifier_common --lib -- --ignored rewrite_prover_config_fixtures_in_current_layout`.
+    #[test]
+    #[ignore]
+    fn rewrite_prover_config_fixtures_in_current_layout() {
+        for circuit in CIRCUITS.iter() {
+            for level in SecurityLevel::ALL.iter() {
+                let path = circuit.prover_config_path_for(*level);
+                let config: ProverConfig = deserialize_from_file(&path);
+                config.validate_for_whir_message_size(config.whir_message_size_log2());
+                let mut dst = std::fs::File::create(&path).unwrap();
+                serde_json::to_writer_pretty(&mut dst, &config).unwrap();
+            }
+        }
+    }
+}
+
 fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     let src =
         std::fs::File::open(filename).unwrap_or_else(|_| panic!("{} doesn't exist", filename));

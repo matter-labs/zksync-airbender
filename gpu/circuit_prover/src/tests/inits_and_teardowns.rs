@@ -280,7 +280,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
     //     else a lightweight CPU stage1 pass over the same memory trace ---
     let memory_tree_caps = if let Some(ref cpu_proof) = expected_cpu_proof {
         let combined_cap = &cpu_proof.whir_proof.memory_commitment.commitment.cap;
-        let lde_factor = whir_schedule.base_lde_factor;
+        let lde_factor = whir_schedule.base_lde_factor();
         let subcap_size = combined_cap.cap.len() / lde_factor;
         combined_cap
             .cap
@@ -301,7 +301,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
             );
         stage1_subcaps_from_cap(
             &mem_oracle.get_cap(),
-            whir_schedule.cap_size / whir_schedule.base_lde_factor,
+            whir_schedule.cap_size / whir_schedule.base_lde_factor(),
         )
     };
 

@@ -91,10 +91,55 @@ fn gkr_run_basic_unrolled_test_sec_100() {
 /// (the fixture of the packed CPU-verifier test).
 #[test]
 fn gkr_blake_delegation_packed_test_sec_100() {
-    gkr_blake_delegation_packed_impl(SecurityLevel::Sec100, 4);
+    gkr_blake_delegation_variant_impl(
+        SecurityLevel::Sec100,
+        BaseCommitmentVariant::Packed { pack_log2: 4 },
+    );
 }
 
-pub fn gkr_blake_delegation_packed_impl(level: SecurityLevel, pack_log2: usize) {
+/// The Blake delegation circuit proved with the VIRTUAL-PACKING base round
+/// (`fold_log2 = 0`: one value per column per base leaf, no round-0 sumcheck,
+/// the batched polynomial re-committed as intermediate oracle 0). The proof
+/// lands in `test_proofs/blake2_with_extended_control_sec_100_virtual_gkr_proof.json`
+/// (the fixture of the virtual-packing CPU-verifier test).
+#[test]
+fn gkr_blake_delegation_virtual_packing_test_sec_100() {
+    gkr_blake_delegation_variant_impl(
+        SecurityLevel::Sec100,
+        BaseCommitmentVariant::VirtualPacking { pack_log2: 0 },
+    );
+}
+
+/// The blake base-round comparison sweep: every physical packing `2^0 ..= 2^4`
+/// with two and one value(s) per column per base leaf
+/// ([`BaseCommitmentVariant::blake_sweep`]), proved from ONE program run. Each
+/// proof lands in `test_proofs/blake2_with_extended_control_sec_100{infix}_gkr_proof.json`.
+/// `GKR_BLAKE_VARIANTS=_pack2,_pack3_virtual` (comma-separated infixes, `""`
+/// for the plain config is `default`) restricts the sweep.
+#[test]
+fn gkr_blake_delegation_variant_sweep_sec_100() {
+    let selected: Option<std::collections::HashSet<String>> = std::env::var("GKR_BLAKE_VARIANTS")
+        .ok()
+        .map(|raw| raw.split(',').map(|s| s.trim().to_string()).collect());
+    let variants: Vec<_> = BaseCommitmentVariant::blake_sweep()
+        .into_iter()
+        .filter(|v| {
+            selected.as_ref().is_none_or(|set| {
+                let infix = v.proof_name_infix();
+                set.contains(&infix) || (infix.is_empty() && set.contains("default"))
+            })
+        })
+        .collect();
+    gkr_blake_delegation_variants_impl(SecurityLevel::Sec100, &variants);
+}
+
+pub fn gkr_blake_delegation_variant_impl(level: SecurityLevel, variant: BaseCommitmentVariant) {
+    gkr_blake_delegation_variants_impl(level, &[variant]);
+}
+
+pub use super::orchestration::delegations::BaseCommitmentVariant;
+
+pub fn gkr_blake_delegation_variants_impl(level: SecurityLevel, variants: &[BaseCommitmentVariant]) {
     type CountersT = riscv_transpiler::vm::DelegationsAndFamiliesCounters;
     let proof_suffix = level.dir_suffix();
     let worker = Worker::new_with_num_threads(8);
@@ -114,26 +159,29 @@ pub fn gkr_blake_delegation_packed_impl(level: SecurityLevel, pack_log2: usize) 
     );
 
     let external_challenges = super::orchestration::common::hardcoded_external_challenges();
-    let out = super::orchestration::delegations::prove_delegation_blake_with_packing::<CountersT>(
-        &vm.snapshotter,
-        &vm.tape,
-        &expected_final_state,
-        vm.cycles_bound,
-        counters.blake_calls,
-        &external_challenges,
-        level,
-        pack_log2,
-        PROVE_EMPTY,
-        false,
-        &None,
-        proof_suffix,
-        &worker,
-        super::blake2_with_extended_control::witness_eval_fn,
-    );
-    assert!(
-        out.proof.is_some(),
-        "the packed Blake proof must be produced"
-    );
+    for &variant in variants.iter() {
+        println!("=== blake base-round variant {variant:?} ({}) ===", variant.proof_name_infix());
+        let out = super::orchestration::delegations::prove_delegation_blake_with_packing::<CountersT>(
+            &vm.snapshotter,
+            &vm.tape,
+            &expected_final_state,
+            vm.cycles_bound,
+            counters.blake_calls,
+            &external_challenges,
+            level,
+            variant,
+            PROVE_EMPTY,
+            false,
+            &None,
+            proof_suffix,
+            &worker,
+            super::blake2_with_extended_control::witness_eval_fn,
+        );
+        assert!(
+            out.proof.is_some(),
+            "the {variant:?} Blake proof must be produced"
+        );
+    }
 }
 
 pub fn gkr_run_basic_unrolled_test_impl(

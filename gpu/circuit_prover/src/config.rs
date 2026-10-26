@@ -81,13 +81,19 @@ pub(crate) fn batched_proximity_check_pow_bits(
     prover_config: &ProverConfig,
     compiled_circuit: &GKRCircuitArtifact<BF>,
 ) -> u32 {
-    pow_bits::batched_proximity_check_pow_bits::<BF, E4>(
-        prover_config.security_level.security_bits(),
-        prover_config.whir_message_size_log2(),
-        prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
-        // the PHYSICALLY committed column count (separate memory/witness sets)
-        pow_bits::committed_base_oracle_columns(compiled_circuit, prover_config.pack_log2, false),
-    )
+    prover_config
+        .whir_schedule
+        .base_round
+        .batching_pow_bits::<BF, E4>(
+            prover_config.security_level.security_bits(),
+            prover_config.whir_message_size_log2(),
+            // the PHYSICALLY committed column count (separate memory/witness sets)
+            pow_bits::committed_base_oracle_columns(
+                compiled_circuit,
+                prover_config.pack_log2(),
+                false,
+            ),
+        )
 }
 
 #[cfg(test)]
@@ -103,7 +109,7 @@ mod tests {
             let cfg = prover_config(circuit_type, level).unwrap();
             assert_eq!(cfg.security_level, level);
             // the GPU prover implements only the unpacked base commitment
-            assert_eq!(cfg.pack_log2, 0);
+            assert_eq!(cfg.pack_log2(), 0);
             gpu_trace::trace::memory::assert_unpacked_prover_config(&cfg);
         }
     }

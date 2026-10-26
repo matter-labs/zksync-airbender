@@ -215,7 +215,7 @@ pub(super) fn finish_proof_fixture(
     let gpu_setup_host = Arc::new(
         GpuGKRSetupHost::precompute_from_cpu_setup(
             &setup,
-            whir_schedule.base_lde_factor.trailing_zeros(),
+            whir_schedule.base_lde_factor_log2() as u32,
             1,
             whir_schedule.cap_size.trailing_zeros(),
             &context,
@@ -335,7 +335,7 @@ pub(super) fn finish_proof_fixture(
     // Extract per-coset memory tree caps from the CPU proof (needed for the new prove signature).
     let memory_tree_caps = if let Some(ref cpu_proof) = expected_cpu_proof {
         let combined_cap = &cpu_proof.whir_proof.memory_commitment.commitment.cap;
-        let lde_factor = whir_schedule.base_lde_factor;
+        let lde_factor = whir_schedule.base_lde_factor();
         let subcap_size = combined_cap.cap.len() / lde_factor;
         combined_cap
             .cap
@@ -622,7 +622,7 @@ pub(super) fn finish_proof_fixture_memory(
     let gpu_setup_host = Arc::new(
         GpuGKRSetupHost::precompute_from_cpu_setup(
             &setup,
-            whir_schedule.base_lde_factor.trailing_zeros(),
+            whir_schedule.base_lde_factor_log2() as u32,
             1,
             whir_schedule.cap_size.trailing_zeros(),
             &context,
@@ -737,7 +737,7 @@ pub(super) fn finish_proof_fixture_memory(
 
     let memory_tree_caps = if let Some(ref cpu_proof) = expected_cpu_proof {
         let combined_cap = &cpu_proof.whir_proof.memory_commitment.commitment.cap;
-        let lde_factor = whir_schedule.base_lde_factor;
+        let lde_factor = whir_schedule.base_lde_factor();
         let subcap_size = combined_cap.cap.len() / lde_factor;
         combined_cap
             .cap

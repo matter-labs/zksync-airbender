@@ -13,10 +13,10 @@
     clippy::large_const_arrays
 )]
 use super::common::{
-    compute_tree_index, draw_fresh_single_field_el, draw_single_field_el,
-    eval_multilinear_with_monomial_tensor, fold_whir_accumulator, materialize_gamma_powers,
-    precompute_monomial_tensor, process_oracle_query, push_whir_base_pow_entry,
-    push_whir_pow_entry, read_reduced_field_el, verify_whir_sumcheck_step,
+    compute_tree_index, draw_fresh_single_field_el, eval_multilinear_with_monomial_tensor,
+    fold_whir_accumulator, materialize_gamma_powers, precompute_monomial_tensor,
+    process_oracle_query, push_whir_base_pow_entry, push_whir_pow_entry, read_reduced_field_el,
+    verify_whir_sumcheck_step,
 };
 use super::constants::*;
 use core::mem::MaybeUninit;
@@ -34,6 +34,78 @@ use verifier_common::structs::{CommitBuf, TranscriptState};
 use verifier_common::whir::{
     draw_query_indices, read_and_verify_pow, read_commit_return_merkle_cap,
 };
+pub const MAX_OOD_SAMPLES: usize = 1usize;
+const OOD_DRAW_BUF: usize = (MAX_OOD_SAMPLES * super::common::EXT_DEGREE + 1)
+    .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+const OOD_COMMIT_BUF: usize = {
+    let total = MAX_OOD_SAMPLES * super::common::EXT_DEGREE;
+    (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1) / BLAKE2S_BLOCK_SIZE_U32_WORDS
+        * BLAKE2S_BLOCK_SIZE_U32_WORDS
+};
+#[inline(always)]
+pub fn read_ood_samples<I: NonDeterminismSource<BabyBearField>>(
+    ts: &mut TranscriptState,
+    committed_oracle: usize,
+    ood_points: &mut LazyVec<BabyBearExt4, MAX_OOD_SAMPLES>,
+    ood_values: &mut LazyVec<BabyBearExt4, MAX_OOD_SAMPLES>,
+    nd_source: &mut I,
+) {
+    let num_ood = WHIR_NUM_OOD_SAMPLES[committed_oracle];
+    let ood_pow_bits = WHIR_OOD_POW_BITS[committed_oracle];
+    unsafe {
+        ood_points.set_len(num_ood);
+    }
+    if ood_pow_bits > 0 {
+        read_and_verify_pow::<I>(ts, ood_pow_bits, nd_source);
+        super::common::draw_field_els_into_after_pow::<OOD_DRAW_BUF>(ts, ood_points.as_mut_slice());
+    } else {
+        super::common::draw_field_els_into::<OOD_DRAW_BUF>(ts, ood_points.as_mut_slice());
+    }
+    let ood_data_words = num_ood * super::common::EXT_DEGREE;
+    let mut ood_buf = CommitBuf::<OOD_COMMIT_BUF>::new();
+    let mut i = 0;
+    while i < ood_data_words {
+        ood_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
+        i += 1;
+    }
+    unsafe {
+        let values: &[BabyBearExt4] = ood_buf.data_as::<BabyBearExt4>(num_ood);
+        let mut j = 0;
+        while j < num_ood {
+            ood_values.push(*values.get_unchecked(j));
+            j += 1;
+        }
+    }
+    ts.commit(&mut ood_buf, ood_data_words);
+}
+#[inline(always)]
+pub fn accumulate_ood_samples<const MAX_POW: usize, const MAX_OOD: usize>(
+    accumulator: &mut ::verifier_common::whir::WhirAccumulator<
+        BabyBearField,
+        BabyBearExt4,
+        MAX_POW,
+        MAX_OOD,
+    >,
+    ood_points: &LazyVec<BabyBearExt4, MAX_OOD_SAMPLES>,
+    ood_values: &LazyVec<BabyBearExt4, MAX_OOD_SAMPLES>,
+    delinearization_challenge: BabyBearExt4,
+) -> (BabyBearExt4, BabyBearExt4) {
+    let mut claim_correction = BabyBearExt4::ZERO;
+    let mut current = delinearization_challenge;
+    let num_ood = ood_points.len();
+    let mut j = 0;
+    while j < num_ood {
+        if j > 0 {
+            field_ops::mul_assign(&mut current, &delinearization_challenge);
+        }
+        push_whir_pow_entry(accumulator, *ood_points.get(j), current);
+        let mut t = *ood_values.get(j);
+        field_ops::mul_assign(&mut t, &current);
+        field_ops::add_assign(&mut claim_correction, &t);
+        j += 1;
+    }
+    (claim_correction, current)
+}
 const INITIAL_QUERY_INDEX_BITS: usize = 20usize;
 const INITIAL_NUM_QUERIES: usize = 89usize;
 const INITIAL_POW_BITS: u32 = 26u32;
@@ -53,7 +125,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
         BabyBearField,
         BabyBearExt4,
         MAX_POW_ENTRIES,
-        { WHIR_FOLD_STEPS.len() },
+        WHIR_OOD_ENTRIES,
     >,
     nd_source: &mut I,
 ) -> Result<(BabyBearExt4, [u32; WHIR_CAP_WORDS]), E::Error> {
@@ -74,8 +146,13 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
         let mut folding_challenges: LazyVec<BabyBearExt4, { WHIR_FOLD_STEPS[0] }> = LazyVec::new();
         let mut round_idx = 0;
         while round_idx < WHIR_FOLD_STEPS[0] {
-            let (new_claim, alpha) =
-                verify_whir_sumcheck_step::<I, E>(ts, claim, round_idx, nd_source)?;
+            let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
+                ts,
+                claim,
+                round_idx,
+                WHIR_FOLDING_POW_BITS[0],
+                nd_source,
+            )?;
             claim = new_claim;
             folding_challenges.push(alpha);
             fold_whir_accumulator(accumulator, alpha, z_initial);
@@ -88,23 +165,9 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
         };
         let intermediate_cap =
             read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts, nd_source);
-        let ood_point = draw_single_field_el(ts);
-        const OOD_DATA_WORDS: usize = super::common::EXT_DEGREE;
-        const OOD_COMMIT_BUF: usize = {
-            let total = OOD_DATA_WORDS;
-            (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1) / BLAKE2S_BLOCK_SIZE_U32_WORDS
-                * BLAKE2S_BLOCK_SIZE_U32_WORDS
-        };
-        let mut ood_buf = CommitBuf::<OOD_COMMIT_BUF>::new();
-        {
-            let mut i = 0;
-            while i < OOD_DATA_WORDS {
-                ood_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
-                i += 1;
-            }
-        }
-        let ood_value: BabyBearExt4 = unsafe { *ood_buf.data_as::<BabyBearExt4>(1).as_ptr() };
-        ts.commit(&mut ood_buf, OOD_DATA_WORDS);
+        let mut ood_points: LazyVec<BabyBearExt4, MAX_OOD_SAMPLES> = LazyVec::new();
+        let mut ood_values: LazyVec<BabyBearExt4, MAX_OOD_SAMPLES> = LazyVec::new();
+        read_ood_samples::<I>(ts, 0, &mut ood_points, &mut ood_values, nd_source);
         read_and_verify_pow::<I>(ts, INITIAL_POW_BITS, nd_source);
         let query_indices = draw_query_indices::<INITIAL_NUM_QUERIES, INITIAL_DRAW_WORDS>(
             ts,
@@ -113,10 +176,12 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
             INITIAL_DRAW_WORDS,
         );
         let delinearization_challenge = draw_fresh_single_field_el(ts);
-        push_whir_pow_entry(accumulator, ood_point, delinearization_challenge);
-        let mut claim_correction = ood_value;
-        field_ops::mul_assign(&mut claim_correction, &delinearization_challenge);
-        let mut current_delinearization_challenge = delinearization_challenge;
+        let (mut claim_correction, mut current_delinearization_challenge) = accumulate_ood_samples(
+            accumulator,
+            &ood_points,
+            &ood_values,
+            delinearization_challenge,
+        );
         let extended_generator = BabyBearField::TWO_ADICITY_GENERATORS[INITIAL_RS_DOMAIN_LOG2];
         let extended_generator_inv =
             BabyBearField::TWO_ADICITY_GENERATORS_INVERSED[INITIAL_RS_DOMAIN_LOG2];
@@ -229,7 +294,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
         BabyBearField,
         BabyBearExt4,
         MAX_POW_ENTRIES,
-        { WHIR_FOLD_STEPS.len() },
+        WHIR_OOD_ENTRIES,
     >,
     nd_source: &mut I,
 ) -> Result<(BabyBearExt4, [u32; WHIR_CAP_WORDS]), E::Error> {
@@ -243,8 +308,13 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
         let mut folding_challenges: LazyVec<BabyBearExt4, MAX_INTERNAL_FOLD_STEPS> = LazyVec::new();
         let mut round = 0;
         while round < fold_steps {
-            let (new_claim, alpha) =
-                verify_whir_sumcheck_step::<I, E>(ts, claim, round, nd_source)?;
+            let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
+                ts,
+                claim,
+                round,
+                WHIR_FOLDING_POW_BITS[round_idx],
+                nd_source,
+            )?;
             claim = new_claim;
             folding_challenges.push(alpha);
             fold_whir_accumulator(accumulator, alpha, z_initial);
@@ -257,23 +327,9 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
         };
         let intermediate_cap =
             read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts, nd_source);
-        let ood_point = draw_single_field_el(ts);
-        const OOD_DATA_WORDS: usize = EXT_DEGREE;
-        const OOD_COMMIT_BUF: usize = {
-            let total = OOD_DATA_WORDS;
-            (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1) / BLAKE2S_BLOCK_SIZE_U32_WORDS
-                * BLAKE2S_BLOCK_SIZE_U32_WORDS
-        };
-        let mut ood_buf = CommitBuf::<OOD_COMMIT_BUF>::new();
-        {
-            let mut i = 0;
-            while i < OOD_DATA_WORDS {
-                ood_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
-                i += 1;
-            }
-        }
-        let ood_value: BabyBearExt4 = unsafe { *ood_buf.data_as::<BabyBearExt4>(1).as_ptr() };
-        ts.commit(&mut ood_buf, OOD_DATA_WORDS);
+        let mut ood_points: LazyVec<BabyBearExt4, MAX_OOD_SAMPLES> = LazyVec::new();
+        let mut ood_values: LazyVec<BabyBearExt4, MAX_OOD_SAMPLES> = LazyVec::new();
+        read_ood_samples::<I>(ts, round_idx, &mut ood_points, &mut ood_values, nd_source);
         read_and_verify_pow::<I>(ts, WHIR_POW_BITS[round_idx], nd_source);
         let query_index_bits = INTERNAL_QUERY_INDEX_BITS[ir];
         let draw_words = INTERNAL_DRAW_WORDS[ir];
@@ -284,10 +340,12 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
             draw_words,
         );
         let delinearization_challenge = draw_fresh_single_field_el(ts);
-        push_whir_pow_entry(accumulator, ood_point, delinearization_challenge);
-        let mut claim_correction = ood_value;
-        field_ops::mul_assign(&mut claim_correction, &delinearization_challenge);
-        let mut current_delinearization_challenge = delinearization_challenge;
+        let (mut claim_correction, mut current_delinearization_challenge) = accumulate_ood_samples(
+            accumulator,
+            &ood_points,
+            &ood_values,
+            delinearization_challenge,
+        );
         let rs_domain_log2 = INTERNAL_RS_DOMAIN_LOG2[ir];
         let extended_generator = BabyBearField::TWO_ADICITY_GENERATORS[rs_domain_log2];
         let num_cosets = INTERNAL_NUM_COSETS[ir];
@@ -363,6 +421,7 @@ const FINAL_NUM_COSETS_LOG2: usize = 19usize;
 const FINAL_COSET_TREE_SIZE: usize = 2usize;
 const FINAL_DRAW_WORDS: usize = 8usize;
 const FINAL_POW_BITS: u32 = 21u32;
+const FINAL_FOLDING_POW_BITS: u32 = 0u32;
 const FINAL_ORACLE_DEPTH_IDX: usize = 3usize;
 pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     ts: &mut TranscriptState,
@@ -374,7 +433,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
         BabyBearField,
         BabyBearExt4,
         MAX_POW_ENTRIES,
-        { WHIR_FOLD_STEPS.len() },
+        WHIR_OOD_ENTRIES,
     >,
     nd_source: &mut I,
 ) -> Result<(), E::Error> {
@@ -383,8 +442,13 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
         let mut folding_challenges: LazyVec<BabyBearExt4, FINAL_FOLD_STEPS> = LazyVec::new();
         let mut round = 0;
         while round < FINAL_FOLD_STEPS {
-            let (new_claim, alpha) =
-                verify_whir_sumcheck_step::<I, E>(ts, claim, round, nd_source)?;
+            let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
+                ts,
+                claim,
+                round,
+                FINAL_FOLDING_POW_BITS,
+                nd_source,
+            )?;
             claim = new_claim;
             folding_challenges.push(alpha);
             fold_whir_accumulator(accumulator, alpha, z_initial);
@@ -617,7 +681,7 @@ pub fn verify_whir<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
         BabyBearField,
         BabyBearExt4,
         MAX_POW_ENTRIES,
-        { WHIR_FOLD_STEPS.len() },
+        WHIR_OOD_ENTRIES,
     >::new(BabyBearExt4::ONE);
     let (mut claim, mut cap) = verify_initial_whir_round::<I, E>(
         initial_transcript,

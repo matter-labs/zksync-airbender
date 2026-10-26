@@ -125,7 +125,7 @@ fn schedule_proof_inputs<'a>(
             .memory_caps
             .as_ref()
             .expect("warm memory commitment"),
-        config.lde_factor.trailing_zeros(),
+        config.lde_factor().trailing_zeros(),
         config.cap_size.trailing_zeros(),
     );
     let memory = GpuGKRMemoryTransfer::new(Arc::new(memory_host), context)?;

@@ -151,8 +151,10 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
     validate_windowed_schedule(gkr_programs, prover_config);
     assert_eq!(
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.whir_schedule.whir_steps_schedule[0]
+        prover_config
+            .base_oracles_values_per_leaf()
+            .trailing_zeros() as usize,
+        prover_config.whir_schedule.base_folding_log2()
     );
     let whir_schedule = &prover_config.whir_schedule;
 
@@ -170,11 +172,13 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     if let Some(setup_transfer) = setup.as_ref() {
         assert_eq!(
             setup_transfer.trace_holder.log_lde_factor,
-            prover_config.lde_factor.trailing_zeros()
+            prover_config.lde_factor().trailing_zeros()
         );
         assert_eq!(
             setup_transfer.trace_holder.log_rows_per_leaf,
-            prover_config.base_oracles_values_per_leaf.trailing_zeros()
+            prover_config
+                .base_oracles_values_per_leaf()
+                .trailing_zeros()
         );
         assert_eq!(
             setup_transfer.trace_holder.log_tree_cap_size,

@@ -109,8 +109,8 @@ impl CircuitPrecomputations {
         );
         let setup_host = Arc::new(LazyGpuGKRSetupHost::new(
             cpu_setup,
-            config.lde_factor.trailing_zeros(),
-            config.base_oracles_values_per_leaf.trailing_zeros(),
+            config.lde_factor().trailing_zeros(),
+            config.base_oracles_values_per_leaf().trailing_zeros(),
             config.cap_size.trailing_zeros(),
         ));
         let decoder_host = match decoder_table.as_deref() {

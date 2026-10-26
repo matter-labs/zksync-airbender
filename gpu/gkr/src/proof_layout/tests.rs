@@ -451,19 +451,26 @@ fn parser_round_trips_extra_evaluations() {
 }
 
 #[test]
-fn cpu_parser_preserves_whir_handoff_fields() {
+fn cpu_parser_splits_whir_streams_by_schedule() {
     let inputs = sample_inputs();
     let layout = ProofLayout::new(&inputs);
     let mut slab_storage = AlignedSlab::zeroed(layout.total_bytes);
     let slab = slab_storage.as_bytes_mut();
     let point = vec![sample_e4(10), sample_e4(20)];
     let batching = sample_e4(30);
-    let first_poly = [sample_e4(1), sample_e4(2), sample_e4(3)];
-    let mut p_at_one = first_poly[0];
-    p_at_one.add_assign(&first_poly[1]);
-    p_at_one.add_assign(&first_poly[2]);
-    let mut expected_batched_opening = first_poly[0];
-    expected_batched_opening.add_assign(&p_at_one);
+    // 8 sumcheck polynomials over the sample's 3 rounds (2 intermediate
+    // oracles): a round-0 fold of 1, then 4 + 3 = 8 total
+    let polys: Vec<[E4; 3]> = (0..8)
+        .map(|i| {
+            [
+                sample_e4(3 * i + 1),
+                sample_e4(3 * i + 2),
+                sample_e4(3 * i + 3),
+            ]
+        })
+        .collect();
+    let ood = [sample_e4(100), sample_e4(101)];
+    let nonces = [7u64, 8, 9];
 
     unsafe {
         let (point_ptr, point_len) =
@@ -475,12 +482,37 @@ fn cpu_parser_preserves_whir_handoff_fields() {
         assert_eq!(batching_len, 1);
         std::ptr::copy_nonoverlapping(&batching, batching_ptr, 1);
         let (ptr, len) = layout.whir_sumcheck_polys_device_mut(slab.as_mut_ptr());
-        assert!(len >= first_poly.len());
-        std::ptr::copy_nonoverlapping(first_poly.as_ptr(), ptr, first_poly.len());
+        assert_eq!(len, 3 * polys.len());
+        let flat: Vec<E4> = polys.iter().flatten().copied().collect();
+        std::ptr::copy_nonoverlapping(flat.as_ptr(), ptr, flat.len());
+        let (ptr, len) = layout.whir_ood_samples_device_mut(slab.as_mut_ptr());
+        assert_eq!(len, ood.len());
+        std::ptr::copy_nonoverlapping(ood.as_ptr(), ptr, ood.len());
+        let (ptr, len) = layout.whir_pow_nonces_device_mut(slab.as_mut_ptr());
+        assert_eq!(len, nonces.len());
+        std::ptr::copy_nonoverlapping(nonces.as_ptr(), ptr, nonces.len());
     }
 
-    let proof = layout.parse_whir_proof(slab);
-    assert_eq!(proof.original_evaluation_point, Some(point));
-    assert_eq!(proof.batching_challenge, Some(batching));
-    assert_eq!(proof.batched_opening, Some(expected_batched_opening));
+    // the device-side handoff fields stay readable from the slab
+    assert_eq!(layout.whir_original_evaluation_point_host(slab), &point[..]);
+    assert_eq!(layout.whir_batching_challenge_host(slab), &[batching][..]);
+
+    let schedule =
+        WhirSchedule::from_legacy_arrays(2, 8, 0, &[1, 4, 3], &[16, 12, 10], &[4, 8], &[1, 1, 1]);
+    let proof = layout.parse_whir_proof(slab, &schedule);
+    assert_eq!(proof.base_sumcheck_polys, polys[..1].to_vec());
+    assert_eq!(
+        proof.intermediate_whir_oracles[0].sumcheck_polys,
+        polys[1..5].to_vec()
+    );
+    assert_eq!(
+        proof.intermediate_whir_oracles[1].sumcheck_polys,
+        polys[5..8].to_vec()
+    );
+    assert_eq!(proof.intermediate_whir_oracles[0].ood_samples, vec![ood[0]]);
+    assert_eq!(proof.intermediate_whir_oracles[1].ood_samples, vec![ood[1]]);
+    assert_eq!(proof.base_queries_pow_nonce, 7);
+    assert_eq!(proof.intermediate_whir_oracles[0].queries_pow_nonce, 8);
+    assert_eq!(proof.intermediate_whir_oracles[1].queries_pow_nonce, 9);
+    assert_eq!(proof.whir_schedule, schedule);
 }

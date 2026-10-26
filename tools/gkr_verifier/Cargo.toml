@@ -126,3 +126,35 @@ codegen-units = 1
 panic = "immediate-abort"
 debug = true
 strip = false
+
+[[bin]]
+name = "blake2_with_extended_control_sec_100_virtual"
+path = "src/bin/blake2_with_extended_control_sec_100_virtual.rs"
+
+[[bin]]
+name = "blake2_with_extended_control_sec_100_pack1"
+path = "src/bin/blake2_with_extended_control_sec_100_pack1.rs"
+
+[[bin]]
+name = "blake2_with_extended_control_sec_100_pack1_virtual"
+path = "src/bin/blake2_with_extended_control_sec_100_pack1_virtual.rs"
+
+[[bin]]
+name = "blake2_with_extended_control_sec_100_pack2"
+path = "src/bin/blake2_with_extended_control_sec_100_pack2.rs"
+
+[[bin]]
+name = "blake2_with_extended_control_sec_100_pack2_virtual"
+path = "src/bin/blake2_with_extended_control_sec_100_pack2_virtual.rs"
+
+[[bin]]
+name = "blake2_with_extended_control_sec_100_pack3"
+path = "src/bin/blake2_with_extended_control_sec_100_pack3.rs"
+
+[[bin]]
+name = "blake2_with_extended_control_sec_100_pack3_virtual"
+path = "src/bin/blake2_with_extended_control_sec_100_pack3_virtual.rs"
+
+[[bin]]
+name = "blake2_with_extended_control_sec_100_pack4_virtual"
+path = "src/bin/blake2_with_extended_control_sec_100_pack4_virtual.rs"

@@ -256,7 +256,7 @@ pub(super) fn run<A: HostTraceAllocator>(
             }
         }
     };
-    let merkle_tree_caps = split_memory_cap(&flat_cap, config.lde_factor, config.cap_size);
+    let merkle_tree_caps = split_memory_cap(&flat_cap, config.lde_factor(), config.cap_size);
     MemoryCommitmentResult {
         batch_id,
         circuit_type,

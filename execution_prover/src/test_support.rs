@@ -138,9 +138,9 @@ impl ExecutionBackend for TestBackend {
                                 tracing_data: request.tracing_data,
                                 merkle_tree_caps: vec![
                                     MerkleTreeCapVarLength {
-                                        cap: vec![[0; 8]; config.cap_size / config.lde_factor]
+                                        cap: vec![[0; 8]; config.cap_size / config.lde_factor()]
                                     };
-                                    config.lde_factor
+                                    config.lde_factor()
                                 ],
                             })
                         }

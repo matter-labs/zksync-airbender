@@ -25,6 +25,7 @@
 use super::coset_commit::CosetByCosetBaseCommitment;
 use super::*;
 use crate::gkr::prover::stages::commitment_utils::commit_trace_part;
+use crate::gkr::prover::transcript_utils::draw_random_field_els_with_pow;
 use crate::gkr::prover::WhirSchedule;
 use crate::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use field::Proth120;
@@ -171,19 +172,37 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
         worker,
     );
 
-    let schedule = WhirSchedule {
-        base_lde_factor: lde_factor,
+    let schedule = WhirSchedule::from_legacy_arrays(
+        lde_factor,
         cap_size,
-        whir_steps_schedule: cfg.folds.clone(),
-        whir_queries_schedule: cfg.queries.clone(),
-        whir_steps_lde_factors: cfg.lde_factors.clone(),
-        whir_pow_schedule: cfg.pow.clone(),
-    };
+        0,
+        &cfg.folds,
+        &cfg.queries,
+        &cfg.lde_factors,
+        &cfg.pow,
+    );
 
-    let batching_challenge = rand_proth(&mut rng);
     let mut seed_bytes = [0u8; 32];
     rng.fill(&mut seed_bytes);
     let seed = Keccak256Seed(seed_bytes);
+    // `whir_fold` draws the batching challenge from the seed under the
+    // schedule's batching PoW; replay that (deterministic: the grind returns
+    // the smallest valid nonce) draw on a copy, so the fixture's preimage
+    // carries the challenge the fold actually used
+    let batching_pow_bits = schedule.base_round.batching_pow_bits::<Proth120, Proth120>(
+        crate::definitions::SecurityLevel::Sec100.security_bits(),
+        n,
+        mem_polys.len() + 1,
+    );
+    let batching_challenge = {
+        let mut replay = Keccak256Seed(seed_bytes);
+        let (_nonce, challenges) = draw_random_field_els_with_pow::<
+            Proth120,
+            Proth120,
+            Keccak256Transcript,
+        >(&mut replay, 1, batching_pow_bits, worker);
+        challenges[0]
+    };
 
     log("running whir_fold (folding rounds + PoW grinding)");
     let setup_commitment = crate::gkr::prover::SetupCommitment::InMemory(setup_oracle);
@@ -221,7 +240,6 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
             crate::definitions::SecurityLevel::Sec100,
         ),
         z.clone(),
-        batching_challenge,
         &twiddles,
         seed,
         &crate::gkr::prover::backend::NaiveBackend,
@@ -301,11 +319,23 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
     }
     let plen = cd.len();
 
-    let mut sc = 0usize; // sumcheck-poly cursor into proof.sumcheck_polys
+    let round_sumcheck_polys = |r: usize| -> &[[Proth120; 3]] {
+        if r == 0 {
+            &proof.base_sumcheck_polys
+        } else {
+            &proof.intermediate_whir_oracles[r - 1].sumcheck_polys
+        }
+    };
+    let round_queries_pow_nonce = |r: usize| -> u64 {
+        if r == 0 {
+            proof.base_queries_pow_nonce
+        } else {
+            proof.intermediate_whir_oracles[r - 1].queries_pow_nonce
+        }
+    };
     for r in 0..num_rounds {
-        for _ in 0..cfg.folds[r] {
-            let sp = &proof.sumcheck_polys[sc];
-            sc += 1;
+        assert_eq!(round_sumcheck_polys(r).len(), cfg.folds[r]);
+        for sp in round_sumcheck_polys(r).iter() {
             cd.extend_from_slice(&be16(sp[0]));
             cd.extend_from_slice(&be16(sp[1]));
             cd.extend_from_slice(&be16(sp[2]));
@@ -314,8 +344,10 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
             for d in proof.intermediate_whir_oracles[r].commitment.cap.cap.iter() {
                 cd.extend_from_slice(&dig32(d));
             }
-            cd.extend_from_slice(&be16(proof.ood_samples[r]));
-            cd.extend_from_slice(&proof.pow_nonces[r].to_be_bytes());
+            let ood = &proof.intermediate_whir_oracles[r].ood_samples;
+            assert_eq!(ood.len(), 1, "whir.sol takes one OOD sample per oracle");
+            cd.extend_from_slice(&be16(ood[0]));
+            cd.extend_from_slice(&round_queries_pow_nonce(r).to_be_bytes());
             for qq in 0..cfg.queries[r] {
                 if r == 0 {
                     // BCAP0 = 8-col batch (memory oracle), then BCAP1 = 1-col (witness).
@@ -342,7 +374,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
             for m in proof.final_monomials.iter() {
                 cd.extend_from_slice(&be16(*m));
             }
-            cd.extend_from_slice(&proof.pow_nonces[r].to_be_bytes());
+            cd.extend_from_slice(&round_queries_pow_nonce(r).to_be_bytes());
             for qq in 0..cfg.queries[r] {
                 let q = &proof.intermediate_whir_oracles[num_rounds - 2].queries[qq];
                 push_leaf(&mut cd, &q.leaf_values_concatenated, &q.path);
@@ -400,9 +432,9 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
             cap_size,
             num_witness_cols: NUM_WITNESS_COLS,
             num_setup_cols: 1,
-            folds: schedule.whir_steps_schedule.clone(),
-            queries: schedule.whir_queries_schedule.clone(),
-            pow: schedule.whir_pow_schedule.clone(),
+            folds: schedule.fold_steps(),
+            queries: schedule.queries_per_round(),
+            pow: schedule.queries_pow_bits_per_round(),
         },
         initial_seed: seed_bytes.to_vec(),
         opening_point: z.iter().map(to_dec).collect(),

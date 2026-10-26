@@ -289,7 +289,7 @@ pub fn generate_verifier(
     // Every proving-geometry parameter comes from the prover config: the packing
     // factor, the message size and the WHIR batching PoW difficulty (which the
     // prover derives from the config + the circuit exactly like this).
-    let pack_log2 = prover_config.pack_log2;
+    let pack_log2 = prover_config.pack_log2();
     assert!(pack_log2 > 0, "pack_log2 must be positive");
     assert!(
         prover_config.merged_memory_and_witness(),
@@ -304,7 +304,7 @@ pub fn generate_verifier(
     let whir_batch_pow_bits = pow_bits::batched_proximity_check_pow_bits::<Proth120, Proth120>(
         prover_config.security_level.security_bits(),
         prover_config.whir_message_size_log2(),
-        prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
+        prover_config.whir_schedule.base_lde_factor_log2(),
         // the PHYSICALLY committed (packed, merged mem+wit) column count
         pow_bits::committed_base_oracle_columns(circuit, pack_log2, true),
     );

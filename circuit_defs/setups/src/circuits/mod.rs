@@ -130,7 +130,7 @@ fn produce_verifier_setup_for_circuit(
     // the circuit's own config: the geometry the prover commits the setup with
     let prover_config = circuit.prover_config(security_level);
     let twiddles: Twiddles<BabyBearField, Global> =
-        Twiddles::new(circuit.trace_len << prover_config.pack_log2, worker);
+        Twiddles::new(circuit.trace_len << prover_config.pack_log2(), worker);
     let setup_commitment = circuit.setup.commit_for_config::<DefaultTreeConstructor>(
         &twiddles,
         &prover_config,

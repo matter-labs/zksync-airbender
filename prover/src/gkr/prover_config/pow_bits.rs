@@ -144,6 +144,28 @@ pub fn committed_base_oracle_columns<F: PrimeField>(
 }
 
 /// PoW bits required before the WHIR batching (proximity) challenge `γ`.
+///
+/// The challenge combines the `ℓ = num_batched_columns` committed base
+/// codewords `f_i : L → F` (each claimed in `RS[L, 2^domain_size_log2]`,
+/// `|L| = 2^(domain_size_log2 + lde_factor_log2)`) into `g = Σ γ^i f_i`. The
+/// term bounded here is the correlated-agreement error of that combination —
+/// `g` being `δ`-close to the code while some `f_i` is not (or the closest
+/// codewords not combining to the one `g` is close to) — which under the
+/// linear proximity-gap conjecture is `≈ ℓ · |L| / |F|`: `ceil_log2(ℓ)` bits
+/// for the powers-of-`γ` curve plus the evaluation-domain size.
+///
+/// The base round's `fold_log2` does NOT enter. With `fold_log2 > 0` the
+/// verifier then folds `g` by a separate challenge and shift-queries the
+/// fold; with `fold_log2 == 0` (virtual packing) it shift-queries `g`
+/// itself against the re-encoded intermediate oracle 0 — in the WHIR view a
+/// `2^ceil_log2(ℓ)`-ary fold of the virtual interleaving of the columns,
+/// whose sub-functions are exactly the `f_i` on `L`, so the fold error is the
+/// same `ℓ`, `|L|` and rate as the batching reading. Both modes query the
+/// same code (`RS[·, ·]` at the base rate) with the same bits per query; the
+/// only term the folding mode adds is its own `fold_log2`-step
+/// folding-challenge error (gated by `folding_pow_bits`, not by this PoW).
+/// Physical packing enters through the inputs: the packed message size and
+/// the physically committed (packed) column count.
 pub const fn pow_bits_for_batched_proximity(
     security_bits: usize,
     domain_size_log2: usize,

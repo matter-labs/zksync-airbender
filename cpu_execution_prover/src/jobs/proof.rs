@@ -83,7 +83,7 @@ pub(super) fn run<A: HostTraceAllocator>(
     // `SeparateMemoryAndWitness` re-commits memory while proving, and that
     // second commitment is the one the verifier checks: it must equal the cap
     // published in the memory pass, or the two passes proved different traces.
-    let committed = join_memory_caps(&memory_caps, config.lde_factor, config.cap_size);
+    let committed = join_memory_caps(&memory_caps, config.lde_factor(), config.cap_size);
     assert!(
         proof.whir_proof.memory_commitment.commitment.cap.cap == committed.cap,
         "memory commitment produced while proving {circuit_type:?}[{sequence_id}] \

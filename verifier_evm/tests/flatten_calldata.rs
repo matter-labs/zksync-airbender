@@ -46,8 +46,8 @@ fn write_calldata_into_debug_data() {
 
     let cfg = common::production_prover_config();
     let (folds, queries) = (
-        &cfg.whir_schedule.whir_steps_schedule,
-        &cfg.whir_schedule.whir_queries_schedule,
+        &cfg.whir_schedule.fold_steps(),
+        &cfg.whir_schedule.queries_per_round(),
     );
     // the single transaction's calldata: GKR stream ‖ WHIR proof stream
     put(
@@ -68,9 +68,5 @@ fn write_calldata_into_debug_data() {
     put(
         "gkr_step1_preimage.hex",
         &verifier_evm::commit_seed_preimage(&circuit, &proof, &aux),
-    );
-    put(
-        "gkr_whir_handoff_seed.hex",
-        &verifier_evm::gkr_whir_handoff_seed(&proof),
     );
 }

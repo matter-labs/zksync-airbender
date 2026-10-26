@@ -406,8 +406,10 @@ fn commit_memory_cap(
         &crate::gkr::prover::backend::NaiveBackend,
         columns,
         &twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+        prover_config.lde_factor(),
+        prover_config
+            .base_oracles_values_per_leaf()
+            .trailing_zeros() as usize,
         prover_config.cap_size,
         trace_len_log2,
         &crate::allocation_pool::GenericAllocationPool::proxy(),

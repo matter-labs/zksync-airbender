@@ -365,7 +365,7 @@ fn schedule_phase_one<'a>(
                 let prover_config = proof_prover_config
                     .as_ref()
                     .expect("proof requests construct their prover config before transfers");
-                let log_lde_factor = prover_config.lde_factor.trailing_zeros();
+                let log_lde_factor = prover_config.lde_factor().trailing_zeros();
                 let log_tree_cap_size = prover_config.cap_size.trailing_zeros();
                 let memory_caps = state
                     .memory_caps

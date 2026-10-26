@@ -214,7 +214,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     // `message_log2 = 26` of the EVM-production WHIR config.
     let prover_config = evm_production_packed_prover_config(level);
     let trace_len: usize = 1 << prover_config.trace_len_log2;
-    let pack_log2 = prover_config.pack_log2;
+    let pack_log2 = prover_config.pack_log2();
     assert!(num_calls <= trace_len);
 
     // 3. Build the unified witness trace with precompiles disabled at preprocessing.
@@ -363,8 +363,8 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
 
     let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &unified_circuit);
 
-    let lde_factor = prover_config.lde_factor;
-    let values_per_leaf = prover_config.base_oracles_values_per_leaf;
+    let lde_factor = prover_config.lde_factor();
+    let values_per_leaf = prover_config.base_oracles_values_per_leaf();
 
     let setup_commitment = if setup_in_memory {
         // Commit the packed setup fully in memory: RS codewords + monolithic Merkle
@@ -1896,7 +1896,7 @@ fn verify_dim_reduce_layers() {
     // ===== STEP 4: GKR→WHIR handoff — packed-commitment claims merge + WHIR batching =====
     // Mirrors prover/src/gkr/prover/mod.rs (OperationMode::SingleChunk).
     {
-        let pack_log2 = prover_config.pack_log2; // this proof's pack_log2
+        let pack_log2 = prover_config.pack_log2(); // this proof's pack_log2
         let base_layer_z = point.clone(); // 22-coord layer-0 folding point
         let get = |addr: GKRAddress| -> E {
             *layer0_merged.get(&addr).expect("base-layer claim present")
@@ -1951,7 +1951,7 @@ fn verify_dim_reduce_layers() {
         let pow = pow_bits::batched_proximity_check_pow_bits::<Proth120, Proth120>(
             prover_config.security_level.security_bits(),
             prover_config.whir_message_size_log2(),
-            prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
+            prover_config.whir_schedule.base_lde_factor_log2(),
             // the PHYSICALLY committed (packed, merged mem+wit) columns
             pow_bits::committed_base_oracle_columns(&unified_circuit, pack_log2, true),
         );
@@ -1959,8 +1959,8 @@ fn verify_dim_reduce_layers() {
             &mut seed, 1, pow, &worker,
         );
         assert_eq!(
-            nonce, proof.batched_proximity_check_pow_nonce,
-            "WHIR batching PoW nonce must match the proof — confirms the handoff transcript"
+            nonce, proof.whir_proof.batching_challenge_pow_nonce,
+            "WHIR batching PoW nonce must match the proof — confirms the transcript replay"
         );
         let whir_batching = wbc[0];
 
@@ -1971,12 +1971,6 @@ fn verify_dim_reduce_layers() {
             batched.add_assign(&mul(&b, c));
             b.mul_assign(&whir_batching);
         }
-        assert_eq!(
-            Some(whir_point.as_slice()),
-            proof.whir_proof.original_evaluation_point.as_deref()
-        );
-        assert_eq!(Some(whir_batching), proof.whir_proof.batching_challenge);
-        assert_eq!(Some(batched), proof.whir_proof.batched_opening);
 
         println!(
             "[whir-handoff] pack_log2={pack_log2} extra={} mem_wit={}->{} setup={}->{} whir_point={} coords",
@@ -1995,16 +1989,6 @@ fn verify_dim_reduce_layers() {
             "[whir-handoff] batched_opening_value=0x{:032x}",
             batched.to_u128()
         );
-        // The seed WHIR starts from IS the GKR verifier's transcript state at the handoff
-        // (this test runs the full GKR verifier in simulation). Save it to a file so the WHIR
-        // fixture's preimage [seed:32] is authoritatively the GKR verifier's output — no guessing.
-        let seed_hex: String = seed.0.iter().map(|b| format!("{b:02x}")).collect();
-        std::fs::write(
-            "../verifier_evm/debug_data/gkr_whir_handoff_seed.hex",
-            &seed_hex,
-        )
-        .unwrap();
-        println!("[whir-handoff] seed after batching draw = 0x{seed_hex}  (saved to gkr_whir_handoff_seed.hex)");
 
         // ---- serialize the WHIR verifier calldata from the REAL proof.whir_proof ----
         // Format = whir.sol VARIANT 4 (proth120_evm_gen::run_generation): preimage
@@ -2059,11 +2043,23 @@ fn verify_dim_reduce_layers() {
                     cd.extend_from_slice(&dig32(d));
                 }
             };
-            let mut sc = 0usize;
+            let round_sumcheck_polys = |r: usize| -> &[[E; 3]] {
+                if r == 0 {
+                    &wp.base_sumcheck_polys
+                } else {
+                    &wp.intermediate_whir_oracles[r - 1].sumcheck_polys
+                }
+            };
+            let round_queries_pow_nonce = |r: usize| -> u64 {
+                if r == 0 {
+                    wp.base_queries_pow_nonce
+                } else {
+                    wp.intermediate_whir_oracles[r - 1].queries_pow_nonce
+                }
+            };
             for r in 0..num_rounds {
-                for _ in 0..folds[r] {
-                    let sp = &wp.sumcheck_polys[sc];
-                    sc += 1;
+                assert_eq!(round_sumcheck_polys(r).len(), folds[r]);
+                for sp in round_sumcheck_polys(r).iter() {
                     cd.extend_from_slice(&be16(sp[0]));
                     cd.extend_from_slice(&be16(sp[1]));
                     cd.extend_from_slice(&be16(sp[2]));
@@ -2072,8 +2068,10 @@ fn verify_dim_reduce_layers() {
                     for d in wp.intermediate_whir_oracles[r].commitment.cap.cap.iter() {
                         cd.extend_from_slice(&dig32(d));
                     }
-                    cd.extend_from_slice(&be16(wp.ood_samples[r]));
-                    cd.extend_from_slice(&wp.pow_nonces[r].to_be_bytes());
+                    let ood = &wp.intermediate_whir_oracles[r].ood_samples;
+                    assert_eq!(ood.len(), 1, "whir.sol takes one OOD sample per oracle");
+                    cd.extend_from_slice(&be16(ood[0]));
+                    cd.extend_from_slice(&round_queries_pow_nonce(r).to_be_bytes());
                     for qq in 0..queries[r] {
                         if r == 0 {
                             let mq = &wp.memory_commitment.queries[qq];
@@ -2099,7 +2097,7 @@ fn verify_dim_reduce_layers() {
                     for m in wp.final_monomials.iter() {
                         cd.extend_from_slice(&be16(*m));
                     }
-                    cd.extend_from_slice(&wp.pow_nonces[r].to_be_bytes());
+                    cd.extend_from_slice(&round_queries_pow_nonce(r).to_be_bytes());
                     for qq in 0..queries[r] {
                         let q = &wp.intermediate_whir_oracles[num_rounds - 2].queries[qq];
                         push_leaf(&mut cd, &q.leaf_values_concatenated, &q.path);
@@ -2153,7 +2151,7 @@ fn verify_dim_reduce_layers() {
                                                // WHIR-batching PoW nonce (8 B BE) at the calldata tail: emit_gkr_mark folds
                                                // keccak(handoff_seed || nonce_be8), checks the top 11 bits are zero, then draws the
                                                // WHIR batching challenge. The verifier reads it at calldatasize()-8.
-    calldata.extend_from_slice(&proof.batched_proximity_check_pow_nonce.to_be_bytes());
+    calldata.extend_from_slice(&proof.whir_proof.batching_challenge_pow_nonce.to_be_bytes());
     let calldata_hex: String = calldata.iter().map(|b| format!("{b:02x}")).collect();
     std::fs::write(format!("{td}/gkr_full_calldata.hex"), &calldata_hex).unwrap();
     println!(
@@ -2185,8 +2183,8 @@ fn inspect_packed_proof_structure() {
         proof.lookup_challenges_pow_nonce
     );
     println!(
-        "[proof] batched_proximity_check_pow_nonce = {}",
-        proof.batched_proximity_check_pow_nonce
+        "[proof] whir batching_challenge_pow_nonce = {}",
+        proof.whir_proof.batching_challenge_pow_nonce
     );
     println!(
         "[proof] grand_product_accumulator_computed = 0x{:032x}",
@@ -2231,8 +2229,8 @@ fn inspect_packed_proof_structure() {
         w.memory_commitment.commitment.cap.cap.len(),
         w.witness_commitment.commitment.cap.cap.len(),
         w.intermediate_whir_oracles.len(),
-        w.ood_samples.len(),
-        w.sumcheck_polys.len(),
+        w.all_ood_samples().count(),
+        w.all_sumcheck_polys().count(),
         w.final_monomials.len(),
     );
 }
