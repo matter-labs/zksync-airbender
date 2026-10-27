@@ -9,6 +9,7 @@ import Slop.Final.Circuits.ShiftBinop.Theorems
 import Slop.Final.Circuits.SubwordMemory.Theorems
 import Slop.Final.Circuits.WordMemory.Theorems
 import Slop.Final.Helpers.Context.PCState.Theorems
+import Slop.Final.ISA.Theorems
 import Slop.Final.Trace.Delegation.CallerTheorems
 import Slop.Final.Trace.Delegation.Theorems
 import Slop.Final.Trace.Families.AddSub.Theorems
@@ -32,6 +33,7 @@ import Human.Circuits.ShiftBinop.Theorems
 import Human.Circuits.SubwordMemory.Theorems
 import Human.Circuits.WordMemory.Theorems
 import Human.Helpers.Context.PCState.Theorems
+import Human.ISA.Sail.Theorems
 import Human.Trace.Delegation.CallerTheorems
 import Human.Trace.Delegation.Theorems
 import Human.Trace.Families.AddSub.Theorems
@@ -68,6 +70,10 @@ example : Airbender.SubwordMemory.BabyBearSoundnessClaim := @Airbender.SubwordMe
 example : Airbender.WordMemory.SoundnessClaim := @Airbender.WordMemory.soundness
 example : Airbender.WordMemory.BabyBearSoundnessClaim := @Airbender.WordMemory.babyBear_soundness
 example : Airbender.PCState.OutgoingBoundsClaim := @Airbender.PCState.outgoing_bounds
+example : Airbender.DecodeIsSailClaim := @Airbender.decode_is_sail
+example : Airbender.StepIsAirbenderClaim := @Airbender.step_is_airbender
+example : Airbender.ConfiguredBridgeClaim := @Airbender.configured_bridge
+example : Airbender.MachineChecksClaim := @Airbender.machine_checks_claim
 example : Airbender.Delegation.Caller.RequestsSoundnessClaim := @Airbender.Delegation.Caller.requests_soundness
 example : Airbender.Delegation.Caller.RequestMemorySoundnessClaim := @Airbender.Delegation.Caller.request_memory_soundness
 example : Airbender.Delegation.Caller.OperationSoundnessClaim := @Airbender.Delegation.Caller.operation_soundness
@@ -152,6 +158,10 @@ example : Airbender.Keccak.Native.WindowSoundnessClaim := @Airbender.Keccak.Nati
 #print axioms Airbender.WordMemory.soundness
 #print axioms Airbender.WordMemory.babyBear_soundness
 #print axioms Airbender.PCState.outgoing_bounds
+#print axioms Airbender.decode_is_sail
+#print axioms Airbender.step_is_airbender
+#print axioms Airbender.configured_bridge
+#print axioms Airbender.machine_checks_claim
 #print axioms Airbender.Delegation.Caller.requests_soundness
 #print axioms Airbender.Delegation.Caller.request_memory_soundness
 #print axioms Airbender.Delegation.Caller.operation_soundness
