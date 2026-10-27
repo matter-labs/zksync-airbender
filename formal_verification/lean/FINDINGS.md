@@ -1378,11 +1378,12 @@ its controls and G separation. This avoids assuming a full valid memory/executio
 history to derive the same validity conditions. Initialization, the physical
 tracked-RAM profile and exact logical matching retain their existing scope.
 
-The broader helper/trace dependency check still flags HashABI's imports of trace
-worker control-definition modules, present before this change. The new public
-contract is placed in the execution layer; the legacy controller-definition
-placement remains a separate formal-model review task. Focused proof checking
-does not establish full review/environment/replay assurance.
+The helper/trace dependency check now passes: HashABI imports circuit-level
+protocol definitions directly. The round and special5 schedule definitions moved
+verbatim, preserving their public names and bodies. The public supported-use
+contract remains in the execution layer. Focused consumer checking does not
+establish full review/environment/replay assurance; see the current
+[validation status](VERIFICATION_STATUS.md#current-focused-validation).
 
 ## F12 — Blessed Keccak path is outside current proof coverage
 
