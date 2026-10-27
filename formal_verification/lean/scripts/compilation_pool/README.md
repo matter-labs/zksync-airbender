@@ -12,6 +12,10 @@ resident memory and 900 seconds. These limits are not multiplied by worker count
 Darwin uses libproc footprint/RSS. Linux footprint is anonymous memory plus
 proportional shared memory, swap and huge pages; bounded resident excludes swap.
 Mapped file pages are excluded from those Linux caps; total RSS is telemetry.
+On Linux, the exact `lean --print-prefix` metadata query is excluded from the
+compiler count. Its memory and elapsed time remain charged. Unknown arguments
+and every other Lean invocation count as workers; Darwin retains its conservative
+process-name count.
 Replay selects a finite Lean thread stack on every host and records it in its
 tool identity. Linux additionally sets a finite process stack limit; Darwin retains
 and records its inherited process limit because the OS rejects changes.

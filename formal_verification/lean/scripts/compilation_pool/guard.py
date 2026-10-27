@@ -20,7 +20,7 @@ from scripts import bounded_fv as serial_guard
 def budget_reason(samples, args, elapsed, workers=4):
     if isinstance(workers, bool) or workers not in (1, 2, 3, 4):
         raise ValueError('Worker limit must be 1..4')
-    if sum(sample.info.name == 'lean' for sample in samples) > workers:
+    if serial_guard.lean_worker_count(samples) > workers:
         return 'Lean worker limit exceeded'
     if (sum(sample.footprint for sample in samples) > args.mib << 20 or
             sum(sample.bounded_resident for sample in samples) > args.resident_mib << 20):
@@ -39,7 +39,7 @@ def main(argv=None):
 
     def observe(samples, args, elapsed):
         nonlocal observed_peak
-        observed_peak = max(observed_peak, sum(sample.info.name == 'lean' for sample in samples))
+        observed_peak = max(observed_peak, serial_guard.lean_worker_count(samples))
         return budget_reason(samples, args, elapsed, options.lean_workers)
 
     output = io.StringIO()

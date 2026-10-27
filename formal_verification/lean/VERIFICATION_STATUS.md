@@ -17,7 +17,7 @@ inventory, not a claim that all assurance gates passed at the current head.
 | [Supported delegation use](Airbender/Review/Trace/UnifiedReduced/SupportedUseExecution.lean) | The new public path theorem derives bigint/hash worker contracts from public wrapper shapes and reference-prefix validity by induction over exact native prefixes. It covers bigint, G and extended round, with G separation retained. Public initialization, physical tracked-RAM/configuration/setup inputs and exact matching remain explicit. |
 | [Provided Keccak wrapper](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage) | Uncovered. The wrapper uses 361 calls to three split circuits; Lean covers the distinct 649-call special5 protocol. The inspected unified setup also omits the split CSRs. Split modeling and setup integration are deferred. |
 | [Initialization and public inputs](Airbender/Review/Circuits/Initialization/README.md) | Native boundary products, public ROM/decoder bindings and both initialization profiles connect to execution. Exact logical matching remains explicit. |
-| [GKR compiler preservation](Airbender/Review/Compiler/README.md) | All 22 captures have base-field arithmetic preservation. New logical execution APIs take physical arithmetic/active rows and exact matching of actual native encoding/leaf tuples. Field/mask/helper transport, operand coverage and setup-column bindings connect those tuples to source constraints, deriving helper bounds, authored membership and Clean/decoder validity without canonical framing. Supplied-program wrappers require decoder-table equality with the retained capture; explicit Airbender-platform wrappers are available. Older framed/fixed-program wrappers remain compatible. All 14 native row compositions and public wrappers compile; execution/public modules pass selected-module replay at a 32 MiB Lean thread stack. The selected 3279-module/10-test frontend passes freshness and artifact-hash checking without repairs. Full project/runtime, audit, replay and Linux assurance remain pending; sampled lookup/product enforcement remains outside the model. |
+| [GKR compiler preservation](Airbender/Review/Compiler/README.md) | All 22 captures have base-field arithmetic preservation. New logical execution APIs take physical arithmetic/active rows and exact matching of actual native encoding/leaf tuples. Field/mask/helper transport, operand coverage and setup-column bindings connect those tuples to source constraints, deriving helper bounds, authored membership and Clean/decoder validity without canonical framing. Supplied-program wrappers require decoder-table equality with the retained capture; explicit Airbender-platform wrappers are available. Older framed/fixed-program wrappers remain compatible. All 14 native row compositions and public wrappers compile; execution/public modules pass selected-module replay at a 32 MiB Lean thread stack. The complete 4862-module/219-test source/runtime/review frontend passes at f0b059fe6412. Environment audit, transitive replay and Linux cold assurance remain pending; sampled lookup/product enforcement remains outside the model. |
 
 These are conditional soundness claims. Accepted cryptographic proof data implying
 native gate validity and exact logical matching is outside the model. Captured
@@ -48,8 +48,9 @@ coverage; they do not prove execution of blessed Keccak programs. See
    selected-frontend passes. Exact tuple matching retains natural multiplicities
    independent of physical counters; supplied programs must match the retained
    decoder tables. New setups and sampled-argument enforcement remain outside scope.
-3. Complete a current-head full suite, environment dependency audit, independent
-   kernel replay and negative controls. No complete current-head pass is recorded.
+3. Complete environment dependency auditing, independent kernel replay and negative
+   controls. The full source/runtime/review frontend passes at f0b059fe6412;
+   that checkpoint does not establish these additional assurance gates.
 4. Validate advisory CI, Linux resource/process controls, replay stack and empty-cache
    reproduction on suitable hosts. Selectively required CI follows a complete Linux
    pass. CUDA/AVX-512 execution and a regenerated proof remain external checks.
@@ -90,7 +91,7 @@ compiled parts unchanged across replay. Imports were not replayed transitively
 in this focused check. No production circuit, generator or layout changed.
 
 Linux resource/process controls also pass in a disposable aarch64 container
-(Linux 6.10.14-linuxkit, Python 3.12.11): 27 guard tests and 22 compilation-pool
+(Linux 6.10.14-linuxkit, Python 3.12.11): 29 guard tests and 23 compilation-pool
 policy/process tests. They exercise anonymous-memory limits, finite process
 stack, pidfd/subreaper supervision, detached-descendant cleanup and aggregate
 worker limits. These controls do not establish a Linux Lean build, full replay
@@ -101,10 +102,8 @@ late imports in the [direct audit entrypoint](Airbender/Checks/Axioms.lean). All
 imports now precede commands, preserving their order and every one of the 12409
 explicit roots in its original order. The repaired entrypoint compiles (6844
 Lake jobs, 19.78 seconds, 960.70 MiB footprint and 4416.84 MiB resident), with no
-surviving owned workers. The complete frontend/runtime gate is being rerun from
-that normally built cache; this is not yet a complete pass. An earlier attempt
-also stopped at a competing-worker lock check. Neither interrupted attempt is
-recorded as a successful assurance snapshot.
+surviving owned workers. An earlier attempt also stopped at a competing-worker
+lock check. Interrupted attempts are not successful assurance snapshots.
 
 The later run completed source freshness for all 4862 modules (219 concrete Tests),
 native dependency freshness, library/executable builds, direct axiom comparison,
@@ -115,8 +114,27 @@ and path checks; production validation is unchanged. All nine snapshot mutation
 controls pass. The repaired inventory passes 200 contextual guide references,
 190 explicit public Review theorem roots, 1305 links and the layer check (61.25
 seconds, 768.65 MiB footprint, 4238.23 MiB resident, no surviving owned workers).
-Fifteen assurance policy tests pass. Complete frontend closure, environment
-auditing, transitive replay and cold Linux reproduction remain pending.
+Fifteen assurance policy tests pass.
+
+The final complete source/runtime/review frontend passes at f0b059fe6412:
+4862 modules, 219 concrete Tests, five retained Sail modules and native freshness
+for 3509 runtime modules, both executables and the library. Normal Lake no-build
+freshness, compiled-artifact hashes, direct axiom comparison, importer runtime
+and all review checks pass. Its 23 guarded jobs total 260.14 seconds from the
+normally built cache, with peak footprint 855.31 MiB, resident 4279.14 MiB and no
+surviving owned workers. This is a complete frontend snapshot, not a completed
+environment audit or independent transitive replay.
+
+The subsequent Mac environment audit stopped at the unchanged resident cap:
+5125.94 MiB against 5120 MiB, footprint 1193.53 MiB, after 125.97 seconds, with no
+surviving owned workers. It issued no successful audit result. Remaining assurance
+is being attempted in native aarch64 Linux using its documented charged-memory
+accounting and the same limits. Cold cache bootstrap exposed a metadata query
+counted as a second compiler: Mathlib's initializer invokes `lean --print-prefix`.
+Linux now recognizes only that exact query; its memory and time remain charged,
+and unknown invocations and two actual compilers still trigger the worker limit.
+Environment auditing, transitive replay, negative controls, native freshness and
+cold Linux reproduction remain pending.
 
 ### Prior compiler-composition checkpoint
 
@@ -148,9 +166,8 @@ no full assurance build snapshot was issued. The final upstream-compatibility
 build also passes: 670.85 seconds, peak footprint 1589.04 MiB, raw resident memory
 4110.22 MiB and no surviving owned workers.
 
-The full project frontend, executable/runtime checks, full environment audit,
-complete independent dependency replay, transitive negative controls, Linux
-controls and cold-run feasibility remain pending. The 25 native setup generator/
+The full environment audit, complete independent dependency replay, transitive
+negative controls and cold-run feasibility remain pending. The 25 native setup generator/
 export freshness jobs and receipts remain a separate gate from the 67-file native
 compiler capture check above.
 

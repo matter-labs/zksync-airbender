@@ -59,6 +59,16 @@ class GuardPolicyTests(unittest.TestCase):
             with self.subTest(workers=workers), self.assertRaises(ValueError):
                 guard.budget_reason([], self.args, 0, workers)
 
+    def test_prefix_query_keeps_pool_memory_charge_and_compiler_ceiling(self):
+        query = serial_guard.Sample(serial_guard.ProcessInfo(
+            99, 1, 'lean', argv=(b'lean', b'--print-prefix')), 1, 1)
+        self.assertIsNone(guard.budget_reason([sample(1), query], self.args, 1, 1))
+        self.assertEqual(guard.budget_reason([sample(1), sample(2), query], self.args, 1, 1),
+                         'Lean worker limit exceeded')
+        charged = serial_guard.Sample(query.info, 2560 * MIB, 1)
+        self.assertEqual(guard.budget_reason([sample(1), charged], self.args, 1, 1),
+                         'memory budget exceeded')
+
     def test_aggregate_footprint_byte_boundary(self):
         samples = [sample(1, footprint=1280 * MIB), sample(2, footprint=1280 * MIB)]
         self.assertIsNone(guard.budget_reason(samples, self.args, 900, 2))
