@@ -115,16 +115,15 @@ private def loadEntry : PooledProgramEntry :=
 private def addEntry : PooledProgramEntry :=
   ⟨4, 0x000100b3, .RTYPE (.Regidx 0, .Regidx 2, .Regidx 1, .ADD),
     ⟨.addSub, 2, 0, 1, ⟨0, 0⟩, 1, 0⟩⟩
-private def initial : State :=
-  { (default : State) with
-    regs := ((default : State).regs).insert .x1 0x00400001
-      |>.insert .x2 0 |>.insert .misa 0x40000100 |>.insert .PC 0 }
-private def dataState := wordWriteState initial 4194304 0x56781234
-private def codeState := wordWriteState dataState 0 loadEntry.bits
+private noncomputable def initial : State :=
+  { resetMachine with
+    regs := (resetMachine.regs.insert .x1 0x00400001 |>.insert .x2 0 |>.insert .PC 0) }
+private noncomputable def dataState := wordWriteState initial 4194304 0x56781234
+private noncomputable def codeState := wordWriteState dataState 0 loadEntry.bits
 private noncomputable def before := wordWriteState codeState 4 addEntry.bits
 
 theorem airbender_before  : Airbender.Reference.RiscV.Sail.Configured before := by
-  configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
+  configured_fixture [before, codeState, dataState, initial, Airbender.Reference.RiscV.Sail.wordWriteState]
 
 
 private theorem image : initialImage before cells = some (trace false).initialMemory := by

@@ -20,11 +20,14 @@ private def machine : PooledTrace babyBearModulus where
   initialMemory := []
   terminalMemory := []
 
-private def data : Caller.RequestTrace babyBearModulus :=
+private noncomputable def data : Caller.RequestTrace babyBearModulus :=
   ⟨machine, Tests.DelegationMemory.data, [Tests.DelegationCaller.entry .keccak]⟩
 
-private def before : State :=
+private noncomputable def before : State :=
   wordWriteState Tests.DelegationMemory.before 0 (Tests.DelegationCaller.entry .keccak).bits
+
+private theorem airbender_before : Configured before := by
+  configured_fixture [before, wordWriteState, Tests.DelegationMemory.before]
 
 private theorem caller_list : data.callers = [caller] := by rfl
 
@@ -72,7 +75,8 @@ private theorem image : Caller.programImage before [0] = some data.program := by
   rfl
 
 private theorem publicProgram : Caller.RequestInputs data before [0] :=
-  ⟨image, by change 4 < timestampBase ∧ 0 < timestampBase; norm_num [timestampBase], by decide +kernel⟩
+  ⟨image, by change 4 < timestampBase ∧ 0 < timestampBase; norm_num [timestampBase], by decide +kernel,
+    airbender_before⟩
 
 theorem bound_requests : Caller.RequestBinding data before :=
   Caller.requests_soundness (by decide) (by decide) (by decide) accepted publicProgram

@@ -23,7 +23,7 @@ private def workers : MemoryData babyBearModulus where
 private def callerAssignment (column : Nat) : ZMod babyBearModulus :=
   if column = 35 then 4 else Tests.DelegationCaller.assignment .bigint column
 private def caller : Trace.Row babyBearModulus PooledFamily := ⟨.addSub, callerAssignment⟩
-private def data : Caller.RequestTrace babyBearModulus where
+private noncomputable def data : Caller.RequestTrace babyBearModulus where
   machine := {
     rows := [caller]
     rom := ⟨{ name := "unused", Contains _ _ := False }, { name := "unused", Contains _ _ := False }⟩
@@ -37,15 +37,18 @@ private def data : Caller.RequestTrace babyBearModulus where
 private def cells : List Cell := [.register 0, .register 10] ++
   (List.range 8).map (fun i => .ram (BitVec.ofNat 32 (4 * i))) ++ [.register 11] ++
   (List.range 8).map (fun i => .ram (BitVec.ofNat 32 (32 + 4 * i))) ++ [.register 12]
-private def shadow : State where
-  regs := (Std.ExtDHashMap.emptyWithCapacity).insert .x10 (0 : BitVec 32)
+private noncomputable def shadow : State where
+  regs := resetMachine.regs.insert .x10 (0 : BitVec 32)
     |>.insert .x11 (32 : BitVec 32) |>.insert .x12 (128 : BitVec 32)
   mem := (List.range 64).foldl (fun memory i => memory.insert i (0 : BitVec 8))
     (Std.ExtHashMap.emptyWithCapacity)
   tags := ()
   cycleCount := 0
   sailOutput := #[]
-private def before : State := wordWriteState shadow 0 (Tests.DelegationCaller.entry .bigint).bits
+private noncomputable def before : State := wordWriteState shadow 0 (Tests.DelegationCaller.entry .bigint).bits
+
+private theorem airbender_before : Configured before := by
+  configured_fixture [before, wordWriteState, shadow]
 
 private theorem core : FlatOperation.ConstraintsHoldFlat (Verification.environment assignment)
     (Bigint.importedConstraints Bigint.setupTable) := by
@@ -125,6 +128,7 @@ private theorem inputs : Caller.RequestInputs data before [0] := by
   · change 4 < timestampBase ∧ 0 < timestampBase
     norm_num [timestampBase]
   · decide +kernel
+  · exact airbender_before
 
 theorem native_shadow_initialization : initialImage shadow cells = some data.machine.initialMemory := by
   have x10 : (Cell.register 10).read shadow = .ok 0 shadow := by

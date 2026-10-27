@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.KeccakTheta
 import Slop.Final.Trace.Delegation.Theorems
 import Slop.Keccak.CallHistory
@@ -87,8 +88,8 @@ def cells : List Cell :=
   [.register 10, .register 11, .ram 4194304, .ram 4194308, .ram 4194344, .ram 4194348, .ram 4194384, .ram 4194388,
     .ram 4194424, .ram 4194428, .ram 4194464, .ram 4194468, .ram 4194504, .ram 4194508]
 
-def before : Reference.RiscV.Sail.State where
-  regs := (Std.ExtDHashMap.emptyWithCapacity).insert .x10 (3 : BitVec 32)
+noncomputable def before : Reference.RiscV.Sail.State where
+  regs := Reference.RiscV.Sail.resetMachine.regs.insert .x10 (3 : BitVec 32)
     |>.insert .x11 (4194304 : BitVec 32)
   mem := (Std.ExtHashMap.emptyWithCapacity)
     |>.insert 4194304 (255 : BitVec 8)
@@ -142,6 +143,9 @@ def before : Reference.RiscV.Sail.State where
   tags := ()
   cycleCount := 0
   sailOutput := #[]
+
+theorem airbender_before : Reference.RiscV.Sail.Configured before := by
+  configured_fixture [before]
 
 def data : Delegation.MemoryData babyBearModulus where
   setup := setup

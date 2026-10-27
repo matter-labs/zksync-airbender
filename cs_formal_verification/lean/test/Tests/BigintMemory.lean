@@ -1,4 +1,5 @@
 import Slop.Bigint.Claims
+import Slop.Sail.ResetState
 
 namespace Tests.BigintMemory
 open Airbender Trace Arithmetic
@@ -49,14 +50,17 @@ def cells : List Cell :=
     [.register 11] ++ (List.range 8).map (fun i => .ram (BitVec.ofNat 32 (4194336 + 4 * i))) ++
     [.register 12]
 
-def before : Reference.RiscV.Sail.State where
-  regs := (Std.ExtDHashMap.emptyWithCapacity).insert .x10 (4194304 : BitVec 32)
+noncomputable def before : Reference.RiscV.Sail.State where
+  regs := Reference.RiscV.Sail.resetMachine.regs.insert .x10 (4194304 : BitVec 32)
     |>.insert .x11 (4194336 : BitVec 32) |>.insert .x12 (128 : BitVec 32)
   mem := (List.range 64).foldl (fun memory i => memory.insert (4194304 + i) (0 : BitVec 8))
     (Std.ExtHashMap.emptyWithCapacity)
   tags := ()
   cycleCount := 0
   sailOutput := #[]
+
+theorem airbender_before : Reference.RiscV.Sail.Configured before := by
+  configured_fixture [before]
 
 def data : Delegation.MemoryData babyBearModulus where
   setup := setup

@@ -86,8 +86,8 @@ private def data : Delegation.MemoryData babyBearModulus where
 private def cells : List Cell :=
   [.register 10, .ram 4194304, .ram 4194320, .ram 4194336, .ram 4194352,
     .register 11, .ram 4194368, .ram 4194372, .register 12]
-private def before : Reference.RiscV.Sail.State where
-  regs := (Std.ExtDHashMap.emptyWithCapacity).insert .x10 (4194304 : BitVec 32)
+private noncomputable def before : Reference.RiscV.Sail.State where
+  regs := Reference.RiscV.Sail.resetMachine.regs.insert .x10 (4194304 : BitVec 32)
     |>.insert .x11 (4194368 : BitVec 32) |>.insert .x12 (0 : BitVec 32)
   mem := (Std.ExtHashMap.emptyWithCapacity)
     |>.insert 4194304 (0 : BitVec 8)
@@ -117,6 +117,9 @@ private def before : Reference.RiscV.Sail.State where
   tags := ()
   cycleCount := 0
   sailOutput := #[]
+
+private theorem airbender_before : Reference.RiscV.Sail.Configured before := by
+  configured_fixture [before]
 
 private theorem accepted : Delegation.MemoryAccepted data := by
   constructor
@@ -235,7 +238,7 @@ private theorem sharedAccepted : Delegation.Caller.SharedMemoryAccepted sharedDa
 
 private theorem sharedInputs : Delegation.Caller.SharedOperationInputs sharedData before [] cells := by
   refine ⟨?_, rfl, ?_⟩
-  · refine ⟨⟨rfl, ?_, rfl⟩, initialized, by decide, ?_⟩
+  · refine ⟨⟨rfl, ?_, rfl, airbender_before⟩, initialized, by decide, ?_⟩
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
     · intro cell member
@@ -273,7 +276,7 @@ theorem shared_unissued_control_update : ∃ (events : List MemoryAccess) (after
   · have value : sink.word.toBitVec = (1 : BitVec 32) := by decide +kernel
     simpa only [value] using read
 
-private def mixedData : Delegation.Caller.RequestTrace babyBearModulus :=
+private noncomputable def mixedData : Delegation.Caller.RequestTrace babyBearModulus :=
   { sharedData with machine := { sharedMachine with rom :=
     ⟨ROM.table cells sharedMachine.initialMemory, Verification.subwordTable (ROM.words before)⟩ } }
 
@@ -291,7 +294,8 @@ private theorem mixedAccepted : Delegation.Caller.MixedMemoryAccepted mixedData 
 
 private theorem mixedInputs : Delegation.Caller.MixedMemoryInputs mixedData [] before [] [] cells :=
   ⟨⟨⟨sharedInputs.publicProgram.image, sharedInputs.publicProgram.initialClock,
-      sharedInputs.publicProgram.initialAligned⟩, sharedInputs.initialization,
+      sharedInputs.publicProgram.initialAligned, sharedInputs.publicProgram.configuration⟩,
+    sharedInputs.initialization,
     sharedInputs.distinct, sharedInputs.aligned⟩, rfl, rfl, rfl, rfl, sharedInputs.rounds⟩
 
 theorem mixed_unissued_worker_accepted : Delegation.Caller.MixedMemoryEffects mixedData before cells :=
@@ -343,7 +347,7 @@ theorem zero_worker_retained_before_request_window :
     have time : native.writeTime = 2 := by decide +kernel
     simp [time]
 
-private def unifiedData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+private noncomputable def unifiedData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
   machine := {
     rows := []
     rom := UnifiedReduced.Setup.table before
@@ -367,7 +371,8 @@ private theorem unifiedAccepted : UnifiedReduced.Caller.MixedMemoryAccepted unif
   · intro _ member; cases member
 
 private theorem unifiedInputs : UnifiedReduced.Caller.MixedMemoryInputs unifiedData [] before [] [] cells := by
-  refine ⟨⟨rfl, sharedInputs.publicProgram.initialClock, sharedInputs.publicProgram.initialAligned⟩,
+  refine ⟨⟨rfl, sharedInputs.publicProgram.initialClock, sharedInputs.publicProgram.initialAligned,
+      sharedInputs.publicProgram.configuration⟩,
     rfl, sharedInputs.initialization, sharedInputs.distinct, sharedInputs.aligned, rfl, rfl, ?_⟩
   intro actual member family
   have same : actual = native := List.mem_singleton.mp member
@@ -418,13 +423,16 @@ private def preparationAssignment (column : Nat) : ZMod babyBearModulus :=
       column = 129 ∨ column = 130 ∨ column = 131 ∨ column = 132 ∨ column = 133 then 1
   else 0
 private def preparationRow : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, preparationAssignment⟩
-private def preparationBefore : Reference.RiscV.Sail.State :=
+private noncomputable def preparationBefore : Reference.RiscV.Sail.State :=
   Reference.RiscV.Sail.wordWriteState before 0 0x00000613
+
+private theorem airbender_preparationBefore : Reference.RiscV.Sail.Configured preparationBefore := by
+  configured_fixture [preparationBefore, Reference.RiscV.Sail.wordWriteState, before]
 private def preparationCells : List Cell := .register 0 :: cells
 private def preparationEntry : UnifiedReduced.ProgramEntry :=
   ⟨0, 0x00000613, (UnifiedReduced.Caller.ControlLiteral.addi 0).instruction 12,
     ⟨.machine, 0, 0, 12, ⟨0, 0⟩, 1, 0⟩⟩
-private def preparationData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+private noncomputable def preparationData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
   machine := {
     rows := [preparationRow]
     rom := UnifiedReduced.Setup.table preparationBefore
@@ -526,7 +534,7 @@ private theorem preparationImage :
 
 private theorem preparationInputs :
     UnifiedReduced.Caller.MixedMemoryInputs preparationData [preparationEntry] preparationBefore [] [0] preparationCells := by
-  refine ⟨⟨rfl, ?_, by decide⟩, preparationProgram, preparationImage, by decide, ?_, rfl, rfl, ?_⟩
+  refine ⟨⟨rfl, ?_, by decide, airbender_preparationBefore⟩, preparationProgram, preparationImage, by decide, ?_, rfl, rfl, ?_⟩
   · change 4 < timestampBase ∧ 0 < timestampBase
     norm_num [timestampBase]
   · intro cell member
@@ -565,7 +573,7 @@ theorem preparation_reads_unissued_control_update :
 
 private def fabricatedPreparationAssignment (column : Nat) : ZMod babyBearModulus :=
   if column = 48 then 0 else preparationAssignment column
-private def fabricatedPreparationData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+private noncomputable def fabricatedPreparationData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
   { preparationData with machine := { preparationData.machine with
     rows := [⟨.machine, fabricatedPreparationAssignment⟩] } }
 

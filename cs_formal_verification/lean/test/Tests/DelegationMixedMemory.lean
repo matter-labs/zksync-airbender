@@ -9,9 +9,12 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 5000000
 
-private abbrev base := Tests.DelegationOperationEffects.sharedData
+private noncomputable abbrev base := Tests.DelegationOperationEffects.sharedData
 private abbrev cells := Tests.DelegationOperationEffects.sharedCells
-private def before : State := wordWriteState Tests.DelegationOperationEffects.before 4 0x00160613
+private noncomputable def before : State := wordWriteState Tests.DelegationOperationEffects.before 4 0x00160613
+
+private theorem airbender_before : Configured before := by
+  configured_fixture [before, wordWriteState, Tests.DelegationOperationEffects.before, Tests.BigintMemory.before]
 private def program : List PooledProgramEntry := [
   ⟨4, 0x00160613, .ITYPE (1, .Regidx 12, .Regidx 12, .ADDI),
     ⟨.addSub, 12, 0, 12, ⟨1, 0⟩, 1, 0⟩⟩]
@@ -27,14 +30,14 @@ private def arithmetic (value : Nat) : Nat → ZMod babyBearModulus
   | _ => 0
 private def ordinary (value : Nat) : Trace.Row babyBearModulus PooledFamily :=
   ⟨.addSub, arithmetic value⟩
-private def terminal (value : Nat) : List (MemoryToken babyBearModulus) :=
+private noncomputable def terminal (value : Nat) : List (MemoryToken babyBearModulus) :=
   base.machine.terminalMemory.map fun token =>
     if token.address = (Cell.register 0).addressCode then
       ⟨token.address, (9, 0), 0⟩
     else if token.address = (Cell.register 12).addressCode then
       ⟨token.address, (10, 0), Nat.pair (value + 1) 0⟩
     else token
-private def data (value : Nat) : Caller.RequestTrace babyBearModulus :=
+private noncomputable def data (value : Nat) : Caller.RequestTrace babyBearModulus :=
   { base with machine := { base.machine with
     rows := ordinary value :: base.machine.rows
     terminal := (ordinary value).finish
@@ -131,6 +134,7 @@ private theorem inputs : Caller.MixedMemoryInputs (data 0) program before [0] [4
         rfl
       · exact Tests.DelegationOperationEffects.sharedInputs.publicProgram.initialClock
       · exact Tests.DelegationOperationEffects.sharedInputs.publicProgram.initialAligned
+      · exact airbender_before
     · exact initialization
     · exact Tests.DelegationOperationEffects.sharedInputs.distinct
     · exact Tests.DelegationOperationEffects.sharedInputs.aligned

@@ -69,6 +69,7 @@ theorem accepted_row_fetched (rollover : Bool) :
       (before xorEntry.pc xorEntry.bits) := by
   apply Airbender.ShiftBinop.Proofs.fetched (by decide)
     (extraction xorEntry.pc xorEntry.bits xorEntry.instruction xorEntry.data (by decode_on_reset) (by rfl))
+    (airbender_before _ _)
     (Verification.holds_of_sublist (Tests.ShiftBinopTimestamp.constraints rollover)
       (List.sublist_append_left _ _))
   cases rollover <;> change ∃ i, _

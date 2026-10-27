@@ -29,7 +29,7 @@ private noncomputable def before (tag : Fin 6) (wrap : Bool) : State :=
   wordWriteState { Airbender.Reference.RiscV.Sail.resetMachine with regs :=
     (Airbender.Reference.RiscV.Sail.resetMachine.regs
       |>.insert .x1 (0 : BitVec 32) |>.insert .x2 (0xffffffff : BitVec 32)
-      |>.insert .PC (Branch.initial wrap).toBitVec |>.insert .misa (0 : BitVec 32)) }
+      |>.insert .PC (Branch.initial wrap).toBitVec) }
     (Branch.initial wrap).toBitVec.toNat (entry tag wrap).bits
 
 theorem airbender_before (tag : Fin 6) (wrap : Bool) : Airbender.Reference.RiscV.Sail.Configured (before tag wrap) := by
@@ -109,13 +109,17 @@ private theorem image (tag : Fin 6) (wrap : Bool) : initialImage (before tag wra
   simp only [initialImage, cells, seed, List.mapM_cons, List.mapM_nil, zero, one, two]
   rfl
 
+private theorem instruction_decoded (tag : Fin 6) (wrap : Bool) :
+    decodeOnReset (entry tag wrap).bits = some (entry tag wrap).instruction := by
+  fin_cases tag <;> cases wrap <;> decode_on_reset
+
 set_option maxHeartbeats 8000000 in
 private theorem program_image (tag : Fin 6) (wrap : Bool) :
     JumpBranchSlt.programImage (before tag wrap) [(Branch.initial wrap).toBitVec] =
       some [entry tag wrap] := by
   have bytes : (Cell.ram (Branch.initial wrap).toBitVec).read (before tag wrap) =
       .ok (entry tag wrap).bits (before tag wrap) := written_word_read _ _ _
-  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind]
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, instruction_decoded, bind, Option.bind]
   fin_cases tag <;> cases wrap <;> rfl
 
 private theorem query (tag : Fin 6) (wrap : Bool) :
@@ -165,7 +169,7 @@ theorem actual_branch_retirement (tag : Fin 6) (wrap : Bool)
         fin_cases tag <;> cases wrap <;> decide)
     (by simp [trace, row]) (by simp) (query tag wrap) (opcode tag)
     (if wrap then 8 else 8188) 1 2 rfl native (.nil _)
-    (by refine ⟨0, ?_⟩; simp [before, wordWriteState])
+    ⟨Configuration.resetState.regs .misa, by simp [before, wordWriteState, Std.ExtDHashMap.get?_insert, reset_machine_get]⟩
   have written := JumpBranchSlt.Proofs.register_write (by decide)
     (trace tag wrap rom).memoryEpoch (query tag wrap) native
   change run (SailRV32.Functions.wX_bits (.Regidx 0) _) (before tag wrap) = .ok () after at written
@@ -184,7 +188,7 @@ theorem actual_branch_retirement (tag : Fin 6) (wrap : Bool)
 private def pooledProgram (tag : Fin 6) (wrap : Bool) : List PooledProgramEntry :=
   [(entry tag wrap).mapFamily (fun _ => .jumpBranchSlt)]
 
-private def pooled (tag : Fin 6) (wrap : Bool) : PooledTrace babyBearModulus where
+private noncomputable def pooled (tag : Fin 6) (wrap : Bool) : PooledTrace babyBearModulus where
   rows := [⟨.jumpBranchSlt, (row tag wrap).assignment⟩]
   rom := ⟨ROM.table cells seed, Verification.subwordTable (ROM.words (before tag wrap))⟩
   initial := (trace tag wrap (ROM.table cells seed)).initial
@@ -211,7 +215,7 @@ private theorem pooledImage (tag : Fin 6) (wrap : Bool) :
   have bytes := source.bytes
   change (Cell.ram (Branch.initial wrap).toBitVec).read (before tag wrap) = .ok (entry tag wrap).bits (before tag wrap) at bytes
   simp only [pooledProgramImage, programImageWith, List.mapM_cons, List.mapM_nil,
-    programEntryWith, bytes, source.decoded, bind, Option.bind]
+    programEntryWith, bytes, instruction_decoded, bind, Option.bind]
   fin_cases tag <;> cases wrap <;> rfl
 
 private theorem pooledDecoded (tag : Fin 6) (wrap : Bool) : PooledDecoded (pooled tag wrap) (pooledProgram tag wrap) := by
@@ -223,14 +227,14 @@ private theorem pooledDecoded (tag : Fin 6) (wrap : Bool) : PooledDecoded (poole
 
 private theorem pooledInputs (tag : Fin 6) (wrap : Bool) :
     NativeInputs pooledDecoderFields (pooled tag wrap) (before tag wrap) cells (pooledProgram tag wrap) := by
-  refine ⟨by decide, ?_, image tag wrap, ?_, ⟨[(Branch.initial wrap).toBitVec], pooledImage tag wrap⟩, ?_⟩
+  refine ⟨by decide, ?_, image tag wrap, ?_, ⟨[(Branch.initial wrap).toBitVec], pooledImage tag wrap⟩, ?_, airbender_before tag wrap⟩
   · intro cell member
     simp [cells] at member
     rcases member with rfl | rfl | rfl <;> trivial
   · refine ⟨(4, 0), ?_⟩
     have read : run (SailRV32.Functions.get_arch_pc ()) (before tag wrap) = .ok (Branch.initial wrap).toBitVec (before tag wrap) := by
       apply read_register
-      simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
+      simp [before, wordWriteState]
     rw [initialState, read]
     fin_cases tag <;> cases wrap <;> rfl
   · exact ⟨(boundary tag wrap (ROM.table cells seed)).initial,
@@ -269,7 +273,7 @@ theorem per_circuit_branch_soundness (tag : Fin 6) (wrap : Bool) :
       · fin_cases tag <;> cases wrap <;> decide
       · fin_cases tag <;> cases wrap <;> rfl
   have assumptions : JumpBranchSlt.Branch.InterfaceAssumptions (pooled tag wrap) (before tag wrap) cells
-      (pooledProgram tag wrap) := ⟨sharedInputs tag wrap, by refine ⟨0, ?_⟩; simp [before, wordWriteState]⟩
+      (pooledProgram tag wrap) := ⟨sharedInputs tag wrap, airbender_before tag wrap⟩
   have relation : (JumpBranchSlt.Branch.circuitModel (pooled tag wrap) (before tag wrap) cells
       (pooledProgram tag wrap)).relation input output ((row tag wrap).assignment) :=
     ⟨⟨ pooledAccepted tag wrap, pooledDecoded tag wrap, member⟩, mapping⟩

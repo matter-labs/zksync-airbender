@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
 
 namespace Tests.UnifiedMemory
@@ -80,22 +81,16 @@ private def cells (store : Bool) : List Cell :=
   [.register 1, if store then .register 2 else .ram 4194304,
     if store then .ram 4194304 else .register 2]
 
-private def attributes : SailRV32.PMA :=
-  { (default : SailRV32.PMA) with readable := true, writable := true, executable := true }
-
-private def before (store : Bool) : State :=
-  { (default : State) with
-    regs := (Std.ExtDHashMap.emptyWithCapacity : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
-      |>.insert .mstatus 0 |>.insert .cur_privilege .Machine |>.insert .misa 0x40000100
-      |>.insert .senvcfg 0 |>.insert .menvcfg 0x10
-      |>.insert .pmpcfg_n (Vector.replicate 64 0) |>.insert .pmpaddr_n (Vector.replicate 64 0)
-      |>.insert .pma_regions [rv32Region attributes] |>.insert .mhartid 7 |>.insert .htif_tohost_base none
-      |>.insert .PC 0 |>.insert .x1 4194304 |>.insert .x2 (if store then 0xbeef1234 else 0)
+private noncomputable def before (store : Bool) : State :=
+  { resetMachine with
+    regs := resetMachine.regs |>.insert .PC 0 |>.insert .x1 4194304 |>.insert .x2 (if store then 0xbeef1234 else 0)
     mem := (Std.ExtHashMap.emptyWithCapacity : Std.ExtHashMap Nat (BitVec 8))
       |>.insert 4194304 (if store then 0 else 0x34) |>.insert 4194305 (if store then 0 else 0x12)
       |>.insert 4194306 (if store then 0 else 0xef) |>.insert 4194307 (if store then 0 else 0xbe)
       |>.insert 0 (if store then 0x23 else 0x03) |>.insert 1 (if store then 0xa0 else 0xa1)
       |>.insert 2 (if store then 0x20 else 0) |>.insert 3 0 }
+theorem airbender_before (store : Bool) : Configured (before store) := by
+  configured_fixture [before]
 
 
 private def entry (store : Bool) : UnifiedReduced.ProgramEntry :=
@@ -110,8 +105,10 @@ private theorem program_image (store : Bool) :
     cases store <;> simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
       get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
       before, entry, Std.ExtHashMap.getElem_insert]
-  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind, pure]
-  cases store <;> with_unfolding_all rfl
+  have decoded : decodeOnReset (entry store).bits = some (entry store).instruction := by
+    cases store <;> decode_on_reset
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind, pure]
+  cases store <;> rfl
 
 private theorem public_image (store : Bool) :
     initialImage (before store) (cells store) = some (trace store).initialMemory := by
@@ -161,22 +158,9 @@ private theorem public_inputs (store : Bool) :
     cases store <;> rfl
   · exact ⟨[0], program_image store⟩
   · exact boundary store
+  · exact airbender_before store
 
-set_option backward.isDefEq.respectTransparency false in
-private theorem configuration (store : Bool) : Configured (before store) := by
-  constructor
-  · simp [before, Std.ExtDHashMap.get?_insert]
-  · simp [before, Std.ExtDHashMap.get?_insert]
-  · exact ⟨0x40000100, by simp [before, Std.ExtDHashMap.get?_insert]⟩
-  · exact ⟨0, by simp [before, Std.ExtDHashMap.get?_insert]⟩
-  · exact ⟨0x10, by simp [before, Std.ExtDHashMap.get?_insert]⟩
-  · simp [before, Std.ExtDHashMap.get?_insert]
-  · exact ⟨Vector.replicate 64 0, by simp [before, Std.ExtDHashMap.get?_insert]⟩
-  · exact ⟨attributes, by simp [before, Std.ExtDHashMap.get?_insert], rfl, rfl, rfl⟩
-  · exact ⟨7, by simp [before, Std.ExtDHashMap.get?_insert]⟩
-  · simp [before, Std.ExtDHashMap.get?_insert]
-
-private def input (store : Bool) : Airbender.WordMemory.Input :=
+private noncomputable def input (store : Bool) : Airbender.WordMemory.Input :=
   ⟨store, ⟨0, 64⟩, ⟨0, 0⟩, ⟨0x1234, 0xbeef⟩, ⟨0, 0⟩,
     .Regidx 1, .Regidx 2, if store then .Regidx 0 else .Regidx 2, 0, Trace.retiredState (before store) 0⟩
 private def output : Airbender.WordMemory.Output := ⟨⟨0, 64⟩, ⟨0x1234, 0xbeef⟩, ⟨4, 0⟩⟩
@@ -194,7 +178,7 @@ theorem ram_soundness (store : Bool) : Airbender.WordMemory.spec (input store) o
   refine ⟨?_, ⟨accepted store, decoded store, by simp [trace, row]⟩, ?_⟩
   · constructor
     · exact public_inputs store
-    · exact configuration store
+    · exact airbender_before store
     · intro address member
       cases store <;> simp [cells] at member
       all_goals subst address

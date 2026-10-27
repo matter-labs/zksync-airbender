@@ -53,10 +53,9 @@ private def instructionBits (kind : Fin 7) : BitVec 32 :=
   if kind.val = 0 then 0x002091b3 else if kind.val = 1 then 0x0020d1b3 else if kind.val = 2 then 0x4020d1b3
   else if kind.val = 3 then 0x00709193 else if kind.val = 4 then 0x0070d193 else if kind.val = 5 then 0x4070d193
   else 0x6980d193
-private def before (kind : Fin 7) : State :=
-  { (default : State) with
-    regs := (Std.ExtDHashMap.emptyWithCapacity : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
-      |>.insert .misa 0x40000000 |>.insert .PC 0 |>.insert .x1 0xabcd1234 |>.insert .x2 0x13579b1f |>.insert .x3 0
+private noncomputable def before (kind : Fin 7) : State :=
+  { resetMachine with
+    regs := resetMachine.regs |>.insert .PC 0 |>.insert .x1 0xabcd1234 |>.insert .x2 0x13579b1f |>.insert .x3 0
     mem := (Std.ExtHashMap.emptyWithCapacity : Std.ExtHashMap Nat (BitVec 8))
       |>.insert 0 ((instructionBits kind).extractLsb' 0 8)
       |>.insert 1 ((instructionBits kind).extractLsb' 8 8)
@@ -114,7 +113,9 @@ private theorem constraints (kind : Fin 7) : FlatOperation.ConstraintsHoldFlat
     all_goals simp [Expression.eval, Verification.environment, assignment]
     all_goals decide
 
-private def trace (kind : Fin 7) : UnifiedTrace babyBearModulus where
+theorem airbender_before (kind : Fin 7) : Configured (before kind) := by
+  configured_fixture [before]
+private noncomputable def trace (kind : Fin 7) : UnifiedTrace babyBearModulus where
   rows := [row kind]
   rom := UnifiedReduced.Setup.table (before kind)
   initial := (row kind).start
@@ -159,11 +160,8 @@ private theorem program_image (kind : Fin 7) : UnifiedReduced.programImage (befo
     fin_cases kind <;> simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
       get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
       before, instructionBits, Std.ExtHashMap.getElem_insert]
-  have isa : run (SailRV32.readReg .misa) (before kind) = .ok (0x40000000 : BitVec 32) (before kind) := by
-    apply read_register
-    simp [before, Std.ExtDHashMap.get?_insert]
-  have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (instructionBits kind) = some (entry kind).instruction :=
-    by decode_on_reset
+  have decoded : decodeOnReset (instructionBits kind) = some (entry kind).instruction := by
+    fin_cases kind <;> decode_on_reset
   simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind, pure]
   fin_cases kind <;> rfl
 
@@ -191,13 +189,14 @@ private theorem public_inputs (kind : Fin 7) :
     fin_cases kind <;> rfl
   · exact ⟨[0], program_image kind⟩
   · exact boundary kind
+  · exact airbender_before kind
 
-private def input (kind : Fin 7) : ShiftBinop.Input :=
+private noncomputable def input (kind : Fin 7) : ShiftBinop.Input :=
   ⟨operation kind, immediateForm kind, 0xabcd1234,
     (if immediateForm kind then SailRV32.Functions.sign_extend (m := 32) (payload kind) else rightWord kind),
     ⟨0, 0⟩, .Regidx 1, .Regidx (if unusedRight kind then 0 else 2), .Regidx 3, payload kind,
     Trace.retiredState (before kind) 0⟩
-private def output (kind : Fin 7) : Output := ⟨Word.ofBitVec (outputWord kind), ⟨4, 0⟩⟩
+private noncomputable def output (kind : Fin 7) : Output := ⟨Word.ofBitVec (outputWord kind), ⟨4, 0⟩⟩
 
 private theorem decoded (kind : Fin 7) : UnifiedReduced.Decoded (trace kind) [entry kind] := by
   intro current member

@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
 import Slop.BabyBear
 
@@ -41,10 +42,9 @@ private def assignment (kind : Fin 6) : Nat → ZMod babyBearModulus
 private def instructionBits (kind : Fin 6) : BitVec 32 :=
   BitVec.ofNat 32 ((immediate kind).toNat * 1048576 +
     if kind.val % 3 = 0 then 0x0c193 else if kind.val % 3 = 1 then 0x0e193 else 0x0f193)
-private def before (kind : Fin 6) : State :=
-  { (default : State) with
-    regs := (Std.ExtDHashMap.emptyWithCapacity : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
-      |>.insert .PC 0 |>.insert .x1 0xabcd1234 |>.insert .x3 0
+private noncomputable def before (kind : Fin 6) : State :=
+  { resetMachine with
+    regs := resetMachine.regs |>.insert .PC 0 |>.insert .x1 0xabcd1234 |>.insert .x3 0
     mem := (Std.ExtHashMap.emptyWithCapacity : Std.ExtHashMap Nat (BitVec 8))
       |>.insert 0 ((instructionBits kind).extractLsb' 0 8)
       |>.insert 1 ((instructionBits kind).extractLsb' 8 8)
@@ -97,7 +97,9 @@ private theorem constraints (kind : Fin 6) : FlatOperation.ConstraintsHoldFlat
     all_goals simp [Expression.eval, Verification.environment, assignment]
     all_goals decide
 
-private def trace (kind : Fin 6) : UnifiedTrace babyBearModulus where
+theorem airbender_before (kind : Fin 6) : Configured (before kind) := by
+  configured_fixture [before]
+private noncomputable def trace (kind : Fin 6) : UnifiedTrace babyBearModulus where
   rows := [row kind]
   rom := UnifiedReduced.Setup.table (before kind)
   initial := (row kind).start
@@ -141,8 +143,10 @@ private theorem program_image (kind : Fin 6) : UnifiedReduced.programImage (befo
     fin_cases kind <;> simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
       get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
       before, instructionBits, immediate, Std.ExtHashMap.getElem_insert]
-  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind, pure]
-  fin_cases kind <;> with_unfolding_all rfl
+  have decoded : decodeOnReset (instructionBits kind) = some (entry kind).instruction := by
+    fin_cases kind <;> decode_on_reset
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind, pure]
+  fin_cases kind <;> rfl
 
 private theorem boundary (kind : Fin 6) : ClockBoundary (trace kind) := by
   constructor
@@ -168,11 +172,12 @@ private theorem public_inputs (kind : Fin 6) :
     fin_cases kind <;> rfl
   · exact ⟨[0], program_image kind⟩
   · exact boundary kind
+  · exact airbender_before kind
 
-private def input (kind : Fin 6) : ShiftBinop.Input :=
+private noncomputable def input (kind : Fin 6) : ShiftBinop.Input :=
   ⟨operation kind, true, 0xabcd1234, operand kind, ⟨0, 0⟩, .Regidx 1, .Regidx 0, .Regidx 3, immediate kind,
     Trace.retiredState (before kind) 0⟩
-private def output (kind : Fin 6) : Output := ⟨Word.ofBitVec (outputWord kind), ⟨4, 0⟩⟩
+private noncomputable def output (kind : Fin 6) : Output := ⟨Word.ofBitVec (outputWord kind), ⟨4, 0⟩⟩
 
 private theorem decoded (kind : Fin 6) : UnifiedReduced.Decoded (trace kind) [entry kind] := by
   intro current member

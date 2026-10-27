@@ -38,8 +38,12 @@ theorem extracted : programImage before [0, 4] = some program := by
   have loadBytes : (Cell.ram 4).read before = .ok 0x0040a103 before := by
     simp [Cell.read, readBytes, readByte, EStateM.run, get, getThe, MonadStateOf.get,
       bind, pure, EStateM.bind, EStateM.get, EStateM.pure, before, Std.ExtHashMap.getElem_insert]
+  have addDecoded : Airbender.Reference.RiscV.Sail.decodeOnReset 0x002081b3 = some addEntry.instruction := by
+    decode_on_reset
+  have loadDecoded : Airbender.Reference.RiscV.Sail.decodeOnReset 0x0040a103 = some loadEntry.instruction := by
+    decode_on_reset
   simp only [List.mapM_cons, List.mapM_nil, programEntryWith, addBytes, loadBytes,
-    bind, Option.bind]
+    addDecoded, loadDecoded, bind, Option.bind]
   rfl
 
 theorem missing_bytes : programImage before [8] = none := by
@@ -88,7 +92,8 @@ theorem decoder_on_reset : Airbender.Reference.RiscV.Sail.decodeOnReset addEntry
 theorem fetched_after_ram_store :
     addEntry.Source (Reference.RiscV.Sail.wordWriteState before 4194304 0xabcdef12) := by
   have source := Proofs.program_sources extracted addEntry (by simp [program])
-  refine ⟨?_, source.decoded, source.fields⟩
+  refine ⟨?_, Reference.RiscV.Sail.decode_on_reset_run (airbender_before.with_mem _) decoder_on_reset,
+    source.fields⟩
   exact Reference.RiscV.Sail.written_word_disjoint 4194304 0xabcdef12 (by decide) source.bytes
 
 end Tests.TraceProgram

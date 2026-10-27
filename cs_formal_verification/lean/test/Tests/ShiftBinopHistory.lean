@@ -194,6 +194,7 @@ theorem actual_register_trace
     initialPC := ⟨(4, 0), initialPC⟩
     programImage := ⟨[65532], program_image⟩
     clocks := boundary rom
+    configuration := airbender_before
   }
   obtain ⟨after, execution, pc, _⟩ := Airbender.ShiftBinop.trace_soundness
     (by decide) (by decide) (by decide) inputs (accepted rom) (decoded rom)
@@ -202,7 +203,7 @@ theorem actual_register_trace
 private def pooledProgram : List PooledProgramEntry :=
   [entry.mapFamily (fun _ => .shiftBinop)]
 
-private def pooled : PooledTrace babyBearModulus where
+private noncomputable def pooled : PooledTrace babyBearModulus where
   rows := [⟨.shiftBinop, row.assignment⟩]
   rom := ⟨ROM.table cells seed, Verification.subwordTable (ROM.words before)⟩
   initial := (trace (ROM.table cells seed)).initial
@@ -227,8 +228,9 @@ private theorem pooledImage : pooledProgramImage before [65532] = some pooledPro
   have source := Proofs.run_program_sources program_image entry (by simp)
   have bytes := source.bytes
   change (Cell.ram 65532).read before = .ok entry.bits before at bytes
+  have decoded : decodeOnReset entry.bits = some entry.instruction := by decode_on_reset
   simp only [pooledProgramImage, programImageWith, List.mapM_cons, List.mapM_nil,
-    programEntryWith, bytes, source.decoded, bind, Option.bind]
+    programEntryWith, bytes, decoded, bind, Option.bind]
   rfl
 
 private theorem pooledDecoded : PooledDecoded pooled pooledProgram := by
@@ -239,7 +241,7 @@ private theorem pooledDecoded : PooledDecoded pooled pooledProgram := by
   exact ⟨0, by decide⟩
 
 private theorem pooledInputs : NativeInputs pooledDecoderFields pooled before cells pooledProgram := by
-  refine ⟨by decide, ?_, image, ?_, ⟨[65532], pooledImage⟩, ?_⟩
+  refine ⟨by decide, ?_, image, ?_, ⟨[65532], pooledImage⟩, ?_, ?_⟩
   · intro cell member
     simp [cells] at member
     rcases member with rfl | rfl <;> trivial
@@ -251,6 +253,7 @@ private theorem pooledInputs : NativeInputs pooledDecoderFields pooled before ce
     rfl
   · exact ⟨(boundary (ROM.table cells seed)).initial,
       (boundary (ROM.table cells seed)).aligned, (boundary (ROM.table cells seed)).memory⟩
+  · exact airbender_before
 
 /-- The per-circuit XOR claim is inhabited by actual public decoding and an
     accepted aliased byte-port history, with no assumed ranges or reads. -/

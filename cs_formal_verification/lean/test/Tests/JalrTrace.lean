@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.JumpSailHistory
 import Slop.JumpBranchSlt.Claims
 import Slop.JumpBranchSlt.Execution
@@ -21,13 +22,12 @@ private def entry : JumpBranchSlt.ProgramEntry :=
   ⟨0, 0xffc080e7, .JALR (0xffc, .Regidx 1, .Regidx 1),
     ⟨(), 1, 0, 1, ⟨65532, 65535⟩, 2, 0⟩⟩
 
-private def before : State :=
-  wordWriteState { (default : State) with regs :=
-    ((Std.ExtDHashMap.emptyWithCapacity :
-      Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
-      |>.insert .x1 (5 : BitVec 32) |>.insert .PC 0
-      |>.insert .misa (0 : BitVec 32) |>.insert .cur_privilege .Machine
-      |>.insert .mseccfg (0 : BitVec 64)) } 0 entry.bits
+private noncomputable def before : State :=
+  wordWriteState { resetMachine with regs :=
+    (resetMachine.regs |>.insert .x1 (5 : BitVec 32) |>.insert .PC 0) } 0 entry.bits
+
+theorem airbender_before : Configured before := by
+  configured_fixture [before, wordWriteState]
 
 private def cells : List Cell := [.register 0, .register 1]
 private def seed : List (MemoryToken babyBearModulus) :=
@@ -112,9 +112,12 @@ private theorem image : initialImage before cells = some seed := by
   simp only [initialImage, cells, seed, List.mapM_cons, List.mapM_nil, zero, one]
   rfl
 
+private theorem instruction_decoded : decodeOnReset entry.bits = some entry.instruction := by
+  decode_on_reset
+
 private theorem program_image : JumpBranchSlt.programImage before [0] = some [entry] := by
   have bytes : (Cell.ram 0).read before = .ok entry.bits before := written_word_read _ 0 entry.bits
-  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind]
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, instruction_decoded, bind, Option.bind]
   rfl
 
 private theorem query : JumpBranchSlt.decoderQuery assignment = entry.query := by decide
@@ -154,11 +157,8 @@ theorem actual_jalr_retirement (rom : Table (ZMod babyBearModulus) (fields 9)) :
     (by change (⟨0, 0⟩ : Word).Bounded; constructor <;> decide)
     (by change 0 % 4 = 0; decide)
     (by simp [trace, row]) (by simp) query (.jalr 0xffc) 1 1 rfl native (.nil before)
-    (by refine ⟨0, ?_⟩; simp [before, wordWriteState, Std.ExtDHashMap.get?_insert])
-    (by intro _
-        refine ⟨?_, 0, ?_, by decide⟩
-        · simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
-        · simp [before, wordWriteState])
+    airbender_before.isa
+    (fun _ => ⟨airbender_before.privilege, airbender_before.landingPad⟩)
   have written := JumpBranchSlt.Proofs.register_write (by decide) (trace rom).memoryEpoch query native
   have code : memoryWord (JumpBranchSlt.importedConstraintsMemoryPorts[2].writeCode assignment) =
       (4 : BitVec 32) := by
@@ -183,7 +183,7 @@ theorem actual_jalr_trace
   have initialPC : initialState before (4, 0) = some (trace rom).initial := by
     have read : run (SailRV32.Functions.get_arch_pc ()) before = .ok 0 before := by
       apply read_register
-      simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
+      simp [before, wordWriteState]
     rw [initialState, read]
     rfl
   have inputs : JumpBranchSlt.ExecutionBoundary (trace rom) before cells [entry] := {
@@ -195,11 +195,7 @@ theorem actual_jalr_trace
     terminalCanonical := by change (⟨0, 0⟩ : Word).Bounded; constructor <;> decide
     programImage := ⟨[0], program_image⟩
     clocks := boundary rom
-    misa := by refine ⟨0, ?_⟩; simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
-    indirect := by
-      refine ⟨?_, 0, ?_, by decide⟩
-      · simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
-      · simp [before, wordWriteState]
+    configuration := airbender_before
   }
   obtain ⟨after, execution, pc, _⟩ := JumpBranchSlt.Proofs.native_trace_execution
     (by decide) (by decide) inputs (accepted rom) (decoded rom)
@@ -208,7 +204,7 @@ theorem actual_jalr_trace
 private def pooledProgram  : List PooledProgramEntry :=
   [entry.mapFamily (fun _ => .jumpBranchSlt)]
 
-private def pooled  : PooledTrace babyBearModulus where
+private noncomputable def pooled  : PooledTrace babyBearModulus where
   rows := [⟨.jumpBranchSlt, row.assignment⟩]
   rom := ⟨ROM.table cells seed, Verification.subwordTable (ROM.words before)⟩
   initial := (trace (ROM.table cells seed)).initial
@@ -235,7 +231,7 @@ private theorem pooledImage  :
   have bytes := source.bytes
   change (Cell.ram 0).read before = .ok entry.bits before at bytes
   simp only [pooledProgramImage, programImageWith, List.mapM_cons, List.mapM_nil,
-    programEntryWith, bytes, source.decoded, bind, Option.bind]
+    programEntryWith, bytes, instruction_decoded, bind, Option.bind]
   rfl
 
 private theorem pooledDecoded  : PooledDecoded (pooled) (pooledProgram) := by
@@ -247,14 +243,14 @@ private theorem pooledDecoded  : PooledDecoded (pooled) (pooledProgram) := by
 
 private theorem pooledInputs  :
     NativeInputs pooledDecoderFields (pooled) before cells (pooledProgram) := by
-  refine ⟨by decide, ?_, image, ?_, ⟨[0], pooledImage⟩, ?_⟩
+  refine ⟨by decide, ?_, image, ?_, ⟨[0], pooledImage⟩, ?_, airbender_before⟩
   · intro cell member
     simp [cells] at member
     rcases member with rfl | rfl <;> trivial
   · refine ⟨(4, 0), ?_⟩
     have read : run (SailRV32.Functions.get_arch_pc ()) before = .ok 0 before := by
       apply read_register
-      simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
+      simp [before, wordWriteState]
     rw [initialState, read]
     rfl
   · exact ⟨(boundary (ROM.table cells seed)).initial,
@@ -295,12 +291,7 @@ theorem per_circuit_jalr_soundness  :
   have assumptions : JumpBranchSlt.Jump.InterfaceAssumptions (pooled) before cells
       (pooledProgram) input output (row.assignment) := {
     toTraceInputs := sharedInputs
-    isa := by refine ⟨0, ?_⟩; simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
-    landingPad := by
-      intro _
-      refine ⟨?_, 0, ?_, by decide⟩
-      · simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
-      · simp [before, wordWriteState]
+    configuration := airbender_before
   }
   have core := Verification.holds_of_sublist (constraints)
     (List.sublist_append_left JumpBranchSlt.importedConstraints JumpBranchSlt.importedConstraintsTimestampLookups)

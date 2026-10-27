@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
 import Slop.BabyBear
 
@@ -27,15 +28,15 @@ private def assignment (indirect : Bool) : Nat → ZMod babyBearModulus
 
 private def row (indirect : Bool) : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment indirect⟩
 private def cells : List Cell := [.register 0, .register 1]
-private def before (indirect : Bool) : State :=
-  { (default : State) with
-    regs := (Std.ExtDHashMap.emptyWithCapacity : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
-      |>.insert .PC 0 |>.insert .x1 (if indirect then 9 else 0)
-      |>.insert .misa 0x40000100 |>.insert .cur_privilege .Machine |>.insert .mseccfg 0
+private noncomputable def before (indirect : Bool) : State :=
+  { resetMachine with
+    regs := resetMachine.regs |>.insert .PC 0 |>.insert .x1 (if indirect then 9 else 0)
     mem := (Std.ExtHashMap.emptyWithCapacity : Std.ExtHashMap Nat (BitVec 8))
       |>.insert 0 (if indirect then 0xe7 else 0xef) |>.insert 1 (if indirect then 0x80 else 0)
       |>.insert 2 0x40 |>.insert 3 0 }
-private def trace (indirect : Bool) : UnifiedTrace babyBearModulus where
+theorem airbender_before (indirect : Bool) : Configured (before indirect) := by
+  configured_fixture [before]
+private noncomputable def trace (indirect : Bool) : UnifiedTrace babyBearModulus where
   rows := [row indirect]
   rom := UnifiedReduced.Setup.table (before indirect)
   initial := (row indirect).start
@@ -89,7 +90,7 @@ private theorem public_image (indirect : Bool) :
   have x0 : (Cell.register 0).read (before indirect) = .ok 0 (before indirect) := rfl
   have x1 : (Cell.register 1).read (before indirect) = .ok (if indirect then 9 else 0) (before indirect) := by
     apply read_register
-    simp [before, Std.ExtDHashMap.get?_insert]
+    simp [before]
   simp only [initialImage, cells, List.mapM_cons, List.mapM_nil, x0, x1, bind, Option.bind]
   cases indirect <;> rfl
 
@@ -98,12 +99,14 @@ private theorem program_image (indirect : Bool) :
   have bytes : (Cell.ram 0).read (before indirect) = .ok (entry indirect).bits (before indirect) := by
     cases indirect <;> simp [Cell.read, readBytes, readByte, EStateM.run, get, getThe, MonadStateOf.get,
       bind, pure, EStateM.bind, EStateM.get, EStateM.pure, before, entry, Std.ExtHashMap.getElem_insert]
-  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind, pure]
-  cases indirect <;> with_unfolding_all rfl
+  have decoded : decodeOnReset (entry indirect).bits = some (entry indirect).instruction := by
+    cases indirect <;> decode_on_reset
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind, pure]
+  cases indirect <;> rfl
 
 private theorem inputs (indirect : Bool) :
     NativeInputs UnifiedReduced.decoderFields (trace indirect) (before indirect) cells [entry indirect] := by
-  refine ⟨by decide, ?_, public_image indirect, ⟨⟨4, 0⟩, ?_⟩, ⟨[0], program_image indirect⟩, ?_⟩
+  refine ⟨by decide, ?_, public_image indirect, ⟨⟨4, 0⟩, ?_⟩, ⟨[0], program_image indirect⟩, ?_, airbender_before indirect⟩
   · intro cell member
     simp [cells] at member
     rcases member with rfl | rfl <;> trivial
@@ -127,25 +130,21 @@ private theorem decoded (indirect : Bool) : UnifiedReduced.Decoded (trace indire
   change ∃ i : Fin 1, _
   exact ⟨0, by cases indirect <;> decide⟩
 
-private def input (indirect : Bool) : UnifiedReduced.Jump.Input :=
+private noncomputable def input (indirect : Bool) : UnifiedReduced.Jump.Input :=
   ⟨if indirect then .jalr 4 else .jal 4, ⟨if indirect then 9 else 0, 0⟩, ⟨4, 0⟩, ⟨0, 0⟩,
     .Regidx 1, .Regidx 1, Trace.retiredState (before indirect) 0⟩
-private def output (indirect : Bool) : Output := ⟨⟨4, 0⟩, ⟨if indirect then 12 else 4, 0⟩⟩
+private noncomputable def output (indirect : Bool) : Output := ⟨⟨4, 0⟩, ⟨if indirect then 12 else 4, 0⟩⟩
 
 theorem sail_jumps (indirect : Bool) : JumpBranchSlt.Jump.spec (input indirect) (output indirect) := by
   apply UnifiedReduced.Jump.soundness (by decide) (by decide) (trace indirect)
     (before indirect) cells [entry indirect] (input indirect) (output indirect) (assignment indirect)
-  refine ⟨⟨inputs indirect, rfl, ?_, ?_, ?_⟩,
+  refine ⟨⟨inputs indirect, rfl, ?_, airbender_before indirect⟩,
     ⟨accepted indirect, decoded indirect, by simp [trace, row]⟩, ?_⟩
   · intro actual member
     have same := List.mem_singleton.mp member
     subst actual
     change (0 : Nat) % 4 = 0
     decide
-  · exact ⟨0x40000100, by simp [before, Std.ExtDHashMap.get?_insert]⟩
-  · intro _
-    exact ⟨by simp [before, Std.ExtDHashMap.get?_insert], 0,
-      by simp [before], rfl⟩
   · constructor
     · cases indirect <;> constructor
       all_goals rfl

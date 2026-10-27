@@ -9,7 +9,7 @@ set_option maxHeartbeats 2000000
 
 -- LW x1,0(x0), reading its own public ROM instruction word. Every native
 -- initialization slot and the ROM permutation read/write value are zero.
-private def before : State :=
+private noncomputable def before : State :=
   { Tests.TraceExecution.before with
     regs := Tests.TraceExecution.before.regs.insert .x1 (0 : BitVec 32)
     mem := Tests.TraceExecution.before.mem.insert 0 (0x83 : BitVec 8)
@@ -113,7 +113,9 @@ private theorem inputs : NativeBootBoundary trace before cells [entry] := by
     subst address
     unfold OrdinaryWordAddress
     decide
-  · simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes,
+  · have decoded : decodeOnReset 0x2083 = some (.LOAD (0, .Regidx 0, .Regidx 1, false, 4)) := by
+      decode_on_reset
+    simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded,
       bind, Option.bind]
     rfl
   · intro actual member

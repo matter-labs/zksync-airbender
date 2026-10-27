@@ -61,6 +61,7 @@ theorem accepted_row_fetched (rollover : Bool) :
       (before entry.pc entry.bits) := by
   apply Airbender.SubwordMemory.Proofs.fetched (by decide)
     (extraction entry.pc entry.bits entry.instruction entry.data (by decode_on_reset) (by rfl))
+    (airbender_before _ _)
     (Verification.holds_of_sublist (Tests.SubwordMemoryTimestamp.constraints rollover)
       (List.sublist_append_left _ _))
   cases rollover <;> change ∃ i, _

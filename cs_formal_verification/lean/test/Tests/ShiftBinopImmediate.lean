@@ -212,6 +212,7 @@ theorem actual_immediate_trace
     initialPC := ⟨(4, 0), initialPC⟩
     programImage := ⟨[65532], program_image⟩
     clocks := boundary rom
+    configuration := airbender_before
   }
   obtain ⟨after, execution, pc, _⟩ := Airbender.ShiftBinop.trace_soundness
     (by decide) (by decide) (by decide) inputs (accepted rom) (decoded rom)

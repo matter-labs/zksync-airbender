@@ -19,14 +19,17 @@ private def high (mode : Fin 3) : Nat := if mode.val = 1 then 8 else 0
 private def entry (mode : Fin 3) : UnifiedReduced.ProgramEntry :=
   ⟨0, bits mode, (literal mode).instruction (register mode),
     ⟨.machine, 0, 0, register mode, ⟨low mode, high mode⟩, 1, 0⟩⟩
-private def initialState : State where
-  regs := (Std.ExtDHashMap.emptyWithCapacity).insert .x12 (65537 : BitVec 32)
+private noncomputable def initialState : State where
+  regs := resetMachine.regs.insert .x12 (65537 : BitVec 32)
     |>.insert .x10 (65537 : BitVec 32)
   mem := Std.ExtHashMap.emptyWithCapacity
   tags := ()
   cycleCount := 0
   sailOutput := #[]
-private def before (mode : Fin 3) : State := wordWriteState initialState 0 (bits mode)
+private noncomputable def before (mode : Fin 3) : State := wordWriteState initialState 0 (bits mode)
+
+private theorem airbender_before (mode : Fin 3) : Configured (before mode) := by
+  configured_fixture [before, wordWriteState, initialState]
 private def cells (mode : Fin 3) : List Cell := [.register 0, .register (register mode)]
 private def assignment (mode : Fin 3) (column : Nat) : ZMod babyBearModulus :=
   if column = 2 || column = 30 || column = 40 then 4
@@ -38,7 +41,7 @@ private def assignment (mode : Fin 3) (column : Nat) : ZMod babyBearModulus :=
       column = 129 || column = 130 || column = 131 || column = 132 || column = 133 then 1
   else 0
 private def row (mode : Fin 3) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, assignment mode⟩
-private def data (mode : Fin 3) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+private noncomputable def data (mode : Fin 3) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
   machine := {
     rows := [row mode]
     rom := UnifiedReduced.Setup.table (before mode)
@@ -120,8 +123,8 @@ private theorem initialized (mode : Fin 3) : initialImage (before mode) (cells m
 
 private theorem program_image (mode : Fin 3) : UnifiedReduced.Mixed.programImage (before mode) [0] = some [entry mode] := by
   have bytes : (Cell.ram 0).read (before mode) = .ok (bits mode) (before mode) := written_word_read initialState 0 _
-  have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (bits mode) = some ((literal mode).instruction (register mode)) :=
-    by decode_on_reset
+  have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (bits mode) = some ((literal mode).instruction (register mode)) := by
+    fin_cases mode <;> decode_on_reset
   have fields : UnifiedReduced.Mixed.decoderFields ((literal mode).instruction (register mode)) = some (entry mode).data := by
     fin_cases mode <;> with_unfolding_all rfl
   simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
@@ -129,7 +132,7 @@ private theorem program_image (mode : Fin 3) : UnifiedReduced.Mixed.programImage
   rfl
 
 private theorem inputs (mode : Fin 3) : UnifiedReduced.Caller.MixedMemoryInputs (data mode) [entry mode] (before mode) [] [0] (cells mode) := by
-  refine ⟨⟨rfl, ?_, ?_⟩, program_image mode, initialized mode, ?_, ?_, rfl, rfl, ?_⟩
+  refine ⟨⟨rfl, ?_, ?_, airbender_before mode⟩, program_image mode, initialized mode, ?_, ?_, rfl, rfl, ?_⟩
   · constructor <;> fin_cases mode <;> decide +kernel
   · fin_cases mode <;> decide +kernel
   · fin_cases mode <;> decide +kernel
@@ -296,7 +299,10 @@ theorem prepared_round_two_bits_rejected [Fact p.Prime] (hp : 8388608 ≤ p)
     rw [ite_eq_right same, firstBit] at zero
     exact one_ne_zero zero
 
-private def chainedBefore : State := wordWriteState (before 0) 4 0x00000613
+private noncomputable def chainedBefore : State := wordWriteState (before 0) 4 0x00000613
+
+private theorem airbender_chainedBefore : Configured chainedBefore := by
+  configured_fixture [chainedBefore, before, wordWriteState, initialState]
 private def chainedEntry : UnifiedReduced.ProgramEntry :=
   ⟨4, 0x00000613, UnifiedReduced.Caller.ControlLiteral.instruction (.addi 0) 12,
     ⟨.machine, 0, 0, 12, ⟨0, 0⟩, 1, 0⟩⟩
@@ -313,7 +319,7 @@ private def chainedAssignment (column : Nat) : ZMod babyBearModulus :=
   else 0
 private def chainedRow : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, chainedAssignment⟩
 private def chainedProgram : List UnifiedReduced.ProgramEntry := [entry 0, chainedEntry]
-private def chainedData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+private noncomputable def chainedData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
   machine := { (data 0).machine with
     rows := [chainedRow, row 0]
     rom := UnifiedReduced.Setup.table chainedBefore
@@ -405,7 +411,7 @@ private theorem chainedImage : UnifiedReduced.Mixed.programImage chainedBefore [
 
 private theorem chainedInputs :
     UnifiedReduced.Caller.MixedMemoryInputs chainedData chainedProgram chainedBefore [] [0, 4] (cells 0) := by
-  refine ⟨⟨rfl, ?_, by decide +kernel⟩, chainedImage, ?_, by decide +kernel, ?_, rfl, rfl, ?_⟩
+  refine ⟨⟨rfl, ?_, by decide +kernel, airbender_chainedBefore⟩, chainedImage, ?_, by decide +kernel, ?_, rfl, rfl, ?_⟩
   · change 4 < timestampBase ∧ 0 < timestampBase
     norm_num [timestampBase]
   · have zero : (Cell.register 0).read chainedBefore = .ok 0 chainedBefore := by with_unfolding_all rfl
@@ -478,7 +484,7 @@ theorem chained_wrong_literal_rejected :
 
 private def chainedFabricatedAssignment (column : Nat) : ZMod babyBearModulus :=
   if column = 48 then 0 else chainedAssignment column
-private def chainedFabricatedData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+private noncomputable def chainedFabricatedData : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
   { chainedData with machine := { chainedData.machine with
     rows := [⟨.machine, chainedFabricatedAssignment⟩, row 0] } }
 
@@ -652,11 +658,14 @@ theorem prepared_round_region_two_bits_rejected [Fact p.Prime] (hp : 8388608 ≤
     rw [ite_eq_right same, firstBit] at zero
     exact one_ne_zero zero
 
-private def sequentialBefore (custom : Bool) : State := wordWriteState (wordWriteState initialState 0 (if custom then 0xc2c64673 else 0x00c60633)) 4 0x00000613
-private def sequentialEntry (custom : Bool) : UnifiedReduced.ProgramEntry :=
+private noncomputable def sequentialBefore (custom : Bool) : State := wordWriteState (wordWriteState initialState 0 (if custom then 0xc2c64673 else 0x00c60633)) 4 0x00000613
+
+private theorem airbender_sequentialBefore (custom : Bool) : Configured (sequentialBefore custom) := by
+  configured_fixture [sequentialBefore, wordWriteState, initialState]
+private noncomputable def sequentialEntry (custom : Bool) : UnifiedReduced.ProgramEntry :=
   ⟨0, (if custom then 0xc2c64673 else 0x00c60633), (if custom then .ZIMOP_MOP_RR (4, .Regidx 12, .Regidx 12, .Regidx 12) else .RTYPE (.Regidx 12, .Regidx 12, .Regidx 12, .ADD)),
     ⟨.machine, 12, 12, 12, ⟨0, 0⟩, (if custom then 512 else 1), 0⟩⟩
-private def sequentialProgram (custom : Bool) : List UnifiedReduced.ProgramEntry := [(sequentialEntry custom), chainedEntry]
+private noncomputable def sequentialProgram (custom : Bool) : List UnifiedReduced.ProgramEntry := [(sequentialEntry custom), chainedEntry]
 private def sequentialAssignment (custom : Bool) (second : Bool) (column : Nat) : ZMod babyBearModulus :=
   if second then
     if column = 34 then 0 else if column = 48 || column = 49 then (if custom then 3 else 2) else chainedAssignment column
@@ -670,7 +679,7 @@ private def sequentialAssignment (custom : Bool) (second : Bool) (column : Nat) 
     else if column = 8 then 0 else assignment 0 column
 private def sequentialRow (custom : Bool) (second : Bool) : Trace.Row babyBearModulus UnifiedFamily :=
   ⟨.machine, sequentialAssignment custom second⟩
-private def sequentialData (custom : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+private noncomputable def sequentialData (custom : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
   { chainedData with machine := { chainedData.machine with
     rows := [sequentialRow custom true, sequentialRow custom false]
     rom := UnifiedReduced.Setup.table (sequentialBefore custom) } }
@@ -747,8 +756,8 @@ private theorem sequentialImage (custom : Bool) : UnifiedReduced.Mixed.programIm
     written_word_disjoint 4 0x00000613 (by decide) (written_word_read initialState 0 (if custom then 0xc2c64673 else 0x00c60633))
   have second : (Cell.ram 4).read (sequentialBefore custom) = .ok 0x00000613 (sequentialBefore custom) :=
     written_word_read (wordWriteState initialState 0 (if custom then 0xc2c64673 else 0x00c60633)) 4 0x00000613
-  have decodeFirst : Airbender.Reference.RiscV.Sail.decodeOnReset (if custom then 0xc2c64673 else 0x00c60633) = some (sequentialEntry custom).instruction :=
-    by decode_on_reset
+  have decodeFirst : Airbender.Reference.RiscV.Sail.decodeOnReset (if custom then 0xc2c64673 else 0x00c60633) = some (sequentialEntry custom).instruction := by
+    cases custom <;> decode_on_reset
   have decodeSecond : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00000613 = some chainedEntry.instruction :=
     by decode_on_reset
   have fieldsFirst : UnifiedReduced.Mixed.decoderFields (sequentialEntry custom).instruction = some (sequentialEntry custom).data := by
@@ -761,7 +770,7 @@ private theorem sequentialImage (custom : Bool) : UnifiedReduced.Mixed.programIm
 
 private theorem sequentialInputs (custom : Bool) :
     UnifiedReduced.Caller.MixedMemoryInputs (sequentialData custom) (sequentialProgram custom) (sequentialBefore custom) [] [0, 4] (cells 0) := by
-  refine ⟨⟨rfl, ?_, by cases custom <;> decide +kernel⟩, sequentialImage custom, ?_, by cases custom <;> decide +kernel, ?_, rfl, rfl, ?_⟩
+  refine ⟨⟨rfl, ?_, by cases custom <;> decide +kernel, airbender_sequentialBefore custom⟩, sequentialImage custom, ?_, by cases custom <;> decide +kernel, ?_, rfl, rfl, ?_⟩
   · change 4 < timestampBase ∧ 0 < timestampBase
     norm_num [timestampBase]
   · have zero : (Cell.register 0).read (sequentialBefore custom) = .ok 0 (sequentialBefore custom) := by cases custom <;> with_unfolding_all rfl
@@ -812,7 +821,7 @@ private theorem sequential_preparation_has_actual_control (custom : Bool) :
         (timeOfPair token.time).value = 10 ∧ token.word.toBitVec = 0 :=
   sequential_prefix_before_preparation custom
 
-private def sequentialFabricatedData (custom : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+private noncomputable def sequentialFabricatedData (custom : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
   { (sequentialData custom) with machine := { (sequentialData custom).machine with rows :=
     [⟨.machine, fun column => if column = 48 then 0 else sequentialAssignment custom true column⟩, sequentialRow custom false] } }
 

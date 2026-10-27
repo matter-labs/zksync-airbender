@@ -20,10 +20,10 @@ theorem airbender_before  : Airbender.Reference.RiscV.Sail.Configured before := 
   configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
 
 
-private def readEntry : ProgramEntry :=
+private noncomputable def readEntry : ProgramEntry :=
   ⟨0, 0x7C0010F3, .CSRReg (0x7C0, .Regidx 0, .Regidx 1, .CSRRW),
     ⟨.addSub, 0, 0, 1, ⟨0, 0⟩, 256, 0⟩⟩
-private def writeEntry : ProgramEntry :=
+private noncomputable def writeEntry : ProgramEntry :=
   ⟨4, 0x7C009073, .CSRReg (0x7C0, .Regidx 1, .Regidx 0, .CSRRW),
     ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩⟩
 
@@ -120,7 +120,7 @@ private theorem membership : Decoded trace [readEntry, writeEntry] := by
 /-- Source bytes, original CSR instruction, PC, indices and selector 8 are
     recovered from public decoding and native query membership. -/
 theorem fetched_read : row.Fetched before NonDeterminism.decoderFields :=
-  NonDeterminism.decoder_soundness accepted public_image membership row (by simp [trace])
+  NonDeterminism.decoder_soundness accepted public_image membership airbender_before row (by simp [trace])
 
 theorem read_selector : ∀ i : Fin 9,
     assignment (#[10, 11, 12, 13, 14, 15, 16, 17, 18][i]) = if i.val = 8 then 1 else 0 := by

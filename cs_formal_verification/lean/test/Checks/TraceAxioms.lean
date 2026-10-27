@@ -817,6 +817,8 @@ import Slop.SubwordMemory.MemoryAccess
 #print axioms Tests.ShiftBinopDecoder.all_instruction_forms
 #print axioms Tests.ShiftBinopDecoder.accepted_row_fetched
 #print axioms Tests.ShiftBinopDecoder.wrong_tag_rejected
+#print axioms Tests.Rev8Decoder.decoded_on_reset
+#print axioms Tests.Rev8Decoder.actual_decoding
 #print axioms Tests.Rev8Decoder.actual_public_encoding
 #print axioms Airbender.Trace.Proofs.byte_port_bytes
 #print axioms Airbender.Trace.Proofs.byte_port_low_bytes

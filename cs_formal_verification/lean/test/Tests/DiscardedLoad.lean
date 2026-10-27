@@ -11,7 +11,7 @@ set_option maxHeartbeats 2000000
 
 -- A real LW x0,0(x1), with x1 pointing to aligned ordinary RAM absent from the
 -- public sparse byte image. Its native preprocessing records only x0 accesses.
-private def before : State :=
+private noncomputable def before : State :=
   { Tests.TraceExecution.before with
     regs := Tests.TraceExecution.before.regs.insert .x1 (4194304 : BitVec 32)
     mem := Tests.TraceExecution.before.mem.insert 0 (0x03 : BitVec 8) |>.insert 1 0xa0 |>.insert 2 0 |>.insert 3 0 }
@@ -126,7 +126,7 @@ theorem native_accepts_discarded_load : ExecutionBoundary trace before cells [en
   intro scope
   exact scope entry List.mem_cons_self 0 1 rfl
 
-private def prepared : State := { before with regs := before.regs.insert .nextPC (4 : BitVec 32) }
+private noncomputable def prepared : State := { before with regs := before.regs.insert .nextPC (4 : BitVec 32) }
 
 set_option backward.isDefEq.respectTransparency false in
 /-- The actual upstream clause still performs the ignored load. Native NOP

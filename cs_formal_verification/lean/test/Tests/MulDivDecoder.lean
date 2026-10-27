@@ -8,18 +8,13 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 1000000
 
-private def configured : Reference.RiscV.Sail.State :=
-  { (default : Reference.RiscV.Sail.State) with
-    regs := (default : Reference.RiscV.Sail.State).regs.insert .misa (0x40001000 : BitVec 32) }
+private noncomputable def configured : Reference.RiscV.Sail.State := Reference.RiscV.Sail.resetMachine
 
-private def before (pc bits : BitVec 32) : Reference.RiscV.Sail.State :=
+private noncomputable def before (pc bits : BitVec 32) : Reference.RiscV.Sail.State :=
   Reference.RiscV.Sail.wordWriteState configured pc.toNat bits
 
-private theorem misa_read (pc bits : BitVec 32) :
-    Reference.Sail.run (SailRV32.readReg .misa) (before pc bits) =
-      .ok (0x40001000 : BitVec 32) (before pc bits) := by
-  apply Reference.RiscV.Sail.read_register
-  simp [before, configured, Reference.RiscV.Sail.wordWriteState]
+theorem airbender_before (pc bits : BitVec 32) : Reference.RiscV.Sail.Configured (before pc bits) := by
+  configured_fixture [before, configured, Reference.RiscV.Sail.wordWriteState]
 
 private theorem extraction (pc bits : BitVec 32) (instruction : SailRV32.instruction)
     (data : DecoderData Unit)
@@ -96,6 +91,7 @@ theorem accepted_row_fetched (remainder rollover : Bool) :
   apply Airbender.MulDiv.fetched (by decide)
     (extraction (entry remainder).pc (entry remainder).bits (entry remainder).instruction
       (entry remainder).data (by cases remainder <;> decode_on_reset) (by cases remainder <;> rfl))
+    (airbender_before _ _)
     (Verification.holds_of_sublist (Tests.MulDivTimestamp.constraints remainder rollover)
       (List.sublist_append_left _ _))
   change ∃ i, _

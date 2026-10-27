@@ -8,7 +8,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 3000000
 
-private def before : State :=
+private noncomputable def before : State :=
   { Tests.TraceExecution.before with
     regs := Tests.TraceExecution.before.regs.insert .x1 (0 : BitVec 32)
     mem := Tests.TraceExecution.before.mem.insert 0 (0x83 : BitVec 8)
@@ -34,7 +34,7 @@ private def terminal : List (MemoryToken babyBearModulus) :=
   (ROMView.nativeBootImage (p := babyBearModulus) Tests.TraceExecution.cells).drop 2 ++
   [⟨(Cell.ram 0).addressCode, (5, 0), Nat.pair 0 0⟩]
 
-private def trace : UnifiedTrace babyBearModulus where
+private noncomputable def trace : UnifiedTrace babyBearModulus where
   rows := [nativeRow]
   rom := UnifiedReduced.Setup.table before
   initial := PCState.boundary 0 (4, 0)
@@ -90,14 +90,16 @@ private theorem configuration : Configured before := by
     (after := before) rfl preserved
 
 private theorem public_inputs : UnifiedReduced.BootInputs trace before cells [entry] := by
-  refine ⟨by decide, ?_, profile, ⟨physical, image⟩, rfl, rfl, ⟨[0], ?_⟩, rfl⟩
+  refine ⟨by decide, ?_, profile, ⟨physical, image⟩, rfl, rfl, ⟨[0], ?_⟩, rfl, configuration⟩
   · intro cell member
     simp [cells, Tests.TraceExecution.cells] at member
     rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
       rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
       rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> trivial
-  · simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind, pure]
-    with_unfolding_all rfl
+  · have decoded : decodeOnReset 0x2083 = some entry.instruction := by
+      decode_on_reset
+    simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind, pure]
+    rfl
 
 private theorem public_word : ROM.words before 0 = 0x2083 := by
   change (match (Cell.ram 0).read before with
@@ -146,8 +148,8 @@ private theorem decoded : UnifiedReduced.Decoded trace [entry] := by
   change ∃ i : Fin 1, _
   exact ⟨0, by decide⟩
 
-private def mapped := UnifiedReduced.ROMView.row before nativeRow
-private def input : Airbender.WordMemory.Input :=
+private noncomputable def mapped := UnifiedReduced.ROMView.row before nativeRow
+private noncomputable def input : Airbender.WordMemory.Input :=
   ⟨false, ⟨0, 0⟩, ⟨0, 0⟩, ⟨0x2083, 0⟩, ⟨0, 0⟩,
     .Regidx 0, .Regidx 0, .Regidx 1, 0, Trace.retiredState before 0⟩
 private def output : Airbender.WordMemory.Output := ⟨⟨0, 0⟩, ⟨0x2083, 0⟩, ⟨4, 0⟩⟩
@@ -183,7 +185,7 @@ theorem sail_rom_load  : Airbender.WordMemory.spec input output := by
         UnifiedReduced.importedConstraintsTraceColumns] using preserved.trans (by decide)
 
 private theorem execution_inputs : UnifiedReduced.ExecutionInputs trace before cells [entry] := by
-  refine ⟨public_inputs, ?_, ?_, configuration, ?_, ?_, ?_⟩
+  refine ⟨public_inputs, ?_, ?_, configuration, ?_, ?_⟩
   · intro index
     have numeric : ∀ n : Nat, n < 32 → Cell.register (BitVec.ofNat 5 n) ∈ cells := by
       intro n bound
@@ -198,10 +200,6 @@ private theorem execution_inputs : UnifiedReduced.ExecutionInputs trace before c
     subst address
     unfold OrdinaryWordAddress
     decide
-  · rintro ⟨actual, present, imm, rs1, rd, encoding⟩
-    have same := List.mem_singleton.mp present
-    subst actual
-    cases encoding
   · intro actual present imm rs1
     have same := List.mem_singleton.mp present
     subst actual

@@ -572,11 +572,10 @@ import Human.Import.Coefficients
 #print axioms Airbender.Reference.RiscV.Sail.writeMemory
 #print axioms SailRV32.Functions.execute_LOAD
 #print axioms SailRV32.Functions.execute_STORE
-#print axioms Sail.ArchSem.plat_term_write
-#print axioms Sail.ArchSem.load_reservation
-#print axioms Sail.ArchSem.match_reservation
+#print axioms _root_.plat_term_write
+#print axioms _root_.load_reservation
+#print axioms _root_.match_reservation
 
-#print axioms Sail.ArchSem.runtimeErrors
 #print axioms Airbender.Reference.Sail.early_return_error
 #print axioms Airbender.Reference.Sail.early_return_catch
 
@@ -648,7 +647,7 @@ import Human.Import.Coefficients
 #print axioms SailRV32.Functions.execute_BTYPE
 #print axioms SailRV32.Functions.execute_JAL
 #print axioms SailRV32.Functions.execute_JALR
-#print axioms Sail.ArchSem.sys_enable_experimental_extensions
+#print axioms _root_.sys_enable_experimental_extensions
 #print axioms Airbender.JumpBranchSlt.Proofs.masked_destination
 #print axioms Airbender.JumpBranchSlt.Proofs.subtraction_equations
 #print axioms Airbender.JumpBranchSlt.Proofs.pc_carries
@@ -1315,7 +1314,7 @@ import Human.Import.Coefficients
 #print axioms Airbender.Blake2G.Native.workvector_soundness
 #print axioms Airbender.Blake2Round.Proofs.block_at
 
-#print axioms Tests.UnifiedCustomDecoder.original_decoder_pure
+#print axioms Tests.UnifiedCustomDecoder.original_decoder_run
 #print axioms Tests.UnifiedCustomDecoder.original_decoder
 #print axioms Tests.UnifiedCustomDecoder.native_metadata
 #print axioms Tests.UnifiedCustomDecoder.old_destination

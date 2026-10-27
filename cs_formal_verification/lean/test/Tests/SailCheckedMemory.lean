@@ -5,6 +5,7 @@ namespace Tests.SailCheckedMemory
 open Airbender.Reference Airbender.Reference.RiscV.Sail
 open _root_.Sail.ArchSem
 set_option warningAsError true
+set_option maxRecDepth 100000
 
 /-- The Airbender reset state with no memory. -/
 private noncomputable def configured : State :=
@@ -204,6 +205,7 @@ theorem virtual_store_last_byte  :
   · rfl
   · decide
   · unfold OrdinaryWordAddress; decide
+  · decide
   · rfl
 
 theorem virtual_store_last_halfword  :
@@ -214,6 +216,7 @@ theorem virtual_store_last_halfword  :
   · rfl
   · decide
   · unfold OrdinaryWordAddress; decide
+  · decide
   · rfl
 
 theorem virtual_missing_halfword_byte  :

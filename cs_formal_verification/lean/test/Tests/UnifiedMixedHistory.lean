@@ -37,11 +37,15 @@ private def triadd (value : Nat) : Nat → ZMod babyBearModulus
 private def standardRow : Row babyBearModulus UnifiedFamily := ⟨.machine, arithmetic⟩
 private def customRow (value : Nat) : Row babyBearModulus UnifiedFamily := ⟨.machine, triadd value⟩
 private def cells : List Cell := [.register 1, .register 0]
-private def before : State :=
-  wordWriteState (wordWriteState { (default : State) with
-    regs := (default : State).regs.insert .x1 (123 : BitVec 32) |>.insert .PC (0 : BitVec 32) }
+private noncomputable def before : State :=
+  wordWriteState (wordWriteState { resetMachine with
+    regs := resetMachine.regs.insert .x1 (123 : BitVec 32) |>.insert .PC (0 : BitVec 32) }
     0 0x00108093) 4 0xc210c0f3
-private def program : List UnifiedReduced.ProgramEntry := [
+
+theorem airbender_before : Configured before := by
+  configured_fixture [before, wordWriteState]
+
+private noncomputable def program : List UnifiedReduced.ProgramEntry := [
   ⟨0, 0x00108093, .ITYPE (1, .Regidx 1, .Regidx 1, .ADDI), ⟨.machine, 1, 0, 1, ⟨1, 0⟩, 1, 0⟩⟩,
   ⟨4, 0xc210c0f3, .ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1),
     ⟨.machine, 1, 1, 1, ⟨0, 0⟩, 512, 0⟩⟩]
@@ -107,7 +111,7 @@ theorem original_mixed_public_image : Mixed.programImage before [0, 4] = some pr
   rfl
 
 private theorem inputs : NativeInputs Mixed.decoderFields (trace 124) before cells program := by
-  refine ⟨by decide, ?_, ?_, ?_, ⟨[0, 4], original_mixed_public_image⟩, ?_⟩
+  refine ⟨by decide, ?_, ?_, ?_, ⟨[0, 4], original_mixed_public_image⟩, ?_, airbender_before⟩
   · intro cell member
     simp [cells] at member
     rcases member with rfl | rfl <;> trivial

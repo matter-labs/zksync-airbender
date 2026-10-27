@@ -129,7 +129,8 @@ theorem selector_recovery : ∀ i : Fin 5,
 theorem accepted_row_fetched :
     JumpBranchSlt.Fetched (Tests.JumpTimestamp.assignment false) (before entry.bits) := by
   apply JumpBranchSlt.fetched (by decide)
-    (extraction entry.bits entry.instruction entry.data (by rfl) (by rfl))
+    (extraction entry.bits entry.instruction entry.data (by decode_on_reset) (by rfl))
+    (airbender_before _)
     (Verification.holds_of_sublist (Tests.JumpTimestamp.constraints false)
       (List.sublist_append_left _ _))
   change ∃ i, _

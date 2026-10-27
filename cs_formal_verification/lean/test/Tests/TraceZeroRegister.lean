@@ -117,7 +117,7 @@ theorem native_zero_reads : ∀ port ∈ row.ports,
     port.address.code assignment = (Cell.register 0).addressCode →
     (readToken assignment port).value = 0 :=
   Proofs.native_zero_reads Proofs.standardDecoderRules (by decide) (by decide) accepted boundary initial_image
-    program_image decoder_bound row (List.mem_singleton_self row)
+    program_image decoder_bound airbender_before row (List.mem_singleton_self row)
 
 theorem native_zero_writes : ∀ event ∈ trace.nativeEvents,
     event.2.1 = (Cell.register 0).addressCode → memoryWord event.2.2.2 = 0 :=

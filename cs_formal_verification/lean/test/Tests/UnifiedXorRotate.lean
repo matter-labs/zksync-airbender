@@ -46,12 +46,15 @@ private def assignment (kind : Fin 4) (column : Nat) : ZMod babyBearModulus :=
     | _ => 0
 private def bits (kind : Fin 4) : BitVec 32 :=
   #[0xc1c0c173, 0x8dc0c173, 0x89c0c173, 0x85f0c173][kind.val]!
-private def before (kind : Fin 4) : State :=
-  wordWriteState { (default : State) with
-    regs := (default : State).regs.insert .x1 left |>.insert .x2 old |>.insert .PC (0 : BitVec 32) }
+private noncomputable def before (kind : Fin 4) : State :=
+  wordWriteState { resetMachine with
+    regs := resetMachine.regs.insert .x1 left |>.insert .x2 old |>.insert .PC (0 : BitVec 32) }
     0 (bits kind)
+
+theorem airbender_before (kind : Fin 4) : Configured (before kind) := by
+  configured_fixture [before, wordWriteState]
 private def native (kind : Fin 4) : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment kind⟩
-private def entry (kind : Fin 4) : UnifiedReduced.ProgramEntry :=
+private noncomputable def entry (kind : Fin 4) : UnifiedReduced.ProgramEntry :=
   ⟨0, bits kind, .ZIMOP_MOP_R (BitVec.ofNat 5 (rotation kind), .Regidx 1, .Regidx 2),
     ⟨.machine, 1, 2, 2, ⟨0, 0⟩, 65536, 47 + kind.val⟩⟩
 
@@ -108,7 +111,7 @@ theorem actual_query_contributions (kind : Fin 4) (i : Fin 4) :
     kind (by simp [assignment]) i
 
 private def cells : List Cell := [.register 1, .register 2]
-private def trace (kind : Fin 4) : UnifiedTrace babyBearModulus where
+private noncomputable def trace (kind : Fin 4) : UnifiedTrace babyBearModulus where
   rows := [native kind]
   rom := Setup.table (before kind)
   initial := PCState.boundary 0 (4, 0)
@@ -140,7 +143,7 @@ private theorem decoded (kind : Fin 4) : Decoded (trace kind) [entry kind] := by
 
 private theorem inputs (kind : Fin 4) : NativeInputs customDecoderFields
     (trace kind) (before kind) cells [entry kind] := by
-  refine ⟨by decide, ?_, ?_, ?_, ⟨[0], ?_⟩, ?_⟩
+  refine ⟨by decide, ?_, ?_, ?_, ⟨[0], ?_⟩, ?_, airbender_before kind⟩
   · intro cell member
     simp [cells] at member
     rcases member with rfl | rfl <;> trivial
@@ -159,8 +162,9 @@ private theorem inputs (kind : Fin 4) : NativeInputs customDecoderFields
     simp [initialState, pc, trace, PCState.boundary]
   · have bytes : (Cell.ram 0).read (before kind) = .ok (bits kind) (before kind) :=
       written_word_read _ _ _
-    simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes]
-    fin_cases kind <;> with_unfolding_all rfl
+    simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, original_decoder kind,
+      bind, Option.bind, pure]
+    fin_cases kind <;> rfl
   · constructor
     · change (timeOfPair (4, 0)).Bounded
       constructor <;> decide

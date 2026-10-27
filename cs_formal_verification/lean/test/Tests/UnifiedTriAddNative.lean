@@ -27,10 +27,13 @@ private def assignment : Nat → ZMod babyBearModulus
   | 80 => 123 * 123 * 943718400
   | _ => 0
 
-private def before : State :=
-  wordWriteState { (default : State) with
-    regs := (default : State).regs.insert .x1 (123 : BitVec 32) |>.insert .PC (0 : BitVec 32) }
+private noncomputable def before : State :=
+  wordWriteState { resetMachine with
+    regs := resetMachine.regs.insert .x1 (123 : BitVec 32) |>.insert .PC (0 : BitVec 32) }
     0 0xc210c0f3
+
+theorem airbender_before : Configured before := by
+  configured_fixture [before, wordWriteState]
 
 private def cells : List Cell := [.register 1]
 private def row : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment⟩
@@ -41,7 +44,7 @@ private def trace : UnifiedTrace babyBearModulus where
   terminal := PCState.boundary 4 (8, 0)
   initialMemory := [Cell.initialToken (.register 1) 123]
   terminalMemory := [⟨(Cell.register 1).addressCode, (6, 0), Nat.pair 369 0⟩]
-private def entry : UnifiedReduced.ProgramEntry :=
+private noncomputable def entry : UnifiedReduced.ProgramEntry :=
   ⟨0, 0xc210c0f3, .ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1),
     ⟨.machine, 1, 1, 1, ⟨0, 0⟩, 512, 0⟩⟩
 
@@ -82,7 +85,7 @@ private theorem decoded : Decoded trace [entry] := by
   exact ⟨0, by decide⟩
 
 private theorem inputs : NativeInputs customDecoderFields trace before cells [entry] := by
-  refine ⟨by decide, ?_, ?_, ?_, ⟨[0], ?_⟩, ?_⟩
+  refine ⟨by decide, ?_, ?_, ?_, ⟨[0], ?_⟩, ?_, airbender_before⟩
   · intro cell member
     simp [cells] at member
     subst cell

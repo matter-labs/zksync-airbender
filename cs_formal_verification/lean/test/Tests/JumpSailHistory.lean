@@ -32,8 +32,8 @@ private def entry (discarded : Bool) : JumpBranchSlt.ProgramEntry :=
 
 private noncomputable def before (discarded : Bool) : State :=
   wordWriteState { Airbender.Reference.RiscV.Sail.resetMachine with regs :=
-    (((Std.ExtDHashMap.emptyWithCapacity.insert .x1 (5 : BitVec 32)).insert
-      .PC (0 : BitVec 32)).insert .misa (0 : BitVec 32)) } 0 (entry discarded).bits
+    ((Airbender.Reference.RiscV.Sail.resetMachine.regs.insert .x1 (5 : BitVec 32)).insert
+      .PC (0 : BitVec 32)) } 0 (entry discarded).bits
 
 theorem airbender_before (discarded : Bool) : Airbender.Reference.RiscV.Sail.Configured (before discarded) := by
   configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
@@ -117,7 +117,9 @@ private theorem program_image (discarded : Bool) :
     JumpBranchSlt.programImage (before discarded) [0] = some [entry discarded] := by
   have bytes : (Cell.ram 0).read (before discarded) = .ok (entry discarded).bits (before discarded) :=
     written_word_read _ 0 (entry discarded).bits
-  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind]
+  have decoded : decodeOnReset (entry discarded).bits = some (entry discarded).instruction := by
+    cases discarded <;> decode_on_reset
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind]
   cases discarded <;> rfl
 
 private theorem decoded (discarded : Bool)
@@ -209,7 +211,7 @@ theorem actual_jal_retirement (discarded : Bool)
         all_goals decide)
     (by simp [trace, row]) (by simp) (by cases discarded <;> decide)
     (.jal 0x1ffffc) 0 (if discarded then 0 else 1) rfl native (.nil _)
-    (by refine ⟨0, ?_⟩; simp [before, wordWriteState])
+    ⟨Configuration.resetState.regs .misa, by simp [before, wordWriteState, Std.ExtDHashMap.get?_insert, reset_machine_get]⟩
     (by intro impossible; cases impossible)
   refine ⟨after, ?_, ?_, read⟩
   · rw [initialState, Proofs.retired_state_pc (before discarded) 0]
@@ -255,7 +257,7 @@ private theorem initial_pc (rom : Table (ZMod babyBearModulus) (fields 9)) :
   have pc : run (SailRV32.Functions.get_arch_pc ()) (before false) = .ok 0 (before false) := by
     change run (SailRV32.readReg .PC) (before false) = _
     apply read_register
-    simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
+    simp [before, wordWriteState]
   rw [initialState, pc]
   rfl
 

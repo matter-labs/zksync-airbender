@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
 import Slop.BabyBear
 
@@ -24,13 +25,14 @@ private def assignment (taken : Bool) : Nat → ZMod babyBearModulus
 
 private def row (taken : Bool) : Row babyBearModulus UnifiedFamily := ⟨.machine, assignment taken⟩
 private def cells : List Cell := [.register 0]
-private def before (taken : Bool) : State :=
-  { (default : State) with
-    regs := (Std.ExtDHashMap.emptyWithCapacity : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
-      |>.insert .PC 0 |>.insert .misa 0x40000100
+private noncomputable def before (taken : Bool) : State :=
+  { resetMachine with
+    regs := resetMachine.regs.insert .PC 0
     mem := (Std.ExtHashMap.emptyWithCapacity : Std.ExtHashMap Nat (BitVec 8))
       |>.insert 0 0x63 |>.insert 1 (if taken then 4 else 0x14) |>.insert 2 0 |>.insert 3 0 }
-private def trace (taken : Bool) : UnifiedTrace babyBearModulus where
+theorem airbender_before (taken : Bool) : Configured (before taken) := by
+  configured_fixture [before]
+private noncomputable def trace (taken : Bool) : UnifiedTrace babyBearModulus where
   rows := [row taken]
   rom := UnifiedReduced.Setup.table (before taken)
   initial := (row taken).start
@@ -90,18 +92,20 @@ private theorem program_image (taken : Bool) :
   have bytes : (Cell.ram 0).read (before taken) = .ok (entry taken).bits (before taken) := by
     cases taken <;> simp [Cell.read, readBytes, readByte, EStateM.run, get, getThe, MonadStateOf.get,
       bind, pure, EStateM.bind, EStateM.get, EStateM.pure, before, entry, Std.ExtHashMap.getElem_insert]
-  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind, pure]
-  cases taken <;> with_unfolding_all rfl
+  have decoded : decodeOnReset (entry taken).bits = some (entry taken).instruction := by
+    cases taken <;> decode_on_reset
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind, pure]
+  cases taken <;> rfl
 
 private theorem inputs (taken : Bool) :
     NativeInputs UnifiedReduced.decoderFields (trace taken) (before taken) cells [entry taken] := by
-  refine ⟨by decide, ?_, public_image taken, ⟨⟨4, 0⟩, ?_⟩, ⟨[0], program_image taken⟩, ?_⟩
+  refine ⟨by decide, ?_, public_image taken, ⟨⟨4, 0⟩, ?_⟩, ⟨[0], program_image taken⟩, ?_, airbender_before taken⟩
   · intro cell member
     simp [cells] at member
     subst cell; trivial
   · have pc : run (SailRV32.Functions.get_arch_pc ()) (before taken) = .ok 0 (before taken) := by
       apply read_register
-      simp [before, Std.ExtDHashMap.get?_insert]
+      simp [before]
     simp [initialState, pc, trace, row, Row.start, Row.columns, CircuitLayout.columns,
       UnifiedReduced.importedConstraintsTraceColumns, rawPair, assignment, PCState.boundary, PCState.encode, limbBase]
   · constructor
@@ -119,7 +123,7 @@ private theorem decoded (taken : Bool) : UnifiedReduced.Decoded (trace taken) [e
   change ∃ i : Fin 1, _
   exact ⟨0, by cases taken <;> decide⟩
 
-private def input (taken : Bool) : UnifiedReduced.Control.Branch.Input :=
+private noncomputable def input (taken : Bool) : UnifiedReduced.Control.Branch.Input :=
   ⟨if taken then .BEQ else .BNE, ⟨0, 0⟩, ⟨0, 0⟩, ⟨8, 0⟩, ⟨0, 0⟩,
     .Regidx 0, .Regidx 0, 8, Trace.retiredState (before taken) 0⟩
 private def output (taken : Bool) : Output := ⟨⟨0, 0⟩, ⟨if taken then 8 else 4, 0⟩⟩
@@ -134,7 +138,7 @@ theorem sail_branches (taken : Bool) : JumpBranchSlt.Branch.spec (input taken) (
     subst actual
     change (0 : Nat) % 4 = 0
     decide
-  · exact ⟨0x40000100, by simp [before]⟩
+  · exact airbender_before taken
   · constructor
     · cases taken <;> constructor
       all_goals rfl

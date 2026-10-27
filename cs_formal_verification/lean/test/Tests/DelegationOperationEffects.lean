@@ -26,10 +26,13 @@ private def machine : PooledTrace babyBearModulus where
   terminal := caller.finish
   initialMemory := []
   terminalMemory := []
-private def data : Caller.RequestTrace babyBearModulus :=
+private noncomputable def data : Caller.RequestTrace babyBearModulus :=
   ⟨machine, workers, [Tests.DelegationCaller.entry .bigint]⟩
-def before : State :=
+noncomputable def before : State :=
   wordWriteState Tests.BigintMemory.before 0 (Tests.DelegationCaller.entry .bigint).bits
+
+theorem airbender_before : Configured before := by
+  configured_fixture [before, wordWriteState, Tests.BigintMemory.before]
 
 private theorem worker_constraints : FlatOperation.ConstraintsHoldFlat
     (Verification.environment assignment) (worker.constraints workers.setup) := by
@@ -98,6 +101,7 @@ private theorem inputs : Caller.RequestOperationInputs data before [0] Tests.Big
       · change 4 < timestampBase ∧ 0 < timestampBase
         norm_num [timestampBase]
       · decide +kernel
+      · exact airbender_before
     · exact initialized
     · exact Tests.BigintMemory.inputs.publicState.distinct
     · intro cell member
@@ -128,14 +132,14 @@ private def sharedAssignment (i : Nat) : ZMod babyBearModulus :=
   if i = 35 then 4 else Tests.DelegationCaller.assignment .bigint i
 private def sharedCaller : Trace.Row babyBearModulus PooledFamily := ⟨.addSub, sharedAssignment⟩
 def sharedCells : List Cell := .register 0 :: Tests.BigintMemory.cells
-private def sharedMachine : PooledTrace babyBearModulus where
+private noncomputable def sharedMachine : PooledTrace babyBearModulus where
   rows := [sharedCaller]
   rom := machine.rom
   initial := sharedCaller.start
   terminal := sharedCaller.finish
   initialMemory := (Cell.register 0).initialToken 0 :: workers.initial
   terminalMemory := Caller.destinationToken sharedAssignment :: workers.terminal
-def sharedData : Caller.RequestTrace babyBearModulus :=
+noncomputable def sharedData : Caller.RequestTrace babyBearModulus :=
   ⟨sharedMachine, workers, data.program⟩
 
 private theorem sharedCallerConstraints : FlatOperation.ConstraintsHoldFlat
@@ -186,7 +190,7 @@ theorem sharedInputs : Caller.SharedOperationInputs sharedData before [0] shared
   refine ⟨?_, inputs.tables, inputs.rounds⟩
   constructor
   · exact ⟨inputs.publicState.publicProgram.image, inputs.publicState.publicProgram.initialClock,
-      inputs.publicState.publicProgram.initialAligned⟩
+      inputs.publicState.publicProgram.initialAligned, inputs.publicState.publicProgram.configuration⟩
   · change List.mapM _ (.register 0 :: Tests.BigintMemory.cells) = _
     rw [List.mapM_cons]
     change Option.bind (some ((Cell.register 0).initialToken (p := babyBearModulus) 0))
@@ -211,7 +215,7 @@ theorem projected_shared_copy_memory :
 
 private def wrongWorkerBoundaries : MemoryData babyBearModulus :=
   { workers with initial := [], terminal := [] }
-private def wrongBoundaryData : Caller.RequestTrace babyBearModulus :=
+private noncomputable def wrongBoundaryData : Caller.RequestTrace babyBearModulus :=
   { sharedData with workers := wrongWorkerBoundaries }
 
 theorem separate_empty_boundaries_rejected : ¬MemoryAccepted wrongWorkerBoundaries := by

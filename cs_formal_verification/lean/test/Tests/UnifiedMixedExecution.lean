@@ -10,12 +10,12 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 5000000
 
-private def before : State :=
+private noncomputable def before : State :=
   wordWriteState (wordWriteState (wordWriteState
     { Tests.TraceExecution.before with regs := Tests.TraceExecution.before.regs.insert .x1 (0 : BitVec 32) }
     0 0x00108093) 4 0xc210c0f3) 8 0x2083
 private def cells : List Cell := Tests.TraceExecution.cells ++ [.ram 0]
-private def program : List UnifiedReduced.ProgramEntry := [
+private noncomputable def program : List UnifiedReduced.ProgramEntry := [
   ⟨0, 0x00108093, .ITYPE (1, .Regidx 1, .Regidx 1, .ADDI), ⟨.machine, 1, 0, 1, ⟨1, 0⟩, 1, 0⟩⟩,
   ⟨4, 0xc210c0f3, .ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1),
     ⟨.machine, 1, 1, 1, ⟨0, 0⟩, 512, 0⟩⟩,
@@ -49,7 +49,7 @@ private def load : Nat → ZMod babyBearModulus
   | 86 => 65472
   | 88 => 34
   | _ => 0
-private def trace (value : Nat) : UnifiedTrace babyBearModulus where
+private noncomputable def trace (value : Nat) : UnifiedTrace babyBearModulus where
   rows := [⟨.machine, load⟩, ⟨.machine, triadd value⟩, ⟨.machine, arithmetic⟩]
   rom := UnifiedReduced.Setup.table before
   initial := PCState.boundary 0 (4, 0)
@@ -104,7 +104,7 @@ private theorem configuration : Configured before := by
 
 private theorem inputs : Mixed.Inputs (trace 1) before cells program := by
   constructor
-  · refine ⟨by decide, ?_, ?_, ?_, rfl, rfl, ⟨[0, 4, 8], original_mixed_public_image⟩, rfl⟩
+  · refine ⟨by decide, ?_, ?_, ?_, rfl, rfl, ⟨[0, 4, 8], original_mixed_public_image⟩, rfl, configuration⟩
     · intro cell member
       simp [cells, Tests.TraceExecution.cells] at member
       rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
@@ -136,9 +136,6 @@ private theorem inputs : Mixed.Inputs (trace 1) before cells program := by
     subst address
     unfold OrdinaryWordAddress
     decide
-  · rintro ⟨entry, member, imm, rs1, rd, encoding⟩
-    simp only [program, List.mem_cons, List.not_mem_nil, or_false] at member
-    rcases member with rfl | rfl | rfl <;> cases encoding
   · intro entry member imm rs1
     simp only [program, List.mem_cons, List.not_mem_nil, or_false] at member
     rcases member with rfl | rfl | rfl <;> simp

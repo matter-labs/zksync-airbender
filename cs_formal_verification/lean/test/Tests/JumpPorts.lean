@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.JumpBranchSlt.PortReads
 import Tests.Jump
 
@@ -16,9 +17,12 @@ private def entry : JumpBranchSlt.ProgramEntry :=
   ⟨0, 0xffc080e7, .JALR (0xffc, .Regidx 1, .Regidx 1),
     ⟨(), 1, 0, 1, ⟨65532, 65535⟩, 2, 0⟩⟩
 
-private def before : State :=
-  wordWriteState { (default : State) with regs :=
-    Std.ExtDHashMap.emptyWithCapacity.insert .x1 (5 : BitVec 32) } 0 entry.bits
+private noncomputable def before : State :=
+  wordWriteState { resetMachine with regs :=
+    (resetMachine.regs.insert .x1 (5 : BitVec 32)) } 0 entry.bits
+
+theorem airbender_before : Configured before := by
+  configured_fixture [before, wordWriteState]
 
 private theorem constraints :
     FlatOperation.ConstraintsHoldFlat (Verification.environment assignment)
@@ -34,7 +38,8 @@ private theorem query : JumpBranchSlt.decoderQuery assignment = entry.query := b
 private theorem image : JumpBranchSlt.programImage before [0] = some [entry] := by
   have bytes : (Cell.ram 0).read before = .ok entry.bits before :=
     written_word_read _ 0 entry.bits
-  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind]
+  have decoded : decodeOnReset entry.bits = some entry.instruction := by decode_on_reset
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind]
   rfl
 
 /-- The history is built from actual native Sail reads/writes, including the
@@ -71,7 +76,7 @@ private theorem history : ∃ after,
 
 /-- Public Sail decoding and the full imported constraints bind the aliased row. -/
 theorem accepted_alias_fetched : JumpBranchSlt.Fetched assignment before := by
-  apply JumpBranchSlt.fetched (by decide) image constraints
+  apply JumpBranchSlt.fetched (by decide) image airbender_before constraints
   change ∃ i, _
   exact ⟨⟨0, by decide⟩, query⟩
 

@@ -10,7 +10,7 @@ set_option maxHeartbeats 4000000
 
 -- Read x1; ADDI x2,x1,1; emit an unproved hint from x2. Rows are deliberately
 -- stored out of execution order. Only the read consumes the independent stream.
-private def before : State :=
+private noncomputable def before : State :=
   { Tests.TraceExecution.before with
     regs := Tests.TraceExecution.before.regs.insert .x1 (0 : BitVec 32)
     mem := (Std.ExtHashMap.emptyWithCapacity).insert 0 (0xF3 : BitVec 8)
@@ -18,16 +18,16 @@ private def before : State :=
       |>.insert 4 0x13 |>.insert 5 0x81 |>.insert 6 0x10 |>.insert 7 0
       |>.insert 8 0x73 |>.insert 9 0x10 |>.insert 10 1 |>.insert 11 0x7C }
 
-private def readEntry : ProgramEntry :=
+private noncomputable def readEntry : ProgramEntry :=
   ⟨0, 0x7C0010F3, .CSRReg (0x7C0, .Regidx 0, .Regidx 1, .CSRRW),
     ⟨.addSub, 0, 0, 1, ⟨0, 0⟩, 256, 0⟩⟩
 private def addEntry : ProgramEntry :=
   ⟨4, 0x00108113, .ITYPE (1, .Regidx 1, .Regidx 2, .ADDI),
     ⟨.addSub, 1, 0, 2, ⟨1, 0⟩, 1, 0⟩⟩
-private def hintEntry : ProgramEntry :=
+private noncomputable def hintEntry : ProgramEntry :=
   ⟨8, 0x7C011073, .CSRReg (0x7C0, .Regidx 2, .Regidx 0, .CSRRW),
     ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩⟩
-private def program := [readEntry, addEntry, hintEntry]
+private noncomputable def program := [readEntry, addEntry, hintEntry]
 
 private def readAssignment : Nat → ZMod babyBearModulus
   | 2 | 19 | 27 => 4
