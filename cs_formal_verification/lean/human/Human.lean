@@ -24,3 +24,4 @@ import Human.Trace.Workers.Blake2G.Theorems
 import Human.Trace.Workers.Blake2Round.Theorems
 import Human.Trace.Workers.Keccak.Theorems
 import Human.Trace.Workers.KeccakSplit.Theorems
+import Human.ISA.Sail.Theorems
