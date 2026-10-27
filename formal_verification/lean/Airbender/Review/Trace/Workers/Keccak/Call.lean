@@ -5,7 +5,7 @@ import Airbender.Review.Circuits.Keccak.ControlUpdate
 namespace Airbender.Keccak
 open Trace Reference.RiscV.Sail Reference.Sail
 
-/-- Control expected by the pinned caller: 24 rounds of 27 micro-operations,
+/-- Control expected by the modeled special5 protocol: 24 rounds of 27 micro-operations,
     followed by the final Iota. The initialized-history proof derives these
     values for the actual imported rows; they are not inputs to that proof. -/
 def scheduleControl (i : Fin 650) : ControlState :=
@@ -18,10 +18,11 @@ def scheduleControl (i : Fin 650) : ControlState :=
       by have bound : stage < 27 := Nat.mod_lt _ (by decide); split_ifs <;> omega⟩,
     ⟨i.val / 27, by have := i.isLt; omega⟩⟩
 
-/-- Public boundary for one uninterrupted Keccak request span. The pinned caller
-    performs 649 calls with x10 initially zero (`common_constants/src/delegation_types/keccak_special5.rs`).
-    Shared initialized matching proves every later control read. Connecting this
-    span to the calling instruction trace remains the request-binding task. -/
+/-- Public boundary for one uninterrupted special5 request span: 649 calls with
+    x10 initially zero. The provided `keccak_f1600` wrapper instead uses the
+    unmodeled 361-call split protocol; see FINDINGS.md F12. Shared initialized
+    matching proves every later control read in this special5 span. Connecting
+    the span to a calling instruction trace remains the request-binding task. -/
 structure CallInputs [Fact p.Prime] (data : Delegation.MemoryData p) (initial : State)
     (cells : List Cell) : Prop where
   memory : Delegation.MemoryInputs data initial cells

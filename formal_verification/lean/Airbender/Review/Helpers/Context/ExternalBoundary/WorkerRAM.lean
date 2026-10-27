@@ -15,7 +15,7 @@ def Location.cell : Location → Cell
   | .register index => .register index
   | .ram address _ => .ram address
 
-/-- Temporary restriction for the open F04 native-ROM/reference gap, not a
+/-- Lower-level RAM-domain binding for the F04 native-ROM/reference difference, not a
     property derived from arbitrary native acceptance or a fix to its encoding.
     Full native address-code binding for every worker port, including fixed
     registers and every indirect block word. It supplies no read/write value. -/

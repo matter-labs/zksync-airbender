@@ -1,5 +1,7 @@
 # Findings: assumptions and circuit bindings
 
+<!-- source-names: keccak_special5 keccak_f1600.rs keccak_special5_layout_no_caches_gkr.json KECCAK_COLUMN_PARITY_CSR_REGISTER KECCAK_THETA_RHO_CSR_REGISTER KECCAK_CHI5_CSR_REGISTER KECCAK_SPECIAL5_CSR_REGISTER SUPPORTED_CSRS -->
+
 Current native target: upstream `av_gkr_compiler` at
 `4518846625730fabc4cd83744d4bd983a5e42b97`. Current totals and completed validation
 are maintained in [Verification status](VERIFICATION_STATUS.md), separately from
@@ -69,8 +71,8 @@ not a claim that every open PR or every backend has been audited.
 | [AIH-339](https://linear.app/matterlabs/issue/AIH-339) — zero-clock workers | **Fixed and verified for the current native BabyBear target.** The adopted #490 timestamp query rejects active zero clocks in all four imported BabyBear families and all 14 cached/no-cache Rust profiles. The historical raw witness is retained and now proved rejected; valid issued execution passes. The original comments' caller-to-worker argument alone did not establish the converse. | [Native occurrence accounting](Airbender/Proofs/ExternalBoundary/NativeRequests.lean) derives the full ledger from accepted constraints and initialized caller binding. The full mixed execution proof uses that derivation. Rust/artifact correspondence and cryptographic enforcement remain external. |
 | [AIH-113](https://linear.app/matterlabs/issue/AIH-113) — dropped scaled pointer range check | **Historical compiler bug with repair present in the inspected source.** [Delegation compilation](../../cs/src/gkr_compiler/delegation_circuit.rs) now passes the retained range vector into [memory lowering](../../cs/src/gkr_compiler/delegation_mem_accesses.rs), which pushes the scaled check into it. No live comments. | Do not assume every generated/cached artifact includes that repair. Compiled/artifact correspondence remains an external fidelity obligation; no new pointer-alignment assumption or newly discovered current-source bug is asserted. |
 | [AIH-315](https://linear.app/matterlabs/issue/AIH-315) — WHIR randomness reuse | **Upstream correction included in the verified rebase.** The corrected `av_gkr_compiler` target includes the coordinated [#526 correction](https://github.com/matter-labs/zksync-airbender/pull/526) and #527 protocol change. The Linear comment accepting the original freshness defect is unchanged. | The recorded CPU/EVM proof-replay paths pass on this branch. Backend-specific regeneration/compatibility and formal protocol soundness remain separate obligations. The old-pin assessment below is historical; source inclusion and scoped replay are not a general protocol-soundness proof or evidence of a forged proof. |
-| F02 — bigint controls | **Accepted native/reference discrepancy.** Controls 0 and 65537 violate the pinned call ABI even in initialized caller cycles. | The temporary [control contract](Airbender/Review/Helpers/Context/ExternalBoundary/BigintABI.lean) now supports [complete conditional bigint call retirement](Airbender/Review/Trace/UnifiedReduced/BigintCalls.lean), including actual operand reads, exact Sail writes/frame and PC advance. Actual control validation and full invalid-call/reference behavior still need a fix or justified acceptance binding. |
-| F04 — worker ROM | **Accepted native/reference discrepancy.** Supported COPY with ROM pointers can read zero shadows instead of public bytes; the VM's successful-call ABI rejects those pointers. | The temporary [RAM-port contract](Airbender/Review/Helpers/Context/ExternalBoundary/WorkerRAM.lean) excludes the case for conditional transport. General native acceptance has not been shown to enforce it. |
+| F02 — bigint controls | **Excluded by the supported delegation-use contract.** Controls 0 and 65537 remain accepted native/reference discrepancies; [AIH-355](https://linear.app/matterlabs/issue/AIH-355) was canceled on 8 October without comment. | Public supported-use execution requires valid reference-prefix arguments. The lower-level [control binding](Airbender/Review/Helpers/Context/ExternalBoundary/BigintABI.lean) remains available for conditional worker results. Arbitrary native acceptance is not a valid-control check. |
+| F04 — worker ROM | **Excluded by the supported delegation-use contract.** COPY with ROM pointers can read zero shadows instead of public bytes; the developers classify these invocations as UB ([AIH-364](https://linear.app/matterlabs/issue/AIH-364)). | Valid use requires RAM pointers. The physical tracked-RAM execution profile and lower-level [RAM-port binding](Airbender/Review/Helpers/Context/ExternalBoundary/WorkerRAM.lean) keep their exact scopes; no general native rejection of ROM pointers is claimed. |
 | [PR #531](https://github.com/matter-labs/zksync-airbender/pull/531) — recursive output and branch scratch | **Actual source defects addressed by a proposal, still open here.** The [base entrypoint](../../tools/gkr_verifier/src/common_fsv_unified_base_sec_100.rs) discards verified registers and returns a constant; the [branch witness path](../../cs/src/gkr_circuits/unified_reduced_machine/jump_branch_slt.rs) reads shared field scratch as Boolean before guarding branch selection. The latter is a witness-generation defect, not by itself an acceptance exploit. | Review/apply and validate the actual fixes. No output-equality or Boolean-scratch assumption closes them. The PR itself notes validation/regeneration pending after a transcript change. Its other field/recursion fixes require their own target-specific validation. |
 | [PR #316](https://github.com/matter-labs/zksync-airbender/pull/316) — reduced-load alignment / recursive word 7 | **Reported implementation bugs in another circuit/verifier path.** The patch adds alignment constraints and rejects recursive output words omitted from hashing. | Check the affected v2 path and tests before claiming a repair; the current richer v3 FV relation and its existing alignment proof do not certify that path. |
 | [Private PR #8](https://github.com/matter-labs/zksync-airbender-private/pull/8) — FRI degree slack | **Reported protocol bug with a proposed protocol change.** Producer/verifier patches and comments were reviewed; reported CPU tests do not establish protocol soundness or reproducible recursive artifacts. | Cryptographic analysis, producer/verifier agreement and artifact reproducibility remain open for that target. No degree-bound assumption is treated as a fix. |
@@ -81,6 +83,38 @@ extended-round and Keccak circuit patches. Their conditional proof use does not
 establish circuit enforcement. Bundle entry and the stricter round low-limb
 model profile are recorded separately there.
 
+### Supported delegation use — 27 October 2026
+
+The developers canceled the following reports on 8 October. The agreed proof
+domain is programs that use the provided wrapper sequences with valid entry
+and runtime arguments, expressed by the public-data
+[ValidDelegationUse](Airbender/Review/Trace/UnifiedReduced/DelegationUse.lean) predicate.
+This is a program-safety precondition; it does not assert that the verifier
+checks the condition. Exact logical matching, public initialization, the modeled
+registry and setup/reference fidelity remain separate assumptions. The current
+covered registry contains bigint, G and extended round. Blessed split Keccak is
+uncovered (F12), while special5 has only its existing conditional results.
+
+| Report | Case | 8 October disposition |
+| --- | --- | --- |
+| [AIH-350](https://linear.app/matterlabs/issue/AIH-350) | Invalid delegation sequence / interior entry | UB; developers provide blessed assembly sequences. |
+| [AIH-355](https://linear.app/matterlabs/issue/AIH-355) | Bigint controls 0/65537 (F02) | Canceled without comment; no individual technical explanation is inferred. |
+| [AIH-357](https://linear.app/matterlabs/issue/AIH-357) | Extended-round controls | Marked fixed, even though UB. The non-Boolean final-XOR repair is separate from the absent one-hot rule. |
+| [AIH-358](https://linear.app/matterlabs/issue/AIH-358) | Invalid special5 control | UB. |
+| [AIH-360](https://linear.app/matterlabs/issue/AIH-360) | G counter outside its schedule | Invalid invocation sequences are UB. |
+| [AIH-362](https://linear.app/matterlabs/issue/AIH-362) | Equal G state/message pointers | Developers expect the full memory argument to become unprovable. Keep reference pointer separation until that full-bundle claim is proved. |
+| [AIH-364](https://linear.app/matterlabs/issue/AIH-364) | Pointers below RAM (F04) | Properly compiled/linked programs avoid these; otherwise UB. |
+| [AIH-367](https://linear.app/matterlabs/issue/AIH-367) | Interior batch entry | Described as divergence between prover CSR calls and simulation. |
+
+These dispositions supersede the earlier requirement to repair delegation
+circuits before claiming supported-use soundness. Accepted-relation regressions
+remain evidence of behavior outside that domain. The contract includes G's
+constant initializer, complete 56/80- and 7/10-call code shapes, single bigint
+calls, no interior entry and valid reference-prefix pointers and controls.
+Extended-round masks include the blessed callers' zero low limb. G separation
+remains a program obligation; it is not asserted to follow from complete-bundle
+memory matching. No circuit, generator or production layout is changed here.
+
 F01's typed verifier-PC interface and F05's contribution-mask interface have
 inspected implementation mechanisms, with Rust/argument refinement still external;
 their conditional logical results remain checked. F06 is an explicit project/Sail
@@ -89,7 +123,7 @@ the historical zero-clock exception analyzed under F03; current native
 BabyBear constraints exclude active instances. F09's general extraction/fidelity
 obligation is distinct from its concrete AIH-336 bug. F10's conditional integration
 is now checked in [full mixed execution](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean);
-unrestricted acceptance still depends on unresolved F02/F04 enforcement. Historical
+unrestricted acceptance remains wider than the supported-use domain of F02/F04. Historical
 progress snapshots below retain their original narrower claims; the F10 section
 records the completed connection.
 
@@ -858,6 +892,11 @@ not a circuit fix, a proved Rust correspondence or an unconditional verifier pro
 
 ## F02 — Valid bigint operation observations do not establish valid calls
 
+**Current disposition.** Excluded by the supported delegation-use domain above,
+with valid controls stated on independent reference prefixes. This is a domain
+restriction supported by the developers' UB policy, not a pending circuit repair
+or a claim of native rejection. The historical counterexamples remain checked.
+
 **Evidence.** [UnifiedDelegation](Tests/UnifiedDelegation.lean)
 proves `issued_bigint_without_opcode`, `issued_bigint_high_control` and their
 execution/current-fetch consequences. Both cases are live, original-decoded calls
@@ -882,17 +921,22 @@ valid opcode to erase the gap. An implication for each selected operation can ho
 when none is selected; current caller cycles likewise do not run the full custom CSR.
 
 **Conditional integration checked.** [Complete bigint calls](Airbender/Review/Trace/UnifiedReduced/BigintCalls.lean)
-now derive the successful independent reference transition under the temporary
+now derive the successful independent reference transition under the lower-level
 valid-command contract. Pointers, actual operands and the complete write/frame
 follow from accepted initialized matching; original Sail PC advance retires the
 caller. COPY→LW/SW uses these full reference states in the same ordinary history.
 The full reference explicitly rejects both controls 0/65537, while their original
 native acceptance and observational regressions remain unchanged. This closes
-the bigint reference-connection proof task, not F02 implementation enforcement.
+the bigint reference-connection proof task; it does not reject arbitrary invalid
+native controls, which are outside the supported-use domain.
 
-**Closure needed.** Bind all control bits, opcode cardinality and invalid-call
-behavior to general native acceptance and the full call reference. An assumed
-valid-control premise would only narrow the theorem and leave these witnesses open.
+**Scope to preserve.** General native acceptance still admits the invalid
+controls. Supported-use soundness must derive the actual worker binding from the
+public program contract and exact prefix matching; renaming the witness premise
+does not supply that derivation. Unrestricted invalid-call behavior is not claimed.
+The [supported-use theorem](Airbender/Review/Trace/UnifiedReduced/SupportedUseExecution.lean)
+now derives that binding by induction over exact native prefixes; the original
+conditional bigint entrypoint remains available.
 
 ## F03 — Historical zero-clock worker; native exclusion adopted
 
@@ -927,6 +971,12 @@ Rust/artifact correspondence and cryptographic enforcement stay external.
 
 ## F04 — A valid COPY mode does not bind native worker ROM to public bytes
 
+**Current disposition.** ROM-pointer invocations are excluded by supported
+delegation use ([AIH-364](https://linear.app/matterlabs/issue/AIH-364)). The current
+physical execution theorem additionally retains its public tracked-RAM domain.
+This is not a planned circuit fix or evidence that arbitrary native acceptance
+rejects the retained ROM-shadow witness.
+
 **Evidence.** [DelegationROMBoundary](Tests/DelegationROMBoundary.lean)
 proves `native_caller_worker_matching`, `public_request_binding`,
 `supported_copy_mode`, `worker_accesses_rom` and `public_rom_word_nonzero`.
@@ -945,8 +995,8 @@ is derived in shared-history claims under a tracked-RAM domain. Its RAM conditio
 is not established for arbitrary native acceptance, and valid controls alone do
 not exclude the COPY fixture.
 
-**Closure needed.** Bind the native worker ports to the RAM-only call ABI or model
-the actual invalid-call behavior. Conditional
+**Conditional transport scope.** The native worker ports must remain bound to
+the RAM-only call ABI. Conditional
 [whole mixed-memory transport](Airbender/Review/Trace/UnifiedReduced/NativeMixedROM.lean)
 is now checked under the explicit RAM-port contract: public boot inputs derive the
 physical initialization, ordinary native ROM slots are interpreted using public
@@ -1265,7 +1315,8 @@ milestones remain separately deferred.
 
 ## F11 — Hash witness contracts remain unenforced
 
-**Status.** Open implementation-enforcement finding. The G, extended-round and
+**Status.** Supported-use domain boundary; arbitrary native enforcement is not
+claimed. The G, extended-round and
 Keccak circuit patches were removed; proofs retain the restored native relation.
 [HashCommands](Airbender/Review/Helpers/UnifiedReduced/NativeMemory.lean) supplies
 four explicitly assumed predicates from
@@ -1279,7 +1330,7 @@ execution, occurrence schedule, call count or complete bundle result.
 | --- | --- |
 | gControl | Every G x12 read is one of the 80 full-mode or 56 reduced-mode controls. The restored circuit retains the fallback for control 80; membership in the successful-call reference is not enforced by that fallback. |
 | gBases | Actual G state and message base pointers differ. Equal bases violate the successful-call reference but the restored native relation does not enforce their separation. |
-| roundControl | Actual round x12 equals three flags plus exactly one supported round bit, below seven or ten according to mode, with a zero low limb. Individual native Boolean bit checks permit zero/multiple round bits; they are weaker than this exclusive mask. The zero low limb is additionally a stricter model profile than the Rust VM requires. |
+| roundControl | Actual round x12 equals three flags plus exactly one supported round bit, below seven or ten according to mode, with a zero low limb. Individual native Boolean bit checks permit zero/multiple round bits; they are weaker than this exclusive mask. The blessed callers' masks have a zero low limb; the public supported-use contract includes that rule. |
 | keccakControl | Actual x10 is one of the existing 649 protocol micro-call controls, including final round-24 Iota. The local native controller permits positions outside that schedule, including the round-31 Chi rollover. |
 
 **Evidence and scope.** [NativeProtocolGap](Tests/NativeProtocolGap.lean) proves
@@ -1303,20 +1354,94 @@ requires permutation index zero. Neither entry requirement follows from the four
 contracts. The plan-free native-path theorem establishes local successful calls,
 not this stricter bundle-entry condition. The
 [complete span interface](Airbender/Review/Trace/UnifiedReduced/Paths/Spans.lean)
-fixes entry through its per-trace protocol plan. Bundle-entry enforcement remains
-an open circuit/VM correspondence issue; this is the opposite direction from the
-stricter round low-limb model profile.
+fixes entry through its per-trace protocol plan. The public supported-use contract
+instead prohibits initial/intermediate entry into wrapper interiors and validates
+the independent reference-prefix control schedule. These are program obligations
+under the developers' contract, not circuit repairs awaiting implementation.
 
-**Required disposition.** Keep all four witness assumptions and these differences
-visible at the execution entrypoints. Any additional enforcement gap must receive
-an explicit narrow assumption and evidence at its actual relation. Circuit fixes
-and their validation are deferred; no proof assumption closes this finding.
+**Required disposition.** Preserve the lower-level conditional worker APIs and
+their exact witness premises. The supported-use entrypoint must derive those
+premises from public reference-prefix validity and accepted exact matching.
+Retain G separation as a public program obligation until the complete-bundle
+memory claim is proved. Special5 remains outside the blessed execution scope (F12).
+
+**Native bridge.** The
+[supported-use execution theorem](Airbender/Review/Trace/UnifiedReduced/SupportedUseExecution.lean)
+takes no bigint/hash witness contract. Its
+[prefix construction](Airbender/Proofs/UnifiedReduced/SupportedUsePrefix.lean)
+uses accepted state/request/memory matching without a round mask. Induction on
+the next instruction's clock proves every earlier worker valid, applies the old
+conditional execution theorem only to that strict prefix, and obtains an
+independent reachable reference state. Exact frontier tokens identify the next
+worker's canonical inputs; public reference-prefix validity then establishes
+its controls and G separation. This avoids assuming a full valid memory/execution
+history to derive the same validity conditions. Initialization, the physical
+tracked-RAM profile and exact logical matching retain their existing scope.
+
+The broader helper/trace dependency check still flags HashABI's imports of trace
+worker control-definition modules, present before this change. The new public
+contract is placed in the execution layer; the legacy controller-definition
+placement remains a separate formal-model review task. Focused proof checking
+does not establish full review/environment/replay assurance.
+
+## F12 — Blessed Keccak path is outside current proof coverage
+
+**Status — 27 October 2026.** Documented coverage and setup-integration gap.
+The agreed scope retains the conditional `keccak_special5` results and defers
+modeling the three split Keccak circuits. Those results do not establish
+execution of the provided Keccak wrapper.
+
+**Wrapper and modeled circuit differ.** The public
+[`keccak_special5::keccak_f1600` wrapper](../../common_constants/src/delegation_types/keccak_special5.rs)
+forwards to [`keccak_f1600.rs`](../../common_constants/src/delegation_types/keccak_f1600.rs).
+That implementation issues 361 consecutive calls: in each of 24 rounds, five
+column-parity calls, five theta/rho calls and five chi5 calls, followed by one
+final column-parity call. Its three CSRs are
+`KECCAK_COLUMN_PARITY_CSR_REGISTER`, `KECCAK_THETA_RHO_CSR_REGISTER` and
+`KECCAK_CHI5_CSR_REGISTER`. It uses a 256-byte-aligned state pointer in x11.
+
+In contrast, the [Lean artifact](Airbender/Review/Circuits/Keccak/Artifact.lean)
+imports `keccak_special5_layout_no_caches_gkr.json`. The
+[complete worker claims](Airbender/Review/Trace/Workers/Keccak/README.md)
+cover that circuit's 649-call protocol and its seven local modes. The three
+split circuits have no Lean models or composed execution proofs in the current
+development. Shared state layout and the same mathematical Keccak-f1600
+reference do not supply a refinement between these different native protocols.
+
+**Unified setup also needs integration.** The inspected
+[`SUPPORTED_CSRS` list](../../circuit_defs/setups/src/unrolled_circuits/unifier_reduced_machine_circuit/mod.rs)
+includes `KECCAK_SPECIAL5_CSR_REGISTER` and omits all three split Keccak CSRs.
+Consequently, proofs of the split workers alone would not establish the
+wrapper's support in this captured unified setup. Decoder/setup and caller/worker
+bindings must also be checked before claiming end-to-end coverage. This is a
+gap in the inspected setup, not a claim about every Airbender backend.
+
+**Supported-use contract.** The developers classify unsupported delegation
+invocations as UB ([AIH-350](https://linear.app/matterlabs/issue/AIH-350)); the
+special5 invalid-control report was also canceled as UB
+([AIH-358](https://linear.app/matterlabs/issue/AIH-358)). The agreed public-data
+contract design, `ValidDelegationUse program initial`, admits the provided
+wrapper shapes with valid entry and runtime arguments and excludes special5
+calls. The implemented covered registry contains bigint, G and extended round;
+the blessed split Keccak path is outside it. Thus the retained special5 theorems
+do not contribute Keccak coverage under this contract. The predicate and native
+prefix bridge compile, while the original conditional entrypoints retain their
+explicit witness contracts for compatibility. Neither the new contract nor the
+bridge supplies missing split-circuit or unified setup coverage.
+
+**Deferred work.** Model the three split circuits, establish their 361-call
+composition against the independent reference, and check their public program,
+CSR/setup, caller and exact-memory bindings. Preserve existing special5 claims
+as conditional circuit/protocol results. Do not assume split/special5 equivalence,
+or change circuit constraints, generators or production layouts to make the
+current proof go through. A supported-use execution claim must explicitly leave
+the blessed Keccak path outside its covered scope until these obligations are met.
 
 ## Remaining boundary register
 
 Review these assumptions for applicability. Several are supported public profiles
-or logical abstraction boundaries; F11 separately records known excluded cases
-and an open enforcement finding:
+or logical abstraction boundaries; F11 records the supported-use domain and the
+lower-level witness-conditional APIs:
 
 | Boundary | Exact premise or missing connection | Review consequence |
 | --- | --- | --- |
@@ -1325,7 +1450,8 @@ and an open enforcement finding:
 | Independent external input | [ExternalStream.Ports](Airbender/Review/Helpers/Core/ExternalStream.lean) binds responses to an independently supplied stream. | Exact consumption and execution do not authenticate an oracle or establish a particular externally intended stream. |
 | Logical matching | [Accepted](Airbender/Review/Helpers/Context/Model.lean), worker matching and request matching are exact permutations of full tokens. | This is the intended premise for the noncryptographic memory-history result. Product/compression equality must not be silently substituted for it; actual global participation and token construction still need their implementation binding. |
 | Artifact/reference fidelity | [Import/generation boundary](TRUST_AND_REVIEW.md#import-and-generation-fidelity): richer no-cache import, original Sail generation and project-reference applicability. Base-field arithmetic preservation is proved for 22 captured cached/uncached instances. New physical-row APIs derive lookup/helper validity from exact emitted-tuple matching; natural multiplicities are not tied to physical counters. Supplied-program wrappers require retained decoder-table compatibility. All 14 native row compositions and public wrappers compile; the selected 3279-module/10-test frontend passes freshness/integrity checks. Full assurance remains pending. | Captured-instance results do not prove universal Rust compiler correctness or cryptographic argument soundness; use the [compiler premise table](Airbender/Review/Compiler/README.md#execution-premises). |
-| Hash witness contracts | [F11](#f11--hash-witness-contracts-remain-unenforced) records the four HashCommands fields, known excluded cases, VM bundle-entry difference and stricter round low-limb model profile. | Private-witness assumptions support conditional execution; the restored circuits have not been shown to enforce them. |
+| Delegation-use domain | [F11](#f11--hash-witness-contracts-remain-unenforced) records the lower-level HashCommands fields. The public supported-use contract instead states wrapper shapes, entry safety and valid reference-prefix controls/pointers, including the blessed round masks' zero low limb. | Exact prefix matching derives the bigint/hash conditions for the new supported-use entrypoint. G separation remains explicit; arbitrary native enforcement and blessed split Keccak coverage are not claimed. |
+| Keccak wrapper coverage | [F12](#f12--blessed-keccak-path-is-outside-current-proof-coverage): proofs cover 649-call special5; the provided wrapper uses the unmodeled 361-call split protocol, whose CSRs are absent from the inspected unified setup. | Retain conditional special5 results; blessed Keccak execution and its setup integration are deferred. |
 | Worker clock ranges | [MemoryInputs](Airbender/Review/Helpers/Delegation/Memory.lean) retains clockRoom and invocationHigh: offset-two writes fit in the low limb and the invocation high limb is bounded. | Worker-only memory proofs have these range premises. Integrated caller/accounting claims derive them; no actual read value or pointer bound is supplied. |
 | Fields and coefficients | The public claims retain prime-field minima and serialized inverse equalities; bigint's integrated operation proof is BabyBear-specific. | These are arithmetic compatibility conditions, not proof defects. A generic field theorem does not establish the actual Proth120 artifact import. |
 
@@ -1385,8 +1511,9 @@ its source/comment assessments are recorded above. Existing terminal-PC, inactiv
 zero-clock, ROM-shadow and discarded-load regressions remain checked.
 
 Review F01's explicit canonical boundary contract and the remaining Rust/artifact
-and cryptographic correspondence. For unresolved F02/F04, review the actual
-control and worker-ROM acceptance argument first; then review F11's private-witness
-contracts, F07/F08's protocol restrictions and F09's concrete setup binding. Closing a remaining finding should
-supply that connection or explicitly revise the claimed scope; adding the missing
-property as an assumption is not closure.
+and cryptographic correspondence. For F02/F04/F11, review the public supported-use
+domain and its exact-prefix transport, preserving the broader native
+counterexamples and lower-level conditional APIs. F07/F08's algorithm/protocol
+restrictions and F09's concrete setup binding retain their separate scopes.
+Other implementation findings need an actual repair or a justified scope
+disposition; adding a proof premise alone does not repair an implementation.

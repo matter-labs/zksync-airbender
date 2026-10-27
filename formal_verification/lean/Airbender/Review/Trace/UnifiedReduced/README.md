@@ -23,7 +23,18 @@ PC/cells. The F02 command contract remains explicit. Current native BabyBear
 constraints and caller accounting derive participation; no external occurrence
 ledger is supplied.
 
-[Native actual-path execution](NativePathExecution.lean) composes branches, JAL,
+[Supported-use execution](SupportedUseExecution.lean) replaces bigint/hash
+witness premises with the public
+[ValidDelegationUse](DelegationUse.lean) contract. It states
+the registered wrapper shapes, safe entry and runtime controls/pointers over
+independent reference prefixes. The native bridge cuts before each instruction
+and inducts on its clock; an earlier accepted prefix supplies the reference state
+whose arguments determine the next worker's inputs. Exact matching and the
+public initialization/RAM/configuration/setup profile remain explicit.
+The covered wrappers are bigint, G and extended round. G separation stays a
+program obligation; blessed split Keccak is deferred (F12).
+
+The lower-level [native actual-path execution](NativePathExecution.lean) composes branches, JAL,
 JALR and repeated-PC loops with complete calls from all four worker families.
 The [F11 hash witness contracts](../../../../FINDINGS.md#f11--hash-witness-contracts-remain-unenforced),
 implemented by [HashCommands](../../Helpers/UnifiedReduced/NativeMemory.lean),
@@ -31,12 +42,17 @@ assume supported private controller reads and G base separation. The
 [individual conditions](../../Helpers/Context/ExternalBoundary/HashABI.lean)
 are not proved from the restored native circuits; they contain no outputs or
 desired execution. Per-call validity does not enforce the VM's zero bundle entry.
-The round zero low limb is a stricter model profile than the VM requires. Controllers may be loaded or computed through ordinary
+The zero round low limb agrees with the blessed callers' mask rule; arbitrary
+VM calls have a wider domain. Controllers may be loaded or computed through ordinary
 instructions. No occurrence plan is supplied. The conclusion realizes
 the native terminal PC and every tracked cell. Public program/initialized memory,
 configuration/retirement and the separate bigint command contract remain explicit.
 The older [prepared actual-path interface](PathExecution.lean) retains its
 trace-dependent instruction/caller plan for compatibility.
+The repeated-PC G-loop fixture exercises these lower-level conditional APIs;
+its loop around one CSR is not a blessed contiguous wrapper or a supported-use
+example. The supported-use theorem proves instruction-prefix execution; complete
+algorithm claims still require the span coverage and gap conditions below.
 
 [Complete actual-path spans](PathSpanExecution.lean) also derives the full worker
 partition/count and complete algorithms in one history under its per-trace

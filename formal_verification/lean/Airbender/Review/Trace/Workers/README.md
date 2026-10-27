@@ -18,7 +18,7 @@ native terminal tokens, with schedules and intermediate values derived from matc
 | Seven selected bigint operation effects | [`Airbender.Bigint.Native.operation_execution`](Bigint/Theorems.lean) |
 | Complete G work-vector fold | [`Airbender.Blake2G.Native.workvector_soundness`](Blake2G/Theorems.lean) |
 | Complete extended-BLAKE compression | [`Airbender.Blake2Round.Native.compression_soundness`](Blake2Round/Theorems.lean) |
-| Complete Keccak permutation | [`Airbender.Keccak.Native.permutation_soundness`](Keccak/Theorems.lean) |
+| Complete special5 Keccak permutation | [`Airbender.Keccak.Native.permutation_soundness`](Keccak/Theorems.lean) |
 
 Native-boundary/window variants retain timestamps rather than restarting history.
 Public protocol modes/counts, modeled tables, domain/alignment and the existing
@@ -47,7 +47,7 @@ and, for the hash families, complete protocol spans.
 | Bigint | [Guide](Bigint/README.md) | Seven selected operation references; full caller-control ABI remains open. |
 | BLAKE2 G | [Guide](Blake2G/README.md) | The pinned 56/80-call work-vector fold. |
 | Extended BLAKE | [Guide](Blake2Round/README.md) | Seven-/ten-round compression. |
-| Keccak | [Guide](Keccak/README.md) | The complete 649-call permutation span. |
+| Keccak special5 | [Guide](Keccak/README.md) | The complete 649-call permutation span. The provided wrapper's 361-call split path is uncovered; see [F12](../../../../FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage). |
 
 Start with the public theorem and its input record. Check actual initial/final
 reads, native seed timestamps, tracked domain, modeled tables and logical matching.

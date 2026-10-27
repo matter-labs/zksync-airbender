@@ -30,6 +30,8 @@ import Tests.NativeProtocolGap
 import Tests.PathGConsumedMessage
 import Airbender.Review.Trace.UnifiedReduced.PathExecution
 import Airbender.Review.Trace.UnifiedReduced.NativePathExecution
+import Airbender.Review.Trace.UnifiedReduced.SupportedUseExecution
+import Tests.SupportedDelegationUse
 import Airbender.Review.Trace.UnifiedReduced.PathSpanExecution
 import Airbender.Proofs.Trace.InterleavedProjection
 import Airbender.Proofs.Keccak.CallPermutation
@@ -5409,6 +5411,16 @@ import Airbender.Proofs.GKRProtocol.UnifiedRowNative.UnifiedUncached
 #print axioms Airbender.UnifiedReduced.Caller.path_span_call_count_positive
 
 #print axioms Airbender.UnifiedReduced.Caller.native_path_execution_soundness
+#print axioms Airbender.UnifiedReduced.Caller.supported_path_execution_soundness
+#print axioms Airbender.UnifiedReduced.Caller.ValidDelegationUse
+#print axioms Tests.SupportedDelegationUse.bigint_zero_rejected
+#print axioms Tests.SupportedDelegationUse.bigint_high_control_rejected
+#print axioms Tests.SupportedDelegationUse.round_nonzero_low_rejected
+#print axioms Tests.SupportedDelegationUse.special5_not_in_supported_registry
+#print axioms Tests.SupportedDelegationUse.rom_pointer_rejected
+#print axioms Tests.SupportedDelegationUse.equal_g_pointers_rejected
+#print axioms Tests.SupportedDelegationUse.interior_initial_entry_rejected
+#print axioms Tests.SupportedDelegationUse.empty_program_supported
 #print axioms Airbender.ExternalBoundary.HashABI.GControl
 #print axioms Airbender.ExternalBoundary.HashABI.GBases
 #print axioms Airbender.ExternalBoundary.HashABI.RoundControl

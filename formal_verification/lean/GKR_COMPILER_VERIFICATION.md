@@ -1,5 +1,7 @@
 # GKR compiler semantic preservation
 
+<!-- source-names: keccak_special5 -->
+
 For human review, start with the [compiler entrypoints and their definitions](Airbender/Review/Compiler/README.md).
 Readers and capture bindings are under `Airbender/Import`; supporting calculations
 and generated certificates are under `Airbender/Proofs`. This guide records
@@ -13,6 +15,18 @@ The restored hash circuits have known gaps covered by the explicit
 [F11 hash witness contracts](FINDINGS.md#f11--hash-witness-contracts-remain-unenforced).
 Those are private-witness assumptions, not native enforcement or public-input
 validation. Circuits are unchanged to make proofs succeed.
+The [supported-use trace entrypoint](Airbender/Review/Trace/UnifiedReduced/SupportedUseExecution.lean)
+instead derives the bigint/hash worker contracts from public program safety and
+exact native prefixes for bigint, G and extended round. This does not enlarge the
+captured compiler/program registry or establish split-Keccak coverage.
+
+The Keccak captures and execution lemmas cover `keccak_special5`, whose complete
+protocol has 649 calls. The provided Keccak wrapper instead uses 361 calls to
+three split circuits with no current Lean coverage; the inspected unified setup
+also omits their CSRs. Those captures therefore do not establish compiler or
+execution coverage for the blessed Keccak path. Split modeling and integration
+are deferred; [F12](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage)
+records the agreed scope.
 
 For 22 captured cached/uncached compilations, base-field arithmetic preservation
 is proved. Wiring/cache checks, 60 lookup-output reductions and 48 RAM-product

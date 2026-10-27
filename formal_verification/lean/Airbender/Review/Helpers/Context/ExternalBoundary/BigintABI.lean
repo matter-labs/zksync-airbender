@@ -22,7 +22,7 @@ def Command.word (command : Command) : Word := ⟨Bigint.Control.mask command.bi
 def input (w : Nat → ZMod p) : Word :=
   (Trace.readToken w Bigint.importedConstraintsMemoryPorts[18]).word
 
-/-- Temporary control restriction for the open F02 finding, not an implemented
+/-- Lower-level successful-call control binding for F02, not a native
     validation check or a proof of the complete custom-CSR ABI.
     External successful-call ABI binding to the full native x12 read, including
     its high limb. This is an additional call-reference/acceptance obligation;
