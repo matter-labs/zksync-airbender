@@ -235,7 +235,7 @@ fn test_program_prover_base_layer_verify() {
         proof.delegation_proofs.len(),
     );
 
-    let stream = build_unrolled_stream(&setups, &proof);
+    let stream = build_unrolled_stream(&setups, &proof, verifier_common::BLAKE_MODE);
     let output = crate::upstream::native_verify_unrolled(stream, true);
     log::info!("base layer verified natively; output registers: {output:?}");
 }
@@ -292,7 +292,7 @@ fn test_program_prover_unified_base_layer_verify() {
         proof.delegation_proofs.len(),
     );
 
-    let stream = crate::upstream::build_unified_stream(&setups, &proof);
+    let stream = crate::upstream::build_unified_stream(&setups, &proof, verifier_common::BLAKE_MODE);
     let output = crate::upstream::native_verify_unified(stream, true);
     log::info!("unified base layer verified natively; output registers: {output:?}");
 }

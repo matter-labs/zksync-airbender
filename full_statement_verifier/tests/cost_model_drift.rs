@@ -45,7 +45,12 @@ fn nds_for(
     let f = std::fs::File::open(&path).unwrap_or_else(|e| panic!("open {path}: {e}"));
     let compiled: GKRCircuitArtifact<BabyBearField> =
         serde_json::from_reader(std::io::BufReader::new(f)).expect("deserialize compiled circuit");
-    verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(proof, &compiled)
+    // the tracked per-circuit guests are the `blake2_with_compression` builds
+    verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
+        proof,
+        &compiled,
+        verifier_common::BlakeMode::Compression,
+    )
 }
 
 fn guest_cycles(circuit: &str) -> u64 {

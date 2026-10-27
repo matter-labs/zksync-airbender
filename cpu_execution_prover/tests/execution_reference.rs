@@ -57,8 +57,16 @@ fn assert_memory_cap_and_bytes(
         "memory cap of {label}"
     );
     assert_eq!(
-        verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(mine, circuit),
-        verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(legacy, circuit),
+        verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
+            mine,
+            circuit,
+            verifier_common::BLAKE_MODE
+        ),
+        verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
+            legacy,
+            circuit,
+            verifier_common::BLAKE_MODE
+        ),
         "flattened proof of {label}"
     );
 }

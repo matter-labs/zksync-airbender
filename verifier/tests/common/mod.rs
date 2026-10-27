@@ -10,6 +10,7 @@ use prover::gkr::prover::GKRProof;
 use prover::merkle_trees::DefaultTreeConstructor;
 use verifier_common::errors::{DebugErrorCreator, VerificationError};
 use verifier_common::gkr::flatten::flatten_gkr_proof_for_nds;
+use verifier_common::BlakeMode;
 
 pub const VERIFIER_STACK_SIZE: usize = 1 << 27;
 
@@ -42,19 +43,24 @@ verifier_common::gkr_circuits!(define_dispatch);
 pub use prover::gkr::prover_config::SoundnessMode;
 pub use verifier_common::test_circuits::SecurityLevel;
 
+/// The fixture's ND stream for a verifier built with `blake`
+/// (`verifier_common::BLAKE_MODE` for the verifier compiled into this test
+/// binary, the ELF's build feature for a RISC-V program).
 pub fn load_nds(
     name: &str,
     level: SecurityLevel,
+    blake: BlakeMode,
 ) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
-    circuit_by_name(name).load_nds_for(level)
+    circuit_by_name(name).load_nds_for(level, blake)
 }
 
 pub fn load_nds_in_mode(
     name: &str,
     level: SecurityLevel,
     mode: SoundnessMode,
+    blake: BlakeMode,
 ) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
-    circuit_by_name(name).load_nds_for_mode(level, mode)
+    circuit_by_name(name).load_nds_for_mode(level, mode, blake)
 }
 
 pub fn elf_path(name: &str, level: SecurityLevel) -> String {
@@ -305,7 +311,7 @@ pub fn assert_rejects_corrupted_nds(
     corrupt: impl FnOnce(&mut Vec<u32>),
     expected: impl FnOnce(&VerifyRejection) -> bool,
 ) {
-    let (mut nds, external_challenges) = load_nds(name, level);
+    let (mut nds, external_challenges) = load_nds(name, level, verifier_common::BLAKE_MODE);
     corrupt(&mut nds);
     match verify_nds(name, level, &external_challenges, nds) {
         Ok(()) => panic!("{}: should reject {}", name, label),
@@ -330,7 +336,9 @@ pub fn proof_to_nds(
     //     .map(|i| i as u32)
     //     .collect();
     let nds = flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-        proof, &compiled,
+        proof,
+        &compiled,
+        verifier_common::BLAKE_MODE,
     );
     let external_challenges = proof.external_challenges;
 

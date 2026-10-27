@@ -99,6 +99,7 @@ pub const ORACLE_NUM_COLS: [usize; 1usize] = [32usize];
 pub const ORACLE_DEPTHS: [usize; 1usize] = [20usize];
 pub const TOTAL_ORACLE_COLS: usize = 32usize;
 pub const WHIR_ORACLE_DEPTHS: [usize; 5usize] = [18usize, 17usize, 14usize, 12usize, 11usize];
+pub const WHIR_CAP_SIZE: usize = 16usize;
 pub const WHIR_CAP_WORDS: usize = 128usize;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;

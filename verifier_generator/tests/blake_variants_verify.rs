@@ -77,7 +77,7 @@ fn verify_variant<V>(
     assert_eq!(generated_trace_len_log2, config.trace_len_log2);
     assert_eq!(config.pack_log2(), variant.pack_log2);
 
-    let (nds, external_challenges) = variant.load_nds();
+    let (nds, external_challenges) = variant.load_nds(verifier_common::BLAKE_MODE);
     std::thread::scope(|s| {
         let handle = std::thread::Builder::new()
             .name(format!("gkr verifier {}", variant.name()))

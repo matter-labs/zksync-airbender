@@ -1,31 +1,6 @@
 use crate::prover::definitions::USE_REDUCED_BLAKE2_ROUNDS;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum BlakeMode {
-    Compression,
-    BlakeSpecialOpcodes,
-}
-
-impl BlakeMode {
-    #[must_use]
-    pub const fn tag(self) -> &'static str {
-        match self {
-            Self::Compression => "blake2_with_compression",
-            Self::BlakeSpecialOpcodes => "special_opcodes_extension",
-        }
-    }
-
-    #[must_use]
-    pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "blake2_with_compression" | "compression" | "round" => Some(Self::Compression),
-            "special_opcodes_extension" | "special_opcodes" | "spec" => {
-                Some(Self::BlakeSpecialOpcodes)
-            }
-            _ => None,
-        }
-    }
-}
+pub use crate::prover::definitions::BlakeMode;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FsvProgram {
@@ -54,6 +29,9 @@ impl FsvProgram {
     #[must_use]
     pub const fn supports(self, mode: BlakeMode) -> bool {
         match (self, mode) {
+            // no full-statement verifier is built with the G-function delegation
+            // or plain software blake
+            (_, BlakeMode::GFunction | BlakeMode::Software) => false,
             (Self::UnifiedBaseLayer | Self::UnifiedRecursionLayer, _) => true,
             (_, BlakeMode::BlakeSpecialOpcodes) => false,
             (_, _) => true,
@@ -78,8 +56,8 @@ mod tests {
 
     #[test]
     fn tags_roundtrip_through_parse() {
-        for mode in [BlakeMode::Compression, BlakeMode::BlakeSpecialOpcodes] {
-            assert_eq!(BlakeMode::parse(mode.tag()), Some(mode));
+        for mode in BlakeMode::ALL {
+            assert_eq!(BlakeMode::parse(mode.tag()), Some(*mode));
         }
         assert_eq!(BlakeMode::parse("nonsense"), None);
     }

@@ -156,7 +156,7 @@ pub fn compress_fixed_point_to_l1(
             },
         );
 
-        let stream = build_unified_stream(&setups, &proof);
+        let stream = build_unified_stream(&setups, &proof, BlakeMode::BlakeSpecialOpcodes);
         // An in-memory base source takes the precommitted single-pass path:
         // witness evaluation and the merged commitment happen once per chunk,
         // and the proofs consume the pre-committed oracles (the
@@ -231,7 +231,7 @@ pub fn compress_fixed_point_to_l1(
     println!(
         "[l1-compression] stage 3: proving the feeder verifier with the L1 (Proth120) parameters"
     );
-    let stream = build_unified_stream(&setups, &proof);
+    let stream = build_unified_stream(&setups, &proof, BlakeMode::BlakeSpecialOpcodes);
     let program = ProgramConfig {
         program: riscv_transpiler::elf::ProgramSource::elf(
             fsv_dir.join(format!("{FEEDER_FSV_STEM}.elf")),
@@ -334,7 +334,7 @@ mod diagnostics {
         let setups: Setups = deserialize_compressed_from_file(&format!(
             "../circuit_defs/prover_examples/final_layer_0_setups_{tags}.bin"
         ));
-        let stream = build_unified_stream(&setups, &proof);
+        let stream = build_unified_stream(&setups, &proof, BlakeMode::BlakeSpecialOpcodes);
         let (bin, text) = load_fsv_program(
             "../tools/gkr_verifier/full_statement_verifiers",
             FsvProgram::UnifiedRecursionLayer,

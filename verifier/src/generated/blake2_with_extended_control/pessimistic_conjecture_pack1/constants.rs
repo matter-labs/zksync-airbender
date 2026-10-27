@@ -99,6 +99,7 @@ pub const ORACLE_NUM_COLS: [usize; 3usize] = [113usize, 269usize, 3usize];
 pub const ORACLE_DEPTHS: [usize; 3usize] = [17usize, 17usize, 17usize];
 pub const TOTAL_ORACLE_COLS: usize = 385usize;
 pub const WHIR_ORACLE_DEPTHS: [usize; 4usize] = [17usize, 17usize, 16usize, 16usize];
+pub const WHIR_CAP_SIZE: usize = 16usize;
 pub const WHIR_CAP_WORDS: usize = 128usize;
 pub const PACK_LOG2: usize = 1usize;
 pub const PACKED_CLAIM_SET_LENS: [usize; 3] = [225usize, 538usize, 6usize];

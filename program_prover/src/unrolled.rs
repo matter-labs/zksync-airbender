@@ -2038,8 +2038,11 @@ pub(crate) mod test {
         let program_proof: ProgramProof = bincode_deserialize_from_file("tmp_proof.bin");
         let proof = &program_proof.riscv_proofs[&circuit_family][0];
         let compiled_circuit = &program_proof.compiled_riscv_circuits[&circuit_family];
-        let responses =
-            ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(proof, compiled_circuit);
+        let responses = ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
+            proof,
+            compiled_circuit,
+            ::verifier_common::BLAKE_MODE,
+        );
         let external_challenges = proof.external_challenges;
 
         std::thread::Builder::new()

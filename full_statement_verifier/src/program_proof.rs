@@ -1,5 +1,6 @@
 extern crate alloc;
 
+use ::verifier_common::BlakeMode;
 use crate::definitions::DELEGATION_TYPES;
 use crate::recursion_chain::RecursionChain;
 use alloc::collections::BTreeMap;
@@ -75,9 +76,10 @@ impl ProgramProof {
     pub fn build_unrolled_stream<'a>(
         &self,
         flattened_setup_caps: impl Iterator<Item = &'a [u32]>,
+        blake: BlakeMode,
     ) -> Vec<u32> {
         let mut stream: Vec<u32> = flattened_setup_caps.flatten().copied().collect();
-        stream.extend(self.flatten_for_verification());
+        stream.extend(self.flatten_for_verification(blake));
         stream
     }
 
@@ -87,13 +89,17 @@ impl ProgramProof {
     pub fn build_unified_stream<'a>(
         &self,
         flattened_setup_caps: impl Iterator<Item = &'a [u32]>,
+        blake: BlakeMode,
     ) -> Vec<u32> {
         let mut stream: Vec<u32> = flattened_setup_caps.flatten().copied().collect();
-        stream.extend(self.flatten_unified_for_verification());
+        stream.extend(self.flatten_unified_for_verification(blake));
         stream
     }
 
-    pub fn flatten_for_verification(&self) -> Vec<u32> {
+    /// The proof's ND words for a verifier program built with `blake`
+    /// (every inner proof's WHIR openings are laid out for that build:
+    /// `verifier_common::gkr::flatten::flatten_gkr_proof_for_nds`).
+    pub fn flatten_for_verification(&self, blake: BlakeMode) -> Vec<u32> {
         let mut responses = Vec::with_capacity(32 + 32 * 2);
 
         assert_eq!(self.register_final_values.len(), 32);
@@ -140,10 +146,7 @@ impl ProgramProof {
                     responses.push(proofs.len() as u32);
                     for proof in proofs.iter() {
                         responses.extend(
-                            ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
-                                proof,
-                                compiled_circuit,
-                            ),
+                            ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(proof, compiled_circuit, blake),
                         );
                     }
                 } else {
@@ -161,10 +164,7 @@ impl ProgramProof {
                 .as_ref()
                 .expect("compiled inits and teardowns");
             for proof in self.inits_and_teardown_proofs.iter() {
-                responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
-                    proof,
-                    compiled_circuit,
-                ));
+                responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(proof, compiled_circuit, blake));
             }
         } else {
             responses.push(0u32);
@@ -176,10 +176,7 @@ impl ProgramProof {
                 responses.push(proofs.len() as u32);
                 let compiled_circuit = &self.compiled_delegation_circuits[k];
                 for proof in proofs.iter() {
-                    responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
-                        proof,
-                        compiled_circuit,
-                    ));
+                    responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(proof, compiled_circuit, blake));
                 }
             } else {
                 responses.push(0u32);
@@ -202,7 +199,8 @@ impl ProgramProof {
     /// (the verifier reads it first via `read_setup_cap`). This mirrors `flatten_for_verification`
     /// for the unrolled path. Passing this stream to the verifier without the prepended setup
     /// cap is malformed.
-    pub fn flatten_unified_for_verification(&self) -> Vec<u32> {
+    /// [`Self::flatten_for_verification`] of a unified proof.
+    pub fn flatten_unified_for_verification(&self, blake: BlakeMode) -> Vec<u32> {
         let mut responses = Vec::with_capacity(32 + 32 * 2);
 
         assert_eq!(self.register_final_values.len(), 32);
@@ -245,10 +243,7 @@ impl ProgramProof {
         responses.push(num_it_circuits);
         let compiled_circuit = &self.compiled_riscv_circuits[&k];
         for proof in reduced_machine_proofs.iter() {
-            responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
-                proof,
-                compiled_circuit,
-            ));
+            responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(proof, compiled_circuit, blake));
         }
 
         // NOTE: no separate inits/teardowns circuit — folded into the unified circuit.
@@ -263,10 +258,7 @@ impl ProgramProof {
                     responses.push(proofs.len() as u32);
                     for proof in proofs.iter() {
                         responses.extend(
-                            ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
-                                proof,
-                                compiled_circuit,
-                            ),
+                            ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(proof, compiled_circuit, blake),
                         );
                     }
                 } else {

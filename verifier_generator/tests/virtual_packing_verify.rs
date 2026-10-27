@@ -37,7 +37,7 @@ fn blake2_with_extended_control_virtual_packing_proof_verifies() {
         config.trace_len_log2
     );
 
-    let (nds, external_challenges) = virtual_packing_fixture::load_nds();
+    let (nds, external_challenges) = virtual_packing_fixture::load_nds(verifier_common::BLAKE_MODE);
     std::thread::scope(|s| {
         let handle = std::thread::Builder::new()
             .name("gkr virtual-packing verifier".into())

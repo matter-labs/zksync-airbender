@@ -425,7 +425,7 @@ fn advance_to_target(
             text,
             kind: ExecutionKind::Unrolled,
             machine: MachineType::Reduced,
-            nd_words: build_unrolled_stream(&state.setups, &state.proof),
+            nd_words: build_unrolled_stream(&state.setups, &state.proof, unrolled_blake),
         })?;
         state.timings.unrolled_recursion_ms.push(elapsed_ms(start));
         new_proof.set_recursion_chain(&chain);
@@ -460,7 +460,7 @@ fn advance_to_target(
         text: bridge_text,
         kind: ExecutionKind::Unified,
         machine: MachineType::Reduced,
-        nd_words: build_unrolled_stream(&state.setups, &state.proof),
+        nd_words: build_unrolled_stream(&state.setups, &state.proof, fsv.bridge_blake),
     })?;
     state.timings.unified_recursion_ms.push(elapsed_ms(start));
     bridge_proof.set_recursion_chain(&chain);
@@ -487,7 +487,7 @@ fn advance_to_target(
             text: final_text,
             kind: ExecutionKind::Unified,
             machine: MachineType::Reduced,
-            nd_words: build_unified_stream(&setups, &proof),
+            nd_words: build_unified_stream(&setups, &proof, final_mode),
         })?;
         state.timings.unified_recursion_ms.push(elapsed_ms(start));
         new_proof.set_recursion_chain(&chain);
@@ -943,11 +943,11 @@ fn verify_against_chain(
     let is_base = expected.len() == 1;
     let output = match artifact.target {
         ProofTarget::Base | ProofTarget::RecursionUnrolled => native_verify_unrolled(
-            build_unrolled_stream(&artifact.setups, &artifact.proof),
+            build_unrolled_stream(&artifact.setups, &artifact.proof, verifier_common::BLAKE_MODE),
             is_base,
         ),
         ProofTarget::RecursionUnified => native_verify_unified(
-            build_unified_stream(&artifact.setups, &artifact.proof),
+            build_unified_stream(&artifact.setups, &artifact.proof, verifier_common::BLAKE_MODE),
             is_base,
         ),
     };

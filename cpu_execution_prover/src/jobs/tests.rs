@@ -105,6 +105,7 @@ fn a_delegation_proof_verifies_natively() {
     let stream = verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
         &proved.proof,
         precomputations.compiled_circuit(),
+        verifier_common::BLAKE_MODE,
     );
     let challenges = challenges();
     // The verifier recurses deeply, so it gets its own stack.

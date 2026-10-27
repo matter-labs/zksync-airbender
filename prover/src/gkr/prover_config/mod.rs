@@ -627,7 +627,6 @@ pub fn compute_best_prover_config_guess(
             queries_pow_bits: first_round_pow_bits,
         },
         internal_rounds: vec![],
-        merkle_multiproofs: false,
     };
 
     let mut candidates = BTreeMap::new();

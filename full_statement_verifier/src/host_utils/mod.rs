@@ -23,14 +23,18 @@ pub fn compute_end_params(setups: &Setups, final_pc: u32) -> [u32; 8] {
     )
 }
 
+/// The ND stream of an unrolled proof for a full-statement verifier built
+/// with `blake` (the mode `load_fsv_program` loaded it with, or
+/// `verifier_common::BLAKE_MODE` for the native verifier of this process).
 #[must_use]
-pub fn build_unrolled_stream(setups: &Setups, proof: &ProgramProof) -> Vec<u32> {
-    proof.build_unrolled_stream(flattened_caps(setups))
+pub fn build_unrolled_stream(setups: &Setups, proof: &ProgramProof, blake: BlakeMode) -> Vec<u32> {
+    proof.build_unrolled_stream(flattened_caps(setups), blake)
 }
 
+/// [`build_unrolled_stream`] of a unified proof.
 #[must_use]
-pub fn build_unified_stream(setups: &Setups, proof: &ProgramProof) -> Vec<u32> {
-    proof.build_unified_stream(flattened_caps(setups))
+pub fn build_unified_stream(setups: &Setups, proof: &ProgramProof, blake: BlakeMode) -> Vec<u32> {
+    proof.build_unified_stream(flattened_caps(setups), blake)
 }
 
 fn flattened_caps(setups: &Setups) -> impl Iterator<Item = &[u32]> {

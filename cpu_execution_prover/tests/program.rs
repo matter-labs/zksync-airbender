@@ -37,7 +37,7 @@ fn prove(
 }
 
 fn assert_verifies_unrolled(proof: &ProgramProof, setups: &setups::Setups) {
-    let stream = full_statement_verifier::host_utils::build_unrolled_stream(setups, proof);
+    let stream = full_statement_verifier::host_utils::build_unrolled_stream(setups, proof, verifier_common::BLAKE_MODE);
     let output = full_statement_verifier::host_utils::native_verify_unrolled(stream, true);
     assert_ne!(
         output, [0u32; 16],
@@ -146,7 +146,7 @@ fn a_unified_execution_proves_and_natively_verifies() {
         proof.num_it_circuits.is_some(),
         "a unified proof carries its inits-and-teardowns circuit count"
     );
-    let stream = full_statement_verifier::host_utils::build_unified_stream(&setups, &proof);
+    let stream = full_statement_verifier::host_utils::build_unified_stream(&setups, &proof, verifier_common::BLAKE_MODE);
     let output = full_statement_verifier::host_utils::native_verify_unified(stream, true);
     assert_ne!(
         output, [0u32; 16],

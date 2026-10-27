@@ -218,7 +218,6 @@ impl EthproofsSoundcalcEntry {
                 queries_pow_bits: self.base_queries_pow_bits,
             },
             internal_rounds: self.rounds.iter().map(|r| r.to_round()).collect(),
-            merkle_multiproofs: false,
         }
     }
 

@@ -23,4 +23,3 @@ __pycache__/
 # tools/gkr_verifier/dump_bin.sh, never commit them.
 tools/gkr_verifier/circuit_verifiers/*/*_pack*.elf
 tools/gkr_verifier/circuit_verifiers/*/*_virtual.elf
-tools/gkr_verifier/circuit_verifiers/*/*_mp.elf

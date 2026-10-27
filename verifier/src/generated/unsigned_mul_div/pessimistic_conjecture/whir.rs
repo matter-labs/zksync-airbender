@@ -12,11 +12,12 @@
     clippy::duplicate_mod,
     clippy::large_const_arrays
 )]
+#[allow(unused_imports)]
 use super::common::{
     compute_tree_index, draw_fresh_single_field_el, eval_multilinear_with_monomial_tensor,
     fold_whir_accumulator, materialize_gamma_powers, precompute_monomial_tensor,
-    process_oracle_query, push_whir_base_pow_entry, push_whir_pow_entry, read_reduced_field_el,
-    verify_whir_sumcheck_step,
+    process_oracle_query, process_oracle_query_multiproof, push_whir_base_pow_entry,
+    push_whir_pow_entry, read_reduced_field_el, verify_whir_sumcheck_step,
 };
 use super::constants::*;
 use core::mem::MaybeUninit;
@@ -31,6 +32,10 @@ use verifier_common::field_ops;
 use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::structs::{CommitBuf, TranscriptState};
+#[allow(unused_imports)]
+use verifier_common::whir::multiproof::{
+    sort_queries_by_tree_index, verify_merkle_multiproof_leaf, MerkleMultiproofStack, NO_NEXT_INDEX,
+};
 use verifier_common::whir::{
     draw_query_indices, read_and_verify_pow, read_commit_return_merkle_cap,
 };
@@ -108,6 +113,11 @@ pub fn accumulate_ood_samples<const MAX_POW: usize, const MAX_OOD: usize>(
 }
 const INITIAL_QUERY_INDEX_BITS: usize = 23usize;
 const INITIAL_NUM_QUERIES: usize = 89usize;
+#[doc = r" Whether this build opens the base queries as a pruned Merkle"]
+#[doc = r" multiproof (`BlakeMode::merkle_multiproofs`, decided at compile"]
+#[doc = r" time for the build's blake implementation)."]
+const INITIAL_MERKLE_MULTIPROOF: bool =
+    ::verifier_common::BLAKE_MODE.merkle_multiproofs(INITIAL_NUM_QUERIES, WHIR_CAP_SIZE);
 const INITIAL_POW_BITS: u32 = 26u32;
 const INITIAL_DRAW_WORDS: usize = 72usize;
 const INITIAL_RS_DOMAIN_LOG2: usize = 24usize;
@@ -185,60 +195,154 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
         let extended_generator = BabyBearField::TWO_ADICITY_GENERATORS[INITIAL_RS_DOMAIN_LOG2];
         let extended_generator_inv =
             BabyBearField::TWO_ADICITY_GENERATORS_INVERSED[INITIAL_RS_DOMAIN_LOG2];
-        let mut q = 0;
-        while q < INITIAL_NUM_QUERIES {
-            field_ops::mul_assign(
-                &mut current_delinearization_challenge,
-                &delinearization_challenge,
-            );
+        let mut tree_indices: LazyVec<usize, INITIAL_NUM_QUERIES> = LazyVec::new();
+        {
+            let mut q = 0;
+            while q < INITIAL_NUM_QUERIES {
+                let query_index = *query_indices.get(q);
+                tree_indices.push(compute_tree_index(
+                    query_index,
+                    NUM_COSETS,
+                    NUM_COSETS_LOG2,
+                    COSET_TREE_SIZE,
+                ));
+                q += 1;
+            }
+        }
+        let mut perm: LazyVec<usize, INITIAL_NUM_QUERIES> = LazyVec::new();
+        let mut sorted: LazyVec<usize, INITIAL_NUM_QUERIES> = LazyVec::new();
+        sort_queries_by_tree_index::<INITIAL_NUM_QUERIES>(
+            &tree_indices,
+            INITIAL_QUERY_INDEX_BITS,
+            &mut perm,
+            &mut sorted,
+        );
+        let mut delin_powers: LazyVec<BabyBearExt4, INITIAL_NUM_QUERIES> = LazyVec::new();
+        {
+            let mut q = 0;
+            while q < INITIAL_NUM_QUERIES {
+                field_ops::mul_assign(
+                    &mut current_delinearization_challenge,
+                    &delinearization_challenge,
+                );
+                delin_powers.push(current_delinearization_challenge);
+                q += 1;
+            }
+        }
+        let mut multiproof_stack_0 = MerkleMultiproofStack::<19usize>::new();
+        let mut multiproof_stack_1 = MerkleMultiproofStack::<19usize>::new();
+        let mut multiproof_stack_2 = MerkleMultiproofStack::<19usize>::new();
+        let mut j = 0;
+        while j < INITIAL_NUM_QUERIES {
+            let q = *perm.get(j);
+            let tree_index = *sorted.get(j);
+            let prev_index_equal = j > 0 && *sorted.get(j - 1) == tree_index;
+            let next_index = if j + 1 < INITIAL_NUM_QUERIES {
+                *sorted.get(j + 1)
+            } else {
+                NO_NEXT_INDEX
+            };
             let query_index = *query_indices.get(q);
+            let current_delinearization_challenge = *delin_powers.get(q);
             let base_root_inv = extended_generator_inv.pow(query_index as u32);
-            let tree_index =
-                compute_tree_index(query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE);
             let mut acc0 = BabyBearExt4::ZERO;
             let mut acc1 = BabyBearExt4::ZERO;
-            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 52usize>(
-                &mut ts.hasher,
-                hash_buf,
-                26usize,
-                tree_index,
-                19usize,
-                initial_transcript.memory_caps_slice(),
-                &gamma_powers[..],
-                0usize,
-                &mut acc0,
-                &mut acc1,
-                q,
-                nd_source,
-            )?;
-            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 48usize>(
-                &mut ts.hasher,
-                hash_buf,
-                24usize,
-                tree_index,
-                19usize,
-                initial_transcript.witness_caps_slice(),
-                &gamma_powers[..],
-                26usize,
-                &mut acc0,
-                &mut acc1,
-                q,
-                nd_source,
-            )?;
-            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 18usize>(
-                &mut ts.hasher,
-                hash_buf,
-                9usize,
-                tree_index,
-                19usize,
-                initial_transcript.setup_caps_slice(),
-                &gamma_powers[..],
-                50usize,
-                &mut acc0,
-                &mut acc1,
-                q,
-                nd_source,
-            )?;
+            if INITIAL_MERKLE_MULTIPROOF {
+                process_oracle_query_multiproof::<I, E, WHIR_HASH_BUF_SIZE, 52usize, 19usize>(
+                    &mut ts.hasher,
+                    hash_buf,
+                    26usize,
+                    &mut multiproof_stack_0,
+                    tree_index,
+                    prev_index_equal,
+                    next_index,
+                    19usize,
+                    initial_transcript.memory_caps_slice(),
+                    &gamma_powers[..],
+                    0usize,
+                    &mut acc0,
+                    &mut acc1,
+                    q,
+                    nd_source,
+                )?;
+                process_oracle_query_multiproof::<I, E, WHIR_HASH_BUF_SIZE, 48usize, 19usize>(
+                    &mut ts.hasher,
+                    hash_buf,
+                    24usize,
+                    &mut multiproof_stack_1,
+                    tree_index,
+                    prev_index_equal,
+                    next_index,
+                    19usize,
+                    initial_transcript.witness_caps_slice(),
+                    &gamma_powers[..],
+                    26usize,
+                    &mut acc0,
+                    &mut acc1,
+                    q,
+                    nd_source,
+                )?;
+                process_oracle_query_multiproof::<I, E, WHIR_HASH_BUF_SIZE, 18usize, 19usize>(
+                    &mut ts.hasher,
+                    hash_buf,
+                    9usize,
+                    &mut multiproof_stack_2,
+                    tree_index,
+                    prev_index_equal,
+                    next_index,
+                    19usize,
+                    initial_transcript.setup_caps_slice(),
+                    &gamma_powers[..],
+                    50usize,
+                    &mut acc0,
+                    &mut acc1,
+                    q,
+                    nd_source,
+                )?;
+            } else {
+                process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 52usize>(
+                    &mut ts.hasher,
+                    hash_buf,
+                    26usize,
+                    tree_index,
+                    19usize,
+                    initial_transcript.memory_caps_slice(),
+                    &gamma_powers[..],
+                    0usize,
+                    &mut acc0,
+                    &mut acc1,
+                    q,
+                    nd_source,
+                )?;
+                process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 48usize>(
+                    &mut ts.hasher,
+                    hash_buf,
+                    24usize,
+                    tree_index,
+                    19usize,
+                    initial_transcript.witness_caps_slice(),
+                    &gamma_powers[..],
+                    26usize,
+                    &mut acc0,
+                    &mut acc1,
+                    q,
+                    nd_source,
+                )?;
+                process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 18usize>(
+                    &mut ts.hasher,
+                    hash_buf,
+                    9usize,
+                    tree_index,
+                    19usize,
+                    initial_transcript.setup_caps_slice(),
+                    &gamma_powers[..],
+                    50usize,
+                    &mut acc0,
+                    &mut acc1,
+                    q,
+                    nd_source,
+                )?;
+            }
             let mut sum = acc0;
             field_ops::add_assign(&mut sum, &acc1);
             let mut diff = acc0;
@@ -260,7 +364,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
             let mut t = folded;
             field_ops::mul_assign(&mut t, &current_delinearization_challenge);
             field_ops::add_assign(&mut claim_correction, &t);
-            q += 1;
+            j += 1;
         }
         field_ops::add_assign(&mut claim, &claim_correction);
         Ok((claim, intermediate_cap))
@@ -282,6 +386,33 @@ const INTERNAL_HASH_BUF_SIZE: usize = MAX_INTERNAL_LEAF_EXT_WORDS
     * BLAKE2S_BLOCK_SIZE_U32_WORDS;
 const MAX_INTERNAL_NUM_QUERIES: usize = 23usize;
 const MAX_INTERNAL_DRAW_WORDS: usize = 24usize;
+#[doc = r" Bit `ir` set: this build opens internal round `ir + 1`'s queries"]
+#[doc = r" as a pruned Merkle multiproof (`BlakeMode::merkle_multiproofs`,"]
+#[doc = r" decided at compile time for the build's blake implementation)."]
+#[doc = r" A bitmask, not a `[bool; N]`: a runtime-indexed byte array would"]
+#[doc = r" need a byte load, which the reduced machine has not."]
+const INTERNAL_MERKLE_MULTIPROOF_MASK: usize = {
+    let mut mask = 0;
+    let mut ir = 0;
+    while ir < NUM_INTERNAL_ROUNDS {
+        if ::verifier_common::BLAKE_MODE.merkle_multiproofs(WHIR_QUERIES[ir + 1], WHIR_CAP_SIZE) {
+            mask |= 1 << ir;
+        }
+        ir += 1;
+    }
+    mask
+};
+const MAX_INTERNAL_ORACLE_DEPTH: usize = {
+    let mut max = 0;
+    let mut i = 0;
+    while i < NUM_INTERNAL_ROUNDS {
+        if WHIR_ORACLE_DEPTHS[i] > max {
+            max = WHIR_ORACLE_DEPTHS[i];
+        }
+        i += 1;
+    }
+    max
+};
 const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] = [24usize, 8usize, 8usize];
 pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     ts: &mut TranscriptState,
@@ -354,15 +485,53 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
         let oracle_depth = WHIR_ORACLE_DEPTHS[round_idx - 1];
         let mut monomial_weights = LazyVec::<BabyBearExt4, MAX_INTERNAL_VALUES_PER_LEAF>::new();
         precompute_monomial_tensor(folding_challenges.as_slice(), &mut monomial_weights);
-        let mut q = 0;
-        while q < num_queries {
-            field_ops::mul_assign(
-                &mut current_delinearization_challenge,
-                &delinearization_challenge,
-            );
+        let mut tree_indices: LazyVec<usize, MAX_INTERNAL_NUM_QUERIES> = LazyVec::new();
+        {
+            let mut q = 0;
+            while q < num_queries {
+                let query_index = *query_indices.get(q);
+                tree_indices.push(compute_tree_index(
+                    query_index,
+                    num_cosets,
+                    num_cosets_log2,
+                    coset_tree_size,
+                ));
+                q += 1;
+            }
+        }
+        let mut perm: LazyVec<usize, MAX_INTERNAL_NUM_QUERIES> = LazyVec::new();
+        let mut sorted: LazyVec<usize, MAX_INTERNAL_NUM_QUERIES> = LazyVec::new();
+        sort_queries_by_tree_index::<MAX_INTERNAL_NUM_QUERIES>(
+            &tree_indices,
+            query_index_bits,
+            &mut perm,
+            &mut sorted,
+        );
+        let mut delin_powers: LazyVec<BabyBearExt4, MAX_INTERNAL_NUM_QUERIES> = LazyVec::new();
+        {
+            let mut q = 0;
+            while q < num_queries {
+                field_ops::mul_assign(
+                    &mut current_delinearization_challenge,
+                    &delinearization_challenge,
+                );
+                delin_powers.push(current_delinearization_challenge);
+                q += 1;
+            }
+        }
+        let mut multiproof_stack = MerkleMultiproofStack::<MAX_INTERNAL_ORACLE_DEPTH>::new();
+        let mut j = 0;
+        while j < num_queries {
+            let q = *perm.get(j);
+            let tree_index = *sorted.get(j);
+            let prev_index_equal = j > 0 && *sorted.get(j - 1) == tree_index;
+            let next_index = if j + 1 < num_queries {
+                *sorted.get(j + 1)
+            } else {
+                NO_NEXT_INDEX
+            };
             let query_index = *query_indices.get(q);
-            let tree_index =
-                compute_tree_index(query_index, num_cosets, num_cosets_log2, coset_tree_size);
+            let current_delinearization_challenge = *delin_powers.get(q);
             {
                 let mut i = 0;
                 while i < leaf_ext_words {
@@ -381,13 +550,27 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
             hash_buf.zero_range(leaf_ext_words, block_end);
             let init_buf = hash_buf.assume_init_subarray::<INTERNAL_HASH_BUF_SIZE>();
             hash_leaf_data_into_state(&mut ts.hasher, init_buf, leaf_ext_words);
-            if !verify_merkle_path::<I>(
-                &mut ts.hasher,
-                tree_index,
-                oracle_depth,
-                prev_oracle_cap,
-                nd_source,
-            ) {
+            let merkle_ok = if (INTERNAL_MERKLE_MULTIPROOF_MASK >> ir) & 1 == 1 {
+                verify_merkle_multiproof_leaf::<I, MAX_INTERNAL_ORACLE_DEPTH>(
+                    &mut ts.hasher,
+                    &mut multiproof_stack,
+                    tree_index,
+                    prev_index_equal,
+                    next_index,
+                    oracle_depth,
+                    prev_oracle_cap,
+                    nd_source,
+                )
+            } else {
+                verify_merkle_path::<I>(
+                    &mut ts.hasher,
+                    tree_index,
+                    oracle_depth,
+                    prev_oracle_cap,
+                    nd_source,
+                )
+            };
+            if !merkle_ok {
                 return Err(E::whir_merkle_path_failed(q));
             }
             let leaf: &[BabyBearExt4] = unsafe { init_buf.transmute_subslice(0, values_per_leaf) };
@@ -402,7 +585,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
             let mut t = folded;
             field_ops::mul_assign(&mut t, &current_delinearization_challenge);
             field_ops::add_assign(&mut claim_correction, &t);
-            q += 1;
+            j += 1;
         }
         field_ops::add_assign(&mut claim, &claim_correction);
         Ok((claim, intermediate_cap))
@@ -423,6 +606,12 @@ const FINAL_DRAW_WORDS: usize = 8usize;
 const FINAL_POW_BITS: u32 = 21u32;
 const FINAL_FOLDING_POW_BITS: u32 = 0u32;
 const FINAL_ORACLE_DEPTH_IDX: usize = 3usize;
+const FINAL_ORACLE_DEPTH: usize = WHIR_ORACLE_DEPTHS[FINAL_ORACLE_DEPTH_IDX];
+#[doc = r" Whether this build opens the final queries as a pruned Merkle"]
+#[doc = r" multiproof (`BlakeMode::merkle_multiproofs`, decided at compile"]
+#[doc = r" time for the build's blake implementation)."]
+const FINAL_MERKLE_MULTIPROOF: bool =
+    ::verifier_common::BLAKE_MODE.merkle_multiproofs(FINAL_NUM_QUERIES, WHIR_CAP_SIZE);
 pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     ts: &mut TranscriptState,
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
@@ -492,16 +681,41 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
         precompute_monomial_tensor(folding_challenges.as_slice(), &mut monomial_weights);
         let mut folded_values: LazyVec<BabyBearExt4, FINAL_NUM_QUERIES> = LazyVec::new();
         let mut query_base_roots: LazyVec<BabyBearField, FINAL_NUM_QUERIES> = LazyVec::new();
-        let mut q = 0;
-        while q < FINAL_NUM_QUERIES {
+        let mut tree_indices: LazyVec<usize, FINAL_NUM_QUERIES> = LazyVec::new();
+        {
+            let mut q = 0;
+            while q < FINAL_NUM_QUERIES {
+                let query_index = *query_indices.get(q);
+                tree_indices.push(compute_tree_index(
+                    query_index,
+                    FINAL_NUM_COSETS,
+                    FINAL_NUM_COSETS_LOG2,
+                    FINAL_COSET_TREE_SIZE,
+                ));
+                q += 1;
+            }
+        }
+        let mut perm: LazyVec<usize, FINAL_NUM_QUERIES> = LazyVec::new();
+        let mut sorted: LazyVec<usize, FINAL_NUM_QUERIES> = LazyVec::new();
+        sort_queries_by_tree_index::<FINAL_NUM_QUERIES>(
+            &tree_indices,
+            FINAL_QUERY_INDEX_BITS,
+            &mut perm,
+            &mut sorted,
+        );
+        let mut multiproof_stack = MerkleMultiproofStack::<FINAL_ORACLE_DEPTH>::new();
+        let mut j = 0;
+        while j < FINAL_NUM_QUERIES {
+            let q = *perm.get(j);
+            let tree_index = *sorted.get(j);
+            let prev_index_equal = j > 0 && *sorted.get(j - 1) == tree_index;
+            let next_index = if j + 1 < FINAL_NUM_QUERIES {
+                *sorted.get(j + 1)
+            } else {
+                NO_NEXT_INDEX
+            };
             let query_index = *query_indices.get(q);
             let base_root = extended_generator.pow(query_index as u32);
-            let tree_index = compute_tree_index(
-                query_index,
-                FINAL_NUM_COSETS,
-                FINAL_NUM_COSETS_LOG2,
-                FINAL_COSET_TREE_SIZE,
-            );
             {
                 let mut i = 0;
                 while i < FINAL_LEAF_EXT_WORDS {
@@ -520,13 +734,27 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
             hash_buf.zero_range(FINAL_LEAF_EXT_WORDS, block_end);
             let init_buf = hash_buf.assume_init_subarray::<FINAL_HASH_BUF_SIZE>();
             hash_leaf_data_into_state(&mut ts.hasher, init_buf, FINAL_LEAF_EXT_WORDS);
-            if !verify_merkle_path::<I>(
-                &mut ts.hasher,
-                tree_index,
-                oracle_depth,
-                prev_oracle_cap,
-                nd_source,
-            ) {
+            let merkle_ok = if FINAL_MERKLE_MULTIPROOF {
+                verify_merkle_multiproof_leaf::<I, FINAL_ORACLE_DEPTH>(
+                    &mut ts.hasher,
+                    &mut multiproof_stack,
+                    tree_index,
+                    prev_index_equal,
+                    next_index,
+                    oracle_depth,
+                    prev_oracle_cap,
+                    nd_source,
+                )
+            } else {
+                verify_merkle_path::<I>(
+                    &mut ts.hasher,
+                    tree_index,
+                    oracle_depth,
+                    prev_oracle_cap,
+                    nd_source,
+                )
+            };
+            if !merkle_ok {
                 return Err(E::whir_merkle_path_failed(q));
             }
             let leaf: &[BabyBearExt4] =
@@ -534,7 +762,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
             let folded = eval_multilinear_with_monomial_tensor(leaf, monomial_weights.as_slice());
             folded_values.push(folded);
             query_base_roots.push(base_root);
-            q += 1;
+            j += 1;
         }
         let mut q = 0;
         while q < FINAL_NUM_QUERIES {

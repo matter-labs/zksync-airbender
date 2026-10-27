@@ -2315,6 +2315,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         pub const ORACLE_DEPTHS: [usize; #num_oracles] = [#(#oracle_depths),*];
         pub const TOTAL_ORACLE_COLS: usize = #total_oracle_cols;
         pub const WHIR_ORACLE_DEPTHS: [usize; #num_intermediate_oracles] = [#(#whir_oracle_depths),*];
+        pub const WHIR_CAP_SIZE: usize = #whir_cap_size;
         pub const WHIR_CAP_WORDS: usize = #whir_cap_words;
         #packing_constants
 

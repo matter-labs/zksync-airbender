@@ -119,7 +119,7 @@ fn assemble_with(
 
 fn build_stream(proof: &ProgramProof, setup_cap: &MerkleTreeCap<{ DEFAULT_CAP_SIZE }>) -> Vec<u32> {
     let mut responses = MerkleTreeCap::flatten_single(setup_cap).to_vec();
-    responses.extend(proof.flatten_unified_for_verification());
+    responses.extend(proof.flatten_unified_for_verification(verifier_common::BLAKE_MODE));
     responses
 }
 

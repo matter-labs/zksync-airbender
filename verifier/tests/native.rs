@@ -5,7 +5,8 @@ use common::{SecurityLevel, SoundnessMode};
 use verifier_common::errors::DebugErrorCreator;
 
 fn run_native(name: &str, level: SecurityLevel, mode: SoundnessMode) {
-    let (nds, external_challenges) = common::load_nds_in_mode(name, level, mode);
+    let (nds, external_challenges) =
+        common::load_nds_in_mode(name, level, mode, verifier_common::BLAKE_MODE);
     std::thread::scope(|s| {
         let handle = std::thread::Builder::new()
             .name(format!("gkr verifier {} {:?}", name, level))

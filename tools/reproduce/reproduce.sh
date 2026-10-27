@@ -1,5 +1,6 @@
 #!/bin/sh
-# Rebuild every committed verifier guest binary with the native toolchain.
+# Regenerate the verifier guest sources (both soundness modes) and rebuild every
+# committed verifier guest binary with the native toolchain.
 # Run from any directory; no Docker, no emulation.
 #
 # Reproducibility comes from the guest build setup itself (tools/gkr_verifier):
@@ -12,7 +13,29 @@
 # The same commit built on x86-64 Linux, x86-64 macOS and arm64 macOS gives byte-identical
 # .elf files; compare with `git status` / `git diff --stat` afterwards.
 set -eu
-cd "$(dirname "$0")/../gkr_verifier"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
+
+# The guest sources are generated: regenerate them first, for BOTH soundness modes
+# (pessimistic_conjecture and ethproofs_soundcalc), so the binaries below are built from
+# the current circuits, configs and generator.
+#
+# 1. The delegation circuits' setup parameters (setup caps committed with each mode's
+#    config): circuit_defs/setups/generated/delegation_parameters_<mode>.rs, included by
+#    full_statement_verifier::delegation_circuits_setups::<mode>.
+# 2. Every circuit's verifier in each mode: verifier/src/generated/<circuit>/<mode>/, plus
+#    the shared verifier/src/generated/common/ module. These are what the per-circuit
+#    verifiers and (through full_statement_verifier::imports::<mode>) the full-statement
+#    verifiers compile.
+# Both run from the workspace (its own toolchain); the generators skip themselves under
+# CI=1, so make sure it is unset here.
+cd "$REPO_ROOT"
+unset CI
+echo "==> regenerating the delegation parameters (both soundness modes)"
+cargo test --release -p setups generate_delegation_circuits_artifacts
+echo "==> regenerating the circuit verifiers (both soundness modes)"
+cargo test --release -p verifier_generator --test generate_verifiers
+
+cd "$REPO_ROOT/tools/gkr_verifier"
 
 # Full-statement verifiers in every blake variant the recursion pipeline can select.
 ./dump_recursive_verifiers.sh

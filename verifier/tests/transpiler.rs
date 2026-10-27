@@ -1,6 +1,7 @@
 mod common;
 
 use common::{SecurityLevel, SoundnessMode};
+use verifier_common::BlakeMode;
 use field::baby_bear::base::BabyBearField;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::*;
@@ -11,7 +12,9 @@ use riscv_transpiler::vm::*;
 /// `mode` (`tools/gkr_verifier/circuit_verifiers/<mode>/<circuit>.elf`); the
 /// flamegraph is `gkr_flamegraph_<circuit>_<mode>.svg`.
 fn run_transpiler(name: &str, level: SecurityLevel, mode: SoundnessMode) {
-    let (nds, external_challenges) = common::load_nds_in_mode(name, level, mode);
+    // the tracked per-circuit ELFs are the `blake2_with_compression` builds
+    let (nds, external_challenges) =
+        common::load_nds_in_mode(name, level, mode, BlakeMode::Compression);
     let elf_path = common::elf_path_in_mode(name, level, mode);
     run_transpiler_on(
         &format!("{}_{}", name, mode.file_suffix()),
@@ -161,6 +164,12 @@ fn one_off_from_env() {
     let name = std::env::var("ONE_OFF_CIRCUIT").expect("ONE_OFF_CIRCUIT");
     let suffix = std::env::var("ONE_OFF_PROOF_SUFFIX").expect("ONE_OFF_PROOF_SUFFIX");
     let elf_path = std::env::var("ONE_OFF_ELF").expect("ONE_OFF_ELF");
+    // `ONE_OFF_BLAKE`: the ELF's blake build (`dump_bin.sh --blake`), default
+    // `blake2_with_compression`
+    let blake = std::env::var("ONE_OFF_BLAKE")
+        .ok()
+        .map(|v| BlakeMode::parse(&v).unwrap_or_else(|| panic!("unknown ONE_OFF_BLAKE `{v}`")))
+        .unwrap_or(BlakeMode::Compression);
     let circuit = common::circuit_by_name(&name);
     let proof_path = format!(
         "{}/../prover/test_proofs/{}_{}_gkr_proof.json",
@@ -181,7 +190,7 @@ fn one_off_from_env() {
         BabyBearField,
         field::baby_bear::ext4::BabyBearExt4,
         prover::merkle_trees::DefaultTreeConstructor,
-    >(&proof, &compiled);
+    >(&proof, &compiled, blake);
     run_transpiler_on(
         &format!("{}_{}", name, suffix),
         nds,
@@ -220,7 +229,7 @@ verifier_common::gkr_circuits!(generate_transpiler_tests);
 #[ignore = "requires RISC-V binaries from tools/gkr_verifier"]
 fn blake2_with_extended_control_sec_100_pack4() {
     use verifier_common::test_circuits::packed_fixture;
-    let (nds, external_challenges) = packed_fixture::load_nds();
+    let (nds, external_challenges) = packed_fixture::load_nds(BlakeMode::Compression);
     let packed = packed_fixture::elf_path();
     run_transpiler_on(
         &format!(
@@ -267,7 +276,7 @@ fn blake2_with_extended_control_sec_100_variants() {
             continue;
         }
         let name = variant.name();
-        let (nds, external_challenges) = variant.load_nds();
+        let (nds, external_challenges) = variant.load_nds(BlakeMode::Compression);
         let elf_path = variant.elf_path();
         let cycles = run_transpiler_on_with_output(
             &name,

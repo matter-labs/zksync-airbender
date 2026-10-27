@@ -3,6 +3,7 @@ use alloc::vec::Vec;
 
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::{Field, FieldExtension, PrimeField};
+use prover::definitions::BlakeMode;
 use prover::gkr::prover::GKRProof;
 use prover::gkr::whir::WhirIntermediateCommitmentAndQueries;
 use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
@@ -67,29 +68,20 @@ fn flatten_intermediate_queries<
     multiproof: bool,
     dst: &mut Vec<u32>,
 ) {
-    if multiproof {
-        let (perm, sorted) = sorting_permutation(oracle.queries.iter().map(|q| q.index));
-        let mut stack_levels = Vec::new();
-        for (j, &p) in perm.iter().enumerate() {
-            let query = &oracle.queries[p];
-            flatten_field_els::<F, E>(&query.leaf_values_concatenated, dst);
-            push_shipped_siblings(&sorted, j, &query.path, &mut stack_levels, dst);
-        }
-        assert!(stack_levels.is_empty());
-        return;
-    }
-    for query in oracle.queries.iter() {
+    let (perm, sorted) = sorting_permutation(oracle.queries.iter().map(|q| q.index));
+    let mut stack_levels = Vec::new();
+    for (j, &p) in perm.iter().enumerate() {
+        let query = &oracle.queries[p];
         flatten_field_els::<F, E>(&query.leaf_values_concatenated, dst);
-        for sibling in query.path.iter() {
-            dst.extend_from_slice(sibling);
-        }
+        push_siblings(&sorted, j, &query.path, multiproof, &mut stack_levels, dst);
     }
+    assert!(stack_levels.is_empty());
 }
 
 /// The permutation of draw positions that sorts a round's queries by tree
 /// index (stable, so equal indices keep their draw order, as the verifier's
 /// `sort_queries_by_tree_index` does), and the indices along it: the order
-/// a pruned-multiproof round ships and walks its openings in.
+/// every round ships and verifies its openings in.
 fn sorting_permutation(tree_indices: impl Iterator<Item = usize>) -> (Vec<usize>, Vec<usize>) {
     let indices: Vec<usize> = tree_indices.collect();
     let mut perm: Vec<usize> = (0..indices.len()).collect();
@@ -98,25 +90,38 @@ fn sorting_permutation(tree_indices: impl Iterator<Item = usize>) -> (Vec<usize>
     (perm, sorted)
 }
 
-/// The siblings the multiproof walk of the `j`-th sorted query reads, in
-/// order: its path's siblings at the levels
-/// [`crate::whir::multiproof::shipped_sibling_levels`] names.
-fn push_shipped_siblings(
+/// The siblings the verifier reads for the `j`-th sorted query: its whole
+/// path, or under a pruned multiproof only the levels the walk ships
+/// ([`crate::whir::multiproof::shipped_sibling_levels`]).
+fn push_siblings(
     sorted: &[usize],
     j: usize,
     path: &[[u32; DIGEST_SIZE_U32_WORDS]],
+    multiproof: bool,
     stack_levels: &mut Vec<usize>,
     dst: &mut Vec<u32>,
 ) {
+    if !multiproof {
+        for sibling in path {
+            dst.extend_from_slice(sibling);
+        }
+        return;
+    }
     let depth = path.len();
     for level in crate::whir::multiproof::shipped_sibling_levels(sorted, j, depth, stack_levels) {
         dst.extend_from_slice(&path[level]);
     }
 }
 
+/// The non-determinism word stream of `proof` for a verifier of
+/// `compiled_circuit` built with `blake` (which decides, per WHIR round,
+/// whether the query openings are pruned into a Merkle multiproof:
+/// `WhirSchedule::merkle_multiproof_for_round`). Every round's openings are
+/// in tree order, the order the verifier sorts its draws into.
 pub fn flatten_gkr_proof_for_nds<F: PrimeField, E: FieldExtension<F> + Field, T>(
     proof: &GKRProof<F, E, T>,
     compiled_circuit: &GKRCircuitArtifact<F>,
+    blake: BlakeMode,
 ) -> Vec<u32>
 where
     T: ColumnMajorMerkleTreeConstructor<F>,
@@ -239,42 +244,34 @@ where
                 }
             }
         };
-        if whir_schedule.merkle_multiproof_for_round(0) {
-            // One sorting permutation for the base trees: they share the
-            // query indices (same domain, same draw).
-            let opened: Vec<_> = base_oracles
-                .iter()
-                .filter(|o| !o.queries.is_empty())
-                .collect();
-            let reference: Vec<usize> = opened[0].queries.iter().map(|q| q.index).collect();
-            for oracle in &opened {
-                assert!(
-                    oracle.queries.iter().map(|q| q.index).eq(reference.iter().copied()),
-                    "base oracles must open the same tree indices"
-                );
-            }
-            let (perm, sorted) = sorting_permutation(reference.iter().copied());
-            let mut stack_levels: Vec<Vec<usize>> = opened.iter().map(|_| Vec::new()).collect();
-            for (j, &p) in perm.iter().enumerate() {
-                for (oracle, levels) in opened.iter().zip(stack_levels.iter_mut()) {
-                    let query = &oracle.queries[p];
-                    push_leaf(&query.leaf_values_concatenated, &mut result);
-                    push_shipped_siblings(&sorted, j, &query.path, levels, &mut result);
-                }
-            }
-            assert!(stack_levels.iter().all(|l| l.is_empty()));
-        } else {
-            for q in 0..num_queries {
-                for oracle in &base_oracles {
-                    if q < oracle.queries.len() {
-                        push_leaf(&oracle.queries[q].leaf_values_concatenated, &mut result);
-                        for sibling in &oracle.queries[q].path {
-                            result.extend_from_slice(sibling);
-                        }
-                    }
-                }
+        // One sorting for the base trees: they share the query indices
+        // (same domain, same draw).
+        let multiproof = whir_schedule.merkle_multiproof_for_round(blake, 0);
+        let opened: Vec<_> = base_oracles
+            .iter()
+            .filter(|o| !o.queries.is_empty())
+            .collect();
+        let reference: Vec<usize> = opened
+            .first()
+            .map(|o| o.queries.iter().map(|q| q.index).collect())
+            .unwrap_or_default();
+        assert_eq!(reference.len(), num_queries);
+        for oracle in &opened {
+            assert!(
+                oracle.queries.iter().map(|q| q.index).eq(reference.iter().copied()),
+                "base oracles must open the same tree indices"
+            );
+        }
+        let (perm, sorted) = sorting_permutation(reference.iter().copied());
+        let mut stack_levels: Vec<Vec<usize>> = opened.iter().map(|_| Vec::new()).collect();
+        for (j, &p) in perm.iter().enumerate() {
+            for (oracle, levels) in opened.iter().zip(stack_levels.iter_mut()) {
+                let query = &oracle.queries[p];
+                push_leaf(&query.leaf_values_concatenated, &mut result);
+                push_siblings(&sorted, j, &query.path, multiproof, levels, &mut result);
             }
         }
+        assert!(stack_levels.iter().all(|l| l.is_empty()));
     }
 
     // Internal rounds: fold intermediate oracle `i`, commit (and OOD-sample)
@@ -290,7 +287,7 @@ where
         push_nonce(oracle.queries_pow_nonce, &mut result);
         flatten_intermediate_queries(
             oracle,
-            whir_schedule.merkle_multiproof_for_round(i + 1),
+            whir_schedule.merkle_multiproof_for_round(blake, i + 1),
             &mut result,
         );
     }
@@ -303,7 +300,7 @@ where
     push_nonce(last.queries_pow_nonce, &mut result);
     flatten_intermediate_queries(
         last,
-        whir_schedule.merkle_multiproof_for_round(oracles.len()),
+        whir_schedule.merkle_multiproof_for_round(blake, oracles.len()),
         &mut result,
     );
 

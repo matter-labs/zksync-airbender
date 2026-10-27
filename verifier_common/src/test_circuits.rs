@@ -9,6 +9,7 @@ use prover::merkle_trees::DefaultTreeConstructor;
 
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
 use crate::gkr::flatten::flatten_gkr_proof_for_nds;
+use crate::prover::definitions::BlakeMode;
 
 const REPO_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
 
@@ -19,7 +20,7 @@ macro_rules! make_circuits {
             production_path: $prod_path,
             security_levels: [SecurityLevel::Sec100],
             prover_configs_cache: [[const { OnceLock::new() }; NUM_SOUNDNESS_MODES]; NUM_SECURITY_LEVELS],
-            nds_cache: [[const { OnceLock::new() }; NUM_SOUNDNESS_MODES]; NUM_SECURITY_LEVELS],
+            nds_cache: [const { [const { [const { OnceLock::new() }; NUM_BLAKE_MODES] }; NUM_SOUNDNESS_MODES] }; NUM_SECURITY_LEVELS],
         }),*]
     };
 }
@@ -30,6 +31,14 @@ pub use prover::definitions::SecurityLevel;
 
 const NUM_SECURITY_LEVELS: usize = 1;
 const NUM_SOUNDNESS_MODES: usize = SoundnessMode::ALL.len();
+const NUM_BLAKE_MODES: usize = BlakeMode::ALL.len();
+
+fn blake_index(blake: BlakeMode) -> usize {
+    BlakeMode::ALL
+        .iter()
+        .position(|m| *m == blake)
+        .expect("registered blake mode")
+}
 
 fn mode_index(mode: SoundnessMode) -> usize {
     SoundnessMode::ALL
@@ -63,7 +72,8 @@ pub struct CircuitData {
     #[allow(dead_code)]
     security_levels: [SecurityLevel; NUM_SECURITY_LEVELS],
     prover_configs_cache: [[OnceLock<ProverConfig>; NUM_SOUNDNESS_MODES]; NUM_SECURITY_LEVELS],
-    nds_cache: [[OnceLock<(Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>)>;
+    nds_cache: [[[OnceLock<(Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>)>;
+        NUM_BLAKE_MODES];
         NUM_SOUNDNESS_MODES]; NUM_SECURITY_LEVELS],
 }
 
@@ -213,19 +223,24 @@ impl CircuitData {
         wip_layout
     }
 
+    /// The fixture proof's ND stream for a verifier built with `blake`
+    /// (`crate::BLAKE_MODE` for the verifier compiled into this process, the
+    /// ELF's build feature for a RISC-V program).
     pub fn load_nds_for(
         &self,
         level: SecurityLevel,
+        blake: BlakeMode,
     ) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
-        self.load_nds_for_mode(level, SoundnessMode::DEFAULT)
+        self.load_nds_for_mode(level, SoundnessMode::DEFAULT, blake)
     }
 
     pub fn load_nds_for_mode(
         &self,
         level: SecurityLevel,
         mode: SoundnessMode,
+        blake: BlakeMode,
     ) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
-        self.nds_cache[level as usize][mode_index(mode)]
+        self.nds_cache[level as usize][mode_index(mode)][blake_index(blake)]
             .get_or_init(|| {
                 let circuit = self.compiled_circuit();
                 let proof = self.proof_for_mode(level, mode);
@@ -233,7 +248,7 @@ impl CircuitData {
                     BabyBearField,
                     BabyBearExt4,
                     DefaultTreeConstructor,
-                >(&proof, &circuit);
+                >(&proof, &circuit, blake);
                 let challenges = proof.external_challenges;
 
                 (nds, challenges)
@@ -299,11 +314,11 @@ pub mod packed_fixture {
         deserialize_from_file(&proof_path())
     }
 
-    pub fn load_nds() -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
+    pub fn load_nds(blake: BlakeMode) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
         let circuit = circuit().compiled_circuit();
         let proof = proof();
         let nds = flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-            &proof, &circuit,
+            &proof, &circuit, blake,
         );
         (nds, proof.external_challenges)
     }
@@ -354,11 +369,11 @@ pub mod virtual_packing_fixture {
         deserialize_from_file(&proof_path())
     }
 
-    pub fn load_nds() -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
+    pub fn load_nds(blake: BlakeMode) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
         let circuit = circuit().compiled_circuit();
         let proof = proof();
         let nds = flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-            &proof, &circuit,
+            &proof, &circuit, blake,
         );
         (nds, proof.external_challenges)
     }
@@ -475,12 +490,15 @@ pub mod blake_variants {
             deserialize_from_file(&self.proof_path())
         }
 
-        pub fn load_nds(&self) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
+        pub fn load_nds(
+            &self,
+            blake: BlakeMode,
+        ) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
             let circuit = Self::circuit().compiled_circuit();
             let proof = self.proof();
             let nds =
                 flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-                    &proof, &circuit,
+                    &proof, &circuit, blake,
                 );
             (nds, proof.external_challenges)
         }

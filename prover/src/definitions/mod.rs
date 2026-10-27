@@ -87,6 +87,85 @@ impl SoundnessMode {
     }
 }
 
+/// The blake2s implementation a verifier program is built with: what a
+/// Merkle compression costs it, and so which proof layouts pay off. Lives
+/// here so the prover-side config (`WhirSchedule`), the verifier generator
+/// and the proof flattener agree on one policy; `verifier_common::BLAKE_MODE`
+/// is the mode of the build at hand.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum BlakeMode {
+    /// The whole compression is one delegation call
+    /// (`blake2_with_compression`): a Merkle level costs the main machine
+    /// little more than reading its sibling.
+    Compression,
+    /// The mixing function is delegated (`blake2_g_function`): one call per
+    /// G function, the rest of the compression on the main machine.
+    GFunction,
+    /// The compression runs on the main machine with the special blake
+    /// opcodes (`special_opcodes_extension`): hundreds of cycles each.
+    BlakeSpecialOpcodes,
+    /// The plain software compression: a RISC-V build without any blake
+    /// feature (`mop_extension`), or every native (host) build.
+    Software,
+}
+
+impl BlakeMode {
+    pub const ALL: &'static [BlakeMode] = &[
+        BlakeMode::Compression,
+        BlakeMode::GFunction,
+        BlakeMode::BlakeSpecialOpcodes,
+        BlakeMode::Software,
+    ];
+
+    #[must_use]
+    pub const fn tag(self) -> &'static str {
+        match self {
+            Self::Compression => "blake2_with_compression",
+            Self::GFunction => "blake2_g_function",
+            Self::BlakeSpecialOpcodes => "special_opcodes_extension",
+            Self::Software => "software",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "blake2_with_compression" | "compression" | "round" => Some(Self::Compression),
+            "blake2_g_function" | "g_function" => Some(Self::GFunction),
+            "special_opcodes_extension" | "special_opcodes" | "spec" => {
+                Some(Self::BlakeSpecialOpcodes)
+            }
+            "software" | "mop_extension" | "baseline" => Some(Self::Software),
+            _ => None,
+        }
+    }
+
+    /// Whether a compression is expensive enough on the main machine that
+    /// hashing fewer Merkle nodes beats the bookkeeping of a pruned
+    /// multiproof (measured on add/sub: a wash with the delegated
+    /// compression, -10% of the verifier with the special opcodes).
+    #[must_use]
+    pub const fn merkle_compressions_are_expensive(self) -> bool {
+        match self {
+            Self::Compression => false,
+            Self::GFunction | Self::BlakeSpecialOpcodes | Self::Software => true,
+        }
+    }
+
+    /// Whether a WHIR round that opens `num_queries` leaves of trees capped
+    /// at `cap_size` nodes is proved and verified as a pruned Merkle
+    /// multiproof under this blake implementation: only when the
+    /// compressions are expensive, and only when the round draws at least
+    /// twice as many queries as the cap has nodes (below that the shared
+    /// ancestors are too few to pay for the walk's bookkeeping). The one
+    /// policy `WhirSchedule::merkle_multiproof_for_round`, the generated
+    /// verifiers (at compile time, for `verifier_common::BLAKE_MODE`) and
+    /// the proof flattener follow.
+    #[must_use]
+    pub const fn merkle_multiproofs(self, num_queries: usize, cap_size: usize) -> bool {
+        self.merkle_compressions_are_expensive() && num_queries >= 2 * cap_size
+    }
+}
 
 use cs::definitions::gkr::AddressSpaceType;
 
