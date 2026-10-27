@@ -206,10 +206,17 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
         variant.prover_config(stem, num_delegation_cycles.trailing_zeros() as usize, level);
     let pack_log2 = prover_config.pack_log2();
     // the packed commitment interpolates over the enlarged 2^(N + pack_log2) domain
-    let twiddles: Twiddles<_, Global> =
-        Twiddles::new(1usize << prover_config.whir_message_size_log2(), worker);
+    // the target-recommended BabyBear backend and ITS twiddle set (byte-identical proofs
+    // across backends); the setup commit reads the plain tables through it
+    use crate::gkr::prover::{Backend, DefaultBabyBearBackend, TwiddleSetOps};
+    let backend = DefaultBabyBearBackend::default();
+    let twiddles = <DefaultBabyBearBackend as Backend<BabyBearField, BabyBearExt4>>::make_twiddles(
+        &backend,
+        1usize << prover_config.whir_message_size_log2(),
+        worker,
+    );
     let setup = GKRSetup::construct(table_driver, &[], num_delegation_cycles, circuit);
-    let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, worker);
+    let setup_commitment = setup.commit_for_config(twiddles.plain(), &prover_config, worker);
 
     println!(
         "Trying to prove ({variant:?}, pack_log2 = {pack_log2}, WHIR message 2^{})",
@@ -241,7 +248,7 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
         WhirOracleStorage::fully_recompute(),
         Vec::new(),
         num_delegation_cycles,
-        &crate::gkr::prover::WorkStealingBackend,
+        &backend,
         &crate::gkr::prover::DefaultBabyBearGKRBackend::default(),
         worker,
     );

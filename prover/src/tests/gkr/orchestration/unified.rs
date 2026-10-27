@@ -956,7 +956,15 @@ pub fn prove_built_trace_for_unified_machine(
     // the circuit definition's config of the current soundness mode
     let prover_config = super::common::fixture_prover_config(fixture_stem, level);
     assert_eq!(1usize << prover_config.trace_len_log2, trace_len);
-    let unified_twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
+    // Concretely BabyBear/Ext4: the target-recommended backend (NEON on aarch64, AVX2/AVX-512
+    // on AVX2-enabled x86-64) and ITS twiddle set; the setup commit reads the plain tables
+    // through it. Every backend yields a byte-identical proof.
+    use crate::gkr::prover::{Backend, DefaultBabyBearBackend, TwiddleSetOps};
+    let backend = DefaultBabyBearBackend::default();
+    let unified_twiddles =
+        <DefaultBabyBearBackend as Backend<BabyBearField, BabyBearExt4>>::make_twiddles(
+            &backend, trace_len, worker,
+        );
     let unified_setup = GKRSetup::construct(
         unified_table_driver,
         decoder_table,
@@ -964,7 +972,7 @@ pub fn prove_built_trace_for_unified_machine(
         unified_circuit,
     );
     let unified_setup_commitment =
-        unified_setup.commit_for_config(&unified_twiddles, &prover_config, worker);
+        unified_setup.commit_for_config(unified_twiddles.plain(), &prover_config, worker);
 
     println!("Trying to prove (unified)");
     let now = std::time::Instant::now();
@@ -986,7 +994,7 @@ pub fn prove_built_trace_for_unified_machine(
         OperationMode::MultipleChunks,
         inits_and_teardowns_top_bits,
         trace_len,
-        &crate::gkr::prover::WorkStealingBackend,
+        &backend,
         &crate::gkr::prover::DefaultBabyBearGKRBackend::default(),
         worker,
     );
