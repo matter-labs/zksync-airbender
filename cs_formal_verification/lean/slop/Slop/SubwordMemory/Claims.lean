@@ -12,10 +12,9 @@ theorem fetched {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
     {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImage before addresses = some program)
-    (configuration : Reference.RiscV.Sail.Configured before)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (member : (decoderTable program).Contains #[] (decoderQuery w)) : Fetched w before :=
-  Proofs.fetched hp image (by find_configured) h member
+  Proofs.fetched hp image h member
 
 
 theorem clocks {setup : Table (ZMod babyBearModulus) (fields 9)} {w : Nat → ZMod babyBearModulus}

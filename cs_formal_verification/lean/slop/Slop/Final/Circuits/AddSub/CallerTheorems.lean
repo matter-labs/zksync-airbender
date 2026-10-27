@@ -12,11 +12,10 @@ theorem soundness [Fact p.Prime] (hp : 65536 < p)
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List ProgramEntry} {w : Nat → ZMod p}
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints)
-    (configuration : Reference.RiscV.Sail.Configured before)
     (image : programImage before addresses = some program)
     (member : (decoderTable program).Contains #[] (nativeQuery w)) :
     Binding w before program :=
-  Proofs.caller_binding hp constraints configuration image member
+  Proofs.caller_binding hp constraints image member
 
 /-- Imported caller PCs match the original Sail preparation/retirement path.
     Public decoding supplies the initial word; imported range queries supply
@@ -27,10 +26,9 @@ theorem pc_soundness [Fact p.Prime] (hp : 196608 < p)
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List ProgramEntry} {w : Nat → ZMod p}
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints)
-    (configuration : Reference.RiscV.Sail.Configured before)
     (image : programImage before addresses = some program)
     (member : (decoderTable program).Contains #[] (nativeQuery w)) :
     PCBinding w before program :=
-  Proofs.pc_binding hp inverse constraints configuration image member
+  Proofs.pc_binding hp inverse constraints image member
 
 end Airbender.Delegation.Caller

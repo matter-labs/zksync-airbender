@@ -4,7 +4,6 @@ import Slop.Trace.DecoderBits
 import Slop.AddSub.Selectors
 import Slop.WordMemory
 import Slop.Sail.DecoderFrame
-import Slop.Sail.ResetState
 
 namespace Airbender.Trace.Proofs
 open Arithmetic
@@ -43,32 +42,9 @@ theorem decoder_field_bounds {instruction : SailRV32.instruction} {data : Decode
        exact ⟨Word.ofBitVec_bound _, by dsimp; omega⟩)
     | (cases fields)
 
-open Lean Meta Elab Tactic in
-/-- Find `Configured state` in the local context: a hypothesis, or the `configuration` field of a
-    hypothesis (also through `boot`, `inputs`, `initialization`). Proof search only. -/
-elab "find_configured" : tactic => withMainContext do
-  let goal ← getMainGoal
-  let target ← goal.getType
-  for decl in ← getLCtx do
-    if decl.isImplementationDetail then continue
-    for path in [[], [`configuration], [`boot, `configuration], [`inputs, `configuration],
-        [`initialization, `configuration], [`boundary, `configuration]] do
-      let saved ← saveState
-      try
-        let base ← Term.exprToSyntax decl.toExpr
-        let stx ← path.foldlM (fun (acc : TSyntax `term) field => `($acc.$(mkIdent field):ident)) base
-        let value ← Term.withoutErrToSorry <| Term.withSynthesize <| Term.elabTermEnsuringType stx target
-        if (← instantiateMVars value).hasExprMVar then throwError "open"
-        goal.assign value
-        replaceMainGoal []
-        return
-      catch _ => restoreState saved
-  throwError "find_configured: no `Configured` fact for {target}"
-
 theorem entry_source {Kind : Type} {before : Reference.RiscV.Sail.State} {pc : BitVec 32}
     {entry : ProgramEntry Kind}
     {projection : SailRV32.instruction → Option (DecoderData Kind)}
-    (configured : Reference.RiscV.Sail.Configured before)
     (image : programEntryWith projection before pc = some entry) :
     entry.pc = pc ∧ entry.SourceWith before projection := by
   unfold programEntryWith at image
@@ -87,78 +63,35 @@ theorem entry_source {Kind : Type} {before : Reference.RiscV.Sail.State} {pc : B
       | some data =>
         simp only [fields, pure, Option.some.injEq] at image
         subst entry
-        exact ⟨rfl, ⟨read, Reference.RiscV.Sail.decode_on_reset_run configured decoded, fields⟩⟩
+        exact ⟨rfl, ⟨read, decoded, fields⟩⟩
 
-/-- Every entry of a public program image comes from the bytes and the decoder of a `Configured` state. -/
 theorem program_sources {Kind : Type} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List (ProgramEntry Kind)}
     {projection : SailRV32.instruction → Option (DecoderData Kind)}
-    (image : programImageWith projection before addresses = some program)
-    (entry : ProgramEntry Kind) (present : entry ∈ program)
-    (configured : Reference.RiscV.Sail.Configured before := by find_configured) :
-    entry.SourceWith before projection := by
+    (image : programImageWith projection before addresses = some program) :
+    ∀ entry ∈ program, entry.SourceWith before projection := by
   unfold programImageWith at image
   induction addresses generalizing program with
   | nil =>
     simp only [List.mapM_nil, pure, Option.some.injEq] at image
     subst program
-    simp at present
+    simp
   | cons address addresses ih =>
     rw [List.mapM_cons] at image
     cases first : programEntryWith projection before address with
     | none => simp [first, bind, Option.bind] at image
-    | some head =>
+    | some entry =>
       cases rest : addresses.mapM (programEntryWith projection before) with
       | none => simp [first, rest, bind, Option.bind] at image
       | some entries =>
         simp only [first, rest, bind, Option.bind, pure, Option.some.injEq] at image
         subst program
-        rcases List.mem_cons.mp present with rfl | present
-        · exact (entry_source configured first).2
-        · exact ih rest present
+        intro actual member
+        rcases List.mem_cons.mp member with rfl | member
+        · exact (entry_source first).2
+        · exact ih rest actual member
 
-/-- Native metadata of a public image entry (no decoder run needed). -/
-theorem decoder_fields_of_image {Kind : Type} {before : Reference.RiscV.Sail.State}
-    {addresses : List (BitVec 32)} {program : List (ProgramEntry Kind)}
-    {projection : SailRV32.instruction → Option (DecoderData Kind)}
-    (image : programImageWith projection before addresses = some program)
-    (entry : ProgramEntry Kind) (present : entry ∈ program) :
-    projection entry.instruction = some entry.data := by
-  unfold programImageWith at image
-  induction addresses generalizing program with
-  | nil =>
-    simp only [List.mapM_nil, pure, Option.some.injEq] at image
-    subst program
-    simp at present
-  | cons address addresses ih =>
-    rw [List.mapM_cons] at image
-    cases first : programEntryWith projection before address with
-    | none => simp [first, bind, Option.bind] at image
-    | some head =>
-      cases rest : addresses.mapM (programEntryWith projection before) with
-      | none => simp [first, rest, bind, Option.bind] at image
-      | some entries =>
-        simp only [first, rest, bind, Option.bind, pure, Option.some.injEq] at image
-        subst program
-        rcases List.mem_cons.mp present with rfl | present
-        · unfold programEntryWith at first
-          cases read : (Cell.ram address).read before with
-          | error => simp [read, bind, Option.bind] at first
-          | ok bits after =>
-            simp only [read, bind, Option.bind] at first
-            cases decoded : Reference.RiscV.Sail.decodeOnReset bits with
-            | none => simp [decoded] at first
-            | some instruction =>
-              simp only [decoded] at first
-              cases fields : projection instruction with
-              | none => simp [fields] at first
-              | some data =>
-                simp only [fields, pure, Option.some.injEq] at first
-                subst_vars
-                exact fields
-        · exact ih rest present
-
-/-- The same as `program_sources` (the former stateful image). -/
+/-- The same as `program_sources` (every family now uses the one public image). -/
 abbrev run_program_sources := @program_sources
 
 theorem decoder_member {Kind : Type} [DecidableEq Kind]
@@ -318,8 +251,7 @@ theorem decoder_soundness_with {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     {trace : Data p} (accepted : Accepted trace) {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImageWith projection before addresses = some program)
-    (decoded : Decoded trace program)
-    (configuration : Reference.RiscV.Sail.Configured before := by find_configured) :
+    (decoded : Decoded trace program) :
     ∀ row ∈ trace.rows, row.Fetched before projection := by
   intro row member
   obtain ⟨entry, present, family, equal⟩ := decoder_member (decoded row member)
@@ -330,9 +262,7 @@ theorem decoder_soundness_with {p : Nat} [Fact p.Prime] (hp : limbBase < p)
 theorem decoder_soundness {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     {trace : Data p} (accepted : Accepted trace) {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
-    (image : programImage before addresses = some program)
-    (decoded : Decoded trace program)
-    (configuration : Reference.RiscV.Sail.Configured before := by find_configured) :
+    (image : programImage before addresses = some program) (decoded : Decoded trace program) :
     ∀ row ∈ trace.rows, row.Fetched before := by
   intro row member
   obtain ⟨entry, present, family, equal⟩ := decoder_member (decoded row member)
@@ -347,6 +277,6 @@ theorem decoder_immediate_bounds {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     ∀ row ∈ trace.rows, row.decoderImmediate.Bounded := by
   intro row member
   obtain ⟨entry, present, _, equal⟩ := decoder_member (decoded row member)
-  exact query_immediate hp (decoder_fields_of_image image entry present) equal
+  exact query_immediate hp (program_sources image entry present).fields equal
 
 end Airbender.Trace.Proofs

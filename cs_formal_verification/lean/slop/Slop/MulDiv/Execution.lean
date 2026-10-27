@@ -115,8 +115,7 @@ theorem row_rebased_execution {p : Nat} [Fact p.Prime]
       | .divu => .DIV (.Regidx rs2, .Regidx rs1, .Regidx rd, true)
       | .remu => .REM (.Regidx rs2, .Regidx rs1, .Regidx rd, true))
     {before after : State}
-    (history : Trace.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after)
-    (configuration : Reference.RiscV.Sail.Configured initial := by find_configured) :
+    (history : Trace.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after) :
     let input : Input := ⟨operation, ⟨(w 20).val, (w 21).val⟩, ⟨(w 24).val, (w 25).val⟩,
       ⟨(w 0).val, (w 1).val⟩, .Regidx rs1, .Regidx rs2, .Regidx rd,
       Trace.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec⟩

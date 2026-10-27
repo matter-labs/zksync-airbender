@@ -36,7 +36,6 @@ theorem query_selected [Fact p.Prime] (hp : 65536 < p) {w : Nat → ZMod p}
 
 theorem public_source [Fact p.Prime] {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List ProgramEntry} {w : Nat → ZMod p}
-    (configuration : Reference.RiscV.Sail.Configured before)
     (image : programImage before addresses = some program)
     (member : (decoderTable program).Contains #[] (nativeQuery w)) :
     ∃ entry ∈ program, entry.SourceWith before decoderFields ∧ nativeQuery w = query entry := by
@@ -49,11 +48,10 @@ theorem caller_binding [Fact p.Prime] (hp : 65536 < p)
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List ProgramEntry} {w : Nat → ZMod p}
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints)
-    (configuration : Reference.RiscV.Sail.Configured before)
     (image : programImage before addresses = some program)
     (member : (decoderTable program).Contains #[] (nativeQuery w)) :
     Binding w before program := by
-  obtain ⟨entry, entryMember, source, equal⟩ := public_source configuration image member
+  obtain ⟨entry, entryMember, source, equal⟩ := public_source image member
   have selected := query_selected hp constraints equal
   obtain ⟨read, write, low, high⟩ := Requests.Proofs.caller_tokens constraints selected
   have sourceIndex := congrArg (fun fields : Vector (ZMod p) 9 => fields[2]) equal

@@ -157,7 +157,7 @@ theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
   intro row member
   have h := Verification.holds_of_sublist (accepted.constraints row member)
     (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
-  exact row_zero_preserving hp row h (fetched hp image (by find_configured) h (decoded row member))
+  exact row_zero_preserving hp row h (fetched hp image h (decoded row member))
 
 /-- Complete native histories realized by actual Sail cell reads/writes, grouped
     in the derived instruction order. ISA clause execution is the next layer. -/

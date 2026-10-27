@@ -100,7 +100,7 @@ theorem row_rebased_step {p : Nat} [Fact p.Prime]
     simpa only [position] using Trace.Proofs.retired_state_pc before row.start.word.toBitVec
   have configuration : ConfigSame initial (Trace.retiredState before row.start.word.toBitVec) :=
     ((Trace.Proofs.sail_history_config_same past).insert (key := .nextPC) rfl _).insert (key := .PC) rfl _
-  refine ⟨entry, present, ⟨bytes, (decoded_misa_frame _ source.decoded).2 _ configuration,
+  refine ⟨entry, present, ⟨bytes, source.decoded,
     source.fields⟩, pc, ?_⟩
   cases row with
   | mk family w =>

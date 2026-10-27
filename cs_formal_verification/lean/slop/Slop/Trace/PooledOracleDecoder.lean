@@ -126,8 +126,7 @@ theorem decoder_soundness {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     {trace : PooledTrace p} (accepted : Accepted trace)
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List PooledProgramEntry} (image : Pooled.programImage before addresses = some program)
-    (decoded : PooledDecoded trace program)
-    (configuration : Reference.RiscV.Sail.Configured before := by find_configured) :
+    (decoded : PooledDecoded trace program) :
     ∀ row ∈ trace.rows, Fetched row before := by
   intro row member
   obtain ⟨entry, present, family, query⟩ := decoder_member (decoded row member)

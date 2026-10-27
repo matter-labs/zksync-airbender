@@ -130,7 +130,7 @@ theorem entry_source_after_history {Kind : Type}
     (inROM : entry.pc.toNat < ROM.limit) (aligned : entry.pc.toNat % 4 = 0) :
     entry.SourceWith after projection :=
   ⟨sail_history_code_frame history unchanged entry.pc inROM aligned source.bytes,
-    (decoded_misa_frame _ source.decoded).2 _ (sail_history_config_same history),
+    source.decoded,
     source.fields⟩
 
 /-- The complete public ROM table remains a byte-read interface in later

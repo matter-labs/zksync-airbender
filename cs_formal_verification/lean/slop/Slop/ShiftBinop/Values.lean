@@ -49,7 +49,7 @@ theorem write_sources {p : Nat} [Fact p.Prime] (hp : 262144 < p)
   intro row member
   have h := Verification.holds_of_sublist (accepted.constraints row member)
     (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
-  exact row_write_sources hp row h (fetched (by dsimp [limbBase]; omega) image (by find_configured) h (decoded row member))
+  exact row_write_sources hp row h (fetched (by dsimp [limbBase]; omega) image h (decoded row member))
 
 /-- Shared latest-write/read induction derives bounded operands, writes and
     terminal cells from public initialization, without a result premise. -/

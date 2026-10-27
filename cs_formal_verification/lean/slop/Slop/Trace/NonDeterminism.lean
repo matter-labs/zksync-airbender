@@ -100,8 +100,7 @@ theorem decoder_soundness {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     {trace : Data p} (accepted : Accepted trace) {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImageWith NonDeterminism.decoderFields before addresses = some program)
-    (decoded : Decoded trace program)
-    (configuration : Reference.RiscV.Sail.Configured before := by find_configured) :
+    (decoded : Decoded trace program) :
     ∀ row ∈ trace.rows, row.Fetched before NonDeterminism.decoderFields :=
   Trace.Proofs.decoder_soundness_with hp (fun _ _ h => (field_bounds h).2) accepted image decoded
 

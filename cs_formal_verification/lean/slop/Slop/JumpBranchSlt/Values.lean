@@ -94,7 +94,7 @@ theorem write_sources {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   intro row member
   have h := Verification.holds_of_sublist (accepted.constraints row member)
     (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
-  exact row_write_sources hp row h (fetched (by dsimp [limbBase]; omega) image (by find_configured) h (decoded row member))
+  exact row_write_sources hp row h (fetched (by dsimp [limbBase]; omega) image h (decoded row member))
     (incoming_pc_bounds (by dsimp [limbBase]; omega) decoded row member).1
 
 /-- Native history derives all operand, write and terminal-register ranges from

@@ -65,8 +65,7 @@ theorem row_rebased_step {p : Nat} [Fact p.Prime]
     (native : ∀ event ∈ events, event ∈ trace.nativeEvents)
     (past : Trace.SailHistory cells events initial before)
     (history : Trace.SailHistory cells
-      (Trace.rowEvents trace.memoryEpoch row).reverse before after)
-    (configuration : Reference.RiscV.Sail.Configured before := by find_configured) :
+      (Trace.rowEvents trace.memoryEpoch row).reverse before after) :
     SailStep program (Trace.retiredState before row.start.word.toBitVec)
       (Trace.retiredState after row.finish.word.toBitVec) := by
   have limbSize : limbBase < p := by dsimp [limbBase]; omega
@@ -85,7 +84,7 @@ theorem row_rebased_step {p : Nat} [Fact p.Prime]
     simpa only [position] using Trace.Proofs.retired_state_pc before row.start.word.toBitVec
   have configuration : ConfigSame initial (Trace.retiredState before row.start.word.toBitVec) :=
     ((Trace.Proofs.sail_history_config_same past).insert (key := .nextPC) rfl _).insert (key := .PC) rfl _
-  refine ⟨entry, present, ⟨bytes, (decoded_misa_frame _ source.decoded).2 _ configuration,
+  refine ⟨entry, present, ⟨bytes, source.decoded,
     source.fields⟩, pc, ?_⟩
   cases row with
   | mk family w =>
@@ -107,8 +106,7 @@ theorem native_trace_execution {p : Nat} [Fact p.Prime]
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : NativeTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (inputs : ExecutionBoundary trace initial cells program)
-    (accepted : Accepted trace) (decoded : Decoded trace program)
-    (configuration : Reference.RiscV.Sail.Configured before := by find_configured) :
+    (accepted : Accepted trace) (decoded : Decoded trace program) :
     ∃ after, MulDiv.SailTrace program initial after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok trace.terminal.word.toBitVec after ∧
       ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧

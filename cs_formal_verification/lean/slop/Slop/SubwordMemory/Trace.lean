@@ -96,8 +96,7 @@ theorem row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase <
 theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
     {trace : NativeTrace p} (accepted : Accepted trace)
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
-    (image : programImage before addresses = some program) (decoded : Decoded trace program)
-    (configuration : Reference.RiscV.Sail.Configured before := by find_configured) :
+    (image : programImage before addresses = some program) (decoded : Decoded trace program) :
     Trace.Proofs.ZeroPreserving trace := by
   intro row member
   obtain ⟨entry, present, _, query⟩ := Trace.Proofs.decoder_member (decoded row member)
@@ -115,8 +114,7 @@ theorem native_zero_reads {p : Nat} [Fact p.Prime]
     (image : initialImage before cells = some trace.initialMemory)
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (programImage : SubwordMemory.programImage before addresses = some program)
-    (decoded : Decoded trace program)
-    (configuration : Reference.RiscV.Sail.Configured before := by find_configured) :
+    (decoded : Decoded trace program) :
     ∀ row ∈ trace.rows, ∀ port ∈ row.ports,
       port.address.code row.assignment = (Cell.register 0).addressCode →
       (readToken row.assignment port).value = 0 :=
@@ -135,8 +133,7 @@ theorem decoded_native_history {p : Nat} [Fact p.Prime]
     (domain : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (programImage : SubwordMemory.programImage before addresses = some program)
-    (decoded : Decoded trace program)
-    (configuration : Reference.RiscV.Sail.Configured before := by find_configured) :
+    (decoded : Decoded trace program) :
     ∃ (history : TimestampSortedMemoryAccessList) (rows : List (Row p TraceKind))
       (after : Reference.RiscV.Sail.State),
       MemoryHistory trace history ∧ rows.Perm trace.rows ∧

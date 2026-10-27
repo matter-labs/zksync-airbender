@@ -105,8 +105,7 @@ theorem row_rebased_step {p : Nat} [Fact p.Prime]
   have pc : run (SailRV32.Functions.get_arch_pc ()) (Trace.retiredState before row.start.word.toBitVec) =
       .ok entry.pc (Trace.retiredState before row.start.word.toBitVec) := by
     simpa only [position] using Trace.Proofs.retired_state_pc before row.start.word.toBitVec
-  refine ⟨entry, present, ⟨bytes, (decoded_misa_frame _ source.decoded).2 _
-    (((Trace.Proofs.sail_history_config_same past).insert (key := .nextPC) rfl _).insert (key := .PC) rfl _),
+  refine ⟨entry, present, ⟨bytes, source.decoded,
     source.fields⟩, pc, ?_⟩
   cases row with
   | mk family w =>

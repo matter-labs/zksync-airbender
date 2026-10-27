@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.Sail.Configured
 import Slop.UnifiedReduced.ControlContext
 import Slop.JumpBranchSlt.BranchSoundness
@@ -89,7 +90,7 @@ theorem soundness_from_history [Fact p.Prime] (hp : 4194304 ≤ p)
     dsimp [Word.ofBitVec, limbBase]
     omega
   have offsetEven : input.offset.lo % 2 = 0 := by
-    have parity := Reference.Sail.decoded_offset_even entry.bits initial entry.instruction initial source.decoded
+    have parity := Reference.Sail.decoded_offset_even entry.bits _ entry.instruction _ (decode_on_reset_run configured_reset_machine source.decoded)
     rw [encoding] at parity
     change input.encodedOffset.toNat % 2 = 0 at parity
     rw [offset]

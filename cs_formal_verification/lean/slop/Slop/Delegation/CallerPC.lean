@@ -22,11 +22,10 @@ theorem pc_binding [Fact p.Prime] (hp : 196608 < p)
     {before : State} {addresses : List (BitVec 32)}
     {program : List ProgramEntry} {w : Nat → ZMod p}
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints)
-    (configuration : Reference.RiscV.Sail.Configured before)
     (image : programImage before addresses = some program)
     (member : (decoderTable program).Contains #[] (nativeQuery w)) :
     PCBinding w before program := by
-  obtain ⟨entry, present, source, equal⟩ := public_source configuration image member
+  obtain ⟨entry, present, source, equal⟩ := public_source image member
   have initial := query_pc (by omega) equal
   have mapping : AddSub.PCMapping (initialPC w) (finalPC w) w := by
     constructor
