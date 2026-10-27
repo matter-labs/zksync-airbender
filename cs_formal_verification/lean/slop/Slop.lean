@@ -9,6 +9,7 @@ import Slop.Final.Circuits.ShiftBinop.Theorems
 import Slop.Final.Circuits.SubwordMemory.Theorems
 import Slop.Final.Circuits.WordMemory.Theorems
 import Slop.Final.Helpers.Context.PCState.Theorems
+import Slop.Final.ISA.Theorems
 import Slop.Final.Trace.Delegation.CallerTheorems
 import Slop.Final.Trace.Delegation.Theorems
 import Slop.Final.Trace.Families.AddSub.Theorems
