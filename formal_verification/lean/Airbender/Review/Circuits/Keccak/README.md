@@ -54,3 +54,7 @@ The public complete-permutation claims live in
 Invalid-control fallback is outside the complete 24-round protocol; do not
 infer caller ABI or padding neutrality from a supported local mode.
 [Delegation context](../../Helpers/Delegation/README.md) keeps those boundaries explicit.
+
+[Protocol](Protocol.lean) contains the pure caller controller schedule, shared by
+local ABI predicates and trace-level call contracts without importing execution
+history into circuit contexts.

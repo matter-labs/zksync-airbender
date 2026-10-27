@@ -1,6 +1,7 @@
-import Airbender.Review.Trace.Workers.Blake2G.Call
-import Airbender.Review.Trace.Workers.Blake2Round.Call
-import Airbender.Review.Trace.Workers.Keccak.Call
+import Airbender.Review.Circuits.Blake2G.Protocol
+import Airbender.Review.Circuits.Blake2G.Execution
+import Airbender.Review.Circuits.Blake2Round.Protocol
+import Airbender.Review.Circuits.Keccak.Protocol
 
 namespace Airbender.ExternalBoundary.HashABI
 open Arithmetic Trace

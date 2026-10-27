@@ -31,12 +31,12 @@ and mappings; Proofs contains supporting arithmetic, native bindings and assembl
 4. Measure Linux resource/process controls, the finite replay stack and cold-cache
    reproduction. FV CI is temporarily advisory on relevant changes; selectively
    required checks follow a complete Linux pass.
-5. Resolve the legacy helper/trace layer-check failure: HashABI imports the three
-   trace worker control-definition modules. Move reusable controller definitions
-   to definition-only protocol modules while preserving their names and bodies,
-   then rebuild/replay their consumers. This formal-model dependency issue
-   predates the supported-use entrypoint; it requires no production circuit,
-   generator or layout change.
+
+The legacy HashABI helper/trace dependency is resolved: reusable round and special5
+controller definitions now live in circuit-level protocol modules, with their
+names and bodies preserved. The layer check and focused consumer build pass.
+Linux guard and compilation-pool controls pass (49 tests); full Linux Lean and
+cold-cache gates remain distinct from those process controls.
 
 Program-parametric actual-path execution and complete native-span composition
 already exist, including branches, jumps and loops under their stated contracts.

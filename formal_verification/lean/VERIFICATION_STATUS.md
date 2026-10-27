@@ -78,11 +78,25 @@ Focused axiom smoke reports for the contract, bridge and regression roots contai
 only propext, Classical.choice and Quot.sound; they do not replace that complete
 environment audit.
 
-The broader helper/trace layer check still flags the pre-existing dependency
-from HashABI to trace worker control-definition modules. The new public
-delegation-use predicate lives in the execution layer. Resolving the legacy
-definition placement remains part of full review assurance; see the
-[plan](FORMAL_VERIFICATION_PLAN.md#remaining-implementation-and-assurance).
+The helper/trace layer check now passes. HashABI imports circuit-level protocol
+modules directly. The round `controlAt` and special5 `scheduleControl`
+definitions moved verbatim into definition-only protocol modules; their public
+names and bodies and the remaining caller definitions are preserved. A guarded
+normal build of both protocols, HashABI and both caller modules passes (1833
+Lake jobs, 11.39 seconds, 521.11 MiB footprint and 2896.70 MiB resident), with no
+surviving owned workers. Direct kernel replay also passes for all five changed
+modules, covering 60 safe declarations at a 32 MiB Lean thread stack, with
+compiled parts unchanged across replay. Imports were not replayed transitively
+in this focused check. No production circuit, generator or layout changed.
+
+Linux resource/process controls also pass in a disposable aarch64 container
+(Linux 6.10.14-linuxkit, Python 3.12.11): 27 guard tests and 22 compilation-pool
+policy/process tests. They exercise anonymous-memory limits, finite process
+stack, pidfd/subreaper supervision, detached-descendant cleanup and aggregate
+worker limits. These controls do not establish a Linux Lean build, full replay
+or cold-cache reproduction. The full project frontend is being rerun after
+its first attempt stopped at a competing-worker lock check; that interrupted
+attempt is not recorded as a pass.
 
 ### Prior compiler-composition checkpoint
 

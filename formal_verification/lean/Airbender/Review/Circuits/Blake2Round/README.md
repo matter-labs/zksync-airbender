@@ -59,3 +59,7 @@ derives that ABI, canonical RAM pointers and all operands from the existing
 seven-/ten-round public protocol and initialized history. No new per-row valid
 controller, pointer, expected output or reference-execution premise is added.
 Mixed caller fetch/PC retirement and total participation remain separate.
+
+[Protocol](Protocol.lean) contains the pure caller controller schedule, shared by
+local ABI predicates and trace-level call contracts without importing execution
+history into circuit contexts.
