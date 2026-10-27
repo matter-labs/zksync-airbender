@@ -6,8 +6,8 @@ RV32IM without the signed M operations, plus Zbb/Zbkb `rev8`, Airbender's Zimop 
 arithmetic; `mop.r.N`: xor-rotate) and its CSR rows. One instruction = at most one register or memory write, plus the
 PC update.
 No next state (`step = none`, i.e. unprovable in Airbender) for: anything outside Airbender's RV32IM subset
-(signed MULH/MULHSU/DIV/REM, FENCE, ECALL, CSRs other than the input read below, …), misaligned or out-of-range
-loads/stores, misaligned jump targets, fetch outside ROM.
+(signed MULH/MULHSU/DIV/REM, FENCE, ECALL, CSRs other than the input read below, …), misaligned loads/stores,
+stores to ROM, misaligned jump targets, fetch outside ROM.
 Non-determinism (Airbender's CSR `0x7c0`): `input` is the list of answers the prover's oracle will give, in order;
 the theorems hold for every such list. `csrrw rd, 0x7c0, x0` (rd ≠ x0) reads the next answer; `csrrw x0, 0x7c0, rs1`
 (rs1 ≠ x0) is a no-op (Airbender's write, a hint for witness generation). A read with no answers left has no next

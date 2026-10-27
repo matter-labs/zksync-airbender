@@ -12,7 +12,7 @@ Airbender's instruction formats are our own table `RV.decode`; their effect is S
 thing Sail does not have: the program's input (Airbender's non-determinism source, CSR `0x7c0`): the words not yet read
 (a list; a read with none left has no next state).
 
-Our own fast spec `RV.step` (`Human/ISA/RV32.lean`), which the program proofs run on, follows this machine:
+Our own fast spec `RV.step` (`Human/ISA/RV32.lean`), which the circuit claims are to be stated against, follows this machine:
 stated in `Human/ISA/Sail/Theorems.lean`, proven in `slop/Slop/ISA/Equiv/`. -/
 
 open Sail SailRV32 SailRV32.Functions Human
@@ -183,7 +183,7 @@ structure Machine where
 
 /-- One instruction, the way Sail's own `run_hart_active` + `try_step` run a 32-bit instruction: fetch, decode,
 `nextPC := PC + 4`, execute, `PC := nextPC`. Gives whether it read an input word; `none`: no step (a fetch fault,
-a word outside the table, or any trap: misaligned or out-of-range access, write to ROM, …). -/
+a word outside the table, or any trap: misaligned access, write to ROM, …). -/
 noncomputable def sailStep (next : BitVec 32) : SailM (Option Bool) := do
   let .F_Base word ← fetch () | pure none
   let some instr := RV.decode word | pure none
