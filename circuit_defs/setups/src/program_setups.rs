@@ -99,6 +99,29 @@ pub fn compute_unified_program_setups<A: GoodAllocator + 'static>(
     )
 }
 
+/// `Setups` map for a unified EXTENDED-machine execution of `text`: the single
+/// extended-family entry, committed exactly like the provers do. The circuit has no
+/// bytecode-dependent tables, so the flat image is not needed. Inputs must already be
+/// padded for proving.
+pub fn compute_unified_extended_program_setups<A: GoodAllocator + 'static>(
+    text_section: &[u32],
+    use_caches: bool,
+    security_level: SecurityLevel,
+    worker: &Worker,
+) -> Setups {
+    let unified_setup =
+        unified_extended_machine_circuit_setup::<A>(text_section, use_caches, worker);
+    commit_setup_params(
+        core::iter::once((
+            common_constants::circuit_families::EXTENDED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
+            unified_setup.prover_config(security_level).clone(),
+            unified_setup.setup,
+        )),
+        security_level,
+        worker,
+    )
+}
+
 /// Commit every setup with ITS circuit's prover config (the geometry the
 /// provers use), keyed by circuit family.
 fn commit_setup_params(

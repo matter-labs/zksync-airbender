@@ -919,6 +919,15 @@ impl TableType {
             TableType::LoadByteSignextend => {
                 LookupWrapper::Initialized(create_load_byte_signextend_table::<F>(id))
             }
+            TableType::LoadSubwordLimb => {
+                LookupWrapper::Initialized(create_load_subword_limb_table::<F>(id))
+            }
+            TableType::StoreSubwordKeep => {
+                LookupWrapper::Initialized(create_store_subword_keep_table::<F>(id))
+            }
+            TableType::StoreSubwordSource => {
+                LookupWrapper::Initialized(create_store_subword_source_table::<F>(id))
+            }
             // TableType::TruncateShift => {
             //     LookupWrapper::Dimensional3(create_truncate_shift_amount_table::<F>(id))
             // }

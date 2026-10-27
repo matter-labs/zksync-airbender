@@ -3,7 +3,6 @@ use super::*;
 #[cfg(test)]
 mod test {
     use super::*;
-    use ::cs::oracle::Placeholder;
     use cs::gkr_circuits::unified_reduced_machine::UnifiedReducedMachineDecoder;
     use cs::gkr_circuits::unified_reduced_machine::*;
     use field::baby_bear::base::BabyBearField;
@@ -65,95 +64,6 @@ mod test {
                 unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr::<F, _>(cs);
             },
         )
-    }
-
-    /// Oracle wrapper that poisons every `ShuffleRamWriteValue` query.
-    ///
-    /// The `ASSUME_MEMORY_VALUES_ASSIGNED == false` regime has a
-    /// self-generating witness contract: the oracle is only trusted for
-    /// INPUTS (instruction, register/memory READ values, timestamps); every
-    /// family must DERIVE its outputs (the shared rd/mem write-value columns)
-    /// in-circuit, gated on its own activity mask. If any family silently
-    /// falls back to the oracle for its write value, this wrapper feeds it
-    /// garbage and the per-family rd-write constraints reject the row.
-    struct PoisonedWriteValueOracle<O>(O);
-
-    impl<F: PrimeField, O: ::cs::oracle::Oracle<F>> ::cs::oracle::Oracle<F>
-        for PoisonedWriteValueOracle<O>
-    {
-        fn get_witness_from_placeholder(
-            &self,
-            placeholder: Placeholder,
-            subindex: usize,
-            trace_row: usize,
-        ) -> F {
-            if matches!(placeholder, Placeholder::ShuffleRamWriteValue(_)) {
-                return F::from_u32_with_reduction(0xBEEF);
-            }
-            self.0
-                .get_witness_from_placeholder(placeholder, subindex, trace_row)
-        }
-
-        fn get_u32_witness_from_placeholder(
-            &self,
-            placeholder: Placeholder,
-            trace_row: usize,
-        ) -> u32 {
-            if matches!(placeholder, Placeholder::ShuffleRamWriteValue(_)) {
-                return 0xDEAD_BEEF;
-            }
-            self.0
-                .get_u32_witness_from_placeholder(placeholder, trace_row)
-        }
-
-        fn get_u16_witness_from_placeholder(
-            &self,
-            placeholder: Placeholder,
-            trace_row: usize,
-        ) -> u16 {
-            if matches!(placeholder, Placeholder::ShuffleRamWriteValue(_)) {
-                return 0xBEEF;
-            }
-            self.0
-                .get_u16_witness_from_placeholder(placeholder, trace_row)
-        }
-
-        fn get_u8_witness_from_placeholder(
-            &self,
-            placeholder: Placeholder,
-            trace_row: usize,
-        ) -> u8 {
-            // no write-value placeholder is queried as u8; delegate (must NOT
-            // fall through to the trait default, which routes via the field
-            // query the inner oracle doesn't support for every placeholder)
-            self.0
-                .get_u8_witness_from_placeholder(placeholder, trace_row)
-        }
-
-        fn get_boolean_witness_from_placeholder(
-            &self,
-            placeholder: Placeholder,
-            trace_row: usize,
-        ) -> bool {
-            self.0
-                .get_boolean_witness_from_placeholder(placeholder, trace_row)
-        }
-
-        fn get_timestamp_witness_from_placeholder(
-            &self,
-            placeholder: Placeholder,
-            trace_row: usize,
-        ) -> cs::definitions::TimestampScalar {
-            self.0
-                .get_timestamp_witness_from_placeholder(placeholder, trace_row)
-        }
-
-        fn get_executor_family_data(
-            &self,
-            trace_row: usize,
-        ) -> cs::gkr_circuits::ExecutorFamilyDecoderData {
-            self.0.get_executor_family_data(trace_row)
-        }
     }
 
     #[test]

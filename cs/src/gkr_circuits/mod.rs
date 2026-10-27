@@ -12,6 +12,7 @@ pub mod jump_branch_slt_family;
 pub mod mem_subword_only;
 pub mod mem_word_only;
 pub mod mul_div;
+pub mod unified_extended_machine;
 pub mod unified_reduced_machine;
 
 pub use self::add_sub_family::*;
@@ -22,4 +23,5 @@ pub use self::jump_branch_slt_family::*;
 pub use self::mem_subword_only::*;
 pub use self::mem_word_only::*;
 pub use self::mul_div::*;
+pub use self::unified_extended_machine::*;
 pub use self::unified_reduced_machine::*;

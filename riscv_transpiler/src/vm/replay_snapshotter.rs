@@ -221,10 +221,13 @@ impl Counters for DelegationsAndUnifiedCounters {
     }
     #[inline(always)]
     fn get_calls_to_circuit_family<const FAMILY: u8>(&self) -> usize {
-        if const { FAMILY == REDUCED_MACHINE_CIRCUIT_FAMILY_IDX } {
+        if const {
+            FAMILY == REDUCED_MACHINE_CIRCUIT_FAMILY_IDX
+                || FAMILY == EXTENDED_MACHINE_CIRCUIT_FAMILY_IDX
+        } {
             self.cycles
         } else {
-            panic!("Must be called with reduced machine family only");
+            panic!("Must be called with a unified machine family only");
         }
     }
 }

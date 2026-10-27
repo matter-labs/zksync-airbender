@@ -67,6 +67,41 @@ pub fn heap_end() -> *mut usize {
     addr_of_mut!(_eheap)
 }
 
+/// The `init_from_text` stub of the execute-only-text layout (`src/lds/execute_only_text`).
+///
+/// It is the last function of `.text` (its own input section, placed last by the linker
+/// script, bracketed by `_init_from_text` / `_einit_from_text`) and nothing but a `ret`: the
+/// host-side ELF post-processing (`riscv_transpiler::elf::ElfReadMode::Strict`) replaces it by
+/// the code that rebuilds `.rodata` / `.data` in RAM from their ELF images (plus the `ret`).
+/// Clobbers `t0`/`t1` only, like any C call.
+#[cfg(feature = "execute_only_text")]
+#[unsafe(naked)]
+#[no_mangle]
+#[link_section = ".init_from_text"]
+pub unsafe extern "C" fn init_from_text() {
+    core::arch::naked_asm!("ret")
+}
+
+/// Execute-only-text layout: `.rodata` / `.data` are not copied from ROM (there is no image
+/// there); the post-processed [`init_from_text`] materialises them.
+#[cfg(feature = "execute_only_text")]
+pub fn init() {
+    use core::ptr::addr_of_mut;
+
+    use common_constants::rom::ROM_BYTE_SIZE;
+    assert!(addr_of_mut!(_rom_size).addr() <= ROM_BYTE_SIZE);
+    assert_eq!(addr_of_mut!(_estack).addr(), ROM_BYTE_SIZE);
+    // .rodata/.data live in RAM (LMA == VMA, asserted by the linker script; do NOT compare the
+    // `_si*` and `_s*` symbol addresses here: the compiler folds "two statics share an address"
+    // to false, the assert becomes an unconditional panic and everything after this call is
+    // dead code).
+    assert!(addr_of_mut!(_srodata).addr() >= ROM_BYTE_SIZE);
+    assert!(addr_of_mut!(_sdata).addr() >= ROM_BYTE_SIZE);
+
+    unsafe { init_from_text() }
+}
+
+#[cfg(not(feature = "execute_only_text"))]
 pub fn init() {
     use core::ptr::addr_of_mut;
 
@@ -97,6 +132,7 @@ pub fn init() {
     }
 }
 
+#[cfg(not(feature = "execute_only_text"))]
 unsafe fn load_to_ram(src: *const u8, dst_start: *mut u8, dst_end: *mut u8) {
     #[cfg(debug_assertions)]
     {

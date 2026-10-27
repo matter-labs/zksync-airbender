@@ -30,10 +30,15 @@ use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use common_constants::INITIAL_PC;
 use common_constants::{
     BIGINT_OPS_WITH_CONTROL_CSR_REGISTER, BLAKE2S_DELEGATION_CSR_REGISTER,
-    BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER, KECCAK_SPECIAL5_CSR_REGISTER,
+    BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER, KECCAK_CHI5_CSR_REGISTER,
+    KECCAK_COLUMN_PARITY_CSR_REGISTER, KECCAK_SPECIAL5_CSR_REGISTER, KECCAK_THETA_RHO_CSR_REGISTER,
+    NON_DETERMINISM_CSR,
 };
 use cs::definitions::INITIAL_TIMESTAMP;
 use cs::gkr_circuits::ExecutorFamilyDecoderData;
+use cs::gkr_circuits::{
+    process_binary_into_separate_tables_ext, OpcodeFamilyDecoder, UnifiedReducedMachineDecoder,
+};
 use cs::tables::TableDriver;
 use cs::utils::split_timestamp;
 use fft::Twiddles;
@@ -693,8 +698,8 @@ pub type UnifiedInitsAndTeardowns = (
 /// one group — asserted rather than silently dropping teardowns (which breaks the permutation
 /// argument: e.g. multi_family_smoke's stack/data sit at 64–68 MiB, outside a 0-based pair of
 /// 2^23-word chunks).
-fn collect_unified_inits_and_teardowns<C>(
-    vm: &VmRunOutput<C>,
+pub(super) fn collect_unified_inits_and_teardowns<C, const EXEC_ONLY_ROM: bool>(
+    vm: &VmRunOutput<C, EXEC_ONLY_ROM>,
     unified_circuit: &GKRCircuitArtifact<BabyBearField>,
     worker: &Worker,
 ) -> UnifiedInitsAndTeardowns
@@ -721,8 +726,8 @@ where
 }
 
 /// Replay the captured VM run into the per-cycle unified oracle data.
-pub fn replay_unified_cycles<C>(
-    vm: &VmRunOutput<C>,
+pub fn replay_unified_cycles<C, const EXEC_ONLY_ROM: bool>(
+    vm: &VmRunOutput<C, EXEC_ONLY_ROM>,
     num_calls: usize,
 ) -> Vec<UnifiedOpcodeTracingDataWithTimestamp>
 where
@@ -775,42 +780,80 @@ pub fn build_unified_full_trace<C>(
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
 {
+    build_full_trace_for_unified_machine::<C, ReducedMachineDecoderConfig, false>(
+        vm,
+        unified_circuit,
+        num_calls,
+        REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
+        Box::new(UnifiedReducedMachineDecoder),
+        build_unified_table_driver::<BabyBearField>(&vm.binary),
+        eval_fn,
+        run_memory_consistency_check,
+        worker,
+    )
+}
+
+/// CSRs every unified machine's decoder table accepts.
+const UNIFIED_SUPPORTED_CSRS: &[u16] = &[
+    NON_DETERMINISM_CSR as u16,
+    BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+    BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
+    BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
+    KECCAK_SPECIAL5_CSR_REGISTER as u16,
+    KECCAK_THETA_RHO_CSR_REGISTER as u16,
+    KECCAK_COLUMN_PARITY_CSR_REGISTER as u16,
+    KECCAK_CHI5_CSR_REGISTER as u16,
+];
+
+/// [`build_unified_full_trace`] for any single-circuit ("unified") machine: the decoder
+/// table comes from `decoder` under the decoding options `OPT` and is keyed by
+/// `family_idx`; `table_driver` carries the circuit's tables (bytecode-dependent content
+/// included, where the machine has any).
+#[allow(clippy::too_many_arguments)]
+pub fn build_full_trace_for_unified_machine<C, OPT, const EXEC_ONLY_ROM: bool>(
+    vm: &VmRunOutput<C, EXEC_ONLY_ROM>,
+    unified_circuit: &GKRCircuitArtifact<BabyBearField>,
+    num_calls: usize,
+    family_idx: u8,
+    decoder: Box<dyn OpcodeFamilyDecoder>,
+    unified_table_driver: TableDriver<BabyBearField>,
+    eval_fn: fn(
+        &mut crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy<
+            '_,
+            UnifiedRiscvCircuitOracle<'_>,
+            BabyBearField,
+        >,
+    ),
+    run_memory_consistency_check: bool,
+    worker: &Worker,
+) -> (
+    GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    TableDriver<BabyBearField>,
+    Vec<Option<ExecutorFamilyDecoderData>>,
+    Vec<u32>,
+)
+where
+    C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
+    OPT: riscv_transpiler::ir::DecodingOptions,
+{
     let buffer = replay_unified_cycles(vm, num_calls);
 
-    use common_constants::*;
-    use cs::gkr_circuits::*;
-
-    let decoders: Vec<Box<dyn OpcodeFamilyDecoder>> = vec![Box::new(UnifiedReducedMachineDecoder)];
-    const SUPPORTED_CSRS: &[u16] = &[
-        NON_DETERMINISM_CSR as u16,
-        BLAKE2S_DELEGATION_CSR_REGISTER as u16,
-        BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
-        BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
-        KECCAK_SPECIAL5_CSR_REGISTER as u16,
-        KECCAK_THETA_RHO_CSR_REGISTER as u16,
-        KECCAK_COLUMN_PARITY_CSR_REGISTER as u16,
-        KECCAK_CHI5_CSR_REGISTER as u16,
-    ];
-    let mut preprocessing_data = process_binary_into_separate_tables_ext::<
-        BabyBearField,
-        ReducedMachineDecoderConfig,
-        true,
-        Global,
-    >(
-        &vm.text_section,
-        &decoders,
-        common_constants::ROM_WORD_SIZE,
-        SUPPORTED_CSRS,
-    );
+    let decoders: Vec<Box<dyn OpcodeFamilyDecoder>> = vec![decoder];
+    let mut preprocessing_data =
+        process_binary_into_separate_tables_ext::<BabyBearField, OPT, true, Global>(
+            &vm.text_section,
+            &decoders,
+            common_constants::ROM_WORD_SIZE,
+            UNIFIED_SUPPORTED_CSRS,
+        );
     let decoder_table = preprocessing_data
-        .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
-        .expect("UnifiedReducedMachineDecoder must produce a family-128 entry");
+        .remove(&family_idx)
+        .unwrap_or_else(|| panic!("the unified decoder must produce a family-{family_idx} entry"));
 
     let oracle = UnifiedRiscvCircuitOracle {
         inner: &buffer,
         decoder_table: &decoder_table,
     };
-    let unified_table_driver = build_unified_table_driver::<BabyBearField>(&vm.binary);
 
     let (inits_and_teardowns_top_bits, unified_inits_and_teardowns) =
         collect_unified_inits_and_teardowns(vm, unified_circuit, worker);
@@ -878,10 +921,40 @@ pub fn prove_built_unified_trace(
     GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>,
     MerkleTreeCap<DEFAULT_CAP_SIZE>,
 ) {
+    prove_built_trace_for_unified_machine(
+        "unified_reduced_machine",
+        unified_circuit,
+        unified_full_trace,
+        unified_table_driver,
+        decoder_table,
+        inits_and_teardowns_top_bits,
+        external_challenges,
+        level,
+        worker,
+    )
+}
+
+/// [`prove_built_unified_trace`] for any unified machine: `fixture_stem` names the circuit
+/// definition whose prover config of the current soundness mode is used.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_built_trace_for_unified_machine(
+    fixture_stem: &str,
+    unified_circuit: &GKRCircuitArtifact<BabyBearField>,
+    unified_full_trace: GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    unified_table_driver: &TableDriver<BabyBearField>,
+    decoder_table: &[Option<ExecutorFamilyDecoderData>],
+    inits_and_teardowns_top_bits: Vec<u32>,
+    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    level: SecurityLevel,
+    worker: &Worker,
+) -> (
+    GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>,
+    MerkleTreeCap<DEFAULT_CAP_SIZE>,
+) {
     let trace_len: usize = unified_circuit.trace_len;
 
     // the circuit definition's config of the current soundness mode
-    let prover_config = super::common::fixture_prover_config("unified_reduced_machine", level);
+    let prover_config = super::common::fixture_prover_config(fixture_stem, level);
     assert_eq!(1usize << prover_config.trace_len_log2, trace_len);
     let unified_twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
     let unified_setup = GKRSetup::construct(

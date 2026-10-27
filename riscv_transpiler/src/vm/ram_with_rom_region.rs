@@ -32,11 +32,33 @@ fn alloc_zeroed_registers(count: usize) -> Vec<Register> {
     }
 }
 
-pub struct RamWithRomRegion<const ROM_BOUND_SECOND_WORD_BITS: usize> {
+/// Guest RAM with a `2^(16 + ROM_BOUND_SECOND_WORD_BITS)`-byte ROM region at address 0 that is
+/// never written. With `EXEC_ONLY_ROM` the ROM is execute-only: a data read of it (any load
+/// whose word-aligned cell lies in the ROM range) is a program error and panics — the
+/// contract of the execute-only-text layout (`riscv_common` feature `execute_only_text`),
+/// where `.rodata`/`.data` live in RAM from the start and nothing is ever loaded from ROM.
+pub struct RamWithRomRegion<
+    const ROM_BOUND_SECOND_WORD_BITS: usize,
+    const EXEC_ONLY_ROM: bool = false,
+> {
     pub(crate) backing: Vec<Register>,
 }
 
-impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_WORD_BITS> {
+impl<const ROM_BOUND_SECOND_WORD_BITS: usize, const EXEC_ONLY_ROM: bool>
+    RamWithRomRegion<ROM_BOUND_SECOND_WORD_BITS, EXEC_ONLY_ROM>
+{
+    const ROM_WORDS: usize = (1 << (16 + ROM_BOUND_SECOND_WORD_BITS)) / core::mem::size_of::<u32>();
+
+    #[inline(always)]
+    fn check_rom_read(word_idx: usize) {
+        if EXEC_ONLY_ROM && word_idx < Self::ROM_WORDS {
+            panic!(
+                "data read from the execute-only ROM at address 0x{:08x}",
+                word_idx * core::mem::size_of::<u32>()
+            );
+        }
+    }
+
     pub fn from_rom_content(content: &[u32], total_size_bytes: usize) -> Self {
         assert!(
             total_size_bytes.is_power_of_two(),
@@ -79,6 +101,29 @@ mod tests {
         let registers = alloc_zeroed_registers(0);
 
         assert!(registers.is_empty());
+    }
+
+    /// With `EXEC_ONLY_ROM` a data read of the ROM range panics (writes always did); RAM reads
+    /// and writes are unaffected.
+    #[test]
+    #[should_panic(expected = "data read from the execute-only ROM at address 0x0000fffc")]
+    fn exec_only_rom_rejects_rom_reads() {
+        let content: Vec<u32> = (0..1024u32).collect();
+        let mut ram = RamWithRomRegion::<0, true>::from_rom_content(&content, 1 << 17);
+        let ram_addr = 1u32 << 16;
+        let (old_timestamp, old_value) = ram.write_word(ram_addr, 0xDEAD_BEEF, 4);
+        assert_eq!((old_timestamp, old_value), (0, 0));
+        assert_eq!(ram.read_word(ram_addr, 8), (4 | 2, 0xDEAD_BEEF));
+        assert_eq!(ram.peek_word(ram_addr), 0xDEAD_BEEF);
+        // the last ROM word
+        let _ = ram.read_word((1 << 16) - 4, 12);
+    }
+
+    #[test]
+    #[should_panic(expected = "data read from the execute-only ROM at address 0x00000000")]
+    fn exec_only_rom_rejects_rom_peeks() {
+        let ram = RamWithRomRegion::<0, true>::from_rom_content(&[1, 2, 3], 1 << 17);
+        let _ = ram.peek_word(0);
     }
 
     #[test]
@@ -130,14 +175,15 @@ pub fn split_timestamp(timestamp: TimestampScalar) -> (u32, u32) {
 // NOTE: we will not branch and special-case here to model ROM reads as reads from address 0 of 0 value,
 // and witness post-processing can track it. Instead we will only track last access for snapshotting purposes
 
-impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamPeek
-    for RamWithRomRegion<ROM_BOUND_SECOND_WORD_BITS>
+impl<const ROM_BOUND_SECOND_WORD_BITS: usize, const EXEC_ONLY_ROM: bool> RamPeek
+    for RamWithRomRegion<ROM_BOUND_SECOND_WORD_BITS, EXEC_ONLY_ROM>
 {
     #[inline(always)]
     fn peek_word(&self, address: u32) -> u32 {
         debug_assert_eq!(address % 4, 0);
         unsafe {
             let word_idx = (address / 4) as usize;
+            Self::check_rom_read(word_idx);
             debug_assert!(word_idx < self.backing.len());
             let slot = self.backing.get_unchecked(word_idx);
 
@@ -146,7 +192,9 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamPeek
     }
 }
 
-impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RAM for RamWithRomRegion<ROM_BOUND_SECOND_WORD_BITS> {
+impl<const ROM_BOUND_SECOND_WORD_BITS: usize, const EXEC_ONLY_ROM: bool> RAM
+    for RamWithRomRegion<ROM_BOUND_SECOND_WORD_BITS, EXEC_ONLY_ROM>
+{
     #[inline(always)]
     fn mask_read_for_witness(&self, _address: &mut u32, _value: &mut u32) {
         // we do not do anything here
@@ -159,6 +207,7 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RAM for RamWithRomRegion<ROM_BOUND
         debug_assert_eq!(address % 4, 0);
         unsafe {
             let word_idx = (address / 4) as usize;
+            Self::check_rom_read(word_idx);
             debug_assert!(word_idx < self.backing.len());
             let slot = self.backing.get_unchecked_mut(word_idx);
             let value = slot.value;
@@ -226,7 +275,7 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RAM for RamWithRomRegion<ROM_BOUND
         unsafe {
             let word_idx = (address / 4) as usize;
             debug_assert!(word_idx < self.backing.len());
-            if word_idx < (1 << (16 + ROM_BOUND_SECOND_WORD_BITS)) / core::mem::size_of::<u32>() {
+            if word_idx < Self::ROM_WORDS {
                 panic!("attempt to write into ROM range");
             }
             let slot = self.backing.get_unchecked_mut(word_idx);
@@ -243,7 +292,9 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RAM for RamWithRomRegion<ROM_BOUND
     }
 }
 
-impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_WORD_BITS> {
+impl<const ROM_BOUND_SECOND_WORD_BITS: usize, const EXEC_ONLY_ROM: bool>
+    RamWithRomRegion<ROM_BOUND_SECOND_WORD_BITS, EXEC_ONLY_ROM>
+{
     pub fn collect_inits_and_teardowns<A: Allocator + Clone + Send + Sync>(
         &self,
         worker: &worker::Worker,

@@ -57,6 +57,7 @@ mod malicious_proofs;
 mod relative_timestamps;
 #[cfg(test)]
 mod unified_circuit;
+mod unified_extended_circuit;
 #[cfg(test)]
 mod unified_generated_witness;
 #[cfg(test)]
@@ -911,6 +912,33 @@ mod unified_reduced_machine {
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 
     include!("../../../compiled_circuits/unified_reduced_machine_generated_gkr.rs");
+
+    pub fn witness_eval_fn<'a, 'b>(
+        proxy: &'_ mut ColumnMajorWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>, BabyBearField>,
+    ) {
+        let fn_ptr = evaluate_witness_fn::<
+            ScalarWitnessTypeSet<BabyBearField, true>,
+            ColumnMajorWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>, BabyBearField>,
+        >;
+        (fn_ptr)(proxy);
+    }
+}
+
+#[cfg(test)]
+mod unified_extended_machine {
+    use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
+    use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
+    use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
+    use ::cs::oracle::Placeholder;
+    use ::cs::witness_placer::WitnessTypeSet;
+    use ::cs::witness_placer::{
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessComputationalU8, WitnessMask,
+    };
+    use ::field::baby_bear::base::BabyBearField;
+    use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+
+    include!("../../../compiled_circuits/unified_extended_machine_generated_gkr.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>, BabyBearField>,

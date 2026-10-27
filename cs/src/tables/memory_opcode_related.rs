@@ -531,3 +531,173 @@ pub fn create_load_byte_signextend_table<F: PrimeField>(id: u32) -> LookupTable<
 //         id,
 //     )
 // }
+
+// ---------------------------------------------------------------------------------------------
+// Unified-extended-machine sub-word memory tables. See `TableType::{LoadSubwordLimb,
+// StoreSubwordKeep, StoreSubwordSource}`. Every table is keyed on one 16-bit limb plus control
+// bits, so a sub-word access issues one lookup per limb of the word-aligned cell and the
+// selection of the halfword by address bit 1 is done by the `sel` key bit.
+
+/// Key layout of [`TableType::LoadSubwordLimb`]: `limb | byte << 16 | sext << 17 | b0 << 18 |
+/// sel << 19`. `byte | sext << 1` is exactly the `funct3` the extended-machine decoder assigns
+/// to sub-word loads, so the circuit feeds the `funct3` column at bit 16 unchanged.
+pub const LOAD_SUBWORD_LIMB_MODE_SHIFT: usize = 16;
+pub const LOAD_SUBWORD_LIMB_B0_SHIFT: usize = 18;
+pub const LOAD_SUBWORD_LIMB_SEL_SHIFT: usize = 19;
+pub const LOAD_SUBWORD_LIMB_KEY_BITS: usize = 20;
+
+/// Key layout of [`TableType::StoreSubwordKeep`] and [`TableType::StoreSubwordSource`]:
+/// `limb | byte << 16 | b0 << 17 | sel << 18`. `byte` is the `funct3` the extended-machine
+/// decoder assigns to sub-word stores.
+pub const STORE_SUBWORD_BYTE_SHIFT: usize = 16;
+pub const STORE_SUBWORD_B0_SHIFT: usize = 17;
+pub const STORE_SUBWORD_SEL_SHIFT: usize = 18;
+pub const STORE_SUBWORD_KEY_BITS: usize = 19;
+
+/// Sub-word load: the (lo, hi) limbs of rd when `limb` is the selected limb of the accessed
+/// word, or (0, 0) when it is not; plus the misalignment trap of a halfword access.
+pub fn subword_load_limb_output(
+    limb: u16,
+    byte: bool,
+    sext: bool,
+    b0: bool,
+    sel: bool,
+) -> (u16, u16, bool) {
+    let trap = !byte && b0;
+    if !sel {
+        return (0, 0, trap);
+    }
+    let (value, sign) = if byte {
+        let selected = if b0 { limb >> 8 } else { limb & 0xff };
+        (selected, (selected >> 7) & 1 == 1)
+    } else {
+        (limb, (limb >> 15) & 1 == 1)
+    };
+    let extend = sext && sign;
+    let lo = if extend && byte {
+        value | 0xff00
+    } else {
+        value
+    };
+    let hi = if extend { 0xffff } else { 0 };
+    (lo, hi, trap)
+}
+
+/// Sub-word store, old-value side: the part of the old limb that survives the store (the whole
+/// limb when this limb is not the selected one), plus the misalignment trap of a halfword store.
+pub fn subword_store_keep_output(limb: u16, byte: bool, b0: bool, sel: bool) -> (u16, bool) {
+    let trap = !byte && b0;
+    let keep = if !sel {
+        limb
+    } else if byte {
+        if b0 {
+            limb & 0x00ff
+        } else {
+            limb & 0xff00
+        }
+    } else {
+        0
+    };
+    (keep, trap)
+}
+
+/// Sub-word store, source side: the part of rs2's low limb written into this limb.
+pub fn subword_store_source_output(rs2_lo: u16, byte: bool, b0: bool, sel: bool) -> u16 {
+    if !sel {
+        0
+    } else if byte {
+        let value = rs2_lo & 0xff;
+        if b0 {
+            value << 8
+        } else {
+            value
+        }
+    } else {
+        rs2_lo
+    }
+}
+
+pub fn create_load_subword_limb_table<F: PrimeField>(id: u32) -> LookupTable<F> {
+    let keys = key_for_continuous_log2_range::<F, 1>(LOAD_SUBWORD_LIMB_KEY_BITS);
+    const TABLE_NAME: &str = "Load sub-word limb table";
+    LookupTable::create_table_from_key_and_pure_generation_fn(
+        &keys,
+        TABLE_NAME.to_string(),
+        1,
+        3,
+        |keys| {
+            let input = keys[0].as_u32_reduced();
+            assert!(input < (1u32 << LOAD_SUBWORD_LIMB_KEY_BITS));
+            let limb = input as u16;
+            let byte = (input >> LOAD_SUBWORD_LIMB_MODE_SHIFT) & 1 == 1;
+            let sext = (input >> (LOAD_SUBWORD_LIMB_MODE_SHIFT + 1)) & 1 == 1;
+            let b0 = (input >> LOAD_SUBWORD_LIMB_B0_SHIFT) & 1 == 1;
+            let sel = (input >> LOAD_SUBWORD_LIMB_SEL_SHIFT) & 1 == 1;
+            let (lo, hi, trap) = subword_load_limb_output(limb, byte, sext, b0, sel);
+
+            let mut result = ArrayVec::new();
+            result.push(F::from_u32_unchecked(lo as u32));
+            result.push(F::from_u32_unchecked(hi as u32));
+            result.push(F::from_u32_unchecked(trap as u32));
+
+            (input as usize, result)
+        },
+        Some(first_key_index_gen_fn::<F>),
+        id,
+    )
+}
+
+pub fn create_store_subword_keep_table<F: PrimeField>(id: u32) -> LookupTable<F> {
+    let keys = key_for_continuous_log2_range::<F, 1>(STORE_SUBWORD_KEY_BITS);
+    const TABLE_NAME: &str = "Store sub-word keep table";
+    LookupTable::create_table_from_key_and_pure_generation_fn(
+        &keys,
+        TABLE_NAME.to_string(),
+        1,
+        2,
+        |keys| {
+            let input = keys[0].as_u32_reduced();
+            assert!(input < (1u32 << STORE_SUBWORD_KEY_BITS));
+            let limb = input as u16;
+            let byte = (input >> STORE_SUBWORD_BYTE_SHIFT) & 1 == 1;
+            let b0 = (input >> STORE_SUBWORD_B0_SHIFT) & 1 == 1;
+            let sel = (input >> STORE_SUBWORD_SEL_SHIFT) & 1 == 1;
+            let (keep, trap) = subword_store_keep_output(limb, byte, b0, sel);
+
+            let mut result = ArrayVec::new();
+            result.push(F::from_u32_unchecked(keep as u32));
+            result.push(F::from_u32_unchecked(trap as u32));
+
+            (input as usize, result)
+        },
+        Some(first_key_index_gen_fn::<F>),
+        id,
+    )
+}
+
+pub fn create_store_subword_source_table<F: PrimeField>(id: u32) -> LookupTable<F> {
+    let keys = key_for_continuous_log2_range::<F, 1>(STORE_SUBWORD_KEY_BITS);
+    const TABLE_NAME: &str = "Store sub-word source table";
+    LookupTable::create_table_from_key_and_pure_generation_fn(
+        &keys,
+        TABLE_NAME.to_string(),
+        1,
+        1,
+        |keys| {
+            let input = keys[0].as_u32_reduced();
+            assert!(input < (1u32 << STORE_SUBWORD_KEY_BITS));
+            let limb = input as u16;
+            let byte = (input >> STORE_SUBWORD_BYTE_SHIFT) & 1 == 1;
+            let b0 = (input >> STORE_SUBWORD_B0_SHIFT) & 1 == 1;
+            let sel = (input >> STORE_SUBWORD_SEL_SHIFT) & 1 == 1;
+            let src = subword_store_source_output(limb, byte, b0, sel);
+
+            let mut result = ArrayVec::new();
+            result.push(F::from_u32_unchecked(src as u32));
+
+            (input as usize, result)
+        },
+        Some(first_key_index_gen_fn::<F>),
+        id,
+    )
+}

@@ -231,6 +231,26 @@ fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBe
     write_and_fmt(&format!("{}/mod.rs", dir), &mod_rs);
 }
 
+/// The unified extended machine (`cs::gkr_circuits::unified_extended_machine`) is not in the
+/// `gkr_circuits!` registry (nothing registry-driven, such as the fixture-based verifier
+/// tests, applies to it yet); its verifiers are generated from its crate's prover configs
+/// into `verifier/src/generated/unified_extended_machine/<mode>/` and declared by hand in
+/// `verifier/src/lib.rs`.
+#[test]
+fn unified_extended_machine() {
+    let circuit = CircuitData::unregistered(
+        "unified_extended_machine",
+        "../circuit_defs/unrolled_circuits/unified_extended_machine",
+    );
+    for &mode in SoundnessMode::ALL {
+        generate_verifier_for_circuit::<DefaultBabyBearField>(
+            &circuit,
+            SecurityLevel::Sec100,
+            mode,
+        );
+    }
+}
+
 /// High-LDE "L1 feeder" unified verifier: same circuit and 100-bit target as
 /// `unified_reduced_machine` at sec_100, but every oracle domain sits at
 /// BabyBear's two-adicity cap (base LDE 16; round-0 queries 87 -> 21), the

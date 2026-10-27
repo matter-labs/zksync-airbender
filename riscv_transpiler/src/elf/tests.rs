@@ -68,6 +68,18 @@ fn is_stripped_text(err: &ElfReadError) -> bool {
     matches!(err, ElfReadError::Layout(msg) if msg.starts_with("no .text section"))
 }
 
+/// Legacy mode rejects execute-only-text programs (`riscv_common` feature
+/// `execute_only_text`): their init images live in RAM, not in ROM. Such ELFs are read in
+/// strict mode only (`execute_only_text_program_is_post_processed`).
+fn is_execute_only_layout(err: &ElfReadError) -> bool {
+    matches!(err, ElfReadError::Layout(msg) if msg.starts_with("legacy mode loads initial content from ROM only"))
+}
+
+/// The committed ELF of `examples/extended_machine_linking`, the execute-only-text program.
+fn execute_only_elf() -> PathBuf {
+    repo_root().join("examples/extended_machine_linking/app.elf")
+}
+
 /// Committed ELFs that still carry `.text` (the `tools/gkr_verifier` set), parsed in `mode`.
 /// ELFs produced by the old `objcopy -R .text` recipe are skipped.
 fn full_elf_images(mode: ElfReadMode) -> Vec<(PathBuf, ElfImage)> {
@@ -80,6 +92,10 @@ fn full_elf_images(mode: ElfReadMode) -> Vec<(PathBuf, ElfImage)> {
                 "skipped (no .text, built with `objcopy -R .text`): {}",
                 path.display()
             ),
+            Err(err) if mode == ElfReadMode::Legacy && is_execute_only_layout(&err) => {
+                assert_eq!(path, execute_only_elf());
+                println!("skipped (execute-only-text program): {}", path.display());
+            }
             Err(err) => panic!("{}: {err}", path.display()),
         }
     }
@@ -388,6 +404,7 @@ fn materialization_code_covers_immediate_edge_cases() {
         init_sections: vec![section.clone()],
         sections: vec![],
         symbols: BTreeMap::new(),
+        init_from_text: None,
     };
     let code = image.init_data_materialization_code();
     // At most lui+addi for the value plus the store per non-zero word, plus two per window.
@@ -440,7 +457,11 @@ fn rejects_elf_without_text() {
     for elf_path in elf_files() {
         let bytes = std::fs::read(&elf_path).unwrap();
         if let Err(err) = read_elf(&bytes, ElfReadMode::Legacy) {
-            assert!(is_stripped_text(&err), "{}: {err}", elf_path.display());
+            assert!(
+                is_stripped_text(&err) || is_execute_only_layout(&err),
+                "{}: {err}",
+                elf_path.display()
+            );
         }
     }
 }
@@ -543,4 +564,90 @@ fn legacy_binaries_reject_text_that_is_not_a_prefix() {
         Err(ElfReadError::Layout(_))
     ));
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// The execute-only-text program (`examples/extended_machine_linking`, `riscv_common` feature
+/// `execute_only_text`): legacy mode rejects it (no ROM images), strict mode checks the stub
+/// layout and splices the init-data materialization code over the `init_from_text` stub, and
+/// running that code fills RAM with exactly `.rodata` / `.data`.
+#[test]
+fn execute_only_text_program_is_post_processed() {
+    let bytes = std::fs::read(execute_only_elf()).unwrap();
+    let legacy = read_elf(&bytes, ElfReadMode::Legacy).unwrap_err();
+    assert!(is_execute_only_layout(&legacy), "{legacy}");
+
+    let image = read_elf(&bytes, ElfReadMode::Strict).unwrap();
+    let stub = image.init_from_text.expect("execute-only-text program");
+    assert_eq!(stub, image.symbols["_init_from_text"]);
+    assert_eq!(stub + 4, image.symbols["_einit_from_text"]);
+    let text_section = image.sections.iter().find(|s| s.name == ".text").unwrap();
+    assert_eq!(stub + 4, text_section.virtual_address + text_section.size);
+    assert_eq!(image.flattened_binary, None);
+    assert_eq!(image.flattened_binary_used_bytes, image.text.len() * 4);
+
+    // .rodata and .data are non-empty, in RAM, with LMA == VMA
+    for name in [".rodata", ".data"] {
+        let section = image.init_section(name).unwrap_or_else(|| panic!("{name}"));
+        assert!(section.size() > 0, "{name} is empty");
+        assert!(!section.is_relocated());
+        assert!(section.virtual_address as usize >= ROM_BYTE_SIZE);
+        assert!(section.words().iter().any(|w| *w != 0));
+    }
+
+    // the stub is the single `ret` that ends the original .text
+    let original_text =
+        bytes_to_words(&bytes[0x1000..][..(stub + 4 - image.text_address) as usize]);
+    assert_eq!(*original_text.last().unwrap(), RET);
+    assert_eq!(
+        original_text.iter().rposition(|w| *w == RET),
+        Some(original_text.len() - 1)
+    );
+    assert_eq!(
+        stub,
+        image.text_address + 4 * (original_text.len() as u32 - 1)
+    );
+
+    // the stub word was replaced by the materialization code and `ret`
+    let stub_index = ((stub - image.text_address) / 4) as usize;
+    let expected = image.init_data_materialization_code();
+    assert!(!expected.is_empty());
+    assert_eq!(&image.text[stub_index..image.text.len() - 1], &expected[..]);
+    assert_eq!(*image.text.last().unwrap(), RET);
+    assert_eq!(
+        image.text[..stub_index],
+        bytes_to_words(&bytes[0x1000..][..stub_index * 4])[..]
+    );
+    assert_init_code_fills_ram(&expected, &image.init_sections);
+
+    // the strict program source hands the post-processed text out as the ROM image too
+    let (binary, text) = ProgramSource::strict_elf(execute_only_elf()).load_unpadded();
+    assert_eq!(binary, image.text);
+    assert_eq!(text, image.text);
+    let (binary, text) = ProgramSource::strict_elf(execute_only_elf()).load();
+    assert_eq!(binary, text);
+    assert_eq!(text, image.padded_text_words());
+}
+
+/// Strict mode rejects an execute-only-text ELF whose last `.text` word is not the `ret` that
+/// `_init_from_text` names (e.g. a program that was already post-processed, or a stub that is
+/// not placed last). The workload's own final `ret` sits right before the stub in this ELF, so
+/// after the patch the last `ret` of `.text` is one word early.
+#[test]
+fn strict_mode_rejects_misplaced_init_from_text_stub() {
+    let bytes = std::fs::read(execute_only_elf()).unwrap();
+    let image = read_elf(&bytes, ElfReadMode::Strict).unwrap();
+    let stub = image.init_from_text.unwrap();
+    let text_section = image.sections.iter().find(|s| s.name == ".text").unwrap();
+    // file offset of the stub word: .text starts at file offset 0x1000 in this ELF
+    let stub_offset = 0x1000 + (stub - text_section.virtual_address) as usize;
+    assert_eq!(&bytes[stub_offset..stub_offset + 4], &RET.to_le_bytes());
+
+    // the last word is no longer a `ret`: the last `ret` of .text is somewhere earlier
+    let mut patched = bytes.clone();
+    patched[stub_offset..stub_offset + 4].copy_from_slice(&0x0000_0013u32.to_le_bytes()); // nop
+    let err = read_elf(&patched, ElfReadMode::Strict).unwrap_err();
+    assert!(
+        matches!(&err, ElfReadError::Layout(msg) if msg.contains("does not match the last `ret`")),
+        "{err}"
+    );
 }

@@ -1,10 +1,10 @@
 use super::*;
 
-mod add_sub_lui_auipc_mop;
-mod binary_shifts;
-mod circuit;
+pub(crate) mod add_sub_lui_auipc_mop;
+pub(crate) mod binary_shifts;
+pub(crate) mod circuit;
 mod decoder;
-mod jump_branch_slt;
+pub(crate) mod jump_branch_slt;
 mod mem_word_only;
 mod mem_word_only_lw_sw;
 

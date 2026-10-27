@@ -18,12 +18,21 @@ fn main() {
         use std::fs;
         use std::path::PathBuf;
         let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-        fs::copy(format!("src/lds/{}/link.x", path), out_dir.join("link.x")).unwrap();
-        fs::copy(
-            format!("src/lds/{}/memory.x", path),
-            out_dir.join("memory.x"),
-        )
-        .unwrap();
+        let (link, memory) = if cfg!(feature = "execute_only_text") {
+            (
+                "src/lds/execute_only_text/link.x".to_string(),
+                format!("src/lds/execute_only_text/memory_{}.x", path),
+            )
+        } else {
+            (
+                format!("src/lds/{}/link.x", path),
+                format!("src/lds/{}/memory.x", path),
+            )
+        };
+        println!("cargo::rerun-if-changed={link}");
+        println!("cargo::rerun-if-changed={memory}");
+        fs::copy(link, out_dir.join("link.x")).unwrap();
+        fs::copy(memory, out_dir.join("memory.x")).unwrap();
         println!("cargo::rustc-link-search={}", out_dir.display());
     }
 }

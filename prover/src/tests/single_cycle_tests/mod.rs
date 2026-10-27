@@ -1,4 +1,5 @@
 use crate::gkr::witness_gen::oracles::*;
+use ::cs::oracle::Placeholder;
 use common_constants::*;
 use cs::cs::circuit_impl::BasicAssembly;
 use cs::cs::circuit_trait::Circuit;
@@ -12,6 +13,7 @@ use std::alloc::Global;
 
 mod mul_div_circuit;
 mod unified_circuit_tests;
+mod unified_extended_circuit_tests;
 
 pub(crate) fn test_single_non_mem_cycle<F: PrimeField, OPT: DecodingOptions>(
     opcode: u32,
@@ -153,7 +155,10 @@ pub(crate) fn test_single_unified_cycle_with_oracle<
     circuit_fn: impl FnOnce(&mut BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>),
     wrap_oracle: impl FnOnce(UnifiedRiscvCircuitOracle<'static>) -> O,
 ) {
-    let mut t = process_binary_into_separate_tables_ext::<F, OPT, false, Global>(
+    let circuit_family = decoder.instruction_family_index();
+    // Unsupported words (e.g. `unimp` trap padding) only matter if executed: a replayed cycle
+    // at such a PC fails the decoder lookup.
+    let mut t = process_binary_into_separate_tables_ext::<F, OPT, true, Global>(
         binary,
         &[Box::new(decoder)],
         1 << 20,
@@ -161,11 +166,14 @@ pub(crate) fn test_single_unified_cycle_with_oracle<
             NON_DETERMINISM_CSR as u16,
             BLAKE2S_DELEGATION_CSR_REGISTER as u16,
             BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
+            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
+            KECCAK_SPECIAL5_CSR_REGISTER as u16,
+            KECCAK_THETA_RHO_CSR_REGISTER as u16,
+            KECCAK_COLUMN_PARITY_CSR_REGISTER as u16,
+            KECCAK_CHI5_CSR_REGISTER as u16,
         ],
     );
-    let decoder_data = t
-        .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
-        .expect("decoder data");
+    let decoder_data = t.remove(&circuit_family).expect("decoder data");
 
     {
         let oracle = UnifiedRiscvCircuitOracle {
@@ -184,5 +192,82 @@ pub(crate) fn test_single_unified_cycle_with_oracle<
         (circuit_fn)(&mut cs);
 
         assert!(cs.is_satisfied());
+    }
+}
+
+/// Oracle wrapper that poisons every `ShuffleRamWriteValue` query.
+///
+/// The `ASSUME_MEMORY_VALUES_ASSIGNED == false` regime has a
+/// self-generating witness contract: the oracle is only trusted for
+/// INPUTS (instruction, register/memory READ values, timestamps); every
+/// family must DERIVE its outputs (the shared rd/mem write-value columns)
+/// in-circuit, gated on its own activity mask. If any family silently
+/// falls back to the oracle for its write value, this wrapper feeds it
+/// garbage and the per-family rd-write constraints reject the row.
+pub(crate) struct PoisonedWriteValueOracle<O>(pub(crate) O);
+
+impl<F: PrimeField, O: ::cs::oracle::Oracle<F>> ::cs::oracle::Oracle<F>
+    for PoisonedWriteValueOracle<O>
+{
+    fn get_witness_from_placeholder(
+        &self,
+        placeholder: Placeholder,
+        subindex: usize,
+        trace_row: usize,
+    ) -> F {
+        if matches!(placeholder, Placeholder::ShuffleRamWriteValue(_)) {
+            return F::from_u32_with_reduction(0xBEEF);
+        }
+        self.0
+            .get_witness_from_placeholder(placeholder, subindex, trace_row)
+    }
+
+    fn get_u32_witness_from_placeholder(&self, placeholder: Placeholder, trace_row: usize) -> u32 {
+        if matches!(placeholder, Placeholder::ShuffleRamWriteValue(_)) {
+            return 0xDEAD_BEEF;
+        }
+        self.0
+            .get_u32_witness_from_placeholder(placeholder, trace_row)
+    }
+
+    fn get_u16_witness_from_placeholder(&self, placeholder: Placeholder, trace_row: usize) -> u16 {
+        if matches!(placeholder, Placeholder::ShuffleRamWriteValue(_)) {
+            return 0xBEEF;
+        }
+        self.0
+            .get_u16_witness_from_placeholder(placeholder, trace_row)
+    }
+
+    fn get_u8_witness_from_placeholder(&self, placeholder: Placeholder, trace_row: usize) -> u8 {
+        // no write-value placeholder is queried as u8; delegate (must NOT
+        // fall through to the trait default, which routes via the field
+        // query the inner oracle doesn't support for every placeholder)
+        self.0
+            .get_u8_witness_from_placeholder(placeholder, trace_row)
+    }
+
+    fn get_boolean_witness_from_placeholder(
+        &self,
+        placeholder: Placeholder,
+        trace_row: usize,
+    ) -> bool {
+        self.0
+            .get_boolean_witness_from_placeholder(placeholder, trace_row)
+    }
+
+    fn get_timestamp_witness_from_placeholder(
+        &self,
+        placeholder: Placeholder,
+        trace_row: usize,
+    ) -> cs::definitions::TimestampScalar {
+        self.0
+            .get_timestamp_witness_from_placeholder(placeholder, trace_row)
+    }
+
+    fn get_executor_family_data(
+        &self,
+        trace_row: usize,
+    ) -> cs::gkr_circuits::ExecutorFamilyDecoderData {
+        self.0.get_executor_family_data(trace_row)
     }
 }

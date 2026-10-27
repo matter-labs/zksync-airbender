@@ -47,6 +47,9 @@ impl quote::ToTokens for TableType {
             TableType::LoadByteRomRead => {
                 quote! { TableType::LoadByteRomRead }
             }
+            TableType::LoadSubwordLimb => quote! { TableType::LoadSubwordLimb },
+            TableType::StoreSubwordKeep => quote! { TableType::StoreSubwordKeep },
+            TableType::StoreSubwordSource => quote! { TableType::StoreSubwordSource },
             TableType::BlakeGFunctionControlLookup => {
                 quote! { TableType::BlakeGFunctionControlLookup }
             }

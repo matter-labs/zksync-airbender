@@ -10,3 +10,6 @@ pub const LOAD_STORE_CIRCUIT_FAMILY_IDX: u8 = 16;
 pub const INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX: u8 = u8::MAX;
 
 pub const REDUCED_MACHINE_CIRCUIT_FAMILY_IDX: u8 = 128;
+// Unified machine in between the reduced and the full ones: every reduced-machine opcode
+// plus unsigned MUL/MULHU and sub-word loads/stores (no division, no ROM-special memory range).
+pub const EXTENDED_MACHINE_CIRCUIT_FAMILY_IDX: u8 = 129;

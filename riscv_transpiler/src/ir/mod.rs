@@ -48,6 +48,21 @@ impl DecodingOptions for ReducedMachineDecoderConfig {
     const SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD: bool = true;
 }
 
+/// Decoding options of the unified *extended* machine (`cs::gkr_circuits::unified_extended_machine`):
+/// the reduced machine plus unsigned `MUL`/`MULHU` and sub-word loads/stores. `DIV*`/`REM*` decode
+/// (`SUPPORT_MUL_DIV` gates the whole M extension) but the circuit decoder rejects them, so a
+/// program using them is unprovable on that machine.
+pub struct ExtendedMachineDecoderConfig;
+
+impl DecodingOptions for ExtendedMachineDecoderConfig {
+    const SUPPORT_MOP: bool = true;
+    const SUPPORT_MUL_DIV: bool = true;
+    const SUPPORT_SIGNED_MUL_DIV: bool = false;
+    const SUPPORT_SUBWORD_MEM_ACCESS: bool = true;
+    const SUPPORT_SPECIAL_ROTATION: bool = false;
+    const SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD: bool = true;
+}
+
 // Special config to allow sending text over UART in recursive verifiers
 pub struct DebugReducedMachineDecoderConfig;
 

@@ -11,6 +11,7 @@ use circuit_common::RiscVCycleCircuit;
 // pub use ::mul_div;
 pub use ::mul_div_unsigned;
 pub use ::shift_binary;
+pub use ::unified_extended_machine;
 pub use ::unified_reduced_machine;
 
 mod add_sub_lui_auipc_mop_circuit;
@@ -21,6 +22,7 @@ mod load_store_word_only_circuit;
 // mod mul_div_circuit;
 mod mul_div_unsigned_circuit;
 mod shift_binary_circuit;
+mod unified_extended_machine_circuit;
 mod unifier_reduced_machine_circuit;
 
 pub use add_sub_lui_auipc_mop_circuit::*;
@@ -31,6 +33,7 @@ pub use load_store_word_only_circuit::*;
 // pub use mul_div_circuit::*;
 pub use mul_div_unsigned_circuit::*;
 pub use shift_binary_circuit::*;
+pub use unified_extended_machine_circuit::*;
 pub use unifier_reduced_machine_circuit::*;
 // pub use unifier_reduced_machine_circuit::*;
 

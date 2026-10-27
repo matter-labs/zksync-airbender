@@ -149,12 +149,15 @@ impl ProgramConfig {
 
 /// Output of [`run_vm_and_capture`]: the binary buffers, the snapshotter the
 /// downstream proves replay against, and end-of-execution state.
-pub struct VmRunOutput<C: Counters + Copy + Default> {
+///
+/// `EXEC_ONLY_ROM` is the RAM's ROM policy (`RamWithRomRegion`): with `true` the run panics on
+/// any data read of the ROM range, the contract of execute-only-text programs.
+pub struct VmRunOutput<C: Counters + Copy + Default, const EXEC_ONLY_ROM: bool = false> {
     pub binary: Vec<u32>,
     pub text_section: Vec<u32>,
     pub instructions: Vec<Instruction>,
     pub tape: SimpleTape,
-    pub ram: RamWithRomRegion<{ common_constants::ROM_SECOND_WORD_BITS }>,
+    pub ram: RamWithRomRegion<{ common_constants::ROM_SECOND_WORD_BITS }, EXEC_ONLY_ROM>,
     pub snapshotter: SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
     pub final_state: State<C>,
     pub counters: C,
@@ -166,7 +169,7 @@ pub struct VmRunOutput<C: Counters + Copy + Default> {
     pub ram_bound_bytes: usize,
 }
 
-impl<C: Counters + Copy + Default> VmRunOutput<C> {
+impl<C: Counters + Copy + Default, const EXEC_ONLY_ROM: bool> VmRunOutput<C, EXEC_ONLY_ROM> {
     /// Final program counter, derived from `final_state` (previously a denormalized field).
     pub fn final_pc(&self) -> u32 {
         self.final_state.pc
@@ -203,6 +206,19 @@ where
     C: Counters + Copy + Default + std::fmt::Debug,
     D: riscv_transpiler::ir::DecodingOptions,
 {
+    run_vm_and_capture_with_rom_mode::<C, D, false>(config, worker)
+}
+
+/// [`run_vm_and_capture`] with the RAM's ROM policy chosen by `EXEC_ONLY_ROM` (see
+/// [`VmRunOutput`]).
+pub fn run_vm_and_capture_with_rom_mode<C, D, const EXEC_ONLY_ROM: bool>(
+    config: &ProgramConfig,
+    worker: &Worker,
+) -> VmRunOutput<C, EXEC_ONLY_ROM>
+where
+    C: Counters + Copy + Default + std::fmt::Debug,
+    D: riscv_transpiler::ir::DecodingOptions,
+{
     println!("Using {} program", config.program);
 
     let (binary, text_section) = config.program.load_unpadded();
@@ -210,7 +226,7 @@ where
     let instructions: Vec<Instruction> = preprocess_bytecode::<D, true>(&text_section);
     let tape = SimpleTape::new(&instructions);
 
-    let mut ram = RamWithRomRegion::<{ common_constants::ROM_SECOND_WORD_BITS }>::from_rom_content(
+    let mut ram = RamWithRomRegion::<{ common_constants::ROM_SECOND_WORD_BITS }, EXEC_ONLY_ROM>::from_rom_content(
         &binary,
         config.ram_bound_bytes,
     );
@@ -463,6 +479,7 @@ fn circuit_definition_dir(stem: &str) -> &'static str {
         "mem_word_only" => "../circuit_defs/unrolled_circuits/load_store_word_only",
         "shift_binop" => "../circuit_defs/unrolled_circuits/shift_binary",
         "unified_reduced_machine" => "../circuit_defs/unrolled_circuits/unified_reduced_machine",
+        "unified_extended_machine" => "../circuit_defs/unrolled_circuits/unified_extended_machine",
         "unsigned_mul_div" => "../circuit_defs/unrolled_circuits/mul_div_unsigned",
         other => panic!("no circuit definition is registered for the proof stem {other}"),
     }

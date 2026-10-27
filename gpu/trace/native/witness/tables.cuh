@@ -74,6 +74,9 @@ enum TableType : u16 {
   KeccakXor5Nibble,
   KeccakChi5,
   KeccakChi5Control,
+  LoadSubwordLimb,
+  StoreSubwordKeep,
+  StoreSubwordSource,
   DynamicPlaceholder,
 };
 
@@ -157,6 +160,9 @@ template <unsigned K, unsigned V> struct TableDriver {
     case LoadByteSignextend:
     case LoadHalfwordRomRead:
     case LoadByteRomRead:
+    case LoadSubwordLimb:
+    case StoreSubwordKeep:
+    case StoreSubwordSource:
     case Decoder:
       return index_for_keys<0>(keys);
     case AlignedRomRead:

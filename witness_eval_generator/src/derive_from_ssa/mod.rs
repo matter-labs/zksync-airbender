@@ -501,6 +501,7 @@ mod test {
             "mem_word_only",
             "shift_binop",
             "unified_reduced_machine",
+            "unified_extended_machine",
             "unsigned_mul_div",
         ] {
             // let compiled_circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(

@@ -20,7 +20,12 @@
 //!   section must be relocated into RAM and its initial content is *virtual*: it is reported
 //!   through [`ElfImage::init_sections`] and is meant to be materialized by code (see
 //!   [`ElfImage::init_data_materialization_code`]) instead of being read from ROM. No flattened
-//!   image is produced.
+//!   image is produced. A program linked with the execute-only-text layout
+//!   (`riscv_common` feature `execute_only_text`) carries the `init_from_text` stub as the last
+//!   function of `.text` (symbols `_init_from_text` / `_einit_from_text`); strict mode checks
+//!   that layout and *post-processes* the program: the stub is replaced by the materialization
+//!   code followed by `ret`, so [`ElfImage::text`] is the code the VM runs and
+//!   [`ElfImage::init_from_text`] records where it was spliced.
 //!
 //! Programs that are not built from this repository and are committed as pre-built `objcopy`
 //! dumps (`app.bin` + `app.text`) go through [`read_legacy_binaries`], which validates the pair
@@ -148,8 +153,14 @@ pub struct ElfImage {
     pub sections: Vec<LoadedSection>,
     /// Linker-script boundary symbols (`_stext`, `_sirodata`, `_srodata`, `_erodata`, `_sidata`,
     /// `_sdata`, `_edata`, `_sbss`, `_ebss`, `_sstack`, `_estack`, `_sheap`, `_eheap`,
-    /// `_rom_size`, `__global_pointer$`) when the ELF carries a symbol table.
+    /// `_rom_size`, `__global_pointer$`, `_init_from_text`, `_einit_from_text`) when the ELF
+    /// carries a symbol table.
     pub symbols: BTreeMap<String, u32>,
+    /// Execute-only-text programs read in strict mode: the address of the `init_from_text`
+    /// stub that [`text`](Self::text) replaces by the init-data materialization code (the
+    /// original `.text` ends 4 bytes past it; the post-processed one ends wherever the spliced
+    /// code does). `None` for every other program.
+    pub init_from_text: Option<u32>,
 }
 
 impl ElfImage {
@@ -206,13 +217,21 @@ impl ElfImage {
     /// This is the "virtual init data" path of [`ElfReadMode::Strict`]: the code can be run in
     /// front of the program instead of the ROM-reading copy loop of the legacy boot sequence.
     pub fn init_data_materialization_code(&self) -> Vec<u32> {
-        let mut code = Vec::new();
-        for section in self.init_sections.iter() {
-            emit_init_data_materialization(section, &mut code);
-        }
-        code
+        init_data_materialization_code(&self.init_sections)
     }
 }
+
+/// See [`ElfImage::init_data_materialization_code`].
+pub fn init_data_materialization_code(init_sections: &[InitDataSection]) -> Vec<u32> {
+    let mut code = Vec::new();
+    for section in init_sections.iter() {
+        emit_init_data_materialization(section, &mut code);
+    }
+    code
+}
+
+/// RV32I `ret` (`jalr x0, 0(ra)`): the whole body of the `init_from_text` stub.
+pub const RET: u32 = 0x0000_8067;
 
 /// Parse and validate a RISC-V guest ELF in the given mode.
 pub fn read_elf(bytes: &[u8], mode: ElfReadMode) -> Result<ElfImage, ElfReadError> {
@@ -536,16 +555,88 @@ pub fn read_elf(bytes: &[u8], mode: ElfReadMode) -> Result<ElfImage, ElfReadErro
         }
     }
 
+    // --- execute-only-text programs: check the stub layout, splice the init code (strict) ---
+    let mut text = bytes_to_words(text_data);
+    let mut init_from_text = None;
+    // The stub is the single `ret` that ends .text: the LAST `ret` word of the section must be
+    // its last word, and `_init_from_text` must point exactly there.
+    let last_ret = text
+        .iter()
+        .rposition(|word| *word == RET)
+        .map(|index| text_section.virtual_address + 4 * index as u32);
+    if let Some(&stub) = symbols.get("_init_from_text") {
+        let last_ret = last_ret.ok_or_else(|| {
+            ElfReadError::Layout(format!(
+                "_init_from_text = {stub:#x} but .text holds no `ret` ({RET:#010x}) at all"
+            ))
+        })?;
+        if stub != last_ret {
+            return Err(ElfReadError::Layout(format!(
+                "_init_from_text = {stub:#x} does not match the last `ret` of .text at {last_ret:#x}"
+            )));
+        }
+        if stub + 4 != text_end {
+            return Err(ElfReadError::Layout(format!(
+                "init_from_text stub at {stub:#x} is not the last word of .text ({:#x}..{text_end:#x}); the ELF was already post-processed or the stub is not placed last",
+                text_section.virtual_address
+            )));
+        }
+        if let Some(&einit) = symbols.get("_einit_from_text") {
+            if einit != stub + 4 {
+                return Err(ElfReadError::Layout(format!(
+                    "_einit_from_text = {einit:#x} != _init_from_text + 4 = {:#x}: the stub is not a single `ret`",
+                    stub + 4
+                )));
+            }
+        }
+        if mode == ElfReadMode::Strict {
+            for section in init_sections.iter() {
+                if section.is_relocated() {
+                    return Err(ElfReadError::Layout(format!(
+                        "execute-only-text programs keep {} at its run-time address, but VMA {:#x} != LMA {:#x}",
+                        section.name, section.virtual_address, section.load_address
+                    )));
+                }
+            }
+            // The stub is the last word: drop it, append the materialization code and `ret`.
+            text.pop();
+            text.extend(init_data_materialization_code(&init_sections));
+            text.push(RET);
+            if text.len() > ROM_WORD_SIZE {
+                return Err(ElfReadError::Layout(format!(
+                    "post-processed .text is {} words, beyond the {ROM_WORD_SIZE}-word ROM",
+                    text.len()
+                )));
+            }
+            flattened_binary_used_bytes = text.len() * 4;
+        }
+        init_from_text = Some(stub);
+    } else if mode == ElfReadMode::Strict {
+        // Without the stub the only strict-readable layout is the relocating one (init images
+        // elsewhere, copied by code the program carries); init content sitting at its run-time
+        // address can only be materialized through the stub.
+        if let Some(section) = init_sections
+            .iter()
+            .find(|section| section.size() > 0 && !section.is_relocated())
+        {
+            return Err(ElfReadError::Layout(format!(
+                "{} lives at its run-time address {:#x} but the program has no `_init_from_text` stub to materialize it (link with riscv_common's `execute_only_text` feature)",
+                section.name, section.virtual_address
+            )));
+        }
+    }
+
     Ok(ElfImage {
         mode,
         entry_point,
         text_address: text_section.virtual_address,
-        text: bytes_to_words(text_data),
+        text,
         flattened_binary: flattened.as_deref().map(bytes_to_words),
         flattened_binary_used_bytes,
         init_sections,
         sections,
         symbols,
+        init_from_text,
     })
 }
 
@@ -611,6 +702,7 @@ pub fn read_legacy_binaries(bin_path: &Path, text_path: &Path) -> Result<ElfImag
         init_sections: Vec::new(),
         sections: Vec::new(),
         symbols: BTreeMap::new(),
+        init_from_text: None,
     })
 }
 
@@ -625,6 +717,9 @@ pub fn load_legacy_binaries(bin_path: &Path, text_path: &Path) -> (Vec<u32>, Vec
 pub enum ProgramSource {
     /// The linked ELF, read with [`read_elf`] in [`ElfReadMode::Legacy`].
     Elf(PathBuf),
+    /// The linked ELF of an execute-only-text program, read with [`read_elf`] in
+    /// [`ElfReadMode::Strict`]: the ROM image is the post-processed `.text` alone.
+    StrictElf(PathBuf),
     /// Pre-built `objcopy` dumps committed as-is (programs not built from this repository),
     /// read with [`read_legacy_binaries`].
     LegacyBinaries { bin: PathBuf, text: PathBuf },
@@ -633,6 +728,10 @@ pub enum ProgramSource {
 impl ProgramSource {
     pub fn elf(path: impl Into<PathBuf>) -> Self {
         Self::Elf(path.into())
+    }
+
+    pub fn strict_elf(path: impl Into<PathBuf>) -> Self {
+        Self::StrictElf(path.into())
     }
 
     pub fn legacy_binaries(bin: impl Into<PathBuf>, text: impl Into<PathBuf>) -> Self {
@@ -655,29 +754,34 @@ impl ProgramSource {
     pub fn read(&self) -> Result<ElfImage, ElfReadError> {
         match self {
             Self::Elf(path) => read_elf_from_path(path, ElfReadMode::Legacy),
+            Self::StrictElf(path) => read_elf_from_path(path, ElfReadMode::Strict),
             Self::LegacyBinaries { bin, text } => read_legacy_binaries(bin, text),
         }
     }
 
     /// `(flattened ROM image words, text section words)`, both zero-padded to [`ROM_WORD_SIZE`]
-    /// words: the conventional shape for prover setups and instruction tapes. Panics on failure.
+    /// words: the conventional shape for prover setups and instruction tapes. For a strict
+    /// (execute-only-text) program the ROM image is the post-processed `.text` itself. Panics
+    /// on failure.
     pub fn load(&self) -> (Vec<u32>, Vec<u32>) {
         let image = self.read_or_panic();
-        let flattened = image
-            .flattened_binary
-            .clone()
-            .expect("legacy mode always produces the flattened image");
-        (flattened, image.padded_text_words())
+        let text = image.padded_text_words();
+        let flattened = match image.flattened_binary.clone() {
+            Some(flattened) => flattened,
+            None => text.clone(),
+        };
+        (flattened, text)
     }
 
     /// `(objcopy-equivalent ROM image words, text section words)` without any padding, the
-    /// shape the raw dumps have on disk. Panics on failure.
+    /// shape the raw dumps have on disk (for a strict program both are the post-processed
+    /// `.text`). Panics on failure.
     pub fn load_unpadded(&self) -> (Vec<u32>, Vec<u32>) {
         let image = self.read_or_panic();
-        let flattened = image
-            .objcopy_binary_words()
-            .expect("legacy mode always produces the flattened image")
-            .to_vec();
+        let flattened = match image.objcopy_binary_words() {
+            Some(flattened) => flattened.to_vec(),
+            None => image.text.clone(),
+        };
         (flattened, image.text)
     }
 
@@ -691,6 +795,7 @@ impl fmt::Display for ProgramSource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Elf(path) => write!(f, "{}", path.display()),
+            Self::StrictElf(path) => write!(f, "{} (strict)", path.display()),
             Self::LegacyBinaries { bin, text } => {
                 write!(f, "{} + {}", bin.display(), text.display())
             }
@@ -698,7 +803,9 @@ impl fmt::Display for ProgramSource {
     }
 }
 
-const LINKER_SYMBOLS: [&str; 15] = [
+const LINKER_SYMBOLS: [&str; 17] = [
+    "_init_from_text",
+    "_einit_from_text",
     "_stext",
     "_sirodata",
     "_srodata",

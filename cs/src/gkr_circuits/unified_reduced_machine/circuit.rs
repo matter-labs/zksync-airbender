@@ -68,12 +68,12 @@ pub const UNIFIED_REDUCED_MACHINE_NUM_FLAGS: usize = UNIFIED_F1_NUM_FLAGS
 /// only inside that family's flag-gated constraints, hence unconstrained (free)
 /// on rows where the family is idle. Because at most one family fires per row,
 /// these slots can be ALIASED across families into one shared pool.
-pub(super) const F1_SCRATCH_BOOLS: usize = 5; // 2-input add/sub: carry, intermediate_carry ([0],[1]); tri-add (unified-only) also uses [2],[3] so each limb's carry ∈ {0,1,2} is a sum of two Booleans; two-field mop.rr reuses [2],[3],[4] for the q-top/k bits t0/t1/t2 (written only on is_mul_like/is_addmod/is_submod rows — disjoint from is_tri_add). Aliased (one-hot ⇒ ≤1 family/row) with F4's pooled bools: [0],[1]=of_lo,of_hi; [2]=is_rom; [3]=sw-align bit_0; [4]=sw-align bit_1 — and with F2's [4]=next_pc_bit_1.
-pub(super) const F2_SCRATCH_BOOLS: usize = 5; // add_rel_{0,1}_{intermediate,final}_of (4) + next_pc_bit_1
-pub(super) const F3_SCRATCH_BOOLS: usize = 0;
-pub(super) const F4_SCRATCH_BOOLS: usize = 5; // of_lo, of_hi, is_rom, sw-align bit_0, bit_1
+pub(crate) const F1_SCRATCH_BOOLS: usize = 5; // 2-input add/sub: carry, intermediate_carry ([0],[1]); tri-add (unified-only) also uses [2],[3] so each limb's carry ∈ {0,1,2} is a sum of two Booleans; two-field mop.rr reuses [2],[3],[4] for the q-top/k bits t0/t1/t2 (written only on is_mul_like/is_addmod/is_submod rows — disjoint from is_tri_add). Aliased (one-hot ⇒ ≤1 family/row) with F4's pooled bools: [0],[1]=of_lo,of_hi; [2]=is_rom; [3]=sw-align bit_0; [4]=sw-align bit_1 — and with F2's [4]=next_pc_bit_1.
+pub(crate) const F2_SCRATCH_BOOLS: usize = 5; // add_rel_{0,1}_{intermediate,final}_of (4) + next_pc_bit_1
+pub(crate) const F3_SCRATCH_BOOLS: usize = 0;
+pub(crate) const F4_SCRATCH_BOOLS: usize = 5; // of_lo, of_hi, is_rom, sw-align bit_0, bit_1
 
-const fn const_max(a: usize, b: usize) -> usize {
+pub(crate) const fn const_max(a: usize, b: usize) -> usize {
     if a > b {
         a
     } else {
@@ -83,24 +83,24 @@ const fn const_max(a: usize, b: usize) -> usize {
 
 /// Shared base-layer scratch-Boolean pool size = max across families (one pool,
 /// reused per row by whichever family fires)
-const UNIFIED_SCRATCH_BOOL_COUNT: usize = const_max(
+pub(crate) const UNIFIED_SCRATCH_BOOL_COUNT: usize = const_max(
     const_max(F1_SCRATCH_BOOLS, F2_SCRATCH_BOOLS),
     const_max(F3_SCRATCH_BOOLS, F4_SCRATCH_BOOLS),
 );
 
-pub(super) const F1_SCRATCH_VARS: usize = 2; // two-field mop.rr quotient low limbs q_lo16, q_hi16 ([0],[1]); written only on is_mul_like rows and RC-16'd (unconditional, holds pool-wide since every family's value in [0],[1] is < 2^16). 0 on the single-field native path (F == MopF branch never touches these). Aliased with F2's [0]=comparison_result_is_zero,[1]=rs1_sign; F3's [0]=imm_sign_ext/trunc_shift,[1]=shift_output byte; F4's [0],[1]=ram_addr limbs.
-pub(super) const F2_SCRATCH_VARS: usize = 5; // comparison_result_is_zero, rs1_sign, should_jump_or_slt_value, slt_sign_source, rs2_sign
-pub(super) const F3_SCRATCH_VARS: usize = 21; // shift/binop scratch_space (17) + 4 rs1/rs2 low-byte split points (xor-rotate reuses the rs2 split: rs2 aliases rd at decode)
-pub(super) const F4_SCRATCH_VARS: usize = 2; // ram_addr[0], ram_addr[1]
+pub(crate) const F1_SCRATCH_VARS: usize = 2; // two-field mop.rr quotient low limbs q_lo16, q_hi16 ([0],[1]); written only on is_mul_like rows and RC-16'd (unconditional, holds pool-wide since every family's value in [0],[1] is < 2^16). 0 on the single-field native path (F == MopF branch never touches these). Aliased with F2's [0]=comparison_result_is_zero,[1]=rs1_sign; F3's [0]=imm_sign_ext/trunc_shift,[1]=shift_output byte; F4's [0],[1]=ram_addr limbs.
+pub(crate) const F2_SCRATCH_VARS: usize = 5; // comparison_result_is_zero, rs1_sign, should_jump_or_slt_value, slt_sign_source, rs2_sign
+pub(crate) const F3_SCRATCH_VARS: usize = 21; // shift/binop scratch_space (17) + 4 rs1/rs2 low-byte split points (xor-rotate reuses the rs2 split: rs2 aliases rd at decode)
+pub(crate) const F4_SCRATCH_VARS: usize = 2; // ram_addr[0], ram_addr[1]
 
 /// Shared base-layer scratch-Variable pool size = max across families.
-const UNIFIED_SCRATCH_VAR_COUNT: usize = const_max(
+pub(crate) const UNIFIED_SCRATCH_VAR_COUNT: usize = const_max(
     const_max(F1_SCRATCH_VARS, F2_SCRATCH_VARS),
     const_max(F3_SCRATCH_VARS, F4_SCRATCH_VARS),
 );
 
-pub(super) const F3_RS1_BYTE_SPLIT_SLOTS: [usize; 2] = [17, 18];
-pub(super) const F3_RS2_BYTE_SPLIT_SLOTS: [usize; 2] = [19, 20];
+pub(crate) const F3_RS1_BYTE_SPLIT_SLOTS: [usize; 2] = [17, 18];
+pub(crate) const F3_RS2_BYTE_SPLIT_SLOTS: [usize; 2] = [19, 20];
 
 /// The shared F1/F2/F4 register (F1 modular-op canonicity witness, F2 saved
 /// PC / comparison result, F4 `top_14`) lives in Family 3's rs1 byte-split slots and the F2
@@ -109,23 +109,23 @@ pub(super) const F3_RS2_BYTE_SPLIT_SLOTS: [usize; 2] = [19, 20];
 /// avoids the shift-output slots: Family 2's RegIsZero peek reads it, and Family 3's
 /// shift outputs depend on slot 0, which that peek writes, so the witness scheduler would
 /// wait on itself.
-const SHARED_REGISTER_SLOTS: [usize; 2] = F3_RS1_BYTE_SPLIT_SLOTS;
-const F2_PC_TMP_SLOT: usize = 7;
+pub(crate) const SHARED_REGISTER_SLOTS: [usize; 2] = F3_RS1_BYTE_SPLIT_SLOTS;
+pub(crate) const F2_PC_TMP_SLOT: usize = 7;
 const _: () = assert!(
     F2_PC_TMP_SLOT >= const_max(const_max(F1_SCRATCH_VARS, F2_SCRATCH_VARS), F4_SCRATCH_VARS)
         && SHARED_REGISTER_SLOTS[0] > F2_PC_TMP_SLOT
         && SHARED_REGISTER_SLOTS[1] < UNIFIED_SCRATCH_VAR_COUNT
 );
 
-pub(super) const UNIFIED_LOOKUP_WIDTH: usize = 8;
+pub(crate) const UNIFIED_LOOKUP_WIDTH: usize = 8;
 
-pub(super) struct LookupRequest<F: PrimeField> {
+pub(crate) struct LookupRequest<F: PrimeField> {
     table_id: Expr<F>,
     inputs: Vec<Expr<F>>,
 }
 
 impl<F: PrimeField> LookupRequest<F> {
-    pub(super) fn new(table_id: Expr<F>, inputs: Vec<Expr<F>>) -> Self {
+    pub(crate) fn new(table_id: Expr<F>, inputs: Vec<Expr<F>>) -> Self {
         assert!(
             inputs.len() <= UNIFIED_LOOKUP_WIDTH,
             "LookupRequest has {} inputs, exceeds UNIFIED_LOOKUP_WIDTH={UNIFIED_LOOKUP_WIDTH}",
@@ -140,7 +140,7 @@ impl<F: PrimeField> LookupRequest<F> {
     }
 }
 
-fn flush_unified_lookup_pool<F: PrimeField, CS: Circuit<F>>(
+pub(crate) fn flush_unified_lookup_pool<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     per_family: &[Vec<LookupRequest<F>>],
 ) {
@@ -184,21 +184,21 @@ fn flush_unified_lookup_pool<F: PrimeField, CS: Circuit<F>>(
     }
 }
 
-const UNIFIED_XOR_ROTATE_TABLES: [TableType; 4] = [
+pub(crate) const UNIFIED_XOR_ROTATE_TABLES: [TableType; 4] = [
     TableType::XorRotate16,
     TableType::XorRotate12,
     TableType::XorRotate8,
     TableType::XorRotate7,
 ];
 
-const UNIFIED_F3_BASE_TABLES: [TableType; 4] = [
+pub(crate) const UNIFIED_F3_BASE_TABLES: [TableType; 4] = [
     TableType::ZeroEntry, // needed for conditional lookup enforcements
     TableType::TruncateShiftAmountAndRangeCheck8,
     TableType::GetSignExtensionByte,
     TableType::ShiftImplementationOverBytes,
 ];
 
-const UNIFIED_WIDE_BINOP_TABLES: [TableType; 3] =
+pub(crate) const UNIFIED_WIDE_BINOP_TABLES: [TableType; 3] =
     [TableType::WideXor, TableType::WideOr, TableType::WideAnd];
 
 pub fn unified_reduced_machine_table_addition_fn<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) {

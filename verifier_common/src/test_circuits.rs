@@ -77,6 +77,23 @@ pub struct CircuitData {
 }
 
 impl CircuitData {
+    /// A circuit that is not in the [`gkr_circuits!`] registry (so no registry-driven test,
+    /// verifier module or fixture is generated for it), addressed by the same paths as a
+    /// registered one: `production_path` is its circuit crate relative to the repository
+    /// root's children (`"../circuit_defs/..."`).
+    pub fn unregistered(name: &'static str, production_path: &'static str) -> Self {
+        CircuitData {
+            name,
+            production_path,
+            security_levels: [SecurityLevel::Sec100],
+            prover_configs_cache: [[const { OnceLock::new() }; NUM_SOUNDNESS_MODES];
+                NUM_SECURITY_LEVELS],
+            nds_cache: [const {
+                [const { [const { OnceLock::new() }; NUM_BLAKE_MODES] }; NUM_SOUNDNESS_MODES]
+            }; NUM_SECURITY_LEVELS],
+        }
+    }
+
     /// The serialized prover config the circuit definition generated next to
     /// its production layout
     /// (`<production_path>/generated/prover_config_<level>_<mode>.json`,

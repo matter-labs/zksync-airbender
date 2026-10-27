@@ -96,6 +96,23 @@ pub enum TableType {
     KeccakXor5Nibble,
     KeccakChi5,
     KeccakChi5Control,
+    // Unified-extended-machine sub-word memory tables (ROM-free: every load/store is a RAM
+    // access of the word-aligned cell). All are keyed on ONE 16-bit limb plus control bits, so
+    // a sub-word op issues one lookup per limb of the accessed word and the halfword selection
+    // by address bit 1 happens in the key (`sel` bit), never as an algebraic select.
+    //
+    // (limb || byte || sext || b0 || sel) -> (out_lo, out_hi, trap): the rd value of a
+    // sub-word load when this limb is the selected one (`sel` = 1), (0, 0) otherwise;
+    // `trap` = 1 for a halfword access with b0 = 1 (2^20 entries).
+    LoadSubwordLimb,
+    // (limb || byte || b0 || sel) -> (keep, trap): the part of the old RAM limb that a
+    // sub-word store preserves (`sel` = 0: the whole limb; `sel` = 1: the untouched byte for
+    // SB, nothing for SH); `trap` as above (2^19 entries).
+    StoreSubwordKeep,
+    // (rs2_lo || byte || b0 || sel) -> src: the part of rs2's low limb that a sub-word store
+    // writes into this limb (`sel` = 0: nothing; `sel` = 1: the low byte shifted to position
+    // b0 for SB, the whole limb for SH) (2^19 entries).
+    StoreSubwordSource,
     DynamicPlaceholder, // MUST be the last
 }
 

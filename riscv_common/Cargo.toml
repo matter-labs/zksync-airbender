@@ -29,6 +29,9 @@ memcpy_via_precompile = []
 ram_32mb_no_heap = ["boot_sequence"]
 ram_1gb = ["boot_sequence"]
 ram_4gb = ["boot_sequence"]
+# Execute-only ROM: .text is never read as data, .rodata/.data start in RAM and are
+# materialised by the `init_from_text` stub the host post-processes (src/lds/execute_only_text).
+execute_only_text = ["boot_sequence"]
 default = []
 
 [lints]
