@@ -37,6 +37,10 @@ controller definitions now live in circuit-level protocol modules, with their
 names and bodies preserved. The layer check and focused consumer build pass.
 Linux guard and compilation-pool controls pass (49 tests); full Linux Lean and
 cold-cache gates remain distinct from those process controls.
+The full frontend also exposed late imports in the audit entrypoint. They now
+precede all commands, with all 908 imports and 12409 audit roots preserved in
+order; the repaired entrypoint compiles. Full source/runtime closure, environment
+auditing and transitive replay remain pending.
 
 Program-parametric actual-path execution and complete native-span composition
 already exist, including branches, jumps and loops under their stated contracts.
