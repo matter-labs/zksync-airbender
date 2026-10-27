@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.JumpBranchSlt.Claims
 import Slop.Sail.WordMemoryState
 import Tests.JumpTimestamp
@@ -8,16 +9,20 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-private def before (bits : BitVec 32) : Reference.RiscV.Sail.State :=
-  Reference.RiscV.Sail.wordWriteState default 0 bits
+private noncomputable def before (bits : BitVec 32) : Reference.RiscV.Sail.State :=
+  Reference.RiscV.Sail.wordWriteState Airbender.Reference.RiscV.Sail.resetMachine 0 bits
+
+theorem airbender_before (bits : BitVec 32) : Airbender.Reference.RiscV.Sail.Configured (before bits) := by
+  configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
+
 
 private theorem extraction (bits : BitVec 32) (instruction : SailRV32.instruction)
     (data : DecoderData Unit)
-    (decoded : SailRV32.Functions.encdec_backwards bits = .pure instruction)
+    (decoded : Airbender.Reference.RiscV.Sail.decodeOnReset bits = some instruction)
     (fields : JumpBranchSlt.decoderFields instruction = some data) :
     JumpBranchSlt.programImage (before bits) [0] = some [⟨0, bits, instruction, data⟩] := by
   have bytes : (Cell.ram 0).read (before bits) = .ok bits (before bits) :=
-    Reference.RiscV.Sail.written_word_read default 0 bits
+    Reference.RiscV.Sail.written_word_read Airbender.Reference.RiscV.Sail.resetMachine 0 bits
   simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
     bind, Option.bind, pure]
 
@@ -50,7 +55,7 @@ theorem all_instruction_forms : ∀ sample ∈ samples,
   simp only [samples, List.mem_cons, List.not_mem_nil, or_false] at member
   rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl
-  all_goals exact extraction _ _ _ (by rfl) (by rfl)
+  all_goals exact extraction _ _ _ (by decode_on_reset) (by rfl)
 
 /-- Native offset parity comes from the public-image constructor and original
     decoder, including all six branch forms and negative JAL offsets. -/
@@ -70,8 +75,12 @@ theorem discarded_comparisons_rejected :
     JumpBranchSlt.programImage (before 0x0020a033) [0] = none ∧
       JumpBranchSlt.programImage (before 0xfff0b013) [0] = none := by
   have bytes (bits : BitVec 32) : (Cell.ram 0).read (before bits) = .ok bits (before bits) :=
-    Reference.RiscV.Sail.written_word_read default 0 bits
-  constructor <;> simp only [List.mapM_cons, programEntryWith, bytes, bind, Option.bind] <;> rfl
+    Reference.RiscV.Sail.written_word_read Airbender.Reference.RiscV.Sail.resetMachine 0 bits
+  have slt : Airbender.Reference.RiscV.Sail.decodeOnReset 0x0020a033 = some (.RTYPE (.Regidx 2, .Regidx 1, .Regidx 0, .SLT)) := by
+    decode_on_reset
+  have sltiu : Airbender.Reference.RiscV.Sail.decodeOnReset 0xfff0b013 = some (.ITYPE (0xfff, .Regidx 1, .Regidx 0, .SLTIU)) := by
+    decode_on_reset
+  constructor <;> simp only [List.mapM_cons, programEntryWith, bytes, slt, sltiu, bind, Option.bind] <;> rfl
 
 private def entry : JumpBranchSlt.ProgramEntry :=
   ⟨0, 0xffdff0ef, .JAL (0x1ffffc, .Regidx 1), ⟨(), 0, 0, 1, ⟨65532, 65535⟩, 1, 0⟩⟩

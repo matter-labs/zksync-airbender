@@ -1,40 +1,18 @@
 import Slop.Sail.VirtualMemory
+import Slop.Sail.ResetState
 
 namespace Tests.SailCheckedMemory
 open Airbender.Reference Airbender.Reference.RiscV.Sail
 open _root_.Sail.ArchSem
 set_option warningAsError true
 
-private def attributes : SailRV32.PMA :=
-  { (default : SailRV32.PMA) with readable := true, writable := true, executable := true }
+/-- The Airbender reset state with no memory. -/
+private noncomputable def configured : State :=
+  { resetMachine with mem := Std.ExtHashMap.emptyWithCapacity }
 
-private def configured : State :=
-  { (default : State) with
-    mem := Std.ExtHashMap.emptyWithCapacity
-    regs := (Std.ExtDHashMap.emptyWithCapacity :
-      Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType).insert .mstatus 0
-      |>.insert .cur_privilege .Machine |>.insert .misa 0x40000100
-      |>.insert .senvcfg 0 |>.insert .menvcfg 0x10
-      |>.insert .pmpcfg_n (Vector.replicate 64 0)
-      |>.insert .pmpaddr_n (Vector.replicate 64 0)
-      |>.insert .pma_regions [rv32Region attributes]
-      |>.insert .mhartid 7 |>.insert .htif_tohost_base none }
+private theorem configuration : Configured configured := configured_reset_machine.with_mem _
 
-set_option backward.isDefEq.respectTransparency false in
-private theorem configuration : Configured configured := by
-  constructor
-  · simp [configured, Std.ExtDHashMap.get?_insert]
-  · simp [configured, Std.ExtDHashMap.get?_insert]
-  · exact ⟨0x40000100, by simp [configured, Std.ExtDHashMap.get?_insert]⟩
-  · exact ⟨0, by simp [configured, Std.ExtDHashMap.get?_insert]⟩
-  · exact ⟨0x10, by simp [configured, Std.ExtDHashMap.get?_insert]⟩
-  · simp [configured, Std.ExtDHashMap.get?_insert]
-  · exact ⟨Vector.replicate 64 0, by simp [configured, Std.ExtDHashMap.get?_insert]⟩
-  · exact ⟨attributes, by simp [configured, Std.ExtDHashMap.get?_insert], rfl, rfl, rfl⟩
-  · exact ⟨7, by simp [configured, Std.ExtDHashMap.get?_insert]⟩
-  · simp [configured]
-
-private def loaded : State := wordWriteState configured 4294967292 0xabcdef12
+private noncomputable def loaded : State := wordWriteState configured 4294967292 0xabcdef12
 
 /-- The same configured native path admits the last RV32 byte and halfword.
     Reads come from actual initialized bytes, not a circuit-value premise. -/
@@ -62,8 +40,8 @@ theorem load_last_halfword :
       (written_word_read configured 4294967292 0xabcdef12)
     simpa [loaded] using bytes
 
-private def byteWritten : State := { loaded with mem := loaded.mem.insert 4294967295 0x80 }
-private def halfWritten : State :=
+private noncomputable def byteWritten : State := { loaded with mem := loaded.mem.insert 4294967295 0x80 }
+private noncomputable def halfWritten : State :=
   { loaded with mem := (loaded.mem.insert 4294967294 0xff).insert 4294967295 0x80 }
 
 theorem store_last_byte  :
@@ -74,6 +52,7 @@ theorem store_last_byte  :
   · exact configuration_register_frame (before := configured) (after := loaded) rfl configuration
   · decide
   · unfold OrdinaryWordAddress; decide
+  · decide
   · rfl
 
 theorem store_last_halfword  :
@@ -84,6 +63,7 @@ theorem store_last_halfword  :
   · exact configuration_register_frame (before := configured) (after := loaded) rfl configuration
   · decide
   · unfold OrdinaryWordAddress; decide
+  · decide
   · rfl
 
 theorem halfword_announcement :
@@ -93,6 +73,7 @@ theorem halfword_announcement :
   · exact configuration_register_frame (before := configured) (after := loaded) rfl configuration
   · decide
   · unfold OrdinaryWordAddress; decide
+  · decide
 
 /-- A missing second byte remains a native failure after the platform checks. -/
 theorem missing_halfword_byte :
@@ -126,6 +107,7 @@ theorem store_last_word  :
   apply checked_word_write (address := 0xfffffffc) configuration
   · decide
   · unfold OrdinaryWordAddress; decide
+  · decide
 
 theorem store_announcement :
     Sail.run (SailRV32.Functions.mem_write_ea (.Physaddr 4194304) 4 .Machine
@@ -133,6 +115,7 @@ theorem store_announcement :
   apply checked_word_announcement (address := 4194304) configuration
   · decide
   · unfold OrdinaryWordAddress; decide
+  · decide
 
 theorem gpr_keeps_configuration : ∃ after,
     Sail.run (SailRV32.Functions.wX_bits (.Regidx 31) 0xabcdef12) configured = .ok () after ∧
@@ -165,6 +148,7 @@ theorem virtual_store_last_word  :
   · rfl
   · decide
   · unfold OrdinaryWordAddress; decide
+  · decide
 
 /-- Discarding LW's result still performs the original Sail memory access. -/
 theorem load_discarded_result  :
@@ -184,6 +168,7 @@ theorem store_zero_register  :
     · rfl
     · decide
     · unfold OrdinaryWordAddress; decide
+    · decide
 
 /-- Complete virtual accesses use original Sail address calculation, translation,
     permissions and byte memory, including the final RV32 addresses. -/

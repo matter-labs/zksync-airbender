@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.TraceExecution
 import Slop.UnifiedReduced.Claims
 import Slop.Sail.WordMemoryState
@@ -69,12 +70,12 @@ private theorem public_bytes :
   · exact written_word_disjoint 8 0x2083 (Or.inl (by decide)) (written_word_read _ _ _)
 
 theorem original_mixed_public_image : Mixed.programImage before [0, 4, 8] = some program := by
-  have standard : run (SailRV32.Functions.encdec_backwards 0x00108093) before =
-      .ok (.ITYPE (1, .Regidx 1, .Regidx 1, .ADDI)) before := by with_unfolding_all rfl
-  have custom : run (SailRV32.Functions.encdec_backwards 0xc210c0f3) before =
-      .ok (.ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1)) before := by with_unfolding_all rfl
-  have memory : run (SailRV32.Functions.encdec_backwards 0x2083) before =
-      .ok (.LOAD (0, .Regidx 0, .Regidx 1, false, 4)) before := by with_unfolding_all rfl
+  have standard : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00108093 = some (.ITYPE (1, .Regidx 1, .Regidx 1, .ADDI)) :=
+    by decode_on_reset
+  have custom : Airbender.Reference.RiscV.Sail.decodeOnReset 0xc210c0f3 = some (.ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1)) :=
+    by decode_on_reset
+  have memory : Airbender.Reference.RiscV.Sail.decodeOnReset 0x2083 = some (.LOAD (0, .Regidx 0, .Regidx 1, false, 4)) :=
+    by decode_on_reset
   simp only [List.mapM_cons, List.mapM_nil, programEntryWith, public_bytes.1, public_bytes.2.1,
     public_bytes.2.2, standard, custom, memory, bind, Option.bind, pure]
   rfl

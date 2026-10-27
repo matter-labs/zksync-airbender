@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.Final.Trace.UnifiedReduced.Theorems
 import Tests.DelegationCaller
 import Tests.BigintMemory
@@ -28,9 +29,8 @@ private theorem public_image (family : Delegation.Family) :
   have bytes : (Cell.ram 0).read (before family) =
       .ok (Tests.DelegationCaller.entry family).bits (before family) :=
     written_word_read Tests.BigintMemory.before 0 (Tests.DelegationCaller.entry family).bits
-  have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry family).bits)
-      (before family) = .ok (Tests.DelegationCaller.entry family).instruction (before family) :=
-    Tests.DelegationCaller.original_decoder family _
+  have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry family).bits = some (Tests.DelegationCaller.entry family).instruction :=
+    Tests.DelegationCaller.original_decoder family
   have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry family).instruction =
       some (Tests.DelegationCaller.entry family).data := Tests.DelegationCaller.metadata family
   simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage,
@@ -367,9 +367,8 @@ private theorem mixedInputs : UnifiedReduced.Caller.MixedMemoryInputs (mixedData
   · constructor
     · have bytes : (Cell.ram 0).read mixedBefore = .ok (Tests.DelegationCaller.entry .bigint).bits mixedBefore :=
         written_word_disjoint 4 _ (Or.inl (by decide)) (written_word_read Tests.BigintMemory.before 0 _)
-      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) mixedBefore =
-          .ok (Tests.DelegationCaller.entry .bigint).instruction mixedBefore :=
-        Tests.DelegationCaller.original_decoder .bigint mixedBefore
+      have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+        Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
       simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
@@ -379,8 +378,8 @@ private theorem mixedInputs : UnifiedReduced.Caller.MixedMemoryInputs (mixedData
       norm_num [timestampBase]
     · decide +kernel
   · have bytes : (Cell.ram 4).read mixedBefore = .ok 0x00160613 mixedBefore := written_word_read _ _ _
-    have decoded : run (SailRV32.Functions.encdec_backwards 0x00160613) mixedBefore =
-        .ok (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) mixedBefore := by with_unfolding_all rfl
+    have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00160613 = some (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) :=
+      by decode_on_reset
     have fields : UnifiedReduced.Mixed.decoderFields (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) =
         some mixedProgram[0].data := by with_unfolding_all rfl
     simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
@@ -934,9 +933,8 @@ private theorem customInputs (kind : Fin 5) : UnifiedReduced.Caller.MixedMemoryI
     · have bytes : (Cell.ram 0).read (customBefore kind) =
           .ok (Tests.DelegationCaller.entry .bigint).bits (customBefore kind) :=
         written_word_disjoint 4 _ (Or.inl (by decide)) (written_word_read Tests.BigintMemory.before 0 _)
-      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits)
-          (customBefore kind) = .ok (Tests.DelegationCaller.entry .bigint).instruction (customBefore kind) :=
-        Tests.DelegationCaller.original_decoder .bigint (customBefore kind)
+      have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+        Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
       simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
@@ -948,9 +946,8 @@ private theorem customInputs (kind : Fin 5) : UnifiedReduced.Caller.MixedMemoryI
       decide +kernel
   · have bytes : (Cell.ram 4).read (customBefore kind) = .ok (customBits kind) (customBefore kind) :=
       written_word_read _ _ _
-    have decoded : run (SailRV32.Functions.encdec_backwards (customBits kind)) (customBefore kind) =
-        .ok (customEntry kind).instruction (customBefore kind) := by
-      fin_cases kind <;> with_unfolding_all rfl
+    have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (customBits kind) = some (customEntry kind).instruction :=
+      by decode_on_reset
     have fields : UnifiedReduced.Mixed.decoderFields (customEntry kind).instruction = some (customEntry kind).data := by
       fin_cases kind <;> with_unfolding_all rfl
     simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
@@ -1058,9 +1055,8 @@ private theorem binaryInputs : UnifiedReduced.Caller.MixedMemoryInputs binaryDat
   · constructor
     · have bytes : (Cell.ram 0).read binaryBefore = .ok (Tests.DelegationCaller.entry .bigint).bits binaryBefore :=
         written_word_disjoint 4 _ (Or.inl (by decide)) (written_word_read Tests.BigintMemory.before 0 _)
-      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) binaryBefore =
-          .ok (Tests.DelegationCaller.entry .bigint).instruction binaryBefore :=
-        Tests.DelegationCaller.original_decoder .bigint binaryBefore
+      have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+        Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
       simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
@@ -1070,8 +1066,8 @@ private theorem binaryInputs : UnifiedReduced.Caller.MixedMemoryInputs binaryDat
       norm_num [timestampBase]
     · decide +kernel
   · have bytes : (Cell.ram 4).read binaryBefore = .ok 0x00164613 binaryBefore := written_word_read _ _ _
-    have decoded : run (SailRV32.Functions.encdec_backwards 0x00164613) binaryBefore = .ok binaryEntry.instruction binaryBefore := by
-      with_unfolding_all rfl
+    have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00164613 = some binaryEntry.instruction :=
+      by decode_on_reset
     have fields : UnifiedReduced.Mixed.decoderFields binaryEntry.instruction = some binaryEntry.data := by with_unfolding_all rfl
     simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
       programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
@@ -1194,9 +1190,8 @@ private theorem comparisonInputs : UnifiedReduced.Caller.MixedMemoryInputs compa
   · constructor
     · have bytes : (Cell.ram 0).read comparisonBefore = .ok (Tests.DelegationCaller.entry .bigint).bits comparisonBefore :=
         written_word_disjoint 4 _ (Or.inl (by decide)) (written_word_read Tests.BigintMemory.before 0 _)
-      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) comparisonBefore =
-          .ok (Tests.DelegationCaller.entry .bigint).instruction comparisonBefore :=
-        Tests.DelegationCaller.original_decoder .bigint comparisonBefore
+      have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+        Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
       simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
@@ -1206,8 +1201,8 @@ private theorem comparisonInputs : UnifiedReduced.Caller.MixedMemoryInputs compa
       norm_num [timestampBase]
     · decide +kernel
   · have bytes : (Cell.ram 4).read comparisonBefore = .ok 0xfff63613 comparisonBefore := written_word_read _ _ _
-    have decoded : run (SailRV32.Functions.encdec_backwards 0xfff63613) comparisonBefore = .ok comparisonEntry.instruction comparisonBefore := by
-      with_unfolding_all rfl
+    have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset 0xfff63613 = some comparisonEntry.instruction :=
+      by decode_on_reset
     have fields : UnifiedReduced.Mixed.decoderFields comparisonEntry.instruction = some comparisonEntry.data := by with_unfolding_all rfl
     simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
       programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
@@ -1386,9 +1381,8 @@ private theorem controlInputs (kind : Fin 4) : UnifiedReduced.Caller.MixedMemory
     · have bytes : (Cell.ram 0).read (controlBefore kind) = .ok (Tests.DelegationCaller.entry .bigint).bits (controlBefore kind) :=
         read_word_frame (before := wordWriteState Tests.DelegationOperationEffects.before 4 (controlBits kind))
           (after := controlBefore kind) rfl (written_word_disjoint 4 _ (Or.inl (by decide)) (written_word_read Tests.BigintMemory.before 0 _))
-      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) (controlBefore kind) =
-          .ok (Tests.DelegationCaller.entry .bigint).instruction (controlBefore kind) :=
-        Tests.DelegationCaller.original_decoder .bigint (controlBefore kind)
+      have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+        Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
       simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
@@ -1399,8 +1393,8 @@ private theorem controlInputs (kind : Fin 4) : UnifiedReduced.Caller.MixedMemory
     · change (4 : Nat) % 4 = 0; decide
   · have bytes : (Cell.ram 4).read (controlBefore kind) = .ok (controlBits kind) (controlBefore kind) := read_word_frame (before := wordWriteState Tests.DelegationOperationEffects.before 4 (controlBits kind))
           (after := controlBefore kind) rfl (written_word_read _ _ _)
-    have decoded : run (SailRV32.Functions.encdec_backwards (controlBits kind)) (controlBefore kind) = .ok (controlEntry kind).instruction (controlBefore kind) := by
-      fin_cases kind <;> with_unfolding_all rfl
+    have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (controlBits kind) = some (controlEntry kind).instruction :=
+      by decode_on_reset
     have fields : UnifiedReduced.Mixed.decoderFields (controlEntry kind).instruction = some (controlEntry kind).data := by fin_cases kind <;> with_unfolding_all rfl
     simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
       programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
@@ -1592,9 +1586,8 @@ private theorem memoryInputs (store : Bool) : UnifiedReduced.Caller.MixedMemoryI
     · have bytes : (Cell.ram 0).read (memoryBefore store) = .ok (Tests.DelegationCaller.entry .bigint).bits (memoryBefore store) :=
         read_word_frame (before := wordWriteState Tests.DelegationOperationEffects.before 4 (memoryBits store))
           (after := memoryBefore store) rfl (written_word_disjoint 4 _ (Or.inl (by decide)) (written_word_read Tests.BigintMemory.before 0 _))
-      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) (memoryBefore store) =
-          .ok (Tests.DelegationCaller.entry .bigint).instruction (memoryBefore store) :=
-        Tests.DelegationCaller.original_decoder .bigint (memoryBefore store)
+      have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+        Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
       simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,
@@ -1605,8 +1598,8 @@ private theorem memoryInputs (store : Bool) : UnifiedReduced.Caller.MixedMemoryI
     · change (4 : Nat) % 4 = 0; decide
   · have bytes : (Cell.ram 4).read (memoryBefore store) = .ok (memoryBits store) (memoryBefore store) := read_word_frame (before := wordWriteState Tests.DelegationOperationEffects.before 4 (memoryBits store))
           (after := memoryBefore store) rfl (written_word_read _ _ _)
-    have decoded : run (SailRV32.Functions.encdec_backwards (memoryBits store)) (memoryBefore store) = .ok (memoryEntry store).instruction (memoryBefore store) := by
-      cases store <;> with_unfolding_all rfl
+    have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (memoryBits store) = some (memoryEntry store).instruction :=
+      by decode_on_reset
     have fields : UnifiedReduced.Mixed.decoderFields (memoryEntry store).instruction = some (memoryEntry store).data := by cases store <;> with_unfolding_all rfl
     simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
       programEntryWith, bytes, decoded, fields, bind, Option.bind, pure]
@@ -1798,9 +1791,8 @@ private theorem abiInputs (highControl : Bool) : UnifiedReduced.Caller.MixedMemo
   · constructor
     · have bytes : (Cell.ram 0).read (abiBefore highControl) =
           .ok (Tests.DelegationCaller.entry .bigint).bits (abiBefore highControl) := written_word_read _ 0 _
-      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) (abiBefore highControl) =
-          .ok (Tests.DelegationCaller.entry .bigint).instruction (abiBefore highControl) :=
-        Tests.DelegationCaller.original_decoder .bigint (abiBefore highControl)
+      have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+        Tests.DelegationCaller.original_decoder .bigint
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
       simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageWith,

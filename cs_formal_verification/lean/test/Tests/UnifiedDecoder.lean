@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
 import Slop.Sail.WordMemoryState
 
@@ -7,7 +8,10 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 2000000
 
-private def before (bits : BitVec 32) : State := wordWriteState default 0 bits
+private noncomputable def before (bits : BitVec 32) : State := wordWriteState Airbender.Reference.RiscV.Sail.resetMachine 0 bits
+
+theorem airbender_before (bits : BitVec 32) : Airbender.Reference.RiscV.Sail.Configured (before bits) := by
+  configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
 private def samples : List (BitVec 32 × SailRV32.instruction × DecoderData UnifiedFamily) := [
   (0x002081b3, .RTYPE (.Regidx 2, .Regidx 1, .Regidx 3, .ADD), ⟨.machine, 1, 2, 3, ⟨0, 0⟩, 1, 0⟩),
   (0x402081b3, .RTYPE (.Regidx 2, .Regidx 1, .Regidx 3, .SUB), ⟨.machine, 1, 2, 3, ⟨0, 0⟩, 2, 0⟩),
@@ -30,11 +34,11 @@ private def samples : List (BitVec 32 × SailRV32.instruction × DecoderData Uni
 
 private theorem extraction (bits : BitVec 32) (instruction : SailRV32.instruction)
     (data : DecoderData UnifiedFamily)
-    (decoded : run (SailRV32.Functions.encdec_backwards bits) (before bits) = .ok instruction (before bits))
+    (decoded : Airbender.Reference.RiscV.Sail.decodeOnReset bits = some instruction)
     (fields : UnifiedReduced.decoderFields instruction = some data) :
     UnifiedReduced.programImage (before bits) [0] = some [⟨0, bits, instruction, data⟩] := by
   have bytes : (Cell.ram 0).read (before bits) = .ok bits (before bits) :=
-    written_word_read default 0 bits
+    written_word_read Airbender.Reference.RiscV.Sail.resetMachine 0 bits
   simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
     bind, Option.bind, pure]
 
@@ -44,7 +48,7 @@ theorem all_instruction_forms : ∀ sample ∈ samples,
   simp only [samples, List.mem_cons, List.not_mem_nil, or_false] at member
   rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
-  all_goals apply extraction _ _ _ <;> with_unfolding_all rfl
+  all_goals apply extraction _ _ _ <;> first | decode_on_reset | with_unfolding_all rfl
 
 private def xorEntry : UnifiedReduced.ProgramEntry :=
   ⟨0, 0x0020c1b3, .RTYPE (.Regidx 2, .Regidx 1, .Regidx 3, .XOR),

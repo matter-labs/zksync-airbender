@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
 import Slop.Sail.WordMemoryState
 
@@ -97,10 +98,10 @@ theorem original_mixed_public_image : Mixed.programImage before [0, 4] = some pr
   have first : (Cell.ram 0).read before = .ok 0x00108093 before :=
     written_word_disjoint 4 0xc210c0f3 (Or.inl (by decide)) (written_word_read _ 0 0x00108093)
   have second : (Cell.ram 4).read before = .ok 0xc210c0f3 before := written_word_read _ _ _
-  have standard : run (SailRV32.Functions.encdec_backwards 0x00108093) before =
-      .ok (.ITYPE (1, .Regidx 1, .Regidx 1, .ADDI)) before := by with_unfolding_all rfl
-  have custom : run (SailRV32.Functions.encdec_backwards 0xc210c0f3) before =
-      .ok (.ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1)) before := by with_unfolding_all rfl
+  have standard : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00108093 = some (.ITYPE (1, .Regidx 1, .Regidx 1, .ADDI)) :=
+    by decode_on_reset
+  have custom : Airbender.Reference.RiscV.Sail.decodeOnReset 0xc210c0f3 = some (.ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1)) :=
+    by decode_on_reset
   simp only [List.mapM_cons, List.mapM_nil, programEntryWith, first, second, standard, custom,
     bind, Option.bind, pure]
   rfl

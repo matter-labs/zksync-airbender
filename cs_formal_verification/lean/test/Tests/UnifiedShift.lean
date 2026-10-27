@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.ShiftBinop.Execution
 import Slop.UnifiedReduced.Claims
 import Slop.BabyBear
@@ -161,14 +162,8 @@ private theorem program_image (kind : Fin 7) : UnifiedReduced.programImage (befo
   have isa : run (SailRV32.readReg .misa) (before kind) = .ok (0x40000000 : BitVec 32) (before kind) := by
     apply read_register
     simp [before, Std.ExtDHashMap.get?_insert]
-  have decoded : run (SailRV32.Functions.encdec_backwards (instructionBits kind)) (before kind) =
-      .ok (entry kind).instruction (before kind) := by
-    fin_cases kind
-    all_goals repeat' first
-      | (with_unfolding_all rfl)
-      | (with_unfolding_all conv_lhs => arg 1; whnf
-         erw [@run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
-           _ _ SailRV32.Register.misa _ _ _ isa])
+  have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (instructionBits kind) = some (entry kind).instruction :=
+    by decode_on_reset
   simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind, pure]
   fin_cases kind <;> rfl
 

@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.ShiftBinopTimestamp
 import Slop.ShiftBinop.Trace
 import Slop.ShiftBinop.Values
@@ -16,10 +17,14 @@ private def entry : Airbender.ShiftBinop.ProgramEntry :=
   ⟨65532, 0x000040b3, .RTYPE (.Regidx 0, .Regidx 0, .Regidx 1, .XOR),
     ⟨(), 0, 0, 1, ⟨0, 0⟩, 2, 4⟩⟩
 
-private def before : State := wordWriteState
-  { (default : State) with regs :=
-    ((default : State).regs.insert .x1 (0 : BitVec 32)).insert .PC (65532 : BitVec 32) }
+private noncomputable def before : State := wordWriteState
+  { Airbender.Reference.RiscV.Sail.resetMachine with regs :=
+    (Airbender.Reference.RiscV.Sail.resetMachine.regs.insert .x1 (0 : BitVec 32)).insert .PC (65532 : BitVec 32) }
   65532 entry.bits
+
+theorem airbender_before  : Airbender.Reference.RiscV.Sail.Configured before := by
+  configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
+
 
 private def cells : List Cell := [.register 0, .register 1]
 private def seed : List (MemoryToken babyBearModulus) :=
@@ -75,8 +80,8 @@ private theorem image : initialImage before cells = some seed := by
 
 private theorem program_image : Airbender.ShiftBinop.programImage before [65532] = some [entry] := by
   have bytes : (Cell.ram 65532).read before = .ok entry.bits before := written_word_read _ 65532 _
-  have decoded : run (SailRV32.Functions.encdec_backwards entry.bits) before =
-      .ok entry.instruction before := by with_unfolding_all rfl
+  have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset entry.bits = some entry.instruction :=
+    by decode_on_reset
   simp only [Airbender.ShiftBinop.programImage, List.mapM_cons, List.mapM_nil,
     programEntryWith, bytes, decoded, bind, Option.bind]
   rfl

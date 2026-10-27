@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.Trace.Claims
 import Slop.Trace.Code
 import Slop.Trace.CodeHistory
@@ -47,10 +48,9 @@ private def trace : Data babyBearModulus where
 private def attributes : SailRV32.PMA :=
   { (default : SailRV32.PMA) with readable := true, writable := true, executable := true }
 
-private def before : Reference.RiscV.Sail.State :=
-  { (default : Reference.RiscV.Sail.State) with
-    regs := (Std.ExtDHashMap.emptyWithCapacity :
-      Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
+private noncomputable def before : Reference.RiscV.Sail.State :=
+  { Airbender.Reference.RiscV.Sail.resetMachine with
+    regs := Airbender.Reference.RiscV.Sail.resetMachine.regs
       |>.insert .mstatus 0 |>.insert .cur_privilege .Machine |>.insert .misa 0x40000100
       |>.insert .senvcfg 0 |>.insert .menvcfg 0x10
       |>.insert .pmpcfg_n (Vector.replicate 64 0)
@@ -62,6 +62,9 @@ private def before : Reference.RiscV.Sail.State :=
     mem := (Std.ExtHashMap.emptyWithCapacity).insert 4259840 (0 : BitVec 8)
       |>.insert 4259841 0 |>.insert 4259842 0 |>.insert 4259843 0
       |>.insert 65532 0x23 |>.insert 65533 0xa2 |>.insert 65534 0x20 |>.insert 65535 0 }
+
+theorem airbender_before  : Airbender.Reference.RiscV.Sail.Configured before := by
+  configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
 
 set_option backward.isDefEq.respectTransparency false in
 private theorem configuration : Reference.RiscV.Sail.Configured before := by
@@ -487,8 +490,12 @@ private def loadTrace : Data babyBearModulus where
   initialMemory := loadInitial
   terminalMemory := [regToken 1 6 0 0, ramToken 0 65 5 0 0]
 
-private def loadState : Reference.RiscV.Sail.State :=
+private noncomputable def loadState : Reference.RiscV.Sail.State :=
   Reference.RiscV.Sail.wordWriteState before 65532 0x0040a083
+
+theorem airbender_loadState  : Airbender.Reference.RiscV.Sail.Configured loadState := by
+  configured_fixture [before, loadState, Airbender.Reference.RiscV.Sail.wordWriteState]
+
 
 private def loadEntry : ProgramEntry :=
   ⟨65532, 0x0040a083, .LOAD (4, .Regidx 1, .Regidx 1, false, 4),

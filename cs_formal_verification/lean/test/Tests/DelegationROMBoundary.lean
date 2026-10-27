@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.BigintMemory
 import Tests.DelegationCaller
 import Tests.DelegationOperationEffects
@@ -114,8 +115,8 @@ private theorem inputs : Caller.RequestInputs data before [0] := by
   constructor
   · have bytes : (Cell.ram 0).read before = .ok (Tests.DelegationCaller.entry .bigint).bits before :=
       written_word_read shadow 0 _
-    have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) before =
-        .ok (Tests.DelegationCaller.entry .bigint).instruction before := Tests.DelegationCaller.original_decoder .bigint before
+    have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+      Tests.DelegationCaller.original_decoder .bigint
     have fields : Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
         some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
     simp only [Caller.programImage, programImageWith, List.mapM_cons, List.mapM_nil,

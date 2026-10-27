@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.UnifiedReduced.CustomDecoder
 import Slop.Sail.WordMemoryState
 
@@ -19,16 +20,9 @@ private def entry (kind : Fin 5) : UnifiedReduced.ProgramEntry :=
     if kind = 0 then ⟨.machine, 6, 7, 5, ⟨0, 0⟩, 512, 0⟩
     else ⟨.machine, 6, 5, 5, ⟨0, 0⟩, 65536, 46 + kind.val⟩⟩
 
-theorem original_decoder_pure (kind : Fin 5) :
-    SailRV32.Functions.encdec_backwards (encoding kind) =
-      (.pure (instruction kind) : SailRV32.SailM SailRV32.instruction) := by
-  fin_cases kind <;> with_unfolding_all rfl
-
-theorem original_decoder (kind : Fin 5) (state : State) :
-    run (SailRV32.Functions.encdec_backwards (encoding kind)) state =
-      .ok (instruction kind) state := by
-  rw [original_decoder_pure]
-  rfl
+theorem original_decoder (kind : Fin 5) :
+    Airbender.Reference.RiscV.Sail.decodeOnReset (encoding kind) = some (instruction kind) := by
+  fin_cases kind <;> decode_on_reset
 
 theorem native_metadata (kind : Fin 5) :
     customDecoderFields (instruction kind) = some (entry kind).data := by
@@ -38,14 +32,17 @@ theorem old_destination (kind : Fin 5) (xorrot : kind ≠ 0) :
     (entry kind).data.rs2 = (entry kind).data.rd := by
   fin_cases kind <;> first | contradiction | rfl
 
-private def before (kind : Fin 5) : State :=
-  wordWriteState default 0 (encoding kind)
+private noncomputable def before (kind : Fin 5) : State :=
+  wordWriteState Airbender.Reference.RiscV.Sail.resetMachine 0 (encoding kind)
+
+theorem airbender_before (kind : Fin 5) : Airbender.Reference.RiscV.Sail.Configured (before kind) := by
+  configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
 
 theorem public_image (kind : Fin 5) :
     customProgramImage (before kind) [0] = some [entry kind] := by
   have bytes : (Cell.ram 0).read (before kind) = .ok (encoding kind) (before kind) :=
-    written_word_read default 0 (encoding kind)
-  have decoded := original_decoder kind (before kind)
+    written_word_read Airbender.Reference.RiscV.Sail.resetMachine 0 (encoding kind)
+  have decoded := original_decoder kind
   have fields := native_metadata kind
   simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
     bind, Option.bind, pure]

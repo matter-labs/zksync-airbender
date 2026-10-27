@@ -91,11 +91,30 @@ theorem Configured.insert {state : State} (configured : Configured state) {key :
   simp only [Std.ExtDHashMap.get?_insert, beq_iff_eq, distinct, ↓reduceDIte]
   exact configured r outside
 
+/-- Inserting a register a program writes leaves a register it never writes unchanged. -/
+theorem get?_insert_written {m : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType}
+    {key r : SailRV32.Register} {value : SailRV32.RegisterType key}
+    (written : writtenByProgram key = true) (outside : writtenByProgram r = false) :
+    (m.insert key value).get? r = m.get? r := by
+  have distinct : key ≠ r := by
+    rintro rfl
+    rw [written] at outside
+    cases outside
+  simp only [Std.ExtDHashMap.get?_insert, beq_iff_eq, distinct, ↓reduceDIte]
+
 /-- Memory does not affect `Configured`. -/
 theorem Configured.with_mem {state : State} (configured : Configured state)
     (mem : Std.ExtHashMap Nat (BitVec 8)) : Configured { state with mem := mem } := configured
 
 end Airbender.Reference.RiscV.Sail
+
+/-- `Configured` of a fixture built from `resetMachine` by inserting program registers and memory:
+    `configured_fixture [defs]` unfolds the given definitions. -/
+macro "configured_fixture" "[" defs:Lean.Parser.Tactic.simpLemma,* "]" : tactic =>
+  `(tactic| (intro r outside
+             simp (disch := decide) only [$defs,*,
+               Airbender.Reference.RiscV.Sail.get?_insert_written (outside := outside)]
+             exact Airbender.Reference.RiscV.Sail.reset_machine_get r))
 
 /-- `decodeOnReset bits = some instruction` for concrete `bits`, checked by the kernel. -/
 macro "decode_on_reset" : tactic =>

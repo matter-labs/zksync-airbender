@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.Final.Trace.UnifiedReduced.Theorems
 import Slop.Sail.WordMemoryState
 
@@ -119,9 +120,8 @@ private theorem initialized (mode : Fin 3) : initialImage (before mode) (cells m
 
 private theorem program_image (mode : Fin 3) : UnifiedReduced.Mixed.programImage (before mode) [0] = some [entry mode] := by
   have bytes : (Cell.ram 0).read (before mode) = .ok (bits mode) (before mode) := written_word_read initialState 0 _
-  have decoded : run (SailRV32.Functions.encdec_backwards (bits mode)) (before mode) =
-      .ok ((literal mode).instruction (register mode)) (before mode) := by
-    fin_cases mode <;> with_unfolding_all rfl
+  have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (bits mode) = some ((literal mode).instruction (register mode)) :=
+    by decode_on_reset
   have fields : UnifiedReduced.Mixed.decoderFields ((literal mode).instruction (register mode)) = some (entry mode).data := by
     fin_cases mode <;> with_unfolding_all rfl
   simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
@@ -391,10 +391,10 @@ private theorem chainedImage : UnifiedReduced.Mixed.programImage chainedBefore [
     written_word_disjoint 4 0x00000613 (by decide) (written_word_read initialState 0 (bits 0))
   have second : (Cell.ram 4).read chainedBefore = .ok 0x00000613 chainedBefore :=
     written_word_read (before 0) 4 0x00000613
-  have decodeFirst : run (SailRV32.Functions.encdec_backwards (bits 0)) chainedBefore =
-      .ok ((literal 0).instruction 12) chainedBefore := by with_unfolding_all rfl
-  have decodeSecond : run (SailRV32.Functions.encdec_backwards 0x00000613) chainedBefore =
-      .ok (UnifiedReduced.Caller.ControlLiteral.instruction (.addi 0) 12) chainedBefore := by with_unfolding_all rfl
+  have decodeFirst : Airbender.Reference.RiscV.Sail.decodeOnReset (bits 0) = some ((literal 0).instruction 12) :=
+    by decode_on_reset
+  have decodeSecond : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00000613 = some (UnifiedReduced.Caller.ControlLiteral.instruction (.addi 0) 12) :=
+    by decode_on_reset
   have fieldsFirst : UnifiedReduced.Mixed.decoderFields ((literal 0).instruction 12) = some (entry 0).data := by
     with_unfolding_all rfl
   have fieldsSecond : UnifiedReduced.Mixed.decoderFields (UnifiedReduced.Caller.ControlLiteral.instruction (.addi 0) 12) =
@@ -747,10 +747,10 @@ private theorem sequentialImage (custom : Bool) : UnifiedReduced.Mixed.programIm
     written_word_disjoint 4 0x00000613 (by decide) (written_word_read initialState 0 (if custom then 0xc2c64673 else 0x00c60633))
   have second : (Cell.ram 4).read (sequentialBefore custom) = .ok 0x00000613 (sequentialBefore custom) :=
     written_word_read (wordWriteState initialState 0 (if custom then 0xc2c64673 else 0x00c60633)) 4 0x00000613
-  have decodeFirst : run (SailRV32.Functions.encdec_backwards (if custom then 0xc2c64673 else 0x00c60633)) (sequentialBefore custom) =
-      .ok (sequentialEntry custom).instruction (sequentialBefore custom) := by cases custom <;> with_unfolding_all rfl
-  have decodeSecond : run (SailRV32.Functions.encdec_backwards 0x00000613) (sequentialBefore custom) =
-      .ok chainedEntry.instruction (sequentialBefore custom) := by cases custom <;> with_unfolding_all rfl
+  have decodeFirst : Airbender.Reference.RiscV.Sail.decodeOnReset (if custom then 0xc2c64673 else 0x00c60633) = some (sequentialEntry custom).instruction :=
+    by decode_on_reset
+  have decodeSecond : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00000613 = some chainedEntry.instruction :=
+    by decode_on_reset
   have fieldsFirst : UnifiedReduced.Mixed.decoderFields (sequentialEntry custom).instruction = some (sequentialEntry custom).data := by
     cases custom <;> with_unfolding_all rfl
   have fieldsSecond : UnifiedReduced.Mixed.decoderFields chainedEntry.instruction = some chainedEntry.data := by

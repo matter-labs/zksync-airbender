@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.Final.Circuits.AddSub.CallerTheorems
 import Slop.Final.Trace.Delegation.CallerTheorems
 import Slop.Final.Trace.UnifiedReduced.Theorems
@@ -493,8 +494,8 @@ private theorem preparationProgram :
     UnifiedReduced.Mixed.programImage preparationBefore [0] = some [preparationEntry] := by
   have bytes : (Cell.ram 0).read preparationBefore = .ok 0x00000613 preparationBefore :=
     Reference.RiscV.Sail.written_word_read before 0 _
-  have decoded : Reference.Sail.run (SailRV32.Functions.encdec_backwards 0x00000613) preparationBefore =
-      .ok preparationEntry.instruction preparationBefore := by with_unfolding_all rfl
+  have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00000613 = some preparationEntry.instruction :=
+    by decode_on_reset
   have fields : UnifiedReduced.Mixed.decoderFields preparationEntry.instruction = some preparationEntry.data := by
     with_unfolding_all rfl
   simp only [UnifiedReduced.Mixed.programImage, programImageWith, List.mapM_cons, List.mapM_nil,

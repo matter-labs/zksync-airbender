@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.DelegationOperationEffects
 import Slop.Final.Circuits.AddSub.CallerTheorems
 import Slop.Final.Trace.Delegation.CallerTheorems
@@ -121,9 +122,8 @@ private theorem inputs : Caller.MixedMemoryInputs (data 0) program before [0] [4
       · have bytes : (Cell.ram 0).read before = .ok (Tests.DelegationCaller.entry .bigint).bits before :=
           written_word_disjoint 4 _ (Or.inl (by decide))
             (written_word_read Tests.BigintMemory.before 0 _)
-        have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) before =
-            .ok (Tests.DelegationCaller.entry .bigint).instruction before :=
-          Tests.DelegationCaller.original_decoder .bigint before
+        have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .bigint).bits = some (Tests.DelegationCaller.entry .bigint).instruction :=
+          Tests.DelegationCaller.original_decoder .bigint
         have fields : Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
             some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
         simp only [Caller.programImage, programImageWith, List.mapM_cons, List.mapM_nil,
@@ -135,8 +135,8 @@ private theorem inputs : Caller.MixedMemoryInputs (data 0) program before [0] [4
     · exact Tests.DelegationOperationEffects.sharedInputs.distinct
     · exact Tests.DelegationOperationEffects.sharedInputs.aligned
   · have bytes : (Cell.ram 4).read before = .ok 0x00160613 before := written_word_read _ _ _
-    have decoded : run (SailRV32.Functions.encdec_backwards 0x00160613) before =
-        .ok (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) before := by with_unfolding_all rfl
+    have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00160613 = some (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) :=
+      by decode_on_reset
     have fields : pooledDecoderFields (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) =
         some program[0].data := by with_unfolding_all rfl
     simp only [pooledProgramImage, programImageWith, List.mapM_cons, List.mapM_nil,

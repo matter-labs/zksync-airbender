@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.TraceExecution
 
 namespace Tests.OracleTrace
@@ -110,12 +111,11 @@ private theorem bytes (entry : ProgramEntry) (member : entry ∈ program) :
     readEntry, addEntry, hintEntry, Std.ExtHashMap.getElem_insert]
 
 private theorem decoding (entry : ProgramEntry) (member : entry ∈ program) :
-    SailRV32.Functions.encdec_backwards entry.bits =
-      (.pure entry.instruction : SailRV32.SailM SailRV32.instruction) := by
+    Airbender.Reference.RiscV.Sail.decodeOnReset entry.bits = some entry.instruction := by
   simp only [program, List.mem_cons, List.not_mem_nil, or_false] at member
   rcases member with rfl | rfl | rfl
   all_goals dsimp only [readEntry, addEntry, hintEntry]
-  all_goals with_unfolding_all rfl
+  all_goals decode_on_reset
 
 private theorem public_image : programImageWith NonDeterminism.decoderFields before [0, 4, 8] =
     some program := by

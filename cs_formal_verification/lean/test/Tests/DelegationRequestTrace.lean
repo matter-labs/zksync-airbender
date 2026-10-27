@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.Trace.ImageFrame
 import Tests.DelegationCaller
 import Tests.DelegationMemory
@@ -62,9 +63,8 @@ private theorem image : Caller.programImage before [0] = some data.program := by
   have bytes : (Cell.ram 0).read before =
       .ok (Tests.DelegationCaller.entry .keccak).bits before :=
     written_word_read Tests.DelegationMemory.before 0 _
-  have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .keccak).bits) before =
-      .ok (Tests.DelegationCaller.entry .keccak).instruction before :=
-    Tests.DelegationCaller.original_decoder .keccak before
+  have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (Tests.DelegationCaller.entry .keccak).bits = some (Tests.DelegationCaller.entry .keccak).instruction :=
+    Tests.DelegationCaller.original_decoder .keccak
   have fields : Caller.decoderFields (Tests.DelegationCaller.entry .keccak).instruction =
       some (Tests.DelegationCaller.entry .keccak).data := Tests.DelegationCaller.metadata .keccak
   simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,

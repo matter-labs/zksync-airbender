@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.Trace.ZeroRegister
 import Slop.Trace.RowHistory
 import Slop.Trace.PortReads
@@ -31,12 +32,16 @@ private def trace : Data babyBearModulus where
   terminal := row.finish
   initialMemory := token 0 :: sourceTokens
   terminalMemory := token 6 :: sourceTokens
-private def before : Reference.RiscV.Sail.State :=
-  { (default : Reference.RiscV.Sail.State) with
-    regs := (Std.ExtDHashMap.emptyWithCapacity).insert .x1 (5 : BitVec 32)
+private noncomputable def before : Reference.RiscV.Sail.State :=
+  { Airbender.Reference.RiscV.Sail.resetMachine with
+    regs := Airbender.Reference.RiscV.Sail.resetMachine.regs.insert .x1 (5 : BitVec 32)
       |>.insert .x2 (7 : BitVec 32) |>.insert .PC 0
     mem := (Std.ExtHashMap.emptyWithCapacity).insert 0 (0x33 : BitVec 8)
       |>.insert 1 0x80 |>.insert 2 0x20 |>.insert 3 0 }
+
+theorem airbender_before  : Airbender.Reference.RiscV.Sail.Configured before := by
+  configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
+
 private def entry : ProgramEntry :=
   ⟨0, 0x00208033, .RTYPE (.Regidx 2, .Regidx 1, .Regidx 0, .ADD),
     ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩⟩
@@ -57,8 +62,7 @@ theorem program_image : programImage before [0] = some [entry] := by
     simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
       get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
       before, Std.ExtHashMap.getElem_insert]
-  have decoded : SailRV32.Functions.encdec_backwards 0x00208033 =
-      (_root_.Sail.ArchSem.FreeM.pure (.RTYPE (.Regidx 2, .Regidx 1, .Regidx 0, .ADD)) : SailRV32.SailM _) := rfl
+  have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset 0x00208033 = some (.RTYPE (.Regidx 2, .Regidx 1, .Regidx 0, .ADD)) := by decode_on_reset
   simp only [List.mapM_cons, List.mapM_nil, programEntryWith,
     bytes, decoded, bind, Option.bind]
   rfl

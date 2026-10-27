@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.MulDivDecoder
 import Slop.MulDiv.Execution
 import Slop.Sail.DecoderFrame
@@ -88,30 +89,16 @@ private theorem program_image (remainder : Bool) :
       .ok (0x40001000 : BitVec 32) (before remainder) := by
     apply read_register
     simp [before, initial, wordWriteState]
-  have decoded : run (SailRV32.Functions.encdec_backwards (entry remainder).bits) (before remainder) =
-      .ok (entry remainder).instruction (before remainder) := by
-    cases remainder
-    all_goals
-      repeat' first
-        | (with_unfolding_all rfl)
-        | (with_unfolding_all conv_lhs => arg 1; whnf
-           erw [@run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
-             _ _ SailRV32.Register.misa _ _ _ isa])
+  have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset (entry remainder).bits = some (entry remainder).instruction :=
+    by decode_on_reset
   simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, bind, Option.bind]
   cases remainder <;> rfl
 
-/-- The real public DIVU/REMU encoding decodes identically after GPR, PC,
-    nextPC and memory changes; only the public ISA configuration is retained. -/
-theorem decoder_configuration_frame (remainder : Bool) (pc : BitVec 32) :
-    let changed : State := { before remainder with
-      regs := (((before remainder).regs.insert .x1 (42 : BitVec 32)).insert .PC pc).insert .nextPC 9
-      mem := (default : State).mem }
-    run (SailRV32.Functions.encdec_backwards (entry remainder).bits) changed =
-      .ok (entry remainder).instruction changed := by
-  have source := Proofs.run_program_sources (program_image remainder)
-    (entry remainder) (by simp)
-  apply (decoded_misa_frame _ source.decoded).2
-  simp [Std.ExtDHashMap.get?_insert]
+/-- The fetched instruction is decoded on the Airbender configuration, so it does not depend on the
+    state's registers or memory. -/
+theorem decoder_configuration_frame (remainder : Bool) :
+    Airbender.Reference.RiscV.Sail.decodeOnReset (entry remainder).bits = some (entry remainder).instruction :=
+  (Proofs.run_program_sources (program_image remainder) (entry remainder) (by simp)).decoded
 
 private theorem query (remainder : Bool) :
     Airbender.MulDiv.decoderQuery (Tests.MulDivTimestamp.assignment remainder false) =

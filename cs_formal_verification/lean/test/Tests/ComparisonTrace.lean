@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.Comparison
 import Slop.JumpBranchSlt.Claims
 import Tests.JumpHistory
@@ -25,12 +26,15 @@ private def entry (signed immediate : Bool) : JumpBranchSlt.ProgramEntry :=
     ⟨(), 1, if immediate then 0 else 2, if immediate then 1 else 2,
       if immediate then ⟨65535, 65535⟩ else ⟨0, 0⟩, 4, if signed then 2 else 3⟩⟩
 
-private def before (signed immediate : Bool) : State :=
-  wordWriteState { (default : State) with regs :=
-    ((Std.ExtDHashMap.emptyWithCapacity :
-      Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
+private noncomputable def before (signed immediate : Bool) : State :=
+  wordWriteState { Airbender.Reference.RiscV.Sail.resetMachine with regs :=
+    (Airbender.Reference.RiscV.Sail.resetMachine.regs
       |>.insert .x1 (0 : BitVec 32) |>.insert .x2 (0xffffffff : BitVec 32) |>.insert .PC 0) }
     0 (entry signed immediate).bits
+
+theorem airbender_before (signed immediate : Bool) : Airbender.Reference.RiscV.Sail.Configured before := by
+  configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
+
 
 private def cells : List Cell := [.register 0, .register 1, .register 2]
 private def seed : List (MemoryToken babyBearModulus) :=

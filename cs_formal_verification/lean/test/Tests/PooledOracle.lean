@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.Trace.PooledOracleConsumption
 import Slop.Trace.PooledOracleDecoder
 import Slop.Trace.PooledOracleExecution
@@ -192,12 +193,12 @@ private theorem bytes (entry : PooledProgramEntry) (member : entry ∈ program) 
     before, readEntry, shiftEntry, Std.ExtHashMap.getElem_insert]
 
 private theorem decoding (entry : PooledProgramEntry) (member : entry ∈ program) :
-    run (SailRV32.Functions.encdec_backwards entry.bits) before = .ok entry.instruction before := by
+    Airbender.Reference.RiscV.Sail.decodeOnReset entry.bits = some entry.instruction := by
   simp only [program, List.mem_cons, List.not_mem_nil, or_false] at member
   rcases member with rfl | rfl | rfl
   all_goals
     dsimp only [readEntry, shiftEntry]
-    with_unfolding_all rfl
+    decode_on_reset
 
 private theorem fields (entry : PooledProgramEntry) (member : entry ∈ program) :
     NonDeterminism.Pooled.decoderFields entry.instruction = some entry.data := by

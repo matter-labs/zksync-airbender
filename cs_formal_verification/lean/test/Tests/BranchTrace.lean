@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.Branch
 import Slop.JumpBranchSlt.Claims
 import Tests.JumpHistory
@@ -24,13 +25,16 @@ private def entry (tag : Fin 6) (wrap : Bool) : JumpBranchSlt.ProgramEntry :=
     .BTYPE ((if wrap then 8 else 8188), .Regidx 2, .Regidx 1, opcode tag),
     ⟨(), 1, 2, 0, Branch.offset wrap, 24, Branch.funct3 tag⟩⟩
 
-private def before (tag : Fin 6) (wrap : Bool) : State :=
-  wordWriteState { (default : State) with regs :=
-    ((Std.ExtDHashMap.emptyWithCapacity :
-      Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
+private noncomputable def before (tag : Fin 6) (wrap : Bool) : State :=
+  wordWriteState { Airbender.Reference.RiscV.Sail.resetMachine with regs :=
+    (Airbender.Reference.RiscV.Sail.resetMachine.regs
       |>.insert .x1 (0 : BitVec 32) |>.insert .x2 (0xffffffff : BitVec 32)
       |>.insert .PC (Branch.initial wrap).toBitVec |>.insert .misa (0 : BitVec 32)) }
     (Branch.initial wrap).toBitVec.toNat (entry tag wrap).bits
+
+theorem airbender_before (tag : Fin 6) (wrap : Bool) : Airbender.Reference.RiscV.Sail.Configured (before tag wrap) := by
+  configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
+
 
 private def cells : List Cell := [.register 0, .register 1, .register 2]
 private def seed : List (MemoryToken babyBearModulus) :=

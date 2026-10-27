@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.UnifiedReduced.Claims
 import Slop.Sail.WordMemoryState
 
@@ -98,9 +99,8 @@ private theorem inputs : NativeInputs customDecoderFields trace before cells [en
     simp [initialState, pc, trace, PCState.boundary]
   · have bytes : (Cell.ram 0).read before = .ok 0xc210c0f3 before :=
       written_word_read _ _ _
-    have original : run (SailRV32.Functions.encdec_backwards 0xc210c0f3) before =
-        .ok (.ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1)) before := by
-      with_unfolding_all rfl
+    have original : Airbender.Reference.RiscV.Sail.decodeOnReset 0xc210c0f3 = some (.ZIMOP_MOP_RR (4, .Regidx 1, .Regidx 1, .Regidx 1)) :=
+      by decode_on_reset
     simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, original,
       customDecoderFields, bind, Option.bind, pure]
     rfl

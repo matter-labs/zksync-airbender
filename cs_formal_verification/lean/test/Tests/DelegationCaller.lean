@@ -4,6 +4,7 @@ import Slop.Sail.WordMemoryState
 import Slop.Delegation.Requests
 import Slop.BabyBear
 import Slop.Trace.Timestamps
+import Slop.Sail.ResetState
 
 namespace Tests.DelegationCaller
 open Airbender Delegation Trace Arithmetic Reference.RiscV.Sail Reference.Sail
@@ -14,23 +15,16 @@ set_option maxHeartbeats 4000000
 private def encoding (family : Delegation.Family) : BitVec 32 :=
   BitVec.ofNat 32 (Requests.csr family * 2 ^ 20 + 0x1073)
 
-private def instruction (family : Delegation.Family) : SailRV32.instruction :=
+private noncomputable def instruction (family : Delegation.Family) : SailRV32.instruction :=
   .CSRReg (BitVec.ofNat 12 (Requests.csr family), .Regidx 0, .Regidx 0, .CSRRW)
 
-def entry (family : Delegation.Family) : Caller.ProgramEntry :=
+noncomputable def entry (family : Delegation.Family) : Caller.ProgramEntry :=
   ⟨0, encoding family, instruction family, ⟨family, 0, 0, 0, ⟨0, 0⟩, 128, 0⟩⟩
 
-private theorem decoding (family : Delegation.Family) :
-    SailRV32.Functions.encdec_backwards (encoding family) =
-      (.pure (instruction family) : SailRV32.SailM SailRV32.instruction) := by
-  cases family <;> dsimp only [encoding, instruction, Requests.csr]
-  all_goals with_unfolding_all rfl
-
-theorem original_decoder (family : Delegation.Family) (state : State) :
-    run (SailRV32.Functions.encdec_backwards (encoding family)) state =
-      .ok (instruction family) state := by
-  rw [decoding]
-  rfl
+/-- The original Sail decoder on the Airbender configuration (kernel-checked). -/
+theorem original_decoder (family : Delegation.Family) :
+    decodeOnReset (encoding family) = some (instruction family) := by
+  cases family <;> dsimp only [encoding, instruction, Requests.csr] <;> decode_on_reset
 
 theorem metadata (family : Delegation.Family) :
     Caller.decoderFields (instruction family) = some (entry family).data := by
@@ -80,14 +74,17 @@ theorem unsupported_rejected :
     Caller.decoderFields (.CSRReg (0x7C0, .Regidx 0, .Regidx 0, .CSRRW)) = none := by
   decide +kernel
 
-def before (family : Delegation.Family) : State :=
-  wordWriteState default 0 (encoding family)
+noncomputable def before (family : Delegation.Family) : State :=
+  wordWriteState resetMachine 0 (encoding family)
+
+theorem airbender_before (family : Delegation.Family) : Configured (before family) := by
+  configured_fixture [before, wordWriteState]
 
 theorem public_image (family : Delegation.Family) :
     Caller.programImage (before family) [0] = some [entry family] := by
   have bytes : (Cell.ram 0).read (before family) = .ok (encoding family) (before family) :=
-    written_word_read default 0 (encoding family)
-  have decoded := original_decoder family (before family)
+    written_word_read resetMachine 0 (encoding family)
+  have decoded := original_decoder family
   have fields := metadata family
   simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, decoded, fields,
     bind, Option.bind, pure]
@@ -98,6 +95,7 @@ theorem public_caller (family : Delegation.Family) :
   apply Caller.soundness (by decide)
   · exact Verification.holds_of_sublist (satisfies family)
       (List.sublist_append_left _ AddSub.importedConstraintsTimestampLookups)
+  · exact airbender_before family
   · exact public_image family
   · change ∃ i : Fin 1, Caller.nativeQuery (assignment family) =
       Caller.query ([entry family].get i)
@@ -122,6 +120,7 @@ theorem pc_effects (family : Delegation.Family) :
   apply Caller.pc_soundness (by decide) (by decide)
   · exact Verification.holds_of_sublist (satisfies family)
       (List.sublist_append_left _ AddSub.importedConstraintsTimestampLookups)
+  · exact airbender_before family
   · exact public_image family
   · change ∃ i : Fin 1, Caller.nativeQuery (assignment family) = Caller.query ([entry family].get i)
     exact ⟨0, query_bound family⟩

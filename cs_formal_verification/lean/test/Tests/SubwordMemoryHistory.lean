@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Tests.SubwordMemoryTimestamp
 import Slop.SubwordMemory.PortReads
 import Slop.SubwordMemory.Address
@@ -27,7 +28,11 @@ private def initial : State :=
     |>.insert .mhartid 7 |>.insert .htif_tohost_base none
     |>.insert .x1 0x00400001 |>.insert .x2 0 |>.insert .PC 0 }
 private def dataState := wordWriteState initial 4194304 0x56781234
-private def before := wordWriteState dataState 0 entry.bits
+private noncomputable def before := wordWriteState dataState 0 entry.bits
+
+theorem airbender_before  : Airbender.Reference.RiscV.Sail.Configured before := by
+  configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
+
 private def cells : List Cell := [.register 1, .ram 4194304, .register 2]
 private def seed : List (MemoryToken babyBearModulus) :=
   [Cell.initialToken (.register 1) 0x00400001,
@@ -84,8 +89,8 @@ private theorem image : initialImage before cells = some seed := by
 
 private theorem program_image : Airbender.SubwordMemory.programImage before [0] = some [entry] := by
   have bytes : (Cell.ram 0).read before = .ok entry.bits before := written_word_read _ 0 _
-  have decoded : run (SailRV32.Functions.encdec_backwards entry.bits) before =
-      .ok entry.instruction before := by with_unfolding_all rfl
+  have decoded : Airbender.Reference.RiscV.Sail.decodeOnReset entry.bits = some entry.instruction :=
+    by decode_on_reset
   simp only [Airbender.SubwordMemory.programImage, List.mapM_cons, List.mapM_nil,
     programEntryWith, bytes, decoded, bind, Option.bind]
   rfl

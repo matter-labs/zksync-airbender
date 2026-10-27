@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.Trace.Program
 import Slop.BabyBear
 import Tests.SailDecoder
@@ -8,11 +9,15 @@ open Airbender Trace Arithmetic
 open Sail.ArchSem
 set_option warningAsError true
 
-private def before : Reference.RiscV.Sail.State :=
-  { (default : Reference.RiscV.Sail.State) with
+private noncomputable def before : Reference.RiscV.Sail.State :=
+  { Airbender.Reference.RiscV.Sail.resetMachine with
     mem := (Std.ExtHashMap.emptyWithCapacity).insert 0 (0xb3 : BitVec 8)
       |>.insert 1 0x81 |>.insert 2 0x20 |>.insert 3 0
       |>.insert 4 0x03 |>.insert 5 0xa1 |>.insert 6 0x40 |>.insert 7 0 }
+
+theorem airbender_before  : Airbender.Reference.RiscV.Sail.Configured before := by
+  configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
+
 
 private def addEntry : ProgramEntry :=
   ⟨0, 0x002081b3, .RTYPE (.Regidx 2, .Regidx 1, .Regidx 3, .ADD),
@@ -75,18 +80,15 @@ theorem negative_immediate :
     decoderFields (.ITYPE (0xfff, .Regidx 1, .Regidx 2, .ADDI)) =
       some ⟨.addSub, 1, 0, 2, ⟨65535, 65535⟩, 1, 0⟩ := by rfl
 
-/-- The original generated decoder remains valid after unrelated CSR changes. -/
-theorem decoder_after_configuration_change :
-    Reference.Sail.run (SailRV32.Functions.encdec_backwards addEntry.bits)
-      { before with regs := before.regs.insert .misa 0xffffffff } =
-    .ok addEntry.instruction { before with regs := before.regs.insert .misa 0xffffffff } := by
-  with_unfolding_all rfl
+/-- Decoding is on the Airbender configuration, independent of the state's CSRs. -/
+theorem decoder_on_reset : Airbender.Reference.RiscV.Sail.decodeOnReset addEntry.bits = some addEntry.instruction := by
+  decode_on_reset
 
 /-- A native RAM store preserves the fetched/decoded public ROM instruction. -/
 theorem fetched_after_ram_store :
     addEntry.Source (Reference.RiscV.Sail.wordWriteState before 4194304 0xabcdef12) := by
   have source := Proofs.program_sources extracted addEntry (by simp [program])
-  refine ⟨?_, (Reference.Sail.decoded_misa_frame _ source.decoded).2 _ rfl, source.fields⟩
+  refine ⟨?_, source.decoded, source.fields⟩
   exact Reference.RiscV.Sail.written_word_disjoint 4194304 0xabcdef12 (by decide) source.bytes
 
 end Tests.TraceProgram

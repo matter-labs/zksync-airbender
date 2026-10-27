@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.UnifiedReduced.CustomComposition
 import Slop.UnifiedReduced.CustomHistory
 import Slop.BabyBear
@@ -54,9 +55,9 @@ private def entry (kind : Fin 4) : UnifiedReduced.ProgramEntry :=
   ⟨0, bits kind, .ZIMOP_MOP_R (BitVec.ofNat 5 (rotation kind), .Regidx 1, .Regidx 2),
     ⟨.machine, 1, 2, 2, ⟨0, 0⟩, 65536, 47 + kind.val⟩⟩
 
-theorem original_decoder (kind : Fin 4) (state : State) :
-    run (SailRV32.Functions.encdec_backwards (bits kind)) state = .ok (entry kind).instruction state := by
-  fin_cases kind <;> with_unfolding_all rfl
+theorem original_decoder (kind : Fin 4) :
+    Airbender.Reference.RiscV.Sail.decodeOnReset (bits kind) = some (entry kind).instruction := by
+  fin_cases kind <;> decode_on_reset
 
 theorem native_constraints (kind : Fin 4) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (assignment kind)) (clockConstraints (Setup.table (before kind))) := by

@@ -1,3 +1,4 @@
+import Slop.Sail.ResetState
 import Slop.JumpBranchSlt.Execution
 import Tests.JumpHistory
 import Slop.JumpBranchSlt.Trace
@@ -29,10 +30,14 @@ private def entry (discarded : Bool) : JumpBranchSlt.ProgramEntry :=
     ⟨(), 0, 0, (if discarded then 0 else 1), ⟨65532, 65535⟩,
       (if discarded then 17 else 1), 0⟩⟩
 
-private def before (discarded : Bool) : State :=
-  wordWriteState { (default : State) with regs :=
+private noncomputable def before (discarded : Bool) : State :=
+  wordWriteState { Airbender.Reference.RiscV.Sail.resetMachine with regs :=
     (((Std.ExtDHashMap.emptyWithCapacity.insert .x1 (5 : BitVec 32)).insert
       .PC (0 : BitVec 32)).insert .misa (0 : BitVec 32)) } 0 (entry discarded).bits
+
+theorem airbender_before (discarded : Bool) : Airbender.Reference.RiscV.Sail.Configured (before discarded) := by
+  configured_fixture [before, Airbender.Reference.RiscV.Sail.wordWriteState]
+
 
 private def cells : List Cell := [.register 0, .register 1]
 private def seed : List (MemoryToken babyBearModulus) :=

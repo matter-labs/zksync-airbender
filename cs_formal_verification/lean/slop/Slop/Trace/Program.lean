@@ -44,8 +44,9 @@ theorem decoder_field_bounds {instruction : SailRV32.instruction} {data : Decode
     | (cases fields)
 
 open Lean Meta Elab Tactic in
-/-- Find `Configured state` in the local context: a hypothesis, or the `configuration` field of a
-    hypothesis (also through `boot`, `inputs`, `initialization`). Proof search only. -/
+/-- Find `Configured state` in the local context (a hypothesis, or the `configuration` field of a
+    hypothesis, also through `boot`, `inputs`, `initialization`, `publicProgram`), or a `Configured`
+    theorem of the current file (test fixtures). Proof search only. -/
 elab "find_configured" : tactic => withMainContext do
   let goal ← getMainGoal
   let target ← goal.getType
@@ -64,6 +65,22 @@ elab "find_configured" : tactic => withMainContext do
         replaceMainGoal []
         return
       catch _ => restoreState saved
+  -- `Configured` theorems of the current file (test fixtures), possibly with parameters.
+  for (name, info) in (← getEnv).constants.map₂.toList do
+    let type := info.type
+    let (_, _, body) ← forallMetaTelescope type
+    unless body.isAppOf ``Airbender.Reference.RiscV.Sail.Configured do continue
+    let saved ← saveState
+    try
+      let (args, _, body) ← forallMetaTelescope type
+      if ← isDefEq body target then
+        let value ← instantiateMVars (mkAppN (← mkConstWithFreshMVarLevels name) args)
+        if value.hasExprMVar then throwError "open"
+        goal.assign value
+        replaceMainGoal []
+        return
+      restoreState saved
+    catch _ => restoreState saved
   throwError "find_configured: no `Configured` fact for {target}"
 
 theorem entry_source {Kind : Type} {before : Reference.RiscV.Sail.State} {pc : BitVec 32}
