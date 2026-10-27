@@ -51,6 +51,11 @@ aarch64 Linux with the same limits and existing charged-memory accounting.
 Linux cold bootstrap also identified Mathlib's exact `lean --print-prefix` query
 as a false second-compiler detection. That query is excluded only from the Linux
 worker count; its resource charges, actual compiler ceilings and cleanup remain.
+Linux native freshness now passes for all 25 generator/export jobs and receipts,
+with 546 dep-info inputs covered. All 67 compiler export files reproduce byte for
+byte, and provenance controls pass. CI now compares the exact native export file
+inventory and bytes without mixing in separate derived artifact directories.
+The complete Linux frontend, environment audit and transitive replay remain pending.
 
 Program-parametric actual-path execution and complete native-span composition
 already exist, including branches, jumps and loops under their stated contracts.

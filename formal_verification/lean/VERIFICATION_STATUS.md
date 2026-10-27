@@ -133,8 +133,16 @@ accounting and the same limits. Cold cache bootstrap exposed a metadata query
 counted as a second compiler: Mathlib's initializer invokes `lean --print-prefix`.
 Linux now recognizes only that exact query; its memory and time remain charged,
 and unknown invocations and two actual compilers still trigger the worker limit.
-Environment auditing, transitive replay, negative controls, native freshness and
-cold Linux reproduction remain pending.
+Linux native freshness now passes at ac90532c92b1: twelve executed generators,
+thirteen complete exports, all receipts and 546 native dep-info inputs. The 25
+guarded jobs total 242.97 seconds, with peak charged memory 1629.62 MiB and no
+surviving owned workers. Both retained/fresh compiler validators and provenance
+controls pass; all 67 native compiler export files reproduce byte for byte.
+The CI comparison now checks the exact root-file inventory and every byte,
+leaving the separate interpretation/lookup directories to their own validators.
+Its actual-data check passes and missing, extra and changed export controls reject.
+Environment auditing, transitive replay, negative controls and the complete cold
+Linux frontend remain pending.
 
 ### Prior compiler-composition checkpoint
 
@@ -167,9 +175,9 @@ build also passes: 670.85 seconds, peak footprint 1589.04 MiB, raw resident memo
 4110.22 MiB and no surviving owned workers.
 
 The full environment audit, complete independent dependency replay, transitive
-negative controls and cold-run feasibility remain pending. The 25 native setup generator/
-export freshness jobs and receipts remain a separate gate from the 67-file native
-compiler capture check above.
+negative controls and cold-run feasibility remain pending. The completed Linux
+25-job native setup generator/export freshness gate and the 67-file compiler
+capture reproduction check are separate from those proof assurance gates.
 
 The current targeted environment walk of
 [the Keccak Iota mapping](Airbender/Review/Circuits/Keccak/Iota.lean)

@@ -242,7 +242,20 @@ jobs:
           fv compiler-export env -u CI -u RUST_MIN_STACK python3 scripts/export_gkr_translations.py --output "$FV_ROOT/compiler"
           fv compiler-retained python3 scripts/check_gkr_translations.py
           fv compiler-fresh python3 scripts/check_gkr_translations.py --directory "$FV_ROOT/compiler"
-          diff -qr artifacts/compiler "$FV_ROOT/compiler"
+          # Native exports are the root files; subdirectories hold separately
+          # checked interpretation and lookup artifacts.
+          python3 - "$FV_ROOT/compiler" <<'PY'
+          from pathlib import Path
+          import sys
+          retained = {path.name: path for path in Path('artifacts/compiler').iterdir() if path.is_file()}
+          fresh = {path.name: path for path in Path(sys.argv[1]).iterdir() if path.is_file()}
+          if retained.keys() != fresh.keys():
+              raise SystemExit('Native compiler export file inventories differ')
+          for name in sorted(retained):
+              if retained[name].read_bytes() != fresh[name].read_bytes():
+                  raise SystemExit('Native compiler export differs: ' + name)
+          print(f'PASS {len(retained)} native compiler export files reproduce byte for byte')
+          PY
           fv native-lookup-bindings python3 scripts/generate_native_lookup_requests.py --check
           fv compiler-provenance-controls python3 -m unittest discover -s scripts -p test_gkr_translation_provenance.py -v
           FV_STAGE
