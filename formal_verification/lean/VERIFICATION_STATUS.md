@@ -94,9 +94,17 @@ Linux resource/process controls also pass in a disposable aarch64 container
 policy/process tests. They exercise anonymous-memory limits, finite process
 stack, pidfd/subreaper supervision, detached-descendant cleanup and aggregate
 worker limits. These controls do not establish a Linux Lean build, full replay
-or cold-cache reproduction. The full project frontend is being rerun after
-its first attempt stopped at a competing-worker lock check; that interrupted
-attempt is not recorded as a pass.
+or cold-cache reproduction.
+
+The full frontend rebuilt the project and concrete Tests sources, then found
+late imports in the direct audit entrypoint `Airbender.Checks.Axioms`. All 908
+imports now precede commands, preserving their order and every one of the 12409
+explicit roots in its original order. The repaired entrypoint compiles (6844
+Lake jobs, 19.78 seconds, 960.70 MiB footprint and 4416.84 MiB resident), with no
+surviving owned workers. The complete frontend/runtime gate is being rerun from
+that normally built cache; this is not yet a complete pass. An earlier attempt
+also stopped at a competing-worker lock check. Neither interrupted attempt is
+recorded as a successful assurance snapshot.
 
 ### Prior compiler-composition checkpoint
 
