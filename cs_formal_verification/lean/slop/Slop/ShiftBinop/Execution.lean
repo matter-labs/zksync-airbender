@@ -232,7 +232,8 @@ theorem row_execution {p : Nat} [Fact p.Prime]
     (operation : Operation) (immediateForm : Bool) (imm : BitVec 12) (rs1 rs2 rd : BitVec 5)
     (encoding : entry.instruction = rowInstruction operation immediateForm imm rs1 rs2 rd)
     {before after : State}
-    (history : Trace.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after) :
+    (history : Trace.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after)
+    (configuration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     let input : Input := ⟨operation, immediateForm,
       Trace.memoryWord (importedConstraintsMemoryPorts[0].readCode w),
       (if immediateForm && !operation.isShift then SailRV32.Functions.sign_extend (m := 32) imm
@@ -249,7 +250,7 @@ theorem row_execution {p : Nat} [Fact p.Prime]
   have zeros : ∀ port ∈ importedConstraintsMemoryPorts,
       port.address.code w = (Cell.register 0).addressCode → (readToken w port).value = 0 := by
     intro port present atZero
-    exact native_zero_reads clockField clockInverse accepted clocks image programImage decoded
+    exact (native_zero_reads clockField clockInverse accepted clocks image programImage decoded)
       _ member port (by simpa [Row.ports] using present) atZero
   exact local_row_execution hp inverse h (accepted.active _ member) trace.memoryEpoch
     (Trace.Proofs.run_program_sources programImage entry present) query zeros

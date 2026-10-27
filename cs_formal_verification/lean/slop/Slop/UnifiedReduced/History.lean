@@ -12,7 +12,8 @@ set_option maxRecDepth 16384
 theorem zero_preserving [Fact p.Prime] (hp : 524288 < p) {trace : UnifiedTrace p}
     (accepted : Accepted trace) {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
-    (image : programImage before addresses = some program) (decoded : Decoded trace program) :
+    (image : programImage before addresses = some program) (decoded : Decoded trace program)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) :
     ZeroPreserving trace := by
   intro row member
   cases row with
@@ -23,7 +24,7 @@ theorem zero_preserving [Fact p.Prime] (hp : 524288 < p) {trace : UnifiedTrace p
       (List.sublist_append_left (importedConstraints trace.rom)
         importedConstraintsTimestampLookups)
     exact row_zero_preserving hp core (accepted.active _ member)
-      (fetched hp image core (decoded _ member))
+      (fetched hp image (by find_configured) core (decoded _ member))
 
 theorem memory_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : UnifiedTrace p}

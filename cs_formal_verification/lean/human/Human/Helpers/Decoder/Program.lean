@@ -157,8 +157,9 @@ structure ProgramEntry.SourceWith {Kind : Type} (before : Reference.RiscV.Sail.S
     (entry : ProgramEntry Kind) (projection : SailRV32.instruction → Option (DecoderData Kind)) : Prop where
   /-- The entry's encoding is read from the actual public byte memory. -/
   bytes : (Cell.ram entry.pc).read before = .ok entry.bits before
-  /-- The pinned Sail decoder, on the Airbender configuration, returns this original instruction. -/
-  decoded : Reference.RiscV.Sail.decodeOnReset entry.bits = some entry.instruction
+  /-- The pinned Sail decoder returns this original instruction without changing the state. -/
+  decoded : Reference.Sail.run (SailRV32.Functions.encdec_backwards entry.bits) before =
+    .ok entry.instruction before
   /-- The native metadata projection of that instruction matches the entry. -/
   fields : projection entry.instruction = some entry.data
 

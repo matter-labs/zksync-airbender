@@ -27,7 +27,8 @@ theorem field_bounds {instruction : SailRV32.instruction} {data : DecoderData Un
 theorem zero_preserving [Fact p.Prime] (hp : 524288 < p) {trace : UnifiedTrace p}
     (accepted : Accepted trace) {initial : State}
     {addresses : List (BitVec 32)} {program : List UnifiedReduced.ProgramEntry}
-    (image : Mixed.programImage initial addresses = some program) (decoded : UnifiedReduced.Decoded trace program) :
+    (image : Mixed.programImage initial addresses = some program) (decoded : UnifiedReduced.Decoded trace program)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     ZeroPreserving trace := by
   intro row member
   cases row with

@@ -268,14 +268,13 @@ theorem execution_boundary {p : Nat} [Fact p.Prime] (hp : 4 < p)
     change trace.initialMemory.map (token before) = image
     rw [inputs.seed]
     exact ROMView.seed_image inputs.profile reads
-  refine { toPooledPublicInputs := inputs.toPooledPublicInputs
-           toNativeInputs := {
-             distinct := inputs.distinct
-             aligned := inputs.aligned
-             image := physical.symm ▸ reads
-             initialPC := ⟨(4, 0), ?_⟩
-             programImage := inputs.programImage
-             clocks := data_clocks before (ROMView.native_clocks hp inputs.seed inputs.initialBoundary) }
+  refine { inputs.toPooledPublicInputs with
+           distinct := inputs.distinct
+           aligned := inputs.aligned
+           image := physical.symm ▸ reads
+           initialPC := ⟨(4, 0), ?_⟩
+           programImage := inputs.programImage
+           clocks := data_clocks before (ROMView.native_clocks hp inputs.seed inputs.initialBoundary)
            wordSetup := physical.symm ▸ setup
            subwordSetup := inputs.subwordSetup
            terminalPC := inputs.terminalPC }

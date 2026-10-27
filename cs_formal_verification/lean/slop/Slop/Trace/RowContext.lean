@@ -133,7 +133,8 @@ theorem pooled_row_context {p : Nat} [Fact p.Prime]
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
     (programImage : pooledProgramImage initial addresses = some program)
     (decoded : PooledDecoded trace program) {row : Row p PooledFamily} {before : State}
-    (position : RowPosition trace initial cells row before) :
+    (position : RowPosition trace initial cells row before)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     ∃ events rawBefore rawAfter,
       (∀ event ∈ events, event ∈ trace.nativeEvents) ∧
       SailHistory cells events initial rawBefore ∧
@@ -157,7 +158,8 @@ theorem pooled_row_position {p : Nat} [Fact p.Prime]
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
     (programImage : pooledProgramImage initial addresses = some program)
     (decoded : PooledDecoded trace program) {row : Row p PooledFamily} {before : State}
-    (position : RowPosition trace initial cells row before) :
+    (position : RowPosition trace initial cells row before)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     ∃ events after,
       SailHistory cells events (retiredState initial row.start.word.toBitVec) before ∧
       SailHistory cells (rowEvents trace.memoryEpoch row).reverse before after := by
@@ -177,7 +179,8 @@ theorem pooled_row_position_exists {p : Nat} [Fact p.Prime]
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
     (programImage : pooledProgramImage initial addresses = some program)
     (decoded : PooledDecoded trace program) {row : Row p PooledFamily}
-    (member : row ∈ trace.rows) : ∃ before, RowPosition trace initial cells row before := by
+    (member : row ∈ trace.rows)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) : ∃ before, RowPosition trace initial cells row before := by
   obtain ⟨history, rows, final, consistent, permutation, ordered, native, matched⟩ :=
     pooled_native_history hp inverse accepted clocks image distinct aligned programImage decoded
   exact row_position_of_history permutation ordered native member

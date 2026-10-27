@@ -198,7 +198,8 @@ theorem comparison_rebased_step {p : Nat} [Fact p.Prime]
       | .sltu => .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SLTU)
       | .sltiu => .ITYPE (imm, .Regidx rs1, .Regidx rd, .SLTIU))
     {before after : State}
-    (history : Trace.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after) :
+    (history : Trace.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     let input : Comparison.Input := ⟨opcode, ⟨(w 22).val, (w 23).val⟩,
       (match opcode with
       | .slt | .sltu => ⟨(w 26).val, (w 27).val⟩

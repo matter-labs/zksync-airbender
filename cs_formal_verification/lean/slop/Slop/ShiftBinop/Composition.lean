@@ -100,7 +100,7 @@ theorem row_rebased_step {p : Nat} [Fact p.Prime]
     simpa only [position] using Trace.Proofs.retired_state_pc before row.start.word.toBitVec
   have configuration : ConfigSame initial (Trace.retiredState before row.start.word.toBitVec) :=
     ((Trace.Proofs.sail_history_config_same past).insert (key := .nextPC) rfl _).insert (key := .PC) rfl _
-  refine ⟨entry, present, ⟨bytes, source.decoded,
+  refine ⟨entry, present, ⟨bytes, (decoded_misa_frame _ source.decoded).2 _ configuration,
     source.fields⟩, pc, ?_⟩
   cases row with
   | mk family w =>
@@ -111,7 +111,7 @@ theorem row_rebased_step {p : Nat} [Fact p.Prime]
     have zeros : ∀ port ∈ importedConstraintsMemoryPorts,
         port.address.code w = (Cell.register 0).addressCode → (readToken w port).value = 0 := by
       intro port present atZero
-      exact native_zero_reads clockField clockInverse accepted inputs.clocks inputs.image image decoded
+      exact (native_zero_reads clockField clockInverse accepted inputs.clocks inputs.image image decoded)
         _ member port (by simpa [Row.ports] using present) atZero
     exact local_instruction_execution hp inverse h (accepted.active _ member)
       trace.memoryEpoch source query zeros history

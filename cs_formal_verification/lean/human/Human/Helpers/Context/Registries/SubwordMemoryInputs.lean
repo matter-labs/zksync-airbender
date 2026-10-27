@@ -13,7 +13,6 @@ open _root_.Sail.ArchSem
 structure RAMInputs {p : Nat} [Fact p.Prime] (trace : NativeTrace p)
     (initial : State) (cells : List Cell) (program : List ProgramEntry) : Prop
     extends NativeInputs decoderFields trace initial cells program where
-  configuration : Configured initial
   ramDomain : ∀ address, Cell.ram address ∈ cells → ROM.limit ≤ address.toNat
   ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address
   code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0

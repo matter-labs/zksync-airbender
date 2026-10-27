@@ -142,7 +142,8 @@ theorem branch_rebased_step {p : Nat} [Fact p.Prime]
     {before after : State} {events : List MemoryAccess}
     (history : Trace.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after)
     (past : Trace.SailHistory cells events initial before)
-    (isa : ∃ value, initial.regs.get? .misa = some value) :
+    (isa : ∃ value, initial.regs.get? .misa = some value)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     let currentPC := (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec
     let finalPC := (⟨(w 16).val, (w 17).val⟩ : Word).toBitVec
     run (normalStep (SailRV32.Functions.execute_BTYPE imm (.Regidx rs2) (.Regidx rs1) opcode))

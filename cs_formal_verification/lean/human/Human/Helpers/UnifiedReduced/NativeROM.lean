@@ -28,6 +28,8 @@ structure BootInputsWith (projection : SailRV32.instruction → Option (DecoderD
   programImage : ∃ addresses, programImageWith projection initial addresses = some program
   /-- The modeled pooled table is fixed by the public physical ROM image. -/
   setup : trace.rom = Setup.table initial
+  /-- The Airbender machine's configuration (`Configured`). -/
+  configuration : Reference.RiscV.Sail.Configured initial
 
 /-- Standard public boot inputs use the standard native metadata projection. -/
 abbrev BootInputs {p : Nat} [Fact p.Prime] := BootInputsWith (p := p) decoderFields

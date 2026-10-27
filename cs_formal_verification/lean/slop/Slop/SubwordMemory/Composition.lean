@@ -37,7 +37,7 @@ theorem row_ram_step {p : Nat} [Fact p.Prime]
     ((Trace.Proofs.sail_history_config_same past).insert (key := .nextPC) rfl _).insert (key := .PC) rfl _
   refine ⟨entry, present, ⟨Trace.Proofs.cell_read_PC (.ram entry.pc)
     (Trace.Proofs.cell_read_nextPC (.ram entry.pc) bytes row.start.word.toBitVec) row.start.word.toBitVec,
-    source.decoded, source.fields⟩, pc, ?_⟩
+    (decoded_misa_frame _ source.decoded).2 _ configuration, source.fields⟩, pc, ?_⟩
   obtain ⟨values, setup⟩ := inputs.setup
   cases row with
   | mk family w =>

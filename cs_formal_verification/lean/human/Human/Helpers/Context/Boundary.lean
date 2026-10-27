@@ -30,6 +30,8 @@ structure NativeInputs {Kind ISA : Type} [CircuitLayout Kind]
   programImage : ∃ addresses, programImageWith projection initial addresses = some program
   /-- Only initial clock ranges/alignment are supplied; later clocks are proved. -/
   clocks : ClockBoundary trace
+  /-- The Airbender machine's configuration (`Configured`). -/
+  configuration : Reference.RiscV.Sail.Configured initial
 
 /-- Public machine configuration and address/program domain for the restricted
     arithmetic + word-memory trace. `initial` supplies Sail state and bytes;

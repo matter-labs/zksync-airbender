@@ -28,7 +28,8 @@ theorem addsub_execution {p : Nat} [Fact p.Prime]
     {before after : State} {events : List MemoryAccess}
     (past : SailHistory cells events initial before)
     (history : SailHistory cells
-      (rowEvents trace.memoryEpoch (⟨.addSub, w⟩ : Row p PooledFamily)).reverse before after) :
+      (rowEvents trace.memoryEpoch (⟨.addSub, w⟩ : Row p PooledFamily)).reverse before after)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     ∃ original, NonDeterminism.clause stream position entry.instruction .sail =
       some (original, position + if Pooled.isRead (⟨.addSub, w⟩ : Row p PooledFamily) then 1 else 0) ∧
       run (normalStep original) (retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =

@@ -1,4 +1,3 @@
-import Slop.Sail.ResetState
 import Slop.Sail.Configured
 import Human.Circuits.UnifiedReduced.Jump
 import Slop.UnifiedReduced.JumpArithmetic
@@ -115,7 +114,7 @@ theorem soundness_from_history [Fact p.Prime] (hp : 4194304 ≤ p)
       dsimp [Word.ofBitVec, limbBase]
       omega
     cases kind : input.instruction
-    · have parity := Reference.Sail.decoded_offset_even entry.bits _ entry.instruction _ (decode_on_reset_run configured_reset_machine source.decoded)
+    · have parity := Reference.Sail.decoded_offset_even entry.bits initial entry.instruction initial source.decoded
       rw [encoding] at parity
       simp only [instruction, JumpBranchSlt.Jump.instruction, kind] at parity
       refine ⟨by simpa [JumpBranchSlt.Jump.Input.base, direct] using initialEven, ?_⟩

@@ -81,7 +81,8 @@ theorem pooled_zero_preserving {p : Nat} [Fact p.Prime]
     {trace : PooledTrace p} (accepted : Accepted trace)
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List PooledProgramEntry} (image : programImageWith projection before addresses = some program)
-    (decoded : PooledDecoded trace program) : ZeroPreserving trace := by
+    (decoded : PooledDecoded trace program)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) : ZeroPreserving trace := by
   intro row member
   obtain ⟨entry, present, family, query⟩ := decoder_member (decoded row member)
   have source := run_program_sources image entry present
@@ -101,7 +102,8 @@ theorem pooled_native_history {p : Nat} [Fact p.Prime]
     (distinct : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
     (programImage : programImageWith projection before addresses = some program)
-    (decoded : PooledDecoded trace program) :
+    (decoded : PooledDecoded trace program)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) :
     ∃ (history : TimestampSortedMemoryAccessList) (rows : List (Row p PooledFamily))
       (after : Reference.RiscV.Sail.State),
       MemoryHistory trace history ∧ rows.Perm trace.rows ∧

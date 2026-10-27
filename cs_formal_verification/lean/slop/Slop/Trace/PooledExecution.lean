@@ -28,7 +28,8 @@ theorem pooled_muldiv_execution {p : Nat} [Fact p.Prime]
     {entry : PooledProgramEntry} (present : entry ∈ program)
     (family : entry.data.family = .mulDiv) (query : MulDiv.decoderQuery w = entry.query)
     {before after : State}
-    (history : SailHistory cells (MulDiv.Proofs.nativeEvents trace.memoryEpoch w).reverse before after) :
+    (history : SailHistory cells (MulDiv.Proofs.nativeEvents trace.memoryEpoch w).reverse before after)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     ∃ clause, instructionClause entry.instruction = some clause ∧
       run (normalStep clause) (retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
         .ok SailRV32.Functions.RETIRE_SUCCESS
@@ -74,7 +75,8 @@ theorem pooled_shift_execution {p : Nat} [Fact p.Prime]
     {entry : PooledProgramEntry} (present : entry ∈ program)
     (family : entry.data.family = .shiftBinop) (query : ShiftBinop.decoderQuery w = entry.query)
     {before after : State}
-    (history : SailHistory cells (ShiftBinop.Proofs.nativeEvents trace.memoryEpoch w).reverse before after) :
+    (history : SailHistory cells (ShiftBinop.Proofs.nativeEvents trace.memoryEpoch w).reverse before after)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     ∃ clause, instructionClause entry.instruction = some clause ∧
       run (normalStep clause) (retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
         .ok SailRV32.Functions.RETIRE_SUCCESS
@@ -128,7 +130,8 @@ theorem pooled_arithmetic_execution {p : Nat} [Fact p.Prime]
       entry.instruction ≠ .LOAD (imm, .Regidx rs1, .Regidx 0, false, 4))
     {before after : State} {events : List MemoryAccess}
     (past : SailHistory cells events initial before)
-    (history : SailHistory cells (rowEvents trace.memoryEpoch (⟨.addSub, w⟩ : Row p PooledFamily)).reverse before after) :
+    (history : SailHistory cells (rowEvents trace.memoryEpoch (⟨.addSub, w⟩ : Row p PooledFamily)).reverse before after)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     ∃ clause, profileClause profile entry.instruction = some clause ∧
       run (normalStep clause) (retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
         .ok SailRV32.Functions.RETIRE_SUCCESS
@@ -178,7 +181,8 @@ theorem pooled_control_bounds {p : Nat} [Fact p.Prime]
     (decoded : PooledDecoded trace program)
     (code : ∀ entry ∈ program, entry.pc.toNat % 4 = 0)
     (terminal : trace.terminal.word.Bounded)
-    {w : Nat → ZMod p} (member : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows) :
+    {w : Nat → ZMod p} (member : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     (Word.mk (w 22).val (w 23).val).Bounded ∧
       (Word.mk (w 26).val (w 27).val).Bounded ∧
       (w 0).val % 4 = 0 ∧ (w 17).val < limbBase := by
@@ -225,7 +229,8 @@ theorem pooled_control_execution {p : Nat} [Fact p.Prime]
     (isa : ∃ value, initial.regs.get? .misa = some value)
     (configuration : initial.regs.get? .cur_privilege = some .Machine ∧
       ∃ security, initial.regs.get? .mseccfg = some security ∧
-        SailRV32.Functions._get_Seccfg_MLPE security = 0) :
+        SailRV32.Functions._get_Seccfg_MLPE security = 0)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     ∃ clause, instructionClause entry.instruction = some clause ∧
       run (normalStep clause) (retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
         .ok SailRV32.Functions.RETIRE_SUCCESS

@@ -74,7 +74,8 @@ theorem decoder_soundness {trace : Data babyBearModulus}
     (accepted : Accepted trace)
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List ProgramEntry}
-    (image : programImage before addresses = some program) (decoded : Decoded trace program) :
+    (image : programImage before addresses = some program) (decoded : Decoded trace program)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) :
     ∀ row ∈ trace.rows, row.Fetched before :=
   Proofs.decoder_soundness (by decide) accepted image decoded
 
@@ -84,7 +85,8 @@ theorem NonDeterminism.decoder_soundness {trace : Data babyBearModulus}
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List ProgramEntry}
     (image : programImageWith NonDeterminism.decoderFields before addresses = some program)
-    (decoded : Decoded trace program) :
+    (decoded : Decoded trace program)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) :
     ∀ row ∈ trace.rows, row.Fetched before NonDeterminism.decoderFields :=
   NonDeterminism.Proofs.decoder_soundness (by decide) accepted image decoded
 
@@ -111,7 +113,8 @@ theorem NonDeterminism.Pooled.decoder_soundness {trace : PooledTrace babyBearMod
     (accepted : Accepted trace) {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
     (image : NonDeterminism.Pooled.programImage before addresses = some program)
-    (decoded : PooledDecoded trace program) :
+    (decoded : PooledDecoded trace program)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) :
     ∀ row ∈ trace.rows, NonDeterminism.Pooled.Fetched row before :=
   NonDeterminism.Pooled.Proofs.decoder_soundness (by decide) accepted image decoded
 

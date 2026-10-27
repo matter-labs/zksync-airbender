@@ -113,8 +113,8 @@ theorem request_binding_checks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     simp only [Trace.Row.constraints, family, CircuitLayout.constraints] at core
     have constraints := Verification.holds_of_sublist core
       (List.sublist_append_left _ AddSub.importedConstraintsTimestampLookups)
-    exact ⟨caller_binding (by norm_num [timestampBase] at hp; omega) constraints inputs.image (accepted.decoded row member),
-      pc_binding (by norm_num [timestampBase] at hp; omega) pcInverse constraints inputs.image (accepted.decoded row member)⟩
+    exact ⟨caller_binding (by norm_num [timestampBase] at hp; omega) constraints inputs.configuration inputs.image (accepted.decoded row member),
+      pc_binding (by norm_num [timestampBase] at hp; omega) pcInverse constraints inputs.configuration inputs.image (accepted.decoded row member)⟩
   have workerClocks : ∀ row ∈ data.workers.rows,
       (timeOfPair (Requests.fulfillment row).time).Bounded ∧
       (timeOfPair (Requests.fulfillment row).time).lo + 2 < timestampBase := by

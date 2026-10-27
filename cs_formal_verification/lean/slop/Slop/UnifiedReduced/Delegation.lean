@@ -46,7 +46,8 @@ theorem caller_binding [Fact p.Prime] (hp : 524288 < p)
     {before : State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (image : programImage before addresses = some program)
-    (member : (decoderTable program).Contains #[] (decoderQuery w)) : Binding w before program := by
+    (member : (decoderTable program).Contains #[] (decoderQuery w))
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) : Binding w before program := by
   change ∃ i : Fin program.length, decoderQuery w = Delegation.Caller.query (program.get i) at member
   obtain ⟨i, query⟩ := member
   let entry := program.get i

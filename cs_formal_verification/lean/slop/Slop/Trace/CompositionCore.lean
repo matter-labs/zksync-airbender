@@ -56,7 +56,7 @@ theorem entry_source_retired_state {Kind : Type}
     (source : entry.SourceWith before projection) (pc : BitVec 32) :
     entry.SourceWith (retiredState before pc) projection :=
   ⟨cell_read_PC (.ram entry.pc) (cell_read_nextPC (.ram entry.pc) source.bytes pc) pc,
-    source.decoded,
+    (decoded_misa_frame _ source.decoded).2 _ (((ConfigSame.refl _).insert (key := .nextPC) rfl pc).insert (key := .PC) rfl pc),
     source.fields⟩
 
 /-- Rebasing is proof bookkeeping: original Sail preparation erases nextPC,
@@ -72,7 +72,8 @@ theorem step_of_rebased {Kind : Type}
   have same : pc = entry.pc :=
     (EStateM.Result.ok.inj ((retired_state_pc before pc).symm.trans fetched)).1
   refine ⟨entry, present, ⟨read_word_frame (before := retiredState before pc) (after := before)
-    rfl source.bytes, source.decoded, source.fields⟩,
+    rfl source.bytes, (decoded_misa_frame _ source.decoded).2 _
+      (((ConfigSame.refl before).insert (key := .nextPC) rfl pc).insert (key := .PC) rfl pc).symm, source.fields⟩,
     same ▸ read, clause, chosen, ?_⟩
   rw [← normal_step_rebased read clause]
   exact normal

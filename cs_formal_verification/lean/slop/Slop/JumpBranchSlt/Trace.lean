@@ -153,11 +153,12 @@ theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
     {trace : NativeTrace p} (accepted : Accepted trace)
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List ProgramEntry} (image : programImage before addresses = some program)
-    (decoded : Decoded trace program) : Trace.Proofs.ZeroPreserving trace := by
+    (decoded : Decoded trace program)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) : Trace.Proofs.ZeroPreserving trace := by
   intro row member
   have h := Verification.holds_of_sublist (accepted.constraints row member)
     (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
-  exact row_zero_preserving hp row h (fetched hp image h (decoded row member))
+  exact row_zero_preserving hp row h (fetched hp image (by find_configured) h (decoded row member))
 
 /-- Complete native histories realized by actual Sail cell reads/writes, grouped
     in the derived instruction order. ISA clause execution is the next layer. -/
@@ -169,7 +170,8 @@ theorem decoded_native_history {p : Nat} [Fact p.Prime]
     (domain : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (programImage : JumpBranchSlt.programImage before addresses = some program)
-    (decoded : Decoded trace program) :
+    (decoded : Decoded trace program)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) :
     ∃ (history : TimestampSortedMemoryAccessList) (rows : List (Row p TraceKind))
       (after : Reference.RiscV.Sail.State),
       MemoryHistory trace history ∧ rows.Perm trace.rows ∧

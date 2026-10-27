@@ -48,7 +48,8 @@ theorem pooled_subword_address {p : Nat} [Fact p.Prime]
     (programImage : programImageWith projection initial addresses = some program) (decoded : PooledDecoded trace program)
     {w : Nat → ZMod p} (member : (⟨.subwordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows)
     {entry : SubwordMemory.ProgramEntry} (fields : SubwordMemory.decoderFields entry.instruction = some entry.data)
-    (query : SubwordMemory.decoderQuery w = entry.query) (store : Bool) (selected : w 10 = if store then 1 else 0) :
+    (query : SubwordMemory.decoderQuery w = entry.query) (store : Bool) (selected : w 10 = if store then 1 else 0)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     let cell : Word := ⟨(if store then w 27 else w 21).val, (if store then w 28 else w 22).val⟩
     let offset := (w 35).val + 2 * (w 36).val
     cell.Bounded ∧ cell.value % 4 = 0 ∧ offset < 4 ∧

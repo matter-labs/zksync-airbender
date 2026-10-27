@@ -1,4 +1,3 @@
-import Slop.Sail.ResetState
 import Slop.Sail.Decoder
 import Human.Circuits.JumpBranchSlt.Decoder
 import Slop.Trace.Program
@@ -48,6 +47,7 @@ theorem fetched {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     {w : Nat → ZMod p} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImage before addresses = some program)
+    (configuration : Reference.RiscV.Sail.Configured before)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (member : (decoderTable program).Contains #[] (decoderQuery w)) : Fetched w before := by
   obtain ⟨entry, present, _, query⟩ := Trace.Proofs.decoder_member member
@@ -62,8 +62,8 @@ theorem decoder_offset_even {before : Reference.RiscV.Sail.State} {entry : Progr
     match entry.instruction with
     | .JAL _ | .BTYPE _ => entry.data.immediate.lo % 2 = 0
     | _ => True := by
-  have decoded := Reference.Sail.decoded_offset_even entry.bits _ entry.instruction _
-    (Reference.RiscV.Sail.decode_on_reset_run Reference.RiscV.Sail.configured_reset_machine source.decoded)
+  have decoded := Reference.Sail.decoded_offset_even entry.bits before entry.instruction before
+    source.decoded
   have fields := source.fields
   cases kind : entry.instruction
   case JAL args =>

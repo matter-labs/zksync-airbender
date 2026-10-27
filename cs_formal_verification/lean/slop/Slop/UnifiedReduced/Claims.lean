@@ -215,9 +215,10 @@ theorem fetched {p : Nat} [Fact p.Prime] (hp : 524288 < p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     {before : Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImage before addresses = some program)
+    (configuration : Reference.RiscV.Sail.Configured before)
     (accepted : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (membership : (decoderTable program).Contains #[] (decoderQuery w)) : Fetched w before :=
-  Proofs.fetched hp image accepted membership
+  Proofs.fetched hp image (by find_configured) accepted membership
 
 
 theorem soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
@@ -256,7 +257,9 @@ theorem Caller.soundness [Fact p.Prime] (hp : 524288 < p)
     {program : List Caller.ProgramEntry}
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (image : Caller.programImage before addresses = some program)
-    (member : (Caller.decoderTable program).Contains #[] (decoderQuery w)) : Caller.Binding w before program :=
+    (member : (Caller.decoderTable program).Contains #[] (decoderQuery w))
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured before := by find_configured) :
+    Caller.Binding w before program :=
   Caller.Proofs.caller_binding hp constraints image member
 
 

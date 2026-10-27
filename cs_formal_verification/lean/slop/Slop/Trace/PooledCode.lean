@@ -139,7 +139,8 @@ theorem pooled_source_after_history {p : Nat} [Fact p.Prime]
     (code : entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0)
     {before : State} {events : List MemoryAccess}
     (native : ∀ event ∈ events, event ∈ trace.nativeEvents)
-    (past : SailHistory cells events initial before) :
+    (past : SailHistory cells events initial before)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     entry.SourceWith before projection :=
   entry_source_after_history past
     (fun event member pc rom address =>

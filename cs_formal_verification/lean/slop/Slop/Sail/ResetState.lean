@@ -60,14 +60,24 @@ theorem decode_on_reset_run {bits : BitVec 32} {state : State} (configured : Con
     exact (decoded_misa_frame bits result).2 state (configured_same configured_reset_machine configured)
   · cases decoded
 
+/-- The value of a successful run. -/
+def resultValue {ε σ α : Type} : EStateM.Result ε σ α → Option α
+  | .ok value _ => some value
+  | .error _ _ => none
+
 /-- `decodeOnReset` from kernel facts: the decoder reads only configuration registers and decodes on the
     reset state. -/
-theorem decode_on_reset_of_kernel {bits : BitVec 32} {instruction : SailRV32.instruction} {after : SailState}
+theorem decode_on_reset_of_kernel {bits : BitVec 32} {instruction : SailRV32.instruction}
     (reads : ConfigReads resetState (SailRV32.Functions.encdec_backwards bits) = true)
-    (decoded : runSail (SailRV32.Functions.encdec_backwards bits) resetState = .ok instruction after) :
+    (decoded : resultValue (runSail (SailRV32.Functions.encdec_backwards bits) resetState) = some instruction) :
     decodeOnReset bits = some instruction := by
-  unfold decodeOnReset
-  rw [decode_configured configured_reset_machine reads decoded]
+  cases result : runSail (SailRV32.Functions.encdec_backwards bits) resetState with
+  | error => rw [result] at decoded; cases decoded
+  | ok value after =>
+    rw [result] at decoded
+    cases decoded
+    unfold decodeOnReset
+    rw [decode_configured configured_reset_machine reads result]
 
 /-- Inserting a register a program writes keeps a state `Configured`. -/
 theorem Configured.insert {state : State} (configured : Configured state) {key : SailRV32.Register}
@@ -86,3 +96,7 @@ theorem Configured.with_mem {state : State} (configured : Configured state)
     (mem : Std.ExtHashMap Nat (BitVec 8)) : Configured { state with mem := mem } := configured
 
 end Airbender.Reference.RiscV.Sail
+
+/-- `decodeOnReset bits = some instruction` for concrete `bits`, checked by the kernel. -/
+macro "decode_on_reset" : tactic =>
+  `(tactic| exact Airbender.Reference.RiscV.Sail.decode_on_reset_of_kernel (by kernel_rfl) (by kernel_rfl))

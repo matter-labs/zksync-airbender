@@ -25,7 +25,8 @@ theorem pooled_word_address {p : Nat} [Fact p.Prime]
     {entry : PooledProgramEntry} (present : entry ∈ program)
     (family : entry.data.family = .wordMemory)
     (query : (⟨.wordMemory, w⟩ : Row p PooledFamily).decoderQuery = entry.query)
-    (store : Bool) (selected : w 10 = if store then 1 else 0) :
+    (store : Bool) (selected : w 10 = if store then 1 else 0)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     let address := Word.mk (w (if store then 25 else 19)).val (w (if store then 26 else 20)).val
     address.Bounded ∧ address.toBitVec = (Word.mk (w 17).val (w 18).val).toBitVec +
       (Word.mk (w 8).val (w 9).val).toBitVec ∧ Cell.ram address.toBitVec ∈ cells := by

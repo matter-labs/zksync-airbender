@@ -184,7 +184,8 @@ theorem jump_rebased_step {p : Nat} [Fact p.Prime]
     (configuration : instruction.indirect = true →
       initial.regs.get? .cur_privilege = some .Machine ∧
       ∃ security, initial.regs.get? .mseccfg = some security ∧
-        SailRV32.Functions._get_Seccfg_MLPE security = 0) :
+        SailRV32.Functions._get_Seccfg_MLPE security = 0)
+    (airbenderConfiguration : Reference.RiscV.Sail.Configured initial := by find_configured) :
     let currentPC := (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec
     let finalPC := (⟨(w 16).val, (w 17).val⟩ : Word).toBitVec
     run (normalStep (match instruction with
