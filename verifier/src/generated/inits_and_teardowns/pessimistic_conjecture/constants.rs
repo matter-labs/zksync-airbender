@@ -79,7 +79,7 @@ pub const DRAW_BUF_CAPACITY: usize = {
     }
 };
 pub const WHIR_FOLD_STEPS: [usize; 6usize] = [1usize, 5usize, 5usize, 5usize, 4usize, 3usize];
-pub const WHIR_QUERIES: [usize; 6usize] = [89usize, 23usize, 10usize, 7usize, 5usize, 5usize];
+pub const WHIR_QUERIES: [usize; 6usize] = [89usize, 23usize, 10usize, 8usize, 7usize, 6usize];
 pub const WHIR_POW_BITS: [u32; 6usize] = [26u32, 24u32, 25u32, 19u32, 21u32, 21u32];
 #[doc = r" Per round: PoW bits gating each folding-challenge draw (0 = plain draws)."]
 pub const WHIR_FOLDING_POW_BITS: [u32; 6usize] = [0u32, 0u32, 0u32, 0u32, 0u32, 0u32];
@@ -92,13 +92,13 @@ pub const WHIR_OOD_POW_BITS: [u32; 5usize] = [0u32, 0u32, 0u32, 0u32, 0u32];
 pub const WHIR_OOD_ENTRIES: usize = 5usize;
 pub const LOOKUP_CHALLENGES_POW_BITS: u32 = 0u32;
 pub const BATCHED_PROXIMITY_POW_BITS: u32 = 7u32;
-pub const MAX_POW_ENTRIES: usize = 139usize;
+pub const MAX_POW_ENTRIES: usize = 142usize;
 pub const FINAL_MONOMIALS_LEN: usize = 2usize;
 pub const NUM_ORACLES: usize = 1usize;
 pub const ORACLE_NUM_COLS: [usize; 1usize] = [32usize];
 pub const ORACLE_DEPTHS: [usize; 1usize] = [20usize];
 pub const TOTAL_ORACLE_COLS: usize = 32usize;
-pub const WHIR_ORACLE_DEPTHS: [usize; 5usize] = [18usize, 18usize, 18usize, 19usize, 16usize];
+pub const WHIR_ORACLE_DEPTHS: [usize; 5usize] = [18usize, 18usize, 17usize, 14usize, 14usize];
 pub const WHIR_CAP_SIZE: usize = 16usize;
 pub const WHIR_CAP_WORDS: usize = 128usize;
 use verifier_common::field::baby_bear::base::BabyBearField;

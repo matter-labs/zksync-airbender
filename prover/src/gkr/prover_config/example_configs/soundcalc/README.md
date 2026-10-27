@@ -13,7 +13,10 @@ cd prover/src/gkr/prover_config/example_configs/soundcalc
 PYTHONPATH=/tmp/soundcalc python3.11 whir_schedule_search.py      # the certified entries, one block per shape
 PYTHONPATH=/tmp/soundcalc python3.11 assess_current_configs.py    # the pessimistic ladders under UDR / JBR
 PYTHONPATH=/tmp/soundcalc python3.11 regime_sweep.py              # m / OOD-count sweep of the ladders
+PYTHONPATH=/tmp/soundcalc python3.11 late_round_rebalance.py      # JBR-rebalanced late rounds of the pessimistic ladders
 ```
+
+(`/usr/bin/python3` on a current macOS is 3.9 and works too.)
 
 ## What the search does
 
@@ -58,3 +61,22 @@ EVM Proth120 2^26 packed config (`assess_current_configs.py` evaluates both;
 Proth120 with 2^31 domains caps the Johnson-bound fold term near 48–57 bits, so
 a 100-bit schedule there needs smaller domains and ~75 unique-decoding queries
 per round).
+
+## Rebalancing the pessimistic ladders' late rounds (`late_round_rebalance.py`)
+
+Under the Johnson bound with a per-oracle multiplicity, the pessimistic ladders' base
+round (rate 1/2, 89 queries, 26 bits of PoW) is worth 69 bits, but their last oracles
+(rate 2^-19 on 2^24..2^27 domains) fall to 60-68 bits: the fold term grows with the
+domain over rate^1.5 and the list size, faster than the ~log2(1/rate)/2 bits a query
+buys there. The driver keeps the base round, the folds and the query PoW, and for every
+later oracle picks the smallest LDE factor and the fewest queries (never below the
+pessimistic rule's own count) at which all of the oracle's terms reach the base round's
+level; it also prints each oracle's LDE-versus-queries frontier. The result is uniform
+69-bit ladders with 2^5..2^7 smaller last oracles, one or two extra queries per late round,
+22-37 % less intermediate LDE work and 5-11 % more opened leaf values. These are the
+ladders in `pessimistic_conjecture.rs` since 2026-10-27; the delegation circuits' virtual
+twin keeps 18 queries on its oracle 0 with one more bit of query PoW (26), which the driver
+shows restores the plain ladder's level (oracle 2's 27-bit PoW is tight: 8 queries at rate
+2^-11 are 42 bits, and its 2^27 domain leaves no room for a larger LDE). The SHAPES table
+holds the PRE-rebalance ladders so the run reproduces the analysis.
+

@@ -14,7 +14,7 @@ use super::*;
 /// (a larger domain does not exist — `BabyBearField::TWO_ADICITY = 27`; a
 /// uniform x8 ladder was tried first and produced invalid 2^29 domains).
 /// Base 2 -> 16 (2^23 x 16 = 2^27); intermediate ladder
-/// [16, 512, 16384, 524288] -> [32, 1024, 32768, 1048576] for the post-fold
+/// (then [16, 512, 16384, 524288]) -> [32, 1024, 32768, 1048576] for the post-fold
 /// poly sizes [2^22, 2^17, 2^12, 2^7]; the schedule stops at the 2^3
 /// polynomial (plain-text tail). Under [`PessimisticConjectureMode`]
 /// accounting (`queries = ceil(1.2 * floor((100 - pow) / rate_bits))`, which

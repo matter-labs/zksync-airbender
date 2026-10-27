@@ -19,7 +19,7 @@
         "lde_factor_log2": 5,
         "folding_log2": 6,
         "num_queries": 18,
-        "queries_pow_bits": 25,
+        "queries_pow_bits": 26,
         "folding_pow_bits": 0,
         "num_ood_samples": 1,
         "ood_pow_bits": 0
@@ -34,18 +34,18 @@
         "ood_pow_bits": 0
       },
       {
-        "lde_factor_log2": 15,
+        "lde_factor_log2": 13,
         "folding_log2": 5,
-        "num_queries": 6,
+        "num_queries": 7,
         "queries_pow_bits": 25,
         "folding_pow_bits": 0,
         "num_ood_samples": 1,
         "ood_pow_bits": 0
       },
       {
-        "lde_factor_log2": 19,
+        "lde_factor_log2": 14,
         "folding_log2": 5,
-        "num_queries": 5,
+        "num_queries": 7,
         "queries_pow_bits": 21,
         "folding_pow_bits": 0,
         "num_ood_samples": 1,

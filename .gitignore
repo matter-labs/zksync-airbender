@@ -23,3 +23,16 @@ __pycache__/
 # tools/gkr_verifier/dump_bin.sh, never commit them.
 tools/gkr_verifier/circuit_verifiers/*/*_pack*.elf
 tools/gkr_verifier/circuit_verifiers/*/*_virtual.elf
+# The same experiments' proof fixtures and generated verifier modules, and every verifier
+# flamegraph (written by `verifier --test transpiler`): regenerate them locally with the prover's
+# gkr_blake_delegation_variant_sweep_sec_100, the verifier_generator generate_verifiers test and
+# the transpiler tests; never commit them.
+prover/test_proofs/*_pack[0-9]_gkr_proof.json
+prover/test_proofs/*_pack[0-9]_virtual_gkr_proof.json
+prover/test_proofs/*_virtual_gkr_proof.json
+verifier/src/generated/*/*_pack[0-9]/
+verifier/src/generated/*/*_pack[0-9]_virtual/
+verifier/src/generated/*/*_virtual/
+verifier/gkr_flamegraph_*.svg
+verifier/flamegraphs/**/*.svg
+verifier/flamegraphs/**/cycles.txt

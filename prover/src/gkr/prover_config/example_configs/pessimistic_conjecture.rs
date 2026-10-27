@@ -25,6 +25,14 @@ pub(super) fn whir_schedule(
         }
     };
     if packing.virtual_packing {
+        // The twin re-commits the batched polynomial as intermediate oracle 0
+        // at HALF the ladder's LDE factor. Under the Johnson bound that costs
+        // the oracle about one bit (the 2^22 ladder: 69 -> 68 bits, see
+        // `soundcalc/late_round_rebalance.py`); one more bit of query PoW on
+        // that oracle restores the ladder's level at no verifier cost, and the
+        // pessimistic rule's query count is derived at the raised PoW (18 at
+        // 2^22, unchanged).
+        schedule.internal_rounds[0].queries_pow_bits += 1;
         schedule =
             schedule.to_virtual_packing(level.security_bits() as u32, &PessimisticConjectureMode);
     }
@@ -40,20 +48,20 @@ fn ladder_for_100_bits(message_size_log2: usize, physical_packing_log2: usize) -
         match message_size_log2 {
             20 => (
                 &[1, 5, 5, 4, 4],
-                &[89, 11, 7, 6, 5],
-                &[256, 8192, 32768, 524288],
+                &[89, 11, 8, 7, 7],
+                &[256, 4096, 8192, 16384],
                 &[26, 27, 25, 25, 21],
             ),
             21 => (
                 &[1, 5, 5, 5, 4],
-                &[89, 15, 8, 6, 5],
-                &[64, 2048, 32768, 524288],
+                &[89, 15, 8, 7, 7],
+                &[64, 2048, 8192, 16384],
                 &[26, 25, 27, 25, 21],
             ),
             22 => (
                 &[1, 5, 5, 5, 5],
-                &[89, 15, 8, 6, 5],
-                &[64, 2048, 32768, 524288],
+                &[89, 15, 8, 7, 7],
+                &[64, 2048, 8192, 16384],
                 &[26, 25, 27, 25, 21],
             ),
             // Stops at the 2^3 polynomial (plain-text tail): the former sixth
@@ -63,14 +71,14 @@ fn ladder_for_100_bits(message_size_log2: usize, physical_packing_log2: usize) -
             // `ProverConfig::validate_for_whir_message_size`.
             23 => (
                 &[1, 5, 5, 5, 4],
-                &[89, 23, 10, 7, 5],
-                &[16, 512, 16384, 524288],
+                &[89, 23, 10, 8, 7],
+                &[16, 512, 8192, 16384],
                 &[26, 24, 25, 19, 21],
             ),
             24 => (
                 &[1, 5, 5, 5, 4, 3],
-                &[89, 23, 10, 7, 5, 5],
-                &[16, 512, 16384, 524288, 524288],
+                &[89, 23, 10, 8, 7, 6],
+                &[16, 512, 8192, 16384, 131072],
                 &[26, 24, 25, 19, 21, 21],
             ),
             a => {
@@ -260,10 +268,15 @@ mod tests {
         assert_eq!(virtual_.whir_schedule.fold_steps(), vec![0, 6, 5, 4, 4]);
         assert_eq!(
             virtual_.whir_schedule.intermediate_lde_factors(),
-            vec![128, 8192, 32768, 524288]
+            vec![128, 4096, 8192, 16384]
         );
         assert_eq!(virtual_.whir_schedule.final_poly_size_log2(20), 1);
         let round0 = &virtual_.whir_schedule.internal_rounds[0];
+        // one more bit of query PoW than the ladder's oracle 0 (see `whir_schedule`)
+        assert_eq!(
+            round0.queries_pow_bits,
+            default.whir_schedule.internal_rounds[0].queries_pow_bits + 1
+        );
         assert_eq!(
             round0.num_queries,
             PessimisticConjectureMode
@@ -275,6 +288,45 @@ mod tests {
             &virtual_.whir_schedule.internal_rounds[1..],
             &default.whir_schedule.internal_rounds[1..]
         );
+    }
+
+    /// The production schedule of the delegation circuits (bigint, keccak,
+    /// blake2_g_function on 2^22 traces; blake2_with_compression on a 2^20
+    /// trace packed by 2^2): the virtual twin of the 2^22 ladder, oracle 0 at
+    /// 18 queries with 26 bits of query PoW.
+    #[test]
+    fn delegation_virtual_twin_of_the_2_22_ladder() {
+        let level = SecurityLevel::Sec100;
+        let plain = config_for_security_level_under_pessimistic_conjecture(22, level);
+        let twin =
+            virtual_packing_config_for_security_level_under_pessimistic_conjecture(22, level);
+        let packed_twin =
+            virtual_packed_config_for_security_level_under_pessimistic_conjecture(20, 2, level);
+        assert_eq!(
+            plain.whir_schedule.queries_per_round(),
+            vec![89, 15, 8, 7, 7]
+        );
+        assert_eq!(
+            plain.whir_schedule.intermediate_lde_factors(),
+            vec![64, 2048, 8192, 16384]
+        );
+        for config in [&twin, &packed_twin] {
+            assert_every_round_preserves_security_margin(config);
+            let schedule = &config.whir_schedule;
+            assert_eq!(schedule.fold_steps(), vec![0, 6, 5, 5, 5]);
+            assert_eq!(schedule.queries_per_round(), vec![89, 18, 8, 7, 7]);
+            assert_eq!(
+                schedule.intermediate_lde_factors(),
+                vec![32, 2048, 8192, 16384]
+            );
+            assert_eq!(
+                schedule.queries_pow_bits_per_round(),
+                vec![26, 26, 27, 25, 21]
+            );
+            assert_eq!(schedule.final_poly_size_log2(22), 1);
+        }
+        assert_eq!(packed_twin.pack_log2(), 2);
+        assert_eq!(packed_twin.whir_message_size_log2(), 22);
     }
 
     /// The batching-challenge PoW is the correlated-agreement bound of the

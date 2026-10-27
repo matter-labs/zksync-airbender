@@ -373,11 +373,11 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
 use super::common::EXT_DEGREE;
 use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
 pub const NUM_INTERNAL_ROUNDS: usize = 3usize;
-const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] = [21usize, 21usize, 21usize];
-const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] = [16usize, 512usize, 16384usize];
-const INTERNAL_NUM_COSETS_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [4usize, 9usize, 14usize];
+const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] = [21usize, 21usize, 20usize];
+const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] = [16usize, 512usize, 8192usize];
+const INTERNAL_NUM_COSETS_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [4usize, 9usize, 13usize];
 const INTERNAL_COSET_TREE_SIZE: [usize; NUM_INTERNAL_ROUNDS] = [131072usize, 4096usize, 128usize];
-const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [26usize, 26usize, 26usize];
+const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [26usize, 26usize, 25usize];
 const MAX_INTERNAL_FOLD_STEPS: usize = 5usize;
 const MAX_INTERNAL_VALUES_PER_LEAF: usize = 32usize;
 const MAX_INTERNAL_LEAF_EXT_WORDS: usize = MAX_INTERNAL_VALUES_PER_LEAF * EXT_DEGREE;
@@ -592,15 +592,15 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
     }
 }
 const FINAL_FOLD_STEPS: usize = 4usize;
-const FINAL_NUM_QUERIES: usize = 5usize;
+const FINAL_NUM_QUERIES: usize = 7usize;
 const FINAL_VALUES_PER_LEAF: usize = 16usize;
 const FINAL_LEAF_EXT_WORDS: usize = FINAL_VALUES_PER_LEAF * EXT_DEGREE;
 const FINAL_HASH_BUF_SIZE: usize =
     FINAL_LEAF_EXT_WORDS.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
-const FINAL_QUERY_INDEX_BITS: usize = 22usize;
-const FINAL_RS_DOMAIN_LOG2: usize = 26usize;
-const FINAL_NUM_COSETS: usize = 524288usize;
-const FINAL_NUM_COSETS_LOG2: usize = 19usize;
+const FINAL_QUERY_INDEX_BITS: usize = 17usize;
+const FINAL_RS_DOMAIN_LOG2: usize = 21usize;
+const FINAL_NUM_COSETS: usize = 16384usize;
+const FINAL_NUM_COSETS_LOG2: usize = 14usize;
 const FINAL_COSET_TREE_SIZE: usize = 8usize;
 const FINAL_DRAW_WORDS: usize = 8usize;
 const FINAL_POW_BITS: u32 = 21u32;

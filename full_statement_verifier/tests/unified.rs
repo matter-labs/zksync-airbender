@@ -14,6 +14,7 @@ use verifier_common::errors::DebugErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::prover::definitions::{MerkleTreeCap, DEFAULT_CAP_SIZE};
 use verifier_common::prover::fsv_fixture::UnifiedBaseLayerComponents;
+use verifier_common::BlakeMode;
 
 fn load_compiled_circuit(name: &str) -> GKRCircuitArtifact<BabyBearField> {
     let path = format!(
@@ -117,9 +118,17 @@ fn assemble_with(
     (proof, bundle.unified_setup_cap)
 }
 
-fn build_stream(proof: &ProgramProof, setup_cap: &MerkleTreeCap<{ DEFAULT_CAP_SIZE }>) -> Vec<u32> {
+/// The guest's input stream: the setup-cap VK, then the proof flattened for the blake
+/// implementation of the verifier that will read it (the native verifier is
+/// `verifier_common::BLAKE_MODE`; the RISC-V FSV binary is a blake2_with_compression build, so
+/// its query openings are full Merkle paths, not multiproofs).
+fn build_stream(
+    proof: &ProgramProof,
+    setup_cap: &MerkleTreeCap<{ DEFAULT_CAP_SIZE }>,
+    blake: BlakeMode,
+) -> Vec<u32> {
     let mut responses = MerkleTreeCap::flatten_single(setup_cap).to_vec();
-    responses.extend(proof.flatten_unified_for_verification(verifier_common::BLAKE_MODE));
+    responses.extend(proof.flatten_unified_for_verification(blake));
     responses
 }
 
@@ -143,7 +152,7 @@ fn run_unified_base_layer(responses: Vec<u32>) -> Result<[u32; 16], ()> {
 #[ignore = "requires generated unified base-layer fixture (run the prover step)"]
 fn unified_base_layer_accepts_valid_proof() {
     let (proof, setup_cap) = assemble(load_bundle());
-    let responses = build_stream(&proof, &setup_cap);
+    let responses = build_stream(&proof, &setup_cap, verifier_common::BLAKE_MODE);
     let result = run_unified_base_layer(responses);
     assert!(result.is_ok(), "valid unified base-layer proof must verify");
 }
@@ -152,7 +161,7 @@ fn unified_base_layer_accepts_valid_proof() {
 #[ignore = "requires generated unified base-layer fixture (run the prover step)"]
 fn unified_base_layer_rejects_corrupted_stream() {
     let (proof, setup_cap) = assemble(load_bundle());
-    let responses = build_stream(&proof, &setup_cap);
+    let responses = build_stream(&proof, &setup_cap, verifier_common::BLAKE_MODE);
 
     // Corrupt a word inside the proof body, past the setup-cap VK prefix.
     let prefix_len = MerkleTreeCap::flatten_single(&setup_cap).len();
@@ -173,7 +182,7 @@ fn unified_base_layer_rejects_corrupted_stream() {
 fn rejects_corrupted_setup_cap() {
     let (proof, setup_cap) = assemble(load_bundle());
     let prefix_len = MerkleTreeCap::flatten_single(&setup_cap).len();
-    let mut corrupted = build_stream(&proof, &setup_cap);
+    let mut corrupted = build_stream(&proof, &setup_cap, verifier_common::BLAKE_MODE);
     assert!(prefix_len > 0, "setup-cap prefix must be non-empty");
     corrupted[prefix_len / 2] ^= 0x5555_5555;
 
@@ -186,7 +195,7 @@ fn rejects_corrupted_setup_cap() {
 fn rejects_tampered_final_register_state() {
     let (proof, setup_cap) = assemble(load_bundle());
     let prefix_len = MerkleTreeCap::flatten_single(&setup_cap).len();
-    let mut corrupted = build_stream(&proof, &setup_cap);
+    let mut corrupted = build_stream(&proof, &setup_cap, verifier_common::BLAKE_MODE);
     corrupted[prefix_len + 3] ^= 0x5555_5555;
 
     let result = run_unified_base_layer(corrupted);
@@ -200,7 +209,11 @@ fn rejects_tampered_final_register_state() {
 #[ignore = "requires generated unified base-layer fixture (run the prover step)"]
 fn rejects_num_it_circuits_zero() {
     let (proof, setup_cap) = assemble_with(load_bundle(), 1, 0);
-    let result = run_unified_base_layer(build_stream(&proof, &setup_cap));
+    let result = run_unified_base_layer(build_stream(
+        &proof,
+        &setup_cap,
+        verifier_common::BLAKE_MODE,
+    ));
     assert!(result.is_err(), "num_it_circuits = 0 must be rejected");
 }
 
@@ -208,7 +221,11 @@ fn rejects_num_it_circuits_zero() {
 #[ignore = "requires generated unified base-layer fixture (run the prover step)"]
 fn rejects_num_it_circuits_exceeds_num_circuits() {
     let (proof, setup_cap) = assemble_with(load_bundle(), 1, 2);
-    let result = run_unified_base_layer(build_stream(&proof, &setup_cap));
+    let result = run_unified_base_layer(build_stream(
+        &proof,
+        &setup_cap,
+        verifier_common::BLAKE_MODE,
+    ));
     assert!(
         result.is_err(),
         "num_it_circuits > num_circuits must be rejected"
@@ -219,7 +236,11 @@ fn rejects_num_it_circuits_exceeds_num_circuits() {
 #[ignore = "requires generated unified base-layer fixture (run the prover step)"]
 fn rejects_duplicated_multi_instance() {
     let (proof, setup_cap) = assemble_with(load_bundle(), 2, 2);
-    let result = run_unified_base_layer(build_stream(&proof, &setup_cap));
+    let result = run_unified_base_layer(build_stream(
+        &proof,
+        &setup_cap,
+        verifier_common::BLAKE_MODE,
+    ));
     assert!(
         result.is_err(),
         "a duplicated 2-instance proof must be rejected"
@@ -263,9 +284,13 @@ fn unified_base_layer_transpiler_accepts_valid_proof() {
     let (proof, setup_cap) = assemble(load_bundle());
     // The FSV binary reads the whole stream itself (setup-cap VK first, then the flattened proof
     // which already carries the external challenges) — no separate external-challenges prefix.
-    let oracle_responses = build_stream(&proof, &setup_cap);
-    let expected_output = run_unified_base_layer(oracle_responses.clone())
-        .expect("fixture must verify natively before the transpiler run");
+    let oracle_responses = build_stream(&proof, &setup_cap, BlakeMode::Compression);
+    let expected_output = run_unified_base_layer(build_stream(
+        &proof,
+        &setup_cap,
+        verifier_common::BLAKE_MODE,
+    ))
+    .expect("fixture must verify natively before the transpiler run");
 
     let elf_path = fsv_elf_path();
     assert!(

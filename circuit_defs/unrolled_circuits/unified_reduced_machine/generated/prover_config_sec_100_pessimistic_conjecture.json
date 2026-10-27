@@ -34,18 +34,18 @@
         "ood_pow_bits": 0
       },
       {
-        "lde_factor_log2": 14,
+        "lde_factor_log2": 13,
         "folding_log2": 5,
-        "num_queries": 7,
+        "num_queries": 8,
         "queries_pow_bits": 19,
         "folding_pow_bits": 0,
         "num_ood_samples": 1,
         "ood_pow_bits": 0
       },
       {
-        "lde_factor_log2": 19,
+        "lde_factor_log2": 14,
         "folding_log2": 4,
-        "num_queries": 5,
+        "num_queries": 7,
         "queries_pow_bits": 21,
         "folding_pow_bits": 0,
         "num_ood_samples": 1,
