@@ -198,9 +198,9 @@ run_cmd do
           let mod := env.header.moduleNames[idx]!
           if mod.toString.startsWith "Airbender.Review." then
             if let some ranges ← findDeclarationRanges? name then
-              let start := ranges.range.pos
-              let finish := ranges.selectionRange.endPos
-              logInfo m!"REVIEW_THEOREM {{mod}} {{name}} {{start.line}} {{start.column}} {{finish.line}} {{finish.column}}"
+              let sourceStart := ranges.range.pos
+              let sourceEnd := ranges.selectionRange.endPos
+              logInfo m!"REVIEW_THEOREM {{mod}} {{name}} {{sourceStart.line}} {{sourceStart.column}} {{sourceEnd.line}} {{sourceEnd.column}}"
 '''
     with tempfile.TemporaryDirectory(prefix="airbender-review-") as directory:
         path = Path(directory) / "Inventory.lean"
@@ -618,6 +618,24 @@ def check_snapshot_controls(path):
                 raise ValueError('Invalid build snapshot accepted: ' + label)
             passed.append(label)
 
+        def align_hash_report(specimen, field, label):
+            if specimen['external_imports_scope'] != 'complete_workspace_import_closure_of_project_modules':
+                return
+            bucket = 'project' if field == 'objects' else 'external'
+            report = json.loads(Path(original['compiled_hash_reports'][bucket]['path']).read_text())
+            expected = {record['path'] for parts in specimen[field].values() for record in parts.values()
+                        if record['sha256'] is not None}
+            # Forge consistent metadata so these controls reach the filesystem
+            # absence/path checks, even after the hash-coverage gate was added.
+            # Keep the actual compiled files and original reports untouched.
+            report['files'] = [record for record in report['files'] if record['path'] in expected]
+            if {record['path'] for record in report['files']} != expected:
+                raise ValueError('Snapshot control needs an unrecorded artifact: ' + label)
+            target = temporary / (label + '.' + bucket + '-hashes.json')
+            target.write_text(json.dumps(report))
+            specimen['compiled_hash_reports'][bucket] = {
+                'path': str(target), 'sha256': hashlib.sha256(target.read_bytes()).hexdigest()}
+
         def missing_config(specimen):
             del specimen['inputs'][str(ROOT / 'lake-manifest.json')]
         rejected('missing-required-configuration', missing_config, 'Missing required build inputs:')
@@ -742,6 +760,7 @@ def check_snapshot_controls(path):
         if optional is not None:
             def false_absence(specimen):
                 specimen[optional[0]][optional[1]][optional[2]]['sha256'] = None
+                align_hash_report(specimen, optional[0], 'false-optional-part-absence')
             rejected('false-optional-part-absence', false_absence,
                      'Previously absent compiled part now exists:')
         else:
@@ -760,6 +779,7 @@ def check_snapshot_controls(path):
             raise ValueError('Need two actual external modules for redirect control')
         def redirect(specimen):
             specimen['external_imports'][external[0]] = specimen['external_imports'][external[1]]
+            align_hash_report(specimen, 'external_imports', 'external-module-redirect')
         rejected('external-module-redirect-with-valid-file-hashes', redirect,
                  'Wrong external compiled module path:')
     return len(passed)

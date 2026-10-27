@@ -79,7 +79,7 @@ only propext, Classical.choice and Quot.sound; they do not replace that complete
 environment audit.
 
 The helper/trace layer check now passes. HashABI imports circuit-level protocol
-modules directly. The round `controlAt` and special5 `scheduleControl`
+modules directly. The round `Airbender.Blake2Round.controlAt` and special5 `Airbender.Keccak.scheduleControl`
 definitions moved verbatim into definition-only protocol modules; their public
 names and bodies and the remaining caller definitions are preserved. A guarded
 normal build of both protocols, HashABI and both caller modules passes (1833
@@ -97,7 +97,7 @@ worker limits. These controls do not establish a Linux Lean build, full replay
 or cold-cache reproduction.
 
 The full frontend rebuilt the project and concrete Tests sources, then found
-late imports in the direct audit entrypoint `Airbender.Checks.Axioms`. All 908
+late imports in the [direct audit entrypoint](Airbender/Checks/Axioms.lean). All 908
 imports now precede commands, preserving their order and every one of the 12409
 explicit roots in its original order. The repaired entrypoint compiles (6844
 Lake jobs, 19.78 seconds, 960.70 MiB footprint and 4416.84 MiB resident), with no
@@ -105,6 +105,18 @@ surviving owned workers. The complete frontend/runtime gate is being rerun from
 that normally built cache; this is not yet a complete pass. An earlier attempt
 also stopped at a competing-worker lock check. Neither interrupted attempt is
 recorded as a successful assurance snapshot.
+
+The later run completed source freshness for all 4862 modules (219 concrete Tests),
+native dependency freshness, library/executable builds, direct axiom comparison,
+importer runtime and source/evidence identity checks. Final review exposed two
+stale mutation fixtures and a reserved local name in the generated Lean inventory.
+The fixtures now forge consistent hash manifests to reach their intended absence
+and path checks; production validation is unchanged. All nine snapshot mutation
+controls pass. The repaired inventory passes 200 contextual guide references,
+190 explicit public Review theorem roots, 1305 links and the layer check (61.25
+seconds, 768.65 MiB footprint, 4238.23 MiB resident, no surviving owned workers).
+Fifteen assurance policy tests pass. Complete frontend closure, environment
+auditing, transitive replay and cold Linux reproduction remain pending.
 
 ### Prior compiler-composition checkpoint
 
@@ -152,7 +164,7 @@ regenerate the full baseline or establish a complete current-head audit.
 ## Historical validation evidence
 
 - Full ordinary suite at `5b17af422`: 1,842 modules and 176 concrete Tests passed.
-- Before the hash circuit rollback, `f099bb549` passed 34 compiler targets and a
+- Before the hash circuit rollback, f099bb549 passed 34 compiler targets and a
   direct 7,766-root axiom report. Direct reports are smoke tests; they do not replace
   the compiled-environment dependency audit or independent replay.
 - After rollback, focused native-path/tests and 293 regenerated compiler modules,
