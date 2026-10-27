@@ -48,7 +48,7 @@ theorem custom_zero_preserving [Fact p.Prime] (hp : 524288 < p) {trace : Unified
     cases family
     have core := Verification.holds_of_sublist (accepted.constraints ⟨.machine, w⟩ member)
       (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
-    obtain ⟨entry, source, query, _⟩ := custom_fetched hp image core (decoded _ member)
+    obtain ⟨entry, source, query, _⟩ := custom_fetched hp image (by find_configured) core (decoded _ member)
     exact custom_row_zero_preserving hp core source.fields query
 
 theorem custom_memory_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)

@@ -229,7 +229,8 @@ theorem decoded_row_history [Fact p.Prime]
     (domain : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (programImage : Trace.programImageWith projection before addresses = some program)
-    (decoded : Decoded trace program) :
+    (decoded : Decoded trace program)
+    (configuration : Reference.RiscV.Sail.Configured before := by find_configured) :
     ∃ (history : TimestampSortedMemoryAccessList) (rows : List (Row p)) (after : State),
       MemoryHistory trace history ∧ rows.Perm trace.rows ∧
       rows.Pairwise (fun a b => rowClock b < rowClock a) ∧

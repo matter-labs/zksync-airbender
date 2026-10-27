@@ -65,7 +65,8 @@ theorem row_rebased_step {p : Nat} [Fact p.Prime]
     (native : ∀ event ∈ events, event ∈ trace.nativeEvents)
     (past : Trace.SailHistory cells events initial before)
     (history : Trace.SailHistory cells
-      (Trace.rowEvents trace.memoryEpoch row).reverse before after) :
+      (Trace.rowEvents trace.memoryEpoch row).reverse before after)
+    (configuration : Reference.RiscV.Sail.Configured before := by find_configured) :
     SailStep program (Trace.retiredState before row.start.word.toBitVec)
       (Trace.retiredState after row.finish.word.toBitVec) := by
   have limbSize : limbBase < p := by dsimp [limbBase]; omega
@@ -106,7 +107,8 @@ theorem native_trace_execution {p : Nat} [Fact p.Prime]
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : NativeTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (inputs : ExecutionBoundary trace initial cells program)
-    (accepted : Accepted trace) (decoded : Decoded trace program) :
+    (accepted : Accepted trace) (decoded : Decoded trace program)
+    (configuration : Reference.RiscV.Sail.Configured before := by find_configured) :
     ∃ after, MulDiv.SailTrace program initial after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok trace.terminal.word.toBitVec after ∧
       ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧

@@ -215,9 +215,10 @@ theorem fetched {p : Nat} [Fact p.Prime] (hp : 524288 < p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     {before : Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (image : programImage before addresses = some program)
+    (configuration : Reference.RiscV.Sail.Configured before)
     (accepted : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (membership : (decoderTable program).Contains #[] (decoderQuery w)) : Fetched w before :=
-  Proofs.fetched hp image accepted membership
+  Proofs.fetched hp image (by find_configured) accepted membership
 
 
 theorem soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)

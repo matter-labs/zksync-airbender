@@ -76,7 +76,8 @@ theorem native_zero_reads {p : Nat} [Fact p.Prime]
     (image : initialImage before cells = some trace.initialMemory)
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (programImage : ShiftBinop.programImage before addresses = some program)
-    (decoded : Decoded trace program) :
+    (decoded : Decoded trace program)
+    (configuration : Reference.RiscV.Sail.Configured before := by find_configured) :
     ∀ row ∈ trace.rows, ∀ port ∈ row.ports,
       port.address.code row.assignment = (Cell.register 0).addressCode →
       (readToken row.assignment port).value = 0 :=
