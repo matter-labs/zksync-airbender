@@ -138,6 +138,34 @@ class ParserTests(unittest.TestCase):
         charged = guard.Sample(guard.ProcessInfo(2, 20, 'worker'), 9 << 20, 1)
         self.assertEqual(guard.budget_reason([charged], args, 0), 'memory budget exceeded')
 
+    def test_prefix_query_is_not_a_compiler_but_keeps_resource_charges(self):
+        args = guard.parse_args(['--mib', '8', '--resident-mib', '16', '--seconds', '1', '--log', 'unused', '--', 'true'])
+        compiler = guard.Sample(guard.ProcessInfo(1, 10, 'lean'), 1, 1)
+        query = guard.Sample(guard.ProcessInfo(2, 20, 'lean', argv=(b'/opt/lean/bin/lean', b'--print-prefix')), 1, 1)
+        self.assertIsNone(guard.budget_reason([compiler, query], args, 0))
+        self.assertEqual(guard.budget_reason([compiler, compiler, query], args, 0), 'more than one Lean worker')
+        charged = guard.Sample(query.info, 9 << 20, 1)
+        self.assertEqual(guard.budget_reason([compiler, charged], args, 0), 'memory budget exceeded')
+        self.assertEqual(guard.budget_reason([compiler, query], args, 2), 'wall-time budget exceeded')
+        for argv in ((), (b'lean',), (b'lean', b'--print-prefix', b'input.lean'),
+                     (b'lean', b'input.lean'), (b'other', b'--print-prefix')):
+            with self.subTest(argv=argv):
+                unknown = guard.Sample(guard.ProcessInfo(2, 20, 'lean', argv=argv), 1, 1)
+                self.assertEqual(guard.budget_reason([compiler, unknown], args, 0), 'more than one Lean worker')
+
+    def test_linux_prefix_query_requires_complete_proc_arguments(self):
+        with tempfile.TemporaryDirectory() as directory:
+            process = Path(directory) / '42'
+            process.mkdir()
+            (process / 'stat').write_text(proc_stat(comm='lean'))
+            backend = guard.LinuxBackend(Path(directory))
+            for command, expected in ((b'lean\0--print-prefix\0', 0),
+                                      (b'lean\0--print-prefix', 1), (b'', 1),
+                                      (b'lean\0--print-prefix\0' + b'x' * 4096, 1)):
+                with self.subTest(command=command[:30]):
+                    (process / 'cmdline').write_bytes(command)
+                    self.assertEqual(guard.lean_worker_count([guard.Sample(backend.info(42), 1, 1)]), expected)
+
     def test_recycled_pid_is_not_signalled_via_old_handle(self):
         backend = guard.LinuxBackend()
         backend.handles[42] = (123, 99)

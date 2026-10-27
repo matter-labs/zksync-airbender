@@ -17,7 +17,7 @@ operation is created.
 
 import argparse
 import ctypes
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import errno
 import fcntl
 import json
@@ -45,6 +45,7 @@ class ProcessInfo:
     pgrp: int = 0
     session: int = 0
     state: str = ''
+    argv: tuple[bytes, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -290,6 +291,16 @@ class LinuxBackend:
             return None
         if info.pid != pid:
             raise RuntimeError(f'/proc identity mismatch: {pid}')
+        if info.name == 'lean':
+            try:
+                with (self.proc / str(pid) / 'cmdline').open('rb') as stream:
+                    command = stream.read(4096)
+            except (FileNotFoundError, ProcessLookupError):
+                return None
+            # Unknown, empty or truncated arguments conservatively count as a
+            # worker. The surrounding measurement rechecks the birth identity.
+            if command.endswith(b'\0') and len(command) < 4096:
+                info = replace(info, argv=tuple(command[:-1].split(b'\0')))
         return info
 
     def pin(self, info):
@@ -468,8 +479,18 @@ class Tracker:
         return list(samples.values())
 
 
+def lean_worker_count(samples):
+    # Mathlib's Cache.IO initializer invokes this read-only query from inside
+    # the compiler. Linux exposes its exact argv; other/unknown invocations
+    # remain workers. Every process still contributes to memory and deadlines.
+    return sum(sample.info.name == 'lean' and not (
+        len(sample.info.argv) == 2
+        and sample.info.argv[0].rsplit(b'/', 1)[-1] == b'lean'
+        and sample.info.argv[1] == b'--print-prefix') for sample in samples)
+
+
 def budget_reason(samples, args, elapsed):
-    if sum(sample.info.name == 'lean' for sample in samples) > 1:
+    if lean_worker_count(samples) > 1:
         return 'more than one Lean worker'
     if (sum(sample.footprint for sample in samples) > args.mib << 20 or
             sum(sample.bounded_resident for sample in samples) > args.resident_mib << 20):

@@ -11,8 +11,8 @@ and mappings; Proofs contains supporting arithmetic, native bindings and assembl
 
 1. Complete full assurance for the new physical-row logical composition,
    supplied-program wrappers and explicit Airbender-platform entrypoints. The
-   selected 3279-module/10-test frontend passes freshness/integrity checks without
-   repairs; this binds selected manifests and issues no full assurance snapshot.
+   complete source/runtime/review frontend passes at f0b059fe6412; this binds all
+   4862 modules and 219 concrete Tests, without claiming environment audit or replay.
    All 14 native row compositions and public wrappers compile; execution/public modules pass selected-module replay at a
    32 MiB Lean thread stack. Physical arithmetic/active rows and
    exact tuple matching now replace canonical framing and supplied helper/authored
@@ -35,15 +35,22 @@ and mappings; Proofs contains supporting arithmetic, native bindings and assembl
 The legacy HashABI helper/trace dependency is resolved: reusable round and special5
 controller definitions now live in circuit-level protocol modules, with their
 names and bodies preserved. The layer check and focused consumer build pass.
-Linux guard and compilation-pool controls pass (49 tests); full Linux Lean and
+Linux guard and compilation-pool controls pass (52 tests); full Linux Lean and
 cold-cache gates remain distinct from those process controls.
 The full frontend also exposed late imports in the audit entrypoint. They now
 precede all commands, with all 908 imports and 12409 audit roots preserved in
 order; the repaired entrypoint compiles. Source/executable/runtime stages now
 pass. Review mutation fixtures and the generated Lean inventory were repaired,
 with all nine mutation controls, guide references, public theorem roots, links
-and layer checks passing. Complete frontend closure, environment auditing and
-transitive replay remain pending.
+and layer checks passing. The final complete frontend passes at f0b059fe6412
+(4862 modules, 219 concrete Tests, 3509 runtime native modules, library and both
+executables). Environment auditing and transitive replay remain separate pending
+gates. The Mac environment audit exceeded its 5120 MiB resident cap by 5.94 MiB;
+it issued no successful result. Remaining assurance is being attempted on native
+aarch64 Linux with the same limits and existing charged-memory accounting.
+Linux cold bootstrap also identified Mathlib's exact `lean --print-prefix` query
+as a false second-compiler detection. That query is excluded only from the Linux
+worker count; its resource charges, actual compiler ceilings and cleanup remain.
 
 Program-parametric actual-path execution and complete native-span composition
 already exist, including branches, jumps and loops under their stated contracts.
