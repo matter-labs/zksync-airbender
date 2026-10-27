@@ -180,16 +180,26 @@ mod order_tests {
                 ];
                 for (i, (a, b)) in actual.iter().zip(expected.iter()).enumerate() {
                     assert_eq!(
-                        *a as usize, *b as usize,
+                        *a as usize,
+                        *b as usize,
                         "{} delegation verifier {i} out of order",
                         stringify!($mode)
                     );
                 }
                 // the recursion table keeps blake2s only
-                let reduced = crate::delegation_params::$mode::reduced_machine_delegation_circuit_verifiers::<I, E>();
+                let reduced =
+                    crate::delegation_params::$mode::reduced_machine_delegation_circuit_verifiers::<
+                        I,
+                        E,
+                    >();
                 assert_eq!(reduced[0] as usize, expected[0] as usize);
                 for (i, f) in reduced.iter().enumerate().skip(1) {
-                    assert_ne!(*f as usize, expected[i] as usize, "{} entry {i} must be the stub", stringify!($mode));
+                    assert_ne!(
+                        *f as usize,
+                        expected[i] as usize,
+                        "{} entry {i} must be the stub",
+                        stringify!($mode)
+                    );
                 }
             }};
         }

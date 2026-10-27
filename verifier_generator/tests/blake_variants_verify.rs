@@ -8,18 +8,15 @@
 // the generated code carries `verifier_stats` cfg gates this crate has no feature for
 #![allow(unexpected_cfgs)]
 
+use prover::definitions::GKRExternalChallenges;
 use prover::field::baby_bear::base::BabyBearField;
 use prover::field::baby_bear::ext4::BabyBearExt4;
-use prover::definitions::GKRExternalChallenges;
 use verifier_common::errors::DebugErrorCreator;
 use verifier_common::test_circuits::blake_variants::BlakeVariant;
 
 #[path = "../../verifier/src/generated/blake2_with_extended_control/pessimistic_conjecture_pack0/mod.rs"]
 #[allow(dead_code, unused_imports, clippy::all)]
 mod verifier_sec_100;
-#[path = "../../verifier/src/generated/blake2_with_extended_control/pessimistic_conjecture_virtual/mod.rs"]
-#[allow(dead_code, unused_imports, clippy::all)]
-mod verifier_sec_100_virtual;
 #[path = "../../verifier/src/generated/blake2_with_extended_control/pessimistic_conjecture_pack1/mod.rs"]
 #[allow(dead_code, unused_imports, clippy::all)]
 mod verifier_sec_100_pack1;
@@ -44,6 +41,9 @@ mod verifier_sec_100_pack4;
 #[path = "../../verifier/src/generated/blake2_with_extended_control/pessimistic_conjecture_pack4_virtual/mod.rs"]
 #[allow(dead_code, unused_imports, clippy::all)]
 mod verifier_sec_100_pack4_virtual;
+#[path = "../../verifier/src/generated/blake2_with_extended_control/pessimistic_conjecture_virtual/mod.rs"]
+#[allow(dead_code, unused_imports, clippy::all)]
+mod verifier_sec_100_virtual;
 
 const VERIFIER_STACK_SIZE: usize = 1 << 27;
 
@@ -69,7 +69,8 @@ fn verify_variant<V>(
     let proof = variant.proof();
     let config = variant.prover_config();
     assert_eq!(
-        proof.whir_proof.whir_schedule, config.whir_schedule,
+        proof.whir_proof.whir_schedule,
+        config.whir_schedule,
         "{}: fixture WHIR schedule differs from the generated verifier's",
         variant.name()
     );
@@ -96,7 +97,10 @@ fn verify_variant<V>(
 #[test]
 fn blake2_with_extended_control_sec_100_proof_verifies() {
     verify_variant(
-        BlakeVariant { pack_log2: 0, fold_log2: 1 },
+        BlakeVariant {
+            pack_log2: 0,
+            fold_log2: 1,
+        },
         verifier_sec_100::constants::WHIR_FOLD_STEPS[0],
         verifier_sec_100::constants::TRACE_LEN_LOG2 as usize,
         |ext, it| verifier_sec_100::verify::<_, DebugErrorCreator>(ext, it).map(|_| ()),
@@ -105,7 +109,10 @@ fn blake2_with_extended_control_sec_100_proof_verifies() {
 #[test]
 fn blake2_with_extended_control_sec_100_virtual_proof_verifies() {
     verify_variant(
-        BlakeVariant { pack_log2: 0, fold_log2: 0 },
+        BlakeVariant {
+            pack_log2: 0,
+            fold_log2: 0,
+        },
         verifier_sec_100_virtual::constants::WHIR_FOLD_STEPS[0],
         verifier_sec_100_virtual::constants::TRACE_LEN_LOG2 as usize,
         |ext, it| verifier_sec_100_virtual::verify::<_, DebugErrorCreator>(ext, it).map(|_| ()),
@@ -114,7 +121,10 @@ fn blake2_with_extended_control_sec_100_virtual_proof_verifies() {
 #[test]
 fn blake2_with_extended_control_sec_100_pack1_proof_verifies() {
     verify_variant(
-        BlakeVariant { pack_log2: 1, fold_log2: 1 },
+        BlakeVariant {
+            pack_log2: 1,
+            fold_log2: 1,
+        },
         verifier_sec_100_pack1::constants::WHIR_FOLD_STEPS[0],
         verifier_sec_100_pack1::constants::TRACE_LEN_LOG2 as usize,
         |ext, it| verifier_sec_100_pack1::verify::<_, DebugErrorCreator>(ext, it).map(|_| ()),
@@ -123,16 +133,24 @@ fn blake2_with_extended_control_sec_100_pack1_proof_verifies() {
 #[test]
 fn blake2_with_extended_control_sec_100_pack1_virtual_proof_verifies() {
     verify_variant(
-        BlakeVariant { pack_log2: 1, fold_log2: 0 },
+        BlakeVariant {
+            pack_log2: 1,
+            fold_log2: 0,
+        },
         verifier_sec_100_pack1_virtual::constants::WHIR_FOLD_STEPS[0],
         verifier_sec_100_pack1_virtual::constants::TRACE_LEN_LOG2 as usize,
-        |ext, it| verifier_sec_100_pack1_virtual::verify::<_, DebugErrorCreator>(ext, it).map(|_| ()),
+        |ext, it| {
+            verifier_sec_100_pack1_virtual::verify::<_, DebugErrorCreator>(ext, it).map(|_| ())
+        },
     );
 }
 #[test]
 fn blake2_with_extended_control_sec_100_pack2_proof_verifies() {
     verify_variant(
-        BlakeVariant { pack_log2: 2, fold_log2: 1 },
+        BlakeVariant {
+            pack_log2: 2,
+            fold_log2: 1,
+        },
         verifier_sec_100_pack2::constants::WHIR_FOLD_STEPS[0],
         verifier_sec_100_pack2::constants::TRACE_LEN_LOG2 as usize,
         |ext, it| verifier_sec_100_pack2::verify::<_, DebugErrorCreator>(ext, it).map(|_| ()),
@@ -141,16 +159,24 @@ fn blake2_with_extended_control_sec_100_pack2_proof_verifies() {
 #[test]
 fn blake2_with_extended_control_sec_100_pack2_virtual_proof_verifies() {
     verify_variant(
-        BlakeVariant { pack_log2: 2, fold_log2: 0 },
+        BlakeVariant {
+            pack_log2: 2,
+            fold_log2: 0,
+        },
         verifier_sec_100_pack2_virtual::constants::WHIR_FOLD_STEPS[0],
         verifier_sec_100_pack2_virtual::constants::TRACE_LEN_LOG2 as usize,
-        |ext, it| verifier_sec_100_pack2_virtual::verify::<_, DebugErrorCreator>(ext, it).map(|_| ()),
+        |ext, it| {
+            verifier_sec_100_pack2_virtual::verify::<_, DebugErrorCreator>(ext, it).map(|_| ())
+        },
     );
 }
 #[test]
 fn blake2_with_extended_control_sec_100_pack3_proof_verifies() {
     verify_variant(
-        BlakeVariant { pack_log2: 3, fold_log2: 1 },
+        BlakeVariant {
+            pack_log2: 3,
+            fold_log2: 1,
+        },
         verifier_sec_100_pack3::constants::WHIR_FOLD_STEPS[0],
         verifier_sec_100_pack3::constants::TRACE_LEN_LOG2 as usize,
         |ext, it| verifier_sec_100_pack3::verify::<_, DebugErrorCreator>(ext, it).map(|_| ()),
@@ -159,16 +185,24 @@ fn blake2_with_extended_control_sec_100_pack3_proof_verifies() {
 #[test]
 fn blake2_with_extended_control_sec_100_pack3_virtual_proof_verifies() {
     verify_variant(
-        BlakeVariant { pack_log2: 3, fold_log2: 0 },
+        BlakeVariant {
+            pack_log2: 3,
+            fold_log2: 0,
+        },
         verifier_sec_100_pack3_virtual::constants::WHIR_FOLD_STEPS[0],
         verifier_sec_100_pack3_virtual::constants::TRACE_LEN_LOG2 as usize,
-        |ext, it| verifier_sec_100_pack3_virtual::verify::<_, DebugErrorCreator>(ext, it).map(|_| ()),
+        |ext, it| {
+            verifier_sec_100_pack3_virtual::verify::<_, DebugErrorCreator>(ext, it).map(|_| ())
+        },
     );
 }
 #[test]
 fn blake2_with_extended_control_sec_100_pack4_proof_verifies() {
     verify_variant(
-        BlakeVariant { pack_log2: 4, fold_log2: 1 },
+        BlakeVariant {
+            pack_log2: 4,
+            fold_log2: 1,
+        },
         verifier_sec_100_pack4::constants::WHIR_FOLD_STEPS[0],
         verifier_sec_100_pack4::constants::TRACE_LEN_LOG2 as usize,
         |ext, it| verifier_sec_100_pack4::verify::<_, DebugErrorCreator>(ext, it).map(|_| ()),
@@ -177,9 +211,14 @@ fn blake2_with_extended_control_sec_100_pack4_proof_verifies() {
 #[test]
 fn blake2_with_extended_control_sec_100_pack4_virtual_proof_verifies() {
     verify_variant(
-        BlakeVariant { pack_log2: 4, fold_log2: 0 },
+        BlakeVariant {
+            pack_log2: 4,
+            fold_log2: 0,
+        },
         verifier_sec_100_pack4_virtual::constants::WHIR_FOLD_STEPS[0],
         verifier_sec_100_pack4_virtual::constants::TRACE_LEN_LOG2 as usize,
-        |ext, it| verifier_sec_100_pack4_virtual::verify::<_, DebugErrorCreator>(ext, it).map(|_| ()),
+        |ext, it| {
+            verifier_sec_100_pack4_virtual::verify::<_, DebugErrorCreator>(ext, it).map(|_| ())
+        },
     );
 }

@@ -20,13 +20,13 @@ pub(super) fn whir_schedule(
     packing: BasePacking,
 ) -> WhirSchedule {
     let mut schedule = match level {
-        SecurityLevel::Sec100 => ladder_for_100_bits(message_size_log2, packing.physical_packing_log2),
+        SecurityLevel::Sec100 => {
+            ladder_for_100_bits(message_size_log2, packing.physical_packing_log2)
+        }
     };
     if packing.virtual_packing {
-        schedule = schedule.to_virtual_packing(
-            level.security_bits() as u32,
-            &PessimisticConjectureMode,
-        );
+        schedule =
+            schedule.to_virtual_packing(level.security_bits() as u32, &PessimisticConjectureMode);
     }
     schedule
 }
@@ -317,7 +317,8 @@ mod tests {
             assert_eq!(bits(&packed), 8, "pack_log2 = {pack_log2}");
         }
         // an explicitly configured value survives the virtual twin unchanged
-        let mut explicit = packed_config_for_security_level_under_pessimistic_conjecture(20, 2, level);
+        let mut explicit =
+            packed_config_for_security_level_under_pessimistic_conjecture(20, 2, level);
         explicit.whir_schedule.base_round.batching_pow_bits = Some(11);
         let twin = explicit
             .whir_schedule

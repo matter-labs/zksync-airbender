@@ -1075,8 +1075,7 @@ pub(crate) mod test {
             bincode_deserialize_from_file("tmp_unified_setup.bin");
         assert_eq!(risc_v_setups.len(), 1);
 
-        let responses =
-            program_proof.flatten_unified_for_verification(verifier_common::BLAKE_MODE);
+        let responses = program_proof.flatten_unified_for_verification(verifier_common::BLAKE_MODE);
         std::thread::Builder::new()
             .name("verifier thread".to_string())
             .stack_size(1 << 27)

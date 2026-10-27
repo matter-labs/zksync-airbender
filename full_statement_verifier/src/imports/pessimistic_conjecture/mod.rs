@@ -15,7 +15,7 @@ pub mod mem_subword_only;
 pub mod mem_word_only;
 pub mod shift_binop;
 pub mod unified_reduced_machine;
-pub mod unsigned_mul_div;
 /// The high-LDE "L1 feeder" variant of the unified verifier (see
 /// `verifier_generator/tests/generate_verifiers.rs::unified_reduced_machine_l1_feeder`).
 pub mod unified_reduced_machine_l1_feeder;
+pub mod unsigned_mul_div;

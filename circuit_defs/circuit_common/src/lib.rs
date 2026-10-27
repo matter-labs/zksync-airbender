@@ -409,7 +409,8 @@ pub fn save_prover_configs_in(
             assert_eq!(1usize << config.trace_len_log2, compiled_circuit.trace_len);
             config.validate_for_whir_message_size(config.whir_message_size_log2());
             let mut dst =
-                std::fs::File::create(crate_root.join(prover_config_file_name(level, mode))).unwrap();
+                std::fs::File::create(crate_root.join(prover_config_file_name(level, mode)))
+                    .unwrap();
             serde_json::to_writer_pretty(&mut dst, &config).unwrap();
             let notes_path = crate_root.join(prover_config_notes_file_name(level, mode));
             match geometry.prover_config_notes(compiled_circuit, level, mode) {

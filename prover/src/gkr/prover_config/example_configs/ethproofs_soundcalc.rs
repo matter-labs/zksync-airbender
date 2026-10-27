@@ -88,7 +88,10 @@ impl ProximityRegime {
         match self {
             ProximityRegime::UniqueDecoding => {
                 let rho = 2f64.powi(-(rate_log2 as i32));
-                format!("unique decoding (δ = (1 − ρ)/2 = {:.3}, list size 1)", (1.0 - rho) / 2.0)
+                format!(
+                    "unique decoding (δ = (1 − ρ)/2 = {:.3}, list size 1)",
+                    (1.0 - rho) / 2.0
+                )
             }
             ProximityRegime::JohnsonBound { m } => {
                 let sqrt_rho = 2f64.powi(-(rate_log2 as i32)).sqrt();
@@ -594,8 +597,7 @@ mod tests {
                     round.folding_log2
                 );
                 assert_eq!(
-                    round.folding_pow_bits,
-                    certified.analysis.folding_pow_bits_per_step[0],
+                    round.folding_pow_bits, certified.analysis.folding_pow_bits_per_step[0],
                     "the per-step folding PoW schedule decreases from its first entry"
                 );
                 assert!(matches!(
@@ -609,7 +611,10 @@ mod tests {
                 assert!(poly_size_log2 + round.lde_factor_log2 <= 27);
                 poly_size_log2 -= round.folding_log2;
             }
-            assert_eq!(whir_schedule(SoundnessMode::EthproofsSoundnessCalc, entry.level, &input), schedule);
+            assert_eq!(
+                whir_schedule(SoundnessMode::EthproofsSoundnessCalc, entry.level, &input),
+                schedule
+            );
             let notes = entry.render_notes(entry.level, &input);
             assert!(notes.contains("soundcalc"));
             assert!(notes.contains(&format!("**{} bits**", entry.certified_bits)));
@@ -638,20 +643,20 @@ mod tests {
         let level = SecurityLevel::Sec100;
         // (trace, packing, memory, witness, setup) of every production circuit
         let circuits = [
-            (24, BasePacking::NONE, 26, 22, 8),   // add_sub_lui_auipc_mop
-            (24, BasePacking::NONE, 32, 0, 0),    // inits_and_teardowns
-            (24, BasePacking::NONE, 26, 29, 10),  // jump_branch_slt
-            (24, BasePacking::NONE, 29, 17, 9),   // load_store_subword_only
-            (24, BasePacking::NONE, 29, 11, 9),   // load_store_word_only
-            (24, BasePacking::NONE, 30, 28, 10),  // shift_binary
-            (23, BasePacking::NONE, 26, 24, 9),   // mul_div_unsigned
-            (23, BasePacking::NONE, 38, 58, 10),  // unified_reduced_machine
-            (22, BasePacking::VIRTUAL, 97, 160, 3), // bigint_with_control
+            (24, BasePacking::NONE, 26, 22, 8),      // add_sub_lui_auipc_mop
+            (24, BasePacking::NONE, 32, 0, 0),       // inits_and_teardowns
+            (24, BasePacking::NONE, 26, 29, 10),     // jump_branch_slt
+            (24, BasePacking::NONE, 29, 17, 9),      // load_store_subword_only
+            (24, BasePacking::NONE, 29, 11, 9),      // load_store_word_only
+            (24, BasePacking::NONE, 30, 28, 10),     // shift_binary
+            (23, BasePacking::NONE, 26, 24, 9),      // mul_div_unsigned
+            (23, BasePacking::NONE, 38, 58, 10),     // unified_reduced_machine
+            (22, BasePacking::VIRTUAL, 97, 160, 3),  // bigint_with_control
             (22, BasePacking::VIRTUAL, 66, 123, 11), // keccak_chi5
-            (22, BasePacking::VIRTUAL, 75, 92, 8),  // keccak_column_parity
-            (22, BasePacking::VIRTUAL, 91, 175, 8), // keccak_special5
-            (22, BasePacking::VIRTUAL, 72, 127, 9), // keccak_theta_rho
-            (22, BasePacking::VIRTUAL, 55, 57, 9),  // blake2_g_function
+            (22, BasePacking::VIRTUAL, 75, 92, 8),   // keccak_column_parity
+            (22, BasePacking::VIRTUAL, 91, 175, 8),  // keccak_special5
+            (22, BasePacking::VIRTUAL, 72, 127, 9),  // keccak_theta_rho
+            (22, BasePacking::VIRTUAL, 55, 57, 9),   // blake2_g_function
             (20, BasePacking::physical_and_virtual(2), 225, 538, 6), // blake2_with_compression
         ];
         for (trace, packing, memory, witness, setup) in circuits {

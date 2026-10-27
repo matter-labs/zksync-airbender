@@ -1,8 +1,8 @@
 use std::io::Write;
 
 use prover::field::baby_bear::base::BabyBearField;
-use verifier_common::test_circuits::{CircuitData, SecurityLevel, CIRCUITS, verifier_dir_name};
 use prover::gkr::prover_config::SoundnessMode;
+use verifier_common::test_circuits::{verifier_dir_name, CircuitData, SecurityLevel, CIRCUITS};
 use verifier_generator::field_wrapper::FieldWrapper;
 use verifier_generator::gkr::GKRGeneratedFiles;
 use verifier_generator::{gkr, utils, whir, DefaultBabyBearField};
@@ -330,7 +330,10 @@ fn one_off_from_prover_config_file() {
     let name = std::env::var("ONE_OFF_CIRCUIT").expect("ONE_OFF_CIRCUIT");
     let config_path = std::env::var("ONE_OFF_CONFIG").expect("ONE_OFF_CONFIG");
     let dir_suffix = std::env::var("ONE_OFF_DIR_SUFFIX").expect("ONE_OFF_DIR_SUFFIX");
-    let circuit = CIRCUITS.iter().find(|c| c.name == name).expect("registered circuit");
+    let circuit = CIRCUITS
+        .iter()
+        .find(|c| c.name == name)
+        .expect("registered circuit");
     let file = std::fs::File::open(&config_path).unwrap_or_else(|e| panic!("{config_path}: {e}"));
     let prover_config: prover::gkr::prover_config::ProverConfig =
         serde_json::from_reader(std::io::BufReader::new(file)).unwrap();

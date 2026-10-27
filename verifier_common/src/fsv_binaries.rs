@@ -72,7 +72,8 @@ mod tests {
 
     #[test]
     fn registry_matches_checked_in_binaries() {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tools/gkr_verifier/full_statement_verifiers");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../tools/gkr_verifier/full_statement_verifiers");
         // Blake-suffixed recursion-pipeline variants.
         for (program, modes) in [
             (FsvProgram::UnrolledBaseLayer, &[BlakeMode::Compression][..]),

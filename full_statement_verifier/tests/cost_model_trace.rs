@@ -115,10 +115,10 @@ fn stream_plan_matches_the_actual_stream() {
     {
         let (setups, proof) = trace::load_calibration_proof(fixture);
         let stream = full_statement_verifier::host_utils::build_unrolled_stream(
-        &setups,
-        &proof,
-        BlakeMode::Compression,
-    );
+            &setups,
+            &proof,
+            BlakeMode::Compression,
+        );
         let plan = trace::plan::plan_unrolled_stream(&setups, &proof, *program);
 
         assert_eq!(
@@ -210,10 +210,10 @@ fn every_fixture_verifies_natively() {
     for Fixture { name, program, .. } in &all_fixtures() {
         let (setups, proof) = trace::load_calibration_proof(name);
         let stream = full_statement_verifier::host_utils::build_unrolled_stream(
-        &setups,
-        &proof,
-        BlakeMode::Compression,
-    );
+            &setups,
+            &proof,
+            BlakeMode::Compression,
+        );
         full_statement_verifier::host_utils::native_verify_unrolled(
             stream,
             *program == FsvProgram::UnrolledBaseLayer,
@@ -250,10 +250,10 @@ fn estimate_matches_measurement_on_every_fixture() {
         );
         let (setups, proof) = trace::load_calibration_proof(name);
         let stream = full_statement_verifier::host_utils::build_unrolled_stream(
-        &setups,
-        &proof,
-        BlakeMode::Compression,
-    );
+            &setups,
+            &proof,
+            BlakeMode::Compression,
+        );
         let measured = trace::measure_verifier_cycles(&bin, &text, stream);
         let estimate = estimate_verifier_cycles(&proof, *program, BlakeMode::Compression).unwrap();
         let error = estimate.abs_diff(measured);

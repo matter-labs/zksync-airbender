@@ -185,7 +185,10 @@ mod tests {
             };
 
         // sanity: base proof verifies on the native machine.
-        native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof, verifier_common::BLAKE_MODE), true);
+        native_verify_unrolled(
+            build_unrolled_stream(&base_setups, &base_proof, verifier_common::BLAKE_MODE),
+            true,
+        );
         println!("Base layer proofs pass the verification on native arch");
 
         let base_end_params = compute_end_params(&base_setups, base_proof.final_pc);
@@ -234,7 +237,14 @@ mod tests {
                 ))
                 .unwrap();
                 total_cycles += cached_proof.executed_cycles();
-                native_verify_unrolled(build_unrolled_stream(&cached_setups, &cached_proof, verifier_common::BLAKE_MODE), false);
+                native_verify_unrolled(
+                    build_unrolled_stream(
+                        &cached_setups,
+                        &cached_proof,
+                        verifier_common::BLAKE_MODE,
+                    ),
+                    false,
+                );
                 let end_params = compute_end_params(&cached_setups, cached_proof.final_pc);
                 chain.extend(&end_params);
                 proof = cached_proof;
@@ -276,7 +286,11 @@ mod tests {
                 bin,
                 text,
                 use_caches,
-                QuasiUARTSource::new_with_reads(build_unrolled_stream(&setups, &proof, unrolled_blake)),
+                QuasiUARTSource::new_with_reads(build_unrolled_stream(
+                    &setups,
+                    &proof,
+                    unrolled_blake,
+                )),
                 RAM_BOUND,
                 &worker,
                 SecurityLevel::Sec100,
@@ -299,7 +313,10 @@ mod tests {
             println!("unrolled recursion round ran {round_cycles} cycles (total {total_cycles})");
 
             // sanity verify (this proof carries a recursion preimage).
-            native_verify_unrolled(build_unrolled_stream(&new_setups, &new_proof, verifier_common::BLAKE_MODE), false);
+            native_verify_unrolled(
+                build_unrolled_stream(&new_setups, &new_proof, verifier_common::BLAKE_MODE),
+                false,
+            );
 
             let end_params = compute_end_params(&new_setups, new_proof.final_pc);
             chain.extend(&end_params);
@@ -343,7 +360,11 @@ mod tests {
                 &bridge_bin,
                 &bridge_text,
                 use_caches,
-                QuasiUARTSource::new_with_reads(build_unrolled_stream(&setups, &proof, bridge_blake)),
+                QuasiUARTSource::new_with_reads(build_unrolled_stream(
+                    &setups,
+                    &proof,
+                    bridge_blake,
+                )),
                 RAM_BOUND,
                 &worker,
                 SecurityLevel::Sec100,
@@ -368,7 +389,10 @@ mod tests {
         total_cycles += bridge_proof_cycles;
         println!("bridge unified proof ran {bridge_proof_cycles} cycles (total {total_cycles})");
 
-        native_verify_unified(build_unified_stream(&bridge_setups, &bridge_proof, verifier_common::BLAKE_MODE), false);
+        native_verify_unified(
+            build_unified_stream(&bridge_setups, &bridge_proof, verifier_common::BLAKE_MODE),
+            false,
+        );
 
         let bridge_end_params = compute_end_params(&bridge_setups, bridge_proof.final_pc);
         chain.extend(&bridge_end_params);
@@ -441,7 +465,11 @@ mod tests {
                     &unified_rec_bin,
                     &unified_rec_text,
                     use_caches,
-                    QuasiUARTSource::new_with_reads(build_unified_stream(&setups, &proof, final_blake)),
+                    QuasiUARTSource::new_with_reads(build_unified_stream(
+                        &setups,
+                        &proof,
+                        final_blake,
+                    )),
                     RAM_BOUND,
                     &worker,
                     SecurityLevel::Sec100,
@@ -464,7 +492,10 @@ mod tests {
                  delegations {new_delegations:?}"
             );
 
-            native_verify_unified(build_unified_stream(&new_setups, &new_proof, verifier_common::BLAKE_MODE), false);
+            native_verify_unified(
+                build_unified_stream(&new_setups, &new_proof, verifier_common::BLAKE_MODE),
+                false,
+            );
 
             let end_params = compute_end_params(&new_setups, new_proof.final_pc);
             chain.extend(&end_params);
@@ -474,7 +505,10 @@ mod tests {
         }
 
         let (chunks, delegations) = proof_shape(&proof);
-        let final_output = native_verify_unified(build_unified_stream(&setups, &proof, verifier_common::BLAKE_MODE), false);
+        let final_output = native_verify_unified(
+            build_unified_stream(&setups, &proof, verifier_common::BLAKE_MODE),
+            false,
+        );
 
         println!("=== pipeline complete: {total_cycles} total cycles proven ===");
         println!(
@@ -650,7 +684,11 @@ mod tests {
                         &spec_bin,
                         &spec_text,
                         use_caches,
-                        QuasiUARTSource::new_with_reads(build_unified_stream(&setups, &proof, BlakeMode::BlakeSpecialOpcodes)),
+                        QuasiUARTSource::new_with_reads(build_unified_stream(
+                            &setups,
+                            &proof,
+                            BlakeMode::BlakeSpecialOpcodes,
+                        )),
                         RAM_BOUND,
                         &worker,
                         SecurityLevel::Sec100,
@@ -674,7 +712,10 @@ mod tests {
                 delegations.is_empty(),
                 "special-opcodes verifier run must make no delegation calls"
             );
-            native_verify_unified(build_unified_stream(&new_setups, &new_proof, verifier_common::BLAKE_MODE), false);
+            native_verify_unified(
+                build_unified_stream(&new_setups, &new_proof, verifier_common::BLAKE_MODE),
+                false,
+            );
             chain.extend(&compute_end_params(&new_setups, new_proof.final_pc));
             proof = new_proof;
             setups = new_setups;
@@ -809,7 +850,11 @@ mod tests {
                         run_bin,
                         run_text,
                         use_caches,
-                        QuasiUARTSource::new_with_reads(build_unified_stream(&setups, &proof, BlakeMode::BlakeSpecialOpcodes)),
+                        QuasiUARTSource::new_with_reads(build_unified_stream(
+                            &setups,
+                            &proof,
+                            BlakeMode::BlakeSpecialOpcodes,
+                        )),
                         RAM_BOUND,
                         &worker,
                         SecurityLevel::Sec100,
@@ -896,7 +941,11 @@ mod tests {
         let setups: Setups =
             try_deserialize_compressed_from_file(&format!("feeder_layer_1_setups_{tags}.bin"))
                 .unwrap();
-        let stream = build_unified_stream(&setups, &proof, verifier_common::fsv_binaries::BlakeMode::BlakeSpecialOpcodes);
+        let stream = build_unified_stream(
+            &setups,
+            &proof,
+            verifier_common::fsv_binaries::BlakeMode::BlakeSpecialOpcodes,
+        );
 
         let program = ProgramConfig {
             program: riscv_transpiler::elf::ProgramSource::elf(format!(

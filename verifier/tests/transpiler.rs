@@ -1,12 +1,12 @@
 mod common;
 
 use common::{SecurityLevel, SoundnessMode};
-use verifier_common::BlakeMode;
 use field::baby_bear::base::BabyBearField;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::*;
 use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 use riscv_transpiler::vm::*;
+use verifier_common::BlakeMode;
 
 /// The circuit's proof fixture of `mode` on its RISC-V verifier program of
 /// `mode` (`tools/gkr_verifier/circuit_verifiers/<mode>/<circuit>.elf`); the
@@ -264,14 +264,13 @@ fn blake2_with_extended_control_sec_100_variants() {
         .join("flamegraphs")
         .join("blake_variants");
     std::fs::create_dir_all(&out_dir).unwrap();
-    let mut summary = String::from(
-        "# variant  physical_packing_log2  values_per_column_per_leaf  cycles\n",
-    );
+    let mut summary =
+        String::from("# variant  physical_packing_log2  values_per_column_per_leaf  cycles\n");
     for variant in BlakeVariant::all() {
         let infix = variant.infix();
-        let selected_here = selected
-            .as_ref()
-            .is_none_or(|set| set.contains(&infix) || (infix.is_empty() && set.contains("default")));
+        let selected_here = selected.as_ref().is_none_or(|set| {
+            set.contains(&infix) || (infix.is_empty() && set.contains("default"))
+        });
         if !selected_here {
             continue;
         }
@@ -296,6 +295,9 @@ fn blake2_with_extended_control_sec_100_variants() {
     }
     let summary_path = out_dir.join("cycles.txt");
     std::fs::write(&summary_path, &summary).unwrap();
-    println!("[blake-variants] summary written to {}", summary_path.display());
+    println!(
+        "[blake-variants] summary written to {}",
+        summary_path.display()
+    );
     print!("{summary}");
 }

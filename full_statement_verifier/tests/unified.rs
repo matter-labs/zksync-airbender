@@ -7,8 +7,8 @@ use common_constants::{
     BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER, KECCAK_SPECIAL5_CSR_REGISTER,
     REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
 };
-use full_statement_verifier::program_proof::ProgramProof;
 use full_statement_verifier::pessimistic_conjecture::verify_unified_circuit_base_layer;
+use full_statement_verifier::program_proof::ProgramProof;
 use verifier_common::cs::gkr_compiler::GKRCircuitArtifact;
 use verifier_common::errors::DebugErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
@@ -129,9 +129,7 @@ fn run_unified_base_layer(responses: Vec<u32>) -> Result<[u32; 16], ()> {
         .stack_size(1 << 27)
         .spawn(move || {
             let mut src = responses.into_iter();
-            verify_unified_circuit_base_layer::<_, DebugErrorCreator, REDUCED_ROUNDS>(
-                &mut src,
-            )
+            verify_unified_circuit_base_layer::<_, DebugErrorCreator, REDUCED_ROUNDS>(&mut src)
         })
         .expect("spawn verifier thread")
         .join()

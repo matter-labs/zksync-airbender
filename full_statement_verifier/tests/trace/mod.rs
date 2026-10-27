@@ -195,7 +195,10 @@ pub fn measure_verifier_cycles(bin: &[u32], text: &[u32], stream: Vec<u32>) -> u
 }
 
 pub fn fsv_dir() -> String {
-    format!("{}/../tools/gkr_verifier/full_statement_verifiers", env!("CARGO_MANIFEST_DIR"))
+    format!(
+        "{}/../tools/gkr_verifier/full_statement_verifiers",
+        env!("CARGO_MANIFEST_DIR")
+    )
 }
 
 fn read_compressed<T: serde::de::DeserializeOwned>(path: &str) -> T {

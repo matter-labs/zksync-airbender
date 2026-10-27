@@ -2,9 +2,9 @@
 
 pub use verifier_common;
 
+pub mod definitions;
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub mod delegation_circuits_setups;
-pub mod definitions;
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub mod soundness_modes;
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]

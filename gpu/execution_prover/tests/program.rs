@@ -292,7 +292,8 @@ fn test_program_prover_unified_base_layer_verify() {
         proof.delegation_proofs.len(),
     );
 
-    let stream = crate::upstream::build_unified_stream(&setups, &proof, verifier_common::BLAKE_MODE);
+    let stream =
+        crate::upstream::build_unified_stream(&setups, &proof, verifier_common::BLAKE_MODE);
     let output = crate::upstream::native_verify_unified(stream, true);
     log::info!("unified base layer verified natively; output registers: {output:?}");
 }
@@ -762,35 +763,34 @@ fn test_generate_sec100_cost_model_fixtures() {
         std::fs::read_dir(&fixture_dir).unwrap().next().is_none(),
         "fixture output directory must be empty"
     );
-    let (base_binary, base_text, inputs) =
-        if let Some(directory) = std::env::var_os("COST_MODEL_INPUT_DIR") {
-            let directory = std::path::PathBuf::from(directory);
-            let (binary, text) = ProgramSource::legacy_binaries(
-                directory.join("app.bin"),
-                directory.join("app.text"),
-            )
-            .load_unpadded();
-            let mut paths: Vec<_> = std::fs::read_dir(directory.join("inputs"))
-                .unwrap()
-                .map(|entry| entry.unwrap().path())
-                .filter(|path| path.extension().is_some_and(|extension| extension == "hex"))
-                .collect();
-            paths.sort_by(|a, b| a.file_stem().cmp(&b.file_stem()));
-            assert!(!paths.is_empty(), "local corpus has no inputs/*.hex");
-            let inputs: Vec<_> = paths
-                .iter()
-                .map(|path| {
-                    (
-                        path.file_stem().unwrap().to_str().unwrap().to_owned(),
-                        read_witness(path),
-                    )
-                })
-                .collect();
-            (binary, text, inputs)
-        } else {
-            let (binary, text, witness) = load_zksync_os_workload();
-            (binary, text, vec![("default".to_owned(), witness)])
-        };
+    let (base_binary, base_text, inputs) = if let Some(directory) =
+        std::env::var_os("COST_MODEL_INPUT_DIR")
+    {
+        let directory = std::path::PathBuf::from(directory);
+        let (binary, text) =
+            ProgramSource::legacy_binaries(directory.join("app.bin"), directory.join("app.text"))
+                .load_unpadded();
+        let mut paths: Vec<_> = std::fs::read_dir(directory.join("inputs"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|extension| extension == "hex"))
+            .collect();
+        paths.sort_by(|a, b| a.file_stem().cmp(&b.file_stem()));
+        assert!(!paths.is_empty(), "local corpus has no inputs/*.hex");
+        let inputs: Vec<_> = paths
+            .iter()
+            .map(|path| {
+                (
+                    path.file_stem().unwrap().to_str().unwrap().to_owned(),
+                    read_witness(path),
+                )
+            })
+            .collect();
+        (binary, text, inputs)
+    } else {
+        let (binary, text, witness) = load_zksync_os_workload();
+        (binary, text, vec![("default".to_owned(), witness)])
+    };
 
     let configuration = ExecutionProverConfiguration {
         security_level: SecurityLevel::Sec100,

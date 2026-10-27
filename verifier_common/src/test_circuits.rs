@@ -73,8 +73,7 @@ pub struct CircuitData {
     security_levels: [SecurityLevel; NUM_SECURITY_LEVELS],
     prover_configs_cache: [[OnceLock<ProverConfig>; NUM_SOUNDNESS_MODES]; NUM_SECURITY_LEVELS],
     nds_cache: [[[OnceLock<(Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>)>;
-        NUM_BLAKE_MODES];
-        NUM_SOUNDNESS_MODES]; NUM_SECURITY_LEVELS],
+        NUM_BLAKE_MODES]; NUM_SOUNDNESS_MODES]; NUM_SECURITY_LEVELS],
 }
 
 impl CircuitData {
@@ -103,7 +102,11 @@ impl CircuitData {
     }
 
     /// The serialized config of `mode` (see [`Self::prover_config_path_for_mode`]).
-    pub fn prover_config_for_mode(&self, level: SecurityLevel, mode: SoundnessMode) -> &ProverConfig {
+    pub fn prover_config_for_mode(
+        &self,
+        level: SecurityLevel,
+        mode: SoundnessMode,
+    ) -> &ProverConfig {
         self.prover_configs_cache[level as usize][mode_index(mode)].get_or_init(|| {
             let path = self.prover_config_path_for_mode(level, mode);
             let config: ProverConfig = deserialize_from_file(&path);
@@ -120,7 +123,11 @@ impl CircuitData {
         &self.prover_config_for(level).whir_schedule
     }
 
-    pub fn whir_schedule_for_mode(&self, level: SecurityLevel, mode: SoundnessMode) -> &WhirSchedule {
+    pub fn whir_schedule_for_mode(
+        &self,
+        level: SecurityLevel,
+        mode: SoundnessMode,
+    ) -> &WhirSchedule {
         &self.prover_config_for_mode(level, mode).whir_schedule
     }
 
@@ -167,7 +174,11 @@ impl CircuitData {
     /// The verifier program's ELF of `mode`:
     /// `tools/gkr_verifier/circuit_verifiers/<mode>/<name>.elf`.
     pub fn elf_path_for_mode(&self, level: SecurityLevel, mode: SoundnessMode) -> String {
-        assert_eq!(level, SecurityLevel::Sec100, "the verifier programs are built for 100 bits");
+        assert_eq!(
+            level,
+            SecurityLevel::Sec100,
+            "the verifier programs are built for 100 bits"
+        );
         format!(
             "{}/tools/gkr_verifier/circuit_verifiers/{}/{}.elf",
             REPO_ROOT,
@@ -314,7 +325,9 @@ pub mod packed_fixture {
         deserialize_from_file(&proof_path())
     }
 
-    pub fn load_nds(blake: BlakeMode) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
+    pub fn load_nds(
+        blake: BlakeMode,
+    ) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
         let circuit = circuit().compiled_circuit();
         let proof = proof();
         let nds = flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
@@ -369,7 +382,9 @@ pub mod virtual_packing_fixture {
         deserialize_from_file(&proof_path())
     }
 
-    pub fn load_nds(blake: BlakeMode) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
+    pub fn load_nds(
+        blake: BlakeMode,
+    ) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
         let circuit = circuit().compiled_circuit();
         let proof = proof();
         let nds = flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
@@ -404,8 +419,14 @@ pub mod blake_variants {
             (0..=4)
                 .flat_map(|pack_log2| {
                     [
-                        Self { pack_log2, fold_log2: 1 },
-                        Self { pack_log2, fold_log2: 0 },
+                        Self {
+                            pack_log2,
+                            fold_log2: 1,
+                        },
+                        Self {
+                            pack_log2,
+                            fold_log2: 0,
+                        },
                     ]
                 })
                 .collect()
@@ -428,7 +449,11 @@ pub mod blake_variants {
         /// Output dir under the circuit's generated dir (the sweep is a
         /// pessimistic-conjecture variant): `pessimistic_conjecture{infix}`.
         pub fn dir_suffix(&self) -> String {
-            format!("{}{}", verifier_dir_name(SoundnessMode::PessimisticConjecture), self.infix())
+            format!(
+                "{}{}",
+                verifier_dir_name(SoundnessMode::PessimisticConjecture),
+                self.infix()
+            )
         }
 
         /// `blake2_with_extended_control_sec_100{infix}`: the proof fixture

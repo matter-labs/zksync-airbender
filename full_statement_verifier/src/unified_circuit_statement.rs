@@ -395,7 +395,12 @@ pub fn verify_unified_circuit_base_layer<
     security_level: prover::definitions::SecurityLevel,
     mode: prover::definitions::SoundnessMode,
 ) -> Result<[u32; 16], E::Error> {
-    dispatch_on_mode!(verify_unified_circuit_base_layer, nd_source, security_level, mode)
+    dispatch_on_mode!(
+        verify_unified_circuit_base_layer,
+        nd_source,
+        security_level,
+        mode
+    )
 }
 
 pub fn verify_unified_circuit_recursion_layer<
@@ -407,7 +412,12 @@ pub fn verify_unified_circuit_recursion_layer<
     security_level: prover::definitions::SecurityLevel,
     mode: prover::definitions::SoundnessMode,
 ) -> Result<[u32; 16], E::Error> {
-    dispatch_on_mode!(verify_unified_circuit_recursion_layer, nd_source, security_level, mode)
+    dispatch_on_mode!(
+        verify_unified_circuit_recursion_layer,
+        nd_source,
+        security_level,
+        mode
+    )
 }
 
 pub fn verify_unrolled_or_unified_circuit_recursion_layer<

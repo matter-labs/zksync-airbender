@@ -134,12 +134,7 @@ impl BaseColumns {
                 physical_packing_log2,
             )
         } else {
-            physically_committed_polys(
-                self.memory,
-                self.witness,
-                self.setup,
-                physical_packing_log2,
-            )
+            physically_committed_polys(self.memory, self.witness, self.setup, physical_packing_log2)
         }
     }
 }
@@ -343,10 +338,42 @@ mod tests {
     fn both_modes_build_every_production_shape() {
         // (trace, packing, widest production circuit of the shape)
         let shapes = [
-            (24, BasePacking::NONE, BaseColumns { memory: 30, witness: 28, setup: 10 }), // shift_binary
-            (23, BasePacking::NONE, BaseColumns { memory: 38, witness: 58, setup: 10 }), // unified
-            (22, BasePacking::VIRTUAL, BaseColumns { memory: 91, witness: 175, setup: 8 }), // keccak_special5
-            (20, BasePacking::physical_and_virtual(2), BaseColumns { memory: 225, witness: 538, setup: 6 }), // blake2_with_compression
+            (
+                24,
+                BasePacking::NONE,
+                BaseColumns {
+                    memory: 30,
+                    witness: 28,
+                    setup: 10,
+                },
+            ), // shift_binary
+            (
+                23,
+                BasePacking::NONE,
+                BaseColumns {
+                    memory: 38,
+                    witness: 58,
+                    setup: 10,
+                },
+            ), // unified
+            (
+                22,
+                BasePacking::VIRTUAL,
+                BaseColumns {
+                    memory: 91,
+                    witness: 175,
+                    setup: 8,
+                },
+            ), // keccak_special5
+            (
+                20,
+                BasePacking::physical_and_virtual(2),
+                BaseColumns {
+                    memory: 225,
+                    witness: 538,
+                    setup: 6,
+                },
+            ), // blake2_with_compression
         ];
         for mode in SoundnessMode::ALL {
             for (trace_len_log2, packing, columns) in shapes {

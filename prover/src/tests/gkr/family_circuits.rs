@@ -141,7 +141,10 @@ pub fn gkr_blake_delegation_variant_impl(level: SecurityLevel, variant: BaseComm
 
 pub use super::orchestration::delegations::BaseCommitmentVariant;
 
-pub fn gkr_blake_delegation_variants_impl(level: SecurityLevel, variants: &[BaseCommitmentVariant]) {
+pub fn gkr_blake_delegation_variants_impl(
+    level: SecurityLevel,
+    variants: &[BaseCommitmentVariant],
+) {
     type CountersT = riscv_transpiler::vm::DelegationsAndFamiliesCounters;
     let proof_suffix = level.dir_suffix();
     let worker = Worker::new_with_num_threads(8);
@@ -162,7 +165,10 @@ pub fn gkr_blake_delegation_variants_impl(level: SecurityLevel, variants: &[Base
 
     let external_challenges = super::orchestration::common::hardcoded_external_challenges();
     for &variant in variants.iter() {
-        println!("=== blake base-round variant {variant:?} ({}) ===", variant.proof_name_infix());
+        println!(
+            "=== blake base-round variant {variant:?} ({}) ===",
+            variant.proof_name_infix()
+        );
         let out = super::orchestration::delegations::prove_delegation_blake_with_packing::<CountersT>(
             &vm.snapshotter,
             &vm.tape,

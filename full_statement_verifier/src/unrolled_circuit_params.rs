@@ -19,10 +19,11 @@ pub type UnrolledCircuitVerifier<I, E> = (
     ) -> Result<crate::imports::UnrolledCircuitOutput, <E as ErrorCreator>::Error>,
 );
 
-pub type InitsAndTeardownsVerifier<I, E> = fn(
-    &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
-    &mut I,
-) -> Result<crate::imports::InitsAndTeardownsCircuitOutput, <E as ErrorCreator>::Error>;
+pub type InitsAndTeardownsVerifier<I, E> =
+    fn(
+        &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+        &mut I,
+    ) -> Result<crate::imports::InitsAndTeardownsCircuitOutput, <E as ErrorCreator>::Error>;
 
 macro_rules! unrolled_circuit_tables {
     ($mode:ident) => {

@@ -12,10 +12,11 @@ use verifier_common::non_determinism_source::NonDeterminismSource;
 
 pub use crate::delegation_circuits_setups::NUM_DELEGATION_CIRCUIT_TYPES;
 
-pub type DelegationVerifierFn<I, E> = fn(
-    &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
-    &mut I,
-) -> Result<crate::imports::DelegationCircuitOutput, <E as ErrorCreator>::Error>;
+pub type DelegationVerifierFn<I, E> =
+    fn(
+        &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+        &mut I,
+    ) -> Result<crate::imports::DelegationCircuitOutput, <E as ErrorCreator>::Error>;
 
 /// The entry of the recursion-layer table for a delegation the recursion
 /// guests never call: a proof claiming such a delegation is rejected.

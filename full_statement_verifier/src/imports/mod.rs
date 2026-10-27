@@ -17,11 +17,15 @@ pub type DelegationCircuitOutput =
 pub type UnifiedCircuitOutput =
     pessimistic_conjecture::unified_reduced_machine::ConcreteVerifierOutput;
 
-const _: fn(ethproofs_soundcalc::add_sub_lui_auipc_mop::ConcreteVerifierOutput) -> UnrolledCircuitOutput =
-    |o| o;
-const _: fn(ethproofs_soundcalc::inits_and_teardowns::ConcreteVerifierOutput) -> InitsAndTeardownsCircuitOutput =
-    |o| o;
-const _: fn(ethproofs_soundcalc::blake2_with_extended_control::ConcreteVerifierOutput) -> DelegationCircuitOutput =
-    |o| o;
-const _: fn(ethproofs_soundcalc::unified_reduced_machine::ConcreteVerifierOutput) -> UnifiedCircuitOutput =
-    |o| o;
+const _: fn(
+    ethproofs_soundcalc::add_sub_lui_auipc_mop::ConcreteVerifierOutput,
+) -> UnrolledCircuitOutput = |o| o;
+const _: fn(
+    ethproofs_soundcalc::inits_and_teardowns::ConcreteVerifierOutput,
+) -> InitsAndTeardownsCircuitOutput = |o| o;
+const _: fn(
+    ethproofs_soundcalc::blake2_with_extended_control::ConcreteVerifierOutput,
+) -> DelegationCircuitOutput = |o| o;
+const _: fn(
+    ethproofs_soundcalc::unified_reduced_machine::ConcreteVerifierOutput,
+) -> UnifiedCircuitOutput = |o| o;

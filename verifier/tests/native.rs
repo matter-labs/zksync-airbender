@@ -16,7 +16,9 @@ fn run_native(name: &str, level: SecurityLevel, mode: SoundnessMode) {
                 // set_iterator(nds.into_iter());
                 with_circuit!(name, level, mode, |m| {
                     m::verify::<_, DebugErrorCreator>(&external_challenges, &mut it)
-                        .unwrap_or_else(|e| panic!("{} {:?} {:?} failed: {:?}", name, level, mode, e));
+                        .unwrap_or_else(|e| {
+                            panic!("{} {:?} {:?} failed: {:?}", name, level, mode, e)
+                        });
                 });
                 #[cfg(feature = "verifier_stats")]
                 common::print_stats_log(name);

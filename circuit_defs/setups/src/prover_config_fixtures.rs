@@ -20,8 +20,12 @@ pub fn geometry_of(name: &str) -> CircuitGeometry {
         "add_sub_lui_auipc_mop" => {
             <AddSubLuiAuipcMopCircuit as RiscVCycleCircuit<F, false>>::geometry()
         }
-        "bigint_with_extended_control" => <BigIntDelegationCircuit as DelegationCircuit<F>>::geometry(),
-        "blake2_g_function" => <Blake2sGFunctionDelegationCircuit as DelegationCircuit<F>>::geometry(),
+        "bigint_with_extended_control" => {
+            <BigIntDelegationCircuit as DelegationCircuit<F>>::geometry()
+        }
+        "blake2_g_function" => {
+            <Blake2sGFunctionDelegationCircuit as DelegationCircuit<F>>::geometry()
+        }
         "blake2_with_extended_control" => {
             <Blake2sWithCompressionDelegationCircuit as DelegationCircuit<F>>::geometry()
         }
@@ -97,10 +101,8 @@ mod tests {
                     let notes_path = root.join(prover_config_notes_file_name(level, mode));
                     match geometry.prover_config_notes(&compiled, level, mode) {
                         Some(notes) => assert_eq!(
-                            std::fs::read_to_string(&notes_path).unwrap_or_else(|e| panic!(
-                                "{}: {e}",
-                                notes_path.display()
-                            )),
+                            std::fs::read_to_string(&notes_path)
+                                .unwrap_or_else(|e| panic!("{}: {e}", notes_path.display())),
                             notes,
                             "{} is stale",
                             notes_path.display()

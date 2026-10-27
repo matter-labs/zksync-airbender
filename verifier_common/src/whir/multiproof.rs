@@ -358,7 +358,10 @@ mod tests {
 
     /// Levels of a tree over `leaves`, level 0 = leaf hashes.
     fn build_tree(hasher: &mut DelegatedBlake2sState, leaves: &[[u32; 4]]) -> Vec<Vec<Digest>> {
-        let mut levels = vec![leaves.iter().map(|l| leaf_hash(hasher, l)).collect::<Vec<_>>()];
+        let mut levels = vec![leaves
+            .iter()
+            .map(|l| leaf_hash(hasher, l))
+            .collect::<Vec<_>>()];
         while levels.last().unwrap().len() > 1 {
             let prev = levels.last().unwrap();
             let next: Vec<Digest> = prev
@@ -496,7 +499,10 @@ mod tests {
         for pos in [0, 2, nds.len() - 1] {
             let mut bad = nds.clone();
             bad[pos] ^= 1;
-            assert!(!verify(&bad, queries, num_leaves, depth, &cap), "tamper at {pos}");
+            assert!(
+                !verify(&bad, queries, num_leaves, depth, &cap),
+                "tamper at {pos}"
+            );
         }
         let mut bad_cap = cap.clone();
         bad_cap[(sorted[0] >> depth) * BLAKE2S_DIGEST_SIZE_U32_WORDS] ^= 1;
@@ -512,7 +518,12 @@ mod tests {
     #[test]
     fn multiproof_round_trips_and_rejects_tampering() {
         run_case(3, 0, &[5, 2, 6, 0], 1);
-        run_case(4, 1, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], 2);
+        run_case(
+            4,
+            1,
+            &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+            2,
+        );
         run_case(5, 2, &[31, 0, 17, 16, 3, 30], 3);
         run_case(6, 2, &[7, 7, 9, 7, 40, 41, 41, 2, 63], 4);
         run_case(6, 6, &[3, 3, 60, 1], 5);

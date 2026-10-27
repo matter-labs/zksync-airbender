@@ -258,7 +258,11 @@ where
         assert_eq!(reference.len(), num_queries);
         for oracle in &opened {
             assert!(
-                oracle.queries.iter().map(|q| q.index).eq(reference.iter().copied()),
+                oracle
+                    .queries
+                    .iter()
+                    .map(|q| q.index)
+                    .eq(reference.iter().copied()),
                 "base oracles must open the same tree indices"
             );
         }

@@ -379,10 +379,14 @@ pub fn verify_unrolled_base_layer<
     use prover::definitions::{SecurityLevel, SoundnessMode};
     match (security_level, mode) {
         (SecurityLevel::Sec100, SoundnessMode::PessimisticConjecture) => {
-            crate::pessimistic_conjecture::verify_unrolled_base_layer::<I, E, REDUCED_ROUNDS>(nd_source)
+            crate::pessimistic_conjecture::verify_unrolled_base_layer::<I, E, REDUCED_ROUNDS>(
+                nd_source,
+            )
         }
         (SecurityLevel::Sec100, SoundnessMode::EthproofsSoundnessCalc) => {
-            crate::ethproofs_soundcalc::verify_unrolled_base_layer::<I, E, REDUCED_ROUNDS>(nd_source)
+            crate::ethproofs_soundcalc::verify_unrolled_base_layer::<I, E, REDUCED_ROUNDS>(
+                nd_source,
+            )
         }
     }
 }
@@ -399,10 +403,14 @@ pub fn verify_unrolled_recursion_layer<
     use prover::definitions::{SecurityLevel, SoundnessMode};
     match (security_level, mode) {
         (SecurityLevel::Sec100, SoundnessMode::PessimisticConjecture) => {
-            crate::pessimistic_conjecture::verify_unrolled_recursion_layer::<I, E, REDUCED_ROUNDS>(nd_source)
+            crate::pessimistic_conjecture::verify_unrolled_recursion_layer::<I, E, REDUCED_ROUNDS>(
+                nd_source,
+            )
         }
         (SecurityLevel::Sec100, SoundnessMode::EthproofsSoundnessCalc) => {
-            crate::ethproofs_soundcalc::verify_unrolled_recursion_layer::<I, E, REDUCED_ROUNDS>(nd_source)
+            crate::ethproofs_soundcalc::verify_unrolled_recursion_layer::<I, E, REDUCED_ROUNDS>(
+                nd_source,
+            )
         }
     }
 }
@@ -419,10 +427,18 @@ pub fn verify_base_or_recursion_unrolled_circuits<
     use prover::definitions::{SecurityLevel, SoundnessMode};
     match (security_level, mode) {
         (SecurityLevel::Sec100, SoundnessMode::PessimisticConjecture) => {
-            crate::pessimistic_conjecture::verify_base_or_recursion_unrolled_circuits::<I, E, REDUCED_ROUNDS>(nd_source)
+            crate::pessimistic_conjecture::verify_base_or_recursion_unrolled_circuits::<
+                I,
+                E,
+                REDUCED_ROUNDS,
+            >(nd_source)
         }
         (SecurityLevel::Sec100, SoundnessMode::EthproofsSoundnessCalc) => {
-            crate::ethproofs_soundcalc::verify_base_or_recursion_unrolled_circuits::<I, E, REDUCED_ROUNDS>(nd_source)
+            crate::ethproofs_soundcalc::verify_base_or_recursion_unrolled_circuits::<
+                I,
+                E,
+                REDUCED_ROUNDS,
+            >(nd_source)
         }
     }
 }

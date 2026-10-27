@@ -306,7 +306,8 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             let depth = oracle_info.depth;
 
             if num_cols > 0 {
-                let stack = quote::format_ident!("multiproof_stack_{}", oracle_type.clone() as usize);
+                let stack =
+                    quote::format_ident!("multiproof_stack_{}", oracle_type.clone() as usize);
                 multiproof_stacks.extend(quote! {
                     let mut #stack = MerkleMultiproofStack::<#depth>::new();
                 });

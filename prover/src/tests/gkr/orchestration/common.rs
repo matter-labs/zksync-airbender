@@ -432,7 +432,10 @@ fn one_off_prover_config(
         packing,
         Some(&BaseColumns::of(&compiled)),
     );
-    let out = format!("test_proofs/{stem}_{}_prover_config.json", proof_suffix(level));
+    let out = format!(
+        "test_proofs/{stem}_{}_prover_config.json",
+        proof_suffix(level)
+    );
     let mut dst = std::fs::File::create(&out).unwrap_or_else(|e| panic!("{out}: {e}"));
     serde_json::to_writer_pretty(&mut dst, &config).unwrap();
     println!(
@@ -478,8 +481,7 @@ pub fn fixture_prover_config(
     // the override only applies to the circuits selected for proving: the others
     // never prove, and their shape may have no certified schedule
     if let Some(packing) = base_packing_override() {
-        let selected = parse_circuits_filter()
-            .is_none_or(|filter| filter.contains(stem));
+        let selected = parse_circuits_filter().is_none_or(|filter| filter.contains(stem));
         if selected {
             return one_off_prover_config(stem, level, packing);
         }

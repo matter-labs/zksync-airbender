@@ -1,8 +1,8 @@
 extern crate alloc;
 
-use ::verifier_common::BlakeMode;
 use crate::definitions::DELEGATION_TYPES;
 use crate::recursion_chain::RecursionChain;
+use ::verifier_common::BlakeMode;
 use alloc::collections::BTreeMap;
 use common_constants::{
     ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX, JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX,
@@ -146,7 +146,11 @@ impl ProgramProof {
                     responses.push(proofs.len() as u32);
                     for proof in proofs.iter() {
                         responses.extend(
-                            ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(proof, compiled_circuit, blake),
+                            ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
+                                proof,
+                                compiled_circuit,
+                                blake,
+                            ),
                         );
                     }
                 } else {
@@ -164,7 +168,11 @@ impl ProgramProof {
                 .as_ref()
                 .expect("compiled inits and teardowns");
             for proof in self.inits_and_teardown_proofs.iter() {
-                responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(proof, compiled_circuit, blake));
+                responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
+                    proof,
+                    compiled_circuit,
+                    blake,
+                ));
             }
         } else {
             responses.push(0u32);
@@ -176,7 +184,11 @@ impl ProgramProof {
                 responses.push(proofs.len() as u32);
                 let compiled_circuit = &self.compiled_delegation_circuits[k];
                 for proof in proofs.iter() {
-                    responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(proof, compiled_circuit, blake));
+                    responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
+                        proof,
+                        compiled_circuit,
+                        blake,
+                    ));
                 }
             } else {
                 responses.push(0u32);
@@ -243,7 +255,11 @@ impl ProgramProof {
         responses.push(num_it_circuits);
         let compiled_circuit = &self.compiled_riscv_circuits[&k];
         for proof in reduced_machine_proofs.iter() {
-            responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(proof, compiled_circuit, blake));
+            responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
+                proof,
+                compiled_circuit,
+                blake,
+            ));
         }
 
         // NOTE: no separate inits/teardowns circuit — folded into the unified circuit.
@@ -258,7 +274,11 @@ impl ProgramProof {
                     responses.push(proofs.len() as u32);
                     for proof in proofs.iter() {
                         responses.extend(
-                            ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(proof, compiled_circuit, blake),
+                            ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
+                                proof,
+                                compiled_circuit,
+                                blake,
+                            ),
                         );
                     }
                 } else {

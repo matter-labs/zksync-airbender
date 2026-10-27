@@ -943,11 +943,19 @@ fn verify_against_chain(
     let is_base = expected.len() == 1;
     let output = match artifact.target {
         ProofTarget::Base | ProofTarget::RecursionUnrolled => native_verify_unrolled(
-            build_unrolled_stream(&artifact.setups, &artifact.proof, verifier_common::BLAKE_MODE),
+            build_unrolled_stream(
+                &artifact.setups,
+                &artifact.proof,
+                verifier_common::BLAKE_MODE,
+            ),
             is_base,
         ),
         ProofTarget::RecursionUnified => native_verify_unified(
-            build_unified_stream(&artifact.setups, &artifact.proof, verifier_common::BLAKE_MODE),
+            build_unified_stream(
+                &artifact.setups,
+                &artifact.proof,
+                verifier_common::BLAKE_MODE,
+            ),
             is_base,
         ),
     };
@@ -1519,7 +1527,9 @@ mod program_source_tests {
         assert_eq!(dumps.bin_u32.len() * 4, dumps.bin_bytes.len());
         assert_eq!(dumps.text_u32.len() * 4, dumps.text_bytes.len());
 
-        let elf = root.join("tools/gkr_verifier/circuit_verifiers/pessimistic_conjecture/add_sub_lui_auipc_mop.elf");
+        let elf = root.join(
+            "tools/gkr_verifier/circuit_verifiers/pessimistic_conjecture/add_sub_lui_auipc_mop.elf",
+        );
         let loaded = load_program(&ProgramSource::elf(&elf)).unwrap();
         let (bin_u32, text_u32) = ProgramSource::elf(&elf).load_unpadded();
         assert_eq!(loaded.bin_u32, bin_u32);
