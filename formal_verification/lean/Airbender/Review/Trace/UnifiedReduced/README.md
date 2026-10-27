@@ -25,12 +25,13 @@ ledger is supplied.
 
 [Native actual-path execution](NativePathExecution.lean) composes branches, JAL,
 JALR and repeated-PC loops with complete calls from all four worker families.
-The explicit [HashCommands](../../Helpers/UnifiedReduced/NativeMemory.lean)
-contract assumes supported controller reads and G base separation. The
-[individual input conditions](../../Helpers/Context/ExternalBoundary/HashABI.lean)
+The [F11 hash witness contracts](../../../../FINDINGS.md#f11--hash-witness-contracts-remain-unenforced),
+implemented by [HashCommands](../../Helpers/UnifiedReduced/NativeMemory.lean),
+assume supported private controller reads and G base separation. The
+[individual conditions](../../Helpers/Context/ExternalBoundary/HashABI.lean)
 are not proved from the restored native circuits; they contain no outputs or
-desired execution. The round low-limb restriction belongs to the existing
-reference profile. Controllers may be loaded or computed through ordinary
+desired execution. Per-call validity does not enforce the VM's zero bundle entry.
+The round zero low limb is a stricter model profile than the VM requires. Controllers may be loaded or computed through ordinary
 instructions. No occurrence plan is supplied. The conclusion realizes
 the native terminal PC and every tracked cell. Public program/initialized memory,
 configuration/retirement and the separate bigint command contract remain explicit.

@@ -32,9 +32,12 @@ matching derives these bounds and complete participation; the current worker
 compiler does not independently query the invocation high limb. These inputs
 supply neither read values nor pointer bounds: initialized matching derives them.
 
-These claims do not prove full CSR validity. [Unified composition](../UnifiedReduced/README.md)
-proves caller retirement within its stated straight-line and RAM profile; general
-branch/jump/loop composition remains unfinished.
+These worker claims do not alone prove full CSR validity.
+[Unified native-path execution](../UnifiedReduced/NativePathExecution.lean)
+composes caller retirement through branches, jumps and loops under the
+[F11 hash witness contracts](../../../../FINDINGS.md#f11--hash-witness-contracts-remain-unenforced),
+F02 bigint commands and the stated RAM/configuration profile. Complete grouped
+algorithms additionally require per-trace protocol coverage and valid memory gaps.
 
 These directories connect local worker behavior to actual Sail port observations
 and, for the hash families, complete protocol spans.

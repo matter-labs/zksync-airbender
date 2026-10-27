@@ -53,13 +53,63 @@ class ParserTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 guard.parse_proc_stat(value)
         self.assertEqual(guard.parse_proc_stat(proc_stat(birth=0)).birth, 0)
+        self.assertEqual(guard.parse_proc_stat(proc_stat(pgrp=-1, session=-1)).pgrp, -1)
 
     def test_charged_proxy_excludes_readonly_file_cache(self):
-        charged, resident = guard.parse_smaps_rollup(rollup())
+        charged, resident, bounded = guard.parse_smaps_rollup(rollup())
         self.assertEqual(charged, (1024 + 128 + 256) * 1024)
         self.assertEqual(resident, 500000 * 1024)
-        huge_charge, huge_resident = guard.parse_smaps_rollup(rollup(Private_Hugetlb=64, Shared_Hugetlb=32))
+        self.assertEqual(bounded, (1024 + 128) * 1024)
+        huge_charge, huge_resident, _ = guard.parse_smaps_rollup(rollup(Private_Hugetlb=64, Shared_Hugetlb=32))
         self.assertEqual((huge_charge - charged, huge_resident - resident), (96 * 1024, 96 * 1024))
+
+    def test_linux_mapped_files_are_telemetry_but_anonymous_memory_is_bounded(self):
+        args = guard.parse_args(['--mib', '8', '--resident-mib', '16', '--seconds', '1', '--log', 'unused', '--', 'true'])
+        mapped = guard.Sample(guard.ProcessInfo(42, 987, 'lean'), 1, 8192 << 20, 1)
+        self.assertIsNone(guard.budget_reason([mapped], args, 0))
+        anonymous = guard.Sample(mapped.info, 9 << 20, mapped.resident, 9 << 20)
+        self.assertEqual(guard.budget_reason([anonymous], args, 0), 'memory budget exceeded')
+
+    def test_linux_mm_disappears_before_zombie_state(self):
+        backend = guard.LinuxBackend()
+        info = guard.parse_proc_stat(proc_stat())
+        for error in (FileNotFoundError(), ProcessLookupError()):
+            with self.subTest(error=error), patch.object(backend, 'info', return_value=info), patch.object(
+                    backend, 'pin'), patch.object(Path, 'read_text', side_effect=error):
+                sample = backend.measure(42, 987)
+                self.assertEqual((sample.info.birth, sample.footprint, sample.resident), (987, 0, 0))
+        with patch.object(backend, 'info', return_value=info), patch.object(backend, 'pin'), patch.object(
+                Path, 'read_text', side_effect=PermissionError()), self.assertRaises(PermissionError):
+            backend.measure(42, 987)
+
+    def test_linux_mm_exit_does_not_hide_pid_reuse(self):
+        backend = guard.LinuxBackend()
+        before, after = guard.parse_proc_stat(proc_stat()), guard.parse_proc_stat(proc_stat(birth=999))
+        with patch.object(backend, 'info', side_effect=[before, after]), patch.object(backend, 'pin'), patch.object(
+                Path, 'read_text', side_effect=ProcessLookupError()), self.assertRaises(guard.IdentityChanged):
+            backend.measure(42, 987)
+
+    def test_linux_supervisor_keeps_ownership_until_cleanup_succeeds(self):
+        backend, child, tracker = Mock(), Mock(), Mock()
+        backend.libc.prctl.return_value = 0
+        child.returncode = 0
+        child.poll.return_value = 0
+        with patch.object(guard, 'LinuxBackend', return_value=backend), patch.object(
+                guard.subprocess, 'Popen', return_value=child), patch.object(guard, 'Tracker', return_value=tracker), patch.object(
+                guard.os, 'getppid', return_value=42), patch.object(guard.signal, 'signal'), patch.object(
+                guard.time, 'sleep'), patch.object(guard, 'cleanup', side_effect=[([43], ['deadline']), ([], [])]) as cleanup:
+            self.assertEqual(guard.linux_payload_owner(42, ['payload']), 0)
+            self.assertEqual(cleanup.call_count, 2)
+            backend.close.assert_called_once()
+
+    def test_guard_requests_supervisor_cleanup_without_killing_its_lock_owner(self):
+        backend, child, tracker = Mock(), Mock(), Mock()
+        backend.adopted_children = True
+        child.pid, child.returncode = 42, 0
+        tracker.owned, tracker.samples = {42: 987, 43: 988}, {}
+        guard.cleanup(child, tracker, backend, preserve_supervisor=True)
+        backend.terminate.assert_any_call(42, 987, signal.SIGTERM)
+        backend.terminate.assert_any_call(43, 988)
 
     def test_missing_duplicate_malformed_counters_fail_closed(self):
         bad = [rollup().replace('Swap: 256 kB\n', ''), rollup() + 'Rss: 1 kB\n',
@@ -237,6 +287,53 @@ class ProcessTests(unittest.TestCase):
         process, result = self.result(code)
         self.assertEqual((process.returncode, result['reason'], result['exit']), (7, 'finished', 7))
 
+    @unittest.skipUnless(sys.platform == 'linux', 'Explicit process stack setting is validated on Linux')
+    def test_explicit_finite_stack_is_applied_and_recorded(self):
+        command = self.command('import resource; assert resource.getrlimit(resource.RLIMIT_STACK)[0] == 32 << 20')
+        command[command.index('--'):command.index('--')] = ['--stack-mib', '32']
+        process = subprocess.run(command, capture_output=True, text=True, timeout=20)
+        result = json.loads(process.stdout.strip().splitlines()[-1])
+        self.assertEqual((process.returncode, result['reason'], result['stack_bytes']),
+                         (0, 'finished', 32 << 20), process.stdout + process.stderr)
+
+    @unittest.skipUnless(sys.platform == 'linux', 'Linux mm teardown control requires Linux')
+    def test_many_short_children_exit_normally(self):
+        code = ('import subprocess,sys; '
+                '[subprocess.run([sys.executable,"-c","pass"],check=True) for _ in range(60)]')
+        for _ in range(3):
+            process, result = self.result(code, seconds=8)
+            self.assertEqual((process.returncode, result['reason']), (0, 'finished'), result)
+
+    @unittest.skipUnless(sys.platform == 'linux', 'Linux parent-death supervision requires Linux')
+    def test_killed_guard_reaps_detached_payload_before_releasing_lock(self):
+        marker = self.directory / 'detached.json'
+        inner = self.marker_code(marker)
+        code = ('import subprocess,sys,time; '
+                f'subprocess.Popen([sys.executable,"-c",{inner!r}],start_new_session=True); time.sleep(10)')
+        child = subprocess.Popen(self.command(code, seconds=15), stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.monotonic() + 5
+            while not marker.exists() and child.poll() is None and time.monotonic() < deadline:
+                time.sleep(.02)
+            self.assertTrue(marker.exists())
+            child.kill()
+            child.communicate(timeout=20)
+            deadline = time.monotonic() + 8
+            with open(guard.LOCK_PATH, 'a+') as lock:
+                while True:
+                    try:
+                        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        self.assertLess(time.monotonic(), deadline)
+                        time.sleep(.02)
+                self.assert_gone(marker)
+        finally:
+            if child.poll() is None:
+                child.terminate()
+                child.communicate(timeout=20)
+
     def test_timeout_reaps_setsid_descendant(self):
         marker = self.directory / 'grandchild.json'
         inner = self.marker_code(marker)
@@ -255,7 +352,9 @@ class ProcessTests(unittest.TestCase):
                 f'p=pathlib.Path({str(marker)!r}); deadline=time.monotonic()+3;\nwhile not p.exists() and time.monotonic()<deadline: time.sleep(.01)\nassert p.exists()')
         process, result = self.result(code)
         self.assertEqual((process.returncode, result['reason']), (0, 'finished'), result)
-        self.assertIn(self.assert_gone(marker), result['owned_pids'])
+        # The supervisor may adopt and reap it between the outer guard's
+        # samples. Check the actual birth identity has gone, not sampling luck.
+        self.assert_gone(marker)
 
     def test_lock_contention_never_launches_payload(self):
         marker = self.directory / 'must-not-exist'

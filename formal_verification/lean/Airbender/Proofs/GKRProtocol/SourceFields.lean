@@ -1,4 +1,5 @@
-import Airbender.Import.GKRProtocol.Source
+import Airbender.Proofs.GKRCompiler.Arithmetic
+import Airbender.Review.Compiler.LookupOperands
 
 namespace Airbender.Compiler.Source
 set_option warningAsError true
@@ -28,20 +29,6 @@ theorem LookupTable.polynomial_value (placement : Nat → Fin n) (values : Fin n
   | Variable index => simp [polynomial, value]
   | Constant table => simp [polynomial, value]
   | Expression expression => exact expression.polynomial_value placement values
-
-/-- Authored source fields, with explicit table selectors, decoder-mask packing
-and zero padding. None of these fields are obtained from lowered equations. -/
-inductive EncodedField where
-  | input : LookupInput → EncodedField
-  | table : LookupTable → EncodedField
-  | familyMask : List Nat → EncodedField
-  | zero
-
-def EncodedField.value (values : Nat → BaseField) : EncodedField → BaseField
-  | .input expression => expression.value values
-  | .table selection => selection.value values
-  | .familyMask bits => (bits.zipIdx.map (fun (wire, index) => (2 ^ index : BaseField) * values wire)).sum
-  | .zero => 0
 
 def EncodedField.polynomial (placement : Nat → Fin n) : EncodedField → Compiler.Polynomial n BaseField
   | .input expression => expression.polynomial placement

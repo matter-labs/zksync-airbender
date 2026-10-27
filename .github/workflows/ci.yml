@@ -221,8 +221,32 @@ jobs:
         run: ./target/release/cli continue-proof --proof output/base.json --bin examples/basic_fibonacci/app.bin --target recursion-unified --cycles-bound 16777216 --worker-threads 8 --output-dir output --output-file recursion_unified.json
       - name: Verify recursion unified
         run: ./target/release/cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
+  formal_verification_changes:
+    name: Formal verification change selection
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.changes.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - id: changes
+        env:
+          FV_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          FV_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          result=$(python3 formal_verification/lean/scripts/fv_changes.py --base "$FV_BASE" --head "$FV_HEAD")
+          echo "relevant=$result" >> "$GITHUB_OUTPUT"
+
+  # Advisory until full Linux and cold-cache validation establish feasibility.
+  # Keep this outside pr-checks.needs so unrelated Rust PRs do not wait for FV.
   formal_verification:
     name: Formal verification
+    needs: formal_verification_changes
+    if: needs.formal_verification_changes.outputs.relevant == 'true'
     uses: ./.github/workflows/formal-verification.yml
 
   # Keep branch protection tied to one stable check name even as the
@@ -239,7 +263,6 @@ jobs:
       - check_verifiers
       - evm_verifier
       - cli_smoke_verify
-      - formal_verification
     steps:
       - name: Decide on PR checks
         uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2

@@ -75,12 +75,11 @@ not a claim that every open PR or every backend has been audited.
 | [PR #316](https://github.com/matter-labs/zksync-airbender/pull/316) — reduced-load alignment / recursive word 7 | **Reported implementation bugs in another circuit/verifier path.** The patch adds alignment constraints and rejects recursive output words omitted from hashing. | Check the affected v2 path and tests before claiming a repair; the current richer v3 FV relation and its existing alignment proof do not certify that path. |
 | [Private PR #8](https://github.com/matter-labs/zksync-airbender-private/pull/8) — FRI degree slack | **Reported protocol bug with a proposed protocol change.** Producer/verifier patches and comments were reviewed; reported CPU tests do not establish protocol soundness or reproducible recursive artifacts. | Cryptographic analysis, producer/verifier agreement and artifact reproducibility remain open for that target. No degree-bound assumption is treated as a fix. |
 
-**Hash input contracts (26 October).** The G, extended-round and Keccak circuit
-patches have been removed. Their controller/base conditions are now explicit
-[temporary assumptions](Airbender/Review/Helpers/Context/ExternalBoundary/HashABI.lean)
-in conditional actual-path execution, extending the F07/F08 scope boundaries.
-Circuit/VM assessment and implementation fixes remain with the owner. The round
-zero low limb is an existing proof-profile restriction, not an established VM rule.
+**Hash witness contracts.** [F11](#f11--hash-witness-contracts-remain-unenforced)
+records the four private-witness assumptions used after removal of the G,
+extended-round and Keccak circuit patches. Their conditional proof use does not
+establish circuit enforcement. Bundle entry and the stricter round low-limb
+model profile are recorded separately there.
 
 F01's typed verifier-PC interface and F05's contribution-mask interface have
 inspected implementation mechanisms, with Rust/argument refinement still external;
@@ -787,10 +786,13 @@ fidelity, not a new circuit assumption or cryptographic correspondence claim.
 | F08 | Complete hash claims retain protocol shape and first-span restrictions | Public-program binding derives selected span/controller shape and all issued round coverage/masks; full coverage exposes the zero-clock extended-round boundary | Mode/duration/preparation, public code profile, controller extents/full coverage and legacy prefix conditions |
 | F09 | Setup/decoder queries retain implementation-fidelity boundaries | Actual table contents and semantic connections are imported and checked | Rust/parser fidelity, public-program binding, native query binding and commitment authentication remain external |
 | F10 | Caller-cycle effects are weaker than full custom instruction execution | Complete mixed CSR reference execution uses F02 and public protocol/RAM profiles; native participation is derived | General acceptance still admits invalid bigint commands and ROM-shadow behavior; conditional integration does not fix F02/F04 |
+| F11 | Hash witness contracts remain unenforced | Four explicit private-witness contracts exclude known accepted cases; circuit patches were removed | Supported G/round/Keccak controls and distinct G bases are assumed; bundle entry is weaker than the VM, while the round low-limb profile is stricter |
 
 Review F01's external correspondence and F02–F04 first. F05 and F06 establish why current
 participation/profile restrictions matter. F07–F10 identify assumptions or narrower
 conclusions that must not silently become claims of unrestricted acceptance.
+Review [F11](#f11--hash-witness-contracts-remain-unenforced) alongside them before
+transferring conditional native-path results to arbitrary accepted hash witnesses.
 
 ## F01 — Terminal PC resolved under the explicit total-verifier boundary
 
@@ -836,14 +838,16 @@ proves `canonical_verifier_boundary` and instantiates the public standalone and
 per-circuit soundness claims. Existing branch/comparison and pooled fixtures also
 inhabit their replacement contracts.
 
-**Inspected implementation and remaining trust.** The source revision actually
-inspected is `0dc0a631349462700825f326516d36200be30edc`. The
-[source inventory](Airbender/Review/Helpers/Context/VerifierBoundary/README.md#inspected-source-and-external-obligations)
-records the unrolled and unified total-statement paths, u32 mask/shift encoder,
-separate PC-space coefficients/tuples and initial 0/4 constants, with exact blobs.
-The supplied historical revision was not retrievable and is not claimed as
-inspected. Logical PC-space matching and its Rust/artifact correspondence remain
-external; sampled product equality is not deterministic multiset equality.
+**Inspected implementation and remaining trust.** The current source inspection
+at `9683fe67d16aabadd31140a062082e79c7bccf43` and the earlier inspection at
+`0dc0a631349462700825f326516d36200be30edc` are distinguished in the
+[source inventory](Airbender/Review/Helpers/Context/VerifierBoundary/README.md#inspected-source-and-external-obligations).
+It records unrolled/unified statements, u32 mask/shift encoding, separate PC-space
+coefficients/tuples and initial 0/4 constants with exact blobs. The supplied
+historical revision `1f4a8455e9f893a1ffb3d23ad79918f243b28aca` is locally
+retrievable; retrieval alone is not an audit of that historical execution path.
+Logical PC-space matching and Rust/artifact correspondence remain external;
+sampled product equality is not deterministic multiset equality.
 
 **Scope distinction.** The separate unified artifact's
 [execution_soundness](Airbender/Review/Trace/UnifiedReduced/Theorems.lean)
@@ -1076,7 +1080,9 @@ modulus 4194304 explicit. It derives actual SLTIU→ADDI states 65537→1→0 th
 PC `0xfffffffc`→zero, retains clocks six/ten and rejects fabricated reads and
 wrong literals. Selected caller/controller regions now support the modular
 registry and global public round-CSR occurrence coverage too. Jumps, branches
-and nonliteral final preparation remain open. These are preparation/memory effects,
+and nonliteral final preparation remain outside this older preparation profile.
+The newer native-path theorem supports branches, jumps and loops under explicit
+F11 hash witness contracts. These older results are preparation/memory effects,
 not full-prefix retirement. Public
 decoded forms and accepted PC constraints derive the preparation address; native selector bits or output values are not
 supplied. The accepted aliased ADD→ADDI reset derives actual 65537→131074→0
@@ -1093,8 +1099,9 @@ caller region with a local ten-position cap. Explicit coverage of all extended-r
 workers permits complete lists of all three references in the same continuous
 execution. It no longer requires a global empty prefix, homogeneous pool or ten-row
 pool bound. Coverage, local family/count/duration and public preparations still
-constrain witness shape. Broader preparation/protocol binding and whole ISA
-retirement remain open. G/Keccak
+constrain witness shape. Broader preparation/protocol binding remains profile-specific; newer
+[actual-path execution](Airbender/Review/Trace/UnifiedReduced/NativePathExecution.lean)
+composes caller retirement through branches, jumps and loops under F11. G/Keccak
 allow earlier workers; the original first-span extended-BLAKE entry retains an empty
 worker prefix while the newer regional entry uses explicit controller coverage; see
 [ControlPreparation](Airbender/Review/Helpers/UnifiedReduced/ControlPreparation.lean),
@@ -1142,8 +1149,9 @@ in each interval, including repeated RV32 addresses; native schedules and worker
 counts are conclusions. Global round-worker coverage remains a witness-shape
 boundary, and the public global round-CSR coverage/mask result remains linear.
 The unissued-round question and whole caller retirement remain explicit boundaries.
-Source-aware final preparation is checked; branch/jump preparation extensions are
-outside the frozen registry.
+Source-aware final preparation is checked; branch/jump preparation extensions
+remain outside this older registry. The newer native-path theorem is independent
+of that registry and retains the explicit F11 hash witness contracts.
 
 [Issued hash segmentation](Airbender/Review/Trace/UnifiedReduced/Segmentation.lean)
 closes coverage for the existing unified public prepared-protocol profile.
@@ -1255,18 +1263,70 @@ reviewed implementation findings and their explicitly temporary contracts,
 without adding optional preparation or instruction variants. All generated/import/cryptographic and exceptional-path
 milestones remain separately deferred.
 
+## F11 — Hash witness contracts remain unenforced
+
+**Status.** Open implementation-enforcement finding. The G, extended-round and
+Keccak circuit patches were removed; proofs retain the restored native relation.
+[HashCommands](Airbender/Review/Helpers/UnifiedReduced/NativeMemory.lean) supplies
+four explicitly assumed predicates from
+[HashABI](Airbender/Review/Helpers/Context/ExternalBoundary/HashABI.lean).
+These restrict private worker-witness reads, including controls and pointers.
+They are not public inputs that a verifier can validate independently of a
+binding to the witness. They supply no output, intermediate state, reference
+execution, occurrence schedule, call count or complete bundle result.
+
+| Contract field | Exact condition and known excluded behavior |
+| --- | --- |
+| gControl | Every G x12 read is one of the 80 full-mode or 56 reduced-mode controls. The restored circuit retains the fallback for control 80; membership in the successful-call reference is not enforced by that fallback. |
+| gBases | Actual G state and message base pointers differ. Equal bases violate the successful-call reference but the restored native relation does not enforce their separation. |
+| roundControl | Actual round x12 equals three flags plus exactly one supported round bit, below seven or ten according to mode, with a zero low limb. Individual native Boolean bit checks permit zero/multiple round bits; they are weaker than this exclusive mask. The zero low limb is additionally a stricter model profile than the Rust VM requires. |
+| keccakControl | Actual x10 is one of the existing 649 protocol micro-call controls, including final round-24 Iota. The local native controller permits positions outside that schedule, including the round-31 Chi rollover. |
+
+**Evidence and scope.** [NativeProtocolGap](Tests/NativeProtocolGap.lean) proves
+that the assumptions exclude G control 80 and equal bases; its conclusions are
+contract rejection, not native rejection.
+[KeccakControlUpdate](Tests/KeccakControlUpdate.lean) proves round-31 Chi rollover
+satisfies all 187 imported equations and lookups under its explicit permissive
+setup. This is a local accepted-relation witness, not acceptance under every native
+setup or a complete forged proof. The exclusive-mask difference is visible in the
+[round control interface](Airbender/Review/Circuits/Blake2Round/Control.lean) and
+[F07](#f07--round-selection-and-worker-participation-remain-inputs-in-weaker-scopes).
+The restored fallback controls, aliasing and unsupported masks must not be
+reported as rejected merely because the contracts exclude them.
+
+**Bundle entry differs from per-call validity.** G control membership admits a run
+beginning at counter 24 and round membership admits an entry at round 3. The
+[VM G bundle](../../riscv_transpiler/src/vm/delegations/blake2_g_function.rs) requires
+counter zero on entry; the
+[VM round bundle](../../riscv_transpiler/src/vm/delegations/blake2_round_function.rs)
+requires permutation index zero. Neither entry requirement follows from the four
+contracts. The plan-free native-path theorem establishes local successful calls,
+not this stricter bundle-entry condition. The
+[complete span interface](Airbender/Review/Trace/UnifiedReduced/Paths/Spans.lean)
+fixes entry through its per-trace protocol plan. Bundle-entry enforcement remains
+an open circuit/VM correspondence issue; this is the opposite direction from the
+stricter round low-limb model profile.
+
+**Required disposition.** Keep all four witness assumptions and these differences
+visible at the execution entrypoints. Any additional enforcement gap must receive
+an explicit narrow assumption and evidence at its actual relation. Circuit fixes
+and their validation are deferred; no proof assumption closes this finding.
+
 ## Remaining boundary register
 
-These are additional assumptions to review for applicability, not additional
-demonstrated bugs:
+Review these assumptions for applicability. Several are supported public profiles
+or logical abstraction boundaries; F11 separately records known excluded cases
+and an open enforcement finding:
 
 | Boundary | Exact premise or missing connection | Review consequence |
 | --- | --- | --- |
 | Initialization/teardown | [Imported standalone and inline GKR soundness](Airbender/Review/Circuits/Initialization/Theorems.lean) proves exact products of computed native RAM tokens. [Execution adapters](Airbender/Review/Trace/Initialization.lean) derive the old native seed correspondence, aligned/distinct cells and register coverage from the actual layout and public distinct windows; actual raw teardown columns supply terminal RAM tokens. | Local circuit-to-token correspondence is checked. Public Sail profile, initial PC/clock, configuration/program/setup binding, distinct windows and separate register teardown remain legitimate inputs. Exact logical matching, Rust/parser fidelity and cryptographic enforcement remain external; sampled product equality is not a permutation proof. No new implementation bug is claimed. |
-| Memory/fetch configuration | [FlatMemoryConfiguration and OrdinaryWordAddress](Airbender/Review/Helpers/Memory/Platform.lean) select Machine mode, the direct memory path, PMP disabled, permissive PMA and no modeled special-memory windows; code bounds/alignment and landing-pad restrictions are explicit in execution inputs. | These are supported public-profile conditions. Full faults, interrupts, MMIO, other privilege/protection configurations and the full fetch driver are not covered. |
+| Memory/fetch configuration | [FlatMemoryConfiguration and PlatformWordAddress](Airbender/Review/Helpers/Memory/Platform.lean) select Machine mode, direct memory, PMP disabled and permissive PMA, with device windows determined by the explicit platform configuration; code bounds/alignment and landing-pad restrictions remain explicit. | These are supported public-profile conditions. Full faults, interrupts, MMIO, other privilege/protection configurations and the full fetch driver are not covered. |
 | Independent external input | [ExternalStream.Ports](Airbender/Review/Helpers/Core/ExternalStream.lean) binds responses to an independently supplied stream. | Exact consumption and execution do not authenticate an oracle or establish a particular externally intended stream. |
 | Logical matching | [Accepted](Airbender/Review/Helpers/Context/Model.lean), worker matching and request matching are exact permutations of full tokens. | This is the intended premise for the noncryptographic memory-history result. Product/compression equality must not be silently substituted for it; actual global participation and token construction still need their implementation binding. |
-| Artifact/reference fidelity | [Import/generation boundary](TRUST_AND_REVIEW.md#import-and-generation-fidelity): richer no-cache import, original Sail generation and project-reference revision applicability; compiled/cached correspondence is not proved. | Do not transfer these claims to a compiled/cached circuit or a different reference revision without the corresponding implication/binding. |
+| Artifact/reference fidelity | [Import/generation boundary](TRUST_AND_REVIEW.md#import-and-generation-fidelity): richer no-cache import, original Sail generation and project-reference applicability. Base-field arithmetic preservation is proved for 22 captured cached/uncached instances. New physical-row APIs derive lookup/helper validity from exact emitted-tuple matching; natural multiplicities are not tied to physical counters. Supplied-program wrappers require retained decoder-table compatibility. All 14 native row compositions and public wrappers compile; the selected 3279-module/10-test frontend passes freshness/integrity checks. Full assurance remains pending. | Captured-instance results do not prove universal Rust compiler correctness or cryptographic argument soundness; use the [compiler premise table](Airbender/Review/Compiler/README.md#execution-premises). |
+| Hash witness contracts | [F11](#f11--hash-witness-contracts-remain-unenforced) records the four HashCommands fields, known excluded cases, VM bundle-entry difference and stricter round low-limb model profile. | Private-witness assumptions support conditional execution; the restored circuits have not been shown to enforce them. |
+| Worker clock ranges | [MemoryInputs](Airbender/Review/Helpers/Delegation/Memory.lean) retains clockRoom and invocationHigh: offset-two writes fit in the low limb and the invocation high limb is bounded. | Worker-only memory proofs have these range premises. Integrated caller/accounting claims derive them; no actual read value or pointer bound is supplied. |
 | Fields and coefficients | The public claims retain prime-field minima and serialized inverse equalities; bigint's integrated operation proof is BabyBear-specific. | These are arithmetic compatibility conditions, not proof defects. A generic field theorem does not establish the actual Proth120 artifact import. |
 
 ## Assumptions that stronger claims already derive
@@ -1326,7 +1386,7 @@ zero-clock, ROM-shadow and discarded-load regressions remain checked.
 
 Review F01's explicit canonical boundary contract and the remaining Rust/artifact
 and cryptographic correspondence. For unresolved F02/F04, review the actual
-control and worker-ROM acceptance argument first; then review F07/F08's witness-shape
-restrictions and F09's concrete setup binding. Closing a remaining finding should
+control and worker-ROM acceptance argument first; then review F11's private-witness
+contracts, F07/F08's protocol restrictions and F09's concrete setup binding. Closing a remaining finding should
 supply that connection or explicitly revise the claimed scope; adding the missing
 property as an assumption is not closure.

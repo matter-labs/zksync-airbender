@@ -28,6 +28,7 @@ needs = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson", "shiftBinopJso
 
 [[lean_lib]]
 name = "Tests"
+needs = ["setupSmokeJson", "setupKeccakJson"]
 
 [[input_file]]
 name = "setupSmokeJson"

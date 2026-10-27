@@ -10,7 +10,8 @@ caller controls or full CSR semantics.
 
 For the four worker families, imported constraints and initialized full-token
 matching imply native clock/address bounds, strict per-cell ordering and Clean
-memory consistency; [`memory_soundness`](../../Trace/Delegation/Theorems.lean)
+memory consistency, under the worker-only invocation bounds described below;
+[`memory_soundness`](../../Trace/Delegation/Theorems.lean)
 states this, and [`labeled_history`](../../../Proofs/Delegation/History.lean)
 constructs the history. The corresponding
 [`native_memory_execution`](../../Trace/Delegation/Theorems.lean) realizes actual
@@ -28,7 +29,11 @@ to identify the caller token, full CSR family and imported worker observables.
 state logical request matching and context; matching does not establish the full CSR ABI.
 
 [Memory](Memory.lean), [SharedMemory](SharedMemory.lean) and [MixedMemory](MixedMemory.lean)
-describe the initialized native pools. [WorkerContext](WorkerContext.lean)
+describe the initialized native pools. Worker-only MemoryInputs retains
+clockRoom (room for offset-two writes in the low invocation limb) and invocationHigh
+(the invocation high limb is bounded). Integrated caller/accounting theorems derive
+these premises; the standalone memory implication does take range premises.
+[WorkerContext](WorkerContext.lean)
 exposes actual per-port observations. [Operations](Operations.lean) and
 [SharedOperations](SharedOperations.lean) select the existing local worker references.
 

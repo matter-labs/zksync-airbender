@@ -284,15 +284,15 @@ connects two prepared controls through the same actual intervening history, keep
 all ordinary and worker accesses. Both controls follow from the public registry
 and joint prefix/window matching.
 
-[Successive preparation regressions](../../../../Tests/ControlPreparation.lean)
+[Successive preparation regressions](../../../../Tests/ControlPreparationBase.lean)
 check actual x12 values 65537→128→0 with reversed row order, retained write clocks,
 one connected history across both preparation cuts, and rejection of a wrong
 literal or fabricated second read.
-The [arithmetic preparation regression](../../../../Tests/ControlPreparation.lean)
+The [arithmetic preparation regression](../../../../Tests/ControlPreparationBase.lean)
 uses an aliased ADD before ADDI-from-x0, with reversed native rows. One continuous
 history derives actual x12 values 65537→131074→0, retaining write clocks six/ten;
 a fabricated preparation read is rejected by joint matching.
-[`triadd_prefix_and_preparation_share_history`](../../../../Tests/ControlPreparation.lean)
+[`triadd_prefix_and_preparation_share_history`](../../../../Tests/ControlPreparationBase.lean)
 checks the custom prefix with the same aliased fixture: actual x12 is
 65537→196611→0, with the same clocks and fabricated-read rejection. This is
 preparation and memory transport. It adds no successful full-prefix retirement

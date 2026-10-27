@@ -1,34 +1,8 @@
+import Airbender.Review.Compiler.LookupOperands
 import Airbender.Proofs.GKRProtocol.MemoryRequests
 
 namespace Airbender.Compiler.Source
 set_option warningAsError true
-
-/-- Boolean subtraction borrows are witnesses, separate from original columns
-and from memory-history inputs. -/
-structure HelperValues where
-  memory : MemoryValues
-  borrow : Nat → BaseField
-
-structure HelperPlacement (n : Nat) where
-  memory : MemoryPlacement n
-  borrow : Nat → Fin n
-
-def HelperPlacement.project (placement : HelperPlacement n) (values : Fin n → BaseField) : HelperValues :=
-  ⟨placement.memory.project values, values ∘ placement.borrow⟩
-
-inductive HelperField where
-  | memory : MemoryField → HelperField
-  | borrow : Nat → HelperField
-  | add : HelperField → HelperField → HelperField
-  | scale : Nat → HelperField → HelperField
-  | neg : HelperField → HelperField
-
-def HelperField.value (values : HelperValues) : HelperField → BaseField
-  | .memory field => field.value values.memory
-  | .borrow index => values.borrow index
-  | .add left right => left.value values + right.value values
-  | .scale coefficient field => coefficient * field.value values
-  | .neg field => -field.value values
 
 def HelperField.polynomial (placement : HelperPlacement n) : HelperField → Compiler.Polynomial n BaseField
   | .memory field => field.polynomial placement.memory

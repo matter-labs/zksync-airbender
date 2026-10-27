@@ -321,6 +321,20 @@ class Runner:
         return values, freshness
 
 
+def compiled_hashes(runner, label, paths):
+    paths = sorted(set(map(str, paths)))
+    traces = {re.sub(r'\.olean(?:\.server|\.private)?$', '.trace', path) for path in paths}
+    sidecars = [path + '.hash' for path in paths if Path(path + '.hash').is_file()]
+    runner.frozen.append(Frozen([*traces, *sidecars]))
+    request, result = runner.directory / (label + '-request.json'), runner.directory / (label + '.json')
+    write_json(request, paths)
+    runner.frozen.append(Frozen([request]))
+    runner.run(label, [sys.executable, 'scripts/check_olean_hashes.py',
+                      '--request', str(request), '--output', str(result)])
+    runner.frozen.append(Frozen([result]))
+    return identity(result)
+
+
 def external_objects(root, modules):
     libraries = [root / '.lake/build/lib/lean']
     libraries += sorted((root / '.lake/packages').glob('*/.lake/build/lib/lean'))
@@ -336,13 +350,14 @@ def external_objects(root, modules):
     return result
 
 
-def build_snapshot(runner, sources, imports, input_hashes, objects, external, external_sources, freshness):
+def build_snapshot(runner, sources, imports, input_hashes, objects, external, external_sources, freshness, hash_reports):
     snapshot = {'schema': 'airbender-serial-build-v2', 'root': str(runner.root), 'complete_project': True,
                 'sources': {module: {'path': str(path), 'sha256': input_hashes[str(path)]}
                             for module, path in sources.items()},
                 'inputs': input_hashes, 'objects': objects, 'freshness': freshness, 'imports': imports,
                 'external_imports': external, 'external_sources': external_sources,
-                'external_imports_scope': 'direct_workspace_imports_of_project_modules',
+                'external_imports_scope': 'complete_workspace_import_closure_of_project_modules',
+                'compiled_hash_reports': hash_reports,
                 'external_freshness_basis': 'normal Lake --no-build dependency freshness of every final project olean query',
                 'guard': identity(runner.guard),
                 'checker': identity(Path(__file__).resolve()),
@@ -360,7 +375,7 @@ def direct_axioms(root, log, output):
     reports = {match[1]: sorted(set((match[2] or '').replace(',', ' ').split())) for match in found}
     baseline = json.loads((root / 'scripts/axiom_baseline.json').read_text())
     prior = baseline['roots']
-    result = {'scope': 'direct_explicit_axioms_only', 'baseline_commit': baseline['commit'],
+    result = {'scope': 'direct_explicit_axiom_smoke_test', 'baseline_commit': baseline['commit'],
               'roots': reports, 'missing_baseline_roots': sorted(prior.keys() - reports.keys()),
               'changed_baseline_reports': {name: {'before': prior[name], 'after': reports[name]}
                   for name in prior.keys() & reports.keys() if prior[name] != reports[name]},
@@ -369,12 +384,14 @@ def direct_axioms(root, log, output):
               'duplicate_source_roots': sorted(name for name, count in Counter(expected_list).items() if count != 1),
               'duplicate_reports': sorted(name for name, count in Counter(match[1] for match in found).items() if count != 1),
               'forbidden_axioms': {name: sorted(set(axioms) - ALLOWED) for name, axioms in reports.items() if set(axioms) - ALLOWED}}
-    failures = ('missing_baseline_roots', 'changed_baseline_reports', 'missing_source_reports', 'extra_reports',
+    # Imported inductive roots can omit constructor-field dependencies here.
+    # Only the environment walk compares authoritative baseline axiom sets.
+    failures = ('missing_baseline_roots', 'missing_source_reports', 'extra_reports',
                 'duplicate_source_roots', 'duplicate_reports', 'forbidden_axioms')
     result['passed'] = not any(result[key] for key in failures)
     write_json(output, result)
     if not result['passed']:
-        raise ValueError('Direct Axioms completeness/standard-axiom/baseline comparison failed')
+        raise ValueError('Direct axiom smoke test inventory/standard-axiom check failed')
 
 
 def main():
@@ -456,9 +473,18 @@ def main():
         compiled = Frozen(artifacts)
         runner.frozen.append(compiled)
         write_json(runner.directory / 'validated-objects.json', objects)
+        compiled_paths = [record['path'] for parts in objects.values() for record in parts.values()
+                          if record['sha256'] is not None]
+        hash_reports = {'project': compiled_hashes(runner, 'compiled-artifact-hashes', compiled_paths)}
         snapshot = None
         if not args.module:
             external_names = sorted(set(dependency for deps in imports.values() for dependency in deps) - sources.keys())
+            closures = runner.query('external-closures', ['+' + name + ':transImports' for name in external_names]) if external_names else []
+            if any(not isinstance(value, list) or any(not isinstance(name, str) for name in value) for value in closures):
+                raise ValueError('Unexpected external workspace import closure')
+            external_names = sorted(set(external_names).union(*(set(value) for value in closures)) - sources.keys())
+            if external_names:
+                runner.freshness('external-freshness', external_names, ['olean'])
             external = external_objects(root, external_names)
             values = runner.query('external-sources', ['+' + name + ':lean' for name in external_names]) if external_names else []
             external_sources = {}
@@ -470,9 +496,12 @@ def main():
             paths += [record['path'] for record in external_sources.values()]
             external_frozen = Frozen(paths)
             runner.frozen.append(external_frozen)
+            hash_reports['external'] = compiled_hashes(runner, 'workspace-artifact-hashes',
+                [record['path'] for parts in external.values() for record in parts.values() if record['sha256'] is not None])
             for item in runner.frozen:
                 item.verify(force=True)
-            snapshot = build_snapshot(runner, sources, imports, frozen.hashes, objects, external, external_sources, source_freshness)
+            snapshot = build_snapshot(runner, sources, imports, frozen.hashes, objects, external, external_sources,
+                                      source_freshness, hash_reports)
             runner.frozen.append(Frozen([snapshot]))
         native, native_freshness = {}, None
         if not args.module:
@@ -518,6 +547,8 @@ def main():
             native_frozen = Frozen(native_paths)
             runner.frozen.append(native_frozen)
             write_json(runner.directory / 'native-objects.json', native)
+            compiled_hashes(runner, 'native-compiled-artifact-hashes',
+                [path for record in native.values() for path, value in record['compiled_parts'].items() if value is not None])
             runner.run('library', ['lake', '--no-cache', 'build', 'Airbender'])
             for item in executables:
                 runner.run('executable-' + item['name'], ['lake', '--no-cache', 'build', item['name']])
@@ -526,10 +557,13 @@ def main():
             direct_axioms(root, log, runner.directory / 'direct-axioms-comparison.json')
             runner.run('importer-runtime', ['lake', 'exe', 'airbender_tests'])
             for label, script in [('setup-source-identity', 'check_setup_artifacts.py'),
+                                  ('compiler-source-identity', 'check_gkr_translations.py'),
                                   ('native-evidence', 'check_native_evidence.py'),
                                   ('sail-reference', 'check_sail_reference.py'),
                                   ('proof-boundaries', 'check_proof_boundaries.py')]:
                 runner.run(label, [sys.executable, 'scripts/' + script])
+            runner.run('native-lookup-bindings',
+                       [sys.executable, 'scripts/generate_native_lookup_requests.py', '--check'])
             runner.run('review', [sys.executable, 'scripts/check_review.py', '--verified-build', str(snapshot)], review=True)
         runner.stage = 'closure'
         if discover(root) != sources:

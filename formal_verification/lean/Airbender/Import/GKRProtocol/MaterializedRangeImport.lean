@@ -30,5 +30,16 @@ elab_rules : command
       emitChecked (← `(theorem $domain : $(quote limit) ≤ ($modelName).imported.data.length := by decide +kernel))
       emitChecked (← `(theorem $contains (value : Source.BaseField) (bounded : value.val < $(quote limit)) :
         ($modelName).Contains $columns [value] := $result $modelName $offset $tail $initialBlocks $domain value bounded))
+    let timestampShape := fieldName name "timestampShape"
+    let timestampBounded := fieldName name "timestamp_bounded"
+    emitChecked (← `(theorem $timestampShape :
+      (($modelName).imported.timestampRange.columns[0]).blocks.toList =
+        [Setup.Block.affine 524288 0 1,
+          Setup.Block.affine (($modelName).imported.timestampRange.length - 524288) 0 0] := by decide +kernel))
+    emitChecked (← `(theorem $timestampBounded (value : Source.BaseField)
+      (member : ($modelName).Contains [SourceSetupColumn.timestamp] [value]) :
+      value.val < 524288 :=
+      MaterializedLookupSetup.timestamp_bounded $modelName
+        (($modelName).imported.timestampRange.length - 524288) $timestampShape value member))
 
 end Airbender.Compiler.MaterializedRangeImport

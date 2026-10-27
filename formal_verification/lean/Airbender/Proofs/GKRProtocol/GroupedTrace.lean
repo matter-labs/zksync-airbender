@@ -1,20 +1,13 @@
+import Airbender.Review.Compiler.LookupOperands
 import Airbender.Proofs.GKRProtocol.TraceAggregation
 
 namespace Airbender.Compiler
 set_option warningAsError true
 
-/-- A source request, retaining its weight separately from its field payload. -/
-structure MaterializedQuery where
-  fields : List Source.BaseField
-  weight : Source.BaseField
-
 def MaterializedQuery.value {R : Type} [CommRing R] (query : MaterializedQuery)
     (hom : Source.BaseField →+* R) (alpha gamma : R) : RationalPair R :=
   RationalPair.leaf (hom query.weight)
     (NativeLookupEncoding.linearize hom alpha query.fields 0 0 + gamma)
-
-def SourceLookupQuery.materialized (query : SourceLookupQuery) (source : Nat → Source.BaseField) : MaterializedQuery :=
-  ⟨query.fields.map (fun field => field.value source), query.weight (RingHom.id _) source⟩
 
 theorem SourceLookupQuery.weight_hom {R : Type} [CommRing R] (query : SourceLookupQuery)
     (hom : Source.BaseField →+* R) (source : Nat → Source.BaseField) :

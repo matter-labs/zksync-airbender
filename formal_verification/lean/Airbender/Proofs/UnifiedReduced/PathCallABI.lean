@@ -284,7 +284,7 @@ private theorem keccak_call
     history permutation observed
 
 /-- Complete local successful calls at every admitted controller position.
-Controller and G-pointer bindings are derived outputs of public syntax plus raw
+Controller and G-pointer bindings follow from the per-trace instruction/dataflow profile and raw
 matching. The actual local history fixes both states and all native reads. -/
 theorem path_hash_worker_call
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}

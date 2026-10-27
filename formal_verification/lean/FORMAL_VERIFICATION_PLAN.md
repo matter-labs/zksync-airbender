@@ -1,69 +1,75 @@
 # Circuit formal verification plan
 
-[Verification status](VERIFICATION_STATUS.md) lists the checked claims and latest
-complete validation. [Trust boundaries](TRUST_AND_REVIEW.md) identifies their
-public assumptions and deferred connections. Start with the
-[Review guide](Airbender/Review/README.md) for statements and mappings; Proofs owns
-supporting arithmetic, exact native bindings and proof assembly.
+[Verification status](VERIFICATION_STATUS.md) separates proof coverage from
+completed validation. [Trust boundaries](TRUST_AND_REVIEW.md) describes remaining
+assumptions. Start with the [Review guide](Airbender/Review/README.md) for claims
+and mappings; Proofs contains supporting arithmetic, native bindings and assembly.
 
 ## Remaining implementation and assurance
 
-1. Complete durable declaration-origin/standard-axiom auditing, independent bounded
-   kernel replay with meaningful negative controls, native evidence guards and
-   full setup freshness/source/circuit checks. Run the scoped library, executables,
-   every concrete Tests module, importer and review/reference gates serially.
-2. Finalize current status, concise guides and compatibility checks against the
-   complete validation results; retain old roots, BabyBear entrypoints and actual
-   imported data. Keep historical figures separate from current results.
-3. After the mitigation batch is verified and committed, continue the authorized
-   proof-modularity follow-up. Evaluate reusable math/reference lemmas and exact
-   native bindings using complete affected checking cost, memory and actual
-   adaptation footprint. The bounded ROM-certificate pilot is already committed;
-   parser/setup architecture and Lake/build-system redesign remain excluded.
+1. Complete full assurance for the new physical-row logical composition,
+   supplied-program wrappers and explicit Airbender-platform entrypoints. The
+   selected 3279-module/10-test frontend passes freshness/integrity checks without
+   repairs; this binds selected manifests and issues no full assurance snapshot.
+   All 14 native row compositions and public wrappers compile; execution/public modules pass selected-module replay at a
+   32 MiB Lean thread stack. Physical arithmetic/active rows and
+   exact tuple matching now replace canonical framing and supplied helper/authored
+   validity in those APIs. Actual native field/leaf operands are transported to
+   source operands using arithmetic, primitive/group coverage and setup bindings.
+   Preserve the exact-permutation RAM boundary and the explicit final
+   compressed/sampled-to-exact lookup abstraction. Natural lookup multiplicities
+   remain independent of physical counters, and supplied programs
+   must have decoder tables equal to the retained capture's tables; arbitrary new
+   setups still need interpretation evidence.
+2. Finish declaration-origin and standard-axiom dependency auditing with reviewed
+   baseline dispositions. Direct axiom reports are smoke tests. Run independent
+   kernel replay and false-proof controls over the current compiled inventory.
+3. Verify native evidence and both cached/uncached compiler provenance, all concrete
+   Tests and executables, importer regressions, and review/reference boundaries.
+4. Measure Linux resource/process controls, the finite replay stack and cold-cache
+   reproduction. FV CI is temporarily advisory on relevant changes; selectively
+   required checks follow a complete Linux pass.
 
-The platform applications, two-COPY loop and native G loop pass focused kernel
-checks, including terminal PC/cells, disjoint scratch stores and the actual
-protected-message counterexamples. General actual-path execution, full native
-span partition/count and complete G/Round/Keccak algorithms also pass. The
-straight-line entrypoints remain available.
-
-These are the authorized remaining tasks, not optional new preparation registries.
-The [historical record](TRUST_AND_REVIEW_HISTORY.md) and [finding register](FINDINGS.md)
-retain dated experiments and counterexamples. Completed initialization token
-products, native participation, caller retirement within current profiles,
-canonical endpoints and padding closure must not be reported as globally open.
+Program-parametric actual-path execution and complete native-span composition
+already exist, including branches, jumps and loops under their stated contracts.
+Canonical endpoint closure, inactive-padding closure, initialization token products
+and native participation must be assessed at their published logical scope rather
+than reported as wholly missing. Dated regressions and intermediate interfaces
+remain in the [historical record](TRUST_AND_REVIEW_HISTORY.md).
 
 ## Conditions and findings to preserve
 
-The proof path is public initialization, preserved write bounds and latest-write
-reads, then actual native decoding/constraints and original reference execution.
+The source/trace proof path is public initialization, preserved write bounds and
+latest-write reads, then native decoding/constraints and reference execution.
 Public state/program/configuration, modeled tables, exact logical matching and
-selected complete-protocol scope remain visible. Sampled product equality does
-not deterministically prove token-multiset equality or cryptographic soundness.
+selected complete-protocol scope remain visible. Equality of sampled products
+does not deterministically imply token-multiset equality or cryptographic soundness.
 
-F02 valid bigint commands and F04 worker RAM-port enforcement remain explicit
-implementation findings. Native BabyBear constraints and initialized caller
-accounting already derive participation. Preserve invalid bigint controls,
-ROM-shadow COPY, historical zero-clock rejection, discarded-load, terminal-PC and
-inactive-padding regressions at their actual scopes. External canonical endpoint
-and contribution-mask closure do not add local circuit constraints.
+[F02 bigint commands](FINDINGS.md#f02--valid-bigint-operation-observations-do-not-establish-valid-calls),
+[F04 worker RAM ports](FINDINGS.md#f04--a-valid-copy-mode-does-not-bind-native-worker-rom-to-public-bytes)
+and [F11 hash witness contracts](FINDINGS.md#f11--hash-witness-contracts-remain-unenforced)
+remain implementation-enforcement findings. Document new enforcement gaps and add
+only the narrow explicit assumption needed by the conditional proof. Circuit
+changes to make proofs succeed are outside this effort; implementation fixes
+are deferred. Temporary assumptions do not close findings.
 
-Preserve pinned standard Sail clauses, custom references, imported values/native
-IDs and old theorem/audit roots. No new project axioms, sorry, native_decide,
-bv_decide, hidden kernel bypass or assumed equivalence. Keep serialized coefficient
-restrictions distinct from generic capacity/arithmetic. No dependency churn,
-parser/setup-schema/Lake redesign, ISA expansion or standard boot-ROM-copy claim.
+Preserve the pinned Sail clauses/custom references, imported values/native IDs,
+BabyBear compatibility claims and retained audit roots. Serialized coefficients
+remain distinct from generic capacity arithmetic. Completeness, proof-style
+changes, dependency churn, parser/setup-schema redesign, ISA expansion and standard
+boot-ROM-data copying remain outside scope.
 
 ## Deferred milestones
 
 These require separately scoped work:
 
-1. Compiled/cached Rust gate correspondence, including witness extension for an
-   equivalence claim and the relevant verifier helper expressions.
+1. Universal correctness of the Rust compiler and witness extension to the complete
+   emitted graph. Current captured base-field arithmetic preservation and standalone
+   wiring/lookup/RAM reductions are narrower proved results.
 2. Formal Rust decoder/preprocessing and setup-generator correspondence beyond
    checked artifact export/import and provenance.
-3. Cryptographic lookup/memory-argument soundness, verifier implementation
-   refinement and protocol soundness.
+3. Cryptographic lookup/memory-argument soundness, verifier implementation refinement
+   and protocol soundness.
 4. Completeness for the declared circuit relations.
 5. Actual Proth120/large-field artifacts and coefficients; generic arithmetic alone
    does not establish a native large-field import.
@@ -71,13 +77,18 @@ These require separately scoped work:
 
 ## Verification and completion
 
-Use focused checks first and the single global bounded worker. Preserve physical
-2560MiB, resident5120MiB and900s normal/1800s maximum review limits; never raise
-caps, fake freshness or launch broad parallel builds. Reap owned children.
-[Reproduction](README.md#reproduce) distinguishes ordinary checking, provenance
-and independent replay. Standard axioms are propext, Classical.choice and
-Quot.sound; old reports and all new roots must be accounted for.
+[Reproduction](README.md#reproduce) describes ordinary checking, provenance,
+environment dependency auditing and independent replay. All workers share one
+aggregate owner and retain 2560 MiB footprint, 5120 MiB bounded resident and
+900-second normal/1800-second review budgets. Linux charged-memory caps exclude
+mapped file pages, with total RSS retained as telemetry. Replay uses an explicit
+32 MiB Lean thread stack recorded in its identity on all hosts. Linux additionally
+sets a 32 MiB process stack limit; Darwin retains and records its inherited process
+limit because its OS rejects changes. The default requires full-proof validation;
+the reported deep-recursion failures are not yet established as fixed. Peak memory,
+runtime and stack measurements belong with the corresponding evidence, not an
+inferred pass claim.
 
-Commit coherent verified batches with Conventional Commits. Keep temporary plans,
-audits and recovery checkpoints in ignored .agents paths. A milestone is a
-checkpoint, not completion while authorized proof work or required gates remain.
+Standard permitted axioms are propext, Classical.choice and Quot.sound. A
+milestone is complete only when its current statements and required assurance
+gates pass; focused builds and historical reports do not establish that result.

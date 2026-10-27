@@ -31,7 +31,7 @@ then select a family below.
 | Family | Review entry | Main distinction |
 | --- | --- | --- |
 | ADD/SUB | [Guide](AddSub/README.md) | Standard row effects versus custom arithmetic and callers. |
-| Jump/branch/SLT | [Guide](JumpBranchSlt/README.md) | Configuration and unresolved terminal-PC normalization. |
+| Jump/branch/SLT | [Guide](JumpBranchSlt/README.md) | Configuration and the explicit external canonical terminal-PC boundary. |
 | MUL/DIV | [Guide](MulDiv/README.md) | Four admitted operations, including zero divisors. |
 | Shift/binop | [Guide](ShiftBinop/README.md) | Register/immediate preprocessing and original REV8 decoding. |
 | Word memory | [Guide](WordMemory/README.md) | Physical RAM/ROM behavior and the discarded-LW profile. |

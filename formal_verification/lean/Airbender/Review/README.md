@@ -9,7 +9,7 @@ assumptions for human review; supporting proof calculations live in Proofs.
 
 | Result | Where to review it |
 | --- | --- |
-| Captured GKR arithmetic preserves source obligations; framed executor rows compose to Sail execution. | [Compiler claims and boundaries](Compiler/README.md) |
+| Captured GKR arithmetic preserves source obligations; new physical-row logical APIs compose to Sail execution under exact lookup matching, alongside framed compatibility wrappers. | [Compiler claims and boundaries](Compiler/README.md) |
 | Matching plus timestamp/initialization conditions forces complete memory histories and latest-write reads. | [Logical memory result](Helpers/Memory/README.md#logical-memory-result) |
 | Public bytes and original Sail decoding bind the instruction and metadata used by retirement. | [Decoder connections](Helpers/Decoder/README.md#checked-connections) |
 | Accepted selected circuit rows have the stated reference effects under their visible interfaces. | [Circuit results](Circuits/README.md#checked-results) |
@@ -53,8 +53,20 @@ one public initial state. Keep profile deviations and caller limitations explici
 
 ## Scope and evidence
 
-Claims concern the imported richer no-cache constraints, using Clean and pinned
-original Sail standard semantics or the pinned project custom references.
+Circuit/trace claims concern the imported richer no-cache constraints, using
+Clean and pinned original Sail standard semantics or project custom references.
+Compiler claims additionally cover base-field arithmetic preservation for 22
+captured cached/uncached compilations and conditional executor composition. New
+physical-row APIs derive membership/helper validity from exact tuple matching;
+supplied-program wrappers require retained decoder-table compatibility. The
+[compiler guide](Compiler/README.md#execution-premises) states those logical
+boundaries. All 14 actual native row compositions and public wrappers compile;
+execution/public modules pass selected-module replay at a 32 MiB Lean thread
+stack. The selected 3279-module/10-test frontend passes freshness and compiled
+artifact-hash checks without repairs. This supplies selected source/compiled
+manifests, not a full assurance snapshot; full project/runtime, environment,
+independent replay, transitive negative-control and Linux/cold-run checks remain
+pending. See [current validation scope](../../VERIFICATION_STATUS.md#current-focused-validation).
 Field/configuration, public state/program/domain, modeled tables and logical
 matching are genuine conditions. Their applicability needs human review.
 

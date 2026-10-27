@@ -1,4 +1,4 @@
-import Airbender.Import.GKRCompiler.Import
+import Airbender.Import.GKRCompiler.Data
 
 namespace Airbender.Compiler.Source
 open Lean

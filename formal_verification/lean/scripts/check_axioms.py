@@ -15,6 +15,7 @@ import signal
 import sqlite3
 import subprocess
 import sys
+import tempfile
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -26,12 +27,23 @@ def sha(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
+def write_bytes(path, value):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix='.' + path.name + '.', dir=path.parent)
+    try:
+        with os.fdopen(descriptor, 'wb') as stream:
+            stream.write(value)
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
 def write_json(path, value):
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text(json.dumps(value, indent=2) + '\n')
+    write_bytes(path, (json.dumps(value, indent=2) + '\n').encode())
 
 
-def run_guarded(root, guard, sysroot, directory, label, command, expected_exit=0, lean_path=None):
+def run_guarded(root, guard, sysroot, directory, label, command, expected_exit=0, lean_path=None, stack_mib=None):
     """One owned heavy child, using the caller's unchanged global bounded worker."""
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
@@ -43,7 +55,10 @@ def run_guarded(root, guard, sysroot, directory, label, command, expected_exit=0
         # after initSearchPath so an existing package root cannot shadow them.
         env['AIRBENDER_ASSURANCE_PATH'] = lean_path
     args = [sys.executable, str(guard), '--mib', '2560', '--resident-mib', '5120',
-            '--seconds', '900', '--log', str(log), '--', *map(str, command)]
+            '--seconds', '900', '--log', str(log)]
+    if stack_mib is not None:
+        args += ['--stack-mib', str(stack_mib)]
+    args += ['--', *map(str, command)]
     write_json(directory / (label + '.command.json'), {'cwd': str(root), 'command': args,
                'environment': {key: env[key] for key in ('LEAN_SYSROOT', 'LEAN_PATH', 'AIRBENDER_ASSURANCE_PATH') if key in env}})
     def interrupted(signum, _frame):
@@ -195,7 +210,7 @@ def main():
     parser.add_argument('--sysroot', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--baseline', type=Path, default=HERE / 'axiom_baseline.json')
-    parser.add_argument('--dispositions', type=Path)
+    parser.add_argument('--dispositions', type=Path, default=HERE / 'axiom_dispositions.json')
     args = parser.parse_args()
     root, output = args.root.resolve(), args.output.resolve()
     # Import every project source, including unused modules, so an unused project
@@ -218,6 +233,9 @@ def main():
                   if (path := Path(str(obj) + suffix)).is_file()]
     paths += [root / 'scripts/ProofAudit.lean', root / 'scripts/check_axioms.py',
               root / 'Airbender/Checks/ProofInventory.lean', args.guard.resolve()]
+    paths += [args.baseline.resolve()]
+    if args.dispositions:
+        paths.append(args.dispositions.resolve())
     snapshot = {str(path): sha(path) for path in paths}
     write_json(output / 'inputs.json', snapshot)
     report = output / 'inventory.jsonl'
