@@ -20,13 +20,14 @@ def split_row(name, text):
     row_start = text.index('def row (cert : Certificate)')
     row_stop = text.index('\ntheorem ', row_start)
     row = text[row_start:row_stop]
-    dependencies = ['Airbender.Review.Compiler.RowFrame'] + [
+    dependencies = ['Airbender.Review.Compiler.NativeRow', 'Airbender.Review.Compiler.RowFrame'] + [
         f'Airbender.Proofs.GKRProtocol.{part}.{case}' for part in
         ['CleanArithmeticNative', 'CounterFrameNative', 'HelperValidityNative', 'MaterializedWitnessNative']]
     dependencies.append('Airbender.Review.Helpers.Context.Registries.Pooled' if 'PooledRowNative' in name
                         else 'Airbender.Review.Helpers.UnifiedReduced.Registry')
     binding = ''.join('import ' + module + '\n' for module in dependencies)
     binding += f'\nnamespace {owner}\nopen Airbender Airbender.Compiler\n\n'
+    execute = active.split(').get', 1)[1].strip()
     binding += f'''abbrev Certificate :=
   RowFrame (S := {source_type}) (C := {count_type})
     {address}
@@ -35,6 +36,16 @@ def split_row(name, text):
     (fun physical => {helpers})
     {authored}
     (fun physical => {active})
+
+/-- Physical native arithmetic and the execution mask. Logical lookup matching
+derives all helper ranges and retained Clean obligations without a canonical
+borrow or source-assignment frame. -/
+abbrev Input :=
+  PhysicalRowInput
+    (fun physical => {arithmetic})
+    (fun physical => (physicalAssignment (fun index => Airbender.Compiler.FullArithmeticNative.{case}.native.bank.address
+      (Airbender.Compiler.CleanArithmeticNative.{case}.native.placement index)) physical)
+    {execute})
 
 {row}
 end {owner}

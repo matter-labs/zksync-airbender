@@ -109,6 +109,7 @@ TESTS = ['Airbender.Proofs.GKRCompiler', 'Airbender.Proofs.GKRProtocol', 'Airben
          'Tests.GKRLookupFields', 'Tests.GKRConsumerTypes', 'Tests.GKRCacheBindings',
          'Tests.GKRLookupReduction', 'Tests.GKRBaseEncoding', 'Tests.GKRLookupSource',
          'Tests.GKRSourceTable', 'Tests.GKRNativeProduct', 'Tests.GKRMemorySource',
+         'Tests.GKRCleanLookupArguments', 'Tests.GKRFixedLookups', 'Tests.GKRMemoryTokens', 'Tests.GKRLogicalLookup', 'Tests.GKRPhysicalBorrow',
          'Tests.GKRHelperSources', 'Tests.GKRFullArithmetic', 'Tests.GKRFunctional', 'Tests.GKRHelperValidity',
          'Tests.GKRCleanArithmetic', 'Tests.GKRMaterializedCounters', 'Tests.GKRMemoryFrames',
          'Tests.GKRBlockNormalization', 'Tests.GKRBlockCoverage', 'Tests.GKRShiftSetup', 'Tests.GKRWorkerTokens', 'Tests.GKRInitializationTokens', 'Tests.GKRWindowedInitialization', 'Tests.GKRNativeROM', 'Tests.GKRUnifiedROM', 'Tests.GKRSubwordNative', 'Tests.GKRBlockSpans', 'Tests.GKRUnifiedFullNative', 'Tests.GKRDecoderArguments', 'Tests.GKRDecoderSetup']

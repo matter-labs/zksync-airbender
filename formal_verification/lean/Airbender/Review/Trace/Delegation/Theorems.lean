@@ -10,8 +10,9 @@ namespace Airbender.Delegation
 
 /-- Initialized native matching realizes all delegation reads/writes in actual
     Sail registers and RAM, ending at the declared terminal values. `aligned`
-    is physical word alignment of the public cell domain. No read, result or
-    range premise is supplied; modeled table conditions are only needed for
+    is physical word alignment of the public cell domain. Read values and results
+    are derived; MemoryInputs retains clockRoom and invocationHigh bounds.
+    Modeled table conditions are only needed for
     the additional operation/word-bound claims below. -/
 theorem native_memory_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p Trace.timestampBase)
     {data : MemoryData p} (accepted : MemoryAccepted data)
@@ -23,7 +24,8 @@ theorem native_memory_execution [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p
 /-- All four families can share one initialized memory pool. Imported writes
     preserve canonical RV32 words, and logical matching supplies every later
     read. `inputs` lists modeled tables and the remaining caller/padding rules;
-    no family restriction, read-value or limb-range premise is supplied. -/
+    no family restriction, read-value or data-limb-range premise is supplied.
+    The memory inputs retain clockRoom and invocationHigh. -/
 theorem operation_memory_soundness [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
     (inverse : SerializedInverse.Scale64 p)
     {data : MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}

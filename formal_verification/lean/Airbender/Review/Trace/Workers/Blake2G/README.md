@@ -37,9 +37,14 @@ mode/count, modeled tables, aligned domain and RAM restriction remain explicit.
 The span derives valid controls and canonical aligned disjoint pointers; no new
 per-row ABI or desired result is assumed. [Full mixed execution](../../UnifiedReduced/FullExecution.lean)
 connects caller fetch/PC retirement with participation derived from native
-caller accounting and active-invocation timestamps. The current integrated
-profile is straight-line; general mixed branch/jump/loop composition remains
-unfinished. No external occurrence ledger is required in that integrated scope.
+caller accounting and active-invocation timestamps. That entrypoint retains its
+straight-line ordinary registry. The newer
+[native-path entrypoint](../../UnifiedReduced/NativePathExecution.lean) supports
+branches, jumps and loops under the
+[F11 hash witness contracts](../../../../../FINDINGS.md#f11--hash-witness-contracts-remain-unenforced).
+[Complete spans](../../UnifiedReduced/PathSpanExecution.lean) retain a per-trace
+protocol plan, complete coverage and valid gaps. No external occurrence ledger
+is supplied to the native participation derivation.
 
 Standalone worker inputs retain both `clockRoom` and `invocationHigh`; integrated
 caller/request matching derives them. See the [shared worker boundary](../README.md)

@@ -17,10 +17,12 @@ structure NativeMemoryInputs [Fact p.Prime] (data : RequestTrace p)
   setup : data.machine.rom = Setup.table before
   tables : data.workers.setup = Delegation.modeledSetup Keccak.Controller.rows
 
-/-- Temporary hash input contracts for every actual worker. These are explicit
-assumptions pending owner-reviewed circuit/VM resolution. They supply controller
-membership and G pointer separation, never outputs or reference execution.
-They do not assert that workers form complete hash protocols. -/
+/-- Temporary private-witness contracts for every actual hash worker, pending
+circuit/VM resolution. They constrain controller/pointer reads; the verifier
+cannot check them from public inputs alone. They supply controller membership
+and G pointer separation, never outputs or reference execution. Per-call
+membership does not require entry at G counter zero or round zero, unlike a VM
+bundle invocation. Complete spans separately bind entry, order and coverage. -/
 structure HashCommands [Fact p.Prime] (data : RequestTrace p) : Prop where
   gControl : ∀ w, ⟨.blakeG, w⟩ ∈ data.workers.rows → ExternalBoundary.HashABI.GControl w
   gBases : ∀ w, ⟨.blakeG, w⟩ ∈ data.workers.rows → ExternalBoundary.HashABI.GBases w

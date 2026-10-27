@@ -10,8 +10,9 @@ adoption. A child that detaches and loses its parent between samples can escape
 observation; supported FV commands wait for their compiler/export children.
 
 Keep /tmp/airbender_bounded.py unchanged. Run this guard as the one foreground
-owner, never inside another guard holding the same global lock. No stack limit
-is raised. No cgroup, daemon, external package or GPU operation is created.
+owner, never inside another guard holding the same global lock. Replay may select
+an explicit finite stack limit. No cgroup, daemon, external package or GPU
+operation is created.
 """
 
 import argparse
@@ -51,6 +52,11 @@ class Sample:
     info: ProcessInfo
     footprint: int
     resident: int
+    resident_for_limit: int | None = None
+
+    @property
+    def bounded_resident(self):
+        return self.resident if self.resident_for_limit is None else self.resident_for_limit
 
 
 class IdentityChanged(RuntimeError):
@@ -235,7 +241,9 @@ def parse_proc_stat(source):
     if len(fields) < 20 or len(fields[0]) != 1:
         raise ValueError('truncated /proc stat')
     ppid, pgrp, session, birth = (int(fields[index]) for index in (1, 2, 3, 19))
-    if pid <= 0 or min(birth, ppid, pgrp, session) < 0:
+    # A dying task can lose its process-group/session association before its
+    # stat entry disappears. Neither field is the PID's birth identity.
+    if pid <= 0 or min(birth, ppid) < 0 or min(pgrp, session) < -1:
         raise ValueError('invalid /proc stat identity')
     return ProcessInfo(pid, birth, source[opening + 2:closing], ppid, pgrp, session, fields[0])
 
@@ -259,13 +267,14 @@ def parse_smaps_rollup(source):
         raise ValueError('inconsistent smaps_rollup resident counters')
     huge = counters['Private_Hugetlb'] + counters['Shared_Hugetlb']
     charged = counters['Anonymous'] + counters['Pss_Shmem'] + counters['Swap'] + huge
-    return charged, counters['Rss'] + huge
+    return charged, counters['Rss'] + huge, charged - counters['Swap']
 
 
 class LinuxBackend:
     name = 'linux-proc-smaps-rollup-pidfd-subreaper'
     metric = ('approximate charged proxy = Anonymous + Pss_Shmem + Swap + '
-              'Private_Hugetlb + Shared_Hugetlb; resident = Rss + hugetlb')
+              'Private_Hugetlb + Shared_Hugetlb; bounded resident excludes Swap; '
+              'total Rss + hugetlb is telemetry only')
     adopted_children = True
 
     def __init__(self, proc=Path('/proc')):
@@ -316,10 +325,12 @@ class LinuxBackend:
             memory = (self.proc / str(pid) / 'smaps_rollup').read_text()
         except (FileNotFoundError, ProcessLookupError):
             again = self.info(pid)
-            if again is None or again.state in ('Z', 'X', 'x'):
-                self.release_exited(pid)
-                return None if again is None else Sample(again, 0, 0)
-            raise RuntimeError(f'smaps_rollup unavailable for live PID {pid}')
+            if again is not None and again.birth != info.birth:
+                raise IdentityChanged(f'PID reused while measuring: {pid}')
+            # Linux tears down mm before publishing the zombie state. Absence
+            # of smaps is therefore an exit race even if stat still says R/S.
+            self.release_exited(pid)
+            return None if again is None else Sample(again, 0, 0)
         again = self.info(pid)
         if again is None:
             self.release_exited(pid)
@@ -329,8 +340,8 @@ class LinuxBackend:
         if again.state in ('Z', 'X', 'x'):
             self.release_exited(pid)
             return Sample(again, 0, 0)
-        footprint, resident = parse_smaps_rollup(memory)
-        return Sample(again, footprint, resident)
+        footprint, resident, bounded_resident = parse_smaps_rollup(memory)
+        return Sample(again, footprint, resident, bounded_resident)
 
     def snapshot(self):
         result = {}
@@ -385,7 +396,7 @@ class LinuxBackend:
             selected.update(descendants)
         return {pid: snapshot[pid] for pid in selected}
 
-    def terminate(self, pid, birth):
+    def terminate(self, pid, birth, signum=signal.SIGKILL):
         handle = self.handles.get(pid)
         if handle is None:
             info = self.info(pid)
@@ -395,7 +406,7 @@ class LinuxBackend:
             handle = self.handles.get(pid)
         if handle is not None and handle[0] == birth:
             try:
-                signal.pidfd_send_signal(handle[1], signal.SIGKILL, None, 0)
+                signal.pidfd_send_signal(handle[1], signum, None, 0)
             except ProcessLookupError:
                 self.release_exited(pid)
 
@@ -461,14 +472,14 @@ def budget_reason(samples, args, elapsed):
     if sum(sample.info.name == 'lean' for sample in samples) > 1:
         return 'more than one Lean worker'
     if (sum(sample.footprint for sample in samples) > args.mib << 20 or
-            sum(sample.resident for sample in samples) > args.resident_mib << 20):
+            sum(sample.bounded_resident for sample in samples) > args.resident_mib << 20):
         return 'memory budget exceeded'
     if elapsed > args.seconds:
         return 'wall-time budget exceeded'
     return None
 
 
-def cleanup(child, tracker, backend):
+def cleanup(child, tracker, backend, preserve_supervisor=False):
     errors = []
     deadline = time.monotonic() + CLEANUP_SECONDS
     live = []
@@ -486,7 +497,10 @@ def cleanup(child, tracker, backend):
                 errors.append(f"owned group kill: {type(error).__name__}: {error}")
         for pid, birth in list(tracker.owned.items()):
             try:
-                backend.terminate(pid, birth)
+                if preserve_supervisor and pid == child.pid:
+                    backend.terminate(pid, birth, signal.SIGTERM)
+                else:
+                    backend.terminate(pid, birth)
             except BaseException as error:
                 errors.append(f'kill {pid}: {type(error).__name__}: {error}')
         child.poll()
@@ -509,6 +523,61 @@ def cleanup(child, tracker, backend):
     return live, errors
 
 
+def linux_payload_owner(owner, command):
+    """Hold the inherited lock and reap the payload even if the guard is killed.
+
+    This supervisor owns no resource policy and never acquires another lock.
+    Its subreaper also catches detached descendants when their parents die.
+    """
+    backend = LinuxBackend()
+    child, tracker = None, None
+    interrupted = False
+    def stop(_signum, _frame):
+        nonlocal interrupted
+        interrupted = True
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    signal.signal(signal.SIGHUP, stop)
+    backend.prepare_owner()
+    def finish():
+        # A D-state descendant may survive SIGKILL beyond the cleanup deadline.
+        # Keep this supervisor and its lock alive until ownership is verifiable.
+        while True:
+            live, errors = cleanup(child, tracker, backend)
+            if not live and not errors:
+                return
+            time.sleep(POLL_SECONDS)
+    try:
+        # PR_SET_PDEATHSIG is not inherited across fork. Set it in the actual
+        # surviving supervisor, then check the parent to close the startup race.
+        if backend.libc.prctl(1, signal.SIGTERM, 0, 0, 0):
+            raise OSError(ctypes.get_errno(), 'PR_SET_PDEATHSIG failed')
+        if os.getppid() != owner:
+            return 125
+        child = subprocess.Popen(command, start_new_session=True)
+        tracker = Tracker(backend, child.pid, root_held=lambda: child.returncode is None)
+        tracker.capture_root()
+        while not interrupted:
+            tracker.observe()
+            if child.poll() is not None:
+                break
+            time.sleep(POLL_SECONDS)
+        returncode = child.returncode
+        finish()
+        return returncode if not interrupted and returncode is not None and returncode >= 0 else 125
+    finally:
+        if child is not None and (tracker is None or child.returncode is None):
+            if tracker is not None:
+                finish()
+            else:
+                try:
+                    os.killpg(child.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                child.wait()
+        backend.close()
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--mib', type=int, required=True)
@@ -516,13 +585,15 @@ def parse_args(argv=None):
     parser.add_argument('--resident-mib', type=int, default=4096)
     parser.add_argument('--log', required=True)
     parser.add_argument('--review', action='store_true', help='Allow review jobs above 900s, up to 1800s')
+    parser.add_argument('--stack-mib', type=int, help='Explicit finite child stack, 8..256 MiB')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
     args.command = args.command[1:] if args.command[:1] == ['--'] else args.command
     maximum = 1800 if args.review else 900
     if (not args.command or not 8 <= args.mib <= 2560 or
             not args.mib <= args.resident_mib <= 5120 or
-            not math.isfinite(args.seconds) or not 0 < args.seconds <= maximum):
+            not math.isfinite(args.seconds) or not 0 < args.seconds <= maximum or
+            (args.stack_mib is not None and not 8 <= args.stack_mib <= 256)):
         parser.error('require command, footprint 8..2560 MiB, resident <=5120 MiB, normal 0..900s; --review permits up to 1800s')
     return args
 
@@ -532,7 +603,7 @@ def main(argv=None):
     started = time.monotonic()
     backend, child, tracker, lock = None, None, None, None
     reason, live, code = 'finished', [], 125
-    peak = footprint_peak = resident_peak = 0
+    peak = footprint_peak = resident_peak = bounded_resident_peak = 0
     try:
         backend = select_backend()
         own_info = backend.preflight()
@@ -551,14 +622,22 @@ def main(argv=None):
         backend.prepare_owner()
         def limits():
             resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+            if args.stack_mib is not None:
+                requested = args.stack_mib << 20
+                _, hard = resource.getrlimit(resource.RLIMIT_STACK)
+                resource.setrlimit(resource.RLIMIT_STACK, (requested, hard))
         def interrupted(signum, frame):
             raise InterruptedError(f'signal {signum}')
         for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
             signal.signal(sig, interrupted)
         environment = dict(os.environ, LEAN_NUM_THREADS='1', OMP_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1')
+        command = args.command
+        if backend.adopted_children:
+            command = [sys.executable, str(Path(__file__).resolve()), '--payload-owner', str(os.getpid()), *command]
         with open(args.log, 'wb') as output:
-            child = subprocess.Popen(args.command, stdout=output, stderr=subprocess.STDOUT,
-                                     env=environment, start_new_session=True, preexec_fn=limits)
+            child = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT,
+                                     env=environment, start_new_session=True, preexec_fn=limits,
+                                     pass_fds=(lock.fileno(),))
             tracker = Tracker(backend, child.pid, root_held=lambda: child.returncode is None)
             tracker.capture_root()
             while True:
@@ -566,6 +645,7 @@ def main(argv=None):
                 peak = max(peak, sum(max(item.footprint, item.resident) for item in samples))
                 footprint_peak = max(footprint_peak, sum(item.footprint for item in samples))
                 resident_peak = max(resident_peak, sum(item.resident for item in samples))
+                bounded_resident_peak = max(bounded_resident_peak, sum(item.bounded_resident for item in samples))
                 failure = budget_reason(samples, args, time.monotonic() - started)
                 if failure:
                     reason = failure
@@ -585,14 +665,14 @@ def main(argv=None):
                     # The unpolled child still reserves its PID on capture failure.
                     try:
                         if backend.adopted_children:
-                            os.killpg(child.pid, signal.SIGKILL)
+                            os.kill(child.pid, signal.SIGTERM)
                         else:
                             backend.terminate_group(child.pid, tracker.owned)
                     except ProcessLookupError:
                         pass
                     except BaseException as error:
                         capture_errors.append(f'initial owned group kill: {error}')
-                live, errors = cleanup(child, tracker, backend)
+                live, errors = cleanup(child, tracker, backend, preserve_supervisor=backend.adopted_children)
                 errors = capture_errors + errors
                 if errors:
                     reason = f'ERROR owned cleanup unverifiable: {errors[-3:]}'
@@ -601,7 +681,7 @@ def main(argv=None):
                 # Kill only its newly created group while that identity is held.
                 try:
                     if backend.adopted_children:
-                        os.killpg(child.pid, signal.SIGKILL)
+                        os.kill(child.pid, signal.SIGTERM)
                     else:
                         backend.terminate_group(child.pid, {})
                     child.wait(timeout=5)
@@ -618,15 +698,19 @@ def main(argv=None):
     result = {'reason': reason, 'exit': code, 'peak_mib': round(peak / 2**20, 2),
               'footprint_peak_mib': round(footprint_peak / 2**20, 2),
               'resident_peak_mib': round(resident_peak / 2**20, 2),
+              'bounded_resident_peak_mib': round(bounded_resident_peak / 2**20, 2),
               'seconds': round(time.monotonic() - started, 2),
               'owned_pids': list(tracker.owned) if tracker is not None else [],
               'live_owned_after': live, 'log': args.log,
               'backend': backend.name if backend is not None else 'unavailable',
               'footprint_metric': backend.metric if backend is not None else 'unavailable',
               'sampling_seconds': POLL_SECONDS}
+    result['stack_bytes'] = args.stack_mib << 20 if args.stack_mib is not None else resource.getrlimit(resource.RLIMIT_STACK)[0]
     print(json.dumps(result), flush=True)
     return code if reason == 'finished' and code is not None and code >= 0 else 125
 
 
 if __name__ == '__main__':
+    if sys.argv[1:2] == ['--payload-owner'] and sys.platform == 'linux':
+        sys.exit(linux_payload_owner(int(sys.argv[2]), sys.argv[3:]))
     sys.exit(main())

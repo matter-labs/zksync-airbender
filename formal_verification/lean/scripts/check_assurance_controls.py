@@ -57,7 +57,8 @@ def main():
             if pattern not in text:
                 raise ValueError('Injected false proof was not demonstrated axiom-free: ' + module)
         stage = 'inventory-kinds'
-        request = {'modules': ['AssuranceReview.Inventory'], 'roots': ['OutsideNames.namedTheorem'],
+        request = {'modules': ['AssuranceReview.Inventory'],
+                   'roots': ['OutsideNames.namedTheorem', 'OutsideNames.FieldDependency'],
                    'reviewPrefix': 'AssuranceReview'}
         write_json(output / 'inventory-request.json', request)
         job(stage, ['lake', 'env', 'lean', '--run', str(root / 'scripts/ProofAudit.lean'),
@@ -72,6 +73,8 @@ def main():
                 or any(roots[name]['origin'] != 'AssuranceReview.Inventory' for name in roots)
                 or 'OutsideNames.predicate' in roots or 'OutsideNames.ordinaryDefinition' in roots):
             raise ValueError('Origin/private/definition/instance/generated/predicate inventory controls failed')
+        if 'Classical.choice' not in result['axioms'].get('OutsideNames.FieldDependency', []):
+            raise ValueError('Environment audit omitted a constructor-field type dependency')
         stage = 'new-axiom-rejected'
         request = {'modules': ['NewAxiom'], 'roots': ['AssuranceNegative.usesForeign'], 'reviewPrefix': 'AssuranceReview'}
         write_json(output / 'axiom-request.json', request)

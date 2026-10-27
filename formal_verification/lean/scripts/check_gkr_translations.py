@@ -131,10 +131,14 @@ def check(directory=LEAN / "artifacts/compiler", repo=ROOT):
         for suffix in (".json", "-certificate.json"):
             if "artifacts/compiler/" + name + suffix not in dependencies:
                 raise ValueError(f"Missing Lake compiler input dependency: {name}{suffix}")
-        if mode == "uncached":
-            native = read(repo / native_manifest["circuit_identities"][family + ".json"]["retained_path"])
-            if canonical(pair["circuit"]) != canonical(native):
-                raise ValueError(f"Complete compiler output differs from retained native circuit: {family}")
+        relative = native_manifest["circuit_identities"][family + ".json"]["retained_path"]
+        if mode == "cached":
+            if not relative.endswith("_layout_no_caches_gkr.json"):
+                raise ValueError(f"Unexpected retained circuit path: {relative}")
+            relative = relative.replace("_layout_no_caches_gkr.json", "_layout_gkr.json")
+        native = read(repo / relative)
+        if canonical(pair["circuit"]) != canonical(native):
+            raise ValueError(f"Complete compiler output differs from retained native circuit: {name}")
     return len(expected_names)
 
 
@@ -144,6 +148,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     try:
         print(f"PASS {check(args.directory)} source/compiler pairs, source sidecars and arithmetic certificates; "
-              "11 complete retained native identities; kernel checking remains separate")
+              "22 complete retained native identities; kernel checking remains separate")
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         raise SystemExit(f"FAIL {error}") from error

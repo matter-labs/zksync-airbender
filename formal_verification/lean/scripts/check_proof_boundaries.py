@@ -31,6 +31,16 @@ LOCAL_WORKERS = (
     'Airbender.Proofs.Blake2G.NativeEffects',
     'Airbender.Proofs.Keccak.NativeEffects',
 )
+# These modules assemble artifact-specific interfaces through checked Import
+# bindings. Predicate meanings live in the remaining Review.Compiler modules,
+# whose entire import closures are checked below. Pooled/Unified also retain
+# the earlier certificate interfaces for compatibility.
+COMPILER_BINDINGS = frozenset({
+    'Airbender.Review.Compiler.Pooled',
+    'Airbender.Review.Compiler.Unified',
+    'Airbender.Review.Compiler.LogicalRows',
+    'Airbender.Review.Compiler.Program',
+})
 
 
 def closure(root):
@@ -64,8 +74,15 @@ def check():
     return len(CORES), len(LOCAL_WORKERS)
 
 
+def check_compiler_semantics(root):
+    """Reject calculations hidden behind an intermediate semantic import."""
+    for name, path in closure(root):
+        if name.startswith('Airbender.Proofs.'):
+            raise ValueError('compiler semantics import calculations: ' + ' -> '.join(path))
+
+
 def check_compiler_layout():
-    """Keep public compiler semantics independent of their proof calculations."""
+    """Check semantic definitions transitively and artifact bindings directly."""
     for legacy in ('GKRCompiler', 'GKRProtocol'):
         if (ROOT / legacy).exists() or (ROOT / (legacy + '.lean')).exists():
             raise ValueError('compiler module outside Review/Import/Proofs: ' + legacy)
@@ -77,6 +94,8 @@ def check_compiler_layout():
         for dependency in IMPORTS[name]:
             if dependency.startswith('Airbender.Proofs.'):
                 raise ValueError('compiler definitions import calculations: ' + name + ' -> ' + dependency)
+        if name not in COMPILER_BINDINGS:
+            check_compiler_semantics(name)
     for name, path in MODULES.items():
         if name.startswith(('Airbender.Proofs.GKRCompiler.', 'Airbender.Proofs.GKRProtocol.')):
             if re.search(r'^(?:syntax|elab_rules|elab)\b', path.read_text(), re.M):

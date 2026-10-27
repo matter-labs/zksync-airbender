@@ -32,8 +32,8 @@ class CompilerProvenance(unittest.TestCase):
         self.directory = Path(self.temporary.name) / "compiler"
         shutil.copytree(LEAN / "artifacts/compiler", self.directory)
 
-    def mutate(self, suffix, change, repin=False):
-        path = self.directory / ("add-sub-uncached" + suffix)
+    def mutate(self, suffix, change, repin=False, name="add-sub-uncached"):
+        path = self.directory / (name + suffix)
         data = json.loads(path.read_text())
         change(data)
         path.write_text(json.dumps(data))
@@ -42,7 +42,7 @@ class CompilerProvenance(unittest.TestCase):
             data = json.loads(manifest.read_text())
             key = {".json": "pair_sha256", "-source.json": "source_sha256",
                    "-certificate.json": "certificate_sha256"}[suffix]
-            data["files"]["add-sub-uncached"][key] = digest(path)
+            data["files"][name][key] = digest(path)
             manifest.write_text(json.dumps(data))
 
     def test_current(self):
@@ -51,6 +51,12 @@ class CompilerProvenance(unittest.TestCase):
     def test_changed_native_output_metadata(self):
         self.mutate(".json", lambda data: data["circuit"].__setitem__("scratch_space_size", 1))
         with self.assertRaisesRegex(ValueError, "Compiler artifact changed"):
+            checker.check(self.directory)
+
+    def test_rehashed_cached_native_output_is_compared_to_production(self):
+        self.mutate(".json", lambda data: data["circuit"].__setitem__("scratch_space_size", 1),
+                    True, name="add-sub-cached")
+        with self.assertRaisesRegex(ValueError, "Complete compiler output differs.*add-sub-cached"):
             checker.check(self.directory)
 
     def test_rehashed_source_omission(self):

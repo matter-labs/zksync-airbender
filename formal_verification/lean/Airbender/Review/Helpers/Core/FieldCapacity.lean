@@ -1,10 +1,10 @@
 /-!
 # Field capacity conditions
 
-These transparent names retain the original inequalities, including strictness.
+These transparent names state inequalities, including their strictness.
 They describe canonical-value/no-wrap room; they neither select a characteristic
 nor assert that an imported artifact was exported for that field. In particular,
-capacity alone is genuinely generic. Fixed imported inverse coefficients have a
+capacity alone is generic. Fixed imported inverse coefficients have a
 separate compatibility interface in `SerializedInverse`.
 -/
 
@@ -20,17 +20,17 @@ abbrev NoWrap (p bound : Nat) : Prop := bound < p
 The base remains a parameter; no particular characteristic is selected. -/
 abbrev ClockNoWrap (p base : Nat) : Prop := 2 * base + 4 < p
 
-/-- Retained 29-bit capacity of pooled native word/clock contracts. This does
+/-- 29-bit capacity of pooled native word/clock contracts. This does
 not require an entire RV32 word to fit in one field element. -/
 abbrev NativeWordCapacity (p : Nat) : Prop := 536870912 ≤ p
 
-/-- Retained 22-bit capacity of native ROM/decoder and unified-row contracts. -/
+/-- 22-bit capacity of native ROM/decoder and unified-row contracts. -/
 abbrev NativeRomCapacity (p : Nat) : Prop := 4194304 ≤ p
 
-/-- Retained 23-bit capacity of the native hash-worker composition contracts. -/
+/-- 23-bit capacity of the native hash-worker composition contracts. -/
 abbrev NativeHashCapacity (p : Nat) : Prop := 8388608 ≤ p
 
-/-- Retained 24-bit capacity used by the wider native hash/Keccak composition. -/
+/-- 24-bit capacity used by the wider native hash/Keccak composition. -/
 abbrev NativeWideHashCapacity (p : Nat) : Prop := 16777216 ≤ p
 
 end Airbender.FieldCapacity

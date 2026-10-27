@@ -91,8 +91,10 @@ The G, extended-round and Keccak source/assertion patches have been removed;
 these setup documents again embed the original circuit definitions. Their
 deterministic controller tables retain their fallback rows. The actual-path
 execution theorem now takes explicit
-[hash controller/base contracts](../../Airbender/Review/Helpers/Context/ExternalBoundary/HashABI.lean).
-Their derivation from native acceptance remains open. Complete algorithm
+[F11 hash witness contracts](../../FINDINGS.md#f11--hash-witness-contracts-remain-unenforced).
+Their derivation from native acceptance remains open. They restrict private
+controller/pointer reads; bundle entry and the stricter round low-limb model
+profile remain explicit differences from the VM. Complete algorithm
 coverage and valid gaps remain separate span properties.
 
 Keccak's five fixed regions (IDs 0/4/38/39/40) import all 1,245,185 real rows and

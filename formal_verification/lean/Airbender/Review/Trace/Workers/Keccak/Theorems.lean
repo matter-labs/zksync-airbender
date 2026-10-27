@@ -38,8 +38,9 @@ theorem Native.permutation_soundness [Fact p.Prime] (hp : FieldCapacity.NativeWi
 
 /-- Keccak's imported native controller selects physical lane addresses and controls
     actual initialized Sail transfers in a mixed delegation pool. All seven lane modes
-    use the existing Clean references on native observations. No pointer/read/range/result
-    premise is supplied. Caller request binding is handled by separate claims. -/
+    use the existing Clean references on native observations. Pointer/read/data-range
+    and result facts are derived; operation inputs retain clockRoom and invocationHigh.
+    Caller request binding is handled by separate claims. -/
 theorem Native.operation_execution [Fact p.Prime] (hp : FieldCapacity.NativeWideHashCapacity p)
     (inverse : SerializedInverse.Scale256 p)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}

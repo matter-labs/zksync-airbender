@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 GUIDES = tuple(ROOT / name for name in (
     "README.md", "VERIFICATION_STATUS.md", "TRUST_AND_REVIEW.md",
     "FORMAL_VERIFICATION_PLAN.md", "FINDINGS.md",
+    "GKR_COMPILER_VERIFICATION.md",
     "artifacts/setup/README.md", "generated/sail-rv32/README.md",
 )) + tuple(sorted((ROOT / "Airbender/Review").rglob("README.md")))
 # File names, source-only Rust/Sail names, and prose are not emitted Lean declarations.
@@ -149,7 +150,8 @@ def check_reference_controls(candidates):
 
 def check_links():
     count = 0
-    for guide in GUIDES:
+    histories = tuple(sorted(ROOT.glob('*HISTORY.md'))) + tuple(sorted((ROOT / 'Airbender/Review').rglob('HISTORY.md')))
+    for guide in dict.fromkeys((*GUIDES, *histories)):
         for target in re.findall(r"\[[^]\n]*\]\(([^)\n]+)\)", guide.read_text()):
             link = urlsplit(target.strip("<>"))
             if link.scheme:
@@ -551,13 +553,26 @@ def verify_build_snapshot(path):
                     metrics[0].get('exit') != 0 or metrics[0].get('live_owned_after') != [] or
                     metrics[0].get('log') != receipt['log']):
                 raise ValueError('Source build did not finish and reap its children: ' + module)
-    if (snapshot['external_imports_scope'] != 'direct_workspace_imports_of_project_modules' or
+    scope = snapshot['external_imports_scope']
+    actual_external = set(snapshot['external_imports'])
+    if (scope not in {'direct_workspace_imports_of_project_modules', 'complete_workspace_import_closure_of_project_modules'} or
             snapshot['external_freshness_basis'] != (
                 'normal Lake dependencies of every successful project olean target'
                 if schema == 'airbender-serial-build-v1' else
                 'normal Lake --no-build dependency freshness of every final project olean query') or
-            set(snapshot['external_imports']) != external or set(snapshot['external_sources']) != external):
+            (actual_external != external if scope == 'direct_workspace_imports_of_project_modules'
+             else not external <= actual_external) or set(snapshot['external_sources']) != actual_external):
         raise ValueError('Incomplete explicit external dependency inventory')
+    if scope == 'complete_workspace_import_closure_of_project_modules':
+        for label, compiled in [('project', snapshot['objects']), ('external', snapshot['external_imports'])]:
+            report = json.loads(checked(snapshot['compiled_hash_reports'][label]).read_text())
+            expected_paths = {record['path'] for parts in compiled.values() for record in parts.values()
+                              if record['sha256'] is not None}
+            reported_paths = [record['path'] for record in report.get('files', [])]
+            if (report.get('passed') is not True or set(reported_paths) != expected_paths
+                    or len(reported_paths) != len(expected_paths)):
+                raise ValueError('Missing compiled-artifact trace/hash verification: ' + label)
+        external = actual_external
     libraries = [ROOT / '.lake/build/lib/lean',
                  *sorted((ROOT / '.lake/packages').glob('*/.lake/build/lib/lean'))]
     for module in external:

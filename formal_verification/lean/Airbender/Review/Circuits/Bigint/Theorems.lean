@@ -6,7 +6,8 @@ namespace Airbender.Bigint.Memory
 
 /-- The sixteen actual indirect addresses follow x10/x11's aligned 32-byte
     blocks. Pointer bounds come from public Sail initialization and accepted
-    writes/reads; no per-row range premise remains in this claim. RAM-only ABI
+    writes/reads; data-limb bounds are derived, while memory inputs retain
+    clockRoom and invocationHigh. RAM-only ABI
     and full request/response execution are separate obligations. -/
 theorem addresses_soundness [Fact p.Prime] (hp : FieldCapacity.AtLeast p 2097152)
     (inverse : SerializedInverse.Scale32 p) (data : Delegation.MemoryData p)

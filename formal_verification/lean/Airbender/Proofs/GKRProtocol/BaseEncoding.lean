@@ -1,3 +1,4 @@
+import Airbender.Review.Compiler.LookupOperands
 import Airbender.Proofs.GKRProtocol.AffineExpansion
 import Airbender.Proofs.GKRProtocol.LookupFields
 import Airbender.Proofs.GKRProtocol.Typing
@@ -229,16 +230,6 @@ theorem BaseRecipeAgreement.sound_bank {relations : List (Polynomial n Source.Ba
     (holds : Satisfies relations (base ∘ bank.address)) :
     agreement.source.value ((base ∘ bank.address) ∘ sourcePlacement) = recipe.value base :=
   agreement.sound sourcePlacement bank.placement checked holds base (bank.wires inBank base)
-
-structure SourceLookupQuery where
-  fields : List Source.EncodedField
-  mask : Option Source.EncodedField
-
-def SourceLookupQuery.weight [CommRing R] (query : SourceLookupQuery)
-    (hom : Source.BaseField →+* R) (source : Nat → Source.BaseField) : R :=
-  match query.mask with
-  | none => 1
-  | some field => hom (field.value source)
 
 def SourceLookupQuery.value [CommRing R] (query : SourceLookupQuery)
     (hom : Source.BaseField →+* R) (alpha gamma : R) (source : Nat → Source.BaseField) : RationalPair R :=

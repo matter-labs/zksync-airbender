@@ -1,9 +1,11 @@
 # Unified execution inputs and preparation
 
-These helpers state the public configuration, program/domain, decoding and
-complete-protocol scope consumed by the unified trace theorems. They do not
-supply desired reads, arithmetic results, valid native controls or successful
-execution. Accepted constraints and one initialized history derive those facts.
+These helpers state configuration, program/domain, decoding and protocol scope
+for unified trace theorems. Preparation profiles derive controller values from
+accepted constraints and initialized history. The plan-free native-path theorem
+instead takes the explicit [HashCommands](NativeMemory.lean) private-witness
+assumptions; neither interface supplies desired outputs or successful execution.
+See [F11](../../../../FINDINGS.md#f11--hash-witness-contracts-remain-unenforced).
 
 ## Checked results
 
@@ -33,16 +35,23 @@ native [G-loop application](../../../../Tests/PathGLoop.lean) pass focused kerne
 checks. The latter retains all three full runs, groups the baseline and scratch
 SW7 complete 56-call protocols, and refutes actual endpoint [`WordMapping`](../../Trace/Workers/Blake2G/WorkVector.lean) and
 [`PathSpanAlgorithmAt`](../../Trace/UnifiedReduced/Paths/SpanProjection.lean) for the protected-message SW7 variant. Its 55 repeated loop
-calls and last index 55/controller 183 use public occurrence preparation. Complete
-mitigation assurance and full independent kernel replay remain pending.
+calls and last index 55/controller 183 use a per-trace occurrence plan in this
+application. The [native-path theorem](../../Trace/UnifiedReduced/NativePathExecution.lean)
+requires no occurrence plan and retains explicit hash witness contracts. Full
+current-head assurance and independent kernel replay remain pending.
 
-## Conditions that remain public
+## Public conditions and separate witness contracts
 
 Initial state/program/configuration, aligned tracked domain, modeled tables,
 exact logical matching and selected protocol shape remain explicit. Native
 initialization derives zero seeds, geometry and register coverage; register
 values/teardown and the intended public state are separate inputs. Sampled RAM
 product equality does not establish deterministic token-multiset equality.
+
+The conditions above are not an exhaustive list of public inputs: HashCommands
+restricts private worker controls and G pointers and is not publicly checkable
+without a witness binding. Per-call controls do not ensure VM bundle entry; the
+round zero low limb is a stricter model profile. See F11 for the exact four fields.
 
 Worker-only clockRoom and invocationHigh remain explicit in their own interfaces.
 Integrated native clocks and initialized caller accounting derive participation

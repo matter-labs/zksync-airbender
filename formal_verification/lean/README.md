@@ -6,11 +6,12 @@
 ## What is checked
 
 [Verification status](VERIFICATION_STATUS.md) lists every circuit, checked coverage
-and open tasks. It is updated after each completed task.
+and outstanding validation, with historical evidence identified separately.
 
-[GKR compiler verification](GKR_COMPILER_VERIFICATION.md) records the new
-pre-compiler-to-lowered-IR effort and its arithmetic, wiring, lookup-field and
-native consumer field-role checkpoints.
+[Compiler review](Airbender/Review/Compiler/README.md) states captured base-field
+arithmetic preservation and the conditional executor bridge.
+[GKR compiler evidence](GKR_COMPILER_VERIFICATION.md) separates its supporting
+wiring/lookup/RAM results from historical checkpoints.
 
 The [findings audit](FINDINGS.md) records accepted counterexamples and unresolved
 bindings, with links to their assumptions and evidence.
@@ -22,7 +23,21 @@ no-cache JSON → native Clean constraints → Sail execution (or pinned custom 
 ```
 
 Claims are conditional on explicit interfaces. The imported richer constraints are
-the current target; compiled-gate and cryptographic argument soundness are deferred.
+the current target. Captured compiled/cached base-field arithmetic preservation
+is proved for 22 instances. New compiler execution APIs derive lookup membership
+and helper ranges from physical-row arithmetic and exact matching of actual native encoding/leaf tuples,
+without canonical framing. Native field/mask/helper identities transport those
+tuples to source operands; final sampled balance-to-exact matching and physical
+multiplicity binding remain explicit abstractions. Exact state/RAM matching and
+public boundaries remain explicit. Supplied-program
+wrappers require compatibility with retained decoder tables. All 14 native row
+compositions and public wrappers compile; execution/public modules also pass
+selected-module replay at a 32 MiB Lean thread stack. The selected 3279-module/
+10-test frontend passes normal Lake no-build freshness and artifact-hash checking
+without repairs. Its manifests bind only the selected scope; full project/runtime,
+environment, independent replay, negative-control and Linux/cold-run validation
+remain pending. See [current evidence](VERIFICATION_STATUS.md#current-focused-validation). Cryptographic argument
+soundness and universal Rust compiler correctness remain outside the model.
 
 ## Read these first
 
@@ -94,6 +109,7 @@ export CARGO_TARGET_DIR="$FV_ROOT/cargo"
 # Run these on Linux itself before Linux compiler work; Darwin cannot verify
 # Linux pidfd/subreaper behavior. Do not wrap this orchestrator in another guard.
 python3 -m unittest discover -s scripts -p test_bounded_fv.py -v
+python3 scripts/compilation_pool/test_pool.py --process-tests --process-output "$FV_ROOT/pool-controls"
 fv() {
   label="$1"
   shift
@@ -135,18 +151,28 @@ while IFS= read -r -d '' file; do dep_args+=(--dep-info "$file"); done \
 fv native-receipts python3 scripts/check_setup_freshness.py verify \
   --work-dir "$FV_ROOT/native" "${dep_args[@]}"
 
+# Re-export actual cached and uncached compiler output after Rust/source changes.
+fv compiler-export env -u CI -u RUST_MIN_STACK python3 scripts/export_gkr_translations.py --output "$FV_ROOT/compiler"
+fv compiler-retained python3 scripts/check_gkr_translations.py
+fv compiler-fresh python3 scripts/check_gkr_translations.py --directory "$FV_ROOT/compiler"
+diff -qr artifacts/compiler "$FV_ROOT/compiler"
+fv compiler-provenance-controls python3 -m unittest discover -s scripts -p test_gkr_translation_provenance.py -v
+fv compiler-native-requests python3 scripts/generate_native_lookup_requests.py --check
+
 # Frontends own their aggregate guard; use no outer guard.
 # Source freshness defaults to four bounded read-only query workers.
 python3 scripts/check_lean.py --guard scripts/bounded_fv.py --output "$FV_ROOT/lean"
 sysroot="$(lean --print-prefix)"
 python3 scripts/check_axioms.py --guard scripts/bounded_fv.py \
-  --sysroot "$sysroot" --output "$FV_ROOT/axioms"
+  --sysroot "$sysroot" --output "$FV_ROOT/axioms" \
+  --dispositions scripts/axiom_dispositions.json
 python3 scripts/check_kernel_replay.py --guard scripts/bounded_fv.py \
   --sysroot "$sysroot" --output "$FV_ROOT/replay" \
+  --stack-mib 32 --fresh-project --ledger .lake/verification/replay-ledger \
   --axiom-result "$FV_ROOT/axioms/axiom-result.json"
 python3 scripts/check_assurance_controls.py --guard scripts/bounded_fv.py \
   --sysroot "$sysroot" --output "$FV_ROOT/assurance-controls" \
-  --ledger "$FV_ROOT/replay/ledger"
+  --ledger .lake/verification/replay-ledger
 ```
 
 The 25 native jobs execute twelve production generators and thirteen exports,
@@ -160,25 +186,72 @@ checks cached ordinary Lake freshness with four workers by default,
 under one combined resource owner. Dirty rebuilds and high-memory work run
 exclusively. It serializes the actual executable
 native closures, and checks the library, both executables, importer runtime,
-complete explicit audit, guide references, proof boundaries and source/evidence
-pins. Its verified source/object/job snapshot lets the review check inspect the
+direct axiom smoke reports, guide references, proof boundaries and source/evidence
+pins. A direct Lean axiom report can omit dependencies in imported constructor
+types; the compiled-environment walk, baseline and reviewed dispositions are the
+standard-axiom dependency gate. Its verified source/object/job snapshot lets the review check inspect the
 same compiled tree without starting an aggregate build. The environment-origin
 proof audit, full independent kernel replay and isolated direct/transitive false
 proof controls are separate gates. Only `propext`, `Classical.choice` and
 `Quot.sound` are allowed; all preserved audit roots remain required. Importer
 regressions do not prove parsing fidelity.
 
-All real workers use `/tmp/airbender-fv-single-worker.lock`, 2560 MiB physical
-footprint (Linux uses the documented conservative charged-memory proxy), 5120 MiB
-resident memory and 900 seconds. The review stage alone permits 1800 seconds.
-The commands keep existing stack limits. A failed bounded job stops the run;
-logs, commands, resource metrics and exact failed stages remain under `FV_ROOT`.
+All real workers share `/tmp/airbender-fv-single-worker.lock` and one aggregate
+resource budget: 2560 MiB footprint, 5120 MiB bounded resident and 900 seconds;
+the review stage alone permits 1800 seconds. Darwin uses its libproc footprint/RSS.
+Linux footprint is the approximate sum of anonymous memory, proportional shared
+memory, swap and huge pages; bounded resident omits swap. Reclaimable mapped files
+are excluded from these Linux caps; total RSS remains telemetry. Sampled budgets
+are not exact cgroup enforcement. Commands and peak metrics are retained in receipts.
+
+Independent replay passes Lean an explicit 32 MiB thread stack on every host,
+using --tstack=32768, and records it in the ledger identity. Linux also sets the
+process stack limit to 32 MiB. On Darwin, the OS rejects process stack-limit
+changes; replay leaves that limit inherited and records it while still selecting
+the Lean thread stack. The Linux process-stack runtime control is skipped on
+Darwin. This default remains provisional: the five reported deep-recursion
+failures are not established as fixed until full current-head replay passes.
+
+The --fresh-project option replays project roots on every run. The persistent
+ledger under .lake/verification/replay-ledger reuses dependency entries only for
+identical compiled bytes and tool identity; saved report paths are relative.
+The ledger must come from a trusted checking context: matching hashes cannot
+authenticate a fabricated pass report. CI restores and saves this ledger only
+on the repository's default branch. Other refs use a fresh per-attempt ledger
+outside the checkout and replay dependencies as well as project roots.
+A failed bounded job stops the run; exact commands, peaks and failed stages remain
+under FV_ROOT.
+
+For scale, the historical `1d3e4bdbb` clean parallel build took 1 h 39 min on eight
+cores. Its serial cold reproduction was estimated at roughly 7.5 h plus about
+15 h of replay; thousands of subsequent compiler modules make these figures
+historical guidance, not a current runtime estimate. Current peak memory, stack
+and cold-cache duration require measurement on the actual Linux host.
+
 The [formal-verification workflow](../../.github/workflows/formal-verification.yml)
-uses the existing high-performance Linux runner and source/dependency keyed caches
-with ordinary freshness checking. Rust CI calls it once and requires its result in
-the stable `pr-checks` gate; manual runs use the same worker guard. Cached outputs
-do not serve as final pass markers. Remote CI, cold-cache bootstrap and whole-project replay results must be
-measured on their actual hosts; this command list does not claim they passed.
+is temporarily advisory and selected for formal-verification, circuit-source and
+pinned-evidence changes. Branches have independent queues. Source/dependency caches
+support warm starts; trusted default-branch runs also reuse their replay ledger.
+Immutable snapshots
+are saved after bootstrap, native setup/compiler export, Lean checking and replay,
+including bounded stage failures. Restore first selects the same source and then
+compatible toolchain/dependency snapshots; normal freshness and integrity checks
+still run. The replay ledger remains separate from normal build caches.
+
+CI stops long work at a shared 22-hour deadline within the 24-hour job, reserving
+time for cleanup, partial-cache saves and log upload. Each real worker retains its
+existing resource/time guard. A bounded stage timeout fails that run; it never
+converts partial work into a pass. Default-branch dependency replay entries may
+resume, while project roots replay freshly on every complete attempt. PR runs
+do not reuse pass JSON from earlier PR attempts. Cold runtime and
+whether the current library/replay fit these stage windows remain unmeasured;
+partial reuse improves recovery without establishing feasibility or validation.
+
+A cached build is not a final pass marker. Selectively required status follows a
+complete Linux pass. Remote CI, full current-head auditing/replay and empty-cache
+reproduction remain pending; these commands do not claim they passed. The reviewed
+disposition file records intended baseline exceptions, not a successful full
+baseline regeneration.
 
 After the toolchain/cache/preparation steps above, a focused trace check is:
 

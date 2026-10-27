@@ -7,12 +7,16 @@ The additive guard delegates process measurement, the global lock and owned
 descendant cleanup to that implementation; it changes only the explicit Lean
 worker ceiling.
 
-All members together remain limited to 2,560 MiB physical footprint, 5,120 MiB
-resident memory and 900 seconds. These limits are not multiplied by the worker
-count. Stack settings and proof limits are unchanged. Darwin uses its existing
-libproc accounting; Linux retains the documented charged-memory proxy and RSS
-backend. Reservations guide admission; actual aggregate samples enforce the
-hard limits and fail closed.
+All members together remain limited to 2,560 MiB footprint, 5,120 MiB bounded
+resident memory and 900 seconds. These limits are not multiplied by worker count.
+Darwin uses libproc footprint/RSS. Linux footprint is anonymous memory plus
+proportional shared memory, swap and huge pages; bounded resident excludes swap.
+Mapped file pages are excluded from those Linux caps; total RSS is telemetry.
+Replay selects a finite Lean thread stack on every host and records it in its
+tool identity. Linux additionally sets a finite process stack limit; Darwin retains
+and records its inherited process limit because the OS rejects changes.
+Reservations guide admission; aggregate samples enforce these approximate budgets
+and fail closed. They are not exact cgroup hard limits.
 
 Admission leaves 128 MiB for the pool: reservations plus this overhead must fit
 both aggregate caps. Missing peak estimates run exclusively with reservations

@@ -2,8 +2,9 @@
 
 The target is the imported richer no-cache relation built from this checkout,
 with upstream `av_gkr_compiler` baseline revision
-`4518846625730fabc4cd83744d4bd983a5e42b97`. The hash workers include the native
-successful-call constraints recorded in the current source/artifact manifest.
+`4518846625730fabc4cd83744d4bd983a5e42b97`. The restored hash circuits retain
+known enforcement gaps; their conditional proofs use the explicit
+[F11 hash witness contracts](FINDINGS.md#f11--hash-witness-contracts-remain-unenforced).
 [Verification status](VERIFICATION_STATUS.md) records completed validation and
 material limits. The [historical integration record](TRUST_AND_REVIEW_HISTORY.md)
 retains earlier experiments and narrower intermediate interfaces.
@@ -18,11 +19,20 @@ assumptions. Supporting arithmetic and assembly proofs belong in Proofs; a
 separate public wrapper for every internal subcircuit calculation is unnecessary.
 Existing compatibility names and native BabyBear entrypoints remain useful.
 
-The [compiler review](Airbender/Review/Compiler/README.md) exposes four principal
-claims and their semantic definitions. Native JSON readers and concrete capture
+The [compiler review](Airbender/Review/Compiler/README.md) exposes arithmetic,
+physical-row logical execution, compatible supplied-program and explicit-platform
+entrypoints, alongside the older compatibility wrappers. Native JSON readers and concrete capture
 bindings live in Import; certificate checks and supporting calculations live in
-Proofs. The captured-instance scope and the framing/lookup/matching premises
-remain explicit.
+Proofs. Captured-instance scope, exact tuple/state/RAM matching and public
+boundaries remain explicit. New logical entrypoints derive helper/member validity
+without canonical source framing; the older wrappers preserve their premises.
+All 14 actual native row compositions and public wrappers compile; program/logical
+execution and the final public module pass selected-module replay at a 32 MiB Lean
+thread stack. The selected 3279-module/10-test frontend passes normal Lake
+no-build freshness and artifact-hash checks without repairs. Its manifests bind
+only that scope; full project/executable/runtime checks, environment auditing,
+complete independent replay, transitive negative controls and Linux/cold-run
+validation remain pending.
 
 [Pooled soundness](Airbender/Review/Trace/Soundness.lean) derives successful
 ordinary execution and native terminal PC/cells from initialized matching.
@@ -31,7 +41,7 @@ also composes complete bigint, BLAKE2 G, extended-round and Keccak references
 with the supported straight-line ordinary registry.
 [Native actual-path execution](Airbender/Review/Trace/UnifiedReduced/NativePathExecution.lean)
 composes branches, JAL/JALR and repeated-PC loops with complete delegations
-under explicit hash controller/base contracts and without an occurrence plan;
+under the explicit F11 hash witness contracts and without an occurrence plan;
 [complete spans](Airbender/Review/Trace/UnifiedReduced/PathSpanExecution.lean)
 derive the full native worker partition/count and algorithms in one history
 under their per-trace occurrence plan and complete protocol coverage.
@@ -42,6 +52,12 @@ results do not establish native enforcement in the restored source.
 Separate declaration-origin auditing, transitive assurance controls and independent
 kernel replay are also required.
 
+A replay ledger is trusted evidence. Exact artifact/tool hashes bind a recorded
+pass to its inputs but do not authenticate who produced that pass. CI therefore
+reuses ledgers only on the default branch; other refs start with a fresh ledger
+outside the checkout and replay dependencies too. The full Linux runtime and
+cold-run feasibility of this policy remain unmeasured.
+
 ## Checked scope boundaries
 
 Claims retain explicit public program/state/configuration, tracked domain,
@@ -49,13 +65,17 @@ modeled lookup tables and exact logical matching. Reads, operand bounds,
 decoder selections and worker participation are derived. A local request observation
 is weaker than fulfilled worker effects or a complete reference span.
 
-The native actual-path entrypoint explicitly assumes
-[HashCommands](Airbender/Review/Helpers/UnifiedReduced/NativeMemory.lean): supported
-hash controller reads and G base separation. Its
-[input contracts](Airbender/Review/Helpers/Context/ExternalBoundary/HashABI.lean)
-do not assert outputs or execution; this proof does not derive them from native
-acceptance. The round contract's zero low limb restricts the existing reference profile
-and is not claimed to be required by the Rust VM. Controllers may be loaded or
+The native actual-path entrypoint explicitly assumes the
+[F11 hash witness contracts](FINDINGS.md#f11--hash-witness-contracts-remain-unenforced),
+implemented by [HashCommands](Airbender/Review/Helpers/UnifiedReduced/NativeMemory.lean)
+and its [four predicates](Airbender/Review/Helpers/Context/ExternalBoundary/HashABI.lean).
+They constrain private worker-witness controller and pointer reads; the verifier
+cannot check them merely from public inputs. They supply no outputs or execution
+and are not derived from native acceptance. The round zero low limb is a stricter
+model profile than the Rust VM. Conversely, per-call G/round controls do not enforce
+entry at counter/round zero, which the VM requires for a bundle. Complete spans
+obtain entry from their per-trace protocol plan; the plan-free theorem proves local
+reference calls without this bundle-entry guarantee. Controllers may be loaded or
 computed through ordinary instructions; no occurrence plan is supplied. Public program
 bytes, initialized tracked memory, configuration/retirement and the separate
 bigint command contract remain explicit. The older full-CSR profile retains
@@ -71,6 +91,7 @@ Standard boot-ROM-data copying remains outside these claims.
 | Inactive padding | The [external contribution-mask boundary](Airbender/Review/Helpers/Context/PaddingBoundary/README.md) derives active acceptance/execution from exact masked tuple matching. Raw inactive PC/write values need not stutter. |
 | Bigint commands | F02 remains an explicit valid-command contract. Accepted controls 0 and 65537 still fail the pinned full reference; observations alone do not validate their ABI. |
 | Worker ROM | F04 remains an explicit RAM-port contract. The accepted COPY ROM-shadow discrepancy is preserved. |
+| Hash witness contracts | [F11](FINDINGS.md#f11--hash-witness-contracts-remain-unenforced) records all four private-witness assumptions, known accepted excluded cases, bundle-entry differences and the stricter round low-limb model profile. Circuit enforcement remains open. |
 | Worker participation | Current native BabyBear timestamp queries and initialized caller accounting derive participation. The historical zero-clock witness is rejected by current native acceptance; weaker intermediate interfaces retain their own stated scope. |
 | Discarded loads | The original Sail claim retains the [discarded-LW restriction](Tests/DiscardedLoad.lean). The named Airbender PC-only-NOP profile is a distinct reference choice. |
 
@@ -118,9 +139,25 @@ or discharge separate register value/teardown obligations. See the
 
 RAM GKR gates compute encoded token products. Equality of sampled products does
 not deterministically imply token-multiset equality or establish cryptographic
-soundness. Captured compiled/cached gate refinement is now checked as recorded in
-the compiler review. Universal Rust/setup correspondence, verifier refinement,
-cryptographic enforcement and whole-system completeness remain separate work.
+soundness. For all 22 captured compiled/cached instances, native base-field
+arithmetic implies source arithmetic. New physical-row execution entrypoints take
+actual arithmetic/active rows plus exact matching of actual native encoding-field
+and leaf-weight tuples. Native field/mask/helper identities transport them to source
+operands under full native arithmetic, while operand coverage and setup-column
+bindings align their primitive/groups and setup. That composition derives authored
+membership, helper bounds and Clean/decoder validity without a canonical frame.
+The final compressed/sampled rational balance-to-exact-matching step remains an
+abstraction, and natural multiplicities are not tied to physical field counters.
+Exact state/RAM permutations and public boundary/seed contracts remain explicit. Supplied-program wrappers
+require decoder-table equality with the retained capture; they do not establish
+arbitrary new setup support. Older framed wrappers remain compatible. These new
+connections compile across all 14 actual native row compositions and the public
+wrappers; execution/public modules also pass selected-module replay at a 32 MiB
+Lean thread stack. The selected frontend regression/freshness scope passes;
+full assurance remains pending as described above. See the
+[compiler premise table](Airbender/Review/Compiler/README.md#execution-premises).
+Universal Rust/setup correspondence, verifier refinement, cryptographic enforcement
+and whole-system completeness remain separate work.
 
 ## Public state, profiles and external inputs
 

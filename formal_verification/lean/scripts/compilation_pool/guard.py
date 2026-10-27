@@ -23,7 +23,7 @@ def budget_reason(samples, args, elapsed, workers=4):
     if sum(sample.info.name == 'lean' for sample in samples) > workers:
         return 'Lean worker limit exceeded'
     if (sum(sample.footprint for sample in samples) > args.mib << 20 or
-            sum(sample.resident for sample in samples) > args.resident_mib << 20):
+            sum(sample.bounded_resident for sample in samples) > args.resident_mib << 20):
         return 'memory budget exceeded'
     if elapsed > args.seconds:
         return 'wall-time budget exceeded'

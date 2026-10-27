@@ -11,14 +11,83 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import resource
 import sqlite3
 import sys
 
-from check_axioms import HERE, ROOT, run_guarded, sha, write_json
+from check_axioms import HERE, ROOT, run_guarded, sha, write_bytes, write_json
 
 
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+
+def cached_json(path):
+    try:
+        return json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def valid_inventory(data, module, parts):
+    try:
+        def names(value):
+            return isinstance(value, list) and all(isinstance(name, str) and name for name in value)
+        if not (names(data['safe']) and names(data['codegenOnly']) and names(data['axioms'])
+                and type(data['isModule']) is bool
+                and isinstance(data['dependencies'], list) and isinstance(data['imports'], list)
+                and isinstance(data['skipped'], list) and isinstance(data['skippedDependencyUses'], list)):
+            return False
+        if not all(isinstance(item, dict) and isinstance(item['user'], str) and names(item['uses'])
+                   for item in data['dependencies']):
+            return False
+        if not all(isinstance(item, dict) and isinstance(item['module'], str) and item['module']
+                   and all(type(item[key]) is bool for key in ('importAll', 'isExported', 'isMeta'))
+                   for item in data['imports']):
+            return False
+        if not all(isinstance(item, dict) and isinstance(item['name'], str) and item['name']
+                   and type(item['unsafe']) is bool and type(item['partial']) is bool
+                   for item in data['skipped']):
+            return False
+        if not all(isinstance(item, dict) and isinstance(item['user'], str)
+                   and isinstance(item['dependency'], str) for item in data['skippedDependencyUses']):
+            return False
+        return (data['schema'] == 'airbender-kernel-replay-v1' and data['module'] == module
+                and data['files'] == list(parts)
+                and len(data['safe']) == len(set(data['safe']))
+                and {item['user'] for item in data['dependencies']} == set(data['safe'])
+                and len(data['dependencies']) == len(data['safe'])
+                and (data.get('isModule') is not True or len(parts) == 3)
+                and module not in [item['module'] for item in data['imports']]
+                and isinstance(data['skipped'], list))
+    except (KeyError, TypeError):
+        return False
+
+
+def replay_matches(report, module, inventory):
+    try:
+        return (report['status'] == 'pass' and report['module'] == module
+                and all(report[key] == inventory[key] for key in (
+                    'safe', 'imports', 'skipped', 'dependencies', 'skippedDependencyUses',
+                    'codegenOnly', 'axioms', 'isModule')))
+    except (KeyError, TypeError):
+        return False
+
+
+def valid_replay(result, module, key, parts, inventory, dependencies, ledger):
+    try:
+        filename = result['report']
+        if not isinstance(filename, str) or Path(filename).name != filename:
+            return False
+        report_path = ledger / 'passed' / filename
+        report = cached_json(report_path)
+        return (result['key'] == key and result['module'] == module and result['status'] == 'pass'
+                and result['parts'] == parts and result['safe'] == inventory['safe']
+                and result['dependencies'] == dependencies and result['guard']['passed']
+                and report_path.is_file() and sha(report_path) == result['report_sha256']
+                and replay_matches(report, module, inventory))
+    except (KeyError, TypeError, OSError):
+        return False
 
 
 def source_modules(root):
@@ -54,15 +123,31 @@ def run_replay(args, modules=None):
     (ledger / 'inventories').mkdir(exist_ok=True)
     (ledger / 'passed').mkdir(exist_ok=True)
     identities = tool_identity(args.sysroot.resolve(), args.guard.resolve())
-    tool_key = digest({'files': identities, 'limits': [2560, 5120, 900], 'adapter': 1})
+    def artifact_name(path):
+        path = Path(path).resolve()
+        bases = [('sysroot', args.sysroot.resolve()), ('workspace', root)]
+        bases += [('extra-' + str(index), Path(base).resolve()) for index, base in enumerate(args.extra_path)]
+        for label, base in bases:
+            if path.is_relative_to(base):
+                return label + '/' + path.relative_to(base).as_posix()
+        return str(path)
+    def artifact_parts(parts):
+        return {artifact_name(path): value for path, value in parts.items()}
+    stack_mib = getattr(args, 'stack_mib', 32)
+    tool_key = digest({'files': artifact_parts(identities), 'limits': [2560, 5120, 900],
+                       'thread_stack_mib': stack_mib,
+                       'process_stack_bytes': stack_mib << 20 if sys.platform == 'linux'
+                           else resource.getrlimit(resource.RLIMIT_STACK)[0], 'adapter': 4})
     selected = sorted(set(modules or args.module or source_modules(root)))
     scope = 'selected_modules' if modules or args.module else 'all_project_source_modules'
     extra = os.pathsep.join(map(str, args.extra_path))
     lean_path = extra + (os.pathsep + os.environ['LEAN_PATH'] if os.environ.get('LEAN_PATH') else '') if extra else None
-    helper = ['lake', 'env', 'lean', '--run', str(root / 'scripts/KernelReplay.lean')]
+    helper = ['lake', 'env', 'lean', '--tstack=' + str(stack_mib * 1024),
+              '--run', str(root / 'scripts/KernelReplay.lean')]
     def job(label, command, expected_exit=0):
         return run_guarded(root, args.guard.resolve(), args.sysroot.resolve(), output / 'jobs', label,
-                           command, expected_exit=expected_exit, lean_path=lean_path)
+                           command, expected_exit=expected_exit, lean_path=lean_path,
+                           stack_mib=stack_mib if sys.platform == 'linux' else None)
     try:
         job('search-path', helper + ['paths', str(output / 'search-path.json')])
         search_path = [Path(path).resolve() for path in json.loads((output / 'search-path.json').read_text())]
@@ -101,20 +186,19 @@ def run_replay(args, modules=None):
                 continue
             files = resolve(module)
             parts = {str(path): remember(path) for path in files}
-            inventory_key = digest({'tool': tool_key, 'module': module, 'parts': parts})
+            inventory_key = digest({'tool': tool_key, 'module': module, 'parts': artifact_parts(parts)})
             inventory = ledger / 'inventories' / (inventory_key + '.json')
-            if not inventory.is_file():
+            data = cached_json(inventory)
+            if not valid_inventory(data, module, artifact_parts(parts)):
                 unchanged()
-                job('inspect-' + module, helper + ['inspect', module, str(inventory)])
+                inspection = output / ('inspect-' + module + '.json')
+                job('inspect-' + module, helper + ['inspect', module, str(inspection)])
                 unchanged()
-            data = json.loads(inventory.read_text())
-            if (data.get('schema') != 'airbender-kernel-replay-v1' or data.get('module') != module
-                    or [str(Path(path).resolve()) for path in data['files']] != list(parts)
-                    or len(data['safe']) != len(set(data['safe']))
-                    or {item['user'] for item in data.get('dependencies', [])} != set(data['safe'])
-                    or len(data.get('dependencies', [])) != len(data['safe'])
-                    or (data.get('isModule') is True and len(files) != 3)):
-                raise ValueError('Inconsistent exact-module inventory: ' + module)
+                data = json.loads(inspection.read_text())
+                data['files'] = [artifact_name(path) for path in data['files']]
+                if not valid_inventory(data, module, artifact_parts(parts)):
+                    raise ValueError('Inconsistent exact-module inventory: ' + module)
+                write_json(inventory, data)
             imports = data['imports']
             if module in [item['module'] for item in imports]:
                 raise ValueError('Module relabeled as its own imported dependency: ' + module)
@@ -164,33 +248,26 @@ def run_replay(args, modules=None):
             if sha(Path(data['inventory'])) != data['inventory_sha256']:
                 raise ValueError('Replay inventory changed: ' + module)
             dependencies = {imp['module']: passed[imp['module']]['key'] for imp in data['imports']}
-            key = digest({'tool': tool_key, 'module': module, 'parts': data['parts'],
+            parts = artifact_parts(data['parts'])
+            key = digest({'tool': tool_key, 'module': module, 'parts': parts,
                           'imports': data['imports'], 'dependencies': dependencies,
                           'inventory_sha256': data['inventory_sha256']})
             record = ledger / 'passed' / (key + '.json')
-            result = json.loads(record.read_text()) if record.is_file() else None
-            if result is not None:
-                if (result.get('key') != key or result.get('status') != 'pass'
-                        or result.get('safe') != inventory['safe'] or result.get('dependencies') != dependencies
-                        or not result.get('guard', {}).get('passed')
-                        or not Path(result.get('report', '')).is_file()
-                        or sha(Path(result['report'])) != result.get('report_sha256')):
-                    raise ValueError('Invalid saved replay ledger record: ' + module)
-            else:
+            reuse = not (getattr(args, 'fresh_project', False) and module in selected)
+            result = cached_json(record) if reuse else None
+            if not valid_replay(result, module, key, parts, inventory, dependencies, ledger):
                 report = output / ('replay-' + module + '.json')
                 guard = job('replay-' + module, helper + ['replay', module, str(report)])
                 unchanged()
                 replayed = json.loads(report.read_text())
-                if (replayed.get('status') != 'pass' or replayed.get('module') != module
-                        or replayed.get('safe') != inventory['safe'] or replayed.get('imports') != inventory['imports']
-                        or replayed.get('skipped') != inventory['skipped']):
+                if not replay_matches(replayed, module, inventory):
                     raise ValueError('Kernel replay did not cover the exact safe module inventory: ' + module)
                 saved_report = ledger / 'passed' / (key + '.report.json')
-                saved_report.write_bytes(report.read_bytes())
-                result = {'key': key, 'status': 'pass', 'module': module, 'parts': data['parts'],
+                write_bytes(saved_report, report.read_bytes())
+                result = {'key': key, 'status': 'pass', 'module': module, 'parts': parts,
                           'dependencies': dependencies, 'safe': inventory['safe'],
                           'skipped': inventory['skipped'], 'skippedDependencyUses': inventory['skippedDependencyUses'],
-                          'guard': guard, 'report': str(saved_report), 'report_sha256': sha(saved_report)}
+                          'guard': guard, 'report': saved_report.name, 'report_sha256': sha(saved_report)}
                 write_json(record, result)
             passed[module] = result
             coverage.executemany('INSERT OR IGNORE INTO checked VALUES(?,?)', [(name, module) for name in inventory['safe']])
@@ -261,9 +338,13 @@ def main():
     parser.add_argument('--sysroot', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--ledger', type=Path)
+    parser.add_argument('--fresh-project', action='store_true',
+                        help='Replay every project root; reuse only identical-content dependency ledger entries')
     parser.add_argument('--module', action='append', default=[])
     parser.add_argument('--extra-path', type=Path, action='append', default=[])
     parser.add_argument('--axiom-result', type=Path)
+    parser.add_argument('--stack-mib', type=int, choices=range(8, 257), default=32,
+                        help='Finite replay stack in MiB, included in ledger identity (default: 32)')
     args = parser.parse_args()
     if not args.module and not args.axiom_result:
         parser.error('a complete project replay requires --axiom-result from the separate environment audit')

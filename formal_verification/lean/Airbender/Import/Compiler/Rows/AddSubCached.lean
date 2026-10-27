@@ -1,3 +1,4 @@
+import Airbender.Review.Compiler.NativeRow
 import Airbender.Review.Compiler.RowFrame
 import Airbender.Proofs.GKRProtocol.CleanArithmeticNative.AddSubCached
 import Airbender.Proofs.GKRProtocol.CounterFrameNative.AddSubCached
@@ -18,6 +19,17 @@ abbrev Certificate :=
     (field.value (Airbender.Compiler.HelperNative.AddSubCached.native.sourceValues physical)).val < 524288)
     Airbender.Compiler.MaterializedWitnessNative.AddSubCached.AuthoredLookupValid
     (fun physical => (Airbender.Compiler.CleanArithmeticNative.AddSubCached.native.environment physical (fun _ _ => #[])).get
+    Airbender.AddSub.importedConstraintsTraceColumns.execute = 1)
+
+/-- Physical native arithmetic and the execution mask. Logical lookup matching
+derives all helper ranges and retained Clean obligations without a canonical
+borrow or source-assignment frame. -/
+abbrev Input :=
+  PhysicalRowInput
+    (fun physical => ∀ gate ∈ Airbender.Compiler.FullArithmeticNative.AddSubCached.native.artifact.gates,
+    gate.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.AddSubCached.native.bank.address) = 0)
+    (fun physical => (physicalAssignment (fun index => Airbender.Compiler.FullArithmeticNative.AddSubCached.native.bank.address
+      (Airbender.Compiler.CleanArithmeticNative.AddSubCached.native.placement index)) physical)
     Airbender.AddSub.importedConstraintsTraceColumns.execute = 1)
 
 def row (cert : Certificate) : Trace.Row babyBearModulus Trace.PooledFamily :=

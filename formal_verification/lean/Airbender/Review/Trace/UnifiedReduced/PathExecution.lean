@@ -3,7 +3,7 @@ import Airbender.Proofs.UnifiedReduced.PathExecution
 namespace Airbender.UnifiedReduced.Caller
 open Trace Reference.RiscV.Sail Reference.Sail
 
-/-- Public occurrence preparation and native participation yield whole mixed
+/-- A per-trace occurrence schedule and native participation yield whole mixed
     execution along actual PCs, including branch/jump/repeated-PC loops. Every
     caller uses its complete independent family reference; ordinary register,
     link and RAM effects remain in the same execution. The final PC and every

@@ -1,0 +1,7 @@
+{
+  "Airbender.Keccak.IotaMapping": {
+    "before": [],
+    "after": ["Quot.sound", "propext"],
+    "reason": "The original direct imported-structure report omitted dependencies in constructor field types. The environment-origin walk follows constructors; this accounts for the reviewed dependency-report discrepancy, not a new axiom or proof change. A complete current-head environment audit is still required."
+  }
+}

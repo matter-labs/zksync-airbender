@@ -38,4 +38,35 @@ theorem MaterializedLookupSetup.timestamp_contains (model : MaterializedLookupSe
   rw [scalar_row_affine_prefix model.imported.timestampRange 524288 offset rest initialBlocks _ bounded]
   exact congrArg (fun entry : Source.BaseField => [entry]) (ZMod.natCast_zmod_val value).symm
 
+/-- A range prefix followed by zero padding contains no out-of-range values.
+This checks the complete literal column shape, including its padding. -/
+theorem scalar_row_range_zero_padding (data : Setup.TableData 1) (limit padding : Nat)
+    (positive : 0 < limit)
+    (shape : (data.columns[0]).blocks.toList =
+      [.affine limit 0 1, .affine padding 0 0]) (index : Fin data.length) :
+    ((data.row index)[0] : Source.BaseField).val < limit := by
+  simp only [Setup.TableData.row, Vector.getElem_map]
+  change (Setup.signedValue (((data.columns[0]).get? (data.offset + index.val)).getD 0) : Source.BaseField).val < limit
+  rw [Setup.signedValue_cast]
+  simp only [Setup.Column.get?, shape, Setup.getFromBlocks, Setup.Block.length]
+  split
+  next bounded =>
+    simp [Setup.Block.get?, Setup.Block.length, bounded, ZMod.val_natCast]
+    exact lt_of_le_of_lt (Nat.mod_le _ _) bounded
+  next outside =>
+    split <;> simp [Setup.Block.get?, Setup.Block.length, *]
+
+theorem MaterializedLookupSetup.timestamp_bounded (model : MaterializedLookupSetup width)
+    (padding : Nat)
+    (shape : (model.imported.timestampRange.columns[0]).blocks.toList =
+      [.affine 524288 0 1, .affine padding 0 0])
+    (value : Source.BaseField) (member : model.Contains [.timestamp] [value]) :
+    value.val < 524288 := by
+  obtain ⟨row, same⟩ := member
+  have scalar : value = ((model.imported.timestampRange.row
+      ⟨row.val, by rw [model.timestampDomain]; exact row.isLt⟩)[0] : Source.BaseField) :=
+    List.singleton_inj.mp same
+  rw [scalar]
+  exact scalar_row_range_zero_padding model.imported.timestampRange 524288 padding (by decide) shape _
+
 end Airbender.Compiler

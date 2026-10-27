@@ -107,8 +107,17 @@ polymorphic generated functions to either choice.
 The generator count-checks both exact platform substitutions. Reversing them and
 removing the recorded header reproduces the original emitter hash. Every
 `execute_*` declaration body is byte-identical. No instruction body is rewritten
-and no terminal/reservation behavior is assumed. Native memory claims quantify
-over the handlers and select the Airbender device configuration explicitly.
+and no terminal/reservation behavior is assumed. Generic public memory/compiler
+claims remain polymorphic in platform handlers/device configuration. The
+[explicit compiler platform entrypoints](../../Airbender/Review/Compiler/Theorems.lean)
+and native platform applications select the Airbender adapter. The new compiler
+wrappers compile and their public module passes selected-module replay with a
+32 MiB Lean thread stack. Upstream platform compatibility and the selected
+frontend regression/freshness scope pass; full project/runtime, environment,
+independent replay and Linux/cold-run assurance remain pending.
+A constructed platform that omits the devices field uses
+the upstream-enabled devices by default, so applying native memory claims requires
+checking the intended platform instance and initialization profile.
 Disabling devices does not bypass PMA/PMP, alignment, byte initialization or
 logical memory matching. Ordinary-address compatibility entrypoints retain the
 upstream exclusion windows; configuration-aware bridges admit the disabled-device

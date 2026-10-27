@@ -1,6 +1,6 @@
 name: Formal verification
 
-# Rust CI calls this job and includes its result in the stable pr-checks gate.
+# Rust CI calls this advisory job only for relevant source/evidence changes.
 # Manual runs share the same bounded global worker; PR/push have one caller.
 on:
   workflow_call:
@@ -9,16 +9,17 @@ on:
 permissions:
   contents: read
 
-# One FV run across branches. Each actual worker also takes the host's global
-# /tmp/airbender-fv-single-worker.lock; Actions concurrency alone is insufficient.
+# Preserve independent PR queues; each actual worker also takes the host lock.
 concurrency:
-  group: formal-verification-single-worker
+  group: formal-verification-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   verification:
     runs-on: [matterlabs-ci-runner-high-performance]
-    # Overall serial job window; each actual worker keeps its 900/1800s cap.
+    # A shared 22-hour work deadline leaves two hours for cleanup, immutable
+    # partial-cache snapshots and logs before this runner/job boundary.
+    # Each actual worker keeps its existing 900/1800s resource cap.
     timeout-minutes: 1440
     env:
       CARGO_BUILD_JOBS: '1'
@@ -27,6 +28,8 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: '0'
       CARGO_PROFILE_TEST_DEBUG: '0'
       MATHLIB_NO_CACHE_ON_UPDATE: '1'
+      # A pass ledger is evidence, so PR-produced JSON cannot authorize reuse.
+      FV_REPLAY_CACHE_TRUSTED: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     defaults:
       run:
         shell: bash
@@ -37,18 +40,43 @@ jobs:
         with:
           python-version: '3.11'
       - name: Linux guard runtime controls before compiler work
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           test "$(uname -s)" = Linux
+          command -v timeout >/dev/null
+          echo "FV_WORK_DEADLINE=$(($(date +%s) + 22 * 60 * 60))" >> "$GITHUB_ENV"
           FV_ROOT="$RUNNER_TEMP/airbender-fv-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           mkdir -p "$FV_ROOT"
           echo "FV_ROOT=$FV_ROOT" >> "$GITHUB_ENV"
+          if [[ "$FV_REPLAY_CACHE_TRUSTED" == true ]]; then
+            echo "FV_REPLAY_LEDGER=$GITHUB_WORKSPACE/formal_verification/lean/.lake/verification/replay-ledger" >> "$GITHUB_ENV"
+          else
+            # Outside the checkout/build caches, fresh for this PR attempt.
+            echo "FV_REPLAY_LEDGER=$FV_ROOT/replay-ledger" >> "$GITHUB_ENV"
+          fi
           echo "CARGO_TARGET_DIR=$RUNNER_TEMP/airbender-fv-cargo" >> "$GITHUB_ENV"
           # This is a lightweight orchestrator; ProcessTests guard their own
           # children sequentially. An outer guard would deadlock the host lock.
           python3 -m unittest discover -s scripts -p test_bounded_fv.py -v 2>&1 | tee "$FV_ROOT/guard-controls.log"
+          python3 scripts/compilation_pool/test_pool.py --process-tests --process-output "$FV_ROOT/pool-controls"
+          PYTHONPATH=scripts python3 -m unittest test_fv_changes test_axiom_reports test_olean_hashes test_replay_cache test_proof_boundaries -v
           cat > "$FV_ROOT/guard.sh" <<'SH'
           set -euo pipefail
+          # Lightweight orchestration only: real children still own their
+          # existing aggregate resource guard. Reserve 120s for TERM cleanup.
+          fv_stage() {
+            local label="$1" maximum="$2"
+            shift 2
+            local remaining=$((FV_WORK_DEADLINE - $(date +%s)))
+            if (( remaining <= 120 )); then
+              echo "FV work deadline reached before $label" >&2
+              return 124
+            fi
+            local seconds=$((remaining < maximum ? remaining : maximum))
+            echo "FV stage $label: deadline ${seconds}s; cleanup reserve 120s"
+            timeout --signal=TERM --kill-after=120s "${seconds}s" "$@"
+          }
           fv() {
             local label="$1"
             shift
@@ -66,27 +94,77 @@ jobs:
           }
           SH
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        timeout-minutes: 30
         with:
           toolchain: nightly-2026-08-09
           rustflags: ''
           cache: false
       - name: Install pinned Lean toolchain
+        timeout-minutes: 30
         run: |
           source "$FV_ROOT/guard.sh"
           test "$(cat lean-toolchain)" = 'leanprover/lean4:v4.31.0'
           curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o "$FV_ROOT/elan-init.sh"
           fv lean-toolchain sh "$FV_ROOT/elan-init.sh" -y --default-toolchain 'leanprover/lean4:v4.31.0'
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
-      - uses: actions/cache@v4
+      - name: Scope immutable cache snapshots to source and toolchain
+        id: cache-keys
+        env:
+          FV_LEAN_TOOLS: ${{ hashFiles('formal_verification/lean/lean-toolchain', 'formal_verification/lean/lake-manifest.json', '**/lakefile.*') }}
+          FV_LEAN_SOURCE: ${{ hashFiles('formal_verification/lean/**/*.lean', 'formal_verification/lean/scripts/**', 'formal_verification/lean/artifacts/**') }}
+          FV_NATIVE_TOOLS: ${{ hashFiles('rust-toolchain.toml', '**/Cargo.toml', 'formal_verification/lean/artifacts/setup/native-cargo.lock', '.cargo/config*') }}
+          FV_NATIVE_SOURCE: ${{ hashFiles('**/*.rs', '**/build.rs', 'formal_verification/lean/artifacts/setup/manifest.json', 'cs/compiled_circuits/*layout_no_caches_gkr.json') }}
+          FV_REPLAY_TOOLS: ${{ hashFiles('formal_verification/lean/lean-toolchain', 'formal_verification/lean/lake-manifest.json', 'formal_verification/lean/scripts/KernelReplay.lean', 'formal_verification/lean/scripts/check_kernel_replay.py', 'formal_verification/lean/scripts/check_axioms.py', 'formal_verification/lean/scripts/bounded_fv.py') }}
+        run: |
+          lean="fv-lean-v2-${{ runner.os }}-${{ runner.arch }}-$FV_LEAN_TOOLS"
+          native="fv-native-v2-${{ runner.os }}-${{ runner.arch }}-$FV_NATIVE_TOOLS"
+          replay="fv-replay-trusted-v3-${{ runner.os }}-${{ runner.arch }}-$FV_REPLAY_TOOLS"
+          echo "lean-tool-prefix=$lean-" >> "$GITHUB_OUTPUT"
+          echo "lean-source-prefix=$lean-$FV_LEAN_SOURCE-" >> "$GITHUB_OUTPUT"
+          echo "lean=$lean-$FV_LEAN_SOURCE-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+          echo "native-tool-prefix=$native-" >> "$GITHUB_OUTPUT"
+          echo "native-source-prefix=$native-$FV_NATIVE_SOURCE-" >> "$GITHUB_OUTPUT"
+          echo "native=$native-$FV_NATIVE_SOURCE-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+          echo "replay-prefix=$replay-" >> "$GITHUB_OUTPUT"
+          echo "replay=$replay-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        id: lean-cache
+        timeout-minutes: 20
         with:
-          path: formal_verification/lean/.lake
-          key: fv-lean-${{ runner.os }}-${{ hashFiles('formal_verification/lean/lean-toolchain', 'formal_verification/lean/lake-manifest.json', '**/lakefile.*', 'formal_verification/lean/**/*.lean', 'formal_verification/lean/scripts/**', 'formal_verification/lean/artifacts/**') }}
-      - uses: actions/cache@v4
+          # Keep mutable build progress separate from the checked replay ledger.
+          path: |
+            formal_verification/lean/.lake/build
+            formal_verification/lean/.lake/config
+            formal_verification/lean/.lake/packages
+          key: ${{ steps.cache-keys.outputs.lean }}-build
+          restore-keys: |
+            ${{ steps.cache-keys.outputs.lean-source-prefix }}
+            ${{ steps.cache-keys.outputs.lean-tool-prefix }}
+      - uses: actions/cache/restore@v4
+        id: native-cache
+        timeout-minutes: 20
         with:
           path: ${{ env.CARGO_TARGET_DIR }}
-          key: fv-native-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.toml', '**/*.rs', '**/build.rs', 'formal_verification/lean/artifacts/setup/native-cargo.lock', 'cs/compiled_circuits/*layout_no_caches_gkr.json') }}
+          key: ${{ steps.cache-keys.outputs.native }}-compiler
+          restore-keys: |
+            ${{ steps.cache-keys.outputs.native-source-prefix }}
+            ${{ steps.cache-keys.outputs.native-tool-prefix }}
+      - uses: actions/cache/restore@v4
+        id: replay-cache
+        if: env.FV_REPLAY_CACHE_TRUSTED == 'true'
+        timeout-minutes: 20
+        with:
+          path: ${{ env.FV_REPLAY_LEDGER }}
+          key: ${{ steps.cache-keys.outputs.replay }}-controls
+          restore-keys: |
+            ${{ steps.cache-keys.outputs.replay-prefix }}
       - name: Bootstrap only the cache CLI, fetch Mathlib, then prepare Clean
+        id: bootstrap
+        timeout-minutes: 190
         run: |
+          source "$FV_ROOT/guard.sh"
+          fv_stage bootstrap 10800 bash -euo pipefail <<'FV_STAGE'
+          trap 'exit 124' TERM
           source "$FV_ROOT/guard.sh"
           # These pinned cache-CLI sources import only each other and Lean/Lake.
           # No lake update, aggregate cold compile, stack increase or trace edits.
@@ -103,13 +181,29 @@ jobs:
           fv mathlib-cache lake exe cache get
           fv prepare-clean python3 scripts/prepare_clean.py
           git diff --quiet -- lake-manifest.json lean-toolchain
+          FV_STAGE
+      - name: Save bootstrap progress even after a bounded failure
+        if: always() && steps.lean-cache.outcome == 'success' && steps.bootstrap.outcome != 'skipped'
+        timeout-minutes: 20
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            formal_verification/lean/.lake/build
+            formal_verification/lean/.lake/config
+            formal_verification/lean/.lake/packages
+          key: ${{ steps.cache-keys.outputs.lean }}-bootstrap
       - name: Prepare exact native lock and provenance controls
         run: |
           source "$FV_ROOT/guard.sh"
           fv native-lock python3 scripts/check_setup_artifacts.py --prepare-lock
           fv provenance-controls python3 -m unittest discover -s scripts -p test_setup_provenance.py -v
       - name: Twelve generators and thirteen complete fresh exports
+        id: native-setups
+        timeout-minutes: 370
         run: |
+          source "$FV_ROOT/guard.sh"
+          fv_stage native-setups 21600 bash -euo pipefail <<'FV_STAGE'
+          trap 'exit 124' TERM
           source "$FV_ROOT/guard.sh"
           families=(add-sub jump-branch mul-div shift-binop word-memory subword-memory
             unified bigint blake-g blake-round keccak inits-and-teardowns)
@@ -129,29 +223,97 @@ jobs:
           fv native-receipts python3 scripts/check_setup_freshness.py verify \
             --work-dir "$FV_ROOT/native" "${dep_args[@]}"
           git diff --quiet -- ../../cs/compiled_circuits
+          FV_STAGE
+      - name: Save native setup build progress even after a bounded failure
+        if: always() && steps.native-cache.outcome == 'success' && steps.native-setups.outcome != 'skipped'
+        timeout-minutes: 20
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CARGO_TARGET_DIR }}
+          key: ${{ steps.cache-keys.outputs.native }}-setups
+      - name: Fresh cached and uncached compiler captures and provenance controls
+        id: compiler-captures
+        timeout-minutes: 130
+        run: |
+          source "$FV_ROOT/guard.sh"
+          fv_stage compiler-captures 7200 bash -euo pipefail <<'FV_STAGE'
+          trap 'exit 124' TERM
+          source "$FV_ROOT/guard.sh"
+          fv compiler-export env -u CI -u RUST_MIN_STACK python3 scripts/export_gkr_translations.py --output "$FV_ROOT/compiler"
+          fv compiler-retained python3 scripts/check_gkr_translations.py
+          fv compiler-fresh python3 scripts/check_gkr_translations.py --directory "$FV_ROOT/compiler"
+          diff -qr artifacts/compiler "$FV_ROOT/compiler"
+          fv native-lookup-bindings python3 scripts/generate_native_lookup_requests.py --check
+          fv compiler-provenance-controls python3 -m unittest discover -s scripts -p test_gkr_translation_provenance.py -v
+          FV_STAGE
+      - name: Save compiler capture build progress even after a bounded failure
+        if: always() && steps.native-cache.outcome == 'success' && steps.compiler-captures.outcome != 'skipped'
+        timeout-minutes: 20
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CARGO_TARGET_DIR }}
+          key: ${{ steps.cache-keys.outputs.native }}-compiler
       - name: Complete serial Lean source and runtime verification
+        id: lean-verification
+        timeout-minutes: 910
         run: |
+          source "$FV_ROOT/guard.sh"
           # No outer guard: the frontend guards each real child and checks reap metadata.
-          python3 scripts/check_lean.py --guard scripts/bounded_fv.py --output "$FV_ROOT/lean"
+          fv_stage lean-verification 54000 python3 scripts/check_lean.py --guard scripts/bounded_fv.py --output "$FV_ROOT/lean"
+      - name: Save Lean build progress even after a bounded failure
+        if: always() && steps.lean-cache.outcome == 'success' && steps.lean-verification.outcome != 'skipped'
+        timeout-minutes: 20
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            formal_verification/lean/.lake/build
+            formal_verification/lean/.lake/config
+            formal_verification/lean/.lake/packages
+          key: ${{ steps.cache-keys.outputs.lean }}-build
       - name: Environment-origin proof inventory and standard axioms
+        id: axiom-audit
+        timeout-minutes: 190
         run: |
+          source "$FV_ROOT/guard.sh"
           sysroot="$(lean --print-prefix)"
-          python3 scripts/check_axioms.py --guard scripts/bounded_fv.py \
+          fv_stage axiom-audit 10800 python3 scripts/check_axioms.py --guard scripts/bounded_fv.py \
             --sysroot "$sysroot" --output "$FV_ROOT/axioms"
       - name: Independent kernel replay of the complete compiled dependency DAG
+        id: kernel-replay
+        timeout-minutes: 910
         run: |
+          source "$FV_ROOT/guard.sh"
           sysroot="$(lean --print-prefix)"
-          python3 scripts/check_kernel_replay.py --guard scripts/bounded_fv.py \
+          fv_stage kernel-replay 54000 python3 scripts/check_kernel_replay.py --guard scripts/bounded_fv.py \
             --sysroot "$sysroot" --output "$FV_ROOT/replay" \
+            --ledger "$FV_REPLAY_LEDGER" --fresh-project --stack-mib 32 \
             --axiom-result "$FV_ROOT/axioms/axiom-result.json"
+      - name: Save checked replay progress before controls, including failed replay stages
+        if: always() && steps.replay-cache.outcome == 'success' && steps.kernel-replay.outcome != 'skipped'
+        timeout-minutes: 20
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.FV_REPLAY_LEDGER }}
+          key: ${{ steps.cache-keys.outputs.replay }}-replay
       - name: Direct and transitive isolated false-proof controls
+        id: assurance-controls
+        timeout-minutes: 70
         run: |
+          source "$FV_ROOT/guard.sh"
           sysroot="$(lean --print-prefix)"
-          python3 scripts/check_assurance_controls.py --guard scripts/bounded_fv.py \
+          fv_stage assurance-controls 3600 python3 scripts/check_assurance_controls.py --guard scripts/bounded_fv.py \
             --sysroot "$sysroot" --output "$FV_ROOT/assurance-controls" \
-            --ledger "$FV_ROOT/replay/ledger"
+            --ledger "$FV_REPLAY_LEDGER"
+      - name: Save checked replay entries after assurance controls, including failures
+        if: always() && steps.replay-cache.outcome == 'success' && steps.assurance-controls.outcome != 'skipped'
+        timeout-minutes: 20
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.FV_REPLAY_LEDGER }}
+          key: ${{ steps.cache-keys.outputs.replay }}-controls
       - name: Upload exact commands, resource metrics, receipts and failure logs
         if: always()
+        timeout-minutes: 20
         uses: actions/upload-artifact@v4
         with:
           name: formal-verification-${{ github.run_id }}-${{ github.run_attempt }}

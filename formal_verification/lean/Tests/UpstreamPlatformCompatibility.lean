@@ -32,11 +32,19 @@ example (handlers : MemoryPlatform SailRV32.exception) (address : BitVec 32) :
   ordinaryWordAddress_upstream address
 end Airbender.PlatformCompatibilityPreparation
 
+/-- Keep the arbitrary original handlers separate from the platform instance
+being checked, so typeclass search selects the upstream adapter. -/
+private class OriginalHandlers where
+  platform : _root_.Sail.ArchSem.MemoryPlatform SailRV32.exception
+
 section
-variable [handlers : _root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-local instance : _root_.Sail.ArchSem.MemoryPlatform SailRV32.exception := handlers.upstream
+variable [handlers : OriginalHandlers]
+local instance : _root_.Sail.ArchSem.MemoryPlatform SailRV32.exception := handlers.platform.upstream
 set_option warningAsError true
 set_option Elab.async false
+
+example : (inferInstance : _root_.Sail.ArchSem.MemoryPlatform SailRV32.exception).devices =
+    _root_.Sail.ArchSem.DeviceConfiguration.upstream := rfl
 
 namespace Airbender.UnifiedReduced.WordMemory.Proofs
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Reference.Sail Trace Trace.Proofs
@@ -742,8 +750,8 @@ end Airbender.Initialization
 namespace Airbender.Trace
 open Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 
-/-- Same old fields and arbitrary original handlers; only ordinary-domain
-or the previously translated parent profile changes representation. -/
+/-- Translates the ordinary-address condition and enclosing profile while
+preserving the other fields under the supplied upstream handlers. -/
 theorem compatibility_upstream_public_boundary {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option DecoderData}
     (old : CompatibilityOldPublicBoundary initial cells program projection) :
@@ -763,8 +771,8 @@ end Airbender.Trace
 namespace Airbender.Trace
 open Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 
-/-- Same old fields and arbitrary original handlers; only ordinary-domain
-or the previously translated parent profile changes representation. -/
+/-- Translates the ordinary-address condition and enclosing profile while
+preserving the other fields under the supplied upstream handlers. -/
 theorem compatibility_upstream_execution_boundary {p : Nat} [Fact p.Prime] {trace : Data p}
     {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option DecoderData}
@@ -783,8 +791,8 @@ end Airbender.Trace
 namespace Airbender.Trace
 open Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 
-/-- Same old fields and arbitrary original handlers; only ordinary-domain
-or the previously translated parent profile changes representation. -/
+/-- Translates the ordinary-address condition and enclosing profile while
+preserving the other fields under the supplied upstream handlers. -/
 theorem compatibility_upstream_native_boot_boundary {p : Nat} [Fact p.Prime] {trace : Data p}
     {initial : State} {cells : List Cell} {program : List ProgramEntry}
     {projection : SailRV32.instruction → Option DecoderData}
@@ -803,8 +811,8 @@ end Airbender.Trace
 namespace Airbender.Trace
 open Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 
-/-- Same old fields and arbitrary original handlers; only ordinary-domain
-or the previously translated parent profile changes representation. -/
+/-- Translates the ordinary-address condition and enclosing profile while
+preserving the other fields under the supplied upstream handlers. -/
 theorem compatibility_upstream_pooled_public_inputs {initial : State} {cells : List Cell} {program : List PooledProgramEntry}
     (old : CompatibilityOldPooledPublicInputs initial cells program) :
     PooledPublicInputs initial cells program := by
@@ -822,8 +830,8 @@ end Airbender.Trace
 namespace Airbender.Trace
 open Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 
-/-- Same old fields and arbitrary original handlers; only ordinary-domain
-or the previously translated parent profile changes representation. -/
+/-- Translates the ordinary-address condition and enclosing profile while
+preserving the other fields under the supplied upstream handlers. -/
 theorem compatibility_upstream_pooled_inputs {p : Nat} [Fact p.Prime] {trace : PooledTrace p}
     {initial : State} {cells : List Cell} {program : List PooledProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
@@ -842,8 +850,8 @@ end Airbender.Trace
 namespace Airbender.Trace
 open Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 
-/-- Same old fields and arbitrary original handlers; only ordinary-domain
-or the previously translated parent profile changes representation. -/
+/-- Translates the ordinary-address condition and enclosing profile while
+preserving the other fields under the supplied upstream handlers. -/
 theorem compatibility_upstream_pooled_boot_inputs {p : Nat} [Fact p.Prime] {trace : PooledTrace p}
     {initial : State} {cells : List Cell} {program : List PooledProgramEntry}
     {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
@@ -867,8 +875,8 @@ end Airbender.Trace
 namespace Airbender.WordMemory
 open Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 
-/-- Same old fields and arbitrary original handlers; only ordinary-domain
-or the previously translated parent profile changes representation. -/
+/-- Translates the ordinary-address condition and enclosing profile while
+preserving the other fields under the supplied upstream handlers. -/
 theorem compatibility_upstream_interface {p : Nat} [Fact p.Prime] {trace : PooledTrace p}
     {initial : State} {cells : List Cell} {program : List PooledProgramEntry}
     (old : CompatibilityOldInterfaceAssumptions trace initial cells program) :
@@ -884,8 +892,8 @@ end Airbender.WordMemory
 namespace Airbender.SubwordMemory
 open Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 
-/-- Same old fields and arbitrary original handlers; only ordinary-domain
-or the previously translated parent profile changes representation. -/
+/-- Translates the ordinary-address condition and enclosing profile while
+preserving the other fields under the supplied upstream handlers. -/
 theorem compatibility_upstream_interface {p : Nat} [Fact p.Prime] {trace : PooledTrace p}
     {initial : State} {cells : List Cell} {program : List PooledProgramEntry}
     (old : CompatibilityOldInterfaceAssumptions trace initial cells program) :
@@ -901,8 +909,8 @@ end Airbender.SubwordMemory
 namespace Airbender.SubwordMemory
 open Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 
-/-- Same old fields and arbitrary original handlers; only ordinary-domain
-or the previously translated parent profile changes representation. -/
+/-- Translates the ordinary-address condition and enclosing profile while
+preserving the other fields under the supplied upstream handlers. -/
 theorem compatibility_upstream_ram_inputs {p : Nat} [Fact p.Prime] {trace : NativeTrace p}
     {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (old : CompatibilityOldRAMInputs trace initial cells program) :
@@ -921,8 +929,8 @@ end Airbender.SubwordMemory
 namespace Airbender.UnifiedReduced
 open Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 
-/-- Same old fields and arbitrary original handlers; only ordinary-domain
-or the previously translated parent profile changes representation. -/
+/-- Translates the ordinary-address condition and enclosing profile while
+preserving the other fields under the supplied upstream handlers. -/
 theorem compatibility_upstream_execution_public_inputs {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell}
@@ -943,8 +951,8 @@ end Airbender.UnifiedReduced
 namespace Airbender.UnifiedReduced
 open Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 
-/-- Same old fields and arbitrary original handlers; only ordinary-domain
-or the previously translated parent profile changes representation. -/
+/-- Translates the ordinary-address condition and enclosing profile while
+preserving the other fields under the supplied upstream handlers. -/
 theorem compatibility_upstream_imported_execution_inputs_with {p : Nat} [Fact p.Prime]
     {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell}
@@ -961,8 +969,8 @@ end Airbender.UnifiedReduced
 namespace Airbender.UnifiedReduced
 open Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 
-/-- Same old fields and arbitrary original handlers; only ordinary-domain
-or the previously translated parent profile changes representation. -/
+/-- Translates the ordinary-address condition and enclosing profile while
+preserving the other fields under the supplied upstream handlers. -/
 theorem compatibility_upstream_imported_execution_inputs {p : Nat} [Fact p.Prime] {trace : UnifiedTrace p}
     {initial : State} {cells : List Cell} {program : List UnifiedReduced.ProgramEntry}
     (old : CompatibilityOldImportedExecutionInputs trace initial cells program) :
@@ -975,8 +983,8 @@ end Airbender.UnifiedReduced
 namespace Airbender.UnifiedReduced
 open Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 
-/-- Same old fields and arbitrary original handlers; only ordinary-domain
-or the previously translated parent profile changes representation. -/
+/-- Translates the ordinary-address condition and enclosing profile while
+preserving the other fields under the supplied upstream handlers. -/
 theorem compatibility_upstream_execution_inputs {p : Nat} [Fact p.Prime] {trace : UnifiedTrace p}
     {initial : State} {cells : List Cell} {program : List UnifiedReduced.ProgramEntry}
     (old : CompatibilityOldExecutionInputs trace initial cells program) :
@@ -990,8 +998,8 @@ end Airbender.UnifiedReduced
 namespace Airbender.UnifiedReduced.WordMemory
 open Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 
-/-- Same old fields and arbitrary original handlers; only ordinary-domain
-or the previously translated parent profile changes representation. -/
+/-- Translates the ordinary-address condition and enclosing profile while
+preserving the other fields under the supplied upstream handlers. -/
 theorem compatibility_upstream_interface {p : Nat} [Fact p.Prime] {trace : UnifiedTrace p}
     {initial : State} {cells : List Cell} {program : List UnifiedReduced.ProgramEntry}
     {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output} {w : Nat → ZMod p}
@@ -1010,8 +1018,8 @@ end Airbender.UnifiedReduced.WordMemory
 namespace Airbender.UnifiedReduced.WordMemory.NativeROM
 open Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 
-/-- Same old fields and arbitrary original handlers; only ordinary-domain
-or the previously translated parent profile changes representation. -/
+/-- Translates the ordinary-address condition and enclosing profile while
+preserving the other fields under the supplied upstream handlers. -/
 theorem compatibility_upstream_interface {p : Nat} [Fact p.Prime] {trace : UnifiedTrace p}
     {initial : State} {cells : List Cell} {program : List UnifiedReduced.ProgramEntry}
     {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output} {w : Nat → ZMod p}
@@ -1031,8 +1039,8 @@ open Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 
 section
 variable {p : Nat} [Fact p.Prime]
-/-- Same old fields and arbitrary original handlers; only ordinary-domain
-or the previously translated parent profile changes representation. -/
+/-- Translates the ordinary-address condition and enclosing profile while
+preserving the other fields under the supplied upstream handlers. -/
 theorem compatibility_upstream_pooled_profile {base : PooledTrace p} {layout : Layout}
     {geometry : Geometry layout} {windows : Windows layout}
     {initial : State} {program : List PooledProgramEntry}
@@ -1061,8 +1069,8 @@ open Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
 
 section
 variable {p : Nat} [Fact p.Prime]
-/-- Same old fields and arbitrary original handlers; only ordinary-domain
-or the previously translated parent profile changes representation. -/
+/-- Translates the ordinary-address condition and enclosing profile while
+preserving the other fields under the supplied upstream handlers. -/
 theorem compatibility_upstream_unified_profile {base : UnifiedTrace p} {layout : Layout}
     {geometry : Geometry layout} {windows : Windows layout}
     {initial : State} {program : List UnifiedReduced.ProgramEntry}

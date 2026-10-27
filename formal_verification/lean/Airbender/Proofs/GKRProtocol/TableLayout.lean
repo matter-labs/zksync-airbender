@@ -1,3 +1,4 @@
+import Airbender.Review.Compiler.Setup
 import Airbender.Proofs.GKRProtocol.SourceFields
 import Airbender.Proofs.GKRProtocol.BaseEncoding
 
@@ -36,24 +37,6 @@ theorem SourceTablePlan.offsets_length (sizes : List Nat) (initial : Nat) :
   induction sizes generalizing initial with
   | nil => rfl
   | cons size rest proof => exact congrArg Nat.succ (proof (initial + size))
-
-/-- Setup coordinates are semantic inputs to the compiler. Table functions and
-program contents are interpreted separately; their values are not obtained
-from lookup gate operands. -/
-inductive SourceSetupColumn where
-  | generic : Nat → SourceSetupColumn
-  | range16
-  | timestamp
-  deriving DecidableEq
-
-def SourceSetupColumn.address : SourceSetupColumn → GKRAddress
-  | .generic column => .Setup column
-  | .range16 => .VirtualSetup .RangeCheck16Bits
-  | .timestamp => .VirtualSetup .RangeCheckTimestamp
-
-structure SourceLookupSetupRow where
-  fields : List Source.BaseField
-  multiplicity : Source.BaseField
 
 def SourceLookupSetupRow.value [CommRing R] (row : SourceLookupSetupRow)
     (hom : Source.BaseField →+* R) (alpha gamma : R) : RationalPair R :=
