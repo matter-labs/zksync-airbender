@@ -42,6 +42,14 @@ current-head assurance and independent kernel replay remain pending.
 
 ## Public conditions and separate witness contracts
 
+The [supported-use entrypoint](../../Trace/UnifiedReduced/SupportedUseExecution.lean)
+uses the public [ValidDelegationUse](../../Trace/UnifiedReduced/DelegationUse.lean) predicate instead
+of independently supplied bigint/hash worker conditions. Exact native prefix
+matching connects the reference arguments to actual worker reads. This domain
+covers bigint, G and extended-round wrappers; blessed split Keccak remains
+uncovered (F12). Lower-level entrypoints below retain their original conditional
+interfaces.
+
 Initial state/program/configuration, aligned tracked domain, modeled tables,
 exact logical matching and selected protocol shape remain explicit. Native
 initialization derives zero seeds, geometry and register coverage; register
@@ -51,13 +59,13 @@ product equality does not establish deterministic token-multiset equality.
 The conditions above are not an exhaustive list of public inputs: HashCommands
 restricts private worker controls and G pointers and is not publicly checkable
 without a witness binding. Per-call controls do not ensure VM bundle entry; the
-round zero low limb is a stricter model profile. See F11 for the exact four fields.
+round zero low limb is the blessed callers' mask rule. See F11 for the exact four fields.
 
 Worker-only clockRoom and invocationHigh remain explicit in their own interfaces.
 Integrated native clocks and initialized caller accounting derive participation
 and their corresponding bounds. Complete references retain public modes, window
 coverage and applicable controller extents. F02 bigint commands and F04 worker
-RAM ports remain separate enforcement findings. No standard boot-ROM-data-copy
+RAM ports record native behavior excluded by supported use. No standard boot-ROM-data-copy
 claim follows from readonly code and tracked RAM above the ROM limit.
 
 Pure programEntryWith decoding and stateful programEntryRunWith decoding have

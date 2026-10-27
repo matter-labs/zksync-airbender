@@ -1,5 +1,7 @@
 # Verification status
 
+<!-- source-names: keccak_special5 -->
+
 The retained circuit models and conditional execution composition have proof
 coverage described below. The compiler scope is **22 captured production
 compilations**: eleven families, with and without caches. This is a coverage
@@ -11,7 +13,9 @@ inventory, not a claim that all assurance gates passed at the current head.
 | --- | --- |
 | [Ordinary circuits](Airbender/Review/Circuits/README.md) | Arithmetic, branches/jumps, comparisons, shifts/bitwise and word/subword memory have reference soundness proofs. |
 | [Whole execution](Airbender/Review/Trace/README.md) | Program-parametric pooled and unified source/trace execution reach terminal PC/cells; actual paths include jumps and repeated-PC loops. This generality is distinct from the compiler bridge below. |
-| [Delegated workers](Airbender/Review/Trace/Workers/README.md) | Bigint and BLAKE2/Keccak calls compose with the CPU under explicit contracts. Complete algorithms additionally require protocol coverage and valid memory gaps. |
+| [Delegated workers](Airbender/Review/Trace/Workers/README.md) | Bigint, BLAKE2 and `keccak_special5` calls compose with the CPU under explicit contracts. Complete algorithms additionally require protocol coverage and valid memory gaps. |
+| [Supported delegation use](Airbender/Review/Trace/UnifiedReduced/SupportedUseExecution.lean) | The new public path theorem derives bigint/hash worker contracts from public wrapper shapes and reference-prefix validity by induction over exact native prefixes. It covers bigint, G and extended round, with G separation retained. Public initialization, physical tracked-RAM/configuration/setup inputs and exact matching remain explicit. |
+| [Provided Keccak wrapper](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage) | Uncovered. The wrapper uses 361 calls to three split circuits; Lean covers the distinct 649-call special5 protocol. The inspected unified setup also omits the split CSRs. Split modeling and setup integration are deferred. |
 | [Initialization and public inputs](Airbender/Review/Circuits/Initialization/README.md) | Native boundary products, public ROM/decoder bindings and both initialization profiles connect to execution. Exact logical matching remains explicit. |
 | [GKR compiler preservation](Airbender/Review/Compiler/README.md) | All 22 captures have base-field arithmetic preservation. New logical execution APIs take physical arithmetic/active rows and exact matching of actual native encoding/leaf tuples. Field/mask/helper transport, operand coverage and setup-column bindings connect those tuples to source constraints, deriving helper bounds, authored membership and Clean/decoder validity without canonical framing. Supplied-program wrappers require decoder-table equality with the retained capture; explicit Airbender-platform wrappers are available. Older framed/fixed-program wrappers remain compatible. All 14 native row compositions and public wrappers compile; execution/public modules pass selected-module replay at a 32 MiB Lean thread stack. The selected 3279-module/10-test frontend passes freshness and artifact-hash checking without repairs. Full project/runtime, audit, replay and Linux assurance remain pending; sampled lookup/product enforcement remains outside the model. |
 
@@ -21,15 +25,24 @@ instances do not establish universal correctness of the Rust compiler. See the
 [compiler premise table](Airbender/Review/Compiler/README.md#execution-premises),
 [Review guide](Airbender/Review/README.md) and [trust boundaries](TRUST_AND_REVIEW.md).
 
+The [ValidDelegationUse](Airbender/Review/Trace/UnifiedReduced/DelegationUse.lean)
+contract excludes special5 calls and requires supported wrapper shapes, safe
+entry and valid reference-prefix arguments. Its current covered registry contains
+bigint, G and extended round; blessed split Keccak is outside that scope.
+Existing special5 results remain conditional circuit/protocol
+coverage; they do not prove execution of blessed Keccak programs. See
+[F12](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage).
+
 ## Remaining work
 
-1. Implementation enforcement remains open for
+1. Preserve the public supported-use boundary for
    [F02 bigint commands](FINDINGS.md#f02--valid-bigint-operation-observations-do-not-establish-valid-calls),
    [F04 worker RAM ports](FINDINGS.md#f04--a-valid-copy-mode-does-not-bind-native-worker-rom-to-public-bytes)
    and [F11 hash witness contracts](FINDINGS.md#f11--hash-witness-contracts-remain-unenforced).
-   Conditional assumptions document the missing enforcement; the circuits are
-   unchanged. F11 also records VM bundle-entry differences and the stricter round
-   low-limb model profile.
+   These invalid invocations are excluded by the developers' supported-use
+   contract. General native acceptance is not asserted to validate them. Keep
+   G pointer separation and the blessed round masks' zero low limb explicit;
+   the circuits are unchanged.
 2. Complete whole-project validation of the physical-row logical lookup/helper
    connections and supplied-program wrappers after their focused build/replay and
    selected-frontend passes. Exact tuple matching retains natural multiplicities
@@ -45,6 +58,33 @@ Other implementation cases: [findings register](FINDINGS.md#linear-and-open-pr-r
 Separately scoped work: [deferred milestones](FORMAL_VERIFICATION_PLAN.md#deferred-milestones).
 
 ## Current focused validation
+
+The supported-use public theorem, public library root and twelve new regression
+theorems compile. The original bigint/control, ROM-shadow and special5
+counterexample modules also compile unchanged. The final selected frontend
+passes over 3403 modules, 14 concrete Tests modules and five retained Sail modules,
+using one worker, with normal Lake no-build source freshness and recomputed
+compiled-artifact hashes. No repair builds were needed. This is selected-scope
+evidence, not a whole-project assurance snapshot. A prerequisite dependency
+rebuild reached the 900-second cap; the later incremental scoped builds passed.
+Cold-run feasibility remains unestablished.
+
+Direct independent kernel replay also passes for all six new modules: 192 safe
+declarations at a 32 MiB Lean thread stack. Imported modules were not transitively
+replayed in that focused check. All 12399 established audit roots are retained,
+with ten additional explicit roots. Complete environment auditing and transitive
+replay remain separate pending gates.
+Focused axiom smoke reports for the contract, bridge and regression roots contain
+only propext, Classical.choice and Quot.sound; they do not replace that complete
+environment audit.
+
+The broader helper/trace layer check still flags the pre-existing dependency
+from HashABI to trace worker control-definition modules. The new public
+delegation-use predicate lives in the execution layer. Resolving the legacy
+definition placement remains part of full review assurance; see the
+[plan](FORMAL_VERIFICATION_PLAN.md#remaining-implementation-and-assurance).
+
+### Prior compiler-composition checkpoint
 
 Native Rust compiler capture regeneration and both retained/fresh production
 checks pass: all 67 files reproduce byte for byte. The measured guarded run took

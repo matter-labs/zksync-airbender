@@ -2,9 +2,13 @@
 
 The target is the imported richer no-cache relation built from this checkout,
 with upstream `av_gkr_compiler` baseline revision
-`4518846625730fabc4cd83744d4bd983a5e42b97`. The restored hash circuits retain
-known enforcement gaps; their conditional proofs use the explicit
+`4518846625730fabc4cd83744d4bd983a5e42b97`. The restored native delegation
+relations admit invalid invocations outside the developers' supported-use domain;
+lower-level conditional proofs retain the explicit
 [F11 hash witness contracts](FINDINGS.md#f11--hash-witness-contracts-remain-unenforced).
+The [supported-use entrypoint](Airbender/Review/Trace/UnifiedReduced/SupportedUseExecution.lean)
+derives those bigint/hash conditions from public program safety and exact native
+prefixes for bigint, G and extended round. Blessed split Keccak remains uncovered.
 [Verification status](VERIFICATION_STATUS.md) records completed validation and
 material limits. The [historical integration record](TRUST_AND_REVIEW_HISTORY.md)
 retains earlier experiments and narrower intermediate interfaces.
@@ -26,7 +30,8 @@ bindings live in Import; certificate checks and supporting calculations live in
 Proofs. Captured-instance scope, exact tuple/state/RAM matching and public
 boundaries remain explicit. New logical entrypoints derive helper/member validity
 without canonical source framing; the older wrappers preserve their premises.
-All 14 actual native row compositions and public wrappers compile; program/logical
+All 14 actual native row compositions and public wrappers compile; at the
+compiler-composition checkpoint `63776bd95`, program/logical
 execution and the final public module pass selected-module replay at a 32 MiB Lean
 thread stack. The selected 3279-module/10-test frontend passes normal Lake
 no-build freshness and artifact-hash checks without repairs. Its manifests bind
@@ -65,14 +70,26 @@ modeled lookup tables and exact logical matching. Reads, operand bounds,
 decoder selections and worker participation are derived. A local request observation
 is weaker than fulfilled worker effects or a complete reference span.
 
-The native actual-path entrypoint explicitly assumes the
+The [supported-use entrypoint](Airbender/Review/Trace/UnifiedReduced/SupportedUseExecution.lean)
+takes [ValidDelegationUse](Airbender/Review/Trace/UnifiedReduced/DelegationUse.lean), a
+precondition on public code and all independent reference prefixes. It states the
+registered wrapper shapes, entry safety and runtime controls/pointers, including
+the blessed round masks' zero low limb. Exact native prefix matching and induction
+derive the existing bigint/hash worker conditions. It assumes neither desired
+execution nor outputs. The current covered registry excludes Keccak (F12); G
+pointer separation remains a program obligation. It does not prove that the
+verifier checks program safety or that an arbitrary binary satisfies the contract.
+The theorem proves instruction-prefix execution; complete algorithm spans retain
+their separate coverage and gap conditions.
+
+The lower-level native actual-path entrypoint explicitly assumes the
 [F11 hash witness contracts](FINDINGS.md#f11--hash-witness-contracts-remain-unenforced),
 implemented by [HashCommands](Airbender/Review/Helpers/UnifiedReduced/NativeMemory.lean)
 and its [four predicates](Airbender/Review/Helpers/Context/ExternalBoundary/HashABI.lean).
 They constrain private worker-witness controller and pointer reads; the verifier
 cannot check them merely from public inputs. They supply no outputs or execution
-and are not derived from native acceptance. The round zero low limb is a stricter
-model profile than the Rust VM. Conversely, per-call G/round controls do not enforce
+and are not derived from native acceptance alone. The round zero low limb is the
+blessed callers' mask rule; arbitrary VM calls have a wider domain. Per-call G/round controls do not enforce
 entry at counter/round zero, which the VM requires for a bundle. Complete spans
 obtain entry from their per-trace protocol plan; the plan-free theorem proves local
 reference calls without this bundle-entry guarantee. Controllers may be loaded or
@@ -89,9 +106,10 @@ Standard boot-ROM-data copying remains outside these claims.
 | --- | --- |
 | Canonical terminal PC | The [external verifier boundary](Airbender/Review/Helpers/Context/VerifierBoundary/README.md) supplies typed endpoint closure. Accepted state matching, the applicable boot/initial tuple, BabyBear field and representable timestamps are needed for its connection to native raw PC columns. It adds no local circuit range constraint. |
 | Inactive padding | The [external contribution-mask boundary](Airbender/Review/Helpers/Context/PaddingBoundary/README.md) derives active acceptance/execution from exact masked tuple matching. Raw inactive PC/write values need not stutter. |
-| Bigint commands | F02 remains an explicit valid-command contract. Accepted controls 0 and 65537 still fail the pinned full reference; observations alone do not validate their ABI. |
-| Worker ROM | F04 remains an explicit RAM-port contract. The accepted COPY ROM-shadow discrepancy is preserved. |
-| Hash witness contracts | [F11](FINDINGS.md#f11--hash-witness-contracts-remain-unenforced) records all four private-witness assumptions, known accepted excluded cases, bundle-entry differences and the stricter round low-limb model profile. Circuit enforcement remains open. |
+| Bigint commands | F02 controls 0/65537 are outside supported use. The new execution entrypoint derives the worker binding from public reference-prefix validity; lower-level APIs keep the explicit command contract. General native rejection is not claimed. |
+| Worker ROM | F04 ROM-pointer invocations are outside supported use. The physical execution profile retains its public tracked-RAM domain, while the lower-level native-ROM transport API keeps its address binding. The original COPY ROM-shadow witness is preserved. |
+| Hash witness contracts | [F11](FINDINGS.md#f11--hash-witness-contracts-remain-unenforced) records the four lower-level witness premises and the native prefix bridge from public supported use. G separation remains explicit; no circuit repair is pending for the excluded UB cases. |
+| Blessed Keccak coverage | [F12](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage): the provided 361-call split wrapper and its unified setup integration are deferred. Existing 649-call special5 results remain conditional circuit/protocol coverage. |
 | Worker participation | Current native BabyBear timestamp queries and initialized caller accounting derive participation. The historical zero-clock witness is rejected by current native acceptance; weaker intermediate interfaces retain their own stated scope. |
 | Discarded loads | The original Sail claim retains the [discarded-LW restriction](Tests/DiscardedLoad.lean). The named Airbender PC-only-NOP profile is a distinct reference choice. |
 

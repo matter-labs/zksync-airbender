@@ -1,10 +1,17 @@
 # Keccak circuit review
 
-This directory models the native Keccak worker's phase-dependent lane operations
+<!-- source-names: keccak_special5 keccak_f1600 -->
+
+This directory models the native `keccak_special5` worker's phase-dependent lane operations
 and control updates. Mode-specific relations reuse original Clean permutation
 components, while address/controller contracts identify the physical indirect
 ports. These local effects are distinct from the complete call schedule and
 permutation-state binding.
+
+The provided `keccak_f1600` wrapper uses three split circuits and a different
+361-call protocol. These models do not cover that path. Split modeling and
+unified CSR/setup integration are deferred; see
+[F12](../../../../FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage).
 
 ## Checked results
 
