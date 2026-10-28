@@ -17,6 +17,10 @@ steps, and place each reduced step in the pooled relation. This is a relation
 and proof foundation, not a native soundness theorem for either unrolled
 production setup. Split Keccak workers remain open.
 
+[ReducedUse](ReducedUse.lean) states public extended-round wrapper shape,
+entry and argument conditions for every external stream. It does not yet prove
+that a native reduced-machine trace satisfies the combined relation.
+
 [Public decoding](../../Helpers/Decoder/ModularProgram.lean) reads actual bytes
 through pinned Sail decoding, then maps MOP.RR.0–3 to the original ADD/SUB
 artifact's selector bits 3–6. Discarded writes retain ADD/NOP preprocessing.
