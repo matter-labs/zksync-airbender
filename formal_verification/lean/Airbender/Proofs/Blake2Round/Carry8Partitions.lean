@@ -1,4 +1,4 @@
-import Airbender.Review.Circuits.Blake2Round.Tables.XorData
+import Airbender.Data.Setup.Blake2Round.XorData
 import Airbender.Proofs.Tables.LiteralSizes
 import Airbender.Proofs.Tables.ImportedBlocks
 import Airbender.Proofs.Tables.LiteralColumnParts

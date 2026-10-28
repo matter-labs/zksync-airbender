@@ -1,4 +1,4 @@
-import Airbender.Review.Circuits.Blake2Round.Tables.XorData
+import Airbender.Data.Setup.Blake2Round.XorData
 import Airbender.Proofs.Blake2G.Xor7Certificate
 import Airbender.Proofs.Tables.CyclicXorCertificate
 

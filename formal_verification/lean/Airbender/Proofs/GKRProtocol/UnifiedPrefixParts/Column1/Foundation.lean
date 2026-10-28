@@ -1,8 +1,8 @@
 import Airbender.Proofs.GKRProtocol.BlockSpans
 import Airbender.Import.GKRProtocol.BlockCoverageImport
 import Airbender.Data.GKRSetup.Unified
-import Airbender.Review.Circuits.UnifiedReduced.Tables.NativeFixedData
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ROMData
+import Airbender.Data.Setup.UnifiedReduced.NativeFixedData
+import Airbender.Data.Setup.UnifiedReduced.Native.ROMData
 
 namespace Airbender.Compiler.UnifiedPrefixNative.Column1
 open Airbender Airbender.Compiler

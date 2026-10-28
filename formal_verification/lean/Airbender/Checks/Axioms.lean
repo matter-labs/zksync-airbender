@@ -906,8 +906,10 @@ import Airbender.Proofs.GKRProtocol.DecoderQueryNative.UnifiedUncached
 import Airbender.Proofs.GKRProtocol.DecoderQueryNative.WordMemoryCached
 import Airbender.Proofs.GKRProtocol.DecoderQueryNative.WordMemoryUncached
 import Tests.GKRDecoderSetup
+import Tests.KeccakKnownAnswer
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
+
 
 #print axioms ExplicitCircuit.from_bind
 #print axioms ExplicitCircuit.from_map
@@ -13575,3 +13577,8 @@ import Tests.GKRDecoderSetup
 #print axioms Airbender.Compiler.UnifiedRowNative.UnifiedCached.nativeRequests_source
 #print axioms Airbender.Compiler.UnifiedRowNative.UnifiedCached.nativeOperands_coverage
 #print axioms Airbender.Compiler.UnifiedRowNative.UnifiedCached.nativeSetupColumns_binding
+
+#print axioms Airbender.Compiler.GroupedLookupArguments
+
+#print axioms Tests.KeccakKnownAnswer.zero_permutation
+#print axioms Tests.Blake2Compression.rfc7693_abc_digest

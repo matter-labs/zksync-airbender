@@ -8,7 +8,7 @@ import Airbender.Proofs.GKRProtocol.ROMColumns.Unified.Column6
 import Airbender.Proofs.GKRProtocol.ROMColumns.Unified.Column7
 import Airbender.Proofs.GKRProtocol.ROMColumns.Unified.Column8
 import Airbender.Proofs.GKRProtocol.ROMColumns.Unified.Column9
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ROMData
+import Airbender.Data.Setup.UnifiedReduced.Native.ROMData
 import Airbender.Proofs.Tables.ZeroTail
 
 namespace Airbender.Compiler.ROMNative.UnifiedValues

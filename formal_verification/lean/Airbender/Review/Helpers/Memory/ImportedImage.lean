@@ -1,5 +1,5 @@
 import Airbender.Review.Helpers.Memory.ROM
-import Airbender.Review.Helpers.Memory.NativeProgramData
+import Airbender.Data.Program.Native
 
 namespace Airbender.Trace.ROM
 

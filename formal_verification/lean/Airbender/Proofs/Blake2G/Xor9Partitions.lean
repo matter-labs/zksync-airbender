@@ -1,6 +1,6 @@
 import Airbender.Proofs.Tables.LiteralSizes
 import Airbender.Proofs.Tables.ImportedBlocks
-import Airbender.Review.Circuits.Blake2G.Tables.XorData
+import Airbender.Data.Setup.Blake2G.XorData
 import Airbender.Proofs.Tables.LiteralColumnParts
 
 namespace Airbender.Blake2G.Proofs.Xor9Certificate

@@ -1,7 +1,7 @@
-import Airbender.Review.Helpers.Tables.Shift.XorData
-import Airbender.Review.Helpers.Tables.Shift.OrData
-import Airbender.Review.Helpers.Tables.Shift.AndData
-import Airbender.Review.Helpers.Tables.Shift.TruncateData
+import Airbender.Data.Tables.Shift.XorData
+import Airbender.Data.Tables.Shift.OrData
+import Airbender.Data.Tables.Shift.AndData
+import Airbender.Data.Tables.Shift.TruncateData
 import Mathlib.Tactic.FinCases
 
 namespace Airbender.Verification.BinaryColumns

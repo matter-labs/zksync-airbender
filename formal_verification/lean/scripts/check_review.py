@@ -19,6 +19,7 @@ GUIDES = tuple(ROOT / name for name in (
     "README.md", "VERIFICATION_STATUS.md", "TRUST_AND_REVIEW.md",
     "FORMAL_VERIFICATION_PLAN.md", "FINDINGS.md",
     "GKR_COMPILER_VERIFICATION.md",
+    "Airbender/Compatibility/README.md",
     "artifacts/setup/README.md", "generated/sail-rv32/README.md",
 )) + tuple(sorted((ROOT / "Airbender/Review").rglob("README.md")))
 # File names, source-only Rust/Sail names, and prose are not emitted Lean declarations.

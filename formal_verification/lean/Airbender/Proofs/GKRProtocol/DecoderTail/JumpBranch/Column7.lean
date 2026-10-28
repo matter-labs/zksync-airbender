@@ -1,7 +1,7 @@
 import Airbender.Proofs.GKRProtocol.DecoderTailNormalization
 import Airbender.Data.GKRSetup.JumpBranch
 import Airbender.Import.GKRProtocol.BlockCoverageImport
-import Airbender.Review.Helpers.Decoder.SetupData.JumpBranch
+import Airbender.Data.Decoder.Setup.JumpBranch
 
 namespace Airbender.Compiler.DecoderTail.JumpBranch.Column7
 open Airbender Airbender.Compiler

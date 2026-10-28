@@ -1,6 +1,6 @@
 import Airbender.Proofs.Blake2G.Xor7Certificate
 import Airbender.Proofs.Blake2G.Xor8Certificate
-import Airbender.Review.Circuits.Blake2G.Tables.XorData
+import Airbender.Data.Setup.Blake2G.XorData
 import Airbender.Proofs.Tables.ImportedBlocks
 import Mathlib.Tactic.FinCases
 

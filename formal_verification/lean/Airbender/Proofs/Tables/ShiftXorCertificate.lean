@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Tables.Shift.XorData
+import Airbender.Data.Tables.Shift.XorData
 import Airbender.Proofs.Tables.ImportedBlocks
 import Airbender.Proofs.Blake2G.Xor8Certificate
 

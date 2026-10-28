@@ -1,5 +1,5 @@
 import Airbender.Proofs.UnifiedReduced.Tables.ReferenceRows
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ConditionalData
+import Airbender.Data.Setup.UnifiedReduced.Native.ConditionalData
 import Airbender.Review.Circuits.UnifiedReduced.Tables.Setup
 
 namespace Airbender.UnifiedReduced.Setup.Proofs

@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Tables.Shift.Column7
+import Airbender.Data.Tables.Shift.Column7
 import Airbender.Proofs.Tables.BlockPartition
 
 namespace Airbender.Verification.ShiftCertificate

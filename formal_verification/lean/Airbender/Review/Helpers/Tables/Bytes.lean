@@ -1,6 +1,6 @@
 import Airbender.Review.Helpers.Tables.Lookups
 import Airbender.Review.Circuits.JumpBranchSlt.Tables.Control
-import Airbender.Review.Helpers.Tables.ShiftData
+import Airbender.Data.Tables.ShiftData
 
 namespace Airbender.Verification
 

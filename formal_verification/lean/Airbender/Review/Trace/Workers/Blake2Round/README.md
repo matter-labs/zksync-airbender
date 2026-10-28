@@ -19,6 +19,10 @@ full mixed caller retirement remain separate.
 Read [Theorems](Theorems.lean), [Call](Call.lean) and
 [BoundaryCall](BoundaryCall.lean). [Compression](Compression.lean) names
 the complete seven-/ten-round reference and actual initial/final block reads.
+Standard BLAKE2s comparison is restricted to ten rounds, t below 2^32 and f1
+equal to zero; the seven-round mode is a project variant. The
+[RFC known-answer regression](../../../../../Tests/Blake2Compression.lean) checks
+the published abc digest, without establishing general RFC correspondence.
 
 [Windows](Windows.lean) selects a first span within one ten-position controller.
 Check public flags/count, retained seed timestamps, tracked alignment and modeled tables.

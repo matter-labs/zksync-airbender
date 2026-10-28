@@ -2,8 +2,8 @@ import Airbender.Proofs.UnifiedReduced.Tables.ImportedShiftColumn7
 import Airbender.Proofs.UnifiedReduced.Tables.ImportedShiftColumn6
 import Airbender.Proofs.UnifiedReduced.Tables.ImportedShiftColumn5
 import Airbender.Proofs.UnifiedReduced.Tables.ImportedShiftColumn3
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ShiftData
-import Airbender.Review.Helpers.Tables.Shift.ShiftData
+import Airbender.Data.Setup.UnifiedReduced.Native.ShiftData
+import Airbender.Data.Tables.Shift.ShiftData
 import Airbender.Proofs.Tables.ColumnAgreement
 import Mathlib.Tactic.FinCases
 

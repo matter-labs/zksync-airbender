@@ -43,5 +43,5 @@ Sail cell writes specify the complete post-state and frame; the original Sail
 PC preparation/tick supplies retirement. No native assignment appears in this
 reference relation. [Mixed caller soundness](../../Trace/UnifiedReduced/BigintCalls.lean)
 derives it from accepted constraints, initialized history and the derived pointer
-ABI under the existing temporary F02 valid-command contract. Controls 0/65537
+ABI under the explicit lower-level valid-command contract. Controls 0/65537
 remain accepted by the original relation and are rejected by this full reference.

@@ -173,6 +173,32 @@ class ParserTests(unittest.TestCase):
             backend.terminate(42, 456)
         send.assert_not_called()
 
+    def test_exited_query_without_arguments_is_not_a_live_worker(self):
+        compiler = guard.Sample(guard.ProcessInfo(1, 10, 'lean'), 1, 1)
+        with tempfile.TemporaryDirectory() as directory:
+            process = Path(directory) / '42'
+            process.mkdir()
+            backend = guard.LinuxBackend(Path(directory))
+            for state in ('S', 'Z', 'X'):
+                with self.subTest(state=state):
+                    (process / 'cmdline').write_bytes(b'')
+                    (process / 'stat').write_text(proc_stat(comm='lean').replace(') S ', f') {state} '))
+                    with patch.object(backend, 'pin'):
+                        exited = backend.measure(42, 987)
+                    self.assertTrue(exited.exited)
+                    self.assertEqual(guard.lean_worker_count([compiler, exited]), 1)
+            # Empty arguments in a live address space are still unknown workers.
+            (process / 'stat').write_text(proc_stat(comm='lean'))
+            (process / 'smaps_rollup').write_text(rollup())
+            with patch.object(backend, 'pin'):
+                live = backend.measure(42, 987)
+            self.assertFalse(live.exited)
+            self.assertEqual(guard.lean_worker_count([compiler, live]), 2)
+            # Identity checking still rejects recycled PIDs in the exit window.
+            (process / 'stat').write_text(proc_stat(comm='lean', birth=999))
+            with patch.object(backend, 'pin'), self.assertRaises(guard.IdentityChanged):
+                backend.measure(42, 987)
+
     def test_discovery_rejects_reused_owned_pid(self):
         backend = guard.LinuxBackend()
         replacement = guard.ProcessInfo(42, 456, "unrelated", 1, 42, 42)

@@ -160,7 +160,8 @@ structure ProgramPreparedProtocolInputs [Fact p.Prime] (data : RequestTrace p) (
   /-- Each LUI-prepared controller has public code and at most forty clock ticks. -/
   scopes : ∀ region ∈ regions, ProgramRoundRegionInputs data program region
   /-- Every actual extended-round worker belongs to a public prepared region.
-      Live caller matching alone does not exclude surplus zero-clock workers. -/
+      Native timestamps exclude active zero-clock workers. The implication from
+      public caller coverage to this full-worker coverage remains to be proved. -/
   coverage : ∀ row ∈ data.workers.rows, row.family = .blakeRound →
     ∃ region ∈ regions, row ∈ data.workers.windowRows region.lower region.upper
 

@@ -1,6 +1,8 @@
 import contextlib
 import io
+from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -30,6 +32,32 @@ class ChangeSelection(unittest.TestCase):
                 with contextlib.redirect_stdout(output):
                     fv_changes.main()
                 self.assertEqual(output.getvalue().strip(), 'true')
+
+    def test_moving_a_relevant_file_out_of_the_tree_still_selects_verification(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            def git(*args):
+                return subprocess.check_output(['git', '-c', 'user.name=Fixture', '-c',
+                    'user.email=fixture@example.invalid', *args], cwd=repo, stderr=subprocess.DEVNULL)
+            git('init', '-q')
+            source = repo / 'formal_verification/fixture.txt'
+            source.parent.mkdir()
+            source.write_text('identical contents for rename detection\n')
+            git('add', '.')
+            git('commit', '-qm', 'fixture before rename')
+            source.rename(repo / 'README.md')
+            git('add', '-A')
+            git('commit', '-qm', 'fixture after rename')
+            metadata = repo / 'formal_verification/lean/artifacts/setup'
+            metadata.mkdir(parents=True)
+            (metadata / 'native-evidence.json').write_text('{"sources": {}}')
+            (metadata / 'manifest.json').write_text('{"source_sha256": {}}')
+            output = io.StringIO()
+            with patch('sys.argv', ['fv_changes.py', '--base', 'HEAD^']), patch.object(
+                    fv_changes, 'REPO', repo), patch.object(fv_changes, 'source_inventory',
+                    return_value=([], [])), contextlib.redirect_stdout(output):
+                fv_changes.main()
+            self.assertEqual(output.getvalue().strip(), 'true')
 
 
 if __name__ == '__main__':

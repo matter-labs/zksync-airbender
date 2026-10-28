@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Memory.NativeProgramData
+import Airbender.Data.Program.Native
 import Airbender.Import.SetupRegionEmbed
 
 namespace Tests.SetupProgramImport

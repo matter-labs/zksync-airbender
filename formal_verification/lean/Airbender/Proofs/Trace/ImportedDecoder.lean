@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Decoder.SelectedProgram
+import Airbender.Data.Decoder.SelectedProgram
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Review.Helpers.Core.SerializedInverse
 import Airbender.Review.Trace.Soundness

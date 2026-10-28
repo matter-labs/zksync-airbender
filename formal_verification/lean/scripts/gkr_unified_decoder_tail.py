@@ -11,7 +11,7 @@ def module(column):
     original='original' if column==1 else 'originals.flatten'
     owner=f'Airbender.Compiler.DecoderTail.Unified.Column{column}'
     text=(f'import Airbender.Proofs.GKRProtocol.DecoderTailNormalization\nimport Airbender.Proofs.GKRProtocol.{parent}\n'
-        'import Airbender.Review.Helpers.Decoder.SetupData.Unified\n\n'
+        'import Airbender.Data.Decoder.Setup.Unified\n\n'
         f'namespace {owner}\nopen Airbender Airbender.Compiler Airbender.Compiler.{parent}\n'
         'set_option warningAsError true\nset_option Elab.async false\n'
         'set_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'

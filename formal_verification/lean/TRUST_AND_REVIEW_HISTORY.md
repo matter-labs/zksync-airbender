@@ -190,14 +190,14 @@ retain their previous scope. [Keccak controller outputs](Airbender/Review/Circui
 also import the native region; [kernel proofs](Airbender/Proofs/Keccak/ImportedController.lean)
 check all 4,096 keys, six outputs and discriminator against the unchanged
 reference and concrete setup. Its generalized controllers and invalid/inactive
-rows retain their scope. [G XOR rows](Airbender/Review/Circuits/Blake2G/Tables/XorData.lean)
-and [round XOR rows](Airbender/Review/Circuits/Blake2Round/Tables/XorData.lean) also
+rows retain their scope. [G XOR rows](Airbender/Data/Setup/Blake2G/XorData.lean)
+and [round XOR rows](Airbender/Data/Setup/Blake2Round/XorData.lean) also
 come from their own native artifacts. [G proofs](Airbender/Proofs/Blake2G/ImportedXor.lean)
 and [round proofs](Airbender/Proofs/Blake2Round/ImportedXor.lean) check the
 current artifacts' 344,384 G rows and 606,208 extended-round rows, including
 carry/packed native regions, padding/tags and field casts. Existing lookup
 consumers use those data with their original generic field scopes.
-[Keccak fixed rows](Airbender/Review/Circuits/Keccak/Tables/FixedData.lean) also import
+[Keccak fixed rows](Airbender/Data/Setup/Keccak/FixedData.lean) also import
 all five native regions. [Kernel proofs](Airbender/Proofs/Keccak/ImportedFixed.lean)
 recover XOR/Iota/Chi and both rotation pieces, including every key, padding and tag,
 and connect the actual lookup consumers without changing controller or field scopes.

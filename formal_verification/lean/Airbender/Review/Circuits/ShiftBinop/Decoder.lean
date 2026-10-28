@@ -15,7 +15,8 @@ def instructionFields (operation : Operation) (rs1 rs2 rd : BitVec 5) (immediate
     if operation.isShift then 1 else 2, operation.tag⟩
 
 /-- Actual Sail constructors projected to the imported native decoder query.
-    Discarded destinations belong to ADD/SUB; illegal RV32 shift payloads fail. -/
+    Rust makes discarded destinations NOPs; their original encodings are not
+    admitted by this registry. Illegal RV32 shift payloads also fail. -/
 def decoderFields : SailRV32.instruction → Option (Trace.DecoderData Unit)
   | .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .XOR) => instructionFields .xor rs1 rs2 rd ⟨0, 0⟩
   | .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .OR) => instructionFields .or rs1 rs2 rd ⟨0, 0⟩

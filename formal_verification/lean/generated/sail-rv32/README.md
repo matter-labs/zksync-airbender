@@ -50,14 +50,16 @@ decoding is checked by eight theorems in [SailDecoder](../../Tests/SailDecoder.l
 ADD, ADDI, SUB, LUI, AUIPC, LW, SW and configuration-dependent REV8.
 The postlude's `ILLEGAL` fallback is excluded; decoding completeness and unsupported
 instruction behavior are not claimed. No mapping clause is rewritten.
-`Zicsr` is selected to retain its original `currentlyEnabled(Ext_Zicsr)` clause,
-needed by JALR's landing-pad configuration query; no CSR-instruction proof is claimed.
+`Zicsr` retains both its original `currentlyEnabled(Ext_Zicsr)` clause, used by
+JALR's landing-pad configuration query, and its original CSR decoding clauses.
+The external-read CSR and delegation bindings depend on those decode clauses;
+execution of these project operations uses their separately selected references.
 Its unmodified source is in
 [`zicsr_insts.sail`](../../vendor/sail-riscv/source/model/extensions/Zicsr/zicsr_insts.sail).
 `Zimop` retains the original MOP.R/MOP.RR encoding clauses from
 [`zimop_insts.sail`](../../vendor/sail-riscv/source/model/mops/Zimop/zimop_insts.sail).
-These clauses decode the encodings used by Airbender's TRIADD and XORROT
-extensions. Their execution uses the pinned project specification: upstream
+These clauses decode the encodings used by Airbender's TRIADD, XORROT and
+modular-operation bindings. Their execution uses the pinned project specification: upstream
 Zimop's zero-result fallback is not Airbender's custom arithmetic semantics.
 The generator copies the normal `F_Base` assignment verbatim into
 [`extracted_base_pc.sail`](extracted_base_pc.sail); Sail generates the helper's Lean

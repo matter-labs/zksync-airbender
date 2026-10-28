@@ -1,6 +1,6 @@
 import Airbender.Proofs.GKRProtocol.DecoderTailNormalization
 import Airbender.Proofs.GKRProtocol.ShiftPrefixNative.Column1
-import Airbender.Review.Helpers.Decoder.SetupData.ShiftBinop
+import Airbender.Data.Decoder.Setup.ShiftBinop
 
 namespace Airbender.Compiler.DecoderTail.ShiftBinop.Column1
 open Airbender Airbender.Compiler Airbender.Compiler.ShiftPrefixNative.Column1

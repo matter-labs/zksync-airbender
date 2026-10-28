@@ -1,132 +1,77 @@
 # Circuit formal verification plan
 
-<!-- source-names: keccak_special5 -->
+[Verification status](VERIFICATION_STATUS.md) owns coverage and measured evidence.
+[Trust boundaries](TRUST_AND_REVIEW.md) owns external inputs and assumptions.
+Start review with [public claims](Airbender/Review/README.md); supporting proof
+calculations live in Proofs, imported data in Data, and parsing in Import.
 
-[Verification status](VERIFICATION_STATUS.md) separates proof coverage from
-completed validation. [Trust boundaries](TRUST_AND_REVIEW.md) describes remaining
-assumptions. Start with the [Review guide](Airbender/Review/README.md) for claims
-and mappings; Proofs contains supporting arithmetic, native bindings and assembly.
+## Agreed implementation scope
 
-## Remaining implementation and assurance
+1. Repair assurance tooling: exact native/compiler dependency scopes on warm
+   caches, prefix-query exit handling, rename-aware change selection, complete
+   lookup-premise generation, native window-semantic checks and reproducible
+   export comparisons. Pin the elan installer archive and checksum. Treat the
+   pinned Mathlib binary cache as an explicit trusted input.
+2. Make the review surface smaller without changing claims: move data and
+   re-exports to Data, retain compatibility theorems outside the primary Review
+   statements, move histories out of Review and centralize evidence. Preserve
+   semantic models needed to understand public premises.
+3. Validate affected sources and tool controls, preserve every established audit
+   root, and complete environment audit/replay/negative controls under the
+   existing resource limits. Do not convert interrupted or partial runs into a pass.
+4. Keep CI advisory until a complete run and cold/warm/cache measurements on its
+   configured runner establish feasibility. Any scheduling redesign must retain
+   fresh project replay and trustworthy dependency evidence.
 
-1. Complete full assurance for the new physical-row logical composition,
-   supplied-program wrappers and explicit Airbender-platform entrypoints. The
-   complete source/runtime/review frontend passes at f0b059fe6412; this binds all
-   4862 modules and 219 concrete Tests, without claiming environment audit or replay.
-   All 14 native row compositions and public wrappers compile; execution/public modules pass selected-module replay at a
-   32 MiB Lean thread stack. Physical arithmetic/active rows and
-   exact tuple matching now replace canonical framing and supplied helper/authored
-   validity in those APIs. Actual native field/leaf operands are transported to
-   source operands using arithmetic, primitive/group coverage and setup bindings.
-   Preserve the exact-permutation RAM boundary and the explicit final
-   compressed/sampled-to-exact lookup abstraction. Natural lookup multiplicities
-   remain independent of physical counters, and supplied programs
-   must have decoder tables equal to the retained capture's tables; arbitrary new
-   setups still need interpretation evidence.
-2. Finish declaration-origin and standard-axiom dependency auditing with reviewed
-   baseline dispositions. Direct axiom reports are smoke tests. Run independent
-   kernel replay and false-proof controls over the current compiled inventory.
-3. Verify native evidence and both cached/uncached compiler provenance, all concrete
-   Tests and executables, importer regressions, and review/reference boundaries.
-4. Measure Linux resource/process controls, the finite replay stack and cold-cache
-   reproduction. FV CI is temporarily advisory on relevant changes; selectively
-   required checks follow a complete Linux pass.
+## Conditions to preserve
 
-The legacy HashABI helper/trace dependency is resolved: reusable round and special5
-controller definitions now live in circuit-level protocol modules, with their
-names and bodies preserved. The layer check and focused consumer build pass.
-Linux guard and compilation-pool controls pass (52 tests); full Linux Lean and
-cold-cache gates remain distinct from those process controls.
-The full frontend also exposed late imports in the audit entrypoint. They now
-precede all commands, with all 908 imports and 12409 audit roots preserved in
-order; the repaired entrypoint compiles. Source/executable/runtime stages now
-pass. Review mutation fixtures and the generated Lean inventory were repaired,
-with all nine mutation controls, guide references, public theorem roots, links
-and layer checks passing. The final complete frontend passes at f0b059fe6412
-(4862 modules, 219 concrete Tests, 3509 runtime native modules, library and both
-executables). Environment auditing and transitive replay remain separate pending
-gates. The Mac environment audit exceeded its 5120 MiB resident cap by 5.94 MiB;
-it issued no successful result. Remaining assurance is being attempted on native
-aarch64 Linux with the same limits and existing charged-memory accounting.
-Linux cold bootstrap also identified Mathlib's exact `lean --print-prefix` query
-as a false second-compiler detection. That query is excluded only from the Linux
-worker count; its resource charges, actual compiler ceilings and cleanup remain.
-Linux native freshness now passes for all 25 generator/export jobs and receipts,
-with 546 dep-info inputs covered. All 67 compiler export files reproduce byte for
-byte, and provenance controls pass. CI now compares the exact native export file
-inventory and bytes without mixing in separate derived artifact directories.
-The complete Linux frontend, environment audit and transitive replay remain pending.
+Public state/program/configuration, tracked physical RAM, modeled tables, exact
+logical matching and selected complete-protocol scope remain visible. Equality
+of sampled products does not imply a token permutation. Natural lookup
+multiplicities remain separate from physical field counters.
 
-Program-parametric actual-path execution and complete native-span composition
-already exist, including branches, jumps and loops under their stated contracts.
-Canonical endpoint closure, inactive-padding closure, initialization token products
-and native participation must be assessed at their published logical scope rather
-than reported as wholly missing. Dated regressions and intermediate interfaces
-remain in the [historical record](TRUST_AND_REVIEW_HISTORY.md).
+The [supported-use domain](Airbender/Review/Trace/UnifiedReduced/DelegationUse.lean)
+states wrapper shapes, entry safety and reference-prefix validity for bigint,
+G and extended round. Invalid invocations remain excluded; lower-level witness
+contracts remain explicit. G separation is retained in this domain even though
+accepted complete G spans derive it from memory matching. Extended-round masks
+are also premises of lower-level integrated claims, not public inputs or native
+acceptance consequences. The blessed zero-low-limb rule is stated explicitly.
 
-## Conditions and findings to preserve
-
-The source/trace proof path is public initialization, preserved write bounds and
-latest-write reads, then native decoding/constraints and reference execution.
-Public state/program/configuration, modeled tables, exact logical matching and
-selected complete-protocol scope remain visible. Equality of sampled products
-does not deterministically imply token-multiset equality or cryptographic soundness.
-
-[F02 bigint commands](FINDINGS.md#f02--valid-bigint-operation-observations-do-not-establish-valid-calls),
-[F04 worker RAM ports](FINDINGS.md#f04--a-valid-copy-mode-does-not-bind-native-worker-rom-to-public-bytes)
-and [F11 hash witness contracts](FINDINGS.md#f11--hash-witness-contracts-remain-unenforced)
-record native behavior outside the supported delegation-use domain. The public
-[ValidDelegationUse](Airbender/Review/Trace/UnifiedReduced/DelegationUse.lean) contract
-states wrapper shapes, entry safety and reference-prefix argument validity.
-Preserve the original conditional worker APIs, and derive their premises in the
-supported-use entrypoint through exact native prefixes. G pointer separation
-remains a program obligation until the full-bundle memory argument is proved.
-Document new circuit discrepancies and add only narrow explicit assumptions;
-circuit changes to make proofs succeed are outside this effort.
-
-Preserve the pinned Sail clauses/custom references, imported values/native IDs,
-BabyBear compatibility claims and retained audit roots. Serialized coefficients
-remain distinct from generic capacity arithmetic. Completeness, proof-style
-changes, dependency churn, parser/setup-schema redesign, ISA expansion and standard
-boot-ROM-data copying remain outside scope.
+Keep original Sail/custom references, native IDs/imported values, BabyBear
+compatibility and established audit roots. Document circuit discrepancies and
+add narrow proof assumptions; changing production circuits to make proofs
+succeed is outside this effort. Dependency/version churn, completeness, parser
+or setup-schema redesign and ISA expansion are outside this round.
 
 ## Deferred milestones
 
-These require separately scoped work:
+1. One public execution registry combining nondeterminism, modular operations and
+   delegation calls, including missing discarded-x0 encodings and applicable
+   initialization adapters. Existing program-parametric source execution is narrower.
+2. Compiler/setup interpretation beyond the retained four-entry decoder tables,
+   with one committed production verifier program as a concrete acceptance target.
+3. Derive redundant round-worker coverage from public caller coverage and native
+   live-invocation matching, if a checked Lean proof establishes the implication.
+4. Model and compose the blessed 361-call split Keccak path and its unified CSR
+   setup. Existing 649-call special5 results remain conditional circuit/protocol
+   coverage; [the finding](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage)
+   records this separate boundary.
+5. Universal Rust compiler correctness and complete native witness extension;
+   formal decoder/preprocessor/setup-generator correspondence; cryptographic
+   lookup/RAM/verifier/protocol soundness; completeness; actual large-field
+   artifacts; full fetch faults, interrupts and exceptional execution.
 
-1. Universal correctness of the Rust compiler and witness extension to the complete
-   emitted graph. Current captured base-field arithmetic preservation and standalone
-   wiring/lookup/RAM reductions are narrower proved results.
-2. Formal Rust decoder/preprocessing and setup-generator correspondence beyond
-   checked artifact export/import and provenance.
-3. Cryptographic lookup/memory-argument soundness, verifier implementation refinement
-   and protocol soundness.
-4. Completeness for the declared circuit relations.
-5. Actual Proth120/large-field artifacts and coefficients; generic arithmetic alone
-   does not establish a native large-field import.
-6. Full fetch faults, interrupts and exceptional execution.
-7. The blessed 361-call Keccak wrapper: model column-parity, theta/rho and chi5,
-   prove their composition, and check caller/CSR/setup integration. Current
-   results cover only the distinct 649-call `keccak_special5` protocol; the
-   inspected unified setup also omits the split CSRs. The agreed scope keeps
-   special5 as conditional circuit/protocol coverage and defers this work.
-   [F12](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage)
-   records the evidence and the supported-use contract boundary.
+## Verification contract
 
-## Verification and completion
+All real workers retain the shared aggregate owner and 2560 MiB footprint,
+5120 MiB bounded resident, 900-second ordinary / 1800-second review limits.
+Linux excludes reclaimable mapped pages from its charged-memory caps while
+recording total RSS. Replay records both Lean thread and process stack limits;
+a 32 MiB thread setting alone does not qualify main-thread deep recursion.
 
-[Reproduction](README.md#reproduce) describes ordinary checking, provenance,
-environment dependency auditing and independent replay. All workers share one
-aggregate owner and retain 2560 MiB footprint, 5120 MiB bounded resident and
-900-second normal/1800-second review budgets. Linux charged-memory caps exclude
-mapped file pages, with total RSS retained as telemetry. Replay uses an explicit
-32 MiB Lean thread stack recorded in its identity on all hosts. Linux additionally
-sets a 32 MiB process stack limit; Darwin retains and records its inherited process
-limit because its OS rejects changes. The default requires full-proof validation;
-the reported deep-recursion failures are not yet established as fixed. Peak memory,
-runtime and stack measurements belong with the corresponding evidence, not an
-inferred pass claim.
-
-Standard permitted axioms are propext, Classical.choice and Quot.sound. A
-milestone is complete only when its current statements and required assurance
-gates pass; focused builds and historical reports do not establish that result.
+Only propext, Classical.choice and Quot.sound are standard permitted axioms.
+Regenerate the dependency baseline after a successful environment audit and
+review its changes. A milestone requires its actual assurance gates; source
+compilation, focused replay and historical checkpoints establish their stated
+scopes only.

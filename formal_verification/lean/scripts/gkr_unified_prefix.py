@@ -137,7 +137,7 @@ def pilot(column=1, begin=0, end=None, assemble=True, source_start=0, source_end
     ns=namespace or f'Airbender.Compiler.UnifiedPrefixNative.Column{column}'
     full=f'Data.GKRSetup.Unified.setupColumn{column}'
     text=('import Airbender.Proofs.GKRProtocol.BlockSpans\nimport Airbender.Import.GKRProtocol.BlockCoverageImport\nimport Airbender.Data.GKRSetup.Unified\n'
-      'import Airbender.Review.Circuits.UnifiedReduced.Tables.NativeFixedData\nimport Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ROMData\n\nnamespace '+ns+'\n'
+      'import Airbender.Data.Setup.UnifiedReduced.NativeFixedData\nimport Airbender.Data.Setup.UnifiedReduced.Native.ROMData\n\nnamespace '+ns+'\n'
       'open Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n')
     source_header=f'column_blocks_part original from {full} start {source_start} stop {source_end}\ncolumn_blocks_part suffix from {full} start {source_end} stop {len(blocks)}\n\n'
     if assemble:text+=source_header

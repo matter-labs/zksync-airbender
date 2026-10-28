@@ -1,7 +1,7 @@
 import Airbender.Import.GKRProtocol.BlockPartsImport
 import Airbender.Data.GKRSetup.Unified
-import Airbender.Review.Circuits.UnifiedReduced.Tables.NativeFixedData
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ROMData
+import Airbender.Data.Setup.UnifiedReduced.NativeFixedData
+import Airbender.Data.Setup.UnifiedReduced.Native.ROMData
 
 namespace Airbender.Compiler.UnifiedEqualChunks.Column2
 open Airbender Airbender.Compiler

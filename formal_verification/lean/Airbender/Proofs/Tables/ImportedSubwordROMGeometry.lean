@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Tables.SubwordROMData
+import Airbender.Data.Tables.SubwordROMData
 import Airbender.Proofs.Tables.PeriodicColumns
 import Mathlib.Tactic.IntervalCases
 

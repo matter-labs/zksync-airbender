@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Tables.SubwordData
+import Airbender.Data.Tables.SubwordData
 import Mathlib.Tactic.FinCases
 
 namespace Airbender.Verification.SubwordFixed

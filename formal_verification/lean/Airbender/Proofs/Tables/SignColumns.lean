@@ -1,5 +1,5 @@
-import Airbender.Review.Helpers.Tables.Shift.ZeroData
-import Airbender.Review.Helpers.Tables.Shift.SignData
+import Airbender.Data.Tables.Shift.ZeroData
+import Airbender.Data.Tables.Shift.SignData
 import Mathlib.Tactic.FinCases
 
 namespace Airbender.Verification.SignColumns

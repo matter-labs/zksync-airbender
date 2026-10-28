@@ -1,7 +1,7 @@
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Tables.DecoderPrefix
 import Airbender.Proofs.Tables.SelectedDecoderProgram
-import Airbender.Review.Helpers.Decoder.SetupData.ShiftBinop
+import Airbender.Data.Decoder.Setup.ShiftBinop
 
 namespace Airbender.Trace.NativeDecoder.Proofs.ShiftBinop
 open Airbender.Setup Airbender.Setup.Proofs

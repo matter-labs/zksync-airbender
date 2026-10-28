@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Tables.Subword.StorePlaceData
+import Airbender.Data.Tables.Subword.StorePlaceData
 import Airbender.Proofs.Tables.ReferenceSubwordRows
 import Airbender.Proofs.Tables.PeriodicColumns
 

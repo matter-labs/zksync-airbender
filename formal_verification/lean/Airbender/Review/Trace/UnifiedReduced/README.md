@@ -17,7 +17,7 @@ worker states and the actual raw PC/clock path in the same initialized history.
 Its observation certificate alone does not assert successful full custom calls.
 
 [Full execution](FullExecution.lean) composes complete bigint, BLAKE2 G,
-extended-round and Keccak references with the supported straight-line ordinary
+extended-round and special5 Keccak references with the supported straight-line ordinary
 registry. It starts at the original public state and reaches native terminal
 PC/cells. The F02 command contract remains explicit. Current native BabyBear
 constraints and caller accounting derive participation; no external occurrence
@@ -96,9 +96,8 @@ assurance sweep and full independent kernel replay remain pending. Standard
 boot-ROM-data copying remains outside the claim.
 
 The [native mixed-ROM composition](NativeMixedROM.lean) preserves public program
-bytes, native ROM shadows and actual RAM-worker transfers. F04 worker-ROM
-enforcement remains open. Invalid bigint controls remain checked countercases
-under F02. Canonical endpoint and padding closure come from their explicit
+bytes, native ROM shadows and actual RAM-worker transfers. ROM-pointer invocations and invalid bigint controls remain excluded by
+supported delegation use; lower-level counterexamples are retained under F04/F02. Canonical endpoint and padding closure come from their explicit
 external logical boundaries, with cryptographic and Rust enforcement separate.
 
 ## Review route
@@ -108,10 +107,11 @@ Start with [FullExecution](FullExecution.lean) and its input records, then follo
 [computed hash windows](ComputedHashWindows.lean) and
 [prepared round windows](PreparedRoundWindows.lean) as required by the chosen scope.
 [Initialization adapters](../Initialization.lean) derive native seed/domain
-properties from actual standalone/inline boundaries; public Sail/profile and
-exact matching remain explicit.
+properties for ordinary pooled/unified execution from actual standalone/inline
+boundaries. The delegation and other extended registries retain their own seed
+premises; public Sail/profile and exact matching remain explicit.
 
 Worker-only clockRoom and invocationHigh are separate from integrated caller
 bounds. Weaker zero-clock and observation interfaces retain their documented
-local scopes. The [historical record](HISTORY.md) preserves dated fixtures and
+local scopes. The [historical record](../../../../REVIEW_TRACE_HISTORY.md) preserves dated fixtures and
 construction stages; it is not the current reading path.

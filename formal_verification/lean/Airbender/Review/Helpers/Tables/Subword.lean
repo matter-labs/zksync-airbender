@@ -1,5 +1,5 @@
-import Airbender.Review.Helpers.Tables.SubwordROMData
-import Airbender.Review.Helpers.Tables.SubwordData
+import Airbender.Data.Tables.SubwordROMData
+import Airbender.Data.Tables.SubwordData
 import Airbender.Review.Circuits.JumpBranchSlt.Tables.Control
 
 namespace Airbender.Verification

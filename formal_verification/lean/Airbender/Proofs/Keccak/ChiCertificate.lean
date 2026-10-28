@@ -1,4 +1,4 @@
-import Airbender.Review.Circuits.Keccak.Tables.FixedData
+import Airbender.Data.Setup.Keccak.FixedData
 import Airbender.Proofs.Tables.ImportedBlocks
 
 namespace Airbender.Keccak.Proofs

@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Tables.Subword.LoadByteData
+import Airbender.Data.Tables.Subword.LoadByteData
 import Airbender.Proofs.Tables.PeriodicColumns
 
 namespace Airbender.Verification.SubwordFixed

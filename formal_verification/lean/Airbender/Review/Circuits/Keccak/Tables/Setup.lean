@@ -1,5 +1,5 @@
-import Airbender.Review.Circuits.Keccak.Tables.ControllerData
-import Airbender.Review.Circuits.Keccak.Tables.FixedData
+import Airbender.Data.Setup.Keccak.Controller
+import Airbender.Data.Setup.Keccak.FixedData
 import Airbender.Review.Circuits.Keccak.Tables.Operations
 import Airbender.Review.Circuits.Keccak.Artifact
 import Airbender.Review.Helpers.Properties

@@ -1,5 +1,5 @@
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.SignData
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ByteSignData
+import Airbender.Data.Setup.UnifiedReduced.Native.SignData
+import Airbender.Data.Setup.UnifiedReduced.Native.ByteSignData
 import Mathlib.Tactic.IntervalCases
 
 namespace Airbender.UnifiedReduced.Setup.Proofs

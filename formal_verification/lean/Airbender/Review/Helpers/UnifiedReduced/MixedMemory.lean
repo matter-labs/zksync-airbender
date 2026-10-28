@@ -82,7 +82,8 @@ structure MixedMemoryInputs [Fact p.Prime] (data : RequestTrace p)
   setup : data.machine.rom = Setup.table before
   /-- Existing modeled worker tables, including the concrete Keccak controller. -/
   tables : data.workers.setup = Delegation.modeledSetup Keccak.Controller.rows
-  /-- Extended BLAKE uses one admitted public round mask; span ABI is separate. -/
+  /-- Witness premise: extended BLAKE uses one admitted exclusive round mask.
+      This is not a public input or derived from acceptance; span ABI is separate. -/
   rounds : ∀ row ∈ data.workers.rows, row.family = .blakeRound →
     ∃ round, Blake2Round.Memory.RoundMask row.assignment round
 

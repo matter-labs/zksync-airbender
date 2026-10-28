@@ -9,7 +9,7 @@ from gkr_rom_columns import length
 def content():
     artifact=json.loads((LEAN/'artifacts/setup/unified.json').read_text())
     out=''.join(f'import Airbender.Proofs.GKRProtocol.ROMColumns.Unified.Column{i}\n' for i in range(10))
-    out+='import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ROMData\nimport Airbender.Proofs.Tables.ZeroTail\n\n'
+    out+='import Airbender.Data.Setup.UnifiedReduced.Native.ROMData\nimport Airbender.Proofs.Tables.ZeroTail\n\n'
     out+='namespace Airbender.Compiler.ROMNative.UnifiedValues\nopen Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
     cutoff={1:4,2:4,3:1,4:0,5:3,6:3,7:3,8:0}
     for col in range(10):

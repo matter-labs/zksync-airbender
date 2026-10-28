@@ -28,7 +28,10 @@ def step (flags : Fin 8) (round : Fin 10) (state : State) (message : Vector Word
   (chaining, extended)
 
 /-- The pinned request executes seven rounds when its reduced-round flag is
-    set and ten otherwise. Each round consumes the same readonly message. -/
+    set and ten otherwise. Each round consumes the same readonly message.
+    Normal preparation exposes only the low 32-bit counter and f0 lane; RFC
+    BLAKE2s comparisons therefore require t < 2^32 and f1 = 0. Seven rounds
+    remain the project's reduced-round variant, not standard BLAKE2s. -/
 def run (flags : Fin 8) (state : State) (message : Vector Word 16) : State :=
   Fin.foldl (if flags.val % 2 = 1 then 7 else 10)
     (fun current i => step flags (Fin.ofNat 10 i.val) current message) state

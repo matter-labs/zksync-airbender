@@ -1,5 +1,5 @@
-import Airbender.Review.Circuits.WordMemory.Tables.ZeroData
-import Airbender.Review.Circuits.WordMemory.Tables.ROMData
+import Airbender.Data.Setup.WordMemory.ZeroData
+import Airbender.Data.Setup.WordMemory.ROMData
 
 namespace Airbender.Trace.ROM
 open Verification
