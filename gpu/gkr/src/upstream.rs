@@ -43,6 +43,7 @@ pub(crate) use prover::gkr::prover::dimension_reduction::forward::DimensionReduc
 pub(crate) use prover::gkr::prover_config::commitment_geometry::{
     BaseCommitmentGeometry, BaseOracleRole,
 };
+pub(crate) use prover::gkr::prover_config::CommitmentMode;
 // Aliased to avoid collision with crate-local types of the same name.
 pub(crate) use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 pub(crate) use prover::gkr::prover::{

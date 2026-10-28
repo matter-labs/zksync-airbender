@@ -654,6 +654,40 @@ where
     O: cs::oracle::Oracle<BF>,
     W: gpu_trace::trace::tracing_data::DelegationTracingDataHostSource,
 {
+    let config = if pack_log2 == 0 {
+        delegation_prover_config(circuit_type)
+    } else {
+        prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
+            num_delegation_cycles.trailing_zeros() as usize, pack_log2, SecurityLevel::Sec100)
+    };
+    prepare_delegation_proof_fixture_for_config(
+        circuit_type,
+        layout_path,
+        table_driver,
+        buffer,
+        oracle,
+        witness_eval_fn,
+        num_delegation_cycles,
+        config,
+    )
+}
+
+pub(super) fn prepare_delegation_proof_fixture_for_config<O, W>(
+    circuit_type: DelegationCircuitType,
+    layout_path: &str,
+    table_driver: &TableDriver<BF>,
+    buffer: Vec<W>,
+    oracle: &O,
+    witness_eval_fn: fn(
+        &mut prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy<'_, O, BF>,
+    ),
+    num_delegation_cycles: usize,
+    prover_config: ProverConfig,
+) -> BasicUnrolledProofFixture
+where
+    O: cs::oracle::Oracle<BF>,
+    W: gpu_trace::trace::tracing_data::DelegationTracingDataHostSource,
+{
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
@@ -674,12 +708,6 @@ where
 
     let external_challenges = test_external_challenges();
     let fixture_circuit_type = CircuitType::Delegation(circuit_type);
-    let prover_config = if pack_log2 == 0 {
-        delegation_prover_config(circuit_type)
-    } else {
-        prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
-            num_delegation_cycles.trailing_zeros() as usize, pack_log2, SecurityLevel::Sec100)
-    };
     let whir_schedule = prover_config.whir_schedule.clone();
 
     // CPU reference proof (the full `GKRProof`, not just the grand-product

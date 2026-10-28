@@ -61,10 +61,12 @@ impl<'a> MemoryCommitmentJob<'a> {
 }
 
 /// Whether base storage must carry the resolved commitment geometry.
-/// Cross-crate producers use this to preserve the legacy k0/f1 allocation path,
-/// while pure virtual packing also uses geometry-bearing holders at pad zero.
+/// Cross-crate producers preserve the legacy k0/f1 separate allocation path,
+/// while virtual or merged commitments also carry geometry at pad zero.
 pub fn uses_base_commitment_geometry(geometry: &BaseCommitmentGeometry) -> bool {
-    geometry.pack_log2() != 0 || geometry.is_virtual_packing()
+    geometry.pack_log2() != 0
+        || geometry.is_virtual_packing()
+        || geometry.commitment_mode() == CommitmentMode::MergedMemoryAndWitness
 }
 
 /// Field-free admission shared by config-driven memory and proof entries.
@@ -143,6 +145,14 @@ pub fn validate_memory_commitment_geometry<F: crate::upstream::PrimeField>(
         CommitmentMode::SeparateMemoryAndWitness,
         "memory precommit requires separate memory and witness commitments"
     );
+    validate_stage1_commitment_geometry(geometry, compiled_circuit);
+}
+
+/// Field-independent shape binding for separate or concatenated stage1 storage.
+pub fn validate_stage1_commitment_geometry<F: crate::upstream::PrimeField>(
+    geometry: &BaseCommitmentGeometry,
+    compiled_circuit: &GKRCircuitArtifact<F>,
+) {
     assert_eq!(
         geometry.logical_columns(),
         BaseColumns::of(compiled_circuit),
@@ -389,15 +399,39 @@ fn commit_memory_inner<'a>(
         }
     }
     memory_holder.commit_all(context)?;
+    schedule_memory_cap_readback(
+        memory_holder.unified_device_cap(),
+        memory_holder
+            .base_commitment_geometry()
+            .map(|(geometry, _)| geometry),
+        memory_holder.log_lde_factor,
+        Callbacks::new(),
+        inputs,
+        range,
+        context,
+    )
+}
+
+/// Cap readback shared by separate and merged commitment producers.
+/// Public for gpu_circuit_prover; field values stay at each commit boundary.
+pub fn schedule_memory_cap_readback<'a>(
+    unified_cap: &DeviceSlice<Digest>,
+    producing_geometry: Option<BaseCommitmentGeometry>,
+    log_lde: u32,
+    mut callbacks: Callbacks<'a>,
+    inputs: Option<TransferKeepalive<'a>>,
+    range: Range,
+    context: &ProverContext,
+) -> CudaResult<MemoryCommitmentJob<'a>> {
+    let stream = context.get_exec_stream();
     // Schedule a D2H of the unified device cap into a pinned host buffer; the
     // callback below slices that single contiguous cap into per-coset
     // `MerkleTreeCapVarLength` entries (canonical bit-reversed coset order).
-    let log_lde = memory_holder.log_lde_factor;
     let lde_factor = 1usize << log_lde;
-    let cap_size = memory_holder.unified_device_cap().len();
+    let cap_size = unified_cap.len();
     let mut cap_host = unsafe { context.alloc_host_uninit_slice::<Digest>(cap_size) };
     if cap_size != 0 {
-        memory_copy_async(&mut cap_host, memory_holder.unified_device_cap(), stream)?;
+        memory_copy_async(&mut cap_host, unified_cap, stream)?;
     }
     let cap_host_accessor = cap_host.get_accessor();
     let mut tree_caps = Box::new(None);
@@ -420,7 +454,6 @@ fn commit_memory_inner<'a>(
             .replace(per_coset_caps)
             .is_none());
     };
-    let mut callbacks = Callbacks::new();
     callbacks.schedule(transform_tree_caps_fn, stream)?;
     // `cap_host` (pool-backed pinned host buffer) drops at end of this function;
     // the callback above has already been scheduled, so the contract's

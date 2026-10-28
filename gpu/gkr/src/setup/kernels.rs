@@ -201,8 +201,8 @@ impl GpuGKRSetupHost {
             assert_eq!(producing, *geometry, "setup producing geometry mismatch");
         } else {
             assert!(
-                geometry.pack_log2() == 0 && !geometry.is_virtual_packing(),
-                "legacy setup cannot supply packed or virtual commitments"
+                !gpu_trace::trace::memory::uses_base_commitment_geometry(geometry),
+                "legacy setup cannot supply packed, virtual or merged commitments"
             );
         }
     }
@@ -267,6 +267,22 @@ pub(super) fn bind_trace_holder_columns_into_storage<E>(
     storage: &mut GpuGKRStorage<BF, E>,
     make_address: impl Fn(usize) -> GKRAddress,
 ) {
+    bind_trace_holder_column_range_into_storage(
+        trace_holder,
+        0,
+        trace_holder.columns_count,
+        storage,
+        make_address,
+    );
+}
+
+pub(super) fn bind_trace_holder_column_range_into_storage<E>(
+    trace_holder: &TraceHolder<BF>,
+    first_column: usize,
+    columns_count: usize,
+    storage: &mut GpuGKRStorage<BF, E>,
+    make_address: impl Fn(usize) -> GKRAddress,
+) {
     let trace_len = 1usize << trace_holder.log_domain_size;
     assert_eq!(
         trace_holder.get_hypercube_evals().len(),
@@ -274,12 +290,22 @@ pub(super) fn bind_trace_holder_columns_into_storage<E>(
         "trace holder backing must be laid out as flat column-major hypercube evals",
     );
 
+    assert!(first_column
+        .checked_add(columns_count)
+        .is_some_and(|end| end <= trace_holder.columns_count));
+    let class_offset = first_column
+        .checked_mul(trace_len)
+        .expect("class backing offset overflow");
     let backing = trace_holder.raw_hypercube_backing();
-    for column in 0..trace_holder.columns_count {
+    for column in 0..columns_count {
         storage.insert_base_field_at_layer(
             0,
             make_address(column),
-            GpuBaseFieldPoly::from_arc(backing.clone(), column * trace_len, trace_len),
+            GpuBaseFieldPoly::from_arc(
+                backing.clone(),
+                class_offset + column * trace_len,
+                trace_len,
+            ),
         );
     }
     // Register the trace holder Arc as the consolidated per-class backing for
@@ -289,14 +315,20 @@ pub(super) fn bind_trace_holder_columns_into_storage<E>(
     // pointer that the per-poly views above hand out. Layout-aware consumers
     // (compact kernel encoding, `allocate_base_view`) read the trace holder
     // backing through the unified `base_class_backings` path.
-    if trace_holder.columns_count > 0 {
+    if columns_count > 0 {
         let class = crate::gkr_address_audit::classify(&make_address(0), 0);
         if storage.layers.is_empty() {
             storage
                 .layers
                 .resize_with(1, crate::GpuGKRLayerSource::default);
         }
-        let prev = storage.layers[0].base_class_backings.insert(class, backing);
+        let prev = storage.layers[0].base_class_backings.insert(
+            class,
+            crate::ClassBacking {
+                backing,
+                offset: class_offset,
+            },
+        );
         assert!(
             prev.is_none(),
             "trace holder backing already registered for layer 0 class {class:?}"

@@ -874,13 +874,25 @@ pub(super) fn prepare_blake2_with_compression_proof_fixture() -> BasicUnrolledPr
 pub(super) fn prepare_blake2_with_compression_proof_fixture_with_packing(
     pack_log2: usize,
 ) -> BasicUnrolledProofFixture {
+    let config = if pack_log2 == 0 {
+        delegation_prover_config(DelegationCircuitType::Blake2WithCompression)
+    } else {
+        prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
+            BLAKE2_NUM_DELEGATION_CYCLES.trailing_zeros() as usize, pack_log2, SecurityLevel::Sec100)
+    };
+    prepare_blake2_with_compression_proof_fixture_for_config(config)
+}
+
+pub(super) fn prepare_blake2_with_compression_proof_fixture_for_config(
+    config: ProverConfig,
+) -> BasicUnrolledProofFixture {
     let (buffer, table_driver) = replay_blake2_with_compression_delegation_buffer();
     let oracle = Blake2sDelegationOracle {
         cycle_data: &buffer,
         marker: core::marker::PhantomData,
     };
     let buffer_for_host = buffer.clone();
-    let fixture = prepare_delegation_proof_fixture_with_packing(
+    let fixture = prepare_delegation_proof_fixture_for_config(
         DelegationCircuitType::Blake2WithCompression,
         BLAKE2_WITH_COMPRESSION_LAYOUT_PATH,
         &table_driver,
@@ -888,7 +900,7 @@ pub(super) fn prepare_blake2_with_compression_proof_fixture_with_packing(
         &oracle,
         fixtures::blake2_with_extended_control_mod::witness_eval_fn,
         BLAKE2_NUM_DELEGATION_CYCLES,
-        pack_log2,
+        config,
     );
     drop(buffer);
     fixture

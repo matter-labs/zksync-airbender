@@ -1,5 +1,67 @@
 use super::*;
 
+#[test]
+#[ignore = "fresh CPU merged cap parity through the combined stage1 producer"]
+fn packed_merged_commit_unpacked_cpu_parity() {
+    use crate::proof::merged_commitment::{
+        commit_merged_from_transfers_for_geometry, validate_merged_commitment_geometry,
+        GpuGKRMergedCommitTransfer,
+    };
+    use gpu_gkr::setup::GpuGKRSetupTransfer;
+    // CPU-expressible test construction; canonical BF configs stay unchanged.
+    let mut config = prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
+        20, 0, SecurityLevel::Sec100,
+    );
+    config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+    let fixture = proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
+    let base = &fixture.base;
+    let geometry = BaseCommitmentGeometry::from_config(
+        &base.prover_config,
+        BaseColumns::of(&base.compiled_circuit),
+    )
+    .unwrap();
+    validate_merged_commitment_geometry(&base.prover_config, &geometry, &base.compiled_circuit);
+    assert_eq!(
+        geometry.oracle(BaseOracleRole::Memory).logical_columns(),
+        763
+    );
+    assert_eq!(
+        geometry.oracle(BaseOracleRole::Witness).logical_columns(),
+        0
+    );
+    let baseline = base.context.get_used_mem_current();
+    let setup = GpuGKRSetupTransfer::new(
+        Arc::clone(base.gpu_setup_host.as_ref().unwrap()),
+        &base.context,
+    )
+    .unwrap();
+    let trace = TracingDataTransfer::new(
+        base.tracing_data_host.clone(),
+        base.compiled_circuit.trace_len,
+        &base.context,
+    )
+    .unwrap();
+    let mut inputs =
+        GpuGKRMergedCommitTransfer::<Global>::new(setup, None, None, Some(trace), &base.context)
+            .unwrap();
+    inputs.schedule(&base.context).unwrap();
+    let job = commit_merged_from_transfers_for_geometry(
+        &base.gkr_programs,
+        &base.prover_config,
+        geometry,
+        inputs,
+        &base.context,
+    )
+    .unwrap();
+    assert_eq!(job.base_commitment_geometry(), Some(geometry));
+    let (caps, _) = job.finish().unwrap();
+    assert_eq!(
+        caps, base.memory_tree_caps,
+        "GPU combined cap differs from the fresh CPU merged proof"
+    );
+    assert_eq!(base.context.get_used_mem_current(), baseline);
+}
+
 fn gpu_memory_caps(
     base: &BasicUnrolledFixture,
     geometry: BaseCommitmentGeometry,

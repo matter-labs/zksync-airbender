@@ -15,6 +15,21 @@ fn geometry(config: &ProverConfig) -> BaseCommitmentGeometry {
 }
 
 #[test]
+fn cpu_merged_identity_storage_cannot_take_the_separate_legacy_route() {
+    let mut config = packed_config(20, 0, SecurityLevel::Sec100);
+    assert!(!uses_base_commitment_geometry(&geometry(&config)));
+    config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+    let merged = geometry(&config);
+    assert!(uses_base_commitment_geometry(&merged));
+    assert_eq!(merged.oracle(BaseOracleRole::Memory).logical_columns(), 14);
+    assert_eq!(merged.oracle(BaseOracleRole::Witness).logical_columns(), 0);
+    TraceHolder::<BF>::validate_base_layout(&merged, TreesCacheMode::CachePartial);
+    assert!(
+        std::panic::catch_unwind(|| validate_separate_base_commitment_geometry(&merged)).is_err()
+    );
+}
+
+#[test]
 fn cpu_separate_commitment_admits_only_qualified_physical_shapes() {
     for (n, k) in [(20, 0), (20, 2), (20, 4), (23, 1)] {
         let config = packed_config(n, k, SecurityLevel::Sec100);

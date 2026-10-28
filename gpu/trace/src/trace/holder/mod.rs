@@ -196,10 +196,10 @@ impl<T> TraceHolder<T> {
     /// Storage checks are field-independent; backend capability checks belong
     /// at the instantiated commitment entry before constructing this holder.
     pub fn validate_base_layout(geometry: &BaseCommitmentGeometry, trees_mode: TreesCacheMode) {
-        assert_eq!(
-            geometry.commitment_mode(),
-            CommitmentMode::SeparateMemoryAndWitness,
-            "merged base holders are not admitted yet"
+        assert!(
+            geometry.commitment_mode() == CommitmentMode::SeparateMemoryAndWitness
+                || (geometry.pack_log2() == 0 && !geometry.is_virtual_packing()),
+            "packed or virtual merged base holders are not admitted yet"
         );
         assert!(
             geometry.cap_size() >= geometry.lde_factor(),

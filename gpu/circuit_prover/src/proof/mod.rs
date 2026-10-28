@@ -1,6 +1,7 @@
 use gpu_trace::trace::memory::uses_base_commitment_geometry;
 pub mod inputs;
 pub mod memory_policy;
+pub mod merged_commitment;
 
 use memory_policy::ProofMemoryPolicy;
 mod orchestration;

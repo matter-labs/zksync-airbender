@@ -334,6 +334,7 @@ pub(crate) fn bootstrap_storage_from_trace_holders<E>(
     log_tree_cap_size: u32,
     memory_trace_holder: &TraceHolder<BF>,
     witness_trace_holder: &TraceHolder<BF>,
+    merged_witness_offset: Option<usize>,
 ) -> CudaResult<GpuGKRStorage<BF, E>> {
     for (label, trace_holder) in [
         ("memory", memory_trace_holder),
@@ -388,16 +389,38 @@ pub(crate) fn bootstrap_storage_from_trace_holders<E>(
     if let Some(setup_trace_holder) = setup_trace_holder {
         bind_trace_holder_columns_into_storage(setup_trace_holder, &mut storage, GKRAddress::Setup);
     }
-    bind_trace_holder_columns_into_storage(
+    let memory_columns = merged_witness_offset.unwrap_or(memory_trace_holder.columns_count);
+    bind_trace_holder_column_range_into_storage(
         memory_trace_holder,
+        0,
+        memory_columns,
         &mut storage,
         GKRAddress::BaseLayerMemory,
     );
-    bind_trace_holder_columns_into_storage(
-        witness_trace_holder,
-        &mut storage,
-        GKRAddress::BaseLayerWitness,
-    );
+    match merged_witness_offset {
+        None => bind_trace_holder_columns_into_storage(
+            witness_trace_holder,
+            &mut storage,
+            GKRAddress::BaseLayerWitness,
+        ),
+        Some(memory_columns) => {
+            assert_eq!(
+                witness_trace_holder.columns_count, 0,
+                "merged witness holder must be empty"
+            );
+            let witness_columns = memory_trace_holder
+                .columns_count
+                .checked_sub(memory_columns)
+                .expect("merged memory width exceeds the holder");
+            bind_trace_holder_column_range_into_storage(
+                memory_trace_holder,
+                memory_columns,
+                witness_columns,
+                &mut storage,
+                GKRAddress::BaseLayerWitness,
+            );
+        }
+    }
 
     Ok(storage)
 }

@@ -69,9 +69,46 @@ fn legacy_setup_host_rejects_virtual_before_device_holder() {
             .map(String::as_str)
             .or_else(|| error.downcast_ref::<&str>().copied())
             .unwrap();
-        assert!(message.contains("legacy setup cannot supply packed or virtual commitments"));
+        assert!(
+            message.contains("legacy setup cannot supply packed, virtual or merged commitments")
+        );
         assert!(!constructed.get());
     }
+}
+
+#[test]
+fn legacy_setup_host_rejects_merged_identity_before_device_holder() {
+    let context = make_test_context(256, 64);
+    let setup = make_test_cpu_setup(1 << 13, 3, 8);
+    let host = GpuGKRSetupHost::precompute_from_cpu_setup(&setup, 1, 1, 4, &context).unwrap();
+    let mut config = ProverConfig::whir_only(
+        13,
+        WhirSchedule::from_legacy_arrays(2, 16, 0, &[1, 5], &[1, 1], &[2], &[0, 0]),
+        SecurityLevel::Sec100,
+    );
+    config.commitment_mode = prover::gkr::prover_config::CommitmentMode::MergedMemoryAndWitness;
+    let geometry = BaseCommitmentGeometry::from_config(
+        &config,
+        BaseColumns {
+            memory: 5,
+            witness: 9,
+            setup: 3,
+        },
+    )
+    .unwrap();
+    let constructed = std::cell::Cell::new(false);
+    let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        host.validate_for_geometry(&geometry);
+        constructed.set(true);
+    }))
+    .unwrap_err();
+    let message = error
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| error.downcast_ref::<&str>().copied())
+        .unwrap();
+    assert!(message.contains("legacy setup cannot supply packed, virtual or merged commitments"));
+    assert!(!constructed.get());
 }
 
 #[test]
