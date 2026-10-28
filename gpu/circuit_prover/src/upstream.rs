@@ -35,9 +35,10 @@ pub(crate) use field::Field;
 pub(crate) use prover::definitions::{GKRExternalChallenges, SecurityLevel};
 pub(crate) use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 pub(crate) use prover::gkr::prover::{GKRProof, WhirSchedule};
+pub(crate) use prover::gkr::prover_config::commitment_geometry::BaseCommitmentGeometry;
 pub(crate) use prover::gkr::prover_config::pow_bits;
 pub(crate) use prover::gkr::prover_config::{
-    validate_sumcheck_schedule, ProverConfig, SumcheckScheduleClass,
+    validate_sumcheck_schedule, BaseColumns, ProverConfig, SumcheckScheduleClass,
 };
 pub(crate) use prover::merkle_trees::DefaultTreeConstructor;
 

@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::definitions::SecurityLevel;
 use crate::gkr::whir::proximity_testing_modes::ProximityTestingMode;
 
+pub mod commitment_geometry;
 pub mod example_configs;
 pub mod pow_bits;
 pub mod whir_schedule;
