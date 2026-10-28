@@ -13618,3 +13618,8 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Proofs.chi5_timestamp_queries
 #print axioms Airbender.Keccak.Split.Proofs.theta_rho_timestamp_groups
 #print axioms Airbender.Keccak.Split.Proofs.chi5_timestamp_groups
+#print axioms Airbender.Keccak.Split.Proofs.column_parity_cached_timestamp_queries
+#print axioms Airbender.Keccak.Split.Proofs.theta_rho_cached_timestamp_queries
+#print axioms Airbender.Keccak.Split.Proofs.chi5_cached_timestamp_queries
+#print axioms Airbender.Keccak.Split.Proofs.theta_rho_cached_timestamp_groups
+#print axioms Airbender.Keccak.Split.Proofs.chi5_cached_timestamp_groups

@@ -13,10 +13,10 @@ inspected unified setup's CSR allowlist. The
 [split schedule](SplitSchedule.lean) and its
 [proofs](../../../../Proofs/Keccak/SplitSchedule.lean) establish the exact
 24-round/final-call order, call counts and control progression. The three
-no-cache compiled circuits now have native imports for their equations, fixed
+cached and no-cache compiled circuits now have native imports for their equations, fixed
 lookups and timestamp queries: [column parity](../../../Circuits/Keccak/SplitColumnParity.lean),
 [theta/rho](../../../Circuits/Keccak/SplitThetaRho.lean) and
-[chi5](../../../Circuits/Keccak/SplitChi5.lean). Theta/rho and chi5 preserve
+[chi5](../../../Circuits/Keccak/SplitChi5.lean), with their cached variants in the same directory. Theta/rho and chi5 preserve
 grouped timestamp metadata without treating it as the older per-port
 comparison interface. Complete setup and worker-effect proofs remain open.
 Under the [ValidDelegationUse](../../UnifiedReduced/DelegationUse.lean) contract, special5 calls are
