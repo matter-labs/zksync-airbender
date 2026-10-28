@@ -41,23 +41,29 @@ acceptance consequences. The blessed zero-low-limb rule is stated explicitly.
 Keep original Sail/custom references, native IDs/imported values, BabyBear
 compatibility and established audit roots. Document circuit discrepancies and
 add narrow proof assumptions; changing production circuits to make proofs
-succeed is outside this effort. Dependency/version churn, completeness, parser
-or setup-schema redesign and ISA expansion are outside this round.
+succeed is outside this effort. Dependency/version churn, completeness and
+unrelated parser, setup-schema or ISA changes are outside this round.
 
-## Deferred milestones
+## Production machine targets
 
 1. One public execution registry combining nondeterminism, modular operations and
    delegation calls, including missing discarded-x0 encodings and applicable
-   initialization adapters. Existing program-parametric source execution is narrower.
+   initialization adapters. The unified combined relation is defined, but its
+   native soundness and initialization adapter are open. Existing
+   program-parametric source execution is narrower.
 2. Compiler/setup interpretation beyond the retained four-entry decoder tables,
    with one committed production verifier program as a concrete acceptance target.
 3. Derive redundant round-worker coverage from public caller coverage and native
    live-invocation matching, if a checked Lean proof establishes the implication.
-4. Model and compose the blessed 361-call split Keccak path and its unified CSR
-   setup. Existing 649-call special5 results remain conditional circuit/protocol
+4. Model and compose the blessed 361-call split Keccak path and its three native
+   worker circuits for the full unsigned machine. Existing 649-call special5
+   results remain conditional circuit/protocol
    coverage; [the finding](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage)
    records this separate boundary.
-5. Universal Rust compiler correctness and complete native witness extension;
+
+## Deferred milestones
+
+1. Universal Rust compiler correctness and complete native witness extension;
    formal decoder/preprocessor/setup-generator correspondence; cryptographic
    lookup/RAM/verifier/protocol soundness; completeness; actual large-field
    artifacts; full fetch faults, interrupts and exceptional execution.

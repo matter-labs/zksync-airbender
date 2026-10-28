@@ -586,6 +586,7 @@ import Airbender.Review.Trace.UnifiedReduced.NativeMixedROM
 import Airbender.Review.Trace.ExternalBoundaries
 import Tests.ExternalBoundaries
 import Airbender.Review.Trace.UnifiedReduced.ModularExecution
+import Airbender.Proofs.UnifiedReduced.StreamCalls
 import Airbender.Review.Trace.Modular.ExternalTheorems
 import Tests.UnifiedModularExecution
 import Tests.ModularTrace
@@ -13582,3 +13583,8 @@ import Tests.KeccakKnownAnswer
 
 #print axioms Tests.KeccakKnownAnswer.zero_permutation
 #print axioms Tests.Blake2Compression.rfc7693_abc_digest
+
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.decoder_registries_disjoint
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.external_callers_disjoint
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.modular_step
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.caller_step

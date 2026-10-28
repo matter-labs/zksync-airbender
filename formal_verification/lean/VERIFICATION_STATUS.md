@@ -4,12 +4,26 @@
 
 The model proves conditional soundness for the relations below. **No single
 whole-execution theorem currently covers a committed production verifier
-program.** The unified registries do not yet combine nondeterminism reads,
-modular operations and delegation calls. The captured compiler execution bridge
+program.** A stream-aware unified relation now combines nondeterminism reads,
+modular operations and delegation calls, but no native-to-reference soundness
+theorem has been proved for that relation. The captured compiler execution bridge
 also retains the four-entry decoder tables. Program-parametric source/trace
 execution and logical lookup/RAM composition are established narrower results.
 
-## Proof coverage
+## Production machine targets
+
+| Setup machine | Current target status |
+| --- | --- |
+| Unrolled full unsigned | Open: program-parametric native setup, caller/worker and initialization composition, and the blessed split Keccak sequence and its three native workers. Special5 calls require an explicit public exclusion until their intended sequence is specified. |
+| Unrolled reduced | Open: program-parametric native setup, BLAKE2 extended-round caller/worker composition, and stream-aware initialization. |
+| Unified | Open: program-parametric native setup, native soundness for the combined stream/modular/caller relation, and its initialization adapter. Special5 calls require an explicit public exclusion. |
+
+These are required target scopes, not proved theorems. The corresponding Lean
+`Prop` declarations and complete circuit acceptance interfaces are still being
+designed. Exact lookup matching and state/RAM permutations remain explicit
+logical assumptions in all three targets.
+
+## Supporting proved results
 
 | Area | Result and scope |
 | --- | --- |
@@ -17,7 +31,7 @@ execution and logical lookup/RAM composition are established narrower results.
 | [Whole execution](Airbender/Review/Trace/README.md) | Pooled and unified source/trace execution bind final PC and every tracked cell, including registers, for programs admitted by their selected registry. Branches and repeated-PC loops are supported. Discarded x0 writes missing from a registry remain outside it. |
 | [Delegated workers](Airbender/Review/Trace/Workers/README.md) | Bigint, BLAKE2 and special5 Keccak compose under explicit call contracts. Complete algorithms require protocol coverage and valid memory gaps. Extended-round masks remain witness premises in lower-level integrated APIs as well as worker APIs. |
 | [Supported delegation use](Airbender/Review/Trace/UnifiedReduced/SupportedUseExecution.lean) | Public wrapper shapes, safe entry and reference-prefix validity derive bigint/G/extended-round worker contracts. G pointer separation remains in the public domain; accepted complete G spans also derive separation from memory matching. Public initialization, tracked RAM, configuration, setup and exact matching remain explicit. |
-| [Provided Keccak wrapper](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage) | Uncovered. The blessed 361-call split wrapper differs from the modeled 649-call special5 protocol. Split models and unified CSR/setup integration are deferred. |
+| [Provided Keccak wrapper](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage) | Uncovered. The blessed 361-call split wrapper differs from the modeled 649-call special5 protocol. Its three native workers and protocol proof are required for the full unsigned target. |
 | [Initialization](Airbender/Review/Trace/Initialization.lean) | Native standalone/inline adapters derive seeds for ordinary pooled/unified execution. External-read, modular, TRIADD/XORROT and delegation extensions retain their own seed premises. |
 | [Compiler preservation](Airbender/Review/Compiler/README.md) | Base-field arithmetic preservation covers 22 captures. Fourteen row compositions derive helper bounds, authored lookup membership and source validity from physical native arithmetic/active rows and exact emitted-tuple matching. Supplied-program wrappers require the same retained four-entry decoder tables; they do not admit an arbitrary different program or setup. |
 
@@ -65,11 +79,14 @@ with reviewed deltas. A direct report is a smoke check, not that audit.
    dropping public declarations, audit roots, imported values or assumptions.
 2. Finish whole-environment auditing, independent transitive replay and isolated
    false-proof controls; measure Linux cold/warm and CI feasibility.
-3. Compose the instruction registries and initialization adapters, then generalize
-   compiler/setup interpretation and demonstrate one committed verifier program.
-   This is a separately scoped theorem milestone.
-4. Keep blessed split Keccak and the cryptographic/compiler/completeness work in
-   the [deferred milestone register](FORMAL_VERIFICATION_PLAN.md#deferred-milestones).
+3. Complete the three production machine targets: compose stream-aware instruction
+   and caller relations with initialization; bind compiler setup to arbitrary
+   public text; prove the blessed split Keccak path for full unsigned; and
+   demonstrate committed verifier programs.
+4. Convert measured per-capture fact families to once-proved Boolean checkers,
+   then qualify build and replay cost. Cryptographic soundness, universal Rust
+   compiler correctness and completeness remain in the
+   [deferred milestone register](FORMAL_VERIFICATION_PLAN.md#deferred-milestones).
 
 [Reproduction](README.md#reproduce) gives commands and resource limits.
 [Findings](FINDINGS.md) distinguishes supported-use exclusions, conditional proof
