@@ -31,11 +31,16 @@ use field::{Field, FieldExtension, PrimeField};
 use transcript::Transcript;
 use worker::{IterableWithGeometry, Worker};
 
+pub mod forward;
+pub use forward::AffinePlan;
+
 mod naive;
 pub use naive::NaiveGKRBackend;
 
 #[cfg(target_arch = "aarch64")]
 mod neon;
+#[cfg(target_arch = "aarch64")]
+mod neon_fwd;
 #[cfg(target_arch = "aarch64")]
 mod neon_w3;
 #[cfg(target_arch = "aarch64")]
@@ -316,6 +321,157 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
     ) -> SumcheckIntermediateProofValues<F, E>
     where
         F: field::TwoAdicField;
+
+    // ---------------------------------------------------------------------
+    // Forward-layer relation archetypes (see [`forward`]). Every output is a
+    // freshly allocated, uninitialized column of `trace_len` elements that
+    // the method fills completely. Defaults: the portable scalar row maps;
+    // arch backends override with SoA kernels. Contract: identical field
+    // values (the outputs are canonical field elements, so any correct
+    // evaluation order is byte-identical).
+    // ---------------------------------------------------------------------
+
+    /// `a/b + c/d -> (a d + c b, b d)`.
+    fn forward_rational_pair_add(
+        &self,
+        a: &[E],
+        b: &[E],
+        c: &[E],
+        d: &[E],
+        num: &mut [core::mem::MaybeUninit<E>],
+        den: &mut [core::mem::MaybeUninit<E>],
+        worker: &Worker,
+    ) {
+        forward::rational_pair_add::<F, E>(a, b, c, d, num, den, worker)
+    }
+
+    /// `a b`.
+    fn forward_ext_product(
+        &self,
+        a: &[E],
+        b: &[E],
+        out: &mut [core::mem::MaybeUninit<E>],
+        worker: &Worker,
+    ) {
+        forward::ext_product::<F, E>(a, b, out, worker)
+    }
+
+    /// `1/(b+γ) + 1/(d+γ) -> ((b+γ) + (d+γ), (b+γ)(d+γ))`, base inputs.
+    fn forward_base_pair_lookup(
+        &self,
+        b: &[F],
+        d: &[F],
+        gamma: E,
+        num: &mut [core::mem::MaybeUninit<E>],
+        den: &mut [core::mem::MaybeUninit<E>],
+        worker: &Worker,
+    ) {
+        forward::base_pair_lookup::<F, E>(b, d, gamma, num, den, worker)
+    }
+
+    /// `1/(b+γ) + 1/(d+γ) -> ((b+γ) + (d+γ), (b+γ)(d+γ))`, extension inputs.
+    fn forward_ext_pair_lookup(
+        &self,
+        b: &[E],
+        d: &[E],
+        gamma: E,
+        num: &mut [core::mem::MaybeUninit<E>],
+        den: &mut [core::mem::MaybeUninit<E>],
+        worker: &Worker,
+    ) {
+        forward::ext_pair_lookup::<F, E>(b, d, gamma, num, den, worker)
+    }
+
+    /// `a/b + 1/(d+γ) -> (a (d+γ) + b, b (d+γ))`, `d` base.
+    fn forward_unbalanced_base_lookup(
+        &self,
+        a: &[E],
+        b: &[E],
+        d: &[F],
+        gamma: E,
+        num: &mut [core::mem::MaybeUninit<E>],
+        den: &mut [core::mem::MaybeUninit<E>],
+        worker: &Worker,
+    ) {
+        forward::unbalanced_base_lookup::<F, E>(a, b, d, gamma, num, den, worker)
+    }
+
+    /// `a/b + 1/(d+γ) -> (a (d+γ) + b, b (d+γ))`, `d` extension.
+    fn forward_unbalanced_ext_lookup(
+        &self,
+        a: &[E],
+        b: &[E],
+        d: &[E],
+        gamma: E,
+        num: &mut [core::mem::MaybeUninit<E>],
+        den: &mut [core::mem::MaybeUninit<E>],
+        worker: &Worker,
+    ) {
+        forward::unbalanced_ext_lookup::<F, E>(a, b, d, gamma, num, den, worker)
+    }
+
+    /// `1/(b+γ) - c/(d+γ) -> ((d+γ) - c (b+γ), (b+γ)(d+γ))`, base inputs.
+    fn forward_base_lookup_minus_setup(
+        &self,
+        b: &[F],
+        c: &[F],
+        d: &[F],
+        gamma: E,
+        num: &mut [core::mem::MaybeUninit<E>],
+        den: &mut [core::mem::MaybeUninit<E>],
+        worker: &Worker,
+    ) {
+        forward::base_lookup_minus_setup::<F, E>(b, c, d, gamma, num, den, worker)
+    }
+
+    /// `a/(b+γ) - c/(d+γ) -> (a (d+γ) - c (b+γ), (b+γ)(d+γ))`, `a, c` base, `b, d` extension.
+    fn forward_masked_ext_lookup_minus_setup(
+        &self,
+        a: &[F],
+        c: &[F],
+        b: &[E],
+        d: &[E],
+        gamma: E,
+        num: &mut [core::mem::MaybeUninit<E>],
+        den: &mut [core::mem::MaybeUninit<E>],
+        worker: &Worker,
+    ) {
+        forward::masked_ext_lookup_minus_setup::<F, E>(a, c, b, d, gamma, num, den, worker)
+    }
+
+    /// `mask ? value : 1` for a boolean base mask.
+    fn forward_mask_into_identity(
+        &self,
+        mask: &[F],
+        value: &[E],
+        out: &mut [core::mem::MaybeUninit<E>],
+        worker: &Worker,
+    ) {
+        forward::mask_into_identity::<F, E>(mask, value, out, worker)
+    }
+
+    /// One [`AffinePlan`] over the column table.
+    fn forward_affine_plan(
+        &self,
+        plan: &AffinePlan<F, E>,
+        columns: &[&[F]],
+        out: &mut [core::mem::MaybeUninit<E>],
+        worker: &Worker,
+    ) {
+        forward::affine_plan::<F, E>(plan, columns, out, worker)
+    }
+
+    /// The product of two [`AffinePlan`]s over the column table.
+    fn forward_affine_plan_product(
+        &self,
+        lhs: &AffinePlan<F, E>,
+        rhs: &AffinePlan<F, E>,
+        columns: &[&[F]],
+        out: &mut [core::mem::MaybeUninit<E>],
+        worker: &Worker,
+    ) {
+        forward::affine_plan_product::<F, E>(lhs, rhs, columns, out, worker)
+    }
 }
 
 /// Fold-scratch capacity (elements per input poly) of the same-size chain

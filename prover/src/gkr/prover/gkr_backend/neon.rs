@@ -884,4 +884,137 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for NeonGKRBackend {
             |bufs| self.recycle_same_size_fold_buffers(bufs, pool),
         )
     }
+
+    // ----- forward-layer relation archetypes: NEON SoA kernels (`neon_fwd`) -----
+
+    fn forward_rational_pair_add(
+        &self,
+        a: &[BabyBearExt4],
+        b: &[BabyBearExt4],
+        c: &[BabyBearExt4],
+        d: &[BabyBearExt4],
+        num: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        den: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        worker: &Worker,
+    ) {
+        super::neon_fwd::rational_pair_add(a, b, c, d, num, den, worker)
+    }
+
+    fn forward_ext_product(
+        &self,
+        a: &[BabyBearExt4],
+        b: &[BabyBearExt4],
+        out: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        worker: &Worker,
+    ) {
+        super::neon_fwd::ext_product(a, b, out, worker)
+    }
+
+    fn forward_base_pair_lookup(
+        &self,
+        b: &[BabyBearField],
+        d: &[BabyBearField],
+        gamma: BabyBearExt4,
+        num: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        den: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        worker: &Worker,
+    ) {
+        super::neon_fwd::base_pair_lookup(b, d, gamma, num, den, worker)
+    }
+
+    fn forward_ext_pair_lookup(
+        &self,
+        b: &[BabyBearExt4],
+        d: &[BabyBearExt4],
+        gamma: BabyBearExt4,
+        num: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        den: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        worker: &Worker,
+    ) {
+        super::neon_fwd::ext_pair_lookup(b, d, gamma, num, den, worker)
+    }
+
+    fn forward_unbalanced_base_lookup(
+        &self,
+        a: &[BabyBearExt4],
+        b: &[BabyBearExt4],
+        d: &[BabyBearField],
+        gamma: BabyBearExt4,
+        num: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        den: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        worker: &Worker,
+    ) {
+        super::neon_fwd::unbalanced_base_lookup(a, b, d, gamma, num, den, worker)
+    }
+
+    fn forward_unbalanced_ext_lookup(
+        &self,
+        a: &[BabyBearExt4],
+        b: &[BabyBearExt4],
+        d: &[BabyBearExt4],
+        gamma: BabyBearExt4,
+        num: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        den: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        worker: &Worker,
+    ) {
+        super::neon_fwd::unbalanced_ext_lookup(a, b, d, gamma, num, den, worker)
+    }
+
+    fn forward_base_lookup_minus_setup(
+        &self,
+        b: &[BabyBearField],
+        c: &[BabyBearField],
+        d: &[BabyBearField],
+        gamma: BabyBearExt4,
+        num: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        den: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        worker: &Worker,
+    ) {
+        super::neon_fwd::base_lookup_minus_setup(b, c, d, gamma, num, den, worker)
+    }
+
+    fn forward_masked_ext_lookup_minus_setup(
+        &self,
+        a: &[BabyBearField],
+        c: &[BabyBearField],
+        b: &[BabyBearExt4],
+        d: &[BabyBearExt4],
+        gamma: BabyBearExt4,
+        num: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        den: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        worker: &Worker,
+    ) {
+        super::neon_fwd::masked_ext_lookup_minus_setup(a, c, b, d, gamma, num, den, worker)
+    }
+
+    fn forward_mask_into_identity(
+        &self,
+        mask: &[BabyBearField],
+        value: &[BabyBearExt4],
+        out: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        worker: &Worker,
+    ) {
+        super::neon_fwd::mask_into_identity(mask, value, out, worker)
+    }
+
+    fn forward_affine_plan(
+        &self,
+        plan: &super::AffinePlan<BabyBearField, BabyBearExt4>,
+        columns: &[&[BabyBearField]],
+        out: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        worker: &Worker,
+    ) {
+        super::neon_fwd::affine_plan(plan, columns, out, worker)
+    }
+
+    fn forward_affine_plan_product(
+        &self,
+        lhs: &super::AffinePlan<BabyBearField, BabyBearExt4>,
+        rhs: &super::AffinePlan<BabyBearField, BabyBearExt4>,
+        columns: &[&[BabyBearField]],
+        out: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+        worker: &Worker,
+    ) {
+        super::neon_fwd::affine_plan_product(lhs, rhs, columns, out, worker)
+    }
 }

@@ -58,6 +58,8 @@ pub mod dimension_reduction;
 pub mod forward_loop;
 pub mod gkr_backend;
 pub mod setup;
+#[cfg(all(test, target_arch = "aarch64"))]
+mod stage_probe;
 pub mod stages;
 pub mod sumcheck_loop;
 #[cfg(feature = "gkr_test_forge")]
@@ -1572,6 +1574,7 @@ fn prove_configured_with_gkr_from_forward_eval<
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
         let fl_timer = std::time::Instant::now();
         forward_loop::evaluate_layer(
+            gkr_backend,
             layer_idx,
             layer,
             &mut gkr_storage,

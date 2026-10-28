@@ -175,7 +175,12 @@ pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F
     unsafe { AllocationType::from_initialized(destination) }
 }
 
-pub(crate) fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Field>(
+pub(crate) fn materialize_memory_tuple<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    GB: crate::gkr::prover::gkr_backend::GKRBackend<F, E>,
+>(
+    gkr_backend: &GB,
     rel: &SpecialMemoryContributionRelation,
     gkr_storage: &GKRStorage<F, E>,
     trace_len: usize,
@@ -201,6 +206,19 @@ pub(crate) fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Fie
         ) {
             return values;
         }
+    }
+    if let Some(plan) = super::via_backend::compile_memory_query(rel, external_challenges) {
+        let sources: Vec<&[F]> = (0..compiled_circuit.memory_layout.total_width)
+            .map(|i| gkr_storage.get_base_layer_mem(i))
+            .collect();
+        return super::via_backend::affine_plan(
+            gkr_backend,
+            &plan,
+            &sources,
+            trace_len,
+            pool,
+            worker,
+        );
     }
     unsafe {
         let mut destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);

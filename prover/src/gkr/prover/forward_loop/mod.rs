@@ -3,6 +3,7 @@ use crate::allocation_pool::{AllocationPool, ColumnLayout};
 #[cfg(feature = "gkr_self_checks")]
 use crate::gkr::prover::forward_loop::utils::evaluate_linear_relation_at_row;
 use crate::gkr::prover::forward_loop::utils::evaluate_memory_query;
+use crate::gkr::prover::gkr_backend::GKRBackend;
 use crate::gkr::sumcheck::access_and_fold::BaseFieldPoly;
 use crate::{cs::definitions::*, gkr::sumcheck::access_and_fold::ExtensionFieldPoly};
 use cs::definitions::gkr::RamWordRepresentation;
@@ -27,6 +28,7 @@ pub(crate) mod pairwise_product;
 pub(crate) mod single_column_lookup;
 pub(crate) mod utils;
 pub(crate) mod vector_lookup;
+pub(crate) mod via_backend;
 
 fn setup_padding_fill<F: PrimeField, E: FieldExtension<F> + Field>(
     circuit: &GKRCircuitArtifact<F>,
@@ -46,7 +48,8 @@ fn setup_padding_fill<F: PrimeField, E: FieldExtension<F> + Field>(
     }
 }
 
-fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
+fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field, GB: GKRBackend<F, E>>(
+    gkr_backend: &GB,
     layer_idx: usize,
     address: GKRAddress,
     relation: &GKRCacheRelation<F>,
@@ -84,6 +87,7 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
             }
             GKRCacheRelation::MemoryTuple(rel) => {
                 let destination = utils::materialize_memory_tuple(
+                    gkr_backend,
                     rel,
                     &*gkr_storage,
                     trace_len,
@@ -156,7 +160,8 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
     }
 }
 
-pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
+pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field, GB: GKRBackend<F, E>>(
+    gkr_backend: &GB,
     layer_idx: usize,
     layer: &GKRLayerDescription<F>,
     gkr_storage: &mut GKRStorage<F, E>,
@@ -338,6 +343,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
 
         addr.assert_as_layer(layer_idx);
         evaluate_cache_relation(
+            gkr_backend,
             layer_idx,
             *addr,
             cache_relation,
@@ -414,7 +420,8 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
             }
             GKRRelation::InitialGrandProductFromCaches { input, output } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
-                pairwise_product::forward_evaluate_pairwise_product(
+                via_backend::ext_product(
+                    gkr_backend,
                     *input,
                     *output,
                     gkr_storage,
@@ -444,7 +451,8 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 output,
             } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
-                mask_product::forward_evaluate_mask_into_identity(
+                via_backend::mask_into_identity(
+                    gkr_backend,
                     *input,
                     *mask,
                     *output,
@@ -457,7 +465,8 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
             }
             GKRRelation::TrivialProduct { input, output } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
-                pairwise_product::forward_evaluate_pairwise_product(
+                via_backend::ext_product(
+                    gkr_backend,
                     *input,
                     *output,
                     gkr_storage,
@@ -493,7 +502,8 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 output,
             } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
-                lookup_from_base_inputs::forward_evaluate_lookup_from_base_inputs_with_setup(
+                via_backend::base_lookup_minus_setup(
+                    gkr_backend,
                     *input,
                     *setup,
                     *output,
@@ -511,7 +521,18 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 output,
             } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
-                lookup_from_vector_inputs::forward_evaluate_masked_lookup_from_vector_inputs_with_setup(*input, *setup, *output, gkr_storage, expected_output_layer, trace_len, lookup_challenges_additive_part, pool, worker);
+                via_backend::masked_ext_lookup_minus_setup(
+                    gkr_backend,
+                    *input,
+                    *setup,
+                    *output,
+                    gkr_storage,
+                    expected_output_layer,
+                    trace_len,
+                    lookup_challenges_additive_part,
+                    pool,
+                    worker,
+                );
             }
             GKRRelation::LookupWithDensAndSetupExpressions {
                 input,
@@ -539,7 +560,8 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
             }
             GKRRelation::AggregateLookupRationalPair { input, output } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
-                lookup_pair::forward_evaluate_lookup_pair(
+                via_backend::rational_pair_add(
+                    gkr_backend,
                     *input,
                     *output,
                     gkr_storage,
@@ -551,7 +573,8 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
             }
             GKRRelation::LookupPairFromMaterializedBaseInputs { input, output } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
-                lookup_from_base_inputs::forward_evaluate_lookup_base_inputs_pair(
+                via_backend::base_pair_lookup(
+                    gkr_backend,
                     *input,
                     *output,
                     gkr_storage,
@@ -604,7 +627,8 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 output,
             } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
-                lookup_from_base_inputs::forward_evaluate_lookup_rational_with_base_remainder_input(
+                via_backend::unbalanced_base_lookup(
+                    gkr_backend,
                     *input,
                     *remainder,
                     *output,
@@ -622,7 +646,8 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 output,
             } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
-                lookup_from_vector_inputs::forward_evaluate_lookup_rational_with_vector_remainder_input(
+                via_backend::unbalanced_ext_lookup(
+                    gkr_backend,
                     *input,
                     *remainder,
                     *output,
@@ -636,7 +661,8 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
             }
             GKRRelation::LookupPairFromMaterializedVectorInputs { input, output } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
-                lookup_from_vector_inputs::forward_evaluate_lookup_from_vector_inputs_pair(
+                via_backend::ext_pair_lookup(
+                    gkr_backend,
                     *input,
                     *output,
                     gkr_storage,
@@ -723,6 +749,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
             }
             GKRRelation::MaterializeGrandProductTermExpression { input, output } => {
                 let destination = utils::materialize_memory_tuple(
+                    gkr_backend,
                     input,
                     &*gkr_storage,
                     trace_len,
@@ -746,7 +773,8 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 set_idxes,
             } => {
                 let destination =
-                    inits_and_teardowns::materialize_inits_and_teardowns_tuple_pair::<F, E, 2>(
+                    inits_and_teardowns::materialize_inits_and_teardowns_tuple_pair::<F, E, 2, _>(
+                        gkr_backend,
                         timestamp_and_value,
                         set_idxes.map(|el| inits_and_teardowns_top_bits[el]),
                         &*gkr_storage,

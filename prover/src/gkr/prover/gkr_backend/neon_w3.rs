@@ -63,14 +63,14 @@ const ES: usize = 16 * NG;
 
 /// One SoA limb's lazy u64 accumulator over 4 cells, register-resident.
 #[derive(Clone, Copy)]
-struct Acc {
+pub(super) struct Acc {
     lo: uint64x2_t,
     hi: uint64x2_t,
 }
 
 impl Acc {
     #[inline(always)]
-    unsafe fn zero() -> Self {
+    pub(super) unsafe fn zero() -> Self {
         Acc {
             lo: vdupq_n_u64(0),
             hi: vdupq_n_u64(0),
@@ -79,20 +79,20 @@ impl Acc {
 
     /// `self += t * c[L]` over the 4 cells (raw 64-bit products).
     #[inline(always)]
-    unsafe fn mla_lane<const L: i32>(&mut self, t: uint32x4_t, c: uint32x4_t) {
+    pub(super) unsafe fn mla_lane<const L: i32>(&mut self, t: uint32x4_t, c: uint32x4_t) {
         self.lo = vmlal_laneq_u32::<L>(self.lo, vget_low_u32(t), c);
         self.hi = vmlal_high_laneq_u32::<L>(self.hi, t, c);
     }
 
     /// `self += a * b` cellwise (raw 64-bit products).
     #[inline(always)]
-    unsafe fn mla(&mut self, a: uint32x4_t, b: uint32x4_t) {
+    pub(super) unsafe fn mla(&mut self, a: uint32x4_t, b: uint32x4_t) {
         self.lo = vmlal_u32(self.lo, vget_low_u32(a), vget_low_u32(b));
         self.hi = vmlal_high_u32(self.hi, a, b);
     }
 
     #[inline(always)]
-    unsafe fn condsub(&mut self) {
+    pub(super) unsafe fn condsub(&mut self) {
         let rp = vdupq_n_u64(RP);
         self.lo = vsubq_u64(self.lo, vandq_u64(vcgeq_u64(self.lo, rp), rp));
         self.hi = vsubq_u64(self.hi, vandq_u64(vcgeq_u64(self.hi, rp), rp));
@@ -103,7 +103,7 @@ impl Acc {
     /// after the leading condsub, which every call site guarantees (at most
     /// 4 raw `< P^2` products since the last condsub).
     #[inline(always)]
-    unsafe fn redc(mut self) -> uint32x4_t {
+    pub(super) unsafe fn redc(mut self) -> uint32x4_t {
         self.condsub();
         let p2 = vdup_n_u32(P);
         let k2 = vdup_n_u32(K);
@@ -118,7 +118,7 @@ impl Acc {
 
 /// `acc[l] += t * c[l]` for the 4 coefficient limbs (base value `t`).
 #[inline(always)]
-unsafe fn mla4(acc: &mut [Acc; 4], t: uint32x4_t, c: uint32x4_t) {
+pub(super) unsafe fn mla4(acc: &mut [Acc; 4], t: uint32x4_t, c: uint32x4_t) {
     acc[0].mla_lane::<0>(t, c);
     acc[1].mla_lane::<1>(t, c);
     acc[2].mla_lane::<2>(t, c);
@@ -126,7 +126,7 @@ unsafe fn mla4(acc: &mut [Acc; 4], t: uint32x4_t, c: uint32x4_t) {
 }
 
 #[inline(always)]
-unsafe fn condsub4(acc: &mut [Acc; 4]) {
+pub(super) unsafe fn condsub4(acc: &mut [Acc; 4]) {
     for l in 0..4 {
         acc[l].condsub();
     }
@@ -193,7 +193,7 @@ unsafe fn table_mla4(acc: &mut [Acc; 4], v: &[uint32x4_t; 4], k: &Coeff) {
 /// u64 sum of its four raw cross products (`< 4 P^2`), ONE REDC per limb.
 /// Same values as `neon::soa_ext_mul` (7 canonical multiplies instead of 19).
 #[inline(always)]
-unsafe fn ext_mul_lazy(
+pub(super) unsafe fn ext_mul_lazy(
     a: &[uint32x4_t; 4],
     b: &[uint32x4_t; 4],
     r11v: uint32x4_t,
@@ -245,12 +245,12 @@ unsafe fn coeff_vec(c: &BabyBearExt4) -> uint32x4_t {
 /// (`umlal`), an ext product's canonical result times `R mod P`
 /// (`BabyBearField::ONE`'s raw value) — never as a canonical add.
 #[inline(always)]
-unsafe fn r_mont() -> uint32x4_t {
+pub(super) unsafe fn r_mont() -> uint32x4_t {
     vdupq_n_u32(BabyBearField::ONE.raw_u32_value())
 }
 
 #[inline(always)]
-unsafe fn redc4(acc: &[Acc; 4]) -> [uint32x4_t; 4] {
+pub(super) unsafe fn redc4(acc: &[Acc; 4]) -> [uint32x4_t; 4] {
     [acc[0].redc(), acc[1].redc(), acc[2].redc(), acc[3].redc()]
 }
 
