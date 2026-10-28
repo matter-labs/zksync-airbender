@@ -331,12 +331,20 @@ fn group_by_frequency(terms: &[(Opnd, Opnd, BabyBearExt4)]) -> Vec<Group> {
 }
 
 /// Groups `(pivot, member, coeff)` terms by pivot; group order = first
-/// appearance of the pivot, members in term order.
+/// appearance of the pivot, members in term order. A member that repeats
+/// inside a group (the same monomial from two gates, 35 of layer 0's 289
+/// compiled products) is MERGED: `c1 a b + c2 a b = (c1 + c2) a b`, one MLA
+/// instead of two — exact field arithmetic, so the proofs are unchanged.
 fn group_by_pivot(terms: impl Iterator<Item = (Opnd, Opnd, BabyBearExt4)>) -> Vec<Group> {
     let mut groups: Vec<Group> = Vec::new();
     for (pivot, member, c) in terms {
         match groups.iter_mut().find(|g| g.pivot == pivot) {
-            Some(g) => g.members.push((member, c)),
+            Some(g) => match g.members.iter_mut().find(|(m, _)| *m == member) {
+                Some((_, acc)) => {
+                    acc.add_assign(&c);
+                }
+                None => g.members.push((member, c)),
+            },
             None => groups.push(Group {
                 pivot,
                 members: vec![(member, c)],

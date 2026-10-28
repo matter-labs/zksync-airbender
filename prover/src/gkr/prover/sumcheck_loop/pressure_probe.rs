@@ -236,6 +236,51 @@ fn prog_stats(prog: &OwnedSoaProgram<BB, E4>) -> String {
     let shared_groups = groups.values().filter(|m| **m >= 2).count();
     let saved_muls: usize = groups.values().filter(|m| **m >= 2).map(|m| m - 1).sum();
     let max_group = groups.values().copied().max().unwrap_or(0);
+    // structure: distinct unordered operand pairs (duplicates = mergeable
+    // monomials), operand kinds, a maximal matching (lower bound on the
+    // number of pivots any star cover needs), group-size histogram
+    let mut pairs: std::collections::BTreeMap<(usize, usize), usize> = Default::default();
+    let (mut ss, mut sf, mut ff, mut squares) = (0usize, 0usize, 0usize, 0usize);
+    for (a, b, _) in prog.products.iter() {
+        let (ka, kb) = (key(a), key(b));
+        *pairs.entry((ka.min(kb), ka.max(kb))).or_default() += 1;
+        match (matches!(a, FormRef::Form(_)), matches!(b, FormRef::Form(_))) {
+            (false, false) => ss += 1,
+            (true, true) => ff += 1,
+            _ => sf += 1,
+        }
+        if ka == kb {
+            squares += 1;
+        }
+    }
+    let duplicates: usize = pairs.values().map(|m| m - 1).sum();
+    let mut matched: std::collections::BTreeSet<usize> = Default::default();
+    let mut matching = 0usize;
+    for (ka, kb) in pairs.keys() {
+        if ka != kb && !matched.contains(ka) && !matched.contains(kb) {
+            matched.insert(*ka);
+            matched.insert(*kb);
+            matching += 1;
+        }
+    }
+    let mut hist: std::collections::BTreeMap<usize, usize> = Default::default();
+    for m in groups.values() {
+        *hist.entry(*m).or_default() += 1;
+    }
+    let hist: Vec<String> = hist.iter().map(|(k, v)| format!("{k}x{v}")).collect();
+    println!(
+        "[pressure] structure: products {} = slot*slot {} + slot*form {} + form*form {} (squares {}); distinct pairs {} (duplicates {}); greedy pivots {} (matching lower bound {}); group sizes {}",
+        prog.products.len(),
+        ss,
+        sf,
+        ff,
+        squares,
+        pairs.len(),
+        duplicates,
+        groups.len(),
+        matching,
+        hist.join(" ")
+    );
     format!(
         "nb={} (interp {}) ne={} (interp {}) | forms={} (members {}) products={} (form operands {}; sharing: {} groups of >=2 covering {} products, max {}, {} muls saveable) | rest: QuadBB {} QuadBE {} QuadEE {} LinB {} LinE {}",
         prog.base_interp.len(),
