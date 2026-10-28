@@ -82,7 +82,33 @@ impl<A: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
                             let mut src_ptr = src_chunk
                                 .as_ptr()
                                 .cast::<[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS]>();
-                            for _i in 0..chunk_size {
+                            #[allow(unused_mut)]
+                            let mut remaining = chunk_size;
+                            // aarch64: four nodes per step in the four lanes
+                            #[cfg(target_arch = "aarch64")]
+                            {
+                                use blake2s_u32::vectorized_impls::neon_x4::Blake2sNeonX4;
+                                let mut digests = [[0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]; 4];
+                                while remaining >= 4 {
+                                    let m =
+                                        Blake2sNeonX4::load_block_transposed(src_ptr as *const u32);
+                                    let mut x4 = Blake2sNeonX4::new();
+                                    x4.absorb_final_block::<USE_REDUCED_BLAKE2_ROUNDS>(
+                                        &m,
+                                        BLAKE2S_BLOCK_SIZE_U32_WORDS,
+                                        &mut digests,
+                                    );
+                                    for w in 0..4 {
+                                        (&mut *dst_ptr.add(w))
+                                            .assume_init_mut()
+                                            .copy_from_slice(&digests[w]);
+                                    }
+                                    src_ptr = src_ptr.add(4);
+                                    dst_ptr = dst_ptr.add(4);
+                                    remaining -= 4;
+                                }
+                            }
+                            for _i in 0..remaining {
                                 let read_from = &*src_ptr;
                                 let write_into = (&mut *dst_ptr).assume_init_mut();
                                 Blake2sState::compress_two_to_one::<USE_REDUCED_BLAKE2_ROUNDS>(

@@ -147,17 +147,35 @@ pub fn blake2s_leaf_hashes_from_columns<
 /// Per-thread scratch for the 4-way interleaved leaf hashing (hash states and
 /// gather buffers reused across leaves and cosets).
 struct LeafHashScratch {
+    #[cfg(not(target_arch = "aarch64"))]
     hashers: [Blake2sState; 4],
+    #[cfg(not(target_arch = "aarch64"))]
     buffers: [Vec<u32>; 4],
+    /// aarch64: the four in-flight leaves hashed in the four lanes of NEON
+    /// vectors, their words gathered WORD-MAJOR INTERLEAVED
+    /// (`ileaf[4 * word + lane]`) into whole blocks; the padding words past
+    /// the leaf width stay zero forever (the gather never touches them).
+    #[cfg(target_arch = "aarch64")]
+    x4: blake2s_u32::vectorized_impls::neon_x4::Blake2sNeonX4,
+    #[cfg(target_arch = "aarch64")]
+    ileaf: Vec<u32>,
     tail_hasher: Blake2sState,
     tail_buffer: Vec<u32>,
 }
 
 impl LeafHashScratch {
     fn new(leaf_width: usize) -> Self {
+        #[cfg(target_arch = "aarch64")]
+        let blocks = leaf_width.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS).max(1);
         Self {
+            #[cfg(not(target_arch = "aarch64"))]
             hashers: [Blake2sState::new(); 4],
+            #[cfg(not(target_arch = "aarch64"))]
             buffers: core::array::from_fn(|_| Vec::with_capacity(leaf_width)),
+            #[cfg(target_arch = "aarch64")]
+            x4: blake2s_u32::vectorized_impls::neon_x4::Blake2sNeonX4::new(),
+            #[cfg(target_arch = "aarch64")]
+            ileaf: vec![0u32; blocks * 4 * BLAKE2S_BLOCK_SIZE_U32_WORDS],
             tail_hasher: Blake2sState::new(),
             tail_buffer: Vec::with_capacity(leaf_width),
         }
@@ -183,6 +201,19 @@ pub(crate) trait LeafGather<F: PrimeField, E: FieldExtension<F>>: Sync {
             self.gather(first + w, ebuf, dst);
         }
     }
+    /// Leaves `first .. first + 4` WORD-MAJOR INTERLEAVED: word `i` of leaf
+    /// `first + w` at `dst[4 * i + w]` (the four-lane NEON hasher's block
+    /// layout). Same words per leaf as [`Self::gather`].
+    fn gather_block_interleaved(&self, first: usize, ebuf: &mut Vec<E>, dst: &mut [u32]) {
+        let mut tmp: Vec<u32> = Vec::new();
+        for w in 0..4 {
+            tmp.clear();
+            self.gather(first + w, ebuf, &mut tmp);
+            for (i, word) in tmp.iter().enumerate() {
+                dst[4 * i + w] = *word;
+            }
+        }
+    }
 }
 
 /// The classic gather: for every column, the `offsets` (bit-reversed stride)
@@ -190,6 +221,46 @@ pub(crate) trait LeafGather<F: PrimeField, E: FieldExtension<F>>: Sync {
 pub(crate) struct ColumnsGather<'a, A> {
     pub(crate) coset: &'a [A],
     pub(crate) offsets: &'a [usize],
+    /// aarch64, BabyBear / Ext4 columns that are all contiguous: their word
+    /// addresses, so the interleaved gather is one `ld1` / `ld4` per
+    /// (column, offset) — four consecutive leaves' values ARE the four lanes.
+    /// Empty when the vector gather does not apply.
+    pub(crate) vector_columns: Vec<usize>,
+}
+
+impl<'a, A> ColumnsGather<'a, A> {
+    pub(crate) fn new<F: PrimeField, E: FieldExtension<F>>(
+        coset: &'a [A],
+        offsets: &'a [usize],
+    ) -> Self
+    where
+        A: CosetIndexedAccessor<E>,
+    {
+        let mut vector_columns = Vec::new();
+        #[cfg(target_arch = "aarch64")]
+        {
+            let is_bb = core::any::type_name::<F>()
+                == core::any::type_name::<field::baby_bear::base::BabyBearField>()
+                && core::mem::size_of::<E>() == 4 * E::DEGREE
+                && (E::DEGREE == 1 || E::DEGREE == 4);
+            if is_bb {
+                for column in coset.iter() {
+                    match column.contiguous() {
+                        Some(slice) => vector_columns.push(slice.as_ptr() as usize),
+                        None => {
+                            vector_columns.clear();
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        Self {
+            coset,
+            offsets,
+            vector_columns,
+        }
+    }
 }
 
 impl<'a, F: PrimeField, E: FieldExtension<F>, A: CosetIndexedAccessor<E>> LeafGather<F, E>
@@ -227,6 +298,58 @@ impl<'a, F: PrimeField, E: FieldExtension<F>, A: CosetIndexedAccessor<E>> LeafGa
                             .map(|el| el.as_u32_raw_repr_reduced()),
                     );
                 }
+            }
+        }
+    }
+    /// Direct indexed stores (no per-word `extend`): word
+    /// `(column, offset, limb)` of leaf `w` lands at `4 * word + w`. With
+    /// contiguous BabyBear columns the four leaves' values of one (column,
+    /// offset) are 4 consecutive elements: one vector load (`ld4` for Ext4
+    /// de-interleaves the limbs) and one store per word.
+    #[inline(always)]
+    fn gather_block_interleaved(&self, first: usize, _ebuf: &mut Vec<E>, dst: &mut [u32]) {
+        #[cfg(target_arch = "aarch64")]
+        if !self.vector_columns.is_empty() {
+            unsafe {
+                use core::arch::aarch64::*;
+                let out = dst.as_mut_ptr();
+                let mut word = 0usize;
+                for col in self.vector_columns.iter() {
+                    let base = *col as *const u32;
+                    for offset in self.offsets.iter() {
+                        let p = base.add((first + *offset) * E::DEGREE);
+                        if E::DEGREE == 1 {
+                            vst1q_u32(out.add(4 * word), vld1q_u32(p));
+                            word += 1;
+                        } else {
+                            let q = vld4q_u32(p);
+                            vst1q_u32(out.add(4 * word), q.0);
+                            vst1q_u32(out.add(4 * word + 4), q.1);
+                            vst1q_u32(out.add(4 * word + 8), q.2);
+                            vst1q_u32(out.add(4 * word + 12), q.3);
+                            word += 4;
+                        }
+                    }
+                }
+            }
+            return;
+        }
+        let mut word = 0usize;
+        debug_assert!(dst.len() >= 4 * self.coset.len() * self.offsets.len() * E::DEGREE);
+        for column in self.coset.iter() {
+            for offset in self.offsets.iter() {
+                let base = first + *offset;
+                for w in 0..4 {
+                    let el = column.get(base + w);
+                    let as_base = extension_field_into_base_coeffs(el);
+                    for (l, c) in as_base.as_ref().iter().enumerate() {
+                        unsafe {
+                            *dst.get_unchecked_mut(4 * (word + l) + w) =
+                                c.as_u32_raw_repr_reduced();
+                        }
+                    }
+                }
+                word += E::DEGREE;
             }
         }
     }
@@ -293,6 +416,37 @@ impl<'a, F: PrimeField, E: FieldExtension<F> + field::Field, L: CosetLeafAccesso
                     );
                 }
             }
+        }
+    }
+    #[inline(always)]
+    fn gather_block_interleaved(&self, first: usize, ebuf: &mut Vec<E>, dst: &mut [u32]) {
+        let count = 4usize;
+        let vpl = self.values_per_leaf;
+        let mut word = 0usize;
+        for accessor in self.coset.iter() {
+            ebuf.clear();
+            ebuf.resize(count * vpl, E::ZERO);
+            let slot_major = accessor.leaves_into_slot_major(first, count, &mut ebuf[..]);
+            if !slot_major {
+                accessor.leaves_into(first, count, &mut ebuf[..]);
+            }
+            for k in 0..vpl {
+                for w in 0..count {
+                    let el = if slot_major {
+                        ebuf[k * count + w]
+                    } else {
+                        ebuf[w * vpl + k]
+                    };
+                    let as_base = extension_field_into_base_coeffs(el);
+                    for (l, c) in as_base.as_ref().iter().enumerate() {
+                        unsafe {
+                            *dst.get_unchecked_mut(4 * (word + k * E::DEGREE + l) + w) =
+                                c.as_u32_raw_repr_reduced();
+                        }
+                    }
+                }
+            }
+            word += vpl * E::DEGREE;
         }
     }
 }
@@ -401,51 +555,98 @@ unsafe fn hash_coset_leaf_range<
         i += 1;
     }
 
-    let hashers = &mut scratch.hashers;
-    let buffers = &mut scratch.buffers;
-    while i + WAYS <= src_range.end {
-        for w in 0..WAYS {
-            hashers[w].reset();
-            buffers[w].clear();
-        }
-        coset.gather_block(i, ebuf, &mut buffers[..]);
-        for w in 0..WAYS {
-            debug_assert_eq!(buffers[w].len(), leaf_width_in_field_elements);
-        }
-
-        for round in 0..num_full_roudns {
-            let last_round = round == num_full_roudns - 1;
-            for w in 0..WAYS {
-                let block = &*(buffers[w]
-                    .as_ptr()
-                    .add(round * BLAKE2S_BLOCK_SIZE_U32_WORDS)
-                    as *const [u32; BLAKE2S_BLOCK_SIZE_U32_WORDS]);
-                if last_round && only_full_rounds {
-                    let write_into = (&mut *dst_ptr.add(w)).assume_init_mut();
-                    hashers[w].absorb_final_block::<USE_REDUCED_BLAKE2_ROUNDS>(
-                        block,
-                        BLAKE2S_BLOCK_SIZE_U32_WORDS,
-                        write_into,
+    #[cfg(target_arch = "aarch64")]
+    {
+        // four leaves in the four lanes: gather interleaved, then one
+        // vector compression per block for all four
+        let blocks = num_full_roudns + usize::from(!only_full_rounds);
+        let last_len = if only_full_rounds {
+            BLAKE2S_BLOCK_SIZE_U32_WORDS
+        } else {
+            leaf_width_in_field_elements % BLAKE2S_BLOCK_SIZE_U32_WORDS
+        };
+        debug_assert_eq!(
+            scratch.ileaf.len(),
+            blocks * 4 * BLAKE2S_BLOCK_SIZE_U32_WORDS
+        );
+        let mut digests = [[0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]; WAYS];
+        while i + WAYS <= src_range.end {
+            coset.gather_block_interleaved(i, ebuf, &mut scratch.ileaf[..]);
+            scratch.x4.reset();
+            let words = scratch.ileaf.as_ptr();
+            for round in 0..blocks {
+                let m = blake2s_u32::vectorized_impls::neon_x4::Blake2sNeonX4::load_block(
+                    words.add(round * 4 * BLAKE2S_BLOCK_SIZE_U32_WORDS),
+                );
+                if round + 1 == blocks {
+                    scratch.x4.absorb_final_block::<USE_REDUCED_BLAKE2_ROUNDS>(
+                        &m,
+                        last_len,
+                        &mut digests,
                     );
                 } else {
-                    hashers[w].absorb::<USE_REDUCED_BLAKE2_ROUNDS>(block);
+                    scratch.x4.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(&m);
                 }
             }
-        }
-
-        if !only_full_rounds {
-            let len = leaf_width_in_field_elements % BLAKE2S_BLOCK_SIZE_U32_WORDS;
             for w in 0..WAYS {
-                let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
-                block[..len]
-                    .copy_from_slice(&buffers[w][num_full_roudns * BLAKE2S_BLOCK_SIZE_U32_WORDS..]);
-                let write_into = (&mut *dst_ptr.add(w)).assume_init_mut();
-                hashers[w].absorb_final_block::<USE_REDUCED_BLAKE2_ROUNDS>(&block, len, write_into);
+                (&mut *dst_ptr.add(w))
+                    .assume_init_mut()
+                    .copy_from_slice(&digests[w]);
             }
+            dst_ptr = dst_ptr.add(WAYS);
+            i += WAYS;
         }
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        let hashers = &mut scratch.hashers;
+        let buffers = &mut scratch.buffers;
+        while i + WAYS <= src_range.end {
+            for w in 0..WAYS {
+                hashers[w].reset();
+                buffers[w].clear();
+            }
+            coset.gather_block(i, ebuf, &mut buffers[..]);
+            for w in 0..WAYS {
+                debug_assert_eq!(buffers[w].len(), leaf_width_in_field_elements);
+            }
 
-        dst_ptr = dst_ptr.add(WAYS);
-        i += WAYS;
+            for round in 0..num_full_roudns {
+                let last_round = round == num_full_roudns - 1;
+                for w in 0..WAYS {
+                    let block = &*(buffers[w]
+                        .as_ptr()
+                        .add(round * BLAKE2S_BLOCK_SIZE_U32_WORDS)
+                        as *const [u32; BLAKE2S_BLOCK_SIZE_U32_WORDS]);
+                    if last_round && only_full_rounds {
+                        let write_into = (&mut *dst_ptr.add(w)).assume_init_mut();
+                        hashers[w].absorb_final_block::<USE_REDUCED_BLAKE2_ROUNDS>(
+                            block,
+                            BLAKE2S_BLOCK_SIZE_U32_WORDS,
+                            write_into,
+                        );
+                    } else {
+                        hashers[w].absorb::<USE_REDUCED_BLAKE2_ROUNDS>(block);
+                    }
+                }
+            }
+
+            if !only_full_rounds {
+                let len = leaf_width_in_field_elements % BLAKE2S_BLOCK_SIZE_U32_WORDS;
+                for w in 0..WAYS {
+                    let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+                    block[..len].copy_from_slice(
+                        &buffers[w][num_full_roudns * BLAKE2S_BLOCK_SIZE_U32_WORDS..],
+                    );
+                    let write_into = (&mut *dst_ptr.add(w)).assume_init_mut();
+                    hashers[w]
+                        .absorb_final_block::<USE_REDUCED_BLAKE2_ROUNDS>(&block, len, write_into);
+                }
+            }
+
+            dst_ptr = dst_ptr.add(WAYS);
+            i += WAYS;
+        }
     }
 
     // scalar tail for the last < WAYS leaves
@@ -640,10 +841,7 @@ pub fn blake2s_leaf_hashes_from_cosets<
     let offsets = offsets_vec_for_leaf_construction(trace_len, combine_by);
     let gathers: Vec<ColumnsGather<'_, A>> = trace
         .iter()
-        .map(|coset| ColumnsGather {
-            coset,
-            offsets: &offsets[..],
-        })
+        .map(|coset| ColumnsGather::new::<F, E>(coset, &offsets[..]))
         .collect();
     let leaf_hashes = blake2s_leaf_hashes_driver::<F, E, _, B, USE_REDUCED_BLAKE2_ROUNDS>(
         &gathers,
@@ -797,6 +995,208 @@ mod tests {
                 &expected[..],
                 "diverged at trace_len={trace_len} cols={num_cols} combine={combine_by} threads={threads}"
             );
+        }
+    }
+
+    /// The four-lane NEON hasher equals four scalar absorb sequences for
+    /// every block count / final-block length, reduced and full rounds.
+    #[cfg(target_arch = "aarch64")]
+    #[test]
+    fn neon_x4_matches_scalar_blake2s() {
+        use blake2s_u32::vectorized_impls::neon_x4::Blake2sNeonX4;
+        let mut st = 0xC0FFEEu64;
+        let mut next = || {
+            st = st
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (st >> 11) as u32
+        };
+        for words_per_msg in [3usize, 16, 17, 32, 61, 122, 128, 130] {
+            let msgs: Vec<Vec<u32>> = (0..4)
+                .map(|_| (0..words_per_msg).map(|_| next()).collect())
+                .collect();
+            let blocks = words_per_msg.div_ceil(16);
+            let last_len = if words_per_msg % 16 == 0 {
+                16
+            } else {
+                words_per_msg % 16
+            };
+            // interleaved, zero padded
+            let mut il = vec![0u32; blocks * 64];
+            for (w, m) in msgs.iter().enumerate() {
+                for (i, x) in m.iter().enumerate() {
+                    il[4 * i + w] = *x;
+                }
+            }
+            for reduced in [true, false] {
+                let mut expected = [[0u32; 8]; 4];
+                for w in 0..4 {
+                    let mut h = Blake2sState::new();
+                    let mut padded = msgs[w].clone();
+                    padded.resize(blocks * 16, 0);
+                    for b in 0..blocks {
+                        let block: &[u32; 16] = padded[b * 16..(b + 1) * 16].try_into().unwrap();
+                        if b + 1 == blocks {
+                            if reduced {
+                                h.absorb_final_block::<true>(block, last_len, &mut expected[w]);
+                            } else {
+                                h.absorb_final_block::<false>(block, last_len, &mut expected[w]);
+                            }
+                        } else if reduced {
+                            h.absorb::<true>(block);
+                        } else {
+                            h.absorb::<false>(block);
+                        }
+                    }
+                }
+                let mut got = [[0u32; 8]; 4];
+                let mut x4 = Blake2sNeonX4::new();
+                unsafe {
+                    for b in 0..blocks {
+                        let m = Blake2sNeonX4::load_block(il.as_ptr().add(b * 64));
+                        if b + 1 == blocks {
+                            if reduced {
+                                x4.absorb_final_block::<true>(&m, last_len, &mut got);
+                            } else {
+                                x4.absorb_final_block::<false>(&m, last_len, &mut got);
+                            }
+                        } else if reduced {
+                            x4.absorb::<true>(&m);
+                        } else {
+                            x4.absorb::<false>(&m);
+                        }
+                    }
+                }
+                assert_eq!(got, expected, "words {words_per_msg} reduced {reduced}");
+            }
+        }
+    }
+
+    /// Extension-field columns (4 limbs per value) through the production
+    /// leaf hashing, against the per-leaf scalar reference.
+    #[test]
+    fn interleaved_ext_leaf_hashes_match_scalar_reference() {
+        type F = BabyBearField;
+        type E = field::baby_bear::ext4::BabyBearExt4;
+        let mut rng = rand::rng();
+        for (trace_len, num_cols, combine_by, threads, num_cosets) in [
+            (256usize, 1usize, 32usize, 3usize, 2usize),
+            (128, 2, 8, 4, 4),
+            (64, 3, 2, 2, 1),
+        ] {
+            let worker = Worker::new_with_num_threads(threads);
+            let cosets: Vec<Vec<Vec<E>>> = (0..num_cosets)
+                .map(|_| {
+                    (0..num_cols)
+                        .map(|_| {
+                            (0..trace_len)
+                                .map(|_| {
+                                    E::from_array_of_base(core::array::from_fn(|_| {
+                                        F::random_element(&mut rng)
+                                    }))
+                                })
+                                .collect()
+                        })
+                        .collect()
+                })
+                .collect();
+            let coset_refs: Vec<Vec<&[E]>> = cosets
+                .iter()
+                .map(|c| c.iter().map(|col| &col[..]).collect())
+                .collect();
+            let trace: Vec<&[&[E]]> = coset_refs.iter().map(|c| &c[..]).collect();
+            let got = blake2s_leaf_hashes_from_cosets::<F, E, _, std::alloc::Global, true>(
+                &trace, combine_by, true, true, false, &worker,
+            );
+            let offsets = offsets_vec_for_leaf_construction(trace_len, combine_by);
+            let mut coset_indexes: Vec<usize> = (0..trace.len()).collect();
+            bitreverse_enumeration_inplace(&mut coset_indexes);
+            let coset_tree_size = trace_len / combine_by;
+            let mut expected = Vec::new();
+            for coset_index in coset_indexes.iter() {
+                let coset = &trace[*coset_index];
+                for i in 0..coset_tree_size {
+                    let mut buffer: Vec<u32> = Vec::new();
+                    for column in coset.iter() {
+                        for offset in offsets.iter() {
+                            let coeffs =
+                                extension_field_into_base_coeffs::<F, E>(column[i + *offset]);
+                            buffer.extend(
+                                coeffs.as_ref().iter().map(|c| c.as_u32_raw_repr_reduced()),
+                            );
+                        }
+                    }
+                    let mut hasher = Blake2sState::new();
+                    let mut dst = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
+                    let (chunks, remainder) = buffer.as_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>();
+                    let only_full = remainder.is_empty();
+                    let n_full = chunks.len();
+                    for (k, block) in chunks.iter().enumerate() {
+                        if k == n_full - 1 && only_full {
+                            hasher.absorb_final_block::<true>(
+                                block,
+                                BLAKE2S_BLOCK_SIZE_U32_WORDS,
+                                &mut dst,
+                            );
+                        } else {
+                            hasher.absorb::<true>(block);
+                        }
+                    }
+                    if !only_full {
+                        let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+                        block[..remainder.len()].copy_from_slice(remainder);
+                        hasher.absorb_final_block::<true>(&block, remainder.len(), &mut dst);
+                    }
+                    expected.push(dst);
+                }
+            }
+            assert_eq!(
+                &got[..],
+                &expected[..],
+                "ext diverged at trace_len={trace_len} cols={num_cols} combine={combine_by}"
+            );
+        }
+    }
+
+    /// The node layers (four nodes per vector step on aarch64) equal the
+    /// scalar two-to-one compressions.
+    #[test]
+    fn node_layers_match_scalar_two_to_one() {
+        use crate::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
+        use crate::merkle_trees::ColumnMajorMerkleTreeConstructor;
+        let mut st = 0xABCDu64;
+        let mut next = || {
+            st = st
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (st >> 11) as u32
+        };
+        for (leaves, cap, threads) in [(64usize, 1usize, 3usize), (256, 4, 5), (1024, 1, 7)] {
+            let worker = Worker::new_with_num_threads(threads);
+            let leaf_hashes: Vec<[u32; 8]> = (0..leaves)
+                .map(|_| core::array::from_fn(|_| next()))
+                .collect();
+            let tree =
+                Blake2sU32MerkleTreeWithCap::<std::alloc::Global, true>::build_over_leaf_hashes(
+                    leaf_hashes.clone(),
+                    cap,
+                    &worker,
+                );
+            // scalar reference layer by layer
+            let mut prev = leaf_hashes;
+            for layer in tree.node_hashes_enumerated_from_leafs.iter() {
+                let mut expected = Vec::with_capacity(prev.len() / 2);
+                for pair in prev.chunks_exact(2) {
+                    let mut block = [0u32; 16];
+                    block[..8].copy_from_slice(&pair[0]);
+                    block[8..].copy_from_slice(&pair[1]);
+                    let mut dst = [0u32; 8];
+                    Blake2sState::compress_two_to_one::<true>(&block, &mut dst);
+                    expected.push(dst);
+                }
+                assert_eq!(&layer[..], &expected[..], "leaves {leaves} cap {cap}");
+                prev = expected;
+            }
         }
     }
 }

@@ -3,6 +3,8 @@ use worker::Worker;
 
 const BLAKE2S_NO_RESULT: u64 = u64::MAX;
 const BLAKE2S_ROUNDS_PER_INVOCAITON: usize = 1 << 16u32;
+/// Candidates checked between hit tests inside a chunk.
+const POW_BATCH: u64 = 64;
 
 impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
     pub fn search_pow(seed: &Seed, pow_bits: u32, worker: &Worker) -> (Seed, u64) {
@@ -70,6 +72,20 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         unreachable!("PoW search exhausted the nonce space without a result");
     }
 
+    /// Parallel grind: nonce chunks of `BLAKE2S_ROUNDS_PER_INVOCAITON` are
+    /// handed out DYNAMICALLY (an atomic counter), so a slow thread (an
+    /// efficiency core, a preempted core) just takes fewer chunks instead of
+    /// gating the whole search with its share of a static stripe. (A
+    /// four-wide check — four scalar chains in lockstep or the four-lane NEON
+    /// compression — measured SLOWER per candidate than the plain single
+    /// check on Apple M3: 27 vs 23 ns; the single check already keeps the
+    /// core busy.)
+    ///
+    /// `deterministic_pow`: the result is the SMALLEST valid nonce, identical
+    /// to the serial search — a worker gives up only when the next chunk
+    /// starts at or past the best nonce found so far (the best only
+    /// decreases, so a skipped chunk can never contain a smaller one), and a
+    /// chunk is scanned in increasing order so its first hit is its minimum.
     fn search_pow_parallel_from_prepared(
         seed: &Seed,
         pow_bits: u32,
@@ -81,21 +97,26 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         use std::sync::atomic::Ordering;
 
         let result = std::sync::Arc::new(AtomicU64::new(BLAKE2S_NO_RESULT));
+        let next_chunk = std::sync::Arc::new(AtomicU64::new(0));
         let threshold = Self::pow_threshold(pow_bits);
-        let pow_rounds_per_invocation = BLAKE2S_ROUNDS_PER_INVOCAITON as u64;
+        let chunk_len = BLAKE2S_ROUNDS_PER_INVOCAITON as u64;
         let num_workers = worker.num_cores as u64;
+        let last_nonce = BLAKE2S_NO_RESULT - 1;
 
         worker.scope(usize::MAX, |scope, _| {
             for worker_idx in 0..num_workers {
-                let mut input = base_input;
                 let result = std::sync::Arc::clone(&result);
+                let next_chunk = std::sync::Arc::clone(&next_chunk);
                 Worker::smart_spawn(scope, worker_idx == num_workers - 1, move |_| {
-                    for round_idx in
-                        0..((BLAKE2S_NO_RESULT - 1) / num_workers / pow_rounds_per_invocation)
-                    {
-                        let base =
-                            (worker_idx + round_idx * num_workers) * pow_rounds_per_invocation;
-
+                    let mut input = base_input;
+                    loop {
+                        let chunk = next_chunk.fetch_add(1, Ordering::Relaxed);
+                        let Some(base) = chunk.checked_mul(chunk_len) else {
+                            break;
+                        };
+                        if base >= last_nonce {
+                            break;
+                        }
                         #[cfg(feature = "deterministic_pow")]
                         if result.load(Ordering::Relaxed) <= base {
                             break;
@@ -104,28 +125,52 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
                         if result.load(Ordering::Relaxed) != BLAKE2S_NO_RESULT {
                             break;
                         }
-
-                        let rounds_this_invocation =
-                            pow_rounds_per_invocation.min((BLAKE2S_NO_RESULT - 1) - base);
-                        for j in 0..rounds_this_invocation {
-                            let challenge_u64 = base + j;
-                            if Self::pow_challenge_matches(
-                                &mut input,
-                                &initial_state,
-                                challenge_u64,
-                                threshold,
-                            ) {
-                                #[cfg(feature = "deterministic_pow")]
-                                result.fetch_min(challenge_u64, Ordering::Relaxed);
-                                #[cfg(not(feature = "deterministic_pow"))]
-                                let _ = result.compare_exchange(
-                                    BLAKE2S_NO_RESULT,
-                                    challenge_u64,
-                                    Ordering::Relaxed,
-                                    Ordering::Relaxed,
+                        let end = (base + chunk_len).min(last_nonce);
+                        let mut found = None;
+                        // batches without an early exit: consecutive
+                        // candidates are independent, and a plain loop lets
+                        // the core overlap their compressions (measured 2x
+                        // the throughput of a check-and-break loop); a batch
+                        // with a hit is rescanned for its first one
+                        let mut c = base;
+                        'chunk: while c < end {
+                            let batch_end = (c + POW_BATCH).min(end);
+                            let mut any = false;
+                            for cc in c..batch_end {
+                                any |= Self::pow_challenge_matches(
+                                    &mut input,
+                                    &initial_state,
+                                    cc,
+                                    threshold,
                                 );
-                                return;
                             }
+                            if any {
+                                for cc in c..batch_end {
+                                    if Self::pow_challenge_matches(
+                                        &mut input,
+                                        &initial_state,
+                                        cc,
+                                        threshold,
+                                    ) {
+                                        found = Some(cc);
+                                        break 'chunk;
+                                    }
+                                }
+                            }
+                            c = batch_end;
+                        }
+                        if let Some(nonce) = found {
+                            #[cfg(feature = "deterministic_pow")]
+                            result.fetch_min(nonce, Ordering::Relaxed);
+                            #[cfg(not(feature = "deterministic_pow"))]
+                            let _ = result.compare_exchange(
+                                BLAKE2S_NO_RESULT,
+                                nonce,
+                                Ordering::Relaxed,
+                                Ordering::Relaxed,
+                            );
+                            // every later chunk starts past this nonce
+                            return;
                         }
                     }
                 })
@@ -133,6 +178,10 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         });
 
         let challenge_u64 = result.load(Ordering::Relaxed);
+        assert!(
+            challenge_u64 != BLAKE2S_NO_RESULT,
+            "PoW search exhausted the nonce space without a result"
+        );
         Self::finalize_pow_result(seed, challenge_u64, pow_bits)
     }
 
@@ -178,6 +227,36 @@ mod tests {
                 0x2468ace0,
             ]),
         ]
+    }
+
+    /// Per-candidate cost of the check and grind timings, one and eight
+    /// threads (`#[ignore]`d bench).
+    #[test]
+    #[ignore]
+    fn pow_check_bench() {
+        let seed = Seed([7, 7, 7, 7, 7, 7, 7, 7]);
+        let (initial_state, base_input) = T::prepare_pow_search(&seed);
+        const N: u64 = 1 << 20;
+        let mut input = base_input;
+        let t = std::time::Instant::now();
+        let mut hits = 0u32;
+        for c in 0..N {
+            hits += T::pow_challenge_matches(&mut input, &initial_state, c, 0) as u32;
+        }
+        let d1 = t.elapsed();
+        println!(
+            "[pow-bench] single {:.1} ns/candidate (hits {hits})",
+            d1.as_secs_f64() * 1e9 / N as f64
+        );
+        for threads in [1usize, 8] {
+            let worker = Worker::new_with_num_threads(threads);
+            let t = std::time::Instant::now();
+            let (_, nonce) = T::search_pow(&seed, 24, &worker);
+            println!(
+                "[pow-bench] 24-bit grind, {threads} thr: {:.3?} (nonce {nonce})",
+                t.elapsed()
+            );
+        }
     }
 
     #[test]

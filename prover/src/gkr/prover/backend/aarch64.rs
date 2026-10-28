@@ -265,6 +265,94 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
         )
     }
 
+    fn lde_ext_poly_leaf_coefficients(
+        &self,
+        monomial_form_normal_order: &[BabyBearExt4],
+        twiddles: &Self::TwiddleSet,
+        lde_factor: usize,
+        values_per_leaf: usize,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
+        worker: &Worker,
+    ) -> Option<Vec<(Box<[BabyBearExt4]>, BabyBearField)>> {
+        use worker::rayon::prelude::*;
+
+        let n = monomial_form_normal_order.len();
+        if !leaf_coefficients_applicable(n, values_per_leaf) {
+            return None;
+        }
+        let ext = &twiddles.forward_ext;
+        let root_powers = coset_offsets::<BabyBearField>(n, lde_factor);
+        let tw = &twiddles.plain.forward_twiddles[..];
+        // same schedule as `lde_ext_poly_from_monomial_form`
+        Some(worker.pool.install(|| {
+            (0..lde_factor)
+                .into_par_iter()
+                .map(|coset| {
+                    let offset = root_powers[coset];
+                    let mut data: Vec<BabyBearExt4> = Vec::with_capacity(n);
+                    #[allow(clippy::uninit_vec)]
+                    unsafe {
+                        data.set_len(n)
+                    };
+                    fft::baby_bear_neon::ext4::lde_coset_leaf_coefficients_parallel_into(
+                        monomial_form_normal_order,
+                        offset,
+                        tw,
+                        ext,
+                        values_per_leaf,
+                        worker,
+                        &mut data,
+                    );
+                    (data.into_boxed_slice(), offset)
+                })
+                .collect()
+        }))
+    }
+
+    fn lde_ext_poly_leaf_coefficients_continuous(
+        &self,
+        monomial_form_normal_order: &[BabyBearExt4],
+        twiddles: &Self::TwiddleSet,
+        lde_factor: usize,
+        values_per_leaf: usize,
+        _pool: &dyn AllocationPool<BabyBearField, BabyBearExt4>,
+        worker: &Worker,
+    ) -> Option<(Box<[BabyBearExt4]>, Vec<BabyBearField>)> {
+        let n = monomial_form_normal_order.len();
+        if !leaf_coefficients_applicable(n, values_per_leaf) {
+            return None;
+        }
+        let ext = &twiddles.forward_ext;
+        Some(ws_lde_single_poly_continuous(
+            monomial_form_normal_order,
+            &twiddles.plain,
+            lde_factor,
+            &|m, o, t, out| {
+                fft::baby_bear_neon::ext4::lde_coset_leaf_coefficients_parallel_into(
+                    m,
+                    o,
+                    t,
+                    ext,
+                    values_per_leaf,
+                    worker,
+                    out,
+                )
+            },
+            &|m, o, t, w, out| {
+                fft::baby_bear_neon::ext4::lde_coset_leaf_coefficients_parallel_into(
+                    m,
+                    o,
+                    t,
+                    ext,
+                    values_per_leaf,
+                    w,
+                    out,
+                )
+            },
+            worker,
+        ))
+    }
+
     fn lde_base_poly_from_monomial_form(
         &self,
         monomial_form_normal_order: &[BabyBearField],
@@ -346,5 +434,205 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearNeonWorkStealingBackend {
     }
     fn ext_coeff_conv(&self, coset_len: usize, values_per_leaf: usize) -> Self::ExtCoeffConv {
         BabyBearNeonExtCoeffConv::new(coset_len, values_per_leaf)
+    }
+}
+
+/// Shapes the partial-transform leaf-coefficient kernels serve: a power-of-two
+/// leaf of at least 2 values, at least 4 leaves per coset, cosets of at least
+/// 16 elements.
+fn leaf_coefficients_applicable(n: usize, values_per_leaf: usize) -> bool {
+    n >= 16 && values_per_leaf.is_power_of_two() && values_per_leaf >= 2 && values_per_leaf * 4 <= n
+}
+
+#[cfg(test)]
+mod leaf_coefficient_tests {
+    //! The committed WHIR leaf (multilinear = monomial coefficients of the
+    //! leaf's degree-<vpl polynomial) versus the NTT state before its last
+    //! log2(vpl) stages.
+    use super::*;
+    use crate::gkr::whir::ExtCoeffConvCtx;
+    use fft::bitreverse_enumeration_inplace;
+
+    fn rnd(st: &mut u64) -> u64 {
+        *st = st.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = *st;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+
+    fn rb(st: &mut u64) -> BabyBearField {
+        BabyBearField::new((rnd(st) % 0x7800_0001) as u32)
+    }
+
+    #[test]
+    fn partial_ntt_state_is_root_scaled_leaf_coefficients() {
+        let worker = Worker::new_with_num_threads(2);
+        for (log_n, vpl) in [(10usize, 32usize), (11, 32), (10, 16), (12, 8)] {
+            let n = 1usize << log_n;
+            let backend = BabyBearNeonWorkStealingBackend;
+            let tw = backend.make_twiddles(n * 4, &worker);
+            let mut st = 0x1234u64 ^ (log_n as u64) << 8 ^ vpl as u64;
+            let input: Vec<BabyBearExt4> = (0..n)
+                .map(|_| BabyBearExt4::from_array_of_base(core::array::from_fn(|_| rb(&mut st))))
+                .collect();
+            let offset = fft::domain_generator_for_size::<BabyBearField>((n * 4) as u64);
+            // production: full LDE coset + in-place conversion
+            let mut full = fft::baby_bear_neon::ext4::lde_coset(
+                &input,
+                offset,
+                &tw.plain.forward_twiddles,
+                &tw.forward_ext,
+            );
+            let ctx = ExtCoeffConvCtx::<BabyBearField>::new(n, vpl);
+            ctx.apply_serial(&mut full, offset);
+            // candidate: the transform stopped log2(vpl) stages early
+            let skip = vpl.trailing_zeros() as usize;
+            let mut partial = vec![BabyBearExt4::ZERO; n];
+            fft::baby_bear_neon::ext4::lde_coset_partial_into(
+                &input,
+                offset,
+                &tw.plain.forward_twiddles,
+                &tw.forward_ext,
+                skip,
+                &mut partial,
+            );
+            // hypothesis: partial[b s + j] = root_j^{m1} * full[b s + j],
+            // root_j = offset * omega^j, m1 = bitrev(b)
+            let s = n / vpl;
+            let omega = fft::domain_generator_for_size::<BabyBearField>(n as u64);
+            let mut m1_of_block: Vec<usize> = (0..vpl).collect();
+            bitreverse_enumeration_inplace(&mut m1_of_block);
+            let mut mismatches = 0usize;
+            for b in 0..vpl {
+                let m1 = m1_of_block[b];
+                for j in 0..s {
+                    let mut root = omega.pow(j as u32);
+                    root.mul_assign(&offset);
+                    let factor = root.pow(m1 as u32);
+                    let mut expect = full[b * s + j];
+                    expect.mul_assign_by_base(&factor);
+                    if expect != partial[b * s + j] {
+                        if mismatches < 6 {
+                            let mut ratio = partial[b * s + j];
+                            ratio.mul_assign(&full[b * s + j].inverse().unwrap());
+                            println!(
+                                "log_n {log_n} vpl {vpl} b {b} (m1 {m1}) j {j}: partial/full = {:?}, hypothesised factor {:?}",
+                                ratio, factor
+                            );
+                        }
+                        mismatches += 1;
+                    }
+                }
+            }
+            assert_eq!(
+                mismatches, 0,
+                "log_n {log_n} vpl {vpl}: {mismatches} mismatches"
+            );
+        }
+    }
+
+    fn convert_reference(
+        cosets: &mut [(Box<[BabyBearExt4]>, BabyBearField)],
+        n: usize,
+        vpl: usize,
+    ) {
+        let ctx = ExtCoeffConvCtx::<BabyBearField>::new(n, vpl);
+        for (c, o) in cosets.iter_mut() {
+            ctx.apply_serial(&mut c[..], *o);
+        }
+    }
+
+    #[test]
+    fn leaf_coefficient_kernels_match_production_conversion() {
+        let worker = Worker::new_with_num_threads(3);
+        for (log_n, vpl) in [
+            (10usize, 32usize),
+            (11, 32),
+            (13, 32),
+            (13, 16),
+            (12, 8),
+            (10, 2),
+        ] {
+            let n = 1usize << log_n;
+            let backend = BabyBearNeonWorkStealingBackend;
+            let tw = backend.make_twiddles(n * 4, &worker);
+            let mut st = 0x55u64 ^ (log_n as u64) << 8 ^ vpl as u64;
+            let input: Vec<BabyBearExt4> = (0..n)
+                .map(|_| BabyBearExt4::from_array_of_base(core::array::from_fn(|_| rb(&mut st))))
+                .collect();
+            let gen = fft::domain_generator_for_size::<BabyBearField>((n * 4) as u64);
+            for offset in [BabyBearField::ONE, gen, gen.pow(3)] {
+                let mut full = fft::baby_bear_neon::ext4::lde_coset(
+                    &input,
+                    offset,
+                    &tw.plain.forward_twiddles,
+                    &tw.forward_ext,
+                );
+                ExtCoeffConvCtx::<BabyBearField>::new(n, vpl).apply_serial(&mut full, offset);
+                let mut serial = vec![BabyBearExt4::ZERO; n];
+                fft::baby_bear_neon::ext4::lde_coset_leaf_coefficients_into(
+                    &input,
+                    offset,
+                    &tw.plain.forward_twiddles,
+                    &tw.forward_ext,
+                    vpl,
+                    &mut serial,
+                );
+                assert_eq!(serial, full, "serial log_n {log_n} vpl {vpl}");
+                let mut par = vec![BabyBearExt4::ZERO; n];
+                fft::baby_bear_neon::ext4::lde_coset_leaf_coefficients_parallel_into(
+                    &input,
+                    offset,
+                    &tw.plain.forward_twiddles,
+                    &tw.forward_ext,
+                    vpl,
+                    &worker,
+                    &mut par,
+                );
+                assert_eq!(par, full, "parallel log_n {log_n} vpl {vpl}");
+            }
+        }
+    }
+
+    #[test]
+    fn backend_leaf_coefficients_match_converted_lde() {
+        let worker = Worker::new_with_num_threads(3);
+        let pool = crate::allocation_pool::default_pool_for::<BabyBearField, BabyBearExt4>();
+        for (log_n, lde, vpl) in [(13usize, 4usize, 32usize), (10, 16, 32), (12, 2, 8)] {
+            let n = 1usize << log_n;
+            let backend = BabyBearNeonWorkStealingBackend;
+            let tw = backend.make_twiddles(n * lde, &worker);
+            let mut st = 0x77u64 ^ (log_n as u64) << 8 ^ lde as u64;
+            let mono: Vec<BabyBearExt4> = (0..n)
+                .map(|_| BabyBearExt4::from_array_of_base(core::array::from_fn(|_| rb(&mut st))))
+                .collect();
+            let mut reference =
+                backend.lde_ext_poly_from_monomial_form(&mono, &tw, lde, &*pool, &worker);
+            convert_reference(&mut reference, n, vpl);
+            let got = backend
+                .lde_ext_poly_leaf_coefficients(&mono, &tw, lde, vpl, &*pool, &worker)
+                .expect("applicable shape");
+            assert_eq!(got.len(), reference.len());
+            for (g, r) in got.iter().zip(reference.iter()) {
+                assert_eq!(g.1, r.1);
+                assert_eq!(
+                    &g.0[..],
+                    &r.0[..],
+                    "boxed log_n {log_n} lde {lde} vpl {vpl}"
+                );
+            }
+            let (buf, offsets) = backend
+                .lde_ext_poly_leaf_coefficients_continuous(&mono, &tw, lde, vpl, &*pool, &worker)
+                .expect("applicable shape");
+            for (k, chunk) in buf.chunks(n).enumerate() {
+                assert_eq!(offsets[k], reference[k].1);
+                assert_eq!(
+                    chunk,
+                    &reference[k].0[..],
+                    "continuous log_n {log_n} lde {lde} vpl {vpl} coset {k}"
+                );
+            }
+        }
     }
 }

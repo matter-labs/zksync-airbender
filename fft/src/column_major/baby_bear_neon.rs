@@ -434,7 +434,7 @@ pub fn lde_coset_neon(
         v.copy_from_slice(input_raw);
     }
 
-    crate::utils::bitreverse_enumeration_inplace(&mut v);
+    crate::utils::bitreverse_enumeration_inplace_blocked(&mut v);
 
     unsafe {
         neon::ntt_bitrev_to_natural(&mut v, log_n, &tw_raw[..n / 2], &ext.ao, &ext.bo);
@@ -647,7 +647,7 @@ pub mod ext4 {
         } else {
             out.copy_from_slice(input);
         }
-        crate::utils::bitreverse_enumeration_inplace(out);
+        crate::utils::bitreverse_enumeration_inplace_blocked(out);
         unsafe {
             ntt_fwd(out, &tw_raw[..n / 2], ext);
         }
@@ -674,31 +674,19 @@ pub mod ext4 {
         v
     }
 
-    /// [`lde_coset_parallel`] writing into a caller-provided buffer (e.g. one
-    /// coset's chunk of a contiguous LDE codeword). `out` is WRITE-FIRST:
-    /// every element is overwritten by the scaled-copy pass before any read,
-    /// so it may be freshly allocated uninitialized memory.
-    pub fn lde_coset_parallel_into(
+    /// Worker-parallel scaled copy (`out[i] = input[i] * offset^i`, plain
+    /// copy for `offset == 1`) followed by the parallel bit reversal: the
+    /// prefix every parallel LDE coset pipeline shares.
+    fn scaled_bitrev_copy_parallel(
         input: &[BabyBearExt4],
         offset: BabyBearField,
-        twiddles: &[BabyBearField],
-        ext: &NeonTwiddleExt,
         worker: &Worker,
         out: &mut [BabyBearExt4],
     ) {
         let n = input.len();
-        assert_eq!(out.len(), n);
-        const PAR_THRESHOLD: usize = 1 << 12;
-        if n < PAR_THRESHOLD {
-            return lde_coset_into(input, offset, twiddles, ext, out);
-        }
         let log_n = n.trailing_zeros();
-        let tw_raw: &[u32] =
-            unsafe { core::slice::from_raw_parts(twiddles.as_ptr() as *const u32, twiddles.len()) };
-
         let src_addr = input.as_ptr() as usize;
         let dst_addr = out.as_mut_ptr() as usize;
-
         if offset != BabyBearField::ONE {
             let sp = SplitPowersRaw::new(offset, log_n);
             let sp_ref = &sp;
@@ -732,15 +720,30 @@ pub mod ext4 {
                 }
             });
         }
-
         crate::utils::parallel_bitreverse_enumeration_inplace(out, worker);
+    }
 
-        // parallel forward NTT: one worker scope per fused pass
-        let tw = &tw_raw[..n / 2];
+    /// Worker-parallel [`ntt_fwd_partial`]: one worker scope per fused pass.
+    ///
+    /// # Safety
+    ///
+    /// As [`ntt_fwd_partial`].
+    pub unsafe fn ntt_fwd_parallel_partial(
+        out: &mut [BabyBearExt4],
+        tw: &[u32],
+        ext: &NeonTwiddleExt,
+        skip_last_stages: usize,
+        worker: &Worker,
+    ) {
+        let n = out.len();
+        let log_n = n.trailing_zeros() as usize;
+        assert!(skip_last_stages < log_n);
+        let target = log_n - skip_last_stages;
         let base_addr = out.as_mut_ptr() as usize;
         let mut ppg = 1usize;
         let mut num_groups = n / 2;
-        while num_groups >= 4 {
+        let mut done = 0usize;
+        while done + 2 <= target && num_groups >= 4 {
             let items = (num_groups / 2) * ppg;
             let cur_ppg = ppg;
             worker.scope(items, |scope, geometry| {
@@ -763,6 +766,31 @@ pub mod ext4 {
             });
             ppg *= 4;
             num_groups /= 4;
+            done += 2;
+        }
+        if done == target {
+            return;
+        }
+        if skip_last_stages > 0 {
+            // one leftover stage (odd number of executed stages)
+            debug_assert_eq!(done + 1, target);
+            let cur_ppg = ppg;
+            worker.scope(n / 2, |scope, geometry| {
+                for thread_idx in 0..geometry.len() {
+                    let start = geometry.get_chunk_start_pos(thread_idx);
+                    let size = geometry.get_chunk_size(thread_idx);
+                    let tw_addr = tw.as_ptr() as usize;
+                    Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                        fwd_radix2_items(
+                            base_addr as *mut BabyBearExt4,
+                            cur_ppg,
+                            tw_addr as *const u32,
+                            start..start + size,
+                        );
+                    });
+                }
+            });
+            return;
         }
         match num_groups {
             2 => {
@@ -806,6 +834,273 @@ pub mod ext4 {
                 });
             }
             _ => unreachable!(),
+        }
+    }
+
+    /// [`lde_coset_parallel`] writing into a caller-provided buffer (e.g. one
+    /// coset's chunk of a contiguous LDE codeword). `out` is WRITE-FIRST:
+    /// every element is overwritten by the scaled-copy pass before any read,
+    /// so it may be freshly allocated uninitialized memory.
+    pub fn lde_coset_parallel_into(
+        input: &[BabyBearExt4],
+        offset: BabyBearField,
+        twiddles: &[BabyBearField],
+        ext: &NeonTwiddleExt,
+        worker: &Worker,
+        out: &mut [BabyBearExt4],
+    ) {
+        let n = input.len();
+        assert_eq!(out.len(), n);
+        const PAR_THRESHOLD: usize = 1 << 12;
+        if n < PAR_THRESHOLD {
+            return lde_coset_into(input, offset, twiddles, ext, out);
+        }
+        let tw_raw: &[u32] =
+            unsafe { core::slice::from_raw_parts(twiddles.as_ptr() as *const u32, twiddles.len()) };
+        scaled_bitrev_copy_parallel(input, offset, worker, out);
+        unsafe {
+            ntt_fwd_parallel_partial(out, &tw_raw[..n / 2], ext, 0, worker);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Committed-leaf (coefficient) form straight from the transform
+    // -----------------------------------------------------------------------
+    //
+    // A WHIR leaf of `vpl = 2^k` values is the coset `root * <zeta>` of the
+    // LDE domain (`root = offset * omega^j`, `zeta` of order `vpl`): the
+    // elements at positions `j + b * s`, `s = n / vpl`, i.e. exactly the ones
+    // the transform's LAST `k` butterfly stages (distances `s .. n/2`) combine.
+    // The committed leaf encoding is the leaf polynomial's monomial
+    // coefficients `c_m = sum_{m2} a_{m + vpl m2} root^{vpl m2}`, which is the
+    // state of position `j` of block `b` BEFORE those stages (block `b` holds
+    // `m = bitrev(b)`), pre-scaled by `root^m` because this transform applies
+    // every stage's twiddle to the difference output. So: stop the transform
+    // `k` stages early and divide block `b` by `(offset * omega^j)^bitrev(b)`
+    // — no inverse-stage conversion at all. Byte-identical to the full LDE
+    // followed by the prover's `ExtCoeffConvCtx` conversion (tested there).
+
+    /// The per-element division above, over `block_range` of the `vpl` blocks.
+    #[inline(always)]
+    unsafe fn leaf_coefficient_correction_blocks(
+        a: *mut BabyBearExt4,
+        n: usize,
+        offset: BabyBearField,
+        values_per_leaf: usize,
+        block_range: core::ops::Range<usize>,
+    ) {
+        let s = n / values_per_leaf;
+        debug_assert!(s % 4 == 0);
+        let log_vpl = values_per_leaf.trailing_zeros();
+        let omega_inv = crate::domain_generator_for_size::<BabyBearField>(n as u64)
+            .inverse()
+            .unwrap();
+        let offset_inv = offset.inverse().unwrap();
+        for b in block_range {
+            let m = (b.reverse_bits() >> (usize::BITS - log_vpl)) as u32;
+            if m == 0 {
+                continue;
+            }
+            let r = omega_inv.pow(m);
+            let f0 = offset_inv.pow(m);
+            let mut f = f0;
+            let mut fv = [0u32; 4];
+            for k in 0..4 {
+                fv[k] = f.raw_u32_value();
+                f.mul_assign(&r);
+            }
+            let r4 = vdupq_n_u32(r.pow(4).raw_u32_value());
+            let mut fv = vld1q_u32(fv.as_ptr());
+            let base = a.add(b * s);
+            let mut j = 0usize;
+            while j < s {
+                let p = base.add(j);
+                st(p, mont_mul(ld(p), vdupq_laneq_u32::<0>(fv)));
+                st(p.add(1), mont_mul(ld(p.add(1)), vdupq_laneq_u32::<1>(fv)));
+                st(p.add(2), mont_mul(ld(p.add(2)), vdupq_laneq_u32::<2>(fv)));
+                st(p.add(3), mont_mul(ld(p.add(3)), vdupq_laneq_u32::<3>(fv)));
+                fv = mont_mul(fv, r4);
+                j += 4;
+            }
+        }
+    }
+
+    /// Serial LDE coset in the committed-leaf (coefficient) encoding of
+    /// `values_per_leaf`-value leaves. Requires `n >= 16`, `values_per_leaf`
+    /// a power of two with `2 <= values_per_leaf <= n / 4`.
+    pub fn lde_coset_leaf_coefficients_into(
+        input: &[BabyBearExt4],
+        offset: BabyBearField,
+        twiddles: &[BabyBearField],
+        ext: &NeonTwiddleExt,
+        values_per_leaf: usize,
+        out: &mut [BabyBearExt4],
+    ) {
+        let n = input.len();
+        assert!(values_per_leaf.is_power_of_two() && values_per_leaf >= 2);
+        assert!(values_per_leaf * 4 <= n);
+        let skip = values_per_leaf.trailing_zeros() as usize;
+        lde_coset_partial_into(input, offset, twiddles, ext, skip, out);
+        unsafe {
+            leaf_coefficient_correction_blocks(
+                out.as_mut_ptr(),
+                n,
+                offset,
+                values_per_leaf,
+                0..values_per_leaf,
+            );
+        }
+    }
+
+    /// Worker-parallel [`lde_coset_leaf_coefficients_into`] (all threads on
+    /// one coset); falls back to it below 2^12 elements.
+    pub fn lde_coset_leaf_coefficients_parallel_into(
+        input: &[BabyBearExt4],
+        offset: BabyBearField,
+        twiddles: &[BabyBearField],
+        ext: &NeonTwiddleExt,
+        values_per_leaf: usize,
+        worker: &Worker,
+        out: &mut [BabyBearExt4],
+    ) {
+        let n = input.len();
+        assert_eq!(out.len(), n);
+        const PAR_THRESHOLD: usize = 1 << 12;
+        if n < PAR_THRESHOLD {
+            return lde_coset_leaf_coefficients_into(
+                input,
+                offset,
+                twiddles,
+                ext,
+                values_per_leaf,
+                out,
+            );
+        }
+        assert!(values_per_leaf.is_power_of_two() && values_per_leaf >= 2);
+        assert!(values_per_leaf * 4 <= n);
+        let skip = values_per_leaf.trailing_zeros() as usize;
+        let tw_raw: &[u32] =
+            unsafe { core::slice::from_raw_parts(twiddles.as_ptr() as *const u32, twiddles.len()) };
+        scaled_bitrev_copy_parallel(input, offset, worker, out);
+        unsafe {
+            ntt_fwd_parallel_partial(out, &tw_raw[..n / 2], ext, skip, worker);
+        }
+        let base_addr = out.as_mut_ptr() as usize;
+        worker.scope(values_per_leaf, |scope, geometry| {
+            for thread_idx in 0..geometry.len() {
+                let start = geometry.get_chunk_start_pos(thread_idx);
+                let size = geometry.get_chunk_size(thread_idx);
+                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                    leaf_coefficient_correction_blocks(
+                        base_addr as *mut BabyBearExt4,
+                        n,
+                        offset,
+                        values_per_leaf,
+                        start..start + size,
+                    );
+                });
+            }
+        });
+    }
+
+    /// ONE forward butterfly stage at element distance `ppg` (the first half
+    /// of a radix-4 pass): item `t` is butterfly `t % ppg` of group
+    /// `t / ppg`, twiddle `tw[group]`, `(x0 + x1, (x0 - x1) * tw)`.
+    #[inline(always)]
+    unsafe fn fwd_radix2_items(
+        a: *mut BabyBearExt4,
+        ppg: usize,
+        tw: *const u32,
+        item_range: core::ops::Range<usize>,
+    ) {
+        for t in item_range {
+            let g = t / ppg;
+            let j = g * (2 * ppg) + (t % ppg);
+            let s = vdupq_n_u32(*tw.add(g));
+            let x0 = ld(a.add(j));
+            let x1 = ld(a.add(j + ppg));
+            st(a.add(j), add(x0, x1));
+            st(a.add(j + ppg), mont_mul(sub(x0, x1), s));
+        }
+    }
+
+    /// [`ntt_fwd`] stopped `skip_last_stages` butterfly stages early (the
+    /// stages with the largest element distances `n/2^skip .. n/2` are not
+    /// run). With `skip == 0` this is the full transform.
+    ///
+    /// # Safety
+    ///
+    /// As [`ntt_fwd`]; additionally `skip_last_stages < log2(n)`.
+    pub unsafe fn ntt_fwd_partial(
+        a: &mut [BabyBearExt4],
+        tw_raw: &[u32],
+        ext: &NeonTwiddleExt,
+        skip_last_stages: usize,
+    ) {
+        if skip_last_stages == 0 {
+            return ntt_fwd(a, tw_raw, ext);
+        }
+        let n = a.len();
+        let log_n = n.trailing_zeros() as usize;
+        assert!(skip_last_stages < log_n);
+        let target = log_n - skip_last_stages;
+        let p = a.as_mut_ptr();
+        let t = tw_raw.as_ptr();
+        let mut ppg = 1usize;
+        let mut num_groups = n / 2;
+        let mut done = 0usize;
+        while done + 2 <= target {
+            debug_assert!(num_groups >= 4);
+            fwd_radix4_items(
+                p,
+                ppg,
+                t,
+                ext.ao.as_ptr(),
+                ext.bo.as_ptr(),
+                0..(num_groups / 2) * ppg,
+            );
+            ppg *= 4;
+            num_groups /= 4;
+            done += 2;
+        }
+        if done < target {
+            fwd_radix2_items(p, ppg, t, 0..n / 2);
+        }
+    }
+
+    /// [`lde_coset_into`] with the transform stopped `skip_last_stages`
+    /// stages early (see [`ntt_fwd_partial`]); `n >= 16` required.
+    pub fn lde_coset_partial_into(
+        input: &[BabyBearExt4],
+        offset: BabyBearField,
+        twiddles: &[BabyBearField],
+        ext: &NeonTwiddleExt,
+        skip_last_stages: usize,
+        out: &mut [BabyBearExt4],
+    ) {
+        let n = input.len();
+        assert_eq!(out.len(), n);
+        assert!(n >= 16);
+        let log_n = n.trailing_zeros();
+        let tw_raw: &[u32] =
+            unsafe { core::slice::from_raw_parts(twiddles.as_ptr() as *const u32, twiddles.len()) };
+        if offset != BabyBearField::ONE {
+            let sp = SplitPowersRaw::new(offset, log_n);
+            unsafe {
+                let src = input.as_ptr();
+                let dst = out.as_mut_ptr();
+                for i in 0..n {
+                    let f =
+                        vdupq_n_u32(super::mont_mul_scalar(sp.lo[i & sp.mask], sp.hi[i >> sp.h]));
+                    st(dst.add(i), mont_mul(ld(src.add(i)), f));
+                }
+            }
+        } else {
+            out.copy_from_slice(input);
+        }
+        crate::utils::bitreverse_enumeration_inplace_blocked(out);
+        unsafe {
+            ntt_fwd_partial(out, &tw_raw[..n / 2], ext, skip_last_stages);
         }
     }
 
@@ -938,7 +1233,7 @@ pub mod ext4 {
             for el in v.iter_mut() {
                 el.mul_assign_by_base(&size_inv);
             }
-            crate::utils::bitreverse_enumeration_inplace(&mut v);
+            crate::utils::bitreverse_enumeration_inplace_blocked(&mut v);
             return v;
         }
 

@@ -441,6 +441,40 @@ fn section_lde_tree(
             let t = Instant::now();
             fft::bitreverse_enumeration_inplace(&mut br);
             let d_br = t.elapsed();
+            for q in [6u32, 7, 8, 9] {
+                let mut b2 = one.clone();
+                let t = Instant::now();
+                fft::bitreverse_enumeration_inplace_blocked_q(&mut b2, q);
+                let d = t.elapsed();
+                black_box(&b2);
+                let mut e2 = vec![E4::ZERO; n / 2];
+                par_fill::<E4, 4>(&mut e2, 0x33, threads, |l| {
+                    E4::from_array_of_base(l.map(BB::new))
+                });
+                let t = Instant::now();
+                fft::bitreverse_enumeration_inplace_blocked_q(&mut e2, q);
+                let d_e = t.elapsed();
+                black_box(&e2);
+                println!(
+                    "[lde] blocked bit-reverse q={q}: 2^{log2} u32 {:.1?}, 2^{} ext4 {:.1?}",
+                    d,
+                    log2 - 1,
+                    d_e
+                );
+            }
+            {
+                let mut e1 = vec![E4::ZERO; n / 2];
+                par_fill::<E4, 4>(&mut e1, 0x33, threads, |l| {
+                    E4::from_array_of_base(l.map(BB::new))
+                });
+                let t = Instant::now();
+                fft::bitreverse_enumeration_inplace(&mut e1);
+                println!(
+                    "[lde] old bit-reverse 2^{} ext4 {:.1?}",
+                    log2 - 1,
+                    t.elapsed()
+                );
+            }
             let t = Instant::now();
             let one_warm = fft::baby_bear_neon::lde_coset_neon(m0, root_powers[1], plain_tw, ext);
             let d_task2 = t.elapsed();
@@ -540,10 +574,23 @@ fn blake_reference(threads: usize) {
         black_box(&h);
     });
     let d4 = t.elapsed();
+    let t = Instant::now();
+    par_for(threads, threads, |_| unsafe {
+        use blake2s_u32::vectorized_impls::neon_x4::Blake2sNeonX4;
+        let words = [0x1234_5678u32; 64];
+        let m = Blake2sNeonX4::load_block(words.as_ptr());
+        let mut h = Blake2sNeonX4::new();
+        for _ in 0..N / 4 {
+            h.absorb::<true>(&m);
+        }
+        black_box(&h);
+    });
+    let dx4 = t.elapsed();
     println!(
-        "[blake] {threads} thr, {N} compressions each: 1 chain {:.1} ns/compression, 4 interleaved chains {:.1} ns/compression (per thread)",
+        "[blake] {threads} thr, {N} compressions each: 1 chain {:.1} ns/compression, 4 interleaved chains {:.1} ns/compression, NEON x4 lanes {:.1} ns/compression (per thread)",
         d1.as_secs_f64() * 1e9 / N as f64,
-        d4.as_secs_f64() * 1e9 / N as f64
+        d4.as_secs_f64() * 1e9 / N as f64,
+        dx4.as_secs_f64() * 1e9 / N as f64
     );
 }
 

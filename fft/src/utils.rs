@@ -197,7 +197,7 @@ const fn simple_bitreverse_enumeration_inplace<T>(input: &mut [T]) {
 }
 
 use worker::Worker;
-pub fn parallel_bitreverse_enumeration_inplace<T>(input: &mut [T], worker: &Worker) {
+pub fn parallel_bitreverse_enumeration_inplace<T: Copy + Send>(input: &mut [T], worker: &Worker) {
     if input.is_empty() {
         return;
     }
@@ -207,11 +207,182 @@ pub fn parallel_bitreverse_enumeration_inplace<T>(input: &mut [T], worker: &Work
         bitreverse_enumeration_inplace_via_small_lookup(input);
     } else if input.len() <= MEDIUM_BITREVERSE_LOOKUP_TABLE.len() {
         bitreverse_enumeration_inplace_via_medium_lookup(input);
+    } else if input.len() >= BLOCKED_BITREVERSE_MIN_LEN && blocked_bitreverse_applies::<T>() {
+        parallel_blocked_bitreverse_enumeration_inplace(input, worker);
     } else if input.len() <= 1usize << 27 {
         parallel_optimized_bitreverse_enumeration_inplace(input, worker);
     } else {
         parallel_simple_bitreverse_enumeration_inplace(input, worker);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Cache-blocked (COBRA-style) in-place bit reversal
+// ---------------------------------------------------------------------------
+//
+// Index `i = (a << (L - q)) | (b << q) | c` (`a`: top `q` bits, `b`: the
+// middle `L - 2q` bits, `c`: low `q` bits) is sent to
+// `rev(i) = (rev_q(c) << (L - q)) | (rev(b) << q) | rev_q(a)`: the tile of
+// middle bits `b` (a `2^q x 2^q` grid of `(a, c)`) lands, transposed and with
+// both coordinates bit-reversed, on the tile `rev(b)`. A tile is read as `2^q`
+// contiguous runs of `2^q` elements (fixed `a`, `c` running) into an
+// L1-resident buffer laid out as `buf[(c << q) | rev_q(a)]`, and the
+// destination tile is written as `2^q` contiguous runs
+// (`out[a', rev(b), c']` for `c'` running is `buf` row `rev_q(a')`). So every
+// access to the big array is a contiguous run and the random part of the
+// permutation happens in the buffer. Tiles `b` and `rev(b)` are swapped
+// pairwise in place; fixed points (`b == rev(b)`) go through one buffer.
+
+/// Tile width log2 for the blocked bit reversal: a tile of `2^(2q)` elements
+/// stays well inside L1 for both 4-byte and 16-byte elements.
+const fn blocked_bitreverse_q<T>(log_n: u32) -> u32 {
+    let q = if core::mem::size_of::<T>() <= 4 { 7 } else { 6 };
+    if log_n >= 2 * q {
+        q
+    } else {
+        log_n / 2
+    }
+}
+
+#[inline(always)]
+fn rev_bits(x: usize, bits: u32) -> usize {
+    if bits == 0 {
+        0
+    } else {
+        x.reverse_bits() >> (usize::BITS - bits)
+    }
+}
+
+/// Load tile `b` into `buf[(c << q) | rev_q(a)] = v[a, b, c]`.
+#[inline(always)]
+unsafe fn cobra_load_tile<T: Copy>(v: *const T, log_n: u32, q: u32, b: usize, buf: &mut [T]) {
+    let run = 1usize << q;
+    let a_shift = log_n - q;
+    for a in 0..run {
+        let ra = rev_bits(a, q);
+        let src = v.add((a << a_shift) | (b << q));
+        for c in 0..run {
+            *buf.get_unchecked_mut((c << q) | ra) = *src.add(c);
+        }
+    }
+}
+
+/// Write tile `dst_b` from the buffer of tile `src_b` (`dst_b == rev(src_b)`):
+/// `v[a', dst_b, c'] = buf[(rev_q(a') << q) | c']` — contiguous rows.
+#[inline(always)]
+unsafe fn cobra_store_tile<T: Copy>(v: *mut T, log_n: u32, q: u32, dst_b: usize, buf: &[T]) {
+    let run = 1usize << q;
+    let a_shift = log_n - q;
+    for a in 0..run {
+        let ra = rev_bits(a, q);
+        let dst = v.add((a << a_shift) | (dst_b << q));
+        core::ptr::copy_nonoverlapping(buf.as_ptr().add(ra << q), dst, run);
+    }
+}
+
+/// The tile pairs `(b, rev(b))` with `b <= rev(b)` of the middle `mid_bits`.
+fn cobra_tile_pairs(mid_bits: u32) -> Vec<(usize, usize)> {
+    (0..1usize << mid_bits)
+        .filter_map(|b| {
+            let rb = rev_bits(b, mid_bits);
+            (b <= rb).then_some((b, rb))
+        })
+        .collect()
+}
+
+/// Permute the tile pairs `pairs` of `input` (which must be `2^log_n` long)
+/// with tile width `q`.
+unsafe fn cobra_permute_pairs<T: Copy>(
+    v: *mut T,
+    log_n: u32,
+    q: u32,
+    pairs: &[(usize, usize)],
+    buf_a: &mut [T],
+    buf_b: &mut [T],
+) {
+    for &(b, rb) in pairs {
+        if b == rb {
+            cobra_load_tile(v, log_n, q, b, buf_a);
+            cobra_store_tile(v, log_n, q, b, buf_a);
+        } else {
+            cobra_load_tile(v, log_n, q, b, buf_a);
+            cobra_load_tile(v, log_n, q, rb, buf_b);
+            cobra_store_tile(v, log_n, q, rb, buf_a);
+            cobra_store_tile(v, log_n, q, b, buf_b);
+        }
+    }
+}
+
+/// Below this length the lookup / small-run permutations stay.
+const BLOCKED_BITREVERSE_MIN_LEN: usize = 1 << 12;
+
+/// The blocked permutation pays off for 4-byte elements only (M3, 2^23 u32:
+/// 11.2 -> 7.0 ms with `q = 7`); for 16-byte elements its scalar tile
+/// transpose loses to the 8-element-run permutation (2^22 Ext4: 6.1 vs
+/// 10.8 ms), which therefore stays.
+const fn blocked_bitreverse_applies<T>() -> bool {
+    core::mem::size_of::<T>() <= 4
+}
+
+/// [`bitreverse_enumeration_inplace`] for `Copy` elements, cache-blocked for
+/// large arrays (above [`BLOCKED_BITREVERSE_MIN_LEN`]): both the reads and the
+/// writes of the array are contiguous runs of `2^q` elements, the random
+/// access happens in an L1-resident tile buffer. Same permutation.
+pub fn bitreverse_enumeration_inplace_blocked<T: Copy>(input: &mut [T]) {
+    if input.len() < BLOCKED_BITREVERSE_MIN_LEN || !blocked_bitreverse_applies::<T>() {
+        return bitreverse_enumeration_inplace(input);
+    }
+    let log_n = input.len().trailing_zeros();
+    bitreverse_enumeration_inplace_blocked_q(input, blocked_bitreverse_q::<T>(log_n));
+}
+
+/// [`bitreverse_enumeration_inplace_blocked`] with an explicit tile width
+/// (`2q <= log2 len`); for tuning.
+pub fn bitreverse_enumeration_inplace_blocked_q<T: Copy>(input: &mut [T], q: u32) {
+    assert!(input.len().is_power_of_two());
+    let log_n = input.len().trailing_zeros();
+    assert!(2 * q <= log_n);
+    let tile = 1usize << (2 * q);
+    let mut buf_a = vec![input[0]; tile];
+    let mut buf_b = vec![input[0]; tile];
+    let pairs = cobra_tile_pairs(log_n - 2 * q);
+    unsafe {
+        cobra_permute_pairs(input.as_mut_ptr(), log_n, q, &pairs, &mut buf_a, &mut buf_b);
+    }
+}
+
+fn parallel_blocked_bitreverse_enumeration_inplace<T: Copy + Send>(
+    input: &mut [T],
+    worker: &Worker,
+) {
+    assert!(input.len().is_power_of_two());
+    let log_n = input.len().trailing_zeros();
+    let q = blocked_bitreverse_q::<T>(log_n);
+    let tile = 1usize << (2 * q);
+    let pairs = cobra_tile_pairs(log_n - 2 * q);
+    let first = input[0];
+    let ptr = input.as_mut_ptr() as usize;
+    let pairs_ref = &pairs[..];
+    worker.scope(pairs.len(), |scope, geometry| {
+        for chunk_idx in 0..geometry.len() {
+            let start = geometry.get_chunk_start_pos(chunk_idx);
+            let size = geometry.get_chunk_size(chunk_idx);
+            Worker::smart_spawn(scope, chunk_idx == geometry.len() - 1, move |_| {
+                let mut buf_a = vec![first; tile];
+                let mut buf_b = vec![first; tile];
+                unsafe {
+                    cobra_permute_pairs(
+                        ptr as *mut T,
+                        log_n,
+                        q,
+                        &pairs_ref[start..start + size],
+                        &mut buf_a,
+                        &mut buf_b,
+                    );
+                }
+            });
+        }
+    });
 }
 
 fn parallel_optimized_bitreverse_enumeration_inplace<T>(input: &mut [T], worker: &Worker) {
@@ -421,6 +592,47 @@ pub fn cast_check_alignment_ref_mut_unpack<T: Sized, U: Sized>(a: &mut [T]) -> &
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn blocked_bitreverse_matches_simple() {
+        for log_n in [12u32, 13, 14, 15, 17, 21] {
+            let n = 1usize << log_n;
+            let mut st = 0x1234_5678_9abc_def0u64 ^ log_n as u64;
+            let mut next = || {
+                st = st
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                (st >> 7) as u32
+            };
+            let words: Vec<u32> = (0..n).map(|_| next()).collect();
+            let quads: Vec<[u32; 4]> = (0..n).map(|_| [next(), next(), next(), next()]).collect();
+            let mut expected_w = words.clone();
+            simple_bitreverse_enumeration_inplace(&mut expected_w);
+            let mut got_w = words.clone();
+            bitreverse_enumeration_inplace_blocked(&mut got_w);
+            assert_eq!(got_w, expected_w, "u32 log_n {log_n}");
+            let mut expected_q = quads.clone();
+            simple_bitreverse_enumeration_inplace(&mut expected_q);
+            let mut got_q = quads.clone();
+            bitreverse_enumeration_inplace_blocked(&mut got_q);
+            assert_eq!(got_q, expected_q, "quad log_n {log_n}");
+            for threads in [1usize, 3, 8] {
+                let worker = Worker::new_with_num_threads(threads);
+                let mut par_w = words.clone();
+                parallel_bitreverse_enumeration_inplace(&mut par_w, &worker);
+                assert_eq!(
+                    par_w, expected_w,
+                    "parallel u32 log_n {log_n} thr {threads}"
+                );
+                let mut par_q = quads.clone();
+                parallel_bitreverse_enumeration_inplace(&mut par_q, &worker);
+                assert_eq!(
+                    par_q, expected_q,
+                    "parallel quad log_n {log_n} thr {threads}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn test_bitreverse() {

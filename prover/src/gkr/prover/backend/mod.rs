@@ -410,6 +410,56 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
         worker: &Worker,
     ) -> (Box<[E]>, Vec<F>);
 
+    /// [`Self::lde_ext_poly_from_monomial_form`] with every coset left in the
+    /// COMMITTED LEAF ENCODING of `values_per_leaf`-value leaves (each leaf's
+    /// multilinear = monomial coefficients, exactly what `ExtCoeffConversion`
+    /// produces from the evaluations) instead of in evaluation form. The
+    /// conversion is the inverse of the transform's last `log2(values_per_leaf)`
+    /// stages, so a backend can stop the transform there and skip the
+    /// conversion entirely. `None`: not provided for this shape (the caller
+    /// LDEs and converts). Values MUST equal the converted evaluations.
+    fn lde_ext_poly_leaf_coefficients(
+        &self,
+        monomial_form_normal_order: &[E],
+        twiddles: &Self::TwiddleSet,
+        lde_factor: usize,
+        values_per_leaf: usize,
+        pool: &dyn AllocationPool<F, E>,
+        worker: &Worker,
+    ) -> Option<Vec<(Box<[E]>, F)>> {
+        let _ = (
+            monomial_form_normal_order,
+            twiddles,
+            lde_factor,
+            values_per_leaf,
+            pool,
+            worker,
+        );
+        None
+    }
+
+    /// Continuous-buffer twin of [`Self::lde_ext_poly_leaf_coefficients`]
+    /// (see [`Self::lde_ext_poly_from_monomial_form_continuous`]).
+    fn lde_ext_poly_leaf_coefficients_continuous(
+        &self,
+        monomial_form_normal_order: &[E],
+        twiddles: &Self::TwiddleSet,
+        lde_factor: usize,
+        values_per_leaf: usize,
+        pool: &dyn AllocationPool<F, E>,
+        worker: &Worker,
+    ) -> Option<(Box<[E]>, Vec<F>)> {
+        let _ = (
+            monomial_form_normal_order,
+            twiddles,
+            lde_factor,
+            values_per_leaf,
+            pool,
+            worker,
+        );
+        None
+    }
+
     /// Base-field twin of [`Self::lde_ext_poly_from_monomial_form`]: LDE one
     /// F-valued polynomial (monomial coefficients, normal order) into all
     /// `lde_factor` cosets. Duplicated because the prover holds a single

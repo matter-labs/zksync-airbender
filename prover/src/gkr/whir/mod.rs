@@ -1005,21 +1005,37 @@ where
     match mode {
         WhirIntermediateOracleMode::Monolithic => {
             let t_lde = std::time::Instant::now();
-            let rs = backend.lde_ext_poly_from_monomial_form(
+            // the committed leaf encoding straight from the transform when the
+            // backend provides it (no evaluation->coefficient conversion)
+            let (rs, leaves_preconverted) = match backend.lde_ext_poly_leaf_coefficients(
                 monomial_form,
                 twiddles,
                 lde_factor,
+                values_per_leaf,
                 pool,
                 worker,
-            );
+            ) {
+                Some(rs) => (rs, true),
+                None => (
+                    backend.lde_ext_poly_from_monomial_form(
+                        monomial_form,
+                        twiddles,
+                        lde_factor,
+                        pool,
+                        worker,
+                    ),
+                    false,
+                ),
+            };
             let t_lde = t_lde.elapsed();
             let t_tree = std::time::Instant::now();
-            let oracle = commit_single_ext_poly::<F, E, T, B>(
+            let oracle = commit_single_ext_poly_impl::<F, E, T, B>(
                 rs,
                 values_per_leaf,
                 tree_cap_size,
                 backend,
                 worker,
+                leaves_preconverted,
             );
             let t_tree = t_tree.elapsed();
             let cap = oracle.tree.get_cap();
@@ -1057,22 +1073,37 @@ where
                 }
             }
             let t_lde = std::time::Instant::now();
-            let (buffer, coset_offsets) = backend.lde_ext_poly_from_monomial_form_continuous(
-                monomial_form,
-                twiddles,
-                lde_factor,
-                pool,
-                worker,
-            );
+            let ((buffer, coset_offsets), leaves_preconverted) = match backend
+                .lde_ext_poly_leaf_coefficients_continuous(
+                    monomial_form,
+                    twiddles,
+                    lde_factor,
+                    values_per_leaf,
+                    pool,
+                    worker,
+                ) {
+                Some(r) => (r, true),
+                None => (
+                    backend.lde_ext_poly_from_monomial_form_continuous(
+                        monomial_form,
+                        twiddles,
+                        lde_factor,
+                        pool,
+                        worker,
+                    ),
+                    false,
+                ),
+            };
             let t_lde = t_lde.elapsed();
             let t_tree = std::time::Instant::now();
-            let oracle = commit_single_ext_poly_continuous::<F, E, T, B>(
+            let oracle = commit_single_ext_poly_continuous_impl::<F, E, T, B>(
                 buffer,
                 coset_offsets,
                 values_per_leaf,
                 tree_cap_size,
                 backend,
                 worker,
+                leaves_preconverted,
             );
             let t_tree = t_tree.elapsed();
             let cap = oracle.tree.get_cap();
@@ -2793,12 +2824,39 @@ fn commit_single_ext_poly<
     backend: &B,
     worker: &Worker,
 ) -> ColumnMajorExtensionOracleForLDE<F, E, T> {
+    commit_single_ext_poly_impl(
+        cosets,
+        values_per_leaf,
+        tree_cap_size,
+        backend,
+        worker,
+        false,
+    )
+}
+
+/// [`commit_single_ext_poly`]; `leaves_preconverted` says the cosets already
+/// hold the committed leaf encoding (the backend's partial-transform LDE), so
+/// neither the fused nor the in-place conversion runs.
+fn commit_single_ext_poly_impl<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    B: crate::gkr::prover::backend::Backend<F, E>,
+>(
+    cosets: Vec<(Box<[E]>, F)>,
+    values_per_leaf: usize,
+    tree_cap_size: usize,
+    backend: &B,
+    worker: &Worker,
+    leaves_preconverted: bool,
+) -> ColumnMajorExtensionOracleForLDE<F, E, T> {
     let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
     let trace_len = 1usize << trace_len_log2;
     let conv = backend.ext_coeff_conv(trace_len, values_per_leaf);
-    let fused = values_per_leaf >= FUSED_LEAF_CONVERSION_MIN_VALUES_PER_LEAF;
+    let fused =
+        !leaves_preconverted && values_per_leaf >= FUSED_LEAF_CONVERSION_MIN_VALUES_PER_LEAF;
     let mut cosets = cosets;
-    if !fused {
+    if !fused && !leaves_preconverted {
         let offsets: Vec<F> = cosets.iter().map(|(_, o)| *o).collect();
         let mut columns: Vec<&mut [E]> = cosets.iter_mut().map(|(c, _)| &mut c[..]).collect();
         convert_leaves_in_place(&mut columns, &offsets, &conv, worker);
@@ -2887,6 +2945,33 @@ fn commit_single_ext_poly_continuous<
     backend: &B,
     worker: &Worker,
 ) -> ContinuousExtensionOracleForLDE<F, E, T> {
+    commit_single_ext_poly_continuous_impl(
+        buffer,
+        coset_offsets,
+        values_per_leaf,
+        tree_cap_size,
+        backend,
+        worker,
+        false,
+    )
+}
+
+/// [`commit_single_ext_poly_continuous`] with the `leaves_preconverted` flag
+/// of [`commit_single_ext_poly_impl`].
+fn commit_single_ext_poly_continuous_impl<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    B: crate::gkr::prover::backend::Backend<F, E>,
+>(
+    buffer: Box<[E]>,
+    coset_offsets: Vec<F>,
+    values_per_leaf: usize,
+    tree_cap_size: usize,
+    backend: &B,
+    worker: &Worker,
+    leaves_preconverted: bool,
+) -> ContinuousExtensionOracleForLDE<F, E, T> {
     let num_cosets = coset_offsets.len();
     assert!(num_cosets.is_power_of_two());
     assert_eq!(buffer.len() % num_cosets, 0);
@@ -2897,9 +2982,10 @@ fn commit_single_ext_poly_continuous<
     let mut coset_offsets_inv: Vec<F> = coset_offsets.clone();
     let mut inv_scratch = vec![F::ZERO; coset_offsets_inv.len()];
     batch_inverse_inplace(&mut coset_offsets_inv, &mut inv_scratch);
-    let fused = values_per_leaf >= FUSED_LEAF_CONVERSION_MIN_VALUES_PER_LEAF;
+    let fused =
+        !leaves_preconverted && values_per_leaf >= FUSED_LEAF_CONVERSION_MIN_VALUES_PER_LEAF;
     let mut buffer = buffer;
-    if !fused {
+    if !fused && !leaves_preconverted {
         let mut columns: Vec<&mut [E]> = buffer.chunks_mut(trace_len).collect();
         convert_leaves_in_place(&mut columns, &coset_offsets, &conv, worker);
     }

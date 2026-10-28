@@ -178,6 +178,11 @@ pub trait CosetIndexedAccessor<T>: Sync {
     }
     /// Value at natural index `index`.
     fn get(&self, index: usize) -> T;
+    /// The column as one contiguous natural-order slice, when it is stored
+    /// that way (lets the leaf hashers take vector gathers).
+    fn contiguous(&self) -> Option<&[T]> {
+        None
+    }
 }
 
 impl<T: Copy + Sync> CosetIndexedAccessor<T> for [T] {
@@ -188,6 +193,10 @@ impl<T: Copy + Sync> CosetIndexedAccessor<T> for [T] {
     #[inline(always)]
     fn get(&self, index: usize) -> T {
         self[index]
+    }
+    #[inline(always)]
+    fn contiguous(&self) -> Option<&[T]> {
+        Some(self)
     }
 }
 
@@ -200,6 +209,10 @@ impl<T: Copy + Sync> CosetIndexedAccessor<T> for Vec<T> {
     fn get(&self, index: usize) -> T {
         self[index]
     }
+    #[inline(always)]
+    fn contiguous(&self) -> Option<&[T]> {
+        Some(&self[..])
+    }
 }
 
 impl<T, A: CosetIndexedAccessor<T> + ?Sized> CosetIndexedAccessor<T> for &A {
@@ -211,6 +224,10 @@ impl<T, A: CosetIndexedAccessor<T> + ?Sized> CosetIndexedAccessor<T> for &A {
     fn get(&self, index: usize) -> T {
         (**self).get(index)
     }
+    #[inline(always)]
+    fn contiguous(&self) -> Option<&[T]> {
+        (**self).contiguous()
+    }
 }
 
 impl<T, A: CosetIndexedAccessor<T> + ?Sized> CosetIndexedAccessor<T> for Box<A> {
@@ -221,6 +238,10 @@ impl<T, A: CosetIndexedAccessor<T> + ?Sized> CosetIndexedAccessor<T> for Box<A> 
     #[inline(always)]
     fn get(&self, index: usize) -> T {
         (**self).get(index)
+    }
+    #[inline(always)]
+    fn contiguous(&self) -> Option<&[T]> {
+        (**self).contiguous()
     }
 }
 
