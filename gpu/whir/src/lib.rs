@@ -81,20 +81,95 @@ fn admit_baby_bear_recursive_oracle_shape(
     let log_leaves = log_residue
         .checked_add(log_lde)
         .expect("recursive WHIR domain overflow");
+    let log_domain = log_n
+        .checked_add(log_lde)
+        .expect("recursive WHIR evaluation domain overflow");
     assert!(
         log_leaves > PARTIAL_TREE_REDUCTION_LAYERS + log_cap,
         "recursive WHIR commitments require a partial tree"
     );
     assert!(
-        log_leaves <= twiddle_domain_log2,
+        log_domain <= gpu_ntt::ntt_twiddles::OMEGA_LOG_ORDER,
+        "recursive BabyBear WHIR evaluation domain exceeds field capacity"
+    );
+    assert!(
+        log_domain <= twiddle_domain_log2,
         "recursive BabyBear WHIR domain exceeds context twiddle capacity"
     );
     let fused = fused_commit::supported(log_n, log_v);
     assert!(
-        fused || matches!((log_n, log_v), (14..=23, 5)),
+        fused || matches!((log_n, log_v), (14..=23, 5) | (22, 6)),
         "unsupported recursive WHIR coefficient shape: log_n={log_n}, log_v={log_v}"
     );
     fused
+}
+
+#[cfg(test)]
+mod cpu_recursive_shapes {
+    use super::admit_baby_bear_recursive_oracle_shape as admit;
+
+    #[test]
+    fn cpu_virtual_default_ladders_fit_recursive_capabilities() {
+        use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType as Delegation};
+        use prover::definitions::SecurityLevel;
+
+        let mut checked = 0;
+        for circuit in [
+            Delegation::BigIntWithControl,
+            Delegation::Blake2GFunction,
+            Delegation::Blake2WithCompression,
+            Delegation::KeccakChi5,
+            Delegation::KeccakColumnParity,
+            Delegation::KeccakSpecial5,
+            Delegation::KeccakThetaRho,
+        ] {
+            let config = CircuitType::Delegation(circuit).prover_config(SecurityLevel::Sec100);
+            assert_eq!(config.base_round().fold_log2, 0);
+            let mut log_n = config.whir_message_size_log2();
+            let mut previous_fold = config.base_round().fold_log2;
+            let mut shapes = Vec::new();
+            for round in &config.whir_schedule.internal_rounds {
+                log_n = log_n.checked_sub(previous_fold).unwrap();
+                let fused = admit(
+                    u32::try_from(log_n).unwrap(),
+                    u32::try_from(round.folding_log2).unwrap(),
+                    u32::try_from(round.lde_factor_log2).unwrap(),
+                    config.cap_size.trailing_zeros(),
+                    27,
+                );
+                assert_eq!(
+                    fused,
+                    matches!((log_n, round.folding_log2), (11, 5) | (6, 5))
+                );
+                shapes.push((log_n, round.folding_log2));
+                eprintln!("virtual recursive capability: {circuit:?}, n={log_n}, v={}, lde_log={}, cap={}, fused={fused}", round.folding_log2, round.lde_factor_log2, config.cap_size);
+                previous_fold = round.folding_log2;
+                checked += 1;
+            }
+            assert_eq!(shapes, [(22, 6), (16, 5), (11, 5), (6, 5)]);
+        }
+        assert_eq!(checked, 28);
+    }
+
+    #[test]
+    fn cpu_leaf64_retained_default_shape_is_supported() {
+        assert!(!admit(22, 6, 5, 4, 27));
+    }
+
+    #[test]
+    fn cpu_leaf64_rejects_unqualified_shapes_and_bounds() {
+        for (n, v, lde, cap, capacity) in [
+            (21, 6, 5, 4, 27),
+            (23, 6, 4, 4, 27),
+            (22, 7, 5, 4, 27),
+            (22, 6, 5, 4, 26),
+            (22, 6, 6, 4, 28),
+            (22, 6, 5, 16, 27),
+            (22, 6, 0, 4, 27),
+        ] {
+            assert!(std::panic::catch_unwind(|| admit(n, v, lde, cap, capacity)).is_err());
+        }
+    }
 }
 
 /// Check the full target schedule against the instantiated BabyBear backend

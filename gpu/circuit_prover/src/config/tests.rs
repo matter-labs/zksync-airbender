@@ -121,6 +121,66 @@ fn cpu_builds_prover_config_for_all_supported_security_levels() {
 }
 
 #[test]
+fn cpu_current_configs_isolate_the_virtual_recursive_shape() {
+    let recursive_shapes = |config: &ProverConfig| {
+        let mut log_n = config.whir_message_size_log2();
+        let mut previous_fold = config.base_round().fold_log2;
+        config
+            .whir_schedule
+            .internal_rounds
+            .iter()
+            .map(|round| {
+                log_n = log_n.checked_sub(previous_fold).unwrap();
+                previous_fold = round.folding_log2;
+                (log_n, round.folding_log2)
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut checked = 0;
+    let mut virtual_defaults = 0;
+    for (circuit, name) in CIRCUITS {
+        for level in GPU_SUPPORTED_SECURITY_LEVELS {
+            let config = circuit.prover_config(level);
+            let shapes = recursive_shapes(&config);
+            assert_eq!(shapes.contains(&(22, 6)), config.is_virtual_packing());
+            if config.is_virtual_packing() {
+                assert_eq!(config.whir_message_size_log2(), 22);
+                assert_eq!(shapes, [(22, 6), (16, 5), (11, 5), (6, 5)]);
+                virtual_defaults += 1;
+            } else {
+                gpu_whir::validate_baby_bear_recursive_schedule(
+                    u32::try_from(config.whir_message_size_log2()).unwrap(),
+                    &config.whir_schedule,
+                    27,
+                );
+            }
+            eprintln!("canonical recursive shapes: {name}/{level:?}: {shapes:?}");
+            checked += 1;
+        }
+    }
+    for (n, k) in [(20, 2), (20, 4), (23, 1)] {
+        for level in GPU_SUPPORTED_SECURITY_LEVELS {
+            let config =
+                example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
+                    n, k, level,
+                );
+            let shapes = recursive_shapes(&config);
+            assert_eq!(config.base_round().fold_log2, 1);
+            assert!(!shapes.contains(&(22, 6)));
+            gpu_whir::validate_baby_bear_recursive_schedule(
+                u32::try_from(config.whir_message_size_log2()).unwrap(),
+                &config.whir_schedule,
+                27,
+            );
+            eprintln!("qualified physical recursive shapes: ({n},{k})/{level:?}: {shapes:?}");
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 18 * GPU_SUPPORTED_SECURITY_LEVELS.len());
+    assert_eq!(virtual_defaults, 7 * GPU_SUPPORTED_SECURITY_LEVELS.len());
+}
+
+#[test]
 fn unified_uses_its_canonical_schedule() {
     let circuit = CircuitType::Unrolled(Unrolled::Unified);
     for &level in GPU_SUPPORTED_SECURITY_LEVELS.iter() {

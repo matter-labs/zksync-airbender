@@ -81,7 +81,9 @@ rather than letting the duplicate drift by convention.
 
 Recursive oracles use coefficient leaves and partial Merkle trees. Small shapes
 use the fused families in `fused_commit.rs`; retained residue LDEs cover
-`(log_n, log_v) = (14..23, 5)`. Unsupported shapes and full-tree geometries fail
+`(log_n, log_v) = (14..23, 5)` and `(22, 6)`. The full polynomial plus LDE
+domain must fit both BabyBear's 27-bit domain and the context twiddle capacity.
+Unsupported shapes and full-tree geometries fail
 explicitly. All recursive commitment work runs on `exec_stream`.
 
 Retained LDEs process all cosets before hashing when

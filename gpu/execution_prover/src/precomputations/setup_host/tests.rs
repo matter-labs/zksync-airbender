@@ -307,3 +307,55 @@ fn cpu_worker_admission_rejects_metadata_before_transfer_construction() {
         assert!(!constructed.get());
     }
 }
+
+#[test]
+fn cpu_worker_virtual_setup_requests_reject_before_holder_construction() {
+    use gpu_trace::witness::circuit_type::DelegationCircuitType;
+    let kind = CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression);
+    let circuit = artifact("blake2_with_extended_control");
+    let config = kind.prover_config(SecurityLevel::Sec100);
+    let resolved = Arc::new(ResolvedProverConfig::new(
+        kind,
+        Arc::clone(&circuit),
+        config.clone(),
+    ));
+    let geometry = resolved.geometry();
+    assert!(geometry.is_virtual_packing());
+    let cpu_setup = CpuGKRSetup {
+        hypercube_evals: (0..geometry.logical_columns().setup)
+            .map(|_| {
+                Arc::new(prover::allocation_pool::AllocationType::from(
+                    vec![BF::ZERO; circuit.trace_len],
+                ))
+            })
+            .collect(),
+    };
+    let precomputations = CircuitPrecomputations {
+        gkr_programs: Arc::new(GkrPrograms::compile(kind, Arc::clone(&circuit)).unwrap()),
+        setup_host: Arc::new(LazyGpuGKRSetupHost::new(cpu_setup, geometry)),
+        decoder_host: None,
+        resolved_config: resolved,
+    };
+    let caps = vec![
+        MerkleTreeCapVarLength {
+            cap: vec![[0; 8]; config.cap_size / config.lde_factor()]
+        };
+        config.lde_factor()
+    ];
+    for caps in [None, Some(caps.as_slice())] {
+        let constructed = std::cell::Cell::new(false);
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            precomputations.admit_inputs_before_transfers(kind, SecurityLevel::Sec100, caps, 27);
+            constructed.set(true);
+        }))
+        .unwrap_err();
+        let message = error
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| error.downcast_ref::<&str>().copied())
+            .unwrap();
+        assert!(message.contains("virtual base commitments"));
+        assert!(!constructed.get());
+    }
+    assert!(precomputations.setup_host.inner.get().is_none());
+}

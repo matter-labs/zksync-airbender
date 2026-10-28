@@ -202,10 +202,6 @@ impl<T> TraceHolder<T> {
             "merged base holders are not admitted yet"
         );
         assert!(
-            !geometry.is_virtual_packing(),
-            "virtual base holders are not admitted yet"
-        );
-        assert!(
             geometry.cap_size() >= geometry.lde_factor(),
             "holder requires at least one cap node per LDE coset"
         );

@@ -81,10 +81,16 @@ fn cpu_virtual_and_merged_reject_independently_of_physical_packing() {
         config.whir_schedule.base_round.fold_log2 = 0;
         let geometry = geometry(&config);
         assert!(geometry.is_virtual_packing());
-        let failure = std::panic::catch_unwind(|| {
-            validate_physical_proof_geometry_policy(&geometry, ProofMemoryPolicy::default())
-        })
+        let constructed = std::cell::Cell::new(false);
+        let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            validate_physical_proof_geometry_policy(&geometry, ProofMemoryPolicy::default());
+            constructed.set(true);
+        }))
         .unwrap_err();
+        assert!(
+            !constructed.get(),
+            "virtual stage1 holder must not be constructed"
+        );
         let message = failure
             .downcast_ref::<String>()
             .map(String::as_str)

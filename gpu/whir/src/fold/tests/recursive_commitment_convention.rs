@@ -41,7 +41,8 @@ fn assert_recursive_commitment_matches_live_cpu(
     );
 
     let worker = Worker::new();
-    let context = make_test_context(512, 32);
+    let context = make_test_context(if log_trace_len == 22 { 4096 } else { 512 }, 128);
+    let baseline = context.get_used_mem_current();
     let trace_len = 1usize << log_trace_len;
     let monomial_coeffs = fixed_monomial_coeffs(trace_len);
 
@@ -64,69 +65,133 @@ fn assert_recursive_commitment_matches_live_cpu(
         &worker,
     );
 
-    let mut gpu = GpuWhirExtensionOracle::from_monomial_coeffs(
-        &monomial_coeffs,
-        lde_factor,
-        values_per_leaf,
-        tree_cap_size,
-        &context,
-    )
-    .unwrap();
+    {
+        let mut gpu = GpuWhirExtensionOracle::from_monomial_coeffs(
+            &monomial_coeffs,
+            lde_factor,
+            values_per_leaf,
+            tree_cap_size,
+            &context,
+        )
+        .unwrap();
 
-    if let crate::OracleValues::Recomputed(coefficients) = &gpu.values {
-        assert_eq!(coefficients.len(), trace_len * EXT4_DEGREE);
-        assert!(!gpu.trace_holder.are_cosets_materialized());
+        if let crate::OracleValues::Recomputed(coefficients) = &gpu.values {
+            assert_eq!(coefficients.len(), trace_len * EXT4_DEGREE);
+            assert!(!gpu.trace_holder.are_cosets_materialized());
+        }
+
+        let cpu_cap = PathQueryable::get_cap(&cpu.tree);
+        assert_eq!(
+            gpu.get_tree_cap(&context).unwrap(),
+            cpu_cap,
+            "recursive commitment cap: GPU vs live CPU ({shape})",
+        );
+
+        let total_leaves = trace_len * lde_factor / values_per_leaf;
+        let folded_indexes: Vec<_> = if log_trace_len == 22 {
+            let rows = trace_len / values_per_leaf;
+            (0..lde_factor)
+                .flat_map(|coset| {
+                    [0, 1, rows / 2 - 1, rows / 2, rows - 1, 0]
+                        .map(move |row| row * lde_factor + coset)
+                })
+                .collect()
+        } else {
+            (0..total_leaves).collect()
+        };
+        let queries_count = folded_indexes.len();
+        assert!(queries_count > 0);
+        let mut tree_indexes = Vec::with_capacity(queries_count);
+        let mut expected_values = Vec::with_capacity(queries_count);
+        let mut expected_paths = Vec::with_capacity(queries_count);
+        for &folded_index in &folded_indexes {
+            let (_, values, query) = cpu.query_for_folded_index(folded_index);
+            tree_indexes.push(query.index as u32);
+            expected_values.push(values);
+            expected_paths.push(query.path);
+        }
+        let layers_count = expected_paths[0].len();
+        assert!(expected_paths.iter().all(|path| path.len() == layers_count));
+
+        let stream = context.get_exec_stream();
+        let mut device_indexes = context
+            .alloc::<u32>(queries_count, AllocationPlacement::BestFit)
+            .unwrap();
+        memory_copy_async(&mut device_indexes, &tree_indexes, stream).unwrap();
+        let (host_leaves, host_paths) = gpu
+            .schedule_query_outputs_to_host(&device_indexes, &context)
+            .unwrap();
+        let mut folded_indexes_device = context
+            .alloc::<u32>(queries_count, AllocationPlacement::BestFit)
+            .unwrap();
+        let folded_indexes_u32: Vec<_> = folded_indexes
+            .iter()
+            .map(|&index| u32::try_from(index).unwrap())
+            .collect();
+        memory_copy_async(&mut folded_indexes_device, &folded_indexes_u32, stream).unwrap();
+        let mut in_domain_reads = Vec::new();
+        for _ in 0..2 {
+            let mut leaves = context
+                .alloc::<E4>(
+                    queries_count * values_per_leaf,
+                    AllocationPlacement::BestFit,
+                )
+                .unwrap();
+            gpu.schedule_in_domain_leaves(&folded_indexes_device, &mut leaves, &context)
+                .unwrap();
+            // SAFETY: D2H writes every element before the post-sync reads below.
+            let mut host = unsafe { context.alloc_host_uninit_slice(leaves.len()) };
+            memory_copy_async(&mut host, &leaves, stream).unwrap();
+            in_domain_reads.push(host);
+        }
+        // All readers are queued before retiring the coefficient oracle. Reuse
+        // pool storage on exec before waiting for the test's terminal readback.
+        drop(gpu);
+        let mut recycled = context
+            .alloc::<u8>(trace_len * size_of::<BF>(), AllocationPlacement::BestFit)
+            .unwrap();
+        era_cudart::memory::memory_set_async(&mut recycled, 0xa5, stream).unwrap();
+        drop(recycled);
+        stream.synchronize().unwrap();
+        let host_leaves_accessor = host_leaves.get_accessor();
+        let host_paths_accessor = host_paths.get_accessor();
+        let host_leaves = unsafe { host_leaves_accessor.get() };
+        let host_paths = unsafe { host_paths_accessor.get() };
+
+        for leaf_index in 0..queries_count {
+            let leaf_start = leaf_index * values_per_leaf * EXT4_DEGREE;
+            let leaf_end = leaf_start + values_per_leaf * EXT4_DEGREE;
+            assert_eq!(
+                decode_leaf_values(&host_leaves[leaf_start..leaf_end], values_per_leaf),
+                expected_values[leaf_index],
+                "leaf {leaf_index} values: GPU vs live CPU ({shape})",
+            );
+            let path_start = leaf_index * layers_count;
+            assert_eq!(
+                &host_paths[path_start..path_start + layers_count],
+                expected_paths[leaf_index].as_slice(),
+                "leaf {leaf_index} Merkle path: GPU vs live CPU ({shape})",
+            );
+        }
+        for read in &in_domain_reads {
+            let accessor = read.get_accessor();
+            // SAFETY: the test waited for every queued D2H above.
+            let actual = unsafe { accessor.get() };
+            for (index, expected) in expected_values.iter().enumerate() {
+                assert_eq!(
+                    &actual[index * values_per_leaf..(index + 1) * values_per_leaf],
+                    expected,
+                    "in-domain coefficient leaf {index}: GPU vs live CPU ({shape})",
+                );
+            }
+        }
+        eprintln!("recursive CPU parity: {shape}, queries={queries_count}, in_domain_reads=2");
     }
-
-    let cpu_cap = PathQueryable::get_cap(&cpu.tree);
     assert_eq!(
-        gpu.get_tree_cap(&context).unwrap(),
-        cpu_cap,
-        "recursive commitment cap: GPU vs live CPU ({shape})",
+        context.get_used_mem_current(),
+        baseline,
+        "recursive oracle reservations return to baseline"
     );
-
-    let total_leaves = trace_len * lde_factor / values_per_leaf;
-    let mut tree_indexes = Vec::with_capacity(total_leaves);
-    let mut expected_values = Vec::with_capacity(total_leaves);
-    let mut expected_paths = Vec::with_capacity(total_leaves);
-    for folded_index in 0..total_leaves {
-        let (_, values, query) = cpu.query_for_folded_index(folded_index);
-        tree_indexes.push(query.index as u32);
-        expected_values.push(values);
-        expected_paths.push(query.path);
-    }
-    let layers_count = expected_paths[0].len();
-    assert!(expected_paths.iter().all(|path| path.len() == layers_count));
-
-    let stream = context.get_exec_stream();
-    let mut device_indexes = context
-        .alloc::<u32>(total_leaves, AllocationPlacement::BestFit)
-        .unwrap();
-    memory_copy_async(&mut device_indexes, &tree_indexes, stream).unwrap();
-    let (host_leaves, host_paths) = gpu
-        .schedule_query_outputs_to_host(&device_indexes, &context)
-        .unwrap();
-    stream.synchronize().unwrap();
-    let host_leaves_accessor = host_leaves.get_accessor();
-    let host_paths_accessor = host_paths.get_accessor();
-    let host_leaves = unsafe { host_leaves_accessor.get() };
-    let host_paths = unsafe { host_paths_accessor.get() };
-
-    for leaf_index in 0..total_leaves {
-        let leaf_start = leaf_index * values_per_leaf * EXT4_DEGREE;
-        let leaf_end = leaf_start + values_per_leaf * EXT4_DEGREE;
-        assert_eq!(
-            decode_leaf_values(&host_leaves[leaf_start..leaf_end], values_per_leaf),
-            expected_values[leaf_index],
-            "leaf {leaf_index} values: GPU vs live CPU ({shape})",
-        );
-        let path_start = leaf_index * layers_count;
-        assert_eq!(
-            &host_paths[path_start..path_start + layers_count],
-            expected_paths[leaf_index].as_slice(),
-            "leaf {leaf_index} Merkle path: GPU vs live CPU ({shape})",
-        );
-    }
 }
 
 #[test]
@@ -161,4 +226,11 @@ fn recursive_whir_retained_shapes_match_live_cpu() {
     for log_n in 14..=19 {
         assert_recursive_commitment_matches_live_cpu(log_n, 2, 32, 16);
     }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[ignore = "full default virtual intermediate domain with independent CPU commitment"]
+fn recursive_whir_retained_22_6_matches_live_cpu() {
+    assert_recursive_commitment_matches_live_cpu(22, 32, 64, 16);
 }

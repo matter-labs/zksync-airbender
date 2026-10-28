@@ -32,11 +32,31 @@ fn assert_values<T: PartialEq + std::fmt::Debug>(actual: &[T], expected: &[T], w
 }
 
 fn test_config(message_log: usize, k: usize) -> ProverConfig {
+    test_config_with_base_fold(message_log, k, 1)
+}
+
+fn test_config_with_base_fold(message_log: usize, k: usize, fold: usize) -> ProverConfig {
     ProverConfig::whir_only(
         message_log - k,
-        WhirSchedule::from_legacy_arrays(2, 16, k, &[1, 5], &[1, 1], &[2], &[0, 0]),
+        WhirSchedule::from_legacy_arrays(2, 16, k, &[fold, 5], &[1, 1], &[2], &[0, 0]),
         SecurityLevel::Sec100,
     )
+}
+
+#[test]
+fn cpu_virtual_base_layout_accepts_zero_fold_geometry() {
+    for k in [0, 2] {
+        let config = test_config_with_base_fold(22, k, 0);
+        let shape = geometry(&config, BaseOracleRole::Memory, 5);
+        assert_eq!(shape.values_per_leaf(), 1);
+        for tree in [
+            TreesCacheMode::CacheNone,
+            TreesCacheMode::CachePartial,
+            TreesCacheMode::CacheFull,
+        ] {
+            TraceHolder::<BF>::validate_base_layout(&shape, tree);
+        }
+    }
 }
 
 fn validate_test_geometry(geometry: &BaseCommitmentGeometry, _depth: u32) {
@@ -318,9 +338,13 @@ fn materialized_case(
 }
 
 fn materialized_matrix(k: usize) {
+    materialized_matrix_with_base_fold(k, 1)
+}
+
+fn materialized_matrix_with_base_fold(k: usize, fold: usize) {
     let context = super::tests::make_test_context(256, 16);
     let worker = Worker::new_with_num_threads(4);
-    let config = test_config(13, k);
+    let config = test_config_with_base_fold(13, k, fold);
     let pack = 1usize << k;
     let mut cases = 0;
     for columns in [0, 1, pack - 1, pack, pack + 1, 2 * pack + 1] {
@@ -347,7 +371,7 @@ fn materialized_matrix(k: usize) {
         }
     }
     assert_eq!(cases, 108);
-    eprintln!("packed_base_cpu_parity: k={k}, materialized/deferred AllCosets, 108 cases (6 widths x 3 roles x 3 tree modes x 2 lifecycles)");
+    eprintln!("packed_base_cpu_parity: k={k}, f={fold}, materialized/deferred AllCosets, 108 cases (6 widths x 3 roles x 3 tree modes x 2 lifecycles)");
 }
 
 fn assert_recomputed_openings(
@@ -490,9 +514,13 @@ fn recomputed_case(
 }
 
 fn recomputed_matrix(k: usize, retained: bool) {
+    recomputed_matrix_with_base_fold(k, retained, 1)
+}
+
+fn recomputed_matrix_with_base_fold(k: usize, retained: bool, fold: usize) {
     let context = super::tests::make_test_context(256, 16);
     let worker = Worker::new_with_num_threads(4);
-    let config = test_config(20, k);
+    let config = test_config_with_base_fold(20, k, fold);
     let pack = 1usize << k;
     let mut cases = 0;
     for columns in [0, 1, pack - 1, pack, pack + 1, 2 * pack + 1] {
@@ -517,7 +545,115 @@ fn recomputed_matrix(k: usize, retained: bool) {
         }
     }
     assert_eq!(cases, if retained { 18 } else { 36 });
-    eprintln!("packed_base_cpu_parity: k={k}, PerCoset retained={retained}, {cases} cases");
+    eprintln!(
+        "packed_base_cpu_parity: k={k}, f={fold}, PerCoset retained={retained}, {cases} cases"
+    );
+}
+
+macro_rules! virtual_base_tests {
+    ($all:ident, $raw:ident, $retained:ident, $k:expr) => {
+        #[test]
+        fn $all() {
+            materialized_matrix_with_base_fold($k, 0);
+        }
+        #[test]
+        fn $raw() {
+            recomputed_matrix_with_base_fold($k, false, 0);
+        }
+        #[test]
+        fn $retained() {
+            recomputed_matrix_with_base_fold($k, true, 0);
+        }
+    };
+}
+virtual_base_tests!(
+    virtual_base_cpu_parity_all_cosets_k0,
+    virtual_base_cpu_parity_recompute_k0,
+    virtual_base_cpu_parity_retained_k0,
+    0
+);
+virtual_base_tests!(
+    virtual_base_cpu_parity_all_cosets_k2,
+    virtual_base_cpu_parity_recompute_k2,
+    virtual_base_cpu_parity_retained_k2,
+    2
+);
+
+fn virtual_default_domain(k: usize) {
+    use crate::witness::circuit_type::{CircuitType, DelegationCircuitType};
+    let circuit = if k == 0 {
+        CircuitType::Delegation(DelegationCircuitType::BigIntWithControl)
+    } else {
+        CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression)
+    };
+    let config = circuit.prover_config(SecurityLevel::Sec100);
+    assert_eq!(
+        (
+            config.pack_log2(),
+            config.whir_message_size_log2(),
+            config.base_round().fold_log2
+        ),
+        (k, 22, 0)
+    );
+    let context = super::tests::make_test_context(4096, 128);
+    let worker = Worker::new_with_num_threads(4);
+    let pack = 1usize << k;
+    let mut cases = 0;
+    // Capability widths exercise tails and empties at the default domain.
+    // Full artifact-width qualification belongs to complete proof parity.
+    for columns in [0, 1, pack - 1, pack, pack + 1, 2 * pack + 1] {
+        let raw = source(columns, 1usize << config.trace_len_log2);
+        let cpu = cpu_oracle(&config, &raw, &worker);
+        for role in [
+            BaseOracleRole::Memory,
+            BaseOracleRole::Witness,
+            BaseOracleRole::Setup,
+        ] {
+            for deferred in [false, true] {
+                materialized_case(
+                    &config,
+                    role,
+                    columns,
+                    &raw,
+                    &cpu,
+                    TreesCacheMode::CachePartial,
+                    deferred,
+                    !deferred,
+                    &worker,
+                    &context,
+                );
+                cases += 1;
+            }
+            for retained in [false, true] {
+                recomputed_case(
+                    &config,
+                    role,
+                    columns,
+                    &raw,
+                    &cpu,
+                    TreesCacheMode::CachePartial,
+                    retained,
+                    &worker,
+                    &context,
+                );
+                cases += 1;
+            }
+        }
+    }
+    assert_eq!(cases, 72);
+    eprintln!("virtual_base_cpu_parity default domain: n={}, k={k}, m=22, f=0, 72 cases (6 capability widths x 3 roles x 4 lifecycles)", config.trace_len_log2);
+}
+
+#[test]
+#[ignore = "default virtual domain primitive parity with independent CPU commitment"]
+fn virtual_base_cpu_parity_default_domain_k0() {
+    virtual_default_domain(0);
+}
+
+#[test]
+#[ignore = "default physical+virtual domain primitive parity with independent CPU commitment"]
+fn virtual_base_cpu_parity_default_domain_k2() {
+    virtual_default_domain(2);
 }
 
 macro_rules! recomputed_tests {

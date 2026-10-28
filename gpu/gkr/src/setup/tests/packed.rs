@@ -38,13 +38,60 @@ fn cpu_packed_setup_geometry_rejects_mismatched_sources() {
 }
 
 #[test]
+fn legacy_setup_host_rejects_virtual_before_device_holder() {
+    let context = make_test_context(256, 64);
+    let setup = make_test_cpu_setup(1 << 13, 3, 8);
+    let host = GpuGKRSetupHost::precompute_from_cpu_setup(&setup, 1, 0, 4, &context).unwrap();
+    assert!(host.base_commitment_geometry().is_none());
+    for k in [0, 2] {
+        let config = ProverConfig::whir_only(
+            13,
+            WhirSchedule::from_legacy_arrays(2, 16, k, &[0, 5], &[1, 1], &[2], &[0, 0]),
+            SecurityLevel::Sec100,
+        );
+        let geometry = BaseCommitmentGeometry::from_config(
+            &config,
+            BaseColumns {
+                memory: 5,
+                witness: 9,
+                setup: 3,
+            },
+        )
+        .unwrap();
+        let constructed = std::cell::Cell::new(false);
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            host.validate_for_geometry(&geometry);
+            constructed.set(true);
+        }))
+        .unwrap_err();
+        let message = error
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| error.downcast_ref::<&str>().copied())
+            .unwrap();
+        assert!(message.contains("legacy setup cannot supply packed or virtual commitments"));
+        assert!(!constructed.get());
+    }
+}
+
+#[test]
 fn packed_base_cpu_parity_setup_host_transfer_and_logical_binding() {
+    setup_host_transfer_and_logical_binding(1, &[0, 1, 2, 3, 4]);
+}
+
+#[test]
+fn virtual_base_cpu_parity_setup_host_transfer_and_logical_binding() {
+    setup_host_transfer_and_logical_binding(0, &[0, 2]);
+}
+
+fn setup_host_transfer_and_logical_binding(fold: usize, pack_logs: &[usize]) {
     let context = make_test_context(256, 64);
     let worker = Worker::new_with_num_threads(4);
-    for k in 0..=4 {
+    let baseline = context.get_used_mem_current();
+    for &k in pack_logs {
         let mut config = ProverConfig::whir_only(
             13,
-            WhirSchedule::from_legacy_arrays(2, 16, 0, &[1, 5], &[1, 1], &[2], &[0, 0]),
+            WhirSchedule::from_legacy_arrays(2, 16, 0, &[fold, 5], &[1, 1], &[2], &[0, 0]),
             SecurityLevel::Sec100,
         );
         config.trace_len_log2 -= k;
@@ -72,7 +119,7 @@ fn packed_base_cpu_parity_setup_host_transfer_and_logical_binding() {
                 &inputs,
                 &twiddles,
                 2,
-                1,
+                fold,
                 16,
                 config.trace_len_log2,
                 k,
@@ -135,7 +182,8 @@ fn packed_base_cpu_parity_setup_host_transfer_and_logical_binding() {
                 .trace_holder
                 .prepare_full_opening(&context)
                 .unwrap();
-            let indexes_host = [0u32, 1, 127, 4095];
+            let slots = 1usize << fold;
+            let indexes_host = [0u32, 1, 127, (1u32 << (13 - fold)) - 1, 0];
             let mut indexes = context
                 .alloc(indexes_host.len(), AllocationPlacement::BestFit)
                 .unwrap();
@@ -171,10 +219,10 @@ fn packed_base_cpu_parity_setup_host_transfer_and_logical_binding() {
                 for (query, index) in indexes_host.iter().enumerate() {
                     let (_, _, expected) =
                         cpu.query_for_folded_index((*index as usize) * 2 + coset);
-                    let actual_values: Vec<_> = (0..2)
+                    let actual_values: Vec<_> = (0..slots)
                         .flat_map(|slot| (0..physical).map(move |column| (column, slot)))
                         .map(|(column, slot)| {
-                            leaves[column * indexes_host.len() * 2 + query * 2 + slot]
+                            leaves[column * indexes_host.len() * slots + query * slots + slot]
                         })
                         .collect();
                     assert_eq!(actual_values, expected.leaf_values_concatenated);
@@ -185,6 +233,9 @@ fn packed_base_cpu_parity_setup_host_transfer_and_logical_binding() {
                 }
             }
             drop(h2d);
+            drop(indexes);
+            drop(transfer);
+            assert_eq!(context.get_used_mem_current(), baseline);
         }
     }
 }
