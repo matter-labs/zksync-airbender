@@ -587,6 +587,7 @@ import Airbender.Review.Trace.ExternalBoundaries
 import Tests.ExternalBoundaries
 import Airbender.Review.Trace.UnifiedReduced.ModularExecution
 import Airbender.Proofs.UnifiedReduced.StreamCalls
+import Airbender.Review.Helpers.Memory.ProgramImage
 import Airbender.Review.Trace.Modular.ExternalTheorems
 import Tests.UnifiedModularExecution
 import Tests.ModularTrace

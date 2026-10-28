@@ -10,6 +10,9 @@ combining ordinary/modular steps, external `0x7C0` reads and complete caller
 retirement. Its [first inclusion proofs](../../../Proofs/UnifiedReduced/StreamCalls.lean)
 establish disjoint decoder registries and lift modular and caller steps. No
 native whole-execution soundness theorem for this combined relation is proved yet.
+Its `ValidDelegationUse` contract quantifies wrapper entry and arguments over
+every possible external stream; this contract has not yet been discharged for
+the native combined execution.
 
 ## Checked results
 
