@@ -67,6 +67,62 @@ fn cpu_all_cosets(coeffs: &[BF], log_lde_factor: u32, worker: &Worker) -> Vec<Ve
 }
 
 #[test]
+fn padded_raw_backing_preserves_prefix_and_zeros_recycled_tail_before_transfer() {
+    use gpu_prover_context::transfer::Transfer;
+
+    let context = make_test_context(64, 16);
+    let baseline = context.get_used_mem_current();
+    let rows = 1 << 8;
+    let mut dirty = context
+        .alloc::<u32>(8 * rows, AllocationPlacement::Bottom)
+        .unwrap();
+    let recycled_ptr = dirty.as_ptr();
+    memory_set_async(
+        // SAFETY: this exclusive allocation consists entirely of initialized-size u32 storage.
+        unsafe { dirty.transmute_mut::<u8>() },
+        0xff,
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    drop(dirty);
+    let mut holder = TraceHolder::<u32>::new_without_cosets_padded(
+        8,
+        1,
+        1,
+        3,
+        5,
+        2,
+        TreesCacheMode::CacheNone,
+        &context,
+    )
+    .unwrap();
+    assert_eq!(holder.padded_hypercube_evals().as_ptr(), recycled_ptr);
+    assert_eq!(holder.allocated_columns(), 8);
+    assert_eq!(holder.padded_hypercube_evals().len(), 8 * rows);
+    assert_eq!(holder.get_hypercube_evals().len(), 5 * rows);
+    assert_eq!(holder.get_uninit_hypercube_evals_mut().len(), 5 * rows);
+    let source: Vec<u32> = (0..5 * rows).map(|i| i as u32 + 1).collect();
+    let mut transfer = Transfer::new().unwrap();
+    transfer.record_allocated(&context).unwrap();
+    transfer.stage(&source, holder.get_uninit_hypercube_evals_mut());
+    transfer.record_transferred(&context).unwrap();
+    transfer.ensure_transferred(&context).unwrap();
+    let mut actual = vec![u32::MAX; 8 * rows];
+    memory_copy_async(
+        &mut actual,
+        holder.padded_hypercube_evals(),
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    assert_eq!(&actual[..5 * rows], source.as_slice());
+    assert!(actual[5 * rows..].iter().all(|&value| value == 0));
+    drop(transfer);
+    drop(holder);
+    assert_eq!(context.get_used_mem_current(), baseline);
+}
+
+#[test]
 #[should_panic(expected = "raw hypercube backing must be exclusively owned")]
 fn raw_hypercube_handoff_requires_exclusive_ownership() {
     let context = make_test_context(64, 16);
