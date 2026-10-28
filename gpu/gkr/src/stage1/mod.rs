@@ -1,3 +1,4 @@
+use gpu_trace::trace::memory::uses_base_commitment_geometry;
 use std::ops::DerefMut;
 use std::sync::Arc;
 
@@ -231,10 +232,9 @@ impl GpuGKRStage1Output {
         post_commitment: WitnessPostCommitStorage,
         context: &ProverContext,
     ) -> CudaResult<Self> {
-        assert_ne!(
-            base_geometry.pack_log2(),
-            0,
-            "k0 uses the legacy stage1 route"
+        assert!(
+            uses_base_commitment_geometry(&base_geometry),
+            "unpacked nonvirtual proofs use the legacy stage1 route"
         );
         gpu_trace::trace::memory::validate_memory_commitment_geometry(
             &base_geometry,

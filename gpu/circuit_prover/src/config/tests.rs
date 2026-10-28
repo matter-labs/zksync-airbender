@@ -147,13 +147,12 @@ fn cpu_current_configs_isolate_the_virtual_recursive_shape() {
                 assert_eq!(config.whir_message_size_log2(), 22);
                 assert_eq!(shapes, [(22, 6), (16, 5), (11, 5), (6, 5)]);
                 virtual_defaults += 1;
-            } else {
-                gpu_whir::validate_baby_bear_recursive_schedule(
-                    u32::try_from(config.whir_message_size_log2()).unwrap(),
-                    &config.whir_schedule,
-                    27,
-                );
             }
+            gpu_whir::validate_baby_bear_recursive_schedule(
+                u32::try_from(config.whir_message_size_log2()).unwrap(),
+                &config.whir_schedule,
+                27,
+            );
             eprintln!("canonical recursive shapes: {name}/{level:?}: {shapes:?}");
             checked += 1;
         }
@@ -191,8 +190,8 @@ fn unified_uses_its_canonical_schedule() {
 }
 
 #[test]
-fn cpu_virtual_defaults_remain_rejected_by_proof_admission() {
-    let mut rejected = 0;
+fn cpu_virtual_defaults_admit_proof_geometry_independently_of_physical_packing() {
+    let mut admitted = 0;
     for (circuit, name) in CIRCUITS {
         if !matches!(circuit, CircuitType::Delegation(_)) {
             continue;
@@ -203,38 +202,24 @@ fn cpu_virtual_defaults_remain_rejected_by_proof_admission() {
             let geometry =
                 BaseCommitmentGeometry::from_config(&cfg, BaseColumns::of(&compiled)).unwrap();
             assert!(geometry.is_virtual_packing());
-            if name == "blake2_with_extended_control" {
-                assert_eq!(cfg.pack_log2(), 2, "Blake default remains physical+virtual");
-                assert_eq!(cfg.base_round().fold_log2, 0);
-            }
-            let panic = std::panic::catch_unwind(|| {
-                crate::proof::validate_physical_proof_geometry_policy(
-                    &geometry,
-                    crate::proof::memory_policy::ProofMemoryPolicy::default(),
-                )
-            })
-            .expect_err("packed or virtual default must still fail closed");
-            let text = panic
-                .downcast_ref::<String>()
-                .map(String::as_str)
-                .or_else(|| panic.downcast_ref::<&str>().copied())
-                .unwrap();
-            let expected = "virtual base commitments are not admitted yet";
-            // Canonical virtual defaults stay closed independently of physical packing.
-            assert!(std::panic::catch_unwind(|| {
-                gpu_trace::trace::memory::validate_separate_base_commitment_geometry(&geometry)
-            })
-            .is_err());
-            assert!(text.contains(expected), "{circuit:?}: {text}");
-            eprintln!(
-                "baseline rejection {name}: {expected} (k={}, f={})",
+            assert_eq!(
                 cfg.pack_log2(),
-                cfg.base_round().fold_log2
+                if name == "blake2_with_extended_control" {
+                    2
+                } else {
+                    0
+                }
             );
-            rejected += 1;
+            crate::proof::validate_base_proof_geometry_policy(
+                &geometry,
+                crate::proof::memory_policy::ProofMemoryPolicy::default(),
+            );
+            gpu_trace::trace::memory::validate_memory_commitment_config(&cfg, &geometry, &compiled);
+            gpu_whir::validate_baby_bear_recursive_schedule(22, &cfg.whir_schedule, 27);
+            admitted += 1;
         }
     }
-    assert_eq!(rejected, 7 * GPU_SUPPORTED_SECURITY_LEVELS.len());
+    assert_eq!(admitted, 7 * GPU_SUPPORTED_SECURITY_LEVELS.len());
 }
 
 #[test]

@@ -1,4 +1,5 @@
 use crate::proof::memory_policy::{WitnessMemoryPolicy, WitnessOpeningStrategy};
+use gpu_trace::trace::memory::uses_base_commitment_geometry;
 use std::sync::Arc;
 
 use era_cudart::memory::memory_copy_async;
@@ -123,7 +124,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
         log_tree_cap_size: bundle.memory.host.log_tree_cap_size,
     };
     let witness_layer_geometry = setup_geometry;
-    let proof_layout_inputs = if base_geometry.pack_log2() != 0 {
+    let proof_layout_inputs = if uses_base_commitment_geometry(&base_geometry) {
         gpu_gkr::proof_layout::build_proof_layout_inputs_for_geometry(
             gkr_programs,
             whir_schedule,
@@ -190,7 +191,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
     let mut witness_cap_dst =
         unsafe { DeviceSlice::from_raw_parts_mut(witness_cap_ptr, witness_cap_len_u32) };
 
-    let mut stage1_output = if base_geometry.pack_log2() != 0 {
+    let mut stage1_output = if uses_base_commitment_geometry(&base_geometry) {
         GpuGKRStage1Output::generate_for_geometry(
             circuit_type,
             compiled_circuit,
@@ -235,26 +236,27 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
             .witness_trace_holder
             .defer_materialization_until_queries(opening);
     }
-    let synthetic_setup_trace_holder = if bundle.setup.is_none() && base_geometry.pack_log2() != 0 {
-        Some(TraceHolder::new_base_without_cosets(
-            base_geometry,
-            BaseOracleRole::Setup,
-            TreesCacheMode::CacheNone,
-            context,
-        )?)
-    } else if bundle.setup.is_none() {
-        Some(TraceHolder::new_without_cosets(
-            setup_geometry.log_domain_size,
-            setup_geometry.log_lde_factor,
-            setup_geometry.log_rows_per_leaf,
-            setup_geometry.log_tree_cap_size,
-            0,
-            TreesCacheMode::CachePartial,
-            context,
-        )?)
-    } else {
-        None
-    };
+    let synthetic_setup_trace_holder =
+        if bundle.setup.is_none() && uses_base_commitment_geometry(&base_geometry) {
+            Some(TraceHolder::new_base_without_cosets(
+                base_geometry,
+                BaseOracleRole::Setup,
+                TreesCacheMode::CacheNone,
+                context,
+            )?)
+        } else if bundle.setup.is_none() {
+            Some(TraceHolder::new_without_cosets(
+                setup_geometry.log_domain_size,
+                setup_geometry.log_lde_factor,
+                setup_geometry.log_rows_per_leaf,
+                setup_geometry.log_tree_cap_size,
+                0,
+                TreesCacheMode::CachePartial,
+                context,
+            )?)
+        } else {
+            None
+        };
     debug_assert_eq!(
         stage1_output.memory_trace_holder.log_lde_factor, bundle.memory.host.log_lde_factor,
         "memory trace holder LDE factor must match the memory transfer geometry",

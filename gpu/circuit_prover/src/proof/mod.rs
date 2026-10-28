@@ -1,3 +1,4 @@
+use gpu_trace::trace::memory::uses_base_commitment_geometry;
 pub mod inputs;
 pub mod memory_policy;
 
@@ -59,9 +60,10 @@ fn main_folding_steps(gkr_programs: &GkrPrograms) -> usize {
 }
 
 /// One immutable config/geometry/policy bound before transfers. Positive physical
-/// admission is currently separate, f=1, AllCosets at (n,k)=(20,4)/(20,2)/(23,1),
-/// keyed by shape rather than circuit type. No CPU default is physical-only.
-/// Worker requests bind the same geometry before constructing transfers.
+/// admission is separate and AllCosets: physical f=1 at (n,k)=(20,4)/(20,2)/(23,1),
+/// or virtual f=0 at (22,0)/(20,2) with the qualified m22 schedule. Admission is
+/// keyed by shape rather than circuit type. Execution requests retain a separate
+/// virtual guard; their immutable config binds geometry before transfers.
 pub struct ProofPreflight<F: PrimeField> {
     dr_tail: gpu_gkr::DrTailProofPlan,
     circuit: Arc<GKRCircuitArtifact<F>>,
@@ -88,7 +90,7 @@ impl<F: PrimeField> ProofPreflight<F> {
 }
 
 /// Field-free protocol/policy admission. Backend transform checks are separate.
-pub(crate) fn validate_physical_proof_geometry_policy(
+pub(crate) fn validate_base_proof_geometry_policy(
     geometry: &BaseCommitmentGeometry,
     memory_policy: ProofMemoryPolicy,
 ) {
@@ -97,11 +99,11 @@ pub(crate) fn validate_physical_proof_geometry_policy(
         "invalid witness memory policy"
     );
     gpu_trace::trace::memory::validate_separate_base_commitment_geometry(geometry);
-    if geometry.pack_log2() == 0 {
+    if !uses_base_commitment_geometry(geometry) {
         return;
     }
     assert_eq!(memory_policy, ProofMemoryPolicy::default(),
-        "physical proofs require materialized GKR and AllCosets with RawAndCosets/ReuseCosets witness");
+        "packed or virtual proofs require materialized GKR and AllCosets with RawAndCosets/ReuseCosets witness");
 }
 
 /// Existing BabyBear proof backend's pre-transfer capability boundary. The
@@ -122,9 +124,9 @@ pub fn preflight_proof(
     let geometry =
         BaseCommitmentGeometry::from_config(config, BaseColumns::of(programs.compiled_circuit()))
             .expect("invalid base commitment geometry");
-    validate_physical_proof_geometry_policy(&geometry, memory_policy);
+    validate_base_proof_geometry_policy(&geometry, memory_policy);
     // Leave legacy (k0,f1) on its existing transform path, including MSB shapes.
-    if geometry.pack_log2() != 0 {
+    if uses_base_commitment_geometry(&geometry) {
         gpu_trace::trace::holder::validate_baby_bear_base_opening(
             &geometry,
             gpu_trace::trace::holder::OpeningStrategy::AllCosets,
@@ -511,3 +513,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         },
     })
 }
+
+#[cfg(test)]
+pub(crate) use orchestration::schedule_base_commitment_handoff;

@@ -75,6 +75,75 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
         .memory_trace_holder
         .defer_materialization_until_queries(memory_policy.memory);
 
+    let (seed, logical_point) = backward_scheduled.final_device_seed_and_claim_point_mut();
+    schedule_base_commitment_handoff(
+        base_geometry,
+        logical_point,
+        seed,
+        proof_slab,
+        proof_layout,
+        batching_pow_bits,
+        context,
+    )?;
+    // SAFETY: these slab regions were initialized by the handoff on exec and
+    // remain live through the WHIR scheduler and terminal readback.
+    let (point_ptr, point_len) = unsafe {
+        proof_layout.whir_original_evaluation_point_device_mut(proof_slab.as_ptr() as *mut u8)
+    };
+    let point = unsafe { DeviceSlice::from_raw_parts_mut(point_ptr, point_len) };
+    let (batching_ptr, batching_len) =
+        unsafe { proof_layout.whir_batching_challenge_device_mut(proof_slab.as_ptr() as *mut u8) };
+    let batching_challenge_device =
+        unsafe { DeviceSlice::from_raw_parts(batching_ptr, batching_len) };
+    let whir_scheduled = {
+        let setup_trace_holder = if let Some(setup_transfer) = setup_transfer.as_mut() {
+            &mut setup_transfer.trace_holder
+        } else {
+            synthetic_setup_trace_holder
+                .as_mut()
+                .expect("setup-less proof path must materialize a synthetic setup holder")
+        };
+        let (final_device_seed_mut, _claim_point) =
+            backward_scheduled.final_device_seed_and_claim_point_mut();
+        schedule_gpu_whir_fold_with_sources(
+            &mut stage1_output.memory_trace_holder,
+            &mut stage1_output.witness_trace_holder,
+            setup_trace_holder,
+            point,
+            final_device_seed_mut,
+            &*batching_challenge_device,
+            whir_schedule.base_lde_factor(),
+            whir_schedule.fold_steps(),
+            whir_schedule.queries_per_round(),
+            whir_schedule.intermediate_lde_factors(),
+            whir_schedule.queries_pow_bits_per_round(),
+            whir_schedule.cap_size,
+            u32::try_from(base_geometry.message_size_log2()).expect("message log2 exceeds u32"),
+            true, // use_hypercube_evals_for_batching
+            proof_slab,
+            proof_layout,
+            context,
+        )?
+    };
+
+    Ok(WhirPhaseResult {
+        base_layer_claims_scheduled,
+        base_layer_claims_shared_state,
+        whir_scheduled,
+    })
+}
+
+/// Device-only boundary shared by proof orchestration and protocol parity tests.
+/// Physical packing extends the logical point; virtual packing adds no draw.
+pub(crate) fn schedule_base_commitment_handoff(
+    base_geometry: BaseCommitmentGeometry,
+    logical_point: &DeviceSlice<E4>,
+    seed: &mut DeviceSlice<u32>,
+    proof_slab: &DeviceAllocation<E4>,
+    proof_layout: &ProofLayout,
+    batching_pow_bits: u32,
+    context: &ProverContext,
+) -> CudaResult<()> {
     // SAFETY: the point and logical/packed claim ranges are disjoint, aligned
     // slab regions. All device readers/writers are ordered on exec and the slab
     // remains live through terminal readback.
@@ -88,7 +157,6 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
     );
     let point = unsafe { DeviceSlice::from_raw_parts_mut(point_ptr, point_len) };
     {
-        let (seed, logical_point) = backward_scheduled.final_device_seed_and_claim_point_mut();
         assert_eq!(logical_point.len(), base_geometry.trace_len_log2());
         let (prefix, coordinates) = point.split_at_mut(logical_point.len());
         memory_copy_async(prefix, logical_point, context.get_exec_stream())?;
@@ -143,49 +211,12 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
     };
     let batching_nonce_dst: &mut era_cudart::slice::DeviceVariable<u64> =
         unsafe { era_cudart::slice::DeviceVariable::from_raw_parts_mut(batching_nonce_ptr) };
-    let (final_device_seed_mut, _claim_point_for_squeeze) =
-        backward_scheduled.final_device_seed_and_claim_point_mut();
     gpu_whir::pow::schedule_draw_e4_challenges_with_pow(
-        final_device_seed_mut,
+        seed,
         &mut *batching_challenge_device,
         batching_pow_bits,
         batching_nonce_dst,
         context,
     )?;
-    let whir_scheduled = {
-        let setup_trace_holder = if let Some(setup_transfer) = setup_transfer.as_mut() {
-            &mut setup_transfer.trace_holder
-        } else {
-            synthetic_setup_trace_holder
-                .as_mut()
-                .expect("setup-less proof path must materialize a synthetic setup holder")
-        };
-        let (final_device_seed_mut, _claim_point) =
-            backward_scheduled.final_device_seed_and_claim_point_mut();
-        schedule_gpu_whir_fold_with_sources(
-            &mut stage1_output.memory_trace_holder,
-            &mut stage1_output.witness_trace_holder,
-            setup_trace_holder,
-            point,
-            final_device_seed_mut,
-            &*batching_challenge_device,
-            whir_schedule.base_lde_factor(),
-            whir_schedule.fold_steps(),
-            whir_schedule.queries_per_round(),
-            whir_schedule.intermediate_lde_factors(),
-            whir_schedule.queries_pow_bits_per_round(),
-            whir_schedule.cap_size,
-            u32::try_from(base_geometry.message_size_log2()).expect("message log2 exceeds u32"),
-            true, // use_hypercube_evals_for_batching
-            proof_slab,
-            proof_layout,
-            context,
-        )?
-    };
-
-    Ok(WhirPhaseResult {
-        base_layer_claims_scheduled,
-        base_layer_claims_shared_state,
-        whir_scheduled,
-    })
+    Ok(())
 }

@@ -1,4 +1,5 @@
 use super::*;
+use gpu_trace::trace::memory::uses_base_commitment_geometry;
 
 use super::inits_and_teardowns::{
     build_inits_and_teardowns_pages_for_selected_sets_for_test,
@@ -700,23 +701,36 @@ where
     // validated delegation setup. (`prove()` asserts this equals
     // `base_oracles_values_per_leaf.trailing_zeros()`.)
     let setup = CpuGKRSetup::construct(table_driver, &[], num_delegation_cycles, &compiled_circuit);
+    // The ignored BigInt Materialize/AllCosets parity case exceeds the
+    // automatic 30 GiB arena. This is a test resource budget, not a preset or
+    // a claim that the policy fits a production/CI device.
+    let arena_blocks = (circuit_type == DelegationCircuitType::BigIntWithControl)
+        .then_some((40usize << 30) >> device_allocator_block_log_size);
     let context = make_test_context_with_device_allocator_block_log_size(
-        None,
+        arena_blocks,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
-    let gpu_setup_host = Arc::new(if pack_log2 == 0 {
-        GpuGKRSetupHost::precompute_from_cpu_setup(
-            &setup,
-            whir_schedule.base_lde_factor_log2() as u32,
-            whir_schedule.base_folding_log2() as u32,
-            whir_schedule.cap_size.trailing_zeros(),
-            &context,
-        )
-        .unwrap()
-    } else {
-        packed_setup_host_for_test(&setup, &compiled_circuit, &prover_config, &worker, &context)
-    });
+    let gpu_setup_host = Arc::new(
+        if !uses_base_commitment_geometry(
+            &BaseCommitmentGeometry::from_config(
+                &prover_config,
+                BaseColumns::of(&compiled_circuit),
+            )
+            .unwrap(),
+        ) {
+            GpuGKRSetupHost::precompute_from_cpu_setup(
+                &setup,
+                whir_schedule.base_lde_factor_log2() as u32,
+                whir_schedule.base_folding_log2() as u32,
+                whir_schedule.cap_size.trailing_zeros(),
+                &context,
+            )
+            .unwrap()
+        } else {
+            packed_setup_host_for_test(&setup, &compiled_circuit, &prover_config, &worker, &context)
+        },
+    );
 
     // Delegation layouts carry no executor-family decoder lookup, so this host
     // is unused (create_transfers gates on `has_decoder_lookup`); build a benign
@@ -807,7 +821,13 @@ where
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
-    let gpu_setup_host = Arc::new(
+    let worker = Worker::new_with_num_threads(4);
+    let setup_geometry =
+        BaseCommitmentGeometry::from_config(&prover_config, BaseColumns::of(&compiled_circuit))
+            .unwrap();
+    let gpu_setup_host = Arc::new(if uses_base_commitment_geometry(&setup_geometry) {
+        packed_setup_host_for_test(&setup, &compiled_circuit, &prover_config, &worker, &context)
+    } else {
         GpuGKRSetupHost::precompute_from_cpu_setup(
             &setup,
             whir_schedule.base_lde_factor_log2() as u32,
@@ -815,8 +835,8 @@ where
             whir_schedule.cap_size.trailing_zeros(),
             &context,
         )
-        .unwrap(),
-    );
+        .unwrap()
+    });
     let decoder_table_host = make_decoder_table_host_for_test(&[]);
     let tracing_data_host = make_delegation_tracing_host_for_test(circuit_type, buffer);
 
@@ -1028,18 +1048,26 @@ fn prepare_unified_fixture(
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
-    let gpu_setup_host = Arc::new(if pack_log2 == 0 {
-        GpuGKRSetupHost::precompute_from_cpu_setup(
-            &setup,
-            whir_schedule.base_lde_factor_log2() as u32,
-            whir_schedule.base_folding_log2() as u32,
-            whir_schedule.cap_size.trailing_zeros(),
-            &context,
-        )
-        .unwrap()
-    } else {
-        packed_setup_host_for_test(&setup, &compiled_circuit, &prover_config, &worker, &context)
-    });
+    let gpu_setup_host = Arc::new(
+        if !uses_base_commitment_geometry(
+            &BaseCommitmentGeometry::from_config(
+                &prover_config,
+                BaseColumns::of(&compiled_circuit),
+            )
+            .unwrap(),
+        ) {
+            GpuGKRSetupHost::precompute_from_cpu_setup(
+                &setup,
+                whir_schedule.base_lde_factor_log2() as u32,
+                whir_schedule.base_folding_log2() as u32,
+                whir_schedule.cap_size.trailing_zeros(),
+                &context,
+            )
+            .unwrap()
+        } else {
+            packed_setup_host_for_test(&setup, &compiled_circuit, &prover_config, &worker, &context)
+        },
+    );
     let decoder_table_host = make_decoder_table_host_for_test(&witness_gen_data);
 
     // Sparse i/t triples -> page-based GPU wire format -> transfer host.

@@ -691,7 +691,7 @@ fn run_bigint_proof_parity_test() {
 #[test]
 #[ignore]
 fn run_bigint_multi_schedule_test() {
-    run_multi_schedule(&prepare_bigint_proof_fixture());
+    super::packed_proof::geometry_proof(prepare_bigint_proof_fixture());
 }
 
 #[test]
@@ -791,7 +791,7 @@ fn run_keccak_special5_proof_parity_test() {
 #[test]
 #[ignore]
 fn run_keccak_special5_multi_schedule_test() {
-    run_multi_schedule(&prepare_keccak_special5_proof_fixture());
+    super::packed_proof::geometry_proof(prepare_keccak_special5_proof_fixture());
 }
 
 #[test]
@@ -917,7 +917,7 @@ fn run_blake2_with_compression_proof_parity_test() {
 #[test]
 #[ignore]
 fn run_blake2_with_compression_multi_schedule_test() {
-    run_multi_schedule(&prepare_blake2_with_compression_proof_fixture());
+    super::packed_proof::geometry_proof(prepare_blake2_with_compression_proof_fixture());
 }
 
 #[test]
@@ -1025,7 +1025,7 @@ fn run_blake2_g_function_proof_parity_test() {
 #[test]
 #[ignore]
 fn run_blake2_g_function_multi_schedule_test() {
-    run_multi_schedule(&prepare_blake2_g_function_proof_fixture());
+    super::packed_proof::geometry_proof(prepare_blake2_g_function_proof_fixture());
 }
 
 #[test]
@@ -1258,7 +1258,7 @@ mod keccak_f1600 {
                     setups::$stem::witness_eval_fn,
                     CircuitType::Delegation(circuit_type).get_domain_size(),
                 );
-                run_multi_schedule(&fixture);
+                super::super::packed_proof::geometry_proof(fixture);
             }
 
             #[test]

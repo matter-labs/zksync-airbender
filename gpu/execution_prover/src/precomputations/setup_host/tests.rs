@@ -109,16 +109,14 @@ fn cpu_resolved_request_rejects_identity_and_mode_before_transfers() {
         resolved.geometry().logical_columns(),
         BaseColumns::of(&circuit)
     );
-    // Virtual setup warmup is allowed, but a memory/proof request is not.
+    // Primitive memory admission is qualified; execution requests retain their
+    // separate fail-closed boundary in admit_inputs_before_transfers.
     assert!(resolved.geometry().is_virtual_packing());
-    assert!(std::panic::catch_unwind(|| {
-        gpu_trace::trace::memory::validate_memory_commitment_config(
-            resolved.config(),
-            &resolved.geometry(),
-            &circuit,
-        )
-    })
-    .is_err());
+    gpu_trace::trace::memory::validate_memory_commitment_config(
+        resolved.config(),
+        &resolved.geometry(),
+        &circuit,
+    );
 
     for (request_kind, request_artifact) in [
         (
@@ -311,51 +309,67 @@ fn cpu_worker_admission_rejects_metadata_before_transfer_construction() {
 #[test]
 fn cpu_worker_virtual_setup_requests_reject_before_holder_construction() {
     use gpu_trace::witness::circuit_type::DelegationCircuitType;
-    let kind = CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression);
-    let circuit = artifact("blake2_with_extended_control");
-    let config = kind.prover_config(SecurityLevel::Sec100);
-    let resolved = Arc::new(ResolvedProverConfig::new(
-        kind,
-        Arc::clone(&circuit),
-        config.clone(),
-    ));
-    let geometry = resolved.geometry();
-    assert!(geometry.is_virtual_packing());
-    let cpu_setup = CpuGKRSetup {
-        hypercube_evals: (0..geometry.logical_columns().setup)
-            .map(|_| {
-                Arc::new(prover::allocation_pool::AllocationType::from(
-                    vec![BF::ZERO; circuit.trace_len],
-                ))
-            })
-            .collect(),
-    };
-    let precomputations = CircuitPrecomputations {
-        gkr_programs: Arc::new(GkrPrograms::compile(kind, Arc::clone(&circuit)).unwrap()),
-        setup_host: Arc::new(LazyGpuGKRSetupHost::new(cpu_setup, geometry)),
-        decoder_host: None,
-        resolved_config: resolved,
-    };
-    let caps = vec![
-        MerkleTreeCapVarLength {
-            cap: vec![[0; 8]; config.cap_size / config.lde_factor()]
+    for (delegation, name) in [
+        (
+            DelegationCircuitType::Blake2WithCompression,
+            "blake2_with_extended_control",
+        ),
+        (
+            DelegationCircuitType::BigIntWithControl,
+            "bigint_with_extended_control",
+        ),
+    ] {
+        let kind = CircuitType::Delegation(delegation);
+        let circuit = artifact(name);
+        let config = kind.prover_config(SecurityLevel::Sec100);
+        let resolved = Arc::new(ResolvedProverConfig::new(
+            kind,
+            Arc::clone(&circuit),
+            config.clone(),
+        ));
+        let geometry = resolved.geometry();
+        assert!(geometry.is_virtual_packing());
+        let cpu_setup = CpuGKRSetup {
+            hypercube_evals: (0..geometry.logical_columns().setup)
+                .map(|_| {
+                    Arc::new(prover::allocation_pool::AllocationType::from(
+                        vec![BF::ZERO; circuit.trace_len],
+                    ))
+                })
+                .collect(),
         };
-        config.lde_factor()
-    ];
-    for caps in [None, Some(caps.as_slice())] {
-        let constructed = std::cell::Cell::new(false);
-        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            precomputations.admit_inputs_before_transfers(kind, SecurityLevel::Sec100, caps, 27);
-            constructed.set(true);
-        }))
-        .unwrap_err();
-        let message = error
-            .downcast_ref::<String>()
-            .map(String::as_str)
-            .or_else(|| error.downcast_ref::<&str>().copied())
-            .unwrap();
-        assert!(message.contains("virtual base commitments"));
-        assert!(!constructed.get());
+        let precomputations = CircuitPrecomputations {
+            gkr_programs: Arc::new(GkrPrograms::compile(kind, Arc::clone(&circuit)).unwrap()),
+            setup_host: Arc::new(LazyGpuGKRSetupHost::new(cpu_setup, geometry)),
+            decoder_host: None,
+            resolved_config: resolved,
+        };
+        let caps = vec![
+            MerkleTreeCapVarLength {
+                cap: vec![[0; 8]; config.cap_size / config.lde_factor()]
+            };
+            config.lde_factor()
+        ];
+        for caps in [None, Some(caps.as_slice())] {
+            let constructed = std::cell::Cell::new(false);
+            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                precomputations.admit_inputs_before_transfers(
+                    kind,
+                    SecurityLevel::Sec100,
+                    caps,
+                    27,
+                );
+                constructed.set(true);
+            }))
+            .unwrap_err();
+            let message = error
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| error.downcast_ref::<&str>().copied())
+                .unwrap();
+            assert!(message.contains("virtual execution requests"));
+            assert!(!constructed.get());
+        }
+        assert!(precomputations.setup_host.inner.get().is_none());
     }
-    assert!(precomputations.setup_host.inner.get().is_none());
 }

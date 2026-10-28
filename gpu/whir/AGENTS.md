@@ -79,6 +79,13 @@ rather than letting the duplicate drift by convention.
   `AB_DETERMINISTIC_POW` on this archive.
 ## Production commitment and query terms
 
+Base fold0 skips the base sumcheck and commits the batched polynomial itself
+as intermediate oracle0. The qualified m22 virtual ladder is `[0,6,5,5,5]`;
+its base queries use one BF value per physical column and the full base LDE
+domain. Cap absorption precedes OOD, and fresh delinearization follows the query
+draw. Schedule admission permits the CPU batching-PoW override independently of
+that geometry.
+
 Recursive oracles use coefficient leaves and partial Merkle trees. Small shapes
 use the fused families in `fused_commit.rs`; retained residue LDEs cover
 `(log_n, log_v) = (14..23, 5)` and `(22, 6)`. The full polynomial plus LDE

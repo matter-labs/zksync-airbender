@@ -3,6 +3,7 @@ use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPi
 use gpu_gkr::setup::GpuGKRSetupHost;
 use gpu_gkr::GkrPrograms;
 use gpu_prover_context::ProverContext;
+use gpu_trace::trace::memory::uses_base_commitment_geometry;
 use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::trace_unrolled::ExecutorFamilyDecoderData;
 
@@ -137,15 +138,13 @@ impl LazyGpuGKRSetupHost {
                 if cpu_setup.hypercube_evals.is_empty() {
                     return Ok(None);
                 }
-                let host = if self.geometry.pack_log2() != 0 && !self.geometry.is_virtual_packing()
-                {
+                let host = if uses_base_commitment_geometry(&self.geometry) {
                     gpu_trace::trace::memory::validate_separate_base_commitment_geometry(
                         &self.geometry,
                     );
                     GpuGKRSetupHost::precompute_for_geometry(&cpu_setup, self.geometry, context)?
                 } else {
-                    // Preserve legacy warmup for unsupported virtual defaults. Its
-                    // producer has no geometry and cannot supply a virtual proof.
+                    // Unpacked nonvirtual setup retains its legacy producer.
                     GpuGKRSetupHost::precompute_from_cpu_setup(
                         &cpu_setup,
                         self.log_lde_factor,
@@ -197,11 +196,17 @@ impl CircuitPrecomputations {
         assert_eq!(self.gkr_programs.circuit_type(), circuit_type);
         let config = resolved.config();
         let geometry = resolved.geometry();
+        // Execution requests remain closed independently of circuit-proof and
+        // primitive memory admission until their complete pipeline is qualified.
+        assert!(
+            !geometry.is_virtual_packing(),
+            "virtual execution requests are not admitted yet"
+        );
         self.setup_host
             .validate_config(config, BaseColumns::of(circuit));
         gpu_trace::trace::memory::validate_memory_commitment_config(config, &geometry, circuit);
         // Proof requests receive the BF transform check in proof preflight.
-        if caps.is_none() && geometry.pack_log2() != 0 {
+        if caps.is_none() && uses_base_commitment_geometry(&geometry) {
             gpu_trace::trace::holder::validate_baby_bear_base_geometry(
                 &geometry,
                 twiddle_domain_log2,
@@ -221,7 +226,7 @@ impl CircuitPrecomputations {
         }
         // Cap packing uses the ordinary heap, never pinned/device allocations.
         let memory = caps.map(|caps| {
-            let host = if geometry.pack_log2() == 0 {
+            let host = if !uses_base_commitment_geometry(&geometry) {
                 GpuGKRMemoryTransferHost::from_per_coset_caps(
                     caps,
                     config.lde_factor().trailing_zeros(),

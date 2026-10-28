@@ -28,7 +28,7 @@ fn cpu_physical_proof_admission_checks_full_schedule_and_policy() {
     for (n, k) in [(20, 4), (20, 2), (23, 1)] {
         let config = physical_config(n, k);
         let geometry = geometry(&config);
-        validate_physical_proof_geometry_policy(&geometry, policy);
+        validate_base_proof_geometry_policy(&geometry, policy);
         gpu_trace::trace::holder::validate_baby_bear_base_opening(
             &geometry,
             gpu_trace::trace::holder::OpeningStrategy::AllCosets,
@@ -56,7 +56,7 @@ fn cpu_physical_proof_admission_checks_full_schedule_and_policy() {
         let mut wrong_policy = policy;
         wrong_policy.setup = gpu_trace::trace::holder::OpeningStrategy::PerCoset;
         assert!(
-            std::panic::catch_unwind(|| validate_physical_proof_geometry_policy(
+            std::panic::catch_unwind(|| validate_base_proof_geometry_policy(
                 &geometry,
                 wrong_policy
             ))
@@ -69,39 +69,44 @@ fn cpu_physical_proof_admission_checks_full_schedule_and_policy() {
     }
     let unqualified = geometry(&physical_config(21, 3));
     assert!(
-        std::panic::catch_unwind(|| validate_physical_proof_geometry_policy(&unqualified, policy))
+        std::panic::catch_unwind(|| validate_base_proof_geometry_policy(&unqualified, policy))
             .is_err()
     );
 }
 
 #[test]
-fn cpu_virtual_and_merged_reject_independently_of_physical_packing() {
-    for k in [0, 2] {
-        let mut config = physical_config(20, k);
-        config.whir_schedule.base_round.fold_log2 = 0;
+fn cpu_virtual_admission_checks_shape_policy_and_merged_mode() {
+    use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType as D};
+    for circuit in [D::BigIntWithControl, D::Blake2WithCompression] {
+        let config = CircuitType::Delegation(circuit).prover_config(SecurityLevel::Sec100);
         let geometry = geometry(&config);
         assert!(geometry.is_virtual_packing());
-        let constructed = std::cell::Cell::new(false);
-        let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            validate_physical_proof_geometry_policy(&geometry, ProofMemoryPolicy::default());
-            constructed.set(true);
-        }))
-        .unwrap_err();
+        validate_base_proof_geometry_policy(&geometry, ProofMemoryPolicy::default());
+        let mut wrong_policy = ProofMemoryPolicy::default();
+        wrong_policy.memory = gpu_trace::trace::holder::OpeningStrategy::PerCoset;
         assert!(
-            !constructed.get(),
-            "virtual stage1 holder must not be constructed"
+            std::panic::catch_unwind(|| validate_base_proof_geometry_policy(
+                &geometry,
+                wrong_policy
+            ))
+            .is_err()
         );
-        let message = failure
-            .downcast_ref::<String>()
-            .map(String::as_str)
-            .or_else(|| failure.downcast_ref::<&str>().copied())
-            .unwrap();
-        assert!(message.contains("virtual base commitments"));
+    }
+    for (n, k) in [(20, 0), (21, 1), (20, 4)] {
+        let mut config = physical_config(n, k);
+        config.whir_schedule.base_round.fold_log2 = 0;
+        assert!(
+            std::panic::catch_unwind(|| validate_base_proof_geometry_policy(
+                &geometry(&config),
+                ProofMemoryPolicy::default()
+            ))
+            .is_err()
+        );
     }
     let mut config = physical_config(20, 4);
     config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
     assert!(
-        std::panic::catch_unwind(|| validate_physical_proof_geometry_policy(
+        std::panic::catch_unwind(|| validate_base_proof_geometry_policy(
             &geometry(&config),
             ProofMemoryPolicy::default()
         ))

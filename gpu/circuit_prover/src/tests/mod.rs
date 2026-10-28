@@ -77,6 +77,7 @@ mod memory_policies;
 mod packed_proof;
 mod proof_matrix;
 mod stagewise;
+mod virtual_packing;
 
 use asserts::*;
 

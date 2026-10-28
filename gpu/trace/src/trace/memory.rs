@@ -60,18 +60,33 @@ impl<'a> MemoryCommitmentJob<'a> {
     }
 }
 
+/// Whether base storage must carry the resolved commitment geometry.
+/// Cross-crate producers use this to preserve the legacy k0/f1 allocation path,
+/// while pure virtual packing also uses geometry-bearing holders at pad zero.
+pub fn uses_base_commitment_geometry(geometry: &BaseCommitmentGeometry) -> bool {
+    geometry.pack_log2() != 0 || geometry.is_virtual_packing()
+}
+
 /// Field-free admission shared by config-driven memory and proof entries.
 /// Primitive holder construction remains independent of e2e qualification.
 pub fn validate_separate_base_commitment_geometry(geometry: &BaseCommitmentGeometry) {
-    assert!(
-        !geometry.is_virtual_packing(),
-        "virtual base commitments are not admitted yet"
-    );
-    assert_eq!(
-        geometry.values_per_leaf(),
-        2,
-        "GPU physical base round requires fold_log2=1"
-    );
+    if geometry.is_virtual_packing() {
+        assert!(
+            matches!(
+                (geometry.trace_len_log2(), geometry.pack_log2()),
+                (22, 0) | (20, 2)
+            ),
+            "unqualified virtual base commitment shape"
+        );
+        assert_eq!(geometry.lde_factor(), 2, "unqualified virtual base LDE");
+        assert_eq!(geometry.cap_size(), 16, "unqualified virtual base cap");
+    } else {
+        assert_eq!(
+            geometry.values_per_leaf(),
+            2,
+            "GPU physical base round requires fold_log2=1"
+        );
+    }
     assert_eq!(
         geometry.commitment_mode(),
         CommitmentMode::SeparateMemoryAndWitness,
@@ -107,7 +122,7 @@ pub fn validate_memory_commitment_config<F: crate::upstream::PrimeField>(
         "memory commitment config trace length mismatch"
     );
     validate_separate_base_commitment_geometry(geometry);
-    if geometry.pack_log2() != 0 {
+    if uses_base_commitment_geometry(geometry) {
         validate_memory_commitment_geometry(geometry, circuit);
     }
 }
@@ -461,10 +476,10 @@ fn memory_shape_for_geometry<'a>(
     circuit: &GKRCircuitArtifact<BF>,
 ) -> MemoryCommitmentShape<'a> {
     validate_memory_commitment_config(config, &geometry, circuit);
-    if geometry.pack_log2() == 0 {
-        MemoryCommitmentShape::Unpacked(config)
-    } else {
+    if uses_base_commitment_geometry(&geometry) {
         MemoryCommitmentShape::Geometry(geometry)
+    } else {
+        MemoryCommitmentShape::Unpacked(config)
     }
 }
 
@@ -532,3 +547,46 @@ pub fn commit_memory_from_transfers_for_geometry<'a, A: GoodAllocator + 'a>(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod cpu_geometry_routing {
+    use super::*;
+    use prover::definitions::SecurityLevel;
+    use prover::gkr::prover::WhirSchedule;
+
+    #[test]
+    fn cpu_nonlegacy_base_routing_includes_pure_virtual_and_empty_sets() {
+        for k in [0, 2] {
+            for fold in [0, 1] {
+                let config = ProverConfig::whir_only(
+                    22 - k,
+                    WhirSchedule::from_legacy_arrays(2, 16, k, &[fold, 5], &[1, 1], &[2], &[0, 0]),
+                    SecurityLevel::Sec100,
+                );
+                for columns in [
+                    BaseColumns {
+                        memory: 1,
+                        witness: 0,
+                        setup: 0,
+                    },
+                    BaseColumns {
+                        memory: 0,
+                        witness: 0,
+                        setup: 0,
+                    },
+                ] {
+                    let geometry = BaseCommitmentGeometry::from_config(&config, columns).unwrap();
+                    assert_eq!(
+                        uses_base_commitment_geometry(&geometry),
+                        k != 0 || fold == 0
+                    );
+                    assert_eq!(
+                        geometry.oracle(BaseOracleRole::Witness).physical_columns(),
+                        0
+                    );
+                    assert_eq!(geometry.oracle(BaseOracleRole::Setup).physical_columns(), 0);
+                }
+            }
+        }
+    }
+}

@@ -32,9 +32,14 @@ fn cpu_separate_commitment_admits_only_qualified_physical_shapes() {
 }
 
 #[test]
-fn cpu_virtual_and_merged_commitments_reject_before_construction() {
-    for k in [0, 2] {
-        let mut config = packed_config(20, k, SecurityLevel::Sec100);
+fn cpu_virtual_commitment_shapes_and_merged_reject_before_construction() {
+    use crate::witness::circuit_type::DelegationCircuitType as D;
+    for circuit in [D::BigIntWithControl, D::Blake2WithCompression] {
+        let config = CircuitType::Delegation(circuit).prover_config(SecurityLevel::Sec100);
+        validate_separate_base_commitment_geometry(&geometry(&config));
+    }
+    for (n, k) in [(20, 0), (21, 1), (20, 4)] {
+        let mut config = packed_config(n, k, SecurityLevel::Sec100);
         config.whir_schedule.base_round.fold_log2 = 0;
         let shape = geometry(&config);
         let constructed = std::cell::Cell::new(false);

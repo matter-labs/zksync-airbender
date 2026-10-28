@@ -46,6 +46,26 @@ fn cpu_memory_cap_metadata_rejects_shape_mismatch_before_device_transfer() {
 }
 
 #[test]
+fn cpu_virtual_memory_cap_origin_includes_fold_at_k0_and_k2() {
+    let caps = vec![
+        MerkleTreeCapVarLength {
+            cap: vec![[0; 8]; 8]
+        };
+        2
+    ];
+    for k in [0, 2] {
+        let producing = geometry(k, true, 3);
+        let host = GpuGKRMemoryTransferHost::from_per_coset_caps_for_geometry(&caps, producing);
+        assert_eq!(host.base_commitment_geometry(), Some(producing));
+        host.validate_for_geometry(&producing);
+        let wrong_fold = geometry(k, false, 3);
+        assert!(std::panic::catch_unwind(|| host.validate_for_geometry(&wrong_fold)).is_err());
+        let legacy = GpuGKRMemoryTransferHost::from_per_coset_caps(&caps, 1, 4);
+        assert!(std::panic::catch_unwind(|| legacy.validate_for_geometry(&producing)).is_err());
+    }
+}
+
+#[test]
 fn cpu_empty_memory_caps_and_malformed_metadata_are_checked() {
     let empty = vec![MerkleTreeCapVarLength { cap: Vec::new() }; 2];
     let producing = geometry(2, false, 0);

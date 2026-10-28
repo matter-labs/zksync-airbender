@@ -52,7 +52,7 @@ fn gpu_memory_caps(
     caps
 }
 
-fn packed_proof(mut fixture: BasicUnrolledProofFixture) {
+pub(super) fn geometry_proof(mut fixture: BasicUnrolledProofFixture) {
     let base = &mut fixture.base;
     let policy = ProofMemoryPolicy::default();
     let preflight = base.dr_tail_plan_for_policy(policy).unwrap();
@@ -62,7 +62,12 @@ fn packed_proof(mut fixture: BasicUnrolledProofFixture) {
         geometry.message_size_log2(),
         geometry.total_physical_columns(),
     );
-    assert_eq!(expected_batching_bits, 8);
+    if !geometry.is_virtual_packing() {
+        assert_eq!(expected_batching_bits, 8);
+    }
+    assert!(gpu_trace::trace::memory::uses_base_commitment_geometry(
+        &geometry
+    ));
     assert_eq!(
         preflight.batching_pow_bits_for_test(),
         expected_batching_bits
@@ -80,7 +85,25 @@ fn packed_proof(mut fixture: BasicUnrolledProofFixture) {
         geometry.commitment_mode(),
         CommitmentMode::SeparateMemoryAndWitness
     );
-    if geometry.trace_len_log2() == 23 {
+    if geometry.is_virtual_packing() {
+        assert_eq!(
+            base.prover_config,
+            base.circuit_type
+                .prover_config(base.prover_config.security_level)
+        );
+        assert_eq!(geometry.message_size_log2(), 22);
+        assert_eq!(
+            geometry.logical_columns(),
+            BaseColumns::of(&base.compiled_circuit)
+        );
+        assert_eq!(
+            geometry.total_physical_columns(),
+            BaseColumns::of(&base.compiled_circuit).committed_polys(
+                base.prover_config.pack_log2(),
+                base.prover_config.merged_memory_and_witness()
+            )
+        );
+    } else if geometry.trace_len_log2() == 23 {
         assert_eq!(
             geometry.logical_columns(),
             BaseColumns {
@@ -105,6 +128,8 @@ fn packed_proof(mut fixture: BasicUnrolledProofFixture) {
     }
     // Replace CPU fixture caps with actual GPU producer output before proving.
     base.memory_tree_caps = gpu_memory_caps(base, geometry);
+    let setup_and_memory_peak = base.context.get_used_mem_peak();
+    base.context.reset_used_mem_peak();
     let baseline = base.context.get_used_mem_current();
     let mut jobs = Vec::new();
     for _ in 0..2 {
@@ -177,22 +202,25 @@ fn packed_proof(mut fixture: BasicUnrolledProofFixture) {
         );
     }
     assert_eq!(base.context.get_used_mem_current(), baseline);
+    eprintln!("base proof resources: circuit={:?}, arena_bytes={}, setup_memory_pool_peak_bytes={}, proof_pool_peak_bytes={}, baseline_bytes={}",
+        base.circuit_type,base.context.get_mem_size(),setup_and_memory_peak,
+        base.context.get_used_mem_peak(),baseline);
 }
 
 #[test]
 #[ignore = "fresh CPU/GPU production physical packed proof parity"]
 fn packed_full_proof_blake20_pack4_cpu_parity() {
-    packed_proof(proof_matrix::prepare_blake2_with_compression_proof_fixture_with_packing(4));
+    geometry_proof(proof_matrix::prepare_blake2_with_compression_proof_fixture_with_packing(4));
 }
 
 #[test]
 #[ignore = "fresh CPU/GPU production physical packed proof parity with unified inits/teardowns"]
 fn packed_full_proof_unified23_pack1_cpu_parity() {
-    packed_proof(prepare_unified_proof_fixture_with_packing(1));
+    geometry_proof(prepare_unified_proof_fixture_with_packing(1));
 }
 
 #[test]
 #[ignore = "fresh CPU/GPU physical-only Blake k2/f1 proof parity"]
 fn packed_full_proof_blake20_pack2_cpu_parity() {
-    packed_proof(proof_matrix::prepare_blake2_with_compression_proof_fixture_with_packing(2));
+    geometry_proof(proof_matrix::prepare_blake2_with_compression_proof_fixture_with_packing(2));
 }

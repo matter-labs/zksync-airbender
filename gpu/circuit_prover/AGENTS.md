@@ -78,16 +78,17 @@ summary — the contract document is the source of truth.
   entry and DR preflight admit separate physical `(trace log, pack log)` shapes
   `(20,4)`, `(20,2)` and `(23,1)`, independent of circuit type, with base fold1
   and the default materialized-GKR / AllCosets policy (RawAndCosets witness,
-  ReuseCosets opening). No canonical #584 default is physical-only. Virtual
-  admission rejects independently of physical packing, including Blake k2/f0.
-  `ProofPreflight<F>` binds config, geometry, artifact identity, policy, PoW and
-  DR resources before transfers. Legacy k0/f1 holders and policies are retained.
-  Config-driven memory and worker admission share the same qualified geometry.
-  One immutable CPU config and artifact identity bind setup and both worker
-  phases; setup/cap metadata is validated before H2D allocation. Positive
-  physical setup warmup uses its producing geometry. Unsupported virtual
-  defaults retain legacy warmup with no producing geometry and reject before
-  request transfers. Merged and virtual proofs remain closed.
+  ReuseCosets opening). Virtual base fold0 is admitted at `(n,k)=(22,0)` and
+  `(20,2)` with the qualified m22 `[0,6,5,5,5]` schedule and the same policy.
+  Physical merge is keyed on k independently of the zero-fold protocol. No
+  canonical #584 default is physical-only. `ProofPreflight<F>` binds config,
+  geometry, artifact identity, policy, PoW and DR resources before transfers.
+  Legacy k0/f1 holders and policies retain their existing route. Config-driven
+  memory commitments share the qualified base geometry. Setup warmup produces
+  geometry-bearing entries for physical or virtual packing, including pure
+  virtual k0; geometry-None entries cannot supply either. Execution worker/probe
+  requests retain an independent virtual guard before H2D. Merged proofs remain
+  closed.
 - `src/proof/`:
   - `inputs.rs`: the consolidated H2D transfer bundle
     (`GpuGKRProofTransfer`) — one shared `Transfer` (from `gpu_prover_context`)

@@ -152,6 +152,48 @@ mod cpu_recursive_shapes {
     }
 
     #[test]
+    fn cpu_virtual_schedule_admission_and_batching_override() {
+        use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType as D};
+        use prover::definitions::SecurityLevel;
+        for circuit in [
+            D::BigIntWithControl,
+            D::Blake2GFunction,
+            D::Blake2WithCompression,
+            D::KeccakChi5,
+            D::KeccakColumnParity,
+            D::KeccakSpecial5,
+            D::KeccakThetaRho,
+        ] {
+            let config = CircuitType::Delegation(circuit).prover_config(SecurityLevel::Sec100);
+            let mut schedule = config.whir_schedule.clone();
+            super::validate_baby_bear_recursive_schedule(22, &schedule, 27);
+            schedule.base_round.batching_pow_bits = Some(13);
+            super::validate_baby_bear_recursive_schedule(22, &schedule, 27);
+            let mut tuned = schedule.clone();
+            tuned.base_round.num_queries += 1;
+            tuned.internal_rounds[0].num_queries += 1;
+            tuned.internal_rounds[0].queries_pow_bits -= 1;
+            super::validate_baby_bear_recursive_schedule(22, &tuned, 27);
+            for change in 0..5 {
+                let mut bad = schedule.clone();
+                match change {
+                    0 => bad.base_round.lde_factor_log2 += 1,
+                    1 => bad.internal_rounds[0].folding_log2 = 5,
+                    2 => bad.internal_rounds[0].lde_factor_log2 += 1,
+                    3 => bad.internal_rounds[2].num_ood_samples = 2,
+                    _ => bad.cap_size *= 2,
+                }
+                assert!(
+                    std::panic::catch_unwind(|| super::validate_baby_bear_recursive_schedule(
+                        22, &bad, 27
+                    ))
+                    .is_err()
+                );
+            }
+        }
+    }
+
+    #[test]
     fn cpu_leaf64_retained_default_shape_is_supported() {
         assert!(!admit(22, 6, 5, 4, 27));
     }
@@ -179,10 +221,26 @@ pub fn validate_baby_bear_recursive_schedule(
     schedule: &crate::upstream::WhirSchedule,
     twiddle_domain_log2: u32,
 ) {
-    assert_eq!(
-        schedule.base_round.fold_log2, 1,
-        "GPU physical base round requires fold_log2=1"
+    assert!(
+        schedule.base_round.fold_log2 <= 1,
+        "unsupported GPU base fold"
     );
+    if schedule.base_round.fold_log2 == 0 {
+        assert_eq!(message_log, 22, "unqualified virtual message size");
+        // Qualify the zero-fold ladder, not security tuning: query counts,
+        // query PoW and the batching override do not change kernel capability.
+        assert_eq!(
+            schedule.fold_steps(),
+            [0, 6, 5, 5, 5],
+            "unqualified virtual fold ladder"
+        );
+        assert_eq!(
+            schedule.base_lde_factor_log2(),
+            1,
+            "unqualified virtual base LDE"
+        );
+        assert_eq!(schedule.cap_size, 16, "unqualified virtual base cap");
+    }
     assert_eq!(
         schedule.base_round.folding_pow_bits, 0,
         "GPU prover: no folding PoW"

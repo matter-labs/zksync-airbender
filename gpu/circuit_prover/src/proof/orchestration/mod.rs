@@ -188,3 +188,6 @@ pub(crate) fn grand_product_accumulator_from_explicit_evaluations(
 
     grand_product_accumulator_computed
 }
+
+#[cfg(test)]
+pub(crate) use whir::schedule_base_commitment_handoff;
