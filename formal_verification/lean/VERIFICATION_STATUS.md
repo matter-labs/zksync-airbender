@@ -15,7 +15,7 @@ execution and logical lookup/RAM composition are established narrower results.
 | Setup machine | Current target status |
 | --- | --- |
 | Unrolled full unsigned | Open: program-parametric native setup, caller/worker and initialization composition, and the blessed split Keccak sequence and its three native workers. Special5 calls require an explicit public exclusion until their intended sequence is specified. |
-| Unrolled reduced | Open: program-parametric native setup, BLAKE2 extended-round caller/worker composition, and stream-aware initialization. |
+| Unrolled reduced | Open: program-parametric native setup, BLAKE2 extended-round caller/worker composition, and stream-aware initialization. The four-family stream/caller relation and its inclusion into pooled execution are defined and proved; native soundness is not. |
 | Unified | Open: program-parametric native setup, native soundness for the combined stream/modular/caller relation, and its initialization adapter. Special5 calls require an explicit public exclusion. |
 
 These are required target scopes, not proved theorems. The corresponding Lean
