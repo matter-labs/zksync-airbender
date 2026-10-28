@@ -5,6 +5,12 @@ initialized memory history to reference execution and native terminal PC/cells.
 Original standard instructions use the pinned Sail clauses. TRIADD, XORROT and
 custom CSR effects use the pinned project references.
 
+[StreamCalls](StreamCalls.lean) defines a candidate unified machine relation
+combining ordinary/modular steps, external `0x7C0` reads and complete caller
+retirement. Its [first inclusion proofs](../../../Proofs/UnifiedReduced/StreamCalls.lean)
+establish disjoint decoder registries and lift modular and caller steps. No
+native whole-execution soundness theorem for this combined relation is proved yet.
+
 ## Checked results
 
 [Ordinary/custom retirement](Theorems.lean) supports the selected standard
@@ -32,7 +38,8 @@ and inducts on its clock; an earlier accepted prefix supplies the reference stat
 whose arguments determine the next worker's inputs. Exact matching and the
 public initialization/RAM/configuration/setup profile remain explicit.
 The covered wrappers are bigint, G and extended round. G separation stays a
-program obligation; blessed split Keccak is deferred (F12).
+program obligation; blessed split Keccak is a required, open part of the full
+unsigned target (F12).
 
 The lower-level [native actual-path execution](NativePathExecution.lean) composes branches, JAL,
 JALR and repeated-PC loops with complete calls from all four worker families.

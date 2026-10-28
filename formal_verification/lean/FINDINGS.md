@@ -379,7 +379,7 @@ Historical integration and rebased validation checkpoints are retained in the
 | F09 | Setup/decoder queries retain implementation-fidelity boundaries | Actual table contents and semantic connections are imported and checked | Rust/parser fidelity, public-program binding, native query binding and commitment authentication remain external |
 | F10 | Caller-cycle effects are weaker than full custom instruction execution | Complete mixed CSR reference execution uses F02 and public protocol/RAM profiles; native participation is derived | General acceptance still admits invalid bigint commands and ROM-shadow behavior; conditional integration does not fix F02/F04 |
 | F11 | Hash witness contracts remain unenforced | Four explicit private-witness contracts exclude known accepted cases; circuit patches were removed | Lower-level control/mask premises stay explicit; the supported-use theorem derives G/round contracts under the blessed wrapper domain |
-| F12 | Blessed split Keccak is uncovered | The provided 361-call split wrapper differs from the modeled 649-call special5 protocol | Split models, caller/CSR binding and unified setup integration are deferred |
+| F12 | Blessed split Keccak is uncovered | The provided 361-call split wrapper differs from the modeled 649-call special5 protocol | Split worker models, caller/CSR binding and the blessed-sequence proof are required for the full unsigned target |
 
 Review F01's external correspondence and F02–F04 first. F05 and F06 establish why current
 participation/profile restrictions matter. F07–F10 identify assumptions or narrower
@@ -968,10 +968,9 @@ establish full review/environment/replay assurance; see the current
 
 ## F12 — Blessed Keccak path is outside current proof coverage
 
-**Status — 27 October 2026.** Documented coverage and setup-integration gap.
-The agreed scope retains the conditional `keccak_special5` results and defers
-modeling the three split Keccak circuits. Those results do not establish
-execution of the provided Keccak wrapper.
+**Status — 28 October 2026.** Required, open coverage gap for the unrolled full
+unsigned target. The conditional `keccak_special5` results remain, but they do
+not establish execution of the provided Keccak wrapper.
 
 **Wrapper and modeled circuit differ.** The public
 [`keccak_special5::keccak_f1600` wrapper](../../common_constants/src/delegation_types/keccak_special5.rs)
@@ -990,13 +989,13 @@ split circuits have no Lean models or composed execution proofs in the current
 development. Shared state layout and the same mathematical Keccak-f1600
 reference do not supply a refinement between these different native protocols.
 
-**Unified setup also needs integration.** The inspected
+**Unified setup differs.** The inspected
 [`SUPPORTED_CSRS` list](../../circuit_defs/setups/src/unrolled_circuits/unifier_reduced_machine_circuit/mod.rs)
 includes `KECCAK_SPECIAL5_CSR_REGISTER` and omits all three split Keccak CSRs.
-Consequently, proofs of the split workers alone would not establish the
-wrapper's support in this captured unified setup. Decoder/setup and caller/worker
-bindings must also be checked before claiming end-to-end coverage. This is a
-gap in the inspected setup, not a claim about every Airbender backend.
+Current unified verifier programs make no Keccak CSR calls, so the unified
+target explicitly excludes special5 calls. The blessed split path belongs to
+the unrolled full unsigned target, whose machine configuration supports the
+three split CSRs. Its decoder/setup and caller/worker bindings remain open.
 
 **Supported-use contract.** The developers classify unsupported delegation
 invocations as UB ([AIH-350](https://linear.app/matterlabs/issue/AIH-350)); the
@@ -1011,13 +1010,13 @@ prefix bridge compile, while the original conditional entrypoints retain their
 explicit witness contracts for compatibility. Neither the new contract nor the
 bridge supplies missing split-circuit or unified setup coverage.
 
-**Deferred work.** Model the three split circuits, establish their 361-call
+**Required open work.** Model the three split circuits, establish their 361-call
 composition against the independent reference, and check their public program,
 CSR/setup, caller and exact-memory bindings. Preserve existing special5 claims
 as conditional circuit/protocol results. Do not assume split/special5 equivalence,
 or change circuit constraints, generators or production layouts to make the
 current proof go through. A supported-use execution claim must explicitly leave
-the blessed Keccak path outside its covered scope until these obligations are met.
+the blessed Keccak path outside its *proved* scope until these obligations are met.
 
 ## Remaining boundary register
 
