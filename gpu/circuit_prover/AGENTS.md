@@ -74,12 +74,18 @@ summary — the contract document is the source of truth.
   `#[cfg(test)]` `test_utils`/`tests`).
 - `src/config.rs`: prover configuration policy — maps a `CircuitType` +
   `SecurityLevel` to the canonical upstream `ProverConfig`, and owns
-  `GPU_SUPPORTED_SECURITY_LEVELS` / `UnsupportedGpuSecurityLevel`. The GPU
-  prover implements only the unpacked base commitment: `prove()`, its DR
-  preflight and `gpu_trace`'s memory commitments reject
-  `ProverConfig::pack_log2() != 0` via
-  `gpu_trace::trace::memory::assert_unpacked_prover_config` before enqueuing
-  any commitment or proof kernel (the preflight before constructing transfers).
+  `GPU_SUPPORTED_SECURITY_LEVELS` / `UnsupportedGpuSecurityLevel`. The proof
+  entry and DR preflight admit separate physical `(trace log, pack log)` shapes
+  `(20,4)`, `(20,2)` and `(23,1)`, independent of circuit type, with base fold1
+  and the default materialized-GKR / AllCosets policy (RawAndCosets witness,
+  ReuseCosets opening). No canonical #584 default is physical-only. Virtual
+  admission rejects independently of physical packing, including Blake k2/f0.
+  `ProofPreflight<F>` binds config, geometry, artifact identity, policy, PoW and
+  DR resources before transfers. Legacy k0/f1 holders and policies are retained.
+  Config-driven memory, Lazy setup warmup and worker admission remain guarded
+  by `gpu_trace::trace::memory::assert_unpacked_prover_config` until producer
+  binding is activated in P1.5-separate; direct geometry producers supply the
+  proof-level qualification gates. Merged and virtual proofs remain closed.
 - `src/proof/`:
   - `inputs.rs`: the consolidated H2D transfer bundle
     (`GpuGKRProofTransfer`) — one shared `Transfer` (from `gpu_prover_context`)

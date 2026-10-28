@@ -7,7 +7,7 @@ use era_cudart::slice::DeviceSlice;
 use fft::GoodAllocator;
 
 use crate::proof::inputs::EXTERNAL_CHALLENGES_E4_LEN;
-use crate::upstream::{ProverConfig, WhirSchedule};
+use crate::upstream::{BaseCommitmentGeometry, BaseOracleRole, ProverConfig, WhirSchedule};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::{BF, E4};
@@ -71,6 +71,7 @@ fn allocate_proof_slab(
 pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 'a>(
     gkr_programs: &gpu_gkr::GkrPrograms,
     prover_config: &ProverConfig,
+    base_geometry: BaseCommitmentGeometry,
     final_trace_size_log_2: u32,
     whir_schedule: &WhirSchedule,
     bundle: BundleDeviceRefs<'_, 'a, A>,
@@ -122,20 +123,29 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
         log_tree_cap_size: bundle.memory.host.log_tree_cap_size,
     };
     let witness_layer_geometry = setup_geometry;
-    let proof_layout_inputs = build_proof_layout_inputs(
-        gkr_programs,
-        whir_schedule,
-        final_trace_size_log_2,
-        ProofLayoutBaseLayerGeometry::from_geometry(
-            memory_layer_geometry,
-            compiled_circuit.memory_layout.total_width,
-        ),
-        ProofLayoutBaseLayerGeometry::from_geometry(
-            witness_layer_geometry,
-            compiled_circuit.witness_layout.total_width,
-        ),
-        ProofLayoutBaseLayerGeometry::from_geometry(setup_geometry, setup_columns_count),
-    );
+    let proof_layout_inputs = if base_geometry.pack_log2() != 0 {
+        gpu_gkr::proof_layout::build_proof_layout_inputs_for_geometry(
+            gkr_programs,
+            whir_schedule,
+            final_trace_size_log_2,
+            base_geometry,
+        )
+    } else {
+        build_proof_layout_inputs(
+            gkr_programs,
+            whir_schedule,
+            final_trace_size_log_2,
+            ProofLayoutBaseLayerGeometry::from_geometry(
+                memory_layer_geometry,
+                compiled_circuit.memory_layout.total_width,
+            ),
+            ProofLayoutBaseLayerGeometry::from_geometry(
+                witness_layer_geometry,
+                compiled_circuit.witness_layout.total_width,
+            ),
+            ProofLayoutBaseLayerGeometry::from_geometry(setup_geometry, setup_columns_count),
+        )
+    };
     let proof_layout = ProofLayout::new(&proof_layout_inputs);
     assert!(
         proof_layout.total_bytes > 0,
@@ -180,30 +190,59 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
     let mut witness_cap_dst =
         unsafe { DeviceSlice::from_raw_parts_mut(witness_cap_ptr, witness_cap_len_u32) };
 
-    let mut stage1_output = GpuGKRStage1Output::generate(
-        circuit_type,
-        compiled_circuit,
-        setup_geometry,
-        bundle
-            .setup
-            .filter(|transfer| transfer.host.columns_count > 0)
-            .map(|transfer| transfer.trace_holder.get_hypercube_evals()),
-        bundle.decoder.map(|transfer| &transfer.data_device[..]),
-        bundle
-            .inits_and_teardowns
-            .map(|transfer| &transfer.data_device),
-        tracing_data_transfer.map(|transfer| &transfer.data_device),
-        Some(&mut witness_cap_dst),
-        witness_policy.commitment,
-        witness_policy.post_commitment,
-        context,
-    )?;
+    let mut stage1_output = if base_geometry.pack_log2() != 0 {
+        GpuGKRStage1Output::generate_for_geometry(
+            circuit_type,
+            compiled_circuit,
+            setup_geometry,
+            base_geometry,
+            bundle
+                .setup
+                .filter(|transfer| transfer.host.columns_count > 0)
+                .map(|transfer| transfer.trace_holder.get_hypercube_evals()),
+            bundle.decoder.map(|transfer| &transfer.data_device[..]),
+            bundle
+                .inits_and_teardowns
+                .map(|transfer| &transfer.data_device),
+            tracing_data_transfer.map(|transfer| &transfer.data_device),
+            Some(&mut witness_cap_dst),
+            witness_policy.commitment,
+            witness_policy.post_commitment,
+            context,
+        )?
+    } else {
+        GpuGKRStage1Output::generate(
+            circuit_type,
+            compiled_circuit,
+            setup_geometry,
+            bundle
+                .setup
+                .filter(|transfer| transfer.host.columns_count > 0)
+                .map(|transfer| transfer.trace_holder.get_hypercube_evals()),
+            bundle.decoder.map(|transfer| &transfer.data_device[..]),
+            bundle
+                .inits_and_teardowns
+                .map(|transfer| &transfer.data_device),
+            tracing_data_transfer.map(|transfer| &transfer.data_device),
+            Some(&mut witness_cap_dst),
+            witness_policy.commitment,
+            witness_policy.post_commitment,
+            context,
+        )?
+    };
     if let WitnessOpeningStrategy::Recompute(opening) = witness_policy.opening {
         stage1_output
             .witness_trace_holder
             .defer_materialization_until_queries(opening);
     }
-    let synthetic_setup_trace_holder = if bundle.setup.is_none() {
+    let synthetic_setup_trace_holder = if bundle.setup.is_none() && base_geometry.pack_log2() != 0 {
+        Some(TraceHolder::new_base_without_cosets(
+            base_geometry,
+            BaseOracleRole::Setup,
+            TreesCacheMode::CacheNone,
+            context,
+        )?)
+    } else if bundle.setup.is_none() {
         Some(TraceHolder::new_without_cosets(
             setup_geometry.log_domain_size,
             setup_geometry.log_lde_factor,

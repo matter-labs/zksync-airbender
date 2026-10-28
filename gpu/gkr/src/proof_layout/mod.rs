@@ -89,6 +89,8 @@ pub struct BackwardLayerDims {
 pub struct WhirBaseLayerDims {
     /// Number of trace columns (= `evals.len()`).
     pub num_columns: usize,
+    /// Original dense GKR claim count, before packing.
+    pub logical_num_columns: usize,
     /// Number of digests in the Merkle cap for this base layer.
     pub cap_digest_count: usize,
     /// Number of queries against this base layer.
@@ -114,6 +116,7 @@ pub struct WhirIntermediateDims {
 /// WHIR-side dimensions for the proof image.
 #[derive(Debug, Clone)]
 pub struct WhirDims {
+    pub pack_log2: usize,
     /// Length of the GKR final claim point handed to WHIR.
     pub original_evaluation_point_len: usize,
     pub setup: WhirBaseLayerDims,
@@ -187,6 +190,8 @@ pub(crate) struct WhirBaseLayerByteLayout {
     pub cap: Range<usize>,
     /// `evals` — `num_columns` `E4` values.
     pub evals: Range<usize>,
+    /// Dense original claims retained for terminal cached extras.
+    pub logical_evals: Range<usize>,
     /// `queries[i].leaf_values_concatenated` — `query_count * leaf_values_len`
     /// `BF` values, flat.
     pub query_leaves: Range<usize>,
@@ -258,7 +263,7 @@ pub struct ProofLayout {
 mod accessors;
 mod build_inputs;
 pub use accessors::WhirBaseLayerKind; // pinned public API (apex whir/proof)
-pub use build_inputs::build_proof_layout_inputs;
+pub use build_inputs::{build_proof_layout_inputs, build_proof_layout_inputs_for_geometry};
 
 /// Trace-holder geometry subset needed to size WHIR base-layer fields in the slab.
 #[derive(Clone, Copy, Debug)]
@@ -394,7 +399,13 @@ impl ProofLayout {
 
         let lay_base = |cur: &mut usize, d: &WhirBaseLayerDims| -> WhirBaseLayerByteLayout {
             let cap = alloc(cur, d.cap_digest_count * DIGEST_U32_WORDS, size_of::<u32>());
-            let evals = alloc(cur, d.num_columns, size_of::<E4>());
+            let logical_evals = alloc(cur, d.logical_num_columns, size_of::<E4>());
+            let evals = if dims.pack_log2 == 0 {
+                assert_eq!(d.logical_num_columns, d.num_columns);
+                logical_evals.clone()
+            } else {
+                alloc(cur, d.num_columns, size_of::<E4>())
+            };
             let query_leaves = alloc(cur, d.query_count * d.leaf_values_len, size_of::<BF>());
             let query_paths = alloc(
                 cur,
@@ -405,6 +416,7 @@ impl ProofLayout {
                 num_columns: d.num_columns,
                 cap,
                 evals,
+                logical_evals,
                 query_leaves,
                 query_paths,
                 query_count: d.query_count,

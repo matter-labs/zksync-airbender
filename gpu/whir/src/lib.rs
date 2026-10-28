@@ -65,6 +65,76 @@ enum OracleValues {
     Recomputed(gpu_core::primitives::context::DeviceAllocation<BF>),
 }
 
+// Owning BabyBear coefficient-oracle capability check, shared by allocation
+// and preflight. The new geometry and schedule interfaces stay field-free.
+fn admit_baby_bear_recursive_oracle_shape(
+    log_n: u32,
+    log_v: u32,
+    log_lde: u32,
+    log_cap: u32,
+    twiddle_domain_log2: u32,
+) -> bool {
+    assert!(log_lde > 0, "recursive WHIR oracles require LDE factor > 1");
+    let log_residue = log_n
+        .checked_sub(log_v)
+        .expect("recursive WHIR leaf exceeds polynomial");
+    let log_leaves = log_residue
+        .checked_add(log_lde)
+        .expect("recursive WHIR domain overflow");
+    assert!(
+        log_leaves > PARTIAL_TREE_REDUCTION_LAYERS + log_cap,
+        "recursive WHIR commitments require a partial tree"
+    );
+    assert!(
+        log_leaves <= twiddle_domain_log2,
+        "recursive BabyBear WHIR domain exceeds context twiddle capacity"
+    );
+    let fused = fused_commit::supported(log_n, log_v);
+    assert!(
+        fused || matches!((log_n, log_v), (14..=23, 5)),
+        "unsupported recursive WHIR coefficient shape: log_n={log_n}, log_v={log_v}"
+    );
+    fused
+}
+
+/// Check the full target schedule against the instantiated BabyBear backend
+/// before transfer construction, using the same predicate as the oracle owner.
+pub fn validate_baby_bear_recursive_schedule(
+    message_log: u32,
+    schedule: &crate::upstream::WhirSchedule,
+    twiddle_domain_log2: u32,
+) {
+    assert_eq!(
+        schedule.base_round.fold_log2, 1,
+        "GPU physical base round requires fold_log2=1"
+    );
+    assert_eq!(
+        schedule.base_round.folding_pow_bits, 0,
+        "GPU prover: no folding PoW"
+    );
+    let mut log_n = message_log;
+    let mut previous_fold = schedule.base_round.fold_log2;
+    for round in &schedule.internal_rounds {
+        assert_eq!(
+            round.num_ood_samples, 1,
+            "GPU prover: one OOD sample per oracle"
+        );
+        assert_eq!(round.ood_pow_bits, 0, "GPU prover: no OOD PoW");
+        assert_eq!(round.folding_pow_bits, 0, "GPU prover: no folding PoW");
+        log_n = log_n
+            .checked_sub(u32::try_from(previous_fold).expect("fold log2 exceeds u32"))
+            .expect("WHIR schedule exceeds message domain");
+        admit_baby_bear_recursive_oracle_shape(
+            log_n,
+            u32::try_from(round.folding_log2).expect("fold log2 exceeds u32"),
+            u32::try_from(round.lde_factor_log2).expect("LDE log2 exceeds u32"),
+            schedule.cap_size.trailing_zeros(),
+            twiddle_domain_log2,
+        );
+        previous_fold = round.folding_log2;
+    }
+}
+
 pub(crate) struct GpuWhirExtensionOracle {
     trace_holder: TraceHolder<BF>,
     values_per_leaf: usize,
@@ -132,14 +202,15 @@ impl GpuWhirExtensionOracle {
         let packed_leaf_count = trace_len / values_per_leaf;
         let packed_leaf_count_log2 = packed_leaf_count.trailing_zeros();
         let total_leaf_count_log2 = packed_leaf_count_log2 + log_lde_factor;
-        assert!(
-            total_leaf_count_log2 > PARTIAL_TREE_REDUCTION_LAYERS + log_tree_cap_size,
-            "recursive WHIR commitments require a partial tree",
-        );
-        let fused_coefficients = fused_commit::supported(trace_len_log2, log_values_per_leaf);
-        assert!(
-            fused_coefficients || matches!((trace_len_log2, log_values_per_leaf), (14..=23, 5)),
-            "unsupported recursive WHIR coefficient shape: log_n={trace_len_log2}, log_v={log_values_per_leaf}",
+        let fused_coefficients = admit_baby_bear_recursive_oracle_shape(
+            trace_len_log2,
+            log_values_per_leaf,
+            log_lde_factor,
+            log_tree_cap_size,
+            context
+                .ntt_device_context()
+                .whir_leaf_transform_params()
+                .omega_log_order,
         );
 
         // Reinterpret bitreverse-N coefficients as V bitreverse-(N/V)

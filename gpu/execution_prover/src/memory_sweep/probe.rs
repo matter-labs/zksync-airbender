@@ -5,11 +5,11 @@ use era_cudart::result::CudaResult;
 use gpu_circuit_prover::config::prover_config;
 use gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer;
 use gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy;
+use gpu_circuit_prover::proof::ProofPreflight;
 use gpu_circuit_prover::proof::{admit_dr_tail_before_transfers, prove, DrTailPreflightRequest};
 use gpu_core::allocator::tracker::AllocationDirection;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
-use gpu_gkr::DrTailProofPlan;
 use gpu_prover_context::{AllocationMode, ProverContext};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory::commit_memory_from_transfers;
@@ -101,8 +101,10 @@ fn schedule_proof_inputs<'a>(
     device_id: i32,
     context: &ProverContext,
     circuit: &PreparedCircuit,
-) -> CudaResult<(GpuGKRProofTransfer<'a, A>, DrTailProofPlan)> {
+    policy: Option<ProofMemoryPolicy>,
+) -> CudaResult<(GpuGKRProofTransfer<'a, A>, ProofPreflight<BF>)> {
     let config = prover_config(circuit.circuit, circuit.security_level).unwrap();
+    gpu_trace::trace::memory::assert_unpacked_prover_config(&config);
     let programs = &circuit.precomputations.gkr_programs;
     let plan = admit_dr_tail_before_transfers(
         Some(DrTailPreflightRequest {
@@ -110,6 +112,13 @@ fn schedule_proof_inputs<'a>(
             prover_config: &config,
             final_trace_size_log_2: FINAL_TRACE_SIZE_LOG_2,
             device_id,
+            memory_policy: policy.unwrap_or_else(|| {
+                crate::memory_policy::policy(circuit.circuit, context.get_mem_size())
+            }),
+            twiddle_domain_log2: context
+                .ntt_device_context()
+                .whir_leaf_transform_params()
+                .omega_log_order,
         }),
         |plan| plan.unwrap(),
     )?;
@@ -166,7 +175,7 @@ pub(super) fn input_footprint(
     circuit: &PreparedCircuit,
 ) -> CudaResult<usize> {
     let before = context.get_used_mem_current();
-    let inputs = schedule_proof_inputs(device_id, context, circuit);
+    let inputs = schedule_proof_inputs(device_id, context, circuit, None);
     drain(context)?;
     let inputs = inputs?;
     let bytes = context.get_used_mem_current() - before;
@@ -196,7 +205,7 @@ pub(super) fn run_case(
     // On pool OOM, queued operations must finish before freed arena ranges can
     // be reused. The runner retains PreparedCircuit host inputs throughout.
     context.set_allocation_mode(AllocationMode::Inputs(direction));
-    let (inputs, plan) = match schedule_proof_inputs(device_id, context, target) {
+    let (inputs, plan) = match schedule_proof_inputs(device_id, context, target, Some(policy)) {
         Ok(inputs) => inputs,
         Err(error) => {
             drain(context)?;
@@ -207,7 +216,7 @@ pub(super) fn run_case(
     // sources. Follower H2D still overlaps the proof.
     context.get_h2d_stream().synchronize()?;
     context.set_allocation_mode(AllocationMode::Inputs(follower_direction));
-    let follower = schedule_proof_inputs(device_id, context, follower);
+    let follower = schedule_proof_inputs(device_id, context, follower, None);
     context.set_allocation_mode(AllocationMode::Proof(direction));
     let result = match &follower {
         Ok(_) => {

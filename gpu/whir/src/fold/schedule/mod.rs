@@ -45,9 +45,18 @@ pub fn schedule_gpu_whir_fold_with_sources(
     context: &ProverContext,
 ) -> CudaResult<GpuWhirFoldScheduledExecution> {
     let trace_len = 1usize << trace_len_log2;
-    assert_eq!(memory_trace_holder.log_domain_size, trace_len_log2);
-    assert_eq!(witness_trace_holder.log_domain_size, trace_len_log2);
-    assert_eq!(setup_trace_holder.log_domain_size, trace_len_log2);
+    assert_eq!(
+        memory_trace_holder.commitment_log_domain_size(),
+        trace_len_log2
+    );
+    assert_eq!(
+        witness_trace_holder.commitment_log_domain_size(),
+        trace_len_log2
+    );
+    assert_eq!(
+        setup_trace_holder.commitment_log_domain_size(),
+        trace_len_log2
+    );
     assert_eq!(
         1usize << memory_trace_holder.log_lde_factor,
         original_lde_factor
@@ -109,9 +118,9 @@ pub fn schedule_gpu_whir_fold_with_sources(
         memory_trace_holder,
         witness_trace_holder,
         setup_trace_holder,
-        memory_trace_holder.columns_count,
-        witness_trace_holder.columns_count,
-        setup_trace_holder.columns_count,
+        memory_trace_holder.committed_columns_count(),
+        witness_trace_holder.committed_columns_count(),
+        setup_trace_holder.committed_columns_count(),
         batching_challenge_device,
         use_hypercube_evals_for_batching,
         &mut state,
@@ -264,8 +273,8 @@ pub fn schedule_gpu_whir_fold_with_sources(
         let device_query_indexes_for_base: &era_cudart::slice::DeviceSlice<u32> =
             &pow_round_state.d_indexes[..];
         let log_lde_factor_base = memory_trace_holder.log_lde_factor;
-        let coset_tree_size_log2 =
-            memory_trace_holder.log_domain_size - memory_trace_holder.log_rows_per_leaf;
+        let coset_tree_size_log2 = memory_trace_holder.commitment_log_domain_size()
+            - memory_trace_holder.log_rows_per_leaf;
         // The three base oracles (setup/memory/witness) sample the same
         // tree-space indices, so the slab stores a single shared range.
         // SAFETY: `whir_base_query_indices_device_mut` returns the live
@@ -285,56 +294,81 @@ pub fn schedule_gpu_whir_fold_with_sources(
             coset_tree_size_log2,
             stream,
         )?;
-        let base_log_domain_size = memory_trace_holder.log_domain_size;
+        let base_log_domain_size = memory_trace_holder.commitment_log_domain_size();
         let base_log_rows_per_leaf = memory_trace_holder.log_rows_per_leaf;
-        debug_assert_eq!(witness_trace_holder.log_domain_size, base_log_domain_size);
-        debug_assert_eq!(setup_trace_holder.log_domain_size, base_log_domain_size);
+        debug_assert_eq!(
+            witness_trace_holder.commitment_log_domain_size(),
+            base_log_domain_size
+        );
+        debug_assert_eq!(
+            setup_trace_holder.commitment_log_domain_size(),
+            base_log_domain_size
+        );
         debug_assert_eq!(
             witness_trace_holder.log_rows_per_leaf,
             base_log_rows_per_leaf
         );
         debug_assert_eq!(setup_trace_holder.log_rows_per_leaf, base_log_rows_per_leaf);
         let base_log_total_leaves_count = base_log_domain_size - base_log_rows_per_leaf;
-        let base_layers_count = memory_trace_holder.log_domain_size
+        let base_layers_count = memory_trace_holder.commitment_log_domain_size()
             - memory_trace_holder.log_rows_per_leaf
             - (memory_trace_holder.log_tree_cap_size - memory_trace_holder.log_lde_factor);
-        let gather =
-            |holder: &TraceHolder<BF>, leaves_dst: u64, paths_dst: u64| -> CudaResult<()> {
-                let cosets_ptr = holder.get_consolidated_cosets().as_ptr() as u64;
-                let tree = holder
-                    .get_consolidated_tree()
-                    .expect("prepare_full_opening must materialize partial trees");
-                let leaves_desc = gpu_hash::blake2s::OracleGatherDesc {
-                    cosets_ptr,
-                    columns_count: holder.columns_count as u32,
-                    _pad: 0,
-                    slab_dst_ptr: leaves_dst,
-                };
-                let paths_desc = gpu_hash::blake2s::OraclePartialPathDesc {
-                    cosets_ptr,
-                    partial_tree_ptr: tree.as_ptr() as u64,
-                    columns_count: holder.columns_count as u32,
-                    _pad: 0,
-                    slab_dst_ptr: paths_dst,
-                };
-                gpu_hash::blake2s::gather_leaves_for_queries_physical(
-                    leaves_desc,
-                    log_lde_factor_base,
-                    base_log_domain_size,
-                    base_log_rows_per_leaf,
-                    device_query_indexes_for_base,
-                    stream,
-                )?;
-                gpu_hash::blake2s::gather_merkle_paths_partial_for_queries_physical(
-                    paths_desc,
-                    log_lde_factor_base,
-                    base_log_rows_per_leaf,
-                    base_log_total_leaves_count,
-                    base_layers_count,
-                    device_query_indexes_for_base,
-                    stream,
-                )
+        let gather = |holder: &TraceHolder<BF>,
+                      leaves_dst: &mut DeviceSlice<BF>,
+                      paths_dst: &mut DeviceSlice<u32>|
+         -> CudaResult<()> {
+            let cosets_ptr = holder.get_consolidated_cosets().as_ptr() as u64;
+            let tree = holder
+                .get_consolidated_tree()
+                .expect("prepare_full_opening must materialize partial trees");
+            let leaves_desc = gpu_hash::blake2s::OracleGatherDesc {
+                cosets_ptr,
+                columns_count: u32::try_from(holder.committed_columns_count())
+                    .expect("committed column count exceeds u32"),
+                _pad: 0,
+                slab_dst_ptr: leaves_dst.as_mut_ptr() as u64,
             };
+            let paths_desc = gpu_hash::blake2s::OraclePartialPathDesc {
+                cosets_ptr,
+                partial_tree_ptr: tree.as_ptr() as u64,
+                columns_count: u32::try_from(holder.committed_columns_count())
+                    .expect("committed column count exceeds u32"),
+                _pad: 0,
+                slab_dst_ptr: paths_dst.as_mut_ptr() as u64,
+            };
+            // Bound the raw launch's actual descriptor, not just the holder
+            // metadata, against the physical slab reservation.
+            assert_eq!(
+                leaves_dst.len(),
+                num_queries
+                    * leaves_desc.columns_count as usize
+                    * (1usize << base_log_rows_per_leaf),
+                "base leaf gather descriptor exceeds its destination"
+            );
+            assert_eq!(paths_desc.columns_count, leaves_desc.columns_count);
+            assert_eq!(
+                paths_dst.len(),
+                num_queries * base_layers_count as usize * gpu_hash::blake2s::STATE_SIZE,
+                "base path gather descriptor exceeds its destination"
+            );
+            gpu_hash::blake2s::gather_leaves_for_queries_physical(
+                leaves_desc,
+                log_lde_factor_base,
+                base_log_domain_size,
+                base_log_rows_per_leaf,
+                device_query_indexes_for_base,
+                stream,
+            )?;
+            gpu_hash::blake2s::gather_merkle_paths_partial_for_queries_physical(
+                paths_desc,
+                log_lde_factor_base,
+                base_log_rows_per_leaf,
+                base_log_total_leaves_count,
+                base_layers_count,
+                device_query_indexes_for_base,
+                stream,
+            )
+        };
         // Retire witness's existing LDE first, then expand one deferred
         // oracle at a time. The unchanged full-coset NTT retains its
         // cross-coset and cross-column fusion. Slab order is independent
@@ -354,7 +388,22 @@ pub fn schedule_gpu_whir_fold_with_sources(
             let (paths_ptr, paths_len) = unsafe {
                 proof_layout.whir_base_query_paths_device_mut(proof_slab.as_ptr() as *mut u8, kind)
             };
-            if holder.columns_count != 0 && holder.opening_policy() != OpeningStrategy::AllCosets {
+            let columns = holder.committed_columns_count();
+            assert_eq!(
+                leaves_len,
+                num_queries * columns * (1usize << base_log_rows_per_leaf),
+                "base query leaf destination differs from committed geometry"
+            );
+            assert_eq!(
+                paths_len,
+                if columns == 0 {
+                    0
+                } else {
+                    num_queries * base_layers_count as usize * gpu_hash::blake2s::STATE_SIZE
+                },
+                "base query path word destination differs from committed geometry"
+            );
+            if columns != 0 && holder.opening_policy() != OpeningStrategy::AllCosets {
                 let leaves = unsafe { DeviceSlice::from_raw_parts_mut(leaves_ptr, leaves_len) };
                 let paths = unsafe { DeviceSlice::from_raw_parts_mut(paths_ptr, paths_len) };
                 holder.gather_openings_recomputed(
@@ -366,8 +415,10 @@ pub fn schedule_gpu_whir_fold_with_sources(
             } else {
                 holder.prepare_full_opening(context)?;
                 // Empty setup has no leaf/path output to populate.
-                if holder.columns_count != 0 {
-                    gather(holder, leaves_ptr as u64, paths_ptr as u64)?;
+                if columns != 0 {
+                    let leaves = unsafe { DeviceSlice::from_raw_parts_mut(leaves_ptr, leaves_len) };
+                    let paths = unsafe { DeviceSlice::from_raw_parts_mut(paths_ptr, paths_len) };
+                    gather(holder, leaves, paths)?;
                 }
                 holder.release_cosets();
             }

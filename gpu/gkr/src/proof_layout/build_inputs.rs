@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::upstream::{GKRAddress, WhirSchedule};
+use crate::upstream::{BaseCommitmentGeometry, BaseOracleRole, GKRAddress, WhirSchedule};
 use crate::GkrPrograms;
 
 use super::{
@@ -15,6 +15,51 @@ pub fn build_proof_layout_inputs(
     memory_geometry: ProofLayoutBaseLayerGeometry,
     witness_geometry: ProofLayoutBaseLayerGeometry,
     setup_geometry: ProofLayoutBaseLayerGeometry,
+) -> ProofLayoutInputs {
+    build_proof_layout_inputs_inner(
+        gkr_programs,
+        whir_schedule,
+        final_trace_size_log_2,
+        memory_geometry,
+        witness_geometry,
+        setup_geometry,
+        None,
+    )
+}
+
+pub fn build_proof_layout_inputs_for_geometry(
+    gkr_programs: &GkrPrograms,
+    whir_schedule: &WhirSchedule,
+    final_trace_size_log_2: u32,
+    geometry: BaseCommitmentGeometry,
+) -> ProofLayoutInputs {
+    let descriptor = |role| ProofLayoutBaseLayerGeometry {
+        columns_count: geometry.oracle(role).physical_columns(),
+        log_domain_size: u32::try_from(geometry.message_size_log2())
+            .expect("message log2 exceeds u32"),
+        log_lde_factor: geometry.lde_factor().trailing_zeros(),
+        log_rows_per_leaf: geometry.values_per_leaf().trailing_zeros(),
+        log_tree_cap_size: geometry.cap_size().trailing_zeros(),
+    };
+    build_proof_layout_inputs_inner(
+        gkr_programs,
+        whir_schedule,
+        final_trace_size_log_2,
+        descriptor(BaseOracleRole::Memory),
+        descriptor(BaseOracleRole::Witness),
+        descriptor(BaseOracleRole::Setup),
+        Some(geometry),
+    )
+}
+
+fn build_proof_layout_inputs_inner(
+    gkr_programs: &GkrPrograms,
+    whir_schedule: &WhirSchedule,
+    final_trace_size_log_2: u32,
+    memory_geometry: ProofLayoutBaseLayerGeometry,
+    witness_geometry: ProofLayoutBaseLayerGeometry,
+    setup_geometry: ProofLayoutBaseLayerGeometry,
+    base_geometry: Option<BaseCommitmentGeometry>,
 ) -> ProofLayoutInputs {
     let compiled_circuit = gkr_programs.runtime_circuit();
     let initial_trace_size_log_2 = compiled_circuit.trace_len.trailing_zeros();
@@ -140,31 +185,38 @@ pub fn build_proof_layout_inputs(
     let tree_cap_log2 = tree_cap_size.trailing_zeros();
     let initial_query_count = whir_schedule.base_round.num_queries;
 
-    let base_layer_dims = |g: ProofLayoutBaseLayerGeometry| -> WhirBaseLayerDims {
-        let cap_digest_count = if g.columns_count == 0 {
-            0
-        } else {
-            1usize << g.log_tree_cap_size
+    let base_layer_dims =
+        |g: ProofLayoutBaseLayerGeometry, role: BaseOracleRole| -> WhirBaseLayerDims {
+            let cap_digest_count = if g.columns_count == 0 {
+                0
+            } else {
+                1usize << g.log_tree_cap_size
+            };
+            let leaf_values_len = g.columns_count * initial_values_per_leaf;
+            // Matches whir_fold.rs:1765-1776 and the setup_columns_count==0
+            // branch at 1846.
+            let path_len = if g.columns_count == 0 {
+                0
+            } else {
+                (g.log_domain_size - g.log_rows_per_leaf - (g.log_tree_cap_size - g.log_lde_factor))
+                    as usize
+            };
+            WhirBaseLayerDims {
+                num_columns: g.columns_count,
+                logical_num_columns: base_geometry.map_or(g.columns_count, |geometry| {
+                    geometry.oracle(role).logical_columns()
+                }),
+                cap_digest_count,
+                query_count: initial_query_count,
+                leaf_values_len,
+                path_len,
+            }
         };
-        let leaf_values_len = g.columns_count * initial_values_per_leaf;
-        // Matches whir_fold.rs:1765-1776 and the setup_columns_count==0
-        // branch at 1846.
-        let path_len = if g.columns_count == 0 {
-            0
-        } else {
-            (g.log_domain_size - g.log_rows_per_leaf - (g.log_tree_cap_size - g.log_lde_factor))
-                as usize
-        };
-        WhirBaseLayerDims {
-            num_columns: g.columns_count,
-            cap_digest_count,
-            query_count: initial_query_count,
-            leaf_values_len,
-            path_len,
-        }
-    };
 
-    let mut folded_trace_len_log2 = initial_trace_size_log_2;
+    let message_log = base_geometry.map_or(initial_trace_size_log_2 as usize, |geometry| {
+        geometry.message_size_log2()
+    });
+    let mut folded_trace_len_log2 = u32::try_from(message_log).expect("message log2 exceeds u32");
     let mut intermediate = Vec::with_capacity(whir_lde_factors.len());
     for (oracle_idx, &lde_factor) in whir_lde_factors.iter().enumerate() {
         folded_trace_len_log2 -= whir_fold_steps[oracle_idx] as u32;
@@ -187,15 +239,16 @@ pub fn build_proof_layout_inputs(
     // populates `WhirPolyCommitProof::final_monomials` from it.
     let total_folding_steps = whir_fold_steps.iter().sum::<usize>();
     assert!(
-        initial_trace_size_log_2 as usize >= total_folding_steps,
-        "whir_steps_schedule sum {total_folding_steps} exceeds initial_trace_size_log_2 {initial_trace_size_log_2}",
+        message_log >= total_folding_steps,
+        "whir_steps_schedule sum {total_folding_steps} exceeds message log2 {message_log}",
     );
-    let final_monomials_len = 1usize << (initial_trace_size_log_2 as usize - total_folding_steps);
+    let final_monomials_len = 1usize << (message_log - total_folding_steps);
     let whir = WhirDims {
-        original_evaluation_point_len: compiled_circuit.trace_len.trailing_zeros() as usize,
-        setup: base_layer_dims(setup_geometry),
-        memory: base_layer_dims(memory_geometry),
-        witness: base_layer_dims(witness_geometry),
+        pack_log2: base_geometry.map_or(0, |geometry| geometry.pack_log2()),
+        original_evaluation_point_len: message_log,
+        setup: base_layer_dims(setup_geometry, BaseOracleRole::Setup),
+        memory: base_layer_dims(memory_geometry, BaseOracleRole::Memory),
+        witness: base_layer_dims(witness_geometry, BaseOracleRole::Witness),
         intermediate,
         num_ood_samples: whir_lde_factors.len(),
         total_sumcheck_polys: total_folding_steps,

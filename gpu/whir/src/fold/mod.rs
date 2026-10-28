@@ -185,10 +185,9 @@ pub(super) fn get_base_columns<'a>(
     use_hypercube_evals: bool,
 ) -> DeviceMatrix<'a, BF> {
     let values = if use_hypercube_evals {
-        // Use the logical hypercube-evaluation view here. `raw_hypercube_backing`
-        // preserves ownership only; WHIR needs the row-shaped evaluation slice
-        // that `get_hypercube_evals` already exposes.
-        DeviceMatrix::new(trace_holder.get_hypercube_evals(), rows)
+        // The padded allocation is the physical Q-by-message view. GKR's
+        // prefix getter remains logical and omits the zero tail.
+        DeviceMatrix::new(trace_holder.padded_hypercube_evals(), rows)
     } else {
         assert!(
             trace_holder.are_cosets_materialized(),
@@ -245,19 +244,22 @@ pub(super) fn schedule_initialize_batched_forms(
     assert_batching_source_supported(use_hypercube_evals_for_batching);
     let trace_len = state.current_len;
     assert_eq!(
-        memory_trace_holder.log_domain_size,
-        witness_trace_holder.log_domain_size
+        memory_trace_holder.commitment_log_domain_size(),
+        witness_trace_holder.commitment_log_domain_size()
     );
     assert_eq!(
-        memory_trace_holder.log_domain_size,
-        setup_trace_holder.log_domain_size
+        memory_trace_holder.commitment_log_domain_size(),
+        setup_trace_holder.commitment_log_domain_size()
     );
-    assert_eq!(trace_len, 1usize << memory_trace_holder.log_domain_size);
+    assert_eq!(
+        trace_len,
+        1usize << memory_trace_holder.commitment_log_domain_size()
+    );
     assert!(!batching_challenge_device.is_empty());
 
-    let total_base_oracles = memory_trace_holder.columns_count
-        + witness_trace_holder.columns_count
-        + setup_trace_holder.columns_count;
+    let total_base_oracles = memory_trace_holder.committed_columns_count()
+        + witness_trace_holder.committed_columns_count()
+        + setup_trace_holder.committed_columns_count();
     let stream = context.get_exec_stream();
 
     // Device-native materialization of `[1, x, x^2, ..., x^(total_base_oracles - 1)]`
@@ -307,7 +309,7 @@ pub(super) fn schedule_initialize_batched_forms(
     )?;
 
     initialize_batched_monomial_form(
-        memory_trace_holder.log_domain_size as usize,
+        memory_trace_holder.commitment_log_domain_size() as usize,
         use_hypercube_evals_for_batching,
         &mut vectorized_scratch[..],
         state,

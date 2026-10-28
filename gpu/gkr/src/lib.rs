@@ -10,6 +10,7 @@ pub mod backward;
 pub mod base_layer_claims;
 pub mod forward;
 pub mod gkr_ops;
+pub mod packed_merge;
 mod programs;
 pub mod proof_layout;
 pub mod setup;

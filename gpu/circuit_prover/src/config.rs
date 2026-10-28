@@ -2,16 +2,19 @@
 //!
 //! Maps a `CircuitType` + `SecurityLevel` to the canonical upstream
 //! `ProverConfig`, and owns the GPU-supported-security-level contract. The
-//! canonical configs are UNPACKED (`ProverConfig::pack_log2 == 0`); the GPU
-//! prover does not implement base-commitment packing, and every GPU entry that
-//! takes a `ProverConfig` rejects a packed one first
-//! (`gpu_trace::trace::memory::assert_unpacked_prover_config`). Lives in
+//! canonical configs include virtual packing, with independent physical
+//! packing in the Blake compression default. The proof backend qualifies
+//! separate physical-only configurations through its geometry preflight;
+//! virtual defaults and config-driven memory/worker activation stay guarded.
+//! Lives in
 //! the prover layer because `ProverConfig` is a `prove()` input (see
 //! `proof/mod.rs`): `execution` calls down into this and threads the result
 //! into `prove()`. The low `witness::circuit_type` enum stays a pure
 //! domain type with no `ProverConfig`/`SecurityLevel` coupling.
 
-use crate::upstream::{pow_bits, GKRCircuitArtifact, ProverConfig, SecurityLevel};
+use crate::upstream::{
+    pow_bits, BaseCommitmentGeometry, GKRCircuitArtifact, ProverConfig, SecurityLevel,
+};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_trace::witness::circuit_type::CircuitType;
 
@@ -39,7 +42,7 @@ impl std::error::Error for UnsupportedGpuSecurityLevel {}
 /// the CPU's `config_for_security_level_under_pessimistic_conjecture` so GPU and
 /// CPU agree on the production WHIR schedule (the per-circuit lookup-challenge
 /// and WHIR-batching PoWs are ground on device — see
-/// [`lookup_challenges_pow_bits`] / [`batched_proximity_check_pow_bits`]).
+/// [`lookup_challenges_pow_bits`] / [`batched_proximity_check_pow_bits_for_geometry`]).
 ///
 /// The `Result` is retained for API stability (`SecurityLevel` currently has no
 /// unsupported variant, so both arms are `Ok`).
@@ -73,27 +76,16 @@ pub(crate) fn lookup_challenges_pow_bits(
     )
 }
 
-/// PoW bit count for the WHIR base batching challenge, derived per-circuit from
-/// the config's `security_level` — matching the CPU
-/// `draw_random_field_els_with_pow` site. Fed to the pow-aware batching draw in
-/// `proof/orchestration/whir.rs`.
-pub(crate) fn batched_proximity_check_pow_bits(
-    prover_config: &ProverConfig,
-    compiled_circuit: &GKRCircuitArtifact<BF>,
+/// Override-aware batching over the preflight's single physical count authority.
+pub(crate) fn batched_proximity_check_pow_bits_for_geometry(
+    config: &ProverConfig,
+    geometry: &BaseCommitmentGeometry,
 ) -> u32 {
-    prover_config
-        .whir_schedule
-        .base_round
-        .batching_pow_bits::<BF, E4>(
-            prover_config.security_level.security_bits(),
-            prover_config.whir_message_size_log2(),
-            // the PHYSICALLY committed column count (separate memory/witness sets)
-            pow_bits::committed_base_oracle_columns(
-                compiled_circuit,
-                prover_config.pack_log2(),
-                false,
-            ),
-        )
+    config.base_round().batching_pow_bits::<BF, E4>(
+        config.security_level.security_bits(),
+        geometry.message_size_log2(),
+        geometry.total_physical_columns(),
+    )
 }
 
 #[cfg(test)]

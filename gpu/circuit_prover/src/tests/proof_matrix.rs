@@ -868,13 +868,19 @@ fn replay_blake2_with_compression_delegation_buffer(
 }
 
 pub(super) fn prepare_blake2_with_compression_proof_fixture() -> BasicUnrolledProofFixture {
+    prepare_blake2_with_compression_proof_fixture_with_packing(0)
+}
+
+pub(super) fn prepare_blake2_with_compression_proof_fixture_with_packing(
+    pack_log2: usize,
+) -> BasicUnrolledProofFixture {
     let (buffer, table_driver) = replay_blake2_with_compression_delegation_buffer();
     let oracle = Blake2sDelegationOracle {
         cycle_data: &buffer,
         marker: core::marker::PhantomData,
     };
     let buffer_for_host = buffer.clone();
-    let fixture = prepare_delegation_proof_fixture(
+    let fixture = prepare_delegation_proof_fixture_with_packing(
         DelegationCircuitType::Blake2WithCompression,
         BLAKE2_WITH_COMPRESSION_LAYOUT_PATH,
         &table_driver,
@@ -882,6 +888,7 @@ pub(super) fn prepare_blake2_with_compression_proof_fixture() -> BasicUnrolledPr
         &oracle,
         fixtures::blake2_with_extended_control_mod::witness_eval_fn,
         BLAKE2_NUM_DELEGATION_CYCLES,
+        pack_log2,
     );
     drop(buffer);
     fixture
@@ -1146,7 +1153,11 @@ fn prepare_inits_and_teardowns_matrix_profiling_fixture() -> BasicUnrolledFixtur
 #[test]
 #[ignore]
 fn run_inits_and_teardowns_proof_parity_test() {
-    run_proof_parity(&prepare_inits_and_teardowns_matrix_proof_fixture());
+    let fixture = prepare_inits_and_teardowns_matrix_proof_fixture();
+    assert_eq!(fixture.base.compiled_circuit.witness_layout.total_width, 0);
+    assert_eq!(fixture.base.compiled_circuit.generic_lookup_tables_width, 0);
+    assert!(fixture.base.gpu_setup_host.is_none());
+    run_proof_parity(&fixture);
 }
 
 #[test]

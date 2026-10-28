@@ -143,6 +143,17 @@ impl ProofLayout {
         Self::device_typed::<E4>(slab_base, &self.whir_base(which).evals)
     }
 
+    /// Dense GKR claims, which remain distinct from packed WHIR claims.
+    /// # Safety
+    /// The slab must be live and sized for this layout; view is device-only.
+    pub unsafe fn whir_base_logical_evals_device_mut(
+        &self,
+        slab_base: *mut u8,
+        which: WhirBaseLayerKind,
+    ) -> (*mut E4, usize) {
+        Self::device_typed::<E4>(slab_base, &self.whir_base(which).logical_evals)
+    }
+
     /// Shared base-oracle `query_indices` range. The three base oracles
     /// (setup/memory/witness) reuse a single slab range — see
     /// `WhirLayout::base_query_indices`.
@@ -630,6 +641,14 @@ impl ProofLayout {
 
     pub fn whir_base_evals_host<'a>(&self, slab: &'a [u8], which: WhirBaseLayerKind) -> &'a [E4] {
         Self::host_typed::<E4>(slab, &self.whir_base(which).evals)
+    }
+
+    pub fn whir_base_logical_evals_host<'a>(
+        &self,
+        slab: &'a [u8],
+        which: WhirBaseLayerKind,
+    ) -> &'a [E4] {
+        Self::host_typed::<E4>(slab, &self.whir_base(which).logical_evals)
     }
 
     /// Shared base-oracle `query_indices` slice. The three base oracles

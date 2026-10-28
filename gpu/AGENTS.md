@@ -116,7 +116,7 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   / `common_constants`. See [`trace/AGENTS.md`](trace/AGENTS.md).
 - **`gpu_gkr`** = the GKR engine (forward pass, backward/sumcheck rounds,
   setup, base-layer claims, proof layout) plus the GKR/WHIR protocol kernels
-  (`gkr_ops/`), with its own `gpu_gkr_native` (25 kernels and 8 `__constant__`
+  (`gkr_ops/`), with its own `gpu_gkr_native` (26 kernels and 8 `__constant__`
   symbols), namespaces
   `airbender::gkr::{backward, forward, ops, setup}`. `build.rs` sets
   `export_include(true)`: exports its `native/` dir as

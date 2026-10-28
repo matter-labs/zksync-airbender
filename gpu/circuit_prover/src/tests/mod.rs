@@ -74,6 +74,7 @@ mod fixtures;
 mod inits_and_teardowns;
 mod lsb_commit_pipeline;
 mod memory_policies;
+mod packed_proof;
 mod proof_matrix;
 mod stagewise;
 
@@ -273,11 +274,20 @@ impl BasicUnrolledFixture {
             ),
         };
         let memory_transfer_host = Arc::new(
-            gpu_trace::trace::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps(
-                &self.memory_tree_caps,
-                mem_log_lde_factor,
-                mem_log_tree_cap_size,
-            ),
+            if self.prover_config.pack_log2() != 0 || self.prover_config.is_virtual_packing() {
+                let geometry = BaseCommitmentGeometry::from_config(
+                    &self.prover_config,
+                    BaseColumns::of(&self.compiled_circuit),
+                )
+                .unwrap();
+                gpu_trace::trace::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps_for_geometry(&self.memory_tree_caps, geometry)
+            } else {
+                gpu_trace::trace::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps(
+                    &self.memory_tree_caps,
+                    mem_log_lde_factor,
+                    mem_log_tree_cap_size,
+                )
+            },
         );
         let memory_transfer = gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer::new(
             memory_transfer_host,
@@ -337,11 +347,24 @@ impl BasicUnrolledFixture {
         )
     }
 
-    fn dr_tail_plan(&self) -> CudaResult<gpu_gkr::DrTailProofPlan> {
-        gpu_gkr::preflight_dr_tail_resources(
+    fn dr_tail_plan(&self) -> CudaResult<crate::proof::ProofPreflight<BF>> {
+        self.dr_tail_plan_for_policy(self.memory_policy())
+    }
+
+    fn dr_tail_plan_for_policy(
+        &self,
+        policy: ProofMemoryPolicy,
+    ) -> CudaResult<crate::proof::ProofPreflight<BF>> {
+        crate::proof::preflight_proof(
             &self.gkr_programs,
+            &self.prover_config,
             self.final_trace_size_log_2,
             era_cudart::device::get_device()?,
+            policy,
+            self.context
+                .ntt_device_context()
+                .whir_leaf_transform_params()
+                .omega_log_order,
         )
     }
 
@@ -358,6 +381,7 @@ impl BasicUnrolledFixture {
         policy: ProofMemoryPolicy,
     ) -> CudaResult<GpuGKRProofJob<'static>> {
         let mem_before_inputs = self.context.get_used_mem_current();
+        let dr_tail_plan = self.dr_tail_plan_for_policy(policy)?;
         let mut transfers = self.create_transfers()?;
 
         let h2d_stream = self.context.get_h2d_stream();
@@ -366,7 +390,6 @@ impl BasicUnrolledFixture {
         transfers.schedule(&self.context)?;
         transfer_range.end(h2d_stream)?;
 
-        let dr_tail_plan = self.dr_tail_plan()?;
         let mut proof_job = crate::proof::prove::<Global>(
             &self.gkr_programs,
             &self.prover_config,

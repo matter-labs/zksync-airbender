@@ -90,13 +90,13 @@ impl DenseSource {
     fn read_from_slab(self, proof_layout: &ProofLayout, slab: &[u8]) -> E4 {
         match self {
             DenseSource::Memory(offset) => {
-                proof_layout.whir_base_evals_host(slab, WhirBaseLayerKind::Memory)[offset]
+                proof_layout.whir_base_logical_evals_host(slab, WhirBaseLayerKind::Memory)[offset]
             }
             DenseSource::Witness(offset) => {
-                proof_layout.whir_base_evals_host(slab, WhirBaseLayerKind::Witness)[offset]
+                proof_layout.whir_base_logical_evals_host(slab, WhirBaseLayerKind::Witness)[offset]
             }
             DenseSource::Setup(offset) => {
-                proof_layout.whir_base_evals_host(slab, WhirBaseLayerKind::Setup)[offset]
+                proof_layout.whir_base_logical_evals_host(slab, WhirBaseLayerKind::Setup)[offset]
             }
         }
     }
@@ -109,14 +109,14 @@ impl DenseSource {
         let slab_base = proof_slab.as_ptr() as *mut u8;
         let (base, len) = match self {
             DenseSource::Memory(offset) => {
-                let (ptr, len) =
-                    proof_layout.whir_base_evals_device_mut(slab_base, WhirBaseLayerKind::Memory);
+                let (ptr, len) = proof_layout
+                    .whir_base_logical_evals_device_mut(slab_base, WhirBaseLayerKind::Memory);
                 assert!(offset < len, "memory dense source offset out of slab range");
                 (ptr, len)
             }
             DenseSource::Witness(offset) => {
-                let (ptr, len) =
-                    proof_layout.whir_base_evals_device_mut(slab_base, WhirBaseLayerKind::Witness);
+                let (ptr, len) = proof_layout
+                    .whir_base_logical_evals_device_mut(slab_base, WhirBaseLayerKind::Witness);
                 assert!(
                     offset < len,
                     "witness dense source offset out of slab range"
@@ -124,8 +124,8 @@ impl DenseSource {
                 (ptr, len)
             }
             DenseSource::Setup(offset) => {
-                let (ptr, len) =
-                    proof_layout.whir_base_evals_device_mut(slab_base, WhirBaseLayerKind::Setup);
+                let (ptr, len) = proof_layout
+                    .whir_base_logical_evals_device_mut(slab_base, WhirBaseLayerKind::Setup);
                 assert!(offset < len, "setup dense source offset out of slab range");
                 (ptr, len)
             }
@@ -209,7 +209,7 @@ fn schedule_reduce_trace_holder_claims(
     eq_sizes: GkrEqSizes,
     // The column-sums kernel writes straight into the slab's
     // `whir.{kind}.evals` range (raw `(ptr, len)` resolved by the caller via
-    // `proof_layout.whir_base_evals_device_mut`).
+    // `proof_layout.whir_base_logical_evals_device_mut`).
     slab_claims_dst: (*mut E4, usize),
     tracing_ranges: &mut Vec<Range>,
     context: &ProverContext,
@@ -338,7 +338,7 @@ pub fn schedule_prepare_base_layer_claims_with_sources(
     // the terminal D2H.
     let slab_claims_dst = |kind: WhirBaseLayerKind| -> (*mut E4, usize) {
         let (ptr, len) = unsafe {
-            proof_layout.whir_base_evals_device_mut(proof_slab.as_ptr() as *mut u8, kind)
+            proof_layout.whir_base_logical_evals_device_mut(proof_slab.as_ptr() as *mut u8, kind)
         };
         (ptr as *mut E4, len)
     };

@@ -131,7 +131,7 @@ fn unified_uses_its_canonical_schedule() {
 }
 
 #[test]
-fn cpu_virtual_defaults_remain_rejected_by_existing_gpu_guard() {
+fn cpu_virtual_defaults_remain_rejected_by_proof_admission() {
     let mut rejected = 0;
     for (circuit, name) in CIRCUITS {
         if !matches!(circuit, CircuitType::Delegation(_)) {
@@ -139,8 +139,19 @@ fn cpu_virtual_defaults_remain_rejected_by_existing_gpu_guard() {
         }
         for level in GPU_SUPPORTED_SECURITY_LEVELS {
             let cfg = prover_config(circuit, level).unwrap();
+            let compiled = artifact(name);
+            let geometry =
+                BaseCommitmentGeometry::from_config(&cfg, BaseColumns::of(&compiled)).unwrap();
+            assert!(geometry.is_virtual_packing());
+            if name == "blake2_with_extended_control" {
+                assert_eq!(cfg.pack_log2(), 2, "Blake default remains physical+virtual");
+                assert_eq!(cfg.base_round().fold_log2, 0);
+            }
             let panic = std::panic::catch_unwind(|| {
-                gpu_trace::trace::memory::assert_unpacked_prover_config(&cfg)
+                crate::proof::validate_physical_proof_geometry_policy(
+                    &geometry,
+                    crate::proof::memory_policy::ProofMemoryPolicy::default(),
+                )
             })
             .expect_err("packed or virtual default must still fail closed");
             let text = panic
@@ -148,11 +159,12 @@ fn cpu_virtual_defaults_remain_rejected_by_existing_gpu_guard() {
                 .map(String::as_str)
                 .or_else(|| panic.downcast_ref::<&str>().copied())
                 .unwrap();
-            let expected = if cfg.pack_log2() > 0 {
-                "base-commitment packing"
-            } else {
-                "virtual packing"
-            };
+            let expected = "virtual base commitment proofs are not admitted yet";
+            // Config-driven memory retains the old guard until P1.5/P3.
+            assert!(std::panic::catch_unwind(|| {
+                gpu_trace::trace::memory::assert_unpacked_prover_config(&cfg)
+            })
+            .is_err());
             assert!(text.contains(expected), "{circuit:?}: {text}");
             eprintln!(
                 "baseline rejection {name}: {expected} (k={}, f={})",
@@ -185,8 +197,30 @@ fn cpu_batching_pow_keeps_base_round_override_and_physical_count() {
             shape.message_size_log2(),
             shape.total_physical_columns(),
         );
-        assert_eq!(batched_proximity_check_pow_bits(&cfg, &compiled), expected);
+        assert_eq!(
+            batched_proximity_check_pow_bits_for_geometry(&cfg, &shape),
+            expected
+        );
         cfg.whir_schedule.base_round.batching_pow_bits = Some(7);
-        assert_eq!(batched_proximity_check_pow_bits(&cfg, &compiled), 7);
+        assert_eq!(
+            batched_proximity_check_pow_bits_for_geometry(&cfg, &shape),
+            7
+        );
+        cfg.whir_schedule.base_round.batching_pow_bits = None;
+        cfg.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+        let merged = BaseCommitmentGeometry::from_config(&cfg, BaseColumns::of(&compiled)).unwrap();
+        if pack == 4 {
+            assert_eq!(shape.total_physical_columns(), 50);
+            assert_eq!(merged.total_physical_columns(), 49);
+        }
+        let expected = cfg.base_round().batching_pow_bits::<BF, E4>(
+            cfg.security_level.security_bits(),
+            merged.message_size_log2(),
+            merged.total_physical_columns(),
+        );
+        assert_eq!(
+            batched_proximity_check_pow_bits_for_geometry(&cfg, &merged),
+            expected
+        );
     }
 }

@@ -98,7 +98,7 @@ struct PhaseOne<'a> {
 enum PhaseOneInputs<'a> {
     Proof(
         gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer<'a, A>,
-        gpu_gkr::DrTailProofPlan,
+        gpu_circuit_prover::proof::ProofPreflight<BF>,
     ),
     MemoryCommitment(gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>),
     SetupInitialization,
@@ -292,8 +292,11 @@ fn schedule_phase_one<'a>(
     let is_proof = matches!(state.kind, RequestKind::Proof);
 
     let proof_prover_config = is_proof.then(|| {
-        gpu_circuit_prover::config::prover_config(circuit_type, state.security_level)
-            .expect("ExecutionProverConfiguration validated GPU security level before GPU work")
+        let config = gpu_circuit_prover::config::prover_config(circuit_type, state.security_level)
+            .expect("ExecutionProverConfiguration validated GPU security level before GPU work");
+        // Producer/cache binding is activated with worker admission in P1.5.
+        gpu_trace::trace::memory::assert_unpacked_prover_config(&config);
+        config
     });
     let preflight_request =
         proof_prover_config
@@ -303,6 +306,11 @@ fn schedule_phase_one<'a>(
                 prover_config,
                 final_trace_size_log_2: FINAL_TRACE_SIZE_LOG_2,
                 device_id,
+                memory_policy: crate::memory_policy::policy(circuit_type, context.get_mem_size()),
+                twiddle_domain_log2: context
+                    .ntt_device_context()
+                    .whir_leaf_transform_params()
+                    .omega_log_order,
             });
 
     let inputs = admit_dr_tail_before_transfers(

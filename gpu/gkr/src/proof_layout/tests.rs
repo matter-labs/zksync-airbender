@@ -66,9 +66,11 @@ fn sample_inputs() -> ProofLayoutInputs {
     ];
 
     let whir = WhirDims {
+        pack_log2: 0,
         original_evaluation_point_len: 2,
         setup: WhirBaseLayerDims {
             num_columns: 4,
+            logical_num_columns: 4,
             cap_digest_count: 8,
             query_count: 16,
             leaf_values_len: 32,
@@ -76,6 +78,7 @@ fn sample_inputs() -> ProofLayoutInputs {
         },
         memory: WhirBaseLayerDims {
             num_columns: 32,
+            logical_num_columns: 32,
             cap_digest_count: 8,
             query_count: 16,
             leaf_values_len: 128,
@@ -83,6 +86,7 @@ fn sample_inputs() -> ProofLayoutInputs {
         },
         witness: WhirBaseLayerDims {
             num_columns: 64,
+            logical_num_columns: 64,
             cap_digest_count: 8,
             query_count: 16,
             leaf_values_len: 256,
@@ -515,4 +519,107 @@ fn cpu_parser_splits_whir_streams_by_schedule() {
     assert_eq!(proof.intermediate_whir_oracles[0].queries_pow_nonce, 8);
     assert_eq!(proof.intermediate_whir_oracles[1].queries_pow_nonce, 9);
     assert_eq!(proof.whir_schedule, schedule);
+}
+
+#[test]
+fn cpu_packed_proof_layout_keeps_logical_claims_and_aliases_k0() {
+    let inputs = sample_inputs();
+    let identity = ProofLayout::new(&inputs);
+    for base in [
+        &identity.whir.memory,
+        &identity.whir.witness,
+        &identity.whir.setup,
+    ] {
+        assert_eq!(
+            base.logical_evals, base.evals,
+            "k0 must alias without another range"
+        );
+    }
+    for k in 1..=4 {
+        let mut inputs = sample_inputs();
+        inputs.whir.pack_log2 = k;
+        inputs.whir.original_evaluation_point_len = 20 + k;
+        let pack = 1usize << k;
+        for (base, logical) in [
+            (&mut inputs.whir.memory, pack + 1),
+            (&mut inputs.whir.witness, 2 * pack + 1),
+            (&mut inputs.whir.setup, 0),
+        ] {
+            base.logical_num_columns = logical;
+            base.num_columns = logical.div_ceil(pack);
+        }
+        let layout = ProofLayout::new(&inputs);
+        let mut slab = AlignedSlab::zeroed(layout.total_bytes);
+        let bytes = slab.as_bytes_mut();
+        let nonce = 0x1234_5678_9abc_def0u64;
+        // This CPU mirror checks the device accessor's offset without dereferencing
+        // its pointer, then reads the same slot through the terminal host accessor.
+        let (nonce_ptr, nonce_len) =
+            unsafe { layout.batched_proximity_pow_nonce_device_mut(bytes.as_mut_ptr()) };
+        assert_eq!(nonce_len, 1);
+        assert_eq!(
+            nonce_ptr as usize,
+            bytes.as_ptr() as usize + layout.batched_proximity_pow_nonce.start
+        );
+        bytes[layout.batched_proximity_pow_nonce.clone()].copy_from_slice(&nonce.to_le_bytes());
+        assert_eq!(layout.batched_proximity_pow_nonce_host(bytes), nonce);
+        let mut ranges = Vec::new();
+        for (slot, kind) in [
+            WhirBaseLayerKind::Memory,
+            WhirBaseLayerKind::Witness,
+            WhirBaseLayerKind::Setup,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let base = match kind {
+                WhirBaseLayerKind::Memory => &layout.whir.memory,
+                WhirBaseLayerKind::Witness => &layout.whir.witness,
+                WhirBaseLayerKind::Setup => &layout.whir.setup,
+            };
+            for (range, sentinel) in [
+                (&base.logical_evals, sample_e4(100 + slot as u32)),
+                (&base.evals, sample_e4(200 + slot as u32)),
+            ] {
+                assert_eq!(range.start % FIELD_ALIGN, 0);
+                if !range.is_empty() {
+                    ranges.push(range.clone());
+                }
+                // SAFETY: the aligned host slab is exclusively owned and each
+                // tested range is E4-aligned and within the allocation.
+                unsafe {
+                    let values = std::slice::from_raw_parts_mut(
+                        bytes.as_mut_ptr().add(range.start).cast::<E4>(),
+                        range.len() / size_of::<E4>(),
+                    );
+                    values.fill(sentinel);
+                }
+            }
+        }
+        ranges.sort_by_key(|range| range.start);
+        for adjacent in ranges.windows(2) {
+            assert!(adjacent[0].end <= adjacent[1].start);
+        }
+        for (slot, kind) in [
+            WhirBaseLayerKind::Memory,
+            WhirBaseLayerKind::Witness,
+            WhirBaseLayerKind::Setup,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert!(layout
+                .whir_base_logical_evals_host(bytes, kind)
+                .iter()
+                .all(|v| *v == sample_e4(100 + slot as u32)));
+            assert!(layout
+                .whir_base_evals_host(bytes, kind)
+                .iter()
+                .all(|v| *v == sample_e4(200 + slot as u32)));
+        }
+        assert_eq!(
+            layout.whir_original_evaluation_point_host(bytes).len(),
+            20 + k
+        );
+    }
 }
