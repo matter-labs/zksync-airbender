@@ -13591,5 +13591,8 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.modular_step
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.caller_step
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.decoder_registries_disjoint
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.reduced_source
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.reduced_step
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.reduced_realizes
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.modular_external_step
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.caller_step
