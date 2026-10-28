@@ -103,6 +103,8 @@ def Circuit.splitTimestampGroups (c : Circuit) :
   if groups.isEmpty then throw "split delegation has no grouped timestamp metadata"
   let ports := c.memory_layout.ram_access_sets
   for group in groups do
+    if group.members.isEmpty then
+      throw "split timestamp group has no memory ports"
     for member in group.members do
       unless member < ports.size do
         throw "split timestamp group names an absent memory port"
