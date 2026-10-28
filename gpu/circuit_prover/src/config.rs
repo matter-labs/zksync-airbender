@@ -11,9 +11,7 @@
 //! into `prove()`. The low `witness::circuit_type` enum stays a pure
 //! domain type with no `ProverConfig`/`SecurityLevel` coupling.
 
-use crate::upstream::{
-    pow_bits, BaseCommitmentGeometry, GKRCircuitArtifact, ProverConfig, SecurityLevel,
-};
+use crate::upstream::{pow_bits, GKRCircuitArtifact, ProverConfig, SecurityLevel};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_trace::witness::circuit_type::CircuitType;
 
@@ -58,28 +56,6 @@ fn config_for_supported_level(
 ) -> ProverConfig {
     // the circuit definition's own config (`CircuitType::prover_config`)
     circuit_type.prover_config(security_level)
-}
-
-/// BabyBear backend capability check, separate from field-free protocol geometry.
-/// The caller supplies the live context's twiddle-domain capacity. Packed/virtual
-/// preflight will call this; the legacy (k=0, f=1) path keeps its existing dispatch.
-pub(crate) fn validate_baby_bear_commitment_geometry(
-    geometry: &BaseCommitmentGeometry,
-    twiddle_domain_log2: u32,
-) {
-    let message_log2 =
-        u32::try_from(geometry.message_size_log2()).expect("message log2 exceeds u32");
-    let lde_log2 = geometry.lde_factor().trailing_zeros();
-    gpu_prover_context::ProverContext::validate_base_commitment_transform_shape(
-        message_log2,
-        lde_log2,
-    )
-    .unwrap_or_else(|error| panic!("unsupported BabyBear base commitment: {error}"));
-    assert!(
-        message_log2 + lde_log2 <= twiddle_domain_log2,
-        "base commitment domain log2 {} exceeds context twiddle capacity {twiddle_domain_log2}",
-        message_log2 + lde_log2,
-    );
 }
 
 /// PoW bit count for the lookup challenges (`lookup_alpha`, `lookup_additive`),

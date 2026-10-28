@@ -40,6 +40,9 @@ pub(crate) use field::{Field, FieldExtension, PrimeField};
 
 pub(crate) use prover::definitions::GKRExternalChallenges;
 pub(crate) use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
+pub(crate) use prover::gkr::prover_config::commitment_geometry::{
+    BaseCommitmentGeometry, BaseOracleRole,
+};
 // Aliased to avoid collision with crate-local types of the same name.
 pub(crate) use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 pub(crate) use prover::gkr::prover::{

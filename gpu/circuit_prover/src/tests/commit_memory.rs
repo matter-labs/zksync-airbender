@@ -53,6 +53,51 @@ fn test_commit_memory_matches_cpu() {
 }
 
 #[test]
+#[ignore = "production-sized packed memory-generation parity"]
+fn packed_base_cpu_parity_memory_generation() {
+    let compiled = deserialize_json_for_test(
+        "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
+    );
+    assert_blake2_delegation_commit_memory_with_packing(&compiled, false, 4);
+}
+
+#[test]
+#[ignore = "production-sized packed memory-generation parity"]
+fn packed_base_cpu_parity_memory_generation_blake20_pack2() {
+    let compiled = deserialize_json_for_test(
+        "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
+    );
+    assert_blake2_delegation_commit_memory_with_packing(&compiled, false, 2);
+}
+
+#[test]
+fn cpu_packed_memory_geometry_rejects_mismatch_before_device_inputs() {
+    use prover::gkr::prover_config::commitment_geometry::BaseCommitmentGeometry;
+    use prover::gkr::prover_config::CommitmentMode;
+    let compiled: GKRCircuitArtifact<BF> = deserialize_json_for_test(
+        "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
+    );
+    let config = prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(20, 4, SecurityLevel::Sec100);
+    let columns = crate::upstream::BaseColumns::of(&compiled);
+    let geometry = BaseCommitmentGeometry::from_config(&config, columns).unwrap();
+    gpu_trace::trace::memory::validate_memory_commitment_geometry(&geometry, &compiled);
+    for case in 0..3 {
+        let mut wrong_config = config.clone();
+        let mut wrong_columns = columns;
+        match case {
+            0 => wrong_columns.memory += 1,
+            1 => wrong_config.trace_len_log2 += 1,
+            _ => wrong_config.commitment_mode = CommitmentMode::MergedMemoryAndWitness,
+        }
+        let wrong = BaseCommitmentGeometry::from_config(&wrong_config, wrong_columns).unwrap();
+        assert!(std::panic::catch_unwind(|| {
+            gpu_trace::trace::memory::validate_memory_commitment_geometry(&wrong, &compiled)
+        })
+        .is_err());
+    }
+}
+
+#[test]
 #[ignore]
 fn test_jump_branch_slt_commit_memory_matches_cpu() {
     let compiled_circuit = compile_unrolled_circuit_state_transition_into_gkr::<BF>(
@@ -627,6 +672,32 @@ pub(super) fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
     O: cs::oracle::Oracle<BF>,
     F: FnOnce(gpu_core::primitives::context::DeviceAllocation<W>) -> TracingDataDevice,
 {
+    assert_delegation_commit_memory_with_packing(
+        label,
+        circuit_type,
+        compiled_circuit,
+        buffer,
+        oracle,
+        build_gpu_trace,
+        0,
+    );
+}
+
+fn assert_delegation_commit_memory_with_packing<W, O, F>(
+    label: &str,
+    circuit_type: DelegationCircuitType,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    buffer: &[W],
+    oracle: &O,
+    build_gpu_trace: F,
+    pack_log2: usize,
+) where
+    W: Copy,
+    O: cs::oracle::Oracle<BF>,
+    F: FnOnce(gpu_core::primitives::context::DeviceAllocation<W>) -> TracingDataDevice,
+{
+    use prover::gkr::prover::stages::commitment_utils::commit_trace_part_with_packing;
+
     const DEVICE_ALLOCATOR_ARENA_BYTES: usize = 30usize << 30;
     const HOST_POOL_SIZE_MB: usize = 1024;
     const DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 20;
@@ -642,15 +713,21 @@ pub(super) fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
         Global,
     );
 
-    let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-    let prover_config = delegation_prover_config(circuit_type);
+    let prover_config = if pack_log2 == 0 {
+        delegation_prover_config(circuit_type)
+    } else {
+        prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
+            trace_len.trailing_zeros() as usize, pack_log2, SecurityLevel::Sec100)
+    };
+    let twiddles: Twiddles<_, Global> =
+        Twiddles::new(1usize << prover_config.whir_message_size_log2(), &worker);
     let whir_schedule = prover_config.whir_schedule.clone();
     let mem_inputs: Vec<_> = cpu_memory_trace
         .column_major_trace
         .iter()
         .map(|col| &col[..])
         .collect();
-    let cpu_mem_oracle = commit_trace_part::<BF, BF, DefaultTreeConstructor, _>(
+    let cpu_mem_oracle = commit_trace_part_with_packing::<BF, BF, DefaultTreeConstructor, _>(
         &NaiveBackend,
         &mem_inputs,
         &twiddles,
@@ -658,6 +735,7 @@ pub(super) fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
         whir_schedule.base_folding_log2(),
         whir_schedule.cap_size,
         trace_len.trailing_zeros() as usize,
+        prover_config.pack_log2(),
         &prover::allocation_pool::GenericAllocationPool::proxy(),
         &worker,
     );
@@ -675,18 +753,58 @@ pub(super) fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
     let trace_data = upload_slice_to_device_for_test(buffer, &context);
     let gpu_trace = build_gpu_trace(trace_data);
 
-    let job = commit_memory(
-        CircuitType::Delegation(circuit_type),
-        compiled_circuit,
-        None,
-        &gpu_trace,
-        &prover_config,
-        &context,
-    )
-    .unwrap();
+    let job =
+        if pack_log2 == 0 {
+            commit_memory(
+                CircuitType::Delegation(circuit_type),
+                compiled_circuit,
+                None,
+                &gpu_trace,
+                &prover_config,
+                &context,
+            )
+        } else {
+            let geometry =
+            prover::gkr::prover_config::commitment_geometry::BaseCommitmentGeometry::from_config(
+                &prover_config, crate::upstream::BaseColumns::of(compiled_circuit),
+            ).unwrap();
+            let job = gpu_trace::trace::memory::commit_memory_for_geometry(
+                CircuitType::Delegation(circuit_type),
+                compiled_circuit,
+                None,
+                None,
+                Some(&gpu_trace),
+                geometry,
+                &context,
+            );
+            if let Ok(ref job) = job {
+                assert_eq!(job.base_commitment_geometry(), Some(geometry));
+            }
+            job
+        }
+        .unwrap();
 
+    let producing_geometry = job.base_commitment_geometry();
     let (gpu_tree_caps, elapsed_ms) = job.finish().unwrap();
     eprintln!("{label}: GPU memory commitment ready in {elapsed_ms:.1}ms");
+
+    if let Some(geometry) = producing_geometry {
+        let host = Arc::new(gpu_trace::trace::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps_for_geometry(&gpu_tree_caps, geometry));
+        host.validate_for_geometry(&geometry);
+        let mut uploaded =
+            gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer::new(host, &context).unwrap();
+        let h2d = gpu_prover_context::transfer::single_shot_h2d(
+            |transfer| {
+                uploaded.stage_transfer(transfer);
+                Ok(())
+            },
+            &context,
+        )
+        .unwrap();
+        context.get_h2d_stream().synchronize().unwrap();
+        drop(h2d);
+        drop(uploaded);
+    }
 
     let mut gpu_transcript = vec![];
     flatten_merkle_caps_iter_into(gpu_tree_caps.into_iter(), &mut gpu_transcript);
@@ -741,6 +859,14 @@ fn assert_blake2_delegation_commit_memory_matches_cpu(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     zero_call: bool,
 ) {
+    assert_blake2_delegation_commit_memory_with_packing(compiled_circuit, zero_call, 0);
+}
+
+fn assert_blake2_delegation_commit_memory_with_packing(
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    zero_call: bool,
+    pack_log2: usize,
+) {
     let buffer = replay_delegation_trace_buffer(
         zero_call,
         |counters| counters.blake_calls,
@@ -765,7 +891,7 @@ fn assert_blake2_delegation_commit_memory_matches_cpu(
         cycle_data: &buffer,
         marker: core::marker::PhantomData,
     };
-    assert_delegation_commit_memory_matches_cpu(
+    assert_delegation_commit_memory_with_packing(
         "blake2_with_compression",
         DelegationCircuitType::Blake2WithCompression,
         compiled_circuit,
@@ -776,6 +902,7 @@ fn assert_blake2_delegation_commit_memory_matches_cpu(
                 gpu_trace::witness::trace_delegation::DelegationTraceDevice { tracing_data },
             ))
         },
+        pack_log2,
     );
 }
 

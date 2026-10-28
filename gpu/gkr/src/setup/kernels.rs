@@ -10,8 +10,11 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 
 use super::super::{GpuBaseFieldPoly, GpuGKRStorage};
-use super::{flatten_setup_columns_into_pinned_buffer, precompute_partial_tree_cache};
-use crate::upstream::{CpuGKRSetup, Field, GKRAddress};
+use super::{
+    flatten_setup_columns_into_pinned_buffer, precompute_partial_tree_cache,
+    precompute_partial_tree_cache_in_holder,
+};
+use crate::upstream::{BaseCommitmentGeometry, BaseOracleRole, CpuGKRSetup, Field, GKRAddress};
 #[cfg(test)]
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::{BF, E4};
@@ -88,9 +91,122 @@ pub struct GpuGKRSetupHost {
     pub log_lde_factor: u32,
     pub log_rows_per_leaf: u32,
     pub log_tree_cap_size: u32,
+    base_geometry: Option<BaseCommitmentGeometry>,
 }
 
 impl GpuGKRSetupHost {
+    pub fn base_commitment_geometry(&self) -> Option<BaseCommitmentGeometry> {
+        self.base_geometry
+    }
+
+    pub fn commitment_log_domain_size(&self) -> u32 {
+        self.base_geometry.map_or(self.log_domain_size, |geometry| {
+            u32::try_from(geometry.message_size_log2()).expect("message log2 exceeds u32")
+        })
+    }
+
+    pub fn validate_base_geometry(setup: &CpuGKRSetup<BF>, geometry: &BaseCommitmentGeometry) {
+        assert!(
+            !setup.hypercube_evals.is_empty(),
+            "empty setup has no setup host"
+        );
+        assert_eq!(
+            geometry.logical_columns().setup,
+            setup.hypercube_evals.len(),
+            "setup geometry column mismatch"
+        );
+        for column in &setup.hypercube_evals {
+            assert_eq!(
+                column.len(),
+                1usize << geometry.trace_len_log2(),
+                "setup geometry trace length mismatch"
+            );
+        }
+        TraceHolder::<BF>::validate_base_layout(
+            geometry,
+            gpu_trace::trace::holder::TreesCacheMode::CachePartial,
+        );
+    }
+
+    /// Adapt the existing BF setup producer: pinned GKR columns stay logical,
+    /// while its device trees and cap carry the producing commitment geometry.
+    pub fn precompute_for_geometry(
+        setup: &CpuGKRSetup<BF>,
+        geometry: BaseCommitmentGeometry,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        Self::validate_base_geometry(setup, &geometry);
+        gpu_trace::trace::holder::validate_baby_bear_base_geometry(
+            &geometry,
+            context
+                .ntt_device_context()
+                .whir_leaf_transform_params()
+                .omega_log_order,
+        );
+        let columns_count = setup.hypercube_evals.len();
+        let trace_len = 1usize << geometry.trace_len_log2();
+        let raw_hypercube_evals =
+            flatten_setup_columns_into_pinned_buffer(setup, columns_count, trace_len)?;
+        let holder = TraceHolder::<BF>::new_base(
+            geometry,
+            BaseOracleRole::Setup,
+            gpu_trace::trace::holder::TreesCacheMode::CachePartial,
+            context,
+        )?;
+        let (partial_trees, unified_tree_cap) =
+            precompute_partial_tree_cache_in_holder(&raw_hypercube_evals, holder, context)?;
+        Ok(Self {
+            raw_hypercube_evals,
+            partial_trees,
+            unified_tree_cap,
+            log_domain_size: u32::try_from(geometry.trace_len_log2())
+                .expect("trace log2 exceeds u32"),
+            columns_count,
+            log_lde_factor: geometry.lde_factor().trailing_zeros(),
+            log_rows_per_leaf: geometry.values_per_leaf().trailing_zeros(),
+            log_tree_cap_size: geometry.cap_size().trailing_zeros(),
+            base_geometry: Some(geometry),
+        })
+    }
+
+    /// Full job geometry (including mode and counts) is a divergence guard;
+    /// setup bytes alone do not depend on memory/witness commitment mode.
+    pub fn validate_for_geometry(&self, geometry: &BaseCommitmentGeometry) {
+        assert_eq!(
+            self.log_domain_size as usize,
+            geometry.trace_len_log2(),
+            "setup trace geometry mismatch"
+        );
+        assert_eq!(
+            self.columns_count,
+            geometry.logical_columns().setup,
+            "setup column geometry mismatch"
+        );
+        assert_eq!(
+            self.log_lde_factor,
+            geometry.lde_factor().trailing_zeros(),
+            "setup LDE geometry mismatch"
+        );
+        assert_eq!(
+            self.log_rows_per_leaf,
+            geometry.values_per_leaf().trailing_zeros(),
+            "setup leaf geometry mismatch"
+        );
+        assert_eq!(
+            self.log_tree_cap_size,
+            geometry.cap_size().trailing_zeros(),
+            "setup cap geometry mismatch"
+        );
+        if let Some(producing) = self.base_geometry {
+            assert_eq!(producing, *geometry, "setup producing geometry mismatch");
+        } else {
+            assert!(
+                geometry.pack_log2() == 0 && !geometry.is_virtual_packing(),
+                "legacy setup cannot supply packed or virtual commitments"
+            );
+        }
+    }
+
     pub fn unified_tree_cap(&self) -> &[Digest] {
         &self.unified_tree_cap
     }
@@ -135,13 +251,14 @@ impl GpuGKRSetupHost {
             log_lde_factor,
             log_rows_per_leaf,
             log_tree_cap_size,
+            base_geometry: None,
         })
     }
 
     #[cfg(test)]
     pub(crate) fn column_offset(&self, column: usize) -> usize {
         assert!(column < self.columns_count);
-        column * (self.raw_hypercube_evals.len() / self.columns_count)
+        column * (1usize << self.log_domain_size)
     }
 }
 

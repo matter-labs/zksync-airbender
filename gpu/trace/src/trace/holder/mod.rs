@@ -6,7 +6,9 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 
-use crate::upstream::MerkleTreeCapVarLength;
+use crate::upstream::{
+    BaseCommitmentGeometry, BaseOracleRole, CommitmentMode, MerkleTreeCapVarLength,
+};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::context::HostAllocation;
@@ -40,12 +42,57 @@ use gpu_prover_context::ProverContext;
 #[doc(hidden)]
 pub const PARTIAL_TREE_REDUCTION_LAYERS: u32 = gpu_core::primitives::utils::LOG_WARP_SIZE;
 
+/// BabyBear transform capability at the instantiated backend boundary.
+/// Protocol/storage geometry remains field-independent.
+pub fn validate_baby_bear_base_geometry(
+    geometry: &BaseCommitmentGeometry,
+    twiddle_domain_log2: u32,
+) {
+    let message_log2 =
+        u32::try_from(geometry.message_size_log2()).expect("message log2 exceeds u32");
+    let lde_log2 = geometry.lde_factor().trailing_zeros();
+    ProverContext::validate_base_commitment_transform_shape(message_log2, lde_log2)
+        .expect("unsupported BabyBear base commitment transform");
+    assert!(
+        message_log2 + lde_log2 <= twiddle_domain_log2,
+        "base commitment exceeds context twiddle capacity"
+    );
+}
+
 #[doc(hidden)]
 #[derive(Copy, Clone)]
 pub enum TreesCacheMode {
     CacheNone,
     CachePartial,
     CacheFull,
+}
+
+/// BF opening dispatch qualification before a packed holder or workspace is allocated.
+pub fn validate_baby_bear_base_opening(
+    geometry: &BaseCommitmentGeometry,
+    policy: OpeningStrategy,
+    trees_mode: TreesCacheMode,
+    twiddle_domain_log2: u32,
+) {
+    validate_baby_bear_base_geometry(geometry, twiddle_domain_log2);
+    TraceHolder::<BF>::validate_base_layout(geometry, trees_mode);
+    if geometry.pack_log2() > 0 {
+        assert_ne!(
+            policy,
+            OpeningStrategy::InPlace,
+            "packed in-place openings are not admitted"
+        );
+        if policy == OpeningStrategy::PerCoset {
+            assert!(
+                gpu_ntt::ntt::log_size_supports_retained_monomials(geometry.message_size_log2()),
+                "packed PerCoset openings require the retained-monomial dispatch family"
+            );
+            assert!(
+                !matches!(trees_mode, TreesCacheMode::CacheFull),
+                "packed PerCoset openings require partial or uncached trees"
+            );
+        }
+    }
 }
 
 /// `PerCoset` and `InPlace` require `log_domain_size` in `20..=24`.
@@ -94,11 +141,13 @@ pub struct LeafsAndMerklePaths {
 
 #[doc(hidden)]
 pub struct TraceHolder<T> {
+    /// Logical GKR dimensions; commitment readers use the committed getters.
     pub log_domain_size: u32,
     pub log_lde_factor: u32,
     pub log_rows_per_leaf: u32,
     pub log_tree_cap_size: u32,
     pub columns_count: usize,
+    base_geometry: Option<(BaseCommitmentGeometry, BaseOracleRole)>,
     raw_hypercube_evals: Option<std::sync::Arc<DeviceAllocation<T>>>,
     cosets_materialized: bool,
     opening_raw: Option<DeviceAllocation<T>>,
@@ -115,6 +164,119 @@ pub struct TraceHolder<T> {
 }
 
 impl<T> TraceHolder<T> {
+    pub fn commitment_log_domain_size(&self) -> u32 {
+        self.base_geometry
+            .as_ref()
+            .map_or(self.log_domain_size, |(geometry, _)| {
+                u32::try_from(geometry.message_size_log2()).expect("message log2 exceeds u32")
+            })
+    }
+
+    pub fn committed_columns_count(&self) -> usize {
+        self.base_geometry
+            .as_ref()
+            .map_or(self.columns_count, |(geometry, role)| {
+                geometry.oracle(*role).physical_columns()
+            })
+    }
+
+    pub fn base_commitment_geometry(&self) -> Option<(BaseCommitmentGeometry, BaseOracleRole)> {
+        self.base_geometry
+    }
+
+    fn is_empty_base_oracle(&self) -> bool {
+        self.base_geometry.is_some() && self.committed_columns_count() == 0
+    }
+
+    fn is_packed_base_oracle(&self) -> bool {
+        self.base_geometry
+            .is_some_and(|(geometry, _)| geometry.pack_log2() > 0)
+    }
+
+    /// Storage checks are field-independent; backend capability checks belong
+    /// at the instantiated commitment entry before constructing this holder.
+    pub fn validate_base_layout(geometry: &BaseCommitmentGeometry, trees_mode: TreesCacheMode) {
+        assert_eq!(
+            geometry.commitment_mode(),
+            CommitmentMode::SeparateMemoryAndWitness,
+            "merged base holders are not admitted yet"
+        );
+        assert!(
+            !geometry.is_virtual_packing(),
+            "virtual base holders are not admitted yet"
+        );
+        assert!(
+            geometry.cap_size() >= geometry.lde_factor(),
+            "holder requires at least one cap node per LDE coset"
+        );
+        let log_message =
+            u32::try_from(geometry.message_size_log2()).expect("message log2 exceeds u32");
+        let log_leaf = geometry.values_per_leaf().trailing_zeros();
+        let log_subcap =
+            geometry.cap_size().trailing_zeros() - geometry.lde_factor().trailing_zeros();
+        match trees_mode {
+            TreesCacheMode::CachePartial => assert!(
+                log_message > log_leaf + PARTIAL_TREE_REDUCTION_LAYERS + log_subcap,
+                "base partial tree exceeds the commitment domain"
+            ),
+            TreesCacheMode::CacheFull | TreesCacheMode::CacheNone => {}
+        }
+    }
+
+    pub fn new_base_without_cosets(
+        geometry: BaseCommitmentGeometry,
+        role: BaseOracleRole,
+        trees_mode: TreesCacheMode,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        Self::validate_base_layout(&geometry, trees_mode);
+        let mut holder = Self::new_without_cosets_padded(
+            u32::try_from(geometry.trace_len_log2()).expect("trace log2 exceeds u32"),
+            geometry.lde_factor().trailing_zeros(),
+            geometry.values_per_leaf().trailing_zeros(),
+            geometry.cap_size().trailing_zeros(),
+            geometry.oracle(role).logical_columns(),
+            u32::try_from(geometry.pack_log2()).expect("packing log2 exceeds u32"),
+            TreesCacheMode::CacheNone,
+            context,
+        )?;
+        holder.base_geometry = Some((geometry, role));
+        if !holder.is_empty_base_oracle() {
+            holder.trees = match trees_mode {
+                TreesCacheMode::CacheNone => TreesHolder::None,
+                TreesCacheMode::CachePartial => TreesHolder::Partial(allocate_trees(
+                    1usize << holder.log_lde_factor,
+                    holder.commitment_log_domain_size() - PARTIAL_TREE_REDUCTION_LAYERS,
+                    holder.log_rows_per_leaf,
+                    context,
+                )?),
+                TreesCacheMode::CacheFull => TreesHolder::Full(allocate_trees(
+                    1usize << holder.log_lde_factor,
+                    holder.commitment_log_domain_size(),
+                    holder.log_rows_per_leaf,
+                    context,
+                )?),
+            };
+        }
+        Ok(holder)
+    }
+
+    pub fn new_base(
+        geometry: BaseCommitmentGeometry,
+        role: BaseOracleRole,
+        trees_mode: TreesCacheMode,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        let mut holder = Self::new_base_without_cosets(geometry, role, trees_mode, context)?;
+        holder.cosets = CosetsHolder::Full(allocate_cosets(
+            1usize << holder.log_lde_factor,
+            holder.commitment_log_domain_size(),
+            holder.committed_columns_count(),
+            context,
+        )?);
+        Ok(holder)
+    }
+
     pub fn new(
         log_domain_size: u32,
         log_lde_factor: u32,
@@ -235,6 +397,7 @@ impl<T> TraceHolder<T> {
             log_tree_cap_size,
             columns_count,
             raw_hypercube_evals,
+            base_geometry: None,
             cosets_materialized: false,
             opening_raw: None,
             opening_monomials: None,
@@ -333,6 +496,7 @@ impl<T> TraceHolder<T> {
             log_tree_cap_size,
             columns_count,
             raw_hypercube_evals: Some(raw_hypercube_evals),
+            base_geometry: None,
             cosets_materialized: false,
             opening_raw: None,
             opening_monomials: None,
@@ -418,6 +582,19 @@ impl<T> TraceHolder<T> {
     /// Defer LDE materialization until queries. Requires raw backing and no
     /// materialized cosets; configure before `finish_raw_batching`.
     pub fn defer_materialization_until_queries(&mut self, policy: OpeningStrategy) {
+        if self.is_packed_base_oracle() {
+            assert_ne!(
+                policy,
+                OpeningStrategy::InPlace,
+                "packed in-place openings are not admitted"
+            );
+            if policy == OpeningStrategy::PerCoset {
+                assert!(
+                    matches!(self.trees, TreesHolder::None | TreesHolder::Partial(_)),
+                    "packed PerCoset openings require partial or uncached trees"
+                );
+            }
+        }
         assert!(!self.cosets_materialized);
         assert!(self.raw_hypercube_evals.is_some());
         self.defer_opening = true;
@@ -454,7 +631,7 @@ impl<T> TraceHolder<T> {
         );
         match &self.cosets {
             CosetsHolder::Full(backing) => {
-                let stride = self.columns_count << self.log_domain_size;
+                let stride = self.committed_columns_count() << self.commitment_log_domain_size();
                 &backing[coset_index * stride..(coset_index + 1) * stride]
             }
             CosetsHolder::None(_) => {
@@ -484,10 +661,11 @@ impl<T> TraceHolder<T> {
     fn per_coset_tree_len(&self) -> Option<usize> {
         match &self.trees {
             TreesHolder::Full(_) => {
-                Some(1usize << (self.log_domain_size + 1 - self.log_rows_per_leaf))
+                Some(1usize << (self.commitment_log_domain_size() + 1 - self.log_rows_per_leaf))
             }
             TreesHolder::Partial(_) => {
-                let partial_log_domain = self.log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS;
+                let partial_log_domain =
+                    self.commitment_log_domain_size() - PARTIAL_TREE_REDUCTION_LAYERS;
                 Some(1usize << (partial_log_domain + 1 - self.log_rows_per_leaf))
             }
             TreesHolder::None => None,
@@ -558,9 +736,11 @@ impl TraceHolder<BF> {
         source: &DeviceSlice<BF>,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let domain_size = 1usize << self.log_domain_size;
+        let log_domain_size = self.commitment_log_domain_size();
+        let columns_count = self.committed_columns_count();
+        let domain_size = 1usize << log_domain_size;
 
-        let log_n = self.log_domain_size as usize;
+        let log_n = log_domain_size as usize;
         // The committed backing is the BITREVERSED-order codeword the Merkle
         // builders and query gathers consume; the natural->bitrev LDE produces
         // it directly.
@@ -598,7 +778,7 @@ impl TraceHolder<BF> {
         let use_transposed_monomials =
             !natural_to_bitrev && log_size_supports_transposed_monomials(log_n);
         let mut current_finest_already_computed = false;
-        for column in 0..self.columns_count {
+        for column in 0..columns_count {
             let offset = column * domain_size;
             let source_column = &source[offset..offset + domain_size];
 
@@ -617,7 +797,7 @@ impl TraceHolder<BF> {
                             &mut coeff_scratch[0..domain_size],
                             backing_from_col,
                             self.log_lde_factor as usize,
-                            self.columns_count,
+                            columns_count,
                             stream,
                             context.get_device_properties(),
                         )?;
@@ -631,14 +811,14 @@ impl TraceHolder<BF> {
                         // The last tail launch also performs the NEXT
                         // column's hypercube finest pass. The next iteration
                         // therefore starts at the in-place middle pass.
-                        let next_column_hypercube = (column + 1 < self.columns_count)
+                        let next_column_hypercube = (column + 1 < columns_count)
                             .then(|| source[offset + domain_size..].as_ptr());
                         hypercube_to_multi_coset_bitrev_evals_fused(
                             source_column,
                             backing_from_col,
                             log_n,
                             self.log_lde_factor as usize,
-                            self.columns_count,
+                            columns_count,
                             current_finest_already_computed,
                             next_column_hypercube,
                             stream,
@@ -648,7 +828,7 @@ impl TraceHolder<BF> {
                         false
                     };
                     if fused {
-                        current_finest_already_computed = column + 1 < self.columns_count;
+                        current_finest_already_computed = column + 1 < columns_count;
                         continue;
                     }
                     current_finest_already_computed = false;
@@ -672,7 +852,7 @@ impl TraceHolder<BF> {
                             backing_from_col,
                             log_n,
                             self.log_lde_factor as usize,
-                            self.columns_count,
+                            columns_count,
                             false,
                             ntt_ctx,
                             None,
@@ -685,7 +865,7 @@ impl TraceHolder<BF> {
                             backing_from_col,
                             log_n,
                             self.log_lde_factor as usize,
-                            self.columns_count,
+                            columns_count,
                             use_transposed_monomials,
                             ntt_ctx,
                             scratch_opt.as_deref_mut(),
@@ -699,7 +879,7 @@ impl TraceHolder<BF> {
                 }
             }
         }
-        if !natural_to_bitrev && self.columns_count != 0 {
+        if !natural_to_bitrev && columns_count != 0 {
             match &mut self.cosets {
                 CosetsHolder::Full(backing) => {
                     let mut rows = DeviceMatrixMut::new(&mut backing[..], domain_size);
@@ -714,8 +894,10 @@ impl TraceHolder<BF> {
 
     #[doc(hidden)]
     pub fn ensure_cosets_materialized(&mut self, context: &ProverContext) -> CudaResult<()> {
+        let log_domain_size = self.commitment_log_domain_size();
+        let columns_count = self.committed_columns_count();
         if !self.cosets_materialized {
-            if self.columns_count != 0 {
+            if columns_count != 0 {
                 assert!(
                     self.raw_hypercube_evals.is_some()
                         || self.opening_raw.is_some()
@@ -727,24 +909,24 @@ impl TraceHolder<BF> {
                 let instances_count = 1usize << self.log_lde_factor;
                 self.cosets = CosetsHolder::Full(allocate_cosets(
                     instances_count,
-                    self.log_domain_size,
-                    self.columns_count,
+                    log_domain_size,
+                    columns_count,
                     context,
                 )?);
             }
-            if self.columns_count == 0 {
+            if columns_count == 0 {
                 self.cosets_materialized = true;
             } else if let Some(monomials) = self.opening_monomials.take() {
-                let matrix = DeviceMatrix::new(&monomials, 1usize << self.log_domain_size);
+                let matrix = DeviceMatrix::new(&monomials, 1usize << log_domain_size);
                 let CosetsHolder::Full(backing) = &mut self.cosets else {
                     unreachable!()
                 };
                 natural_monomials_to_bitreversed_evals_multi_coset(
                     &matrix,
                     backing,
-                    self.log_domain_size as usize,
+                    log_domain_size as usize,
                     self.log_lde_factor as usize,
-                    self.columns_count,
+                    columns_count,
                     false,
                     context.ntt_device_context(),
                     None,
@@ -782,10 +964,10 @@ impl TraceHolder<BF> {
     /// Materialize all cosets and build partial trees if no trees are cached.
     pub fn prepare_full_opening(&mut self, context: &ProverContext) -> CudaResult<()> {
         self.ensure_cosets_materialized(context)?;
-        if self.columns_count != 0 && matches!(self.trees, TreesHolder::None) {
+        if self.committed_columns_count() != 0 && matches!(self.trees, TreesHolder::None) {
             self.trees = TreesHolder::Partial(allocate_trees(
                 1usize << self.log_lde_factor,
-                self.log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS,
+                self.commitment_log_domain_size() - PARTIAL_TREE_REDUCTION_LAYERS,
                 self.log_rows_per_leaf,
                 context,
             )?);
@@ -823,6 +1005,10 @@ impl TraceHolder<BF> {
         context: &ProverContext,
     ) -> CudaResult<()> {
         self.ensure_cosets_materialized(context)?;
+        if self.is_empty_base_oracle() {
+            assert!(dst_u32.is_empty(), "empty base oracle has an empty cap");
+            return Ok(());
+        }
         let lde_factor = 1usize << self.log_lde_factor;
         let cap_size = 1usize << self.log_tree_cap_size;
         assert_eq!(
@@ -831,11 +1017,11 @@ impl TraceHolder<BF> {
             "commit_all_into dst_u32 length must match cap_size * DIGEST_U32_WORDS",
         );
 
-        let log_domain_size = self.log_domain_size;
+        let log_domain_size = self.commitment_log_domain_size();
         let log_lde_factor = self.log_lde_factor;
         let log_rows_per_leaf = self.log_rows_per_leaf;
         let log_tree_cap_size = self.log_tree_cap_size;
-        let columns_count = self.columns_count;
+        let columns_count = self.committed_columns_count();
         let stream = context.get_exec_stream();
 
         // Snapshot the cosets backing as a raw pointer to dodge the
@@ -936,7 +1122,11 @@ impl TraceHolder<BF> {
 
     #[doc(hidden)]
     pub fn commit_all(&mut self, context: &ProverContext) -> CudaResult<()> {
-        let cap_size = 1usize << self.log_tree_cap_size;
+        let cap_size = if self.is_empty_base_oracle() {
+            0
+        } else {
+            1usize << self.log_tree_cap_size
+        };
         let unified_cap: DeviceAllocation<Digest> =
             context.alloc(cap_size, AllocationPlacement::BestFit)?;
         assert!(self.unified_device_cap.replace(unified_cap).is_none());
@@ -965,11 +1155,11 @@ impl TraceHolder<BF> {
             self.cosets_materialized,
             "cosets must be materialized before building partial trees"
         );
-        let log_domain_size = self.log_domain_size;
+        let log_domain_size = self.commitment_log_domain_size();
         let log_lde_factor = self.log_lde_factor;
         let log_rows_per_leaf = self.log_rows_per_leaf;
         let log_tree_cap_size = self.log_tree_cap_size;
-        let columns_count = self.columns_count;
+        let columns_count = self.committed_columns_count();
         let instances_count = 1usize << log_lde_factor;
         let stream = context.get_exec_stream();
         let _per_coset_partial_len = self
@@ -1018,14 +1208,17 @@ impl TraceHolder<BF> {
     }
 
     fn query_leafs_layout(&self, queries_count: usize) -> (usize, usize) {
-        let domain_size = 1usize << self.log_domain_size;
+        let domain_size = 1usize << self.commitment_log_domain_size();
         let values_per_column_count = queries_count << self.log_rows_per_leaf;
-        let leafs_len = values_per_column_count * self.columns_count;
+        let leafs_len = values_per_column_count * self.committed_columns_count();
         (domain_size, leafs_len)
     }
 
     fn query_merkle_path_layout(&self, queries_count: usize) -> (u32, usize) {
-        let layers_count = self.log_domain_size
+        if self.is_empty_base_oracle() {
+            return (0, 0);
+        }
+        let layers_count = self.commitment_log_domain_size()
             - self.log_rows_per_leaf
             - (self.log_tree_cap_size - self.log_lde_factor);
         let digests_len = queries_count * layers_count as usize;
@@ -1095,7 +1288,7 @@ impl TraceHolder<BF> {
         let stream = context.get_exec_stream();
         let log_packed_leaf_count = log_trace_len - log_values_per_leaf;
         let trace_len = 1u32 << log_trace_len;
-        let log_total_leaves_count = self.log_domain_size - self.log_rows_per_leaf;
+        let log_total_leaves_count = self.commitment_log_domain_size() - self.log_rows_per_leaf;
         match &self.trees {
             TreesHolder::Full(_) => {
                 let consolidated_tree = self
@@ -1156,6 +1349,10 @@ impl TraceHolder<BF> {
         indexes: &DeviceSlice<u32>,
         context: &ProverContext,
     ) -> CudaResult<HostAllocation<[BF]>> {
+        if self.is_empty_base_oracle() {
+            // SAFETY: an empty allocation has no elements or stream readers.
+            return Ok(unsafe { context.alloc_host_uninit_slice(0) });
+        }
         self.ensure_cosets_materialized(context)?;
         let queries_count = indexes.len();
         let (domain_size, leafs_len) = self.query_leafs_layout(queries_count);
@@ -1185,6 +1382,10 @@ impl TraceHolder<BF> {
         indexes: &DeviceSlice<u32>,
         context: &ProverContext,
     ) -> CudaResult<HostAllocation<[Digest]>> {
+        if self.is_empty_base_oracle() {
+            // SAFETY: an empty allocation has no elements or stream readers.
+            return Ok(unsafe { context.alloc_host_uninit_slice(0) });
+        }
         self.ensure_cosets_materialized(context)?;
         let queries_count = indexes.len();
         let (_, digests_len) = self.query_merkle_path_layout(queries_count);
@@ -1213,7 +1414,7 @@ impl TraceHolder<BF> {
                     false,
                     self.get_coset_evaluations(coset_index),
                     self.log_rows_per_leaf,
-                    self.columns_count,
+                    self.committed_columns_count(),
                     tree_bottom,
                     &mut d_merkle_paths,
                     layers_count,
@@ -1222,16 +1423,19 @@ impl TraceHolder<BF> {
             }
             TreesHolder::None => {
                 let values = self.get_coset_evaluations(coset_index);
-                let mut tree =
-                    allocate_tree(self.log_domain_size, self.log_rows_per_leaf, context)?;
+                let mut tree = allocate_tree(
+                    self.commitment_log_domain_size(),
+                    self.log_rows_per_leaf,
+                    context,
+                )?;
                 build_full_trees_from_physical(
                     values,
                     &mut tree,
-                    self.log_domain_size,
+                    self.commitment_log_domain_size(),
                     0,
                     self.log_rows_per_leaf,
                     self.log_tree_cap_size - self.log_lde_factor,
-                    self.columns_count,
+                    self.committed_columns_count(),
                     1,
                     stream,
                 )?;
@@ -1497,7 +1701,17 @@ impl<T> TraceHolder<T> {
     ) -> CudaResult<MerkleTreeCapVarLength> {
         let device_cap = self.unified_device_cap();
         let cap_size = device_cap.len();
-        debug_assert_eq!(cap_size, 1usize << self.log_tree_cap_size);
+        debug_assert_eq!(
+            cap_size,
+            if self.is_empty_base_oracle() {
+                0
+            } else {
+                1usize << self.log_tree_cap_size
+            }
+        );
+        if cap_size == 0 {
+            return Ok(MerkleTreeCapVarLength { cap: Vec::new() });
+        }
         let stream = context.get_exec_stream();
         let mut host = vec![Digest::default(); cap_size];
         memory_copy_async(host.as_mut_slice(), device_cap, stream)?;
@@ -1524,5 +1738,7 @@ impl<T> TraceHolder<T> {
     }
 }
 
+#[cfg(test)]
+mod packed_tests;
 #[cfg(test)]
 mod tests;

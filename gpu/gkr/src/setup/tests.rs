@@ -15,6 +15,8 @@ use crate::test_utils::make_test_context;
 use crate::upstream::{
     DefaultTreeConstructor, FieldExtension, MerkleTreeCapVarLength, PrimeField, VirtualSetupPoly,
 };
+
+mod packed;
 // test-only direct upstream imports (the `#[cfg(test)]` exemption of the upstream rule)
 use gpu_core::primitives::field::E4;
 use gpu_ops::simple::set_by_ref;

@@ -23,7 +23,7 @@ use gpu_prover_context::ProverContextConfig;
 // and unreachable from this crate. See task-8 report (manifest gap).
 const TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 20;
 
-fn make_test_context(
+pub(super) fn make_test_context(
     device_allocation_blocks_count: usize,
     host_pool_size_mb: usize,
 ) -> ProverContext {

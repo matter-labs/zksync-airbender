@@ -20,6 +20,11 @@ use super::hypercube::{
 use super::kernels::*;
 use super::{hypercube_three_pass, select_ntt_strategy, NttDirection, OMEGA_LOG_ORDER};
 
+/// Supported generated retained-monomial/pre-tail dispatch sizes.
+pub fn log_size_supports_retained_monomials(log_n: usize) -> bool {
+    (20..=24).contains(&log_n)
+}
+
 fn check_shape(
     monomials: &DeviceSlice<BF>,
     coset: &DeviceSlice<BF>,
@@ -27,7 +32,7 @@ fn check_shape(
     log_f: usize,
     coset_index: usize,
 ) {
-    assert!((20..=24).contains(&log_n));
+    assert!(log_size_supports_retained_monomials(log_n));
     assert!(log_n + log_f <= OMEGA_LOG_ORDER as usize);
     assert!(coset_index < (1usize << log_f));
     assert_eq!(monomials.len(), coset.len());

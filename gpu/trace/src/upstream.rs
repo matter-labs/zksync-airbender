@@ -70,7 +70,10 @@ pub(crate) use field::PrimeField;
 // `prover` — CPU prover types the GPU prover mirrors / interoperates with
 // -----------------------------------------------------------------------
 
-pub(crate) use prover::gkr::prover_config::ProverConfig;
+pub(crate) use prover::gkr::prover_config::commitment_geometry::{
+    BaseCommitmentGeometry, BaseOracleRole,
+};
+pub(crate) use prover::gkr::prover_config::{BaseColumns, CommitmentMode, ProverConfig};
 // CPU-reference helper only exercised by `trace::holder::tests`.
 #[cfg(test)]
 pub(crate) use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;

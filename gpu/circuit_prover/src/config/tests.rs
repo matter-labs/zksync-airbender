@@ -1,10 +1,12 @@
 use super::*;
-use crate::upstream::{config_for_security_level_under_pessimistic_conjecture, BaseColumns};
+use crate::upstream::{
+    config_for_security_level_under_pessimistic_conjecture, BaseColumns, BaseCommitmentGeometry,
+};
 use gpu_trace::witness::circuit_type::{
     DelegationCircuitType as Delegation, UnrolledCircuitType as Unrolled,
     UnrolledMemoryCircuitType as Memory, UnrolledNonMemoryCircuitType as NonMemory,
 };
-use prover::gkr::prover_config::{example_configs, CommitmentMode, WhirSchedule};
+use prover::gkr::prover_config::{example_configs, CommitmentMode};
 
 const CIRCUITS: [(CircuitType, &str); 15] = [
     (
@@ -88,6 +90,10 @@ fn cpu_builds_prover_config_for_all_supported_security_levels() {
             let cfg = prover_config(circuit, level).unwrap();
             assert_eq!(cfg, circuit.prover_config(level));
             assert_eq!(cfg.security_level, level);
+            assert!(
+                cfg.cap_size >= cfg.lde_factor(),
+                "canonical memory cap must cover every LDE coset: {circuit:?}"
+            );
             assert_eq!(cfg.trace_len_log2, circuit.get_domain_size_log2() as usize);
             assert_eq!(compiled.trace_len, 1 << cfg.trace_len_log2);
             cfg.validate_for_whir_message_size(cfg.whir_message_size_log2());
@@ -157,39 +163,6 @@ fn cpu_virtual_defaults_remain_rejected_by_existing_gpu_guard() {
         }
     }
     assert_eq!(rejected, 7 * GPU_SUPPORTED_SECURITY_LEVELS.len());
-}
-
-#[test]
-fn cpu_baby_bear_capability_checks_transform_domain_and_context_separately() {
-    let columns = BaseColumns {
-        memory: 1,
-        witness: 1,
-        setup: 0,
-    };
-    let shape = |message, lde| {
-        let cfg = ProverConfig::whir_only(
-            message,
-            WhirSchedule::from_legacy_arrays(lde, 16, 0, &[1, 5], &[1, 1], &[2], &[0, 0]),
-            SecurityLevel::Sec100,
-        );
-        BaseCommitmentGeometry::from_config(&cfg, columns).unwrap()
-    };
-    let capacity = gpu_ntt::ntt_twiddles::OMEGA_LOG_ORDER;
-    validate_baby_bear_commitment_geometry(&shape(24, 2), capacity);
-    for (shape, capacity) in [
-        (shape(12, 2), capacity),
-        (shape(25, 2), capacity),
-        (shape(24, 16), capacity),
-        (shape(24, 2), 24),
-    ] {
-        let scheduled = std::cell::Cell::new(false);
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            validate_baby_bear_commitment_geometry(&shape, capacity);
-            scheduled.set(true);
-        }));
-        assert!(result.is_err());
-        assert!(!scheduled.get());
-    }
 }
 
 #[test]
