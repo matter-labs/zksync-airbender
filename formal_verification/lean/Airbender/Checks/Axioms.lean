@@ -589,6 +589,7 @@ import Airbender.Review.Trace.UnifiedReduced.ModularExecution
 import Airbender.Proofs.UnifiedReduced.StreamCalls
 import Airbender.Review.Helpers.Memory.ProgramImage
 import Airbender.Review.Trace.Modular.ExternalTheorems
+import Airbender.Proofs.AddSub.ModularExternalCalls
 import Tests.UnifiedModularExecution
 import Tests.ModularTrace
 import Airbender.Review.Trace.Modular.Theorems
@@ -13589,3 +13590,6 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.external_callers_disjoint
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.modular_step
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.caller_step
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.decoder_registries_disjoint
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.modular_external_step
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.caller_step
