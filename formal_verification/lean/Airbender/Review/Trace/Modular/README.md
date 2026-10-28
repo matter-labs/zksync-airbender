@@ -7,6 +7,13 @@ Native boot/ROM and the existing external padding boundary are supported.
 external reads and write hints, consuming exactly the independent stream
 responses selected by native read ports. Authentication stays external.
 
+[ExternalCalls](ExternalCalls.lean) adds complete delegated caller retirement to
+this stream relation, with a public worker-family selector. Its
+[inclusion proofs](../../../Proofs/AddSub/ModularExternalCalls.lean) show the
+decoder registries are disjoint and lift existing modular/external and caller
+steps. This is a relation and proof foundation, not a native soundness theorem
+for either unrolled production setup. Split Keccak workers remain open.
+
 [Public decoding](../../Helpers/Decoder/ModularProgram.lean) reads actual bytes
 through pinned Sail decoding, then maps MOP.RR.0–3 to the original ADD/SUB
 artifact's selector bits 3–6. Discarded writes retain ADD/NOP preprocessing.
