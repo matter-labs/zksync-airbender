@@ -9,7 +9,7 @@ open Trace Reference.RiscV.Sail Reference.Sail
     and retires its PC in this same chain. Existing preparation/coverage derives
     hash ABI and round masks; initialized matching derives actual reads and writes.
 
-    F02's temporary bigint command binding remains explicit. Native timestamp
+    The lower-level bigint command binding remains explicit. Native timestamp
     queries and caller accounting derive complete worker participation.
     The existing tracked-RAM/code/configuration and public protocol
     profiles remain in scope; their enforcement findings are not circuit fixes. -/

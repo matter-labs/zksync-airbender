@@ -5,7 +5,7 @@ open Trace Reference.RiscV.Sail
 
 /-- Every successful bigint caller in any actual accepted shared history executes
     the full independent project reference and retires Sail's PC advance.
-    The F02 valid-command restriction is temporary, while pointers, operands,
+    The valid-command restriction is explicit in this lower-level API, while pointers, operands,
     writes and the frame follow from constraints and initialized matching.
     This upgrades the bigint callers of the existing mixed-cycle certificate;
     hash-call reference retirement and total worker accounting remain separate. -/

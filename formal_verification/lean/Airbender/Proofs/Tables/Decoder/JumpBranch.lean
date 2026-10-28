@@ -1,7 +1,7 @@
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Tables.DecoderPrefix
 import Airbender.Proofs.Tables.SelectedDecoderProgram
-import Airbender.Review.Helpers.Decoder.SetupData.JumpBranch
+import Airbender.Data.Decoder.Setup.JumpBranch
 
 namespace Airbender.Trace.NativeDecoder.Proofs.JumpBranch
 open Airbender.Setup Airbender.Setup.Proofs

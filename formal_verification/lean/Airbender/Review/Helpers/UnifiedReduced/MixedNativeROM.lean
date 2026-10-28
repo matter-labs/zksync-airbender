@@ -11,7 +11,7 @@ def view [Fact p.Prime] (initial : State) (native : RequestTrace p) : RequestTra
   { native with machine := UnifiedReduced.ROMView.data initial native.machine }
 
 /-- Public native boot image, original ordinary/caller decoding and modeled
-    worker tables. The RAM-port contract is a separate temporary F04 premise;
+    worker tables. The RAM-port contract is a separate lower-level RAM-domain premise;
     these inputs supply no row reads, worker results or physical history. -/
 structure Inputs [Fact p.Prime] (native : RequestTrace p)
     (program : List UnifiedReduced.ProgramEntry) (initial : State) (cells : List Cell) : Prop where

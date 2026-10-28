@@ -558,6 +558,7 @@ def main():
             runner.run('importer-runtime', ['lake', 'exe', 'airbender_tests'])
             for label, script in [('setup-source-identity', 'check_setup_artifacts.py'),
                                   ('compiler-source-identity', 'check_gkr_translations.py'),
+                                  ('native-window-semantics', 'check_gkr_window_semantics.py'),
                                   ('native-evidence', 'check_native_evidence.py'),
                                   ('sail-reference', 'check_sail_reference.py'),
                                   ('proof-boundaries', 'check_proof_boundaries.py')]:

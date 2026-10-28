@@ -1,5 +1,5 @@
 import Airbender.Proofs.Tables.ImportedDecoder
-import Airbender.Review.Helpers.Decoder.SelectedProgram
+import Airbender.Data.Decoder.SelectedProgram
 
 namespace Airbender.Trace.NativeDecoder.Proofs
 set_option warningAsError true

@@ -32,7 +32,7 @@ def main():
         if not args.base.strip('0'):
             print('true')
             return
-        changed = subprocess.check_output(['git', 'diff', '--name-only', '-z', args.base, args.head], cwd=REPO)
+        changed = subprocess.check_output(['git', 'diff', '--no-renames', '--name-only', '-z', args.base, args.head], cwd=REPO)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
         # A broken/partially edited producer inventory needs FV, not a skip.
         print('true')

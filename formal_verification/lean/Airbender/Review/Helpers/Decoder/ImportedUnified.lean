@@ -1,6 +1,6 @@
 import Airbender.Review.Helpers.UnifiedReduced.Registry
 import Airbender.Review.Helpers.Decoder.Program
-import Airbender.Review.Helpers.Decoder.SetupData.Unified
+import Airbender.Data.Decoder.Setup.Unified
 
 namespace Airbender.Trace.NativeDecoder
 

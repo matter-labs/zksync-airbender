@@ -52,14 +52,16 @@ interfaces.
 
 Initial state/program/configuration, aligned tracked domain, modeled tables,
 exact logical matching and selected protocol shape remain explicit. Native
-initialization derives zero seeds, geometry and register coverage; register
+initialization adapters derive zero seeds, geometry and register coverage for
+ordinary pooled/unified execution; extended/delegation interfaces retain seeds; register
 values/teardown and the intended public state are separate inputs. Sampled RAM
 product equality does not establish deterministic token-multiset equality.
 
 The conditions above are not an exhaustive list of public inputs: HashCommands
 restricts private worker controls and G pointers and is not publicly checkable
 without a witness binding. Per-call controls do not ensure VM bundle entry; the
-round zero low limb is the blessed callers' mask rule. See F11 for the exact four fields.
+exclusive round mask also remains a witness premise of integrated mixed-memory
+and native-ROM interfaces. The zero low limb is the blessed callers' mask rule. See F11 for the exact four fields.
 
 Worker-only clockRoom and invocationHigh remain explicit in their own interfaces.
 Integrated native clocks and initialized caller accounting derive participation
@@ -76,7 +78,7 @@ REV8. Consolidation must preserve that distinction.
 
 Read the chosen [trace claim](../../Trace/UnifiedReduced/README.md) and its input
 record first, then follow the preparation/dataflow helper needed for that claim.
-[History](HISTORY.md) retains the earlier construction stages and regression
+[History](../../../../REVIEW_HELPERS_HISTORY.md) retains the earlier construction stages and regression
 narratives. Supporting calculation proofs stay in Proofs; important composed
 claims and visible public conditions stay in Review.
 

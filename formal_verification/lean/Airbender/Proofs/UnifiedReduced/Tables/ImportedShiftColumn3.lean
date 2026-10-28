@@ -1,5 +1,5 @@
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ShiftColumn3
-import Airbender.Review.Helpers.Tables.Shift.Column3
+import Airbender.Data.Setup.UnifiedReduced.Native.ShiftColumn3
+import Airbender.Data.Tables.Shift.Column3
 import Airbender.Proofs.Tables.ColumnAgreement
 
 namespace Airbender.UnifiedReduced.Setup.Proofs

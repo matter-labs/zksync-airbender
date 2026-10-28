@@ -4,7 +4,7 @@ import Airbender.Proofs.Tables.ShiftOutputExtent2
 import Airbender.Proofs.Tables.ShiftOutputExtent1
 import Airbender.Proofs.Tables.ShiftOutputExtent0
 import Airbender.Proofs.Tables.LiteralSizes
-import Airbender.Review.Helpers.Tables.ShiftData
+import Airbender.Data.Tables.ShiftData
 import Airbender.Proofs.Tables.ImportedBlocks
 import Mathlib.Tactic.FinCases
 

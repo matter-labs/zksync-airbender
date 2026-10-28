@@ -1,5 +1,5 @@
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.Rotate16Data
-import Airbender.Review.Helpers.Tables.Shift.XorData
+import Airbender.Data.Setup.UnifiedReduced.Native.Rotate16Data
+import Airbender.Data.Tables.Shift.XorData
 
 namespace Airbender.UnifiedReduced.Setup.Proofs
 open Verification

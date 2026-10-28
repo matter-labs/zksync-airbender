@@ -1,5 +1,5 @@
 import Airbender.Review.Circuits.Blake2Round.Tables.Setup
-import Airbender.Review.Circuits.Blake2G.Tables.XorData
+import Airbender.Data.Setup.Blake2G.XorData
 import Mathlib.Tactic.FinCases
 import Mathlib.Tactic.IntervalCases
 

@@ -1,7 +1,7 @@
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Tables.DecoderPrefix
 import Airbender.Proofs.Tables.SelectedDecoderProgram
-import Airbender.Review.Helpers.Decoder.SetupData.Unified
+import Airbender.Data.Decoder.Setup.Unified
 
 namespace Airbender.Trace.NativeDecoder.Proofs.Unified
 open Airbender.Setup Airbender.Setup.Proofs

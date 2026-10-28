@@ -1,6 +1,6 @@
 import Airbender.Proofs.GKRProtocol.DecoderTailNormalization
 import Airbender.Proofs.GKRProtocol.UnifiedAllPrefix.Column8
-import Airbender.Review.Helpers.Decoder.SetupData.Unified
+import Airbender.Data.Decoder.Setup.Unified
 
 namespace Airbender.Compiler.DecoderTail.Unified.Column8
 open Airbender Airbender.Compiler Airbender.Compiler.UnifiedAllPrefix.Column8

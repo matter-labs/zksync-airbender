@@ -30,7 +30,7 @@ for the imported operation view. Follow [Preparation](Preparation.lean),
 
 [Control](Control.lean), [Schedule](Schedule.lean) and [setup](Tables/Setup.lean)
 describe controller flags, round selection and imported lookup contents.
-The [fixed rows](Tables/XorData.lean) come from this circuit's own artifact;
+The [fixed rows](../../../Data/Setup/Blake2Round/XorData.lean) come from this circuit's own artifact;
 [kernel proofs](../../../Proofs/Blake2Round/ImportedXor.lean) check their connection
 to the shared XOR semantics and native fields.
 The [native layout adapter](../../../Proofs/Blake2Round/NativeLayout.lean) reads

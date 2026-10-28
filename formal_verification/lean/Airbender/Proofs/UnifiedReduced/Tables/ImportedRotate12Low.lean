@@ -1,4 +1,4 @@
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.Rotate12Data
+import Airbender.Data.Setup.UnifiedReduced.Native.Rotate12Data
 import Airbender.Proofs.Tables.ImportedBlocks
 
 namespace Airbender.UnifiedReduced.Setup.Proofs

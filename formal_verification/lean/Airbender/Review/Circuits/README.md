@@ -10,7 +10,10 @@ claims and complete instruction or worker execution have distinct scopes.
 
 The six ordinary-family local claims prove their mapped register/memory and PC
 effects agree with original Sail, under public initialization/configuration/table
-conditions and logical matching/membership. Their histories derive reads, operand
+conditions and logical matching/membership. Their public-image initialization
+seeds ROM shadows with public values and excludes native ROM-load traces with
+zero shadows. The pooled ROM-view execution path supplies the separate native
+transport. These local histories derive reads, operand
 bounds and preprocessing. A standalone local G claim retains explicit operand
 bounds; its integrated worker connection derives them from initialized history.
 
@@ -50,7 +53,7 @@ serialized inverse conditions; generic field proofs do not establish a Proth120 
 
 Shared [context](../Helpers/Context/README.md), [decoder](../Helpers/Decoder/README.md)
 and [memory](../Helpers/Memory/README.md) supply initialized-history interpretation.
-Circuit Tables directories contain modeled setup rows; Rust setup correspondence
+Imported columns live in Data; Review Tables define their logical interpretation; Rust setup correspondence
 remains unproved. [Whole execution](../Trace/README.md) is a separate route.
 
 Jump/branch/SLT, MUL/DIV and shift/binop theorem implementations retain the

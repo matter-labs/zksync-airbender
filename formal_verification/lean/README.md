@@ -22,21 +22,15 @@ The proof path is:
 no-cache JSON → native Clean constraints → Sail execution (or pinned custom spec)
 ```
 
-Claims are conditional on explicit interfaces. The imported richer constraints are
-the current target. Captured compiled/cached base-field arithmetic preservation
-is proved for 22 instances. New compiler execution APIs derive lookup membership
-and helper ranges from physical-row arithmetic and exact matching of actual native encoding/leaf tuples,
-without canonical framing. Native field/mask/helper identities transport those
-tuples to source operands; final sampled balance-to-exact matching and physical
-multiplicity binding remain explicit abstractions. Exact state/RAM matching and
-public boundaries remain explicit. Supplied-program
-wrappers require compatibility with retained decoder tables. All 14 native row
-compositions and public wrappers compile; execution/public modules also pass
-selected-module replay at a 32 MiB Lean thread stack. The selected 3279-module/
-10-test frontend passes normal Lake no-build freshness and artifact-hash checking
-without repairs. Its manifests bind only the selected scope; full project/runtime,
-environment, independent replay, negative-control and Linux/cold-run validation
-remain pending. See [current evidence](VERIFICATION_STATUS.md#current-focused-validation). Cryptographic argument
+Claims are conditional on explicit interfaces. Captured compiler preservation
+and physical-row logical execution retain exact lookup/state/RAM matching and
+public boundaries. Native field/mask/helper identities derive source obligations;
+compressed/sampled matching and physical multiplicity binding remain external.
+The retained compiler decoder tables describe four entries. The source/trace
+layer is program-parametric within each supported registry, but no combined
+native-to-execution theorem covers a committed verifier program.
+[Coverage and validation evidence](VERIFICATION_STATUS.md) states the precise
+scope, completed checks, measurements and pending gates. Cryptographic argument
 soundness and universal Rust compiler correctness remain outside the model.
 
 ## Read these first
@@ -58,8 +52,9 @@ Clean is pinned at `1e563b9c27991b3795eb440c1ee0757edb4ce8b1`.
 [Preparation](scripts/prepare_clean.py) checks original source hashes before applying
 Lean `v4.31.0` compatibility fixes: a tactic import, factory registration metadata,
 and explicit proof reductions. Constraint semantics, algorithms and theorem
-statements are unchanged; repaired proof terms are kernel-checked and axiom-audited.
-The original Keccak permutation reference compiles unchanged; the [Theta column](Airbender/Review/Circuits/Keccak/Theta.lean) and [two-call Chi row](Airbender/Review/Circuits/Keccak/Chi.lean) claims use its `thetaXor` and `chi` directly. We use Clean's native
+statements are unchanged; repaired terms require kernel checking and the separate
+environment axiom audit.
+The original Keccak permutation reference is preserved; the [Theta column](Airbender/Review/Circuits/Keccak/Theta.lean) and [two-call Chi row](Airbender/Review/Circuits/Keccak/Chi.lean) claims use its `thetaXor` and `chi` directly. We use Clean's native
 `Expression`, `FlatOperation.assert`, `StaticTable`, `FlatOperation.lookup`,
 `Environment` and `ConstraintsHoldFlat`.
 The witness-generation DSL and full `FormalCircuit` bundle are not used.
@@ -103,13 +98,16 @@ FV_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/airbender-fv.XXXXXX")"
 export CARGO_BUILD_JOBS=1 RAYON_NUM_THREADS=1 MATHLIB_NO_CACHE_ON_UPDATE=1
 # Debug symbols are unnecessary for deterministic setup exports.
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
-export CARGO_TARGET_DIR="$FV_ROOT/cargo"
+export CARGO_TARGET_DIR="$FV_ROOT/cargo/setups"
+export FV_COMPILER_TARGET_DIR="$FV_ROOT/cargo/compiler"
 
 # A lightweight orchestrator: its process controls guard their own children.
 # Run these on Linux itself before Linux compiler work; Darwin cannot verify
 # Linux pidfd/subreaper behavior. Do not wrap this orchestrator in another guard.
 python3 -m unittest discover -s scripts -p test_bounded_fv.py -v
 python3 scripts/compilation_pool/test_pool.py --process-tests --process-output "$FV_ROOT/pool-controls"
+PYTHONPATH=scripts python3 -m unittest test_fv_changes test_axiom_reports \
+  test_olean_hashes test_replay_cache test_proof_boundaries test_native_lookup_bindings
 fv() {
   label="$1"
   shift
@@ -152,10 +150,12 @@ fv native-receipts python3 scripts/check_setup_freshness.py verify \
   --work-dir "$FV_ROOT/native" "${dep_args[@]}"
 
 # Re-export actual cached and uncached compiler output after Rust/source changes.
-fv compiler-export env -u CI -u RUST_MIN_STACK python3 scripts/export_gkr_translations.py --output "$FV_ROOT/compiler"
+fv compiler-export env -u CI -u RUST_MIN_STACK CARGO_TARGET_DIR="$FV_COMPILER_TARGET_DIR" \
+  python3 scripts/export_gkr_translations.py --output "$FV_ROOT/compiler"
 fv compiler-retained python3 scripts/check_gkr_translations.py
 fv compiler-fresh python3 scripts/check_gkr_translations.py --directory "$FV_ROOT/compiler"
-diff -qr artifacts/compiler "$FV_ROOT/compiler"
+fv compiler-bytes python3 scripts/check_compiler_export_bytes.py "$FV_ROOT/compiler"
+fv native-window-semantics python3 scripts/check_gkr_window_semantics.py
 fv compiler-provenance-controls python3 -m unittest discover -s scripts -p test_gkr_translation_provenance.py -v
 fv compiler-native-requests python3 scripts/generate_native_lookup_requests.py --check
 
@@ -203,6 +203,8 @@ Linux footprint is the approximate sum of anonymous memory, proportional shared
 memory, swap and huge pages; bounded resident omits swap. Reclaimable mapped files
 are excluded from these Linux caps; total RSS remains telemetry. Sampled budgets
 are not exact cgroup enforcement. Commands and peak metrics are retained in receipts.
+Processes whose address space is confirmed gone remain owned for cleanup but
+are no longer workers. Unknown live Lean commands still count toward the ceiling.
 
 Independent replay passes Lean an explicit 32 MiB thread stack on every host,
 using --tstack=32768, and records it in the ledger identity. Linux also sets the
@@ -222,11 +224,9 @@ outside the checkout and replay dependencies as well as project roots.
 A failed bounded job stops the run; exact commands, peaks and failed stages remain
 under FV_ROOT.
 
-For scale, the historical `1d3e4bdbb` clean parallel build took 1 h 39 min on eight
-cores. Its serial cold reproduction was estimated at roughly 7.5 h plus about
-15 h of replay; thousands of subsequent compiler modules make these figures
-historical guidance, not a current runtime estimate. Current peak memory, stack
-and cold-cache duration require measurement on the actual Linux host.
+[Validation evidence](VERIFICATION_STATUS.md#validation-evidence) owns measured
+durations, peaks and platform limits. Historical estimates do not establish
+current cold-build or replay feasibility.
 
 The [formal-verification workflow](../../.github/workflows/formal-verification.yml)
 is temporarily advisory and selected for formal-verification, circuit-source and
@@ -246,10 +246,12 @@ resume, while project roots replay freshly on every complete attempt. PR runs
 do not reuse pass JSON from earlier PR attempts. Cold runtime and
 whether the current library/replay fit these stage windows remain unmeasured;
 partial reuse improves recovery without establishing feasibility or validation.
+CI records uncompressed cache footprints in the uploaded evidence; compressed
+archive sizes, repository quota and retention still require runner qualification.
 
 A cached build is not a final pass marker. Selectively required status follows a
-complete Linux pass. Remote CI, full current-head auditing/replay and empty-cache
-reproduction remain pending; these commands do not claim they passed. The reviewed
+complete Linux pass. Full current-head gate status is recorded in
+[validation evidence](VERIFICATION_STATUS.md#validation-evidence); these commands do not claim they passed. The reviewed
 disposition file records intended baseline exceptions, not a successful full
 baseline regeneration.
 

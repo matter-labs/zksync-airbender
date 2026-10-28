@@ -1,7 +1,7 @@
-import Airbender.Review.Helpers.Tables.Shift.Column0
-import Airbender.Review.Helpers.Tables.Shift.Column1
-import Airbender.Review.Helpers.Tables.Shift.Column2
-import Airbender.Review.Helpers.Tables.Shift.Column3
+import Airbender.Data.Tables.Shift.Column0
+import Airbender.Data.Tables.Shift.Column1
+import Airbender.Data.Tables.Shift.Column2
+import Airbender.Data.Tables.Shift.Column3
 import Mathlib.Tactic.IntervalCases
 import Airbender.Proofs.Tables.AlignedConstants
 

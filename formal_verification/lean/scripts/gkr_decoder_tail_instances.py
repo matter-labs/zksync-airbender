@@ -28,7 +28,7 @@ def modules(family):
         full=f'Data.GKRSetup.{case}.setupColumn{column}'
         text='import Airbender.Proofs.GKRProtocol.DecoderTailNormalization\n'
         text+=(f'import Airbender.Proofs.GKRProtocol.{reuse}.Column{column}\n' if reuse else f'import Airbender.Data.GKRSetup.{case}\nimport Airbender.Import.GKRProtocol.BlockCoverageImport\n')
-        text+=f'import Airbender.Review.Helpers.Decoder.SetupData.{data_module}\n\nnamespace {owner}\nopen Airbender Airbender.Compiler'
+        text+=f'import Airbender.Data.Decoder.Setup.{data_module}\n\nnamespace {owner}\nopen Airbender Airbender.Compiler'
         if reuse:text+=f' Airbender.Compiler.{reuse}.Column{column}'
         text+='\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
         if reuse:prefix='originals.flatten'

@@ -1,5 +1,5 @@
 import Airbender.Proofs.Tables.SignColumns
-import Airbender.Review.Helpers.Tables.ShiftData
+import Airbender.Data.Tables.ShiftData
 import Mathlib.Tactic.IntervalCases
 
 namespace Airbender.Verification.ShiftPrefix

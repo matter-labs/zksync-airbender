@@ -1,7 +1,7 @@
 import Airbender.Review.Helpers.Tables.Bytes
 import Airbender.Review.Helpers.Memory.ROM
-import Airbender.Review.Circuits.UnifiedReduced.Tables.NativeFixedData
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ROMData
+import Airbender.Data.Setup.UnifiedReduced.NativeFixedData
+import Airbender.Data.Setup.UnifiedReduced.Native.ROMData
 
 namespace Airbender.UnifiedReduced.Setup
 open Verification Trace

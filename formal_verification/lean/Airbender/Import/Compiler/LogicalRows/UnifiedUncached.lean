@@ -98,13 +98,16 @@ noncomputable def nativeRequests (input : Input) (group : Fin 3) : List Material
 -- End expanded native lookup operands.
 
 /-- Exact matching of every enabled emitted tuple against the corresponding
-literal setup columns. This is the retained logical argument boundary; sampled
-field-sum equality is insufficient. Source membership and helper ranges are
-consequences, not fields of this contract. -/
+literal setup columns. The generic Review definition states exact matching;
+this generated binding selects the three setup-column groups and native tuples. -/
 def LookupArguments (input : Input) : Type :=
-  (group : Fin 3) → LookupArgument
-    (Airbender.Compiler.MaterializedNative.UnifiedUncached.native.model.fields (([Airbender.Compiler.TableNative.UnifiedUncached.native.genericSetupColumns, Airbender.Compiler.TableNative.UnifiedUncached.native.range16SetupColumns, Airbender.Compiler.TableNative.UnifiedUncached.native.timestampSetupColumns]).get group))
-    (activeLookupFields (nativeRequests input group))
+  GroupedLookupArguments
+    (fun group : Fin 3 => Airbender.Compiler.MaterializedNative.UnifiedUncached.native.model.fields
+      (([Airbender.Compiler.TableNative.UnifiedUncached.native.genericSetupColumns,
+         Airbender.Compiler.TableNative.UnifiedUncached.native.range16SetupColumns,
+         Airbender.Compiler.TableNative.UnifiedUncached.native.timestampSetupColumns]).get group))
+    (fun group => activeLookupFields (nativeRequests input group))
+-- End generated logical lookup argument.
 
 def inputRow (input : Input) : Trace.Row babyBearModulus Trace.UnifiedFamily :=
   ⟨.machine, (physicalAssignment (fun index => Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.bank.address

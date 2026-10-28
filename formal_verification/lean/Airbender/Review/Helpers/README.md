@@ -5,9 +5,9 @@ representations, public decoding, native rows and ports, initialized state, and
 logical matching. They state how a witness is interpreted and which public
 conditions a claim uses. Whole-run execution conclusions belong in Trace.
 
-## Main checked connections
+## Claims and supporting connections
 
-The [memory result](Memory/README.md#logical-memory-result) derives chronological
+Supporting [memory proofs](Memory/README.md#logical-memory-result) derive chronological
 history and latest-write reads from initialized matching and clock constraints.
 [Decoder connections](Decoder/README.md#checked-connections) establish original
 public decoding and preserve it through state updates.

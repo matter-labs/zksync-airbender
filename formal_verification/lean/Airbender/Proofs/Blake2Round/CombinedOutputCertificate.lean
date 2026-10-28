@@ -1,4 +1,4 @@
-import Airbender.Review.Circuits.Blake2Round.Tables.XorData
+import Airbender.Data.Setup.Blake2Round.XorData
 import Airbender.Proofs.Tables.ImportedBlocks
 
 namespace Airbender.Blake2Round.Proofs

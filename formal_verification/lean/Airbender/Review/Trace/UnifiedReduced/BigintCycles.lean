@@ -4,7 +4,7 @@ import Airbender.Review.Helpers.UnifiedReduced.MixedFetch
 namespace Airbender.UnifiedReduced.Caller
 open Trace Reference.RiscV.Sail
 
-/-- Aggregate use of the existing temporary F02 contract at every actual bigint
+/-- Aggregate use of the existing lower-level valid-command contract at every actual bigint
     worker. This adds no operand, output, memory or desired-execution premise. -/
 def BigintCommands [Fact p.Prime] (data : RequestTrace p) : Prop :=
   ∀ worker ∈ data.workers.rows, worker.family = .bigint →

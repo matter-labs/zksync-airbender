@@ -1,6 +1,6 @@
 import Airbender.Proofs.GKRProtocol.DecoderTailNormalization
 import Airbender.Proofs.GKRProtocol.SubwordPrefixNative.Column1
-import Airbender.Review.Helpers.Decoder.SetupData.Subword
+import Airbender.Data.Decoder.Setup.Subword
 
 namespace Airbender.Compiler.DecoderTail.SubwordMemory.Column1
 open Airbender Airbender.Compiler Airbender.Compiler.SubwordPrefixNative.Column1

@@ -4,17 +4,18 @@ This directory states the verification claims and their meaning: circuit
 relations, the shared context needed to interpret their witnesses, and complete
 execution contracts. It exposes the selected references, observable mappings and
 assumptions for human review; supporting proof calculations live in Proofs.
+Imported data and data assembly live in Data. Earlier specializations remain in
+[Compatibility](../Compatibility/README.md), re-exported under their original names.
 
 ## Main checked results
 
 | Result | Where to review it |
 | --- | --- |
-| Captured GKR arithmetic preserves source obligations; new physical-row logical APIs compose to Sail execution under exact lookup matching, alongside framed compatibility wrappers. | [Compiler claims and boundaries](Compiler/README.md) |
-| Matching plus timestamp/initialization conditions forces complete memory histories and latest-write reads. | [Logical memory result](Helpers/Memory/README.md#logical-memory-result) |
+| Captured GKR arithmetic preserves source obligations; physical-row logical APIs compose to Sail execution under exact lookup matching, alongside framed compatibility wrappers. | [Compiler claims and boundaries](Compiler/README.md) |
 | Public bytes and original Sail decoding bind the instruction and metadata used by retirement. | [Decoder connections](Helpers/Decoder/README.md#checked-connections) |
 | Accepted selected circuit rows have the stated reference effects under their visible interfaces. | [Circuit results](Circuits/README.md#checked-results) |
 | Admitted ordinary instruction traces reach the native terminal PC and tracked values; external-read extensions also prove consumption. | [Trace results](Trace/README.md#checked-results) |
-| Native worker operations and complete selected hash spans reach their references on actual history values. | [Worker results](Trace/Workers/README.md#checked-results) |
+| Native worker operations and complete selected hash spans (Keccak special5) reach their references on actual history values. | [Worker results](Trace/Workers/README.md#checked-results) |
 | Joint native cuts, caller placement and prepared references use derived states/schedules. | [Unified results](Trace/UnifiedReduced/README.md#checked-results) |
 
 Each link states the remaining premises and scope. A memory-consistency result,
@@ -56,17 +57,17 @@ one public initial state. Keep profile deviations and caller limitations explici
 Circuit/trace claims concern the imported richer no-cache constraints, using
 Clean and pinned original Sail standard semantics or project custom references.
 Compiler claims additionally cover base-field arithmetic preservation for 22
-captured cached/uncached compilations and conditional executor composition. New
-physical-row APIs derive membership/helper validity from exact tuple matching;
+captured cached/uncached compilations and conditional executor composition. Physical-row APIs derive membership/helper validity from exact tuple matching;
 supplied-program wrappers require retained decoder-table compatibility. The
 [compiler guide](Compiler/README.md#execution-premises) states those logical
-boundaries. All 14 actual native row compositions and public wrappers compile;
-execution/public modules pass selected-module replay at a 32 MiB Lean thread
-stack. The selected 3279-module/10-test frontend passes freshness and compiled
-artifact-hash checks without repairs. This supplies selected source/compiled
-manifests, not a full assurance snapshot; full project/runtime, environment,
-independent replay, transitive negative-control and Linux/cold-run checks remain
-pending. See [current validation scope](../../VERIFICATION_STATUS.md#current-focused-validation).
+boundaries. [Validation evidence](../../VERIFICATION_STATUS.md#validation-evidence)
+records completed checks and pending assurance gates. The
+[supported-use theorem](Trace/UnifiedReduced/SupportedUseExecution.lean) derives
+bigint/G/extended-round contracts from public reference-prefix validity. Special5
+Keccak remains conditional protocol coverage; the blessed split path is deferred.
+No single execution registry and captured setup currently cover a production
+verifier program. Memory-history/latest-read arguments are supporting proofs
+used internally, not separate public Review statements.
 Field/configuration, public state/program/domain, modeled tables and logical
 matching are genuine conditions. Their applicability needs human review.
 

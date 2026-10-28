@@ -2,7 +2,7 @@ import Airbender.Proofs.Tables.RowViews
 import Airbender.Proofs.UnifiedReduced.Tables.ImportedWideRows
 import Airbender.Proofs.UnifiedReduced.Tables.ImportedSignRows
 import Airbender.Proofs.UnifiedReduced.Tables.ImportedShiftColumns
-import Airbender.Review.Circuits.UnifiedReduced.Tables.NativeFixedData
+import Airbender.Data.Setup.UnifiedReduced.NativeFixedData
 import Airbender.Proofs.Tables.ShiftPrefixRows
 
 namespace Airbender.UnifiedReduced.Setup.Proofs

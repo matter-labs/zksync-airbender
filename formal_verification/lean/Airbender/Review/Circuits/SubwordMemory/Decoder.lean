@@ -6,7 +6,7 @@ open Arithmetic
 
 /-- Native metadata from `mem_subword_only/decoder.rs`: store, byte and
     sign-extension bits. This selects fields; Sail supplies instruction behavior.
-    Native loads to x0 are routed outside this family. -/
+    Rust makes x0 loads NOPs; their original encodings have no registry entry. -/
 def decoderFields : SailRV32.instruction → Option (Trace.DecoderData Unit)
   | .LOAD (imm, .Regidx rs1, .Regidx rd, false, 1) =>
     if rd = 0 then none else some ⟨(), rs1, 0, rd,

@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Tables.Subword.LoadHalfData
+import Airbender.Data.Tables.Subword.LoadHalfData
 import Airbender.Proofs.Tables.ImportedStorePlace
 
 namespace Airbender.Verification.SubwordFixed

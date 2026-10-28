@@ -1,7 +1,7 @@
 import Airbender.Proofs.GKRProtocol.DecoderTailNormalization
 import Airbender.Data.GKRSetup.WordMemory
 import Airbender.Import.GKRProtocol.BlockCoverageImport
-import Airbender.Review.Helpers.Decoder.SetupData.WordMemory
+import Airbender.Data.Decoder.Setup.WordMemory
 
 namespace Airbender.Compiler.DecoderTail.WordMemory.Column6
 open Airbender Airbender.Compiler

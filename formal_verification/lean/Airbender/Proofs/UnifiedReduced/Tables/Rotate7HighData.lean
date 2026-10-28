@@ -1,4 +1,4 @@
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.Rotate7Data
+import Airbender.Data.Setup.UnifiedReduced.Native.Rotate7Data
 
 namespace Airbender.UnifiedReduced.Setup.Proofs
 open Verification Airbender.Setup

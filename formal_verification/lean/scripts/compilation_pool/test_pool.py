@@ -68,6 +68,10 @@ class GuardPolicyTests(unittest.TestCase):
         charged = serial_guard.Sample(query.info, 2560 * MIB, 1)
         self.assertEqual(guard.budget_reason([sample(1), charged], self.args, 1, 1),
                          'memory budget exceeded')
+        exited = serial_guard.Sample(serial_guard.ProcessInfo(99, 1, 'lean'), 0, 0, exited=True)
+        self.assertIsNone(guard.budget_reason([sample(1), exited], self.args, 1, 1))
+        self.assertEqual(guard.budget_reason([sample(1), sample(2), exited], self.args, 1, 1),
+                         'Lean worker limit exceeded')
 
     def test_aggregate_footprint_byte_boundary(self):
         samples = [sample(1, footprint=1280 * MIB), sample(2, footprint=1280 * MIB)]

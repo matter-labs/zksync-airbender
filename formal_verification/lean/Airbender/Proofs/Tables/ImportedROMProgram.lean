@@ -1,5 +1,5 @@
-import Airbender.Review.Helpers.Memory.NativeProgramData
-import Airbender.Review.Circuits.WordMemory.Tables.ROMData
+import Airbender.Data.Program.Native
+import Airbender.Data.Setup.WordMemory.ROMData
 import Airbender.Proofs.Tables.ZeroTail
 import Mathlib.Tactic.IntervalCases
 

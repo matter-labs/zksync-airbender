@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Tables.Subword.StoreClearData
+import Airbender.Data.Tables.Subword.StoreClearData
 import Airbender.Proofs.Tables.ImportedStorePlace
 
 namespace Airbender.Verification.SubwordFixed

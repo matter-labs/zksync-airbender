@@ -1,10 +1,10 @@
 import Airbender.Review.Helpers.Decoder.PooledProgram
-import Airbender.Review.Helpers.Decoder.SetupData.AddSub
-import Airbender.Review.Helpers.Decoder.SetupData.JumpBranch
-import Airbender.Review.Helpers.Decoder.SetupData.MulDiv
-import Airbender.Review.Helpers.Decoder.SetupData.ShiftBinop
-import Airbender.Review.Helpers.Decoder.SetupData.WordMemory
-import Airbender.Review.Helpers.Decoder.SetupData.Subword
+import Airbender.Data.Decoder.Setup.AddSub
+import Airbender.Data.Decoder.Setup.JumpBranch
+import Airbender.Data.Decoder.Setup.MulDiv
+import Airbender.Data.Decoder.Setup.ShiftBinop
+import Airbender.Data.Decoder.Setup.WordMemory
+import Airbender.Data.Decoder.Setup.Subword
 
 namespace Airbender.Trace.NativeDecoder
 

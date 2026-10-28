@@ -31,10 +31,11 @@ LOCAL_WORKERS = (
     'Airbender.Proofs.Blake2G.NativeEffects',
     'Airbender.Proofs.Keccak.NativeEffects',
 )
-# These modules assemble artifact-specific interfaces through checked Import
-# bindings. Predicate meanings live in the remaining Review.Compiler modules,
-# whose entire import closures are checked below. Pooled/Unified also retain
-# the earlier certificate interfaces for compatibility.
+# These four adapters instantiate generic Review predicates with artifact data.
+# Their Import closures include generated native definitions and certificates in
+# Proofs; only their direct imports are restricted. The remaining compiler
+# semantics modules have the stronger transitive check below. This import check
+# does not validate artifact interpretation or every instantiated premise.
 COMPILER_BINDINGS = frozenset({
     'Airbender.Review.Compiler.Pooled',
     'Airbender.Review.Compiler.Unified',

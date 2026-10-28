@@ -1,4 +1,4 @@
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ROMData
+import Airbender.Data.Setup.UnifiedReduced.Native.ROMData
 import Airbender.Proofs.Tables.ImportedROMProgram
 import Airbender.Proofs.Tables.ImportedROMReads
 import Airbender.Review.Circuits.UnifiedReduced.Tables.Setup

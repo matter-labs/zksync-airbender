@@ -1,6 +1,6 @@
 import Airbender.Import.GKRProtocol.BlockPartsImport
 import Airbender.Data.GKRSetup.ShiftBinop
-import Airbender.Review.Helpers.Tables.ShiftData
+import Airbender.Data.Tables.ShiftData
 
 namespace Airbender.Compiler.ShiftPrefixNative.Column8
 open Airbender Airbender.Compiler

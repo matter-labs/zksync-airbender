@@ -21,6 +21,8 @@ CHANGED = []
 NAMES = [family + cache for family in ['AddSub', 'JumpBranch', 'MulDiv', 'ShiftBinop', 'WordMemory', 'SubwordMemory', 'Unified'] for cache in ['Uncached', 'Cached']]
 IMPORT_START = '/-- Expanded native lookup operands before alpha compression. The encodings and\n'
 IMPORT_END = '-- End expanded native lookup operands.\n'
+ARGUMENT_START = '/-- Exact matching of every enabled emitted tuple against the corresponding\n'
+ARGUMENT_END = '-- End generated logical lookup argument.\n'
 PROOF_START = '/-- Native base arithmetic transports the actual expanded operands to the\n'
 PROOF_END = '-- End native operand transport.\n'
 
@@ -163,7 +165,26 @@ theorem nativeSetupColumns_binding (group : Fin 3) :
         assert text.count(needle) == 1
         text = text.replace(needle, import_block + '\n' + needle)
     text = text.replace('(activeLookupFields (physicalRequests input group))', '(activeLookupFields (nativeRequests input group))')
-    assert text.count('(activeLookupFields (nativeRequests input group))') == 1
+    assert text.count('activeLookupFields (nativeRequests input group)') == 1
+    # Generate the complete public premise instantiation, as well as operands.
+    # Its meaning lives in Review.Compiler.LookupArgument, independent of native
+    # certificate proofs. Setup columns and requests are artifact bindings.
+    argument_block = ARGUMENT_START + f'''literal setup columns. The generic Review definition states exact matching;
+this generated binding selects the three setup-column groups and native tuples. -/
+def LookupArguments (input : Input) : Type :=
+  GroupedLookupArguments
+    (fun group : Fin 3 => Airbender.Compiler.MaterializedNative.{name}.native.model.fields
+      (([Airbender.Compiler.TableNative.{name}.native.genericSetupColumns,
+         Airbender.Compiler.TableNative.{name}.native.range16SetupColumns,
+         Airbender.Compiler.TableNative.{name}.native.timestampSetupColumns]).get group))
+    (fun group => activeLookupFields (nativeRequests input group))
+''' + ARGUMENT_END
+    begin = text.index(ARGUMENT_START)
+    if ARGUMENT_END in text:
+        end = text.index(ARGUMENT_END, begin) + len(ARGUMENT_END)
+    else:
+        end = text.index('\ndef inputRow', begin)
+    text = text[:begin] + argument_block + text[end:]
     text = text.replace('/-- The emitted source-query operands interpreted at the actual physical wires.\nThe generic/range16 groups include their native nonzero masks. The timestamp\nhelper group uses the actual physical borrow and history coordinates. -/', '/-- Source-projected logical operands at the physical source, borrow and\nhistory coordinates. The public lookup argument matches nativeRequests; the\nsupporting proof transports that matching to this source interpretation. -/')
     pp = Path(f'Airbender/Proofs/GKRProtocol/LogicalRows/{name}.lean')
     ptext = (ROOT / pp).read_text()
@@ -200,6 +221,8 @@ for name in NAMES:
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
 roots = []
+if '#print axioms Airbender.Compiler.GroupedLookupArguments' not in content.splitlines():
+    roots.append('#print axioms Airbender.Compiler.GroupedLookupArguments')
 for name in NAMES:
     namespace = 'UnifiedRowNative' if name.startswith('Unified') else 'PooledRowNative'
     for theorem in ['nativeRequests_source', 'nativeOperands_coverage', 'nativeSetupColumns_binding']:

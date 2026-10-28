@@ -1,11 +1,11 @@
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.RegisterZeroData
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.CleanupData
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ByteSignData
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.SignData
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.TruncationData
+import Airbender.Data.Setup.UnifiedReduced.Native.RegisterZeroData
+import Airbender.Data.Setup.UnifiedReduced.Native.CleanupData
+import Airbender.Data.Setup.UnifiedReduced.Native.ByteSignData
+import Airbender.Data.Setup.UnifiedReduced.Native.SignData
+import Airbender.Data.Setup.UnifiedReduced.Native.TruncationData
 import Airbender.Review.Helpers.Tables.PairData
-import Airbender.Review.Helpers.Tables.Shift.SignData
-import Airbender.Review.Helpers.Tables.Shift.TruncateData
+import Airbender.Data.Tables.Shift.SignData
+import Airbender.Data.Tables.Shift.TruncateData
 
 namespace Airbender.UnifiedReduced.Setup.Proofs
 open Verification

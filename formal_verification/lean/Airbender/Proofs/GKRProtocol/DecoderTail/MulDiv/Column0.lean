@@ -1,7 +1,7 @@
 import Airbender.Proofs.GKRProtocol.DecoderTailNormalization
 import Airbender.Data.GKRSetup.MulDiv
 import Airbender.Import.GKRProtocol.BlockCoverageImport
-import Airbender.Review.Helpers.Decoder.SetupData.MulDiv
+import Airbender.Data.Decoder.Setup.MulDiv
 
 namespace Airbender.Compiler.DecoderTail.MulDiv.Column0
 open Airbender Airbender.Compiler

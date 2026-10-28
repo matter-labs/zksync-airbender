@@ -1,4 +1,4 @@
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.TruncationData
+import Airbender.Data.Setup.UnifiedReduced.Native.TruncationData
 import Airbender.Proofs.Tables.PeriodicColumns
 import Airbender.Proofs.Tables.BlockRanges
 import Airbender.Proofs.Tables.ShiftKeys

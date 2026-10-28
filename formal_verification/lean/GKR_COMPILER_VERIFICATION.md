@@ -14,7 +14,7 @@ implementation stages, intermediate APIs and checkpoint evidence.
 The restored hash circuits have known gaps covered by the explicit
 [F11 hash witness contracts](FINDINGS.md#f11--hash-witness-contracts-remain-unenforced).
 Those are private-witness assumptions, not native enforcement or public-input
-validation. Circuits are unchanged to make proofs succeed.
+validation. Production circuit changes made only to make proofs succeed are outside this effort.
 The [supported-use trace entrypoint](Airbender/Review/Trace/UnifiedReduced/SupportedUseExecution.lean)
 instead derives the bigint/hash worker contracts from public program safety and
 exact native prefixes for bigint, G and extended round. This does not enlarge the
@@ -30,7 +30,7 @@ records the agreed scope.
 
 For 22 captured cached/uncached compilations, base-field arithmetic preservation
 is proved. Wiring/cache checks, 60 lookup-output reductions and 48 RAM-product
-reductions are supporting results. New physical-row logical execution entrypoints
+reductions are supporting results. Physical-row logical execution entrypoints
 use only the actual physical assignment, native base-field arithmetic and an
 active row, plus exact native lookup-tuple matching. Native requests are built
 from consumed native encoding fields and leaf weights at the physical assignment.
@@ -46,27 +46,17 @@ uses natural multiplicities. The remaining final compressed/sampled
 sum-to-exact-matching step is not proved, and those multiplicities are not tied to
 physical field counters. [Supplied-program boundaries](Airbender/Review/Compiler/Program.lean)
 require structural decoder-table equality with the retained capture and the
-existing public execution inputs. This supports compatible supplied programs,
-not arbitrary new programs/setups. The retained-program wrapper still uses its
-four-entry fixture. Explicit Airbender-platform wrappers select that device
+existing public execution inputs. The equality retains the same four-entry per-family tables even in the
+supplied-program wrapper. It does not admit an arbitrary different program or
+setup; fresh interpretation evidence is required. Explicit Airbender-platform wrappers select that device
 configuration; generic wrappers remain polymorphic. Generic source/trace execution
 already supports arbitrary programs under its stated contracts. See the
 [execution premise table](Airbender/Review/Compiler/README.md#execution-premises).
 
-All 14 actual native logical-row compositions compile, covering payload/mask/helper
-transport, operand coverage and setup bindings. Program execution, logical
-execution and the final public theorem module compile and pass selected-module
-kernel replay with a 32 MiB Lean thread stack. The final selected frontend also
-passes over 3279 modules, including 10 concrete Tests and five retained Sail
-modules, with normal Lake no-build freshness and compiled artifact-hash checks
-without repairs. Its source/compiled manifests bind only that selected scope;
-no full assurance build snapshot was issued.
-
-The full compiler checkpoint, environment dependency audit and independent replay
-have not completed at the current head. Recorded post-rollback checks covered
-293 regenerated compiler modules and focused direct axiom reports; those reports
-are smoke tests and can under-report imported constructor-type dependencies.
-They do not establish a full standard-axiom dependency audit.
+[Verification status](VERIFICATION_STATUS.md#validation-evidence) records completed
+source/runtime, native-capture and focused replay evidence, and the uncompleted
+whole-environment/transitive assurance gates. Direct axiom reports can omit
+imported constructor-type dependencies and do not replace the environment audit.
 
 ## Arithmetic extension and logical arguments
 
@@ -87,32 +77,13 @@ whole-system completeness remain outside these captured-instance results.
 
 ## Evidence and reproduction
 
-Current native Rust capture regeneration and both retained/fresh production
-checks pass: all 67 files reproduce byte for byte. The measured guarded run took
-27.06 seconds, with peak footprint 1341.22 MiB and resident memory 1353.02 MiB,
-and left no surviving owned workers. This is native capture/provenance evidence;
-it is separate from the focused Lean build/replay results above. The final public
-wrapper build took 37.49 seconds, with peak footprint 586.75 MiB and resident
-memory 3093.56 MiB, and left no surviving owned workers. The final one-worker
-selected frontend took 96.51 seconds, with peak footprint 538.71 MiB and resident
-memory 1585.52 MiB, and left no surviving owned workers. Upstream platform
-compatibility also compiles in the current source.
+Use [verification status](VERIFICATION_STATUS.md#validation-evidence) for evidence,
+measurements and pending gates, and [reproduction](README.md#reproduce) for the
+native setup/compiler, source/runtime, environment-audit and replay commands.
+The source-bound window-semantics validator and full lookup-premise generator
+run in CI and the complete frontend. Native setup and compiler build directories
+are separate, including restored warm caches, so compiler-only dep-info cannot
+contaminate setup receipts.
 
-The full project frontend, executable/runtime checks, full environment audit,
-complete independent dependency replay, transitive negative controls and Linux/
-cold-run feasibility remain pending. The 25 native setup freshness jobs/receipts
-are a separate gate from the 67-file compiler capture reproduction.
-
-The setup-input dependency control passes eight dirty cases using an isolated
-fixture with the actual Lake target metadata: two inputs across four setup-reading
-test modules. It checks dependency wiring, not those modules' actual test bodies.
-The actual four setup tests also compile and are included in the final selected
-frontend, alongside the three previously omitted GKR tests, two new regressions
-and upstream platform compatibility.
-
-Use [verification status](VERIFICATION_STATUS.md) for completed evidence and
-pending gates, and [reproduction](README.md#reproduce) for current commands. The
-maintained native-request generator has a reproduction check there.
 The [historical compiler record](GKR_COMPILER_VERIFICATION_HISTORY.md) preserves
-dated checkpoint counts; its old declaration names and passing stages do not
-establish current APIs or a current-head pass.
+dated checkpoints. It does not establish a current-head pass.

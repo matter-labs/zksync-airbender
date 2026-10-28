@@ -1,21 +1,21 @@
-import Airbender.Review.Circuits.UnifiedReduced.Tables.NativeFixedData
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ROMData
-import Airbender.Review.Circuits.WordMemory.Tables.ZeroData
-import Airbender.Review.Circuits.WordMemory.Tables.ROMData
-import Airbender.Review.Helpers.Tables.SubwordROMData
+import Airbender.Data.Setup.UnifiedReduced.NativeFixedData
+import Airbender.Data.Setup.UnifiedReduced.Native.ROMData
+import Airbender.Data.Setup.WordMemory.ZeroData
+import Airbender.Data.Setup.WordMemory.ROMData
+import Airbender.Data.Tables.SubwordROMData
 import Airbender.Import.SetupEmbed
 import Airbender.Import.NativeJson
-import Airbender.Review.Circuits.Keccak.Tables.FixedData
-import Airbender.Review.Circuits.Keccak.Tables.RotationData
+import Airbender.Data.Setup.Keccak.FixedData
+import Airbender.Data.Setup.Keccak.RotationTemplates
 import Airbender.Review.Circuits.Bigint.Tables.Setup
-import Airbender.Review.Circuits.Blake2G.Tables.ControllerData
-import Airbender.Review.Circuits.Keccak.Tables.ControllerData
-import Airbender.Review.Circuits.Blake2G.Tables.XorData
-import Airbender.Review.Circuits.Blake2Round.Tables.XorData
+import Airbender.Data.Setup.Blake2G.Controller
+import Airbender.Data.Setup.Keccak.Controller
+import Airbender.Data.Setup.Blake2G.XorData
+import Airbender.Data.Setup.Blake2Round.XorData
 import Airbender.Review.Helpers.Tables.PairData
 import Tests.SetupRegionImport
-import Airbender.Review.Helpers.Tables.ShiftData
-import Airbender.Review.Helpers.Tables.SubwordData
+import Airbender.Data.Tables.ShiftData
+import Airbender.Data.Tables.SubwordData
 
 namespace Tests.SetupImport
 open Airbender Lean

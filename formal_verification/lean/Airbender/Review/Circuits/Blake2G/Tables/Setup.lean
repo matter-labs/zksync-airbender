@@ -1,5 +1,5 @@
-import Airbender.Review.Circuits.Blake2G.Tables.ControllerData
-import Airbender.Review.Circuits.Blake2G.Tables.XorData
+import Airbender.Data.Setup.Blake2G.Controller
+import Airbender.Data.Setup.Blake2G.XorData
 import Airbender.Review.Helpers.Tables.Range
 
 namespace Airbender.Blake2G

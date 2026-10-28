@@ -1,4 +1,4 @@
-import Airbender.Review.Helpers.Tables.Shift.OrData
+import Airbender.Data.Tables.Shift.OrData
 import Airbender.Proofs.Tables.ImportedBlocks
 
 namespace Airbender.Verification.ShiftCertificate

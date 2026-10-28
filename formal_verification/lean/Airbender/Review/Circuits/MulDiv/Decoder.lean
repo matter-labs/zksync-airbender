@@ -5,7 +5,8 @@ namespace Airbender.MulDiv
 open Arithmetic
 
 /-- Native metadata from `cs/src/gkr_circuits/mul_div/decoder.rs`.
-    x0 destinations are routed to ADD/SUB preprocessing. This projection
+    Rust preprocesses x0 destinations as NOPs; this registry has no entry for
+    those original encodings. This projection
     selects fields only; instruction behavior is the original Sail clause. -/
 def decoderFields : SailRV32.instruction → Option (Trace.DecoderData Unit)
   | .MUL (.Regidx rs2, .Regidx rs1, .Regidx rd, ⟨.Low, .Signed, .Signed⟩) =>

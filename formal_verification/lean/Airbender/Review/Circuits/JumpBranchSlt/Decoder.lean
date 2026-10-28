@@ -6,7 +6,8 @@ open Arithmetic
 
 /-- Native metadata from `cs/src/gkr_circuits/jump_branch_slt_family/decoder.rs`.
     Instruction behavior remains the original Sail specification. Comparison
-    writes to x0 are preprocessed to ADD/SUB NOPs, outside this family's table. -/
+    writes to x0 become native NOPs, but their original encodings have no
+    entry in this registry. -/
 def decoderFields : SailRV32.instruction → Option (Trace.DecoderData Unit)
   | .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SLT) =>
     if rd = 0 then none else some ⟨(), rs1, rs2, rd, ⟨0, 0⟩, 4, 2⟩

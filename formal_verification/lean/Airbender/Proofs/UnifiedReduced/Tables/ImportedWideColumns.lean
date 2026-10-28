@@ -1,9 +1,9 @@
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.XorData
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.OrData
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.AndData
-import Airbender.Review.Helpers.Tables.Shift.XorData
-import Airbender.Review.Helpers.Tables.Shift.OrData
-import Airbender.Review.Helpers.Tables.Shift.AndData
+import Airbender.Data.Setup.UnifiedReduced.Native.XorData
+import Airbender.Data.Setup.UnifiedReduced.Native.OrData
+import Airbender.Data.Setup.UnifiedReduced.Native.AndData
+import Airbender.Data.Tables.Shift.XorData
+import Airbender.Data.Tables.Shift.OrData
+import Airbender.Data.Tables.Shift.AndData
 import Mathlib.Tactic.FinCases
 
 namespace Airbender.UnifiedReduced.Setup.Proofs

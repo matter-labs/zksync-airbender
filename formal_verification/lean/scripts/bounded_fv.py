@@ -54,6 +54,7 @@ class Sample:
     footprint: int
     resident: int
     resident_for_limit: int | None = None
+    exited: bool = False
 
     @property
     def bounded_resident(self):
@@ -303,6 +304,12 @@ class LinuxBackend:
                 info = replace(info, argv=tuple(command[:-1].split(b'\0')))
         return info
 
+    def exited_sample(self, info):
+        # cmdline can disappear before stat reports a zombie, including before
+        # our first observation. A rechecked identity with no address space is
+        # no longer a worker. Ownership and cleanup tracking still retain it.
+        return Sample(info, 0, 0, exited=True)
+
     def pin(self, info):
         previous = self.handles.get(info.pid)
         if previous is not None:
@@ -330,7 +337,7 @@ class LinuxBackend:
             raise IdentityChanged(f'owned PID unexpectedly reused: {pid}')
         if info.state in ('Z', 'X', 'x'):
             self.release_exited(pid)
-            return Sample(info, 0, 0)
+            return self.exited_sample(info)
         self.pin(info)
         try:
             memory = (self.proc / str(pid) / 'smaps_rollup').read_text()
@@ -341,7 +348,7 @@ class LinuxBackend:
             # Linux tears down mm before publishing the zombie state. Absence
             # of smaps is therefore an exit race even if stat still says R/S.
             self.release_exited(pid)
-            return None if again is None else Sample(again, 0, 0)
+            return None if again is None else self.exited_sample(again)
         again = self.info(pid)
         if again is None:
             self.release_exited(pid)
@@ -350,7 +357,7 @@ class LinuxBackend:
             raise IdentityChanged(f'PID reused while measuring: {pid}')
         if again.state in ('Z', 'X', 'x'):
             self.release_exited(pid)
-            return Sample(again, 0, 0)
+            return self.exited_sample(again)
         footprint, resident, bounded_resident = parse_smaps_rollup(memory)
         return Sample(again, footprint, resident, bounded_resident)
 
@@ -479,14 +486,17 @@ class Tracker:
         return list(samples.values())
 
 
+def prefix_query(info):
+    return (len(info.argv) == 2 and info.argv[0].rsplit(b'/', 1)[-1] == b'lean'
+            and info.argv[1] == b'--print-prefix')
+
+
 def lean_worker_count(samples):
     # Mathlib's Cache.IO initializer invokes this read-only query from inside
     # the compiler. Linux exposes its exact argv; other/unknown invocations
     # remain workers. Every process still contributes to memory and deadlines.
-    return sum(sample.info.name == 'lean' and not (
-        len(sample.info.argv) == 2
-        and sample.info.argv[0].rsplit(b'/', 1)[-1] == b'lean'
-        and sample.info.argv[1] == b'--print-prefix') for sample in samples)
+    return sum(sample.info.name == 'lean' and not sample.exited
+               and not prefix_query(sample.info) for sample in samples)
 
 
 def budget_reason(samples, args, elapsed):

@@ -55,12 +55,13 @@ jobs:
             # Outside the checkout/build caches, fresh for this PR attempt.
             echo "FV_REPLAY_LEDGER=$FV_ROOT/replay-ledger" >> "$GITHUB_ENV"
           fi
-          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/airbender-fv-cargo" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/airbender-fv-cargo/setups" >> "$GITHUB_ENV"
+          echo "FV_COMPILER_TARGET_DIR=$RUNNER_TEMP/airbender-fv-cargo/compiler" >> "$GITHUB_ENV"
           # This is a lightweight orchestrator; ProcessTests guard their own
           # children sequentially. An outer guard would deadlock the host lock.
           python3 -m unittest discover -s scripts -p test_bounded_fv.py -v 2>&1 | tee "$FV_ROOT/guard-controls.log"
           python3 scripts/compilation_pool/test_pool.py --process-tests --process-output "$FV_ROOT/pool-controls"
-          PYTHONPATH=scripts python3 -m unittest test_fv_changes test_axiom_reports test_olean_hashes test_replay_cache test_proof_boundaries -v
+          PYTHONPATH=scripts python3 -m unittest test_fv_changes test_axiom_reports test_olean_hashes test_replay_cache test_proof_boundaries test_native_lookup_bindings -v
           cat > "$FV_ROOT/guard.sh" <<'SH'
           set -euo pipefail
           # Lightweight orchestration only: real children still own their
@@ -104,8 +105,20 @@ jobs:
         run: |
           source "$FV_ROOT/guard.sh"
           test "$(cat lean-toolchain)" = 'leanprover/lean4:v4.31.0'
-          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o "$FV_ROOT/elan-init.sh"
-          fv lean-toolchain sh "$FV_ROOT/elan-init.sh" -y --default-toolchain 'leanprover/lean4:v4.31.0'
+          # Pin the executable archive, not a script which downloads latest.
+          case "$(uname -m)" in
+            x86_64)
+              elan_arch=x86_64-unknown-linux-gnu
+              elan_sha=42b94d4244e8353142c456ec0e4ca6528fd898a6c604d4059f494e706e431f63 ;;
+            aarch64|arm64)
+              elan_arch=aarch64-unknown-linux-gnu
+              elan_sha=05febd124d84ebf994b2e7479922a5650b1e950c17ae3bd1ddd776b65bb72bf9 ;;
+            *) echo 'Unsupported elan installer architecture' >&2; exit 1 ;;
+          esac
+          curl -fsSL "https://github.com/leanprover/elan/releases/download/v4.2.4/elan-$elan_arch.tar.gz" -o "$FV_ROOT/elan.tar.gz"
+          printf '%s  %s\n' "$elan_sha" "$FV_ROOT/elan.tar.gz" | sha256sum --check
+          tar -xzf "$FV_ROOT/elan.tar.gz" -C "$FV_ROOT" elan-init
+          fv lean-toolchain "$FV_ROOT/elan-init" -y --default-toolchain 'leanprover/lean4:v4.31.0'
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Scope immutable cache snapshots to source and toolchain
         id: cache-keys
@@ -117,7 +130,7 @@ jobs:
           FV_REPLAY_TOOLS: ${{ hashFiles('formal_verification/lean/lean-toolchain', 'formal_verification/lean/lake-manifest.json', 'formal_verification/lean/scripts/KernelReplay.lean', 'formal_verification/lean/scripts/check_kernel_replay.py', 'formal_verification/lean/scripts/check_axioms.py', 'formal_verification/lean/scripts/bounded_fv.py') }}
         run: |
           lean="fv-lean-v2-${{ runner.os }}-${{ runner.arch }}-$FV_LEAN_TOOLS"
-          native="fv-native-v2-${{ runner.os }}-${{ runner.arch }}-$FV_NATIVE_TOOLS"
+          native="fv-native-v3-${{ runner.os }}-${{ runner.arch }}-$FV_NATIVE_TOOLS"
           replay="fv-replay-trusted-v3-${{ runner.os }}-${{ runner.arch }}-$FV_REPLAY_TOOLS"
           echo "lean-tool-prefix=$lean-" >> "$GITHUB_OUTPUT"
           echo "lean-source-prefix=$lean-$FV_LEAN_SOURCE-" >> "$GITHUB_OUTPUT"
@@ -144,7 +157,9 @@ jobs:
         id: native-cache
         timeout-minutes: 20
         with:
-          path: ${{ env.CARGO_TARGET_DIR }}
+          path: |
+            ${{ env.CARGO_TARGET_DIR }}
+            ${{ env.FV_COMPILER_TARGET_DIR }}
           key: ${{ steps.cache-keys.outputs.native }}-compiler
           restore-keys: |
             ${{ steps.cache-keys.outputs.native-source-prefix }}
@@ -229,7 +244,9 @@ jobs:
         timeout-minutes: 20
         uses: actions/cache/save@v4
         with:
-          path: ${{ env.CARGO_TARGET_DIR }}
+          path: |
+            ${{ env.CARGO_TARGET_DIR }}
+            ${{ env.FV_COMPILER_TARGET_DIR }}
           key: ${{ steps.cache-keys.outputs.native }}-setups
       - name: Fresh cached and uncached compiler captures and provenance controls
         id: compiler-captures
@@ -239,23 +256,12 @@ jobs:
           fv_stage compiler-captures 7200 bash -euo pipefail <<'FV_STAGE'
           trap 'exit 124' TERM
           source "$FV_ROOT/guard.sh"
-          fv compiler-export env -u CI -u RUST_MIN_STACK python3 scripts/export_gkr_translations.py --output "$FV_ROOT/compiler"
+          fv compiler-export env -u CI -u RUST_MIN_STACK CARGO_TARGET_DIR="$FV_COMPILER_TARGET_DIR" \
+            python3 scripts/export_gkr_translations.py --output "$FV_ROOT/compiler"
           fv compiler-retained python3 scripts/check_gkr_translations.py
           fv compiler-fresh python3 scripts/check_gkr_translations.py --directory "$FV_ROOT/compiler"
-          # Native exports are the root files; subdirectories hold separately
-          # checked interpretation and lookup artifacts.
-          python3 - "$FV_ROOT/compiler" <<'PY'
-          from pathlib import Path
-          import sys
-          retained = {path.name: path for path in Path('artifacts/compiler').iterdir() if path.is_file()}
-          fresh = {path.name: path for path in Path(sys.argv[1]).iterdir() if path.is_file()}
-          if retained.keys() != fresh.keys():
-              raise SystemExit('Native compiler export file inventories differ')
-          for name in sorted(retained):
-              if retained[name].read_bytes() != fresh[name].read_bytes():
-                  raise SystemExit('Native compiler export differs: ' + name)
-          print(f'PASS {len(retained)} native compiler export files reproduce byte for byte')
-          PY
+          fv compiler-bytes python3 scripts/check_compiler_export_bytes.py "$FV_ROOT/compiler"
+          fv native-window-semantics python3 scripts/check_gkr_window_semantics.py
           fv native-lookup-bindings python3 scripts/generate_native_lookup_requests.py --check
           fv compiler-provenance-controls python3 -m unittest discover -s scripts -p test_gkr_translation_provenance.py -v
           FV_STAGE
@@ -264,7 +270,9 @@ jobs:
         timeout-minutes: 20
         uses: actions/cache/save@v4
         with:
-          path: ${{ env.CARGO_TARGET_DIR }}
+          path: |
+            ${{ env.CARGO_TARGET_DIR }}
+            ${{ env.FV_COMPILER_TARGET_DIR }}
           key: ${{ steps.cache-keys.outputs.native }}-compiler
       - name: Complete serial Lean source and runtime verification
         id: lean-verification
@@ -324,6 +332,32 @@ jobs:
         with:
           path: ${{ env.FV_REPLAY_LEDGER }}
           key: ${{ steps.cache-keys.outputs.replay }}-controls
+      - name: Record cache footprints for runner qualification
+        if: always() && env.FV_ROOT != ''
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          paths = [Path('.lake/build'), Path('.lake/config'), Path('.lake/packages')]
+          paths += [Path(os.environ[name]) for name in
+                    ('CARGO_TARGET_DIR', 'FV_COMPILER_TARGET_DIR', 'FV_REPLAY_LEDGER')
+                    if name in os.environ]
+          records = []
+          for path in paths:
+              record = {'path': str(path), 'present': path.exists()}
+              if path.exists():
+                  measured = subprocess.run(['du', '-sk', str(path)], text=True, capture_output=True)
+                  record['exit'] = measured.returncode
+                  if measured.returncode == 0:
+                      record['allocated_kib'] = int(measured.stdout.split()[0])
+                  else:
+                      record['error'] = measured.stderr.strip()
+              records.append(record)
+          report = {'scope': 'uncompressed filesystem footprint; not archive size or quota qualification',
+                    'paths': records}
+          (Path(os.environ['FV_ROOT']) / 'cache-footprint.json').write_text(json.dumps(report, indent=2) + '\n')
+          print(json.dumps(report, indent=2))
+          PY
       - name: Upload exact commands, resource metrics, receipts and failure logs
         if: always()
         timeout-minutes: 20

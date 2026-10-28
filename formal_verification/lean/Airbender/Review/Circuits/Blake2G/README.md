@@ -26,11 +26,11 @@ two interfaces distinct.
 [Artifact](Artifact.lean), [Row](Row.lean), [Addresses](Addresses.lean) and
 [Execution](Execution.lean) name imported controls, ports and effects.
 [Controller](Controller.lean) describes behavior. [Controller rows](Tables/Controller.lean)
-project the actual [native JSON region](Tables/ControllerData.lean);
+project the actual [native JSON region](../../../Data/Setup/Blake2G/Controller.lean);
 [kernel proofs](../../../Proofs/Blake2G/ImportedController.lean) check all 512 keys,
 seven outputs and discriminator against the reference and the concrete setup rows.
 The generalized [setup](Tables/Setup.lean) still accepts arbitrary controllers.
-Its five XOR regions now use [actual imported data](Tables/XorData.lean);
+Its five XOR regions now use [actual imported data](../../../Data/Setup/Blake2G/XorData.lean);
 [kernel proofs](../../../Proofs/Blake2G/ImportedXor.lean) recover every key, XOR,
 padding and tag with the previous field bounds.
 [Protocol](Protocol.lean) fixes the complete-span constants.

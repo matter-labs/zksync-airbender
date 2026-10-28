@@ -23,7 +23,10 @@ previous-to-new timestamp growth. The clock laws are proved for the imported
 family layouts; an expected read or preconstructed memory history is not supplied.
 Permutation equality alone is insufficient without these conditions.
 
-The checked conclusions are:
+The supporting Proofs modules establish the conclusions below. The Review
+history definitions describe these properties, but no separate public Review
+statement currently concludes them; the execution proofs use these arguments
+internally.
 
 - Every access belongs to a complete chronological chain from its address's
   initial token to its terminal token; all accesses are included.

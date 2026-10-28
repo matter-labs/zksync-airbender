@@ -60,3 +60,7 @@ Standalone worker inputs retain both `clockRoom` and `invocationHigh`; integrate
 caller/request matching derives them. See the [shared worker boundary](../README.md)
 and [native memory inputs](../../../Helpers/Delegation/Memory.lean). Actual read
 values and pointer bounds are derived from initialized matching.
+
+The [independent known-answer regression](../../../../../Tests/KeccakKnownAnswer.lean)
+checks Clean's 24-round permutation against the pinned XKCP all-zero vector,
+including lane order. It does not establish split/special5 circuit coverage.

@@ -1,5 +1,5 @@
-import Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ShiftColumn7
-import Airbender.Review.Helpers.Tables.Shift.Column7
+import Airbender.Data.Setup.UnifiedReduced.Native.ShiftColumn7
+import Airbender.Data.Tables.Shift.Column7
 import Airbender.Proofs.Tables.BlockSplits
 
 namespace Airbender.UnifiedReduced.Setup.Proofs

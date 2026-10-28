@@ -8,6 +8,7 @@ import tomllib
 import unittest
 
 import check_gkr_translations as checker
+from check_compiler_export_bytes import compare
 from export_gkr_translations import LEAN, digest
 
 
@@ -73,6 +74,24 @@ class CompilerProvenance(unittest.TestCase):
         (self.directory / "keccak-cached-source.json").unlink()
         with self.assertRaisesRegex(ValueError, "artifact inventory differs"):
             checker.check(self.directory)
+
+    def test_export_bytes_ignore_derived_directories_but_reject_file_changes(self):
+        retained = LEAN / 'artifacts/compiler'
+        shutil.rmtree(self.directory / 'interpretation')
+        shutil.rmtree(self.directory / 'lookup')
+        self.assertEqual(compare(retained, self.directory), 67)
+        path = self.directory / 'manifest.json'
+        original = path.read_bytes()
+        path.write_bytes(original + b'\n')
+        with self.assertRaisesRegex(ValueError, 'export differs'):
+            compare(retained, self.directory)
+        path.unlink()
+        with self.assertRaisesRegex(ValueError, 'inventories differ'):
+            compare(retained, self.directory)
+        path.write_bytes(original)
+        (self.directory / 'extra.json').write_text('{}')
+        with self.assertRaisesRegex(ValueError, 'inventories differ'):
+            compare(retained, self.directory)
 
     def test_rehashed_certificate_corruption(self):
         self.mutate("-certificate.json", lambda data: data["selected"].pop(), True)

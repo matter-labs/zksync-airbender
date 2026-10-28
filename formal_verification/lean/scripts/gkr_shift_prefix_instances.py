@@ -73,7 +73,7 @@ def modules(artifact, column):
         target = 'Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column' + str(column) + '.Part' + str(part)
         targets.append(target)
         text = ('import Airbender.Import.GKRProtocol.BlockPartsImport\nimport Airbender.Data.GKRSetup.ShiftBinop\n'
-                'import Airbender.Review.Helpers.Tables.ShiftData\n\n' +
+                'import Airbender.Data.Tables.ShiftData\n\n' +
                 f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
                 'set_option warningAsError true\nset_option Elab.async false\n'
                 'set_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n')

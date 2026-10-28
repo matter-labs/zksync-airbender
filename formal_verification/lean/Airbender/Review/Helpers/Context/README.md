@@ -11,8 +11,10 @@ pre-state in the same history without assuming the desired instruction result.
 Accepted state matching and the imported clock laws yield the native instruction
 order and its connected boundary path; see
 [`ordered_row_state_path`](../../../Proofs/Trace/RowHistory.lean).
-The memory permutation plus unique initialization and strict timestamps yields
-[complete memory histories and latest-write reads](../Memory/README.md#logical-memory-result).
+Supporting [memory proofs](../Memory/README.md#logical-memory-result) derive
+complete histories and latest-write reads from memory permutation, unique
+initialization and strict timestamps. The Review history definitions are not
+standalone public claims.
 
 [`outgoing_bounds`](PCState/Theorems.lean) proves both outgoing PC limbs bounded
 under its logical interface and low-limb condition, including terminal boundaries.

@@ -1,7 +1,7 @@
 import Airbender.Review.Helpers.Core.FieldCapacity
 import Airbender.Proofs.Tables.DecoderPrefix
 import Airbender.Proofs.Tables.SelectedDecoderProgram
-import Airbender.Review.Helpers.Decoder.SetupData.WordMemory
+import Airbender.Data.Decoder.Setup.WordMemory
 
 namespace Airbender.Trace.NativeDecoder.Proofs.WordMemory
 open Airbender.Setup Airbender.Setup.Proofs

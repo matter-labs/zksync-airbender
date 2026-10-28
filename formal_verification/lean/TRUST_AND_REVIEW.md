@@ -24,25 +24,19 @@ separate public wrapper for every internal subcircuit calculation is unnecessary
 Existing compatibility names and native BabyBear entrypoints remain useful.
 
 The [compiler review](Airbender/Review/Compiler/README.md) exposes arithmetic,
-physical-row logical execution, compatible supplied-program and explicit-platform
+physical-row logical execution, retained-table supplied-program and explicit-platform
 entrypoints, alongside the older compatibility wrappers. Native JSON readers and concrete capture
 bindings live in Import; certificate checks and supporting calculations live in
 Proofs. Captured-instance scope, exact tuple/state/RAM matching and public
-boundaries remain explicit. New logical entrypoints derive helper/member validity
+boundaries remain explicit. Logical entrypoints derive helper/member validity
 without canonical source framing; the older wrappers preserve their premises.
-All 14 actual native row compositions and public wrappers compile; at the
-compiler-composition checkpoint `63776bd95`, program/logical
-execution and the final public module pass selected-module replay at a 32 MiB Lean
-thread stack. The selected 3279-module/10-test frontend passes normal Lake
-no-build freshness and artifact-hash checks without repairs. Its manifests bind
-only that scope; full project/executable/runtime checks, environment auditing,
-complete independent replay, transitive negative controls and Linux/cold-run
-validation remain pending.
+[Validation evidence](VERIFICATION_STATUS.md#validation-evidence) is the sole
+maintained inventory of completed checks, measurements and pending assurance.
 
 [Pooled soundness](Airbender/Review/Trace/Soundness.lean) derives successful
 ordinary execution and native terminal PC/cells from initialized matching.
 [Unified full execution](Airbender/Review/Trace/UnifiedReduced/FullExecution.lean)
-also composes complete bigint, BLAKE2 G, extended-round and Keccak references
+also composes complete bigint, BLAKE2 G, extended-round and special5 Keccak references
 with the supported straight-line ordinary registry.
 [Native actual-path execution](Airbender/Review/Trace/UnifiedReduced/NativePathExecution.lean)
 composes branches, JAL/JALR and repeated-PC loops with complete delegations
@@ -50,12 +44,12 @@ under the explicit F11 hash witness contracts and without an occurrence plan;
 [complete spans](Airbender/Review/Trace/UnifiedReduced/PathSpanExecution.lean)
 derive the full native worker partition/count and algorithms in one history
 under their per-trace occurrence plan and complete protocol coverage.
-The earlier entrypoints, accepted two-COPY loop and complete native G-loop
-application passed the full ordinary source/runtime suite at `5b17af422`.
-The circuit enforcement patches have been removed. Their former focused build
-results do not establish native enforcement in the restored source.
-Separate declaration-origin auditing, transitive assurance controls and independent
-kernel replay are also required.
+No single registry combines nondeterminism reads, modular MOPs and delegation
+calls, and the compiler decoder interpretation retains four entries. No whole-
+execution theorem therefore covers a committed production verifier program.
+The unified base-layer entrypoint also discards verified outputs and commits a
+fixed eight-word success output beginning with one; see
+[the implementation](../../tools/gkr_verifier/src/common_fsv_unified_base_sec_100.rs).
 
 A replay ledger is trusted evidence. Exact artifact/tool hashes bind a recorded
 pass to its inputs but do not authenticate who produced that pass. CI therefore
@@ -88,7 +82,9 @@ implemented by [HashCommands](Airbender/Review/Helpers/UnifiedReduced/NativeMemo
 and its [four predicates](Airbender/Review/Helpers/Context/ExternalBoundary/HashABI.lean).
 They constrain private worker-witness controller and pointer reads; the verifier
 cannot check them merely from public inputs. They supply no outputs or execution
-and are not derived from native acceptance alone. The round zero low limb is the
+and are not derived from native acceptance alone. The exclusive round mask is also a witness premise in lower-level integrated
+mixed-memory, native-ROM and call theorems. It is not a public input or a
+consequence of native acceptance alone. The zero low limb is the
 blessed callers' mask rule; arbitrary VM calls have a wider domain. Per-call G/round controls do not enforce
 entry at counter/round zero, which the VM requires for a bundle. Complete spans
 obtain entry from their per-trace protocol plan; the plan-free theorem proves local
@@ -106,7 +102,7 @@ Standard boot-ROM-data copying remains outside these claims.
 | --- | --- |
 | Canonical terminal PC | The [external verifier boundary](Airbender/Review/Helpers/Context/VerifierBoundary/README.md) supplies typed endpoint closure. Accepted state matching, the applicable boot/initial tuple, BabyBear field and representable timestamps are needed for its connection to native raw PC columns. It adds no local circuit range constraint. |
 | Inactive padding | The [external contribution-mask boundary](Airbender/Review/Helpers/Context/PaddingBoundary/README.md) derives active acceptance/execution from exact masked tuple matching. Raw inactive PC/write values need not stutter. |
-| Bigint commands | F02 controls 0/65537 are outside supported use. The new execution entrypoint derives the worker binding from public reference-prefix validity; lower-level APIs keep the explicit command contract. General native rejection is not claimed. |
+| Bigint commands | F02 controls 0/65537 are outside supported use. The supported-use execution entrypoint derives the worker binding from public reference-prefix validity; lower-level APIs keep the explicit command contract. General native rejection is not claimed. |
 | Worker ROM | F04 ROM-pointer invocations are outside supported use. The physical execution profile retains its public tracked-RAM domain, while the lower-level native-ROM transport API keeps its address binding. The original COPY ROM-shadow witness is preserved. |
 | Hash witness contracts | [F11](FINDINGS.md#f11--hash-witness-contracts-remain-unenforced) records the four lower-level witness premises and the native prefix bridge from public supported use. G separation remains explicit; no circuit repair is pending for the excluded UB cases. |
 | Blessed Keccak coverage | [F12](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage): the provided 361-call split wrapper and its unified setup integration are deferred. Existing 649-call special5 results remain conditional circuit/protocol coverage. |
@@ -122,7 +118,9 @@ validation. These cases establish no whole-system or cryptographic exploit.
 
 | Component | Binding and obligation |
 | --- | --- |
-| Lean / Mathlib | Lean `v4.31.0` and the pinned Mathlib dependency in [lakefile.toml](lakefile.toml); actual axiom dependencies are audited. |
+| Lean / Mathlib | Lean `v4.31.0` and the pinned Mathlib dependency in [lakefile.toml](lakefile.toml). The environment axiom audit is a separate pending gate; direct reports are smoke checks. |
+| Mathlib binary cache | Compiled Mathlib-workspace dependencies downloaded by lake cache get are trusted inputs. They are not rebuilt from source in this gate. Hash checks and kernel replay do not establish that a well-typed cached definition matches its pinned source. |
+| Toolchain installer | CI downloads the official elan v4.2.4 executable archive for its Linux architecture and verifies its fixed SHA-256 before execution; [workflow pins](../../.github/workflows/formal-verification.yml). Lean remains pinned separately. |
 | Clean | Revision `1e563b9c27991b3795eb440c1ee0757edb4ce8b1`; [compatibility preparation](scripts/prepare_clean.py) guards original hashes and repairs proofs without changing constraint semantics or claims. |
 | Sail model/compiler/runtime | Exact revisions, hashes, selected roots and generation boundary are recorded in [Sail provenance](generated/sail-rv32/provenance.json) and [regeneration notes](generated/sail-rv32/README.md). Original standard instruction clauses are preserved. |
 | Platform | [Platform support](scripts/SailPlatform.lean) binds explicit device configuration and abstract terminal/reservation handlers. Native ROM/RAM routing and the upstream Sail test-device configuration are distinct bindings around the same instruction clauses. |

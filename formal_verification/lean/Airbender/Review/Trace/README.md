@@ -31,9 +31,9 @@ four operations alongside standard instructions, TRIADD and XORROT.
 has a separate registry. [Worker spans](Workers/README.md#checked-results) and
 [caller composition](Delegation/README.md#checked-results) establish their stated
 effects. [Full mixed caller execution](UnifiedReduced/FullExecution.lean) now
-connects complete bigint/G/extended-round/Keccak calls and ordinary retirement
-to terminal PC/cells under the existing public protocol profile and temporary
-F02 command contract. Native BabyBear timestamp constraints and initialized
+connects complete bigint/G/extended-round/special5 Keccak calls and ordinary retirement
+to terminal PC/cells under the existing public protocol profile and explicit lower-level
+command contract. Native BabyBear timestamp constraints and initialized
 caller accounting derive complete worker participation.
 
 Start with [Soundness](Soundness.lean) for the primary six-family standard claim
@@ -52,7 +52,9 @@ bounds, instruction order and actual retirement from one initialized history.
 [Initialization/teardown adapters](Initialization.lean) connect imported standalone
 and inline GKR products to computed pooled/unified RAM boundaries. Their public
 profiles omit the old seed correspondence; geometry and imported tokens derive
-it. Exact logical matching and public Sail/configuration inputs remain explicit.
+it for ordinary pooled/unified execution. The external-read, modular,
+TRIADD/XORROT and delegation extensions retain separate seed premises. Exact
+logical matching and public Sail/configuration inputs remain explicit.
 
 | Directory | Review it for |
 | --- | --- |

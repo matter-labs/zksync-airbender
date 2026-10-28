@@ -19,7 +19,7 @@ def modules(column):
         name=f'Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column{column}.Part{begin//PER_MODULE}'
         ns=f'Airbender.Compiler.UnifiedEqualChunks.Column{column}'
         text=('import Airbender.Import.GKRProtocol.BlockPartsImport\nimport Airbender.Data.GKRSetup.Unified\n'
-          'import Airbender.Review.Circuits.UnifiedReduced.Tables.NativeFixedData\nimport Airbender.Review.Circuits.UnifiedReduced.Tables.Native.ROMData\n\nnamespace '+ns+'\n'
+          'import Airbender.Data.Setup.UnifiedReduced.NativeFixedData\nimport Airbender.Data.Setup.UnifiedReduced.Native.ROMData\n\nnamespace '+ns+'\n'
           'open Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n')
         for first,last in selected[begin:begin+PER_MODULE]:
             i=first//CHUNK

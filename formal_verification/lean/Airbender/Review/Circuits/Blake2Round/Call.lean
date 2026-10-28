@@ -57,9 +57,12 @@ def results (input : Row.Input) (output : Row.Output) : Vector (BitVec 32) 43 :=
 def writes (input : Row.Input) (output : Row.Output) : List (Cell × BitVec 32) :=
   ((cells input).zip (results input output)).toList
 
-/-- Complete successful extended-round state relation using the existing
-    independent preparation, scheduling, Clean eight-G, chaining and controller
-    reference. The exact 43 Sail writes determine the whole state and frame. -/
+/-- Extended-round state relation using independent preparation, scheduling,
+    Clean eight-G, chaining and controller references, with all 43 atomic writes
+    and their frame. The ABI's unequal bases alone do not exclude partial overlap
+    (for example message = state + 64); this relation can then be nonfunctional.
+    Accepted initialized memory history excludes conflicting same-clock writes.
+    Reference correspondence is claimed under that history, not for every ABI input. -/
 def Executes (before after : State) : Prop :=
   ∃ (input : Row.Input) (output : Row.Output), ABI input ∧ InputBounded input ∧ OutputBounded output ∧
     (∀ i : Fin 43, (cells input)[i].read before = .ok (reads input)[i] before) ∧

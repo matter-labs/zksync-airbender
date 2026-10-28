@@ -1,4 +1,4 @@
-import Airbender.Review.Circuits.Keccak.Tables.RotationData
+import Airbender.Data.Setup.Keccak.RotationTemplates
 import Airbender.Proofs.Tables.ImportedBlocks
 import Mathlib.Tactic.FinCases
 namespace Airbender.Keccak.Proofs
