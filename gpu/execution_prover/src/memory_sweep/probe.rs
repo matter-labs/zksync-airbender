@@ -2,7 +2,6 @@ use super::factory::{stable_external_challenges, PreparedCircuit};
 use crate::upstream::{DefaultTreeConstructor, GKRProof, MerkleTreeCapVarLength};
 use crate::A;
 use era_cudart::result::CudaResult;
-use gpu_circuit_prover::config::prover_config;
 use gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer;
 use gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy;
 use gpu_circuit_prover::proof::ProofPreflight;
@@ -12,10 +11,8 @@ use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
 use gpu_prover_context::{AllocationMode, ProverContext};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
-use gpu_trace::trace::memory::commit_memory_from_transfers;
-use gpu_trace::trace::memory_transfer::{
-    GpuGKRCommitMemoryTransfer, GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost,
-};
+use gpu_trace::trace::memory::commit_memory_from_transfers_for_geometry;
+use gpu_trace::trace::memory_transfer::{GpuGKRCommitMemoryTransfer, GpuGKRMemoryTransfer};
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -77,18 +74,30 @@ pub(super) fn commit_memory(
     circuit: &PreparedCircuit,
 ) -> CudaResult<Vec<MerkleTreeCapVarLength>> {
     let result = (|| {
-        let config = prover_config(circuit.circuit, circuit.security_level).unwrap();
+        let resolved = &circuit.precomputations.resolved_config;
+        let config = resolved.config();
+        let geometry = resolved.geometry();
+        circuit.precomputations.admit_inputs_before_transfers(
+            circuit.circuit,
+            circuit.security_level,
+            None,
+            context
+                .ntt_device_context()
+                .whir_leaf_transform_params()
+                .omega_log_order,
+        );
         let (decoder, inits, trace) = input_transfers(context, circuit)?;
         let mut inputs = GpuGKRCommitMemoryTransfer::new(decoder, inits, trace, context)?;
         if let Err(error) = inputs.schedule(context) {
             drain(context)?;
             return Err(error);
         }
-        let job = commit_memory_from_transfers::<A>(
+        let job = commit_memory_from_transfers_for_geometry::<A>(
             circuit.circuit,
             circuit.precomputations.gkr_programs.compiled_circuit(),
             inputs,
-            &config,
+            config,
+            geometry,
             context,
         )?;
         job.finish().map(|(caps, _)| caps)
@@ -103,13 +112,27 @@ fn schedule_proof_inputs<'a>(
     circuit: &PreparedCircuit,
     policy: Option<ProofMemoryPolicy>,
 ) -> CudaResult<(GpuGKRProofTransfer<'a, A>, ProofPreflight<BF>)> {
-    let config = prover_config(circuit.circuit, circuit.security_level).unwrap();
-    gpu_trace::trace::memory::assert_unpacked_prover_config(&config);
+    let resolved = &circuit.precomputations.resolved_config;
     let programs = &circuit.precomputations.gkr_programs;
+    let config = resolved.config();
+    let (setup_host, memory_host) = circuit.precomputations.admit_inputs_before_transfers(
+        circuit.circuit,
+        circuit.security_level,
+        Some(
+            circuit
+                .memory_caps
+                .as_deref()
+                .expect("warm memory commitment"),
+        ),
+        context
+            .ntt_device_context()
+            .whir_leaf_transform_params()
+            .omega_log_order,
+    );
     let plan = admit_dr_tail_before_transfers(
         Some(DrTailPreflightRequest {
             gkr_programs: programs,
-            prover_config: &config,
+            prover_config: config,
             final_trace_size_log_2: FINAL_TRACE_SIZE_LOG_2,
             device_id,
             memory_policy: policy.unwrap_or_else(|| {
@@ -123,21 +146,10 @@ fn schedule_proof_inputs<'a>(
         |plan| plan.unwrap(),
     )?;
     let (decoder, inits, trace) = input_transfers(context, circuit)?;
-    let setup = circuit
-        .precomputations
-        .setup_host
-        .get_initialized()
+    let setup = setup_host
         .map(|host| GpuGKRSetupTransfer::new(host, context))
         .transpose()?;
-    let memory_host = GpuGKRMemoryTransferHost::from_per_coset_caps(
-        circuit
-            .memory_caps
-            .as_ref()
-            .expect("warm memory commitment"),
-        config.lde_factor().trailing_zeros(),
-        config.cap_size.trailing_zeros(),
-    );
-    let memory = GpuGKRMemoryTransfer::new(Arc::new(memory_host), context)?;
+    let memory = GpuGKRMemoryTransfer::new(memory_host.expect("admitted proof caps"), context)?;
     let num_teardown_sets = programs
         .compiled_circuit()
         .memory_layout
@@ -220,10 +232,10 @@ pub(super) fn run_case(
     context.set_allocation_mode(AllocationMode::Proof(direction));
     let result = match &follower {
         Ok(_) => {
-            let config = prover_config(target.circuit, target.security_level).unwrap();
+            let config = target.precomputations.resolved_config.config();
             prove::<A>(
                 &target.precomputations.gkr_programs,
-                &config,
+                config,
                 FINAL_TRACE_SIZE_LOG_2,
                 inputs,
                 &plan,

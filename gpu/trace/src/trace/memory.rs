@@ -60,31 +60,56 @@ impl<'a> MemoryCommitmentJob<'a> {
     }
 }
 
-/// The GPU prover commits every base column set over the circuit's own
-/// `2^trace_len_log2` domain (one committed column per base column) and starts
-/// WHIR from that size: it does not implement the base-commitment packing of
-/// `ProverConfig::pack_log2` (`2^pack_log2` consecutive columns per committed
-/// polynomial, WHIR message `2^(trace_len_log2 + pack_log2)`, `pack_log2` extra
-/// claim-point coordinates drawn after the GKR phase). Every GPU entry that
-/// takes a `ProverConfig` (the memory commitments here, `prove()` and the DR
-/// preflight in `gpu_circuit_prover`) calls this before enqueuing any
-/// commitment or proof kernel (the preflight rejects before transfers are
-/// even constructed), so a packed config fails closed instead of yielding an
-/// unpacked proof that the verifier generated from the same config rejects.
-pub fn assert_unpacked_prover_config(prover_config: &ProverConfig) {
-    assert_eq!(
-        prover_config.pack_log2(),
-        0,
-        "GPU prover does not implement base-commitment packing: ProverConfig::pack_log2 = {} \
-         (WHIR message 2^{}); prove packed configs with the CPU prover",
-        prover_config.pack_log2(),
-        prover_config.whir_message_size_log2(),
-    );
+/// Field-free admission shared by config-driven memory and proof entries.
+/// Primitive holder construction remains independent of e2e qualification.
+pub fn validate_separate_base_commitment_geometry(geometry: &BaseCommitmentGeometry) {
     assert!(
-        !prover_config.is_virtual_packing(),
-        "GPU prover does not implement virtual packing (WhirBaseRoundSchedule::fold_log2 = 0, one \
-         value per column per base leaf); prove such configs with the CPU prover"
+        !geometry.is_virtual_packing(),
+        "virtual base commitments are not admitted yet"
     );
+    assert_eq!(
+        geometry.values_per_leaf(),
+        2,
+        "GPU physical base round requires fold_log2=1"
+    );
+    assert_eq!(
+        geometry.commitment_mode(),
+        CommitmentMode::SeparateMemoryAndWitness,
+        "merged base commitments are not admitted yet"
+    );
+    if geometry.pack_log2() != 0 {
+        assert!(
+            matches!(
+                (geometry.trace_len_log2(), geometry.pack_log2()),
+                (20, 2) | (20, 4) | (23, 1)
+            ),
+            "physical proof shape has not passed e2e qualification"
+        );
+    }
+}
+
+/// Check the immutable config/geometry pair against its logical producer.
+/// Legacy k0/f1 does not enter the packed holder's transform/policy validators.
+pub fn validate_memory_commitment_config<F: crate::upstream::PrimeField>(
+    config: &ProverConfig,
+    geometry: &BaseCommitmentGeometry,
+    circuit: &GKRCircuitArtifact<F>,
+) {
+    let expected = BaseCommitmentGeometry::from_config(config, BaseColumns::of(circuit))
+        .expect("invalid memory commitment config");
+    assert_eq!(
+        *geometry, expected,
+        "memory commitment config/geometry mismatch"
+    );
+    assert_eq!(
+        1usize << geometry.trace_len_log2(),
+        circuit.trace_len,
+        "memory commitment config trace length mismatch"
+    );
+    validate_separate_base_commitment_geometry(geometry);
+    if geometry.pack_log2() != 0 {
+        validate_memory_commitment_geometry(geometry, circuit);
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -116,30 +141,6 @@ pub fn validate_memory_commitment_geometry<F: crate::upstream::PrimeField>(
     TraceHolder::<F>::validate_base_layout(geometry, TreesCacheMode::CachePartial);
 }
 
-/// Geometry-taking form of the existing BF memory producer. Config-driven
-/// entries retain their packing guards until full-proof admission is qualified.
-#[allow(clippy::too_many_arguments)]
-pub fn commit_memory_for_geometry<'a>(
-    circuit_type: CircuitType,
-    compiled_circuit: &GKRCircuitArtifact<BF>,
-    decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
-    inits_and_teardowns: Option<&crate::witness::trace_unrolled::InitsAndTeardownsTraceDevice>,
-    tracing_data: Option<&TracingDataDevice>,
-    geometry: BaseCommitmentGeometry,
-    context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a>> {
-    commit_memory_inner(
-        circuit_type,
-        compiled_circuit,
-        decoder_table,
-        inits_and_teardowns,
-        tracing_data,
-        MemoryCommitmentShape::Geometry(geometry),
-        None,
-        context,
-    )
-}
-
 fn commit_memory_inner<'a>(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
@@ -158,18 +159,15 @@ fn commit_memory_inner<'a>(
         MemoryCommitmentShape::Geometry(geometry) => Some(geometry),
     };
     let mut memory_holder = match shape {
-        MemoryCommitmentShape::Unpacked(config) => {
-            assert_unpacked_prover_config(config);
-            TraceHolder::new(
-                log_domain_size,
-                config.lde_factor().trailing_zeros(),
-                config.base_oracles_values_per_leaf().trailing_zeros(),
-                config.cap_size.trailing_zeros(),
-                compiled_circuit.memory_layout.total_width,
-                TreesCacheMode::CachePartial,
-                context,
-            )?
-        }
+        MemoryCommitmentShape::Unpacked(config) => TraceHolder::new(
+            log_domain_size,
+            config.lde_factor().trailing_zeros(),
+            config.base_oracles_values_per_leaf().trailing_zeros(),
+            config.cap_size.trailing_zeros(),
+            compiled_circuit.memory_layout.total_width,
+            TreesCacheMode::CachePartial,
+            context,
+        )?,
         MemoryCommitmentShape::Geometry(geometry) => {
             validate_memory_commitment_geometry(&geometry, compiled_circuit);
             crate::trace::holder::validate_baby_bear_base_geometry(
@@ -442,10 +440,32 @@ pub fn commit_memory<'a>(
         decoder_table,
         None,
         Some(tracing_data),
-        MemoryCommitmentShape::Unpacked(prover_config),
+        config_memory_shape(prover_config, compiled_circuit),
         None,
         context,
     )
+}
+
+fn config_memory_shape<'a>(
+    config: &'a ProverConfig,
+    circuit: &GKRCircuitArtifact<BF>,
+) -> MemoryCommitmentShape<'a> {
+    let geometry = BaseCommitmentGeometry::from_config(config, BaseColumns::of(circuit))
+        .expect("invalid memory commitment config");
+    memory_shape_for_geometry(config, geometry, circuit)
+}
+
+fn memory_shape_for_geometry<'a>(
+    config: &'a ProverConfig,
+    geometry: BaseCommitmentGeometry,
+    circuit: &GKRCircuitArtifact<BF>,
+) -> MemoryCommitmentShape<'a> {
+    validate_memory_commitment_config(config, &geometry, circuit);
+    if geometry.pack_log2() == 0 {
+        MemoryCommitmentShape::Unpacked(config)
+    } else {
+        MemoryCommitmentShape::Geometry(geometry)
+    }
 }
 
 pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
@@ -455,8 +475,38 @@ pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
     prover_config: &ProverConfig,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
-    // reject a packed config before touching the streams
-    assert_unpacked_prover_config(prover_config);
+    let geometry =
+        BaseCommitmentGeometry::from_config(prover_config, BaseColumns::of(compiled_circuit))
+            .expect("invalid memory commitment config");
+    commit_memory_from_transfers_for_geometry(
+        circuit_type,
+        compiled_circuit,
+        inputs,
+        prover_config,
+        geometry,
+        context,
+    )
+}
+
+/// Use the worker's already resolved config/geometry without another CPU lookup.
+pub fn commit_memory_from_transfers_for_geometry<'a, A: GoodAllocator + 'a>(
+    circuit_type: CircuitType,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    inputs: super::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>,
+    prover_config: &ProverConfig,
+    geometry: BaseCommitmentGeometry,
+    context: &ProverContext,
+) -> CudaResult<MemoryCommitmentJob<'a>> {
+    let shape = memory_shape_for_geometry(prover_config, geometry, compiled_circuit);
+    if geometry.pack_log2() != 0 {
+        crate::trace::holder::validate_baby_bear_base_geometry(
+            &geometry,
+            context
+                .ntt_device_context()
+                .whir_leaf_transform_params()
+                .omega_log_order,
+        );
+    }
     // One exec-stream wait covers every H2D bundled by `inputs` (decoder,
     // inits_and_teardowns, tracing_data).
     inputs.ensure_transferred(context)?;
@@ -474,38 +524,11 @@ pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
         decoder.as_ref().map(|t| &t.data_device[..]),
         inits_and_teardowns.as_ref().map(|t| &t.data_device),
         tracing_data.as_ref().map(|t| &t.data_device),
-        MemoryCommitmentShape::Unpacked(prover_config),
+        shape,
         Some(transfer.into_keepalive()),
         context,
     )
 }
 
 #[cfg(test)]
-mod tests {
-    use super::assert_unpacked_prover_config;
-    use prover::definitions::SecurityLevel;
-    use prover::gkr::prover_config::example_configs::{
-        config_for_security_level_under_pessimistic_conjecture,
-        packed_config_for_security_level_under_pessimistic_conjecture,
-    };
-
-    #[test]
-    fn cpu_unpacked_prover_config_is_accepted() {
-        let config =
-            config_for_security_level_under_pessimistic_conjecture(20, SecurityLevel::Sec100);
-        assert_eq!(config.pack_log2(), 0);
-        assert_unpacked_prover_config(&config);
-    }
-
-    #[test]
-    #[should_panic(expected = "GPU prover does not implement base-commitment packing")]
-    fn cpu_packed_prover_config_is_rejected() {
-        let config = packed_config_for_security_level_under_pessimistic_conjecture(
-            20,
-            4,
-            SecurityLevel::Sec100,
-        );
-        assert_eq!(config.pack_log2(), 4);
-        assert_unpacked_prover_config(&config);
-    }
-}
+mod tests;

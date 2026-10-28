@@ -6,11 +6,11 @@ fn gpu_memory_caps(
 ) -> Vec<MerkleTreeCapVarLength> {
     let context = &base.context;
     let baseline = context.get_used_mem_current();
-    let mut decoder = base
+    let decoder = base
         .compiled_circuit
         .has_decoder_lookup
         .then(|| DecoderTableTransfer::new(Arc::clone(&base.decoder_table_host), context).unwrap());
-    let mut inits = base.inits_and_teardowns_host.clone().map(|host| {
+    let inits = base.inits_and_teardowns_host.clone().map(|host| {
         InitsAndTeardownsTransfer::new(
             Some(host),
             base.compiled_circuit.memory_layout.teardown_sets.len(),
@@ -19,45 +19,31 @@ fn gpu_memory_caps(
         )
         .unwrap()
     });
-    let mut trace = TracingDataTransfer::new(
+    let trace = TracingDataTransfer::new(
         base.tracing_data_host.clone(),
         base.compiled_circuit.trace_len,
         context,
     )
     .unwrap();
-    let h2d = gpu_prover_context::transfer::single_shot_h2d(
-        |transfer| {
-            if let Some(decoder) = decoder.as_mut() {
-                decoder.schedule_transfer(transfer, context)?;
-            }
-            if let Some(inits) = inits.as_mut() {
-                inits.schedule_transfer(transfer, context)?;
-            }
-            trace.schedule_transfer(transfer, context)?;
-            Ok(())
-        },
+    let mut inputs = gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::new(
+        decoder,
+        inits,
+        Some(trace),
         context,
     )
     .unwrap();
-    h2d.ensure_transferred(context).unwrap();
-    let job = gpu_trace::trace::memory::commit_memory_for_geometry(
+    inputs.schedule(context).unwrap();
+    let job = gpu_trace::trace::memory::commit_memory_from_transfers_for_geometry(
         base.circuit_type,
         &base.compiled_circuit,
-        decoder.as_ref().map(|d| &d.data_device[..]),
-        inits.as_ref().map(|i| &i.data_device),
-        Some(&trace.data_device),
+        inputs,
+        &base.prover_config,
         geometry,
         context,
     )
     .unwrap();
     assert_eq!(job.base_commitment_geometry(), Some(geometry));
     let (caps, _) = job.finish().unwrap();
-    // The direct primitive borrows device inputs: keep both those reservations
-    // and the H2D source owner through the job's completion synchronization.
-    drop(h2d);
-    drop(decoder);
-    drop(inits);
-    drop(trace);
     assert_eq!(context.get_used_mem_current(), baseline);
     assert_eq!(
         caps, base.memory_tree_caps,

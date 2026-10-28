@@ -9,14 +9,72 @@ use gpu_trace::witness::trace_unrolled::ExecutorFamilyDecoderData;
 use era_cudart::result::CudaResult;
 
 use crate::upstream::{
-    BaseColumns, BaseCommitmentGeometry, CpuGKRSetup, ProverConfig, SecurityLevel,
-    UnrolledCircuitWitnessEvalFn,
+    BaseColumns, BaseCommitmentGeometry, CommitmentMode, CpuGKRSetup, GKRCircuitArtifact,
+    MerkleTreeCapVarLength, PrimeField, ProverConfig, SecurityLevel, UnrolledCircuitWitnessEvalFn,
 };
 use execution_prover::setup::CanonicalCircuitSetup;
 use std::sync::{Arc, Mutex, OnceLock};
 
 #[cfg(test)]
 mod tests;
+
+/// Immutable CPU-selected configuration shared by setup and both worker phases.
+pub(crate) struct ResolvedProverConfig<F: PrimeField> {
+    circuit_type: CircuitType,
+    circuit: Arc<GKRCircuitArtifact<F>>,
+    config: ProverConfig,
+    geometry: BaseCommitmentGeometry,
+}
+
+impl<F: PrimeField> ResolvedProverConfig<F> {
+    fn new(
+        circuit_type: CircuitType,
+        circuit: Arc<GKRCircuitArtifact<F>>,
+        config: ProverConfig,
+    ) -> Self {
+        let geometry = BaseCommitmentGeometry::from_config(&config, BaseColumns::of(&circuit))
+            .expect("invalid canonical commitment geometry");
+        Self {
+            circuit_type,
+            circuit,
+            config,
+            geometry,
+        }
+    }
+
+    pub(crate) fn config(&self) -> &ProverConfig {
+        &self.config
+    }
+
+    pub(crate) fn geometry(&self) -> BaseCommitmentGeometry {
+        self.geometry
+    }
+
+    pub(crate) fn validate_request(
+        &self,
+        circuit_type: CircuitType,
+        security_level: SecurityLevel,
+        circuit: &Arc<GKRCircuitArtifact<F>>,
+    ) {
+        assert_eq!(
+            circuit_type, self.circuit_type,
+            "request circuit differs from resolved config"
+        );
+        assert_eq!(
+            security_level, self.config.security_level,
+            "request security level differs from resolved config"
+        );
+        assert!(
+            Arc::ptr_eq(circuit, &self.circuit),
+            "request artifact differs from resolved config"
+        );
+        assert_eq!(
+            self.config.commitment_mode,
+            CommitmentMode::SeparateMemoryAndWitness,
+            "GPU requests require separate memory and witness commitments"
+        );
+    }
+}
 
 pub struct LazyGpuGKRSetupHost {
     inner: OnceLock<Option<Arc<GpuGKRSetupHost>>>,
@@ -57,8 +115,7 @@ impl LazyGpuGKRSetupHost {
         self.geometry
     }
 
-    /// Divergence guard for the config selecting this cache. Eager warmup is
-    /// still legacy until packed/virtual execution admission is qualified.
+    /// Divergence guard for the config selecting this cache.
     pub fn validate_config(&self, config: &ProverConfig, columns: BaseColumns) {
         let requested = BaseCommitmentGeometry::from_config(config, columns)
             .expect("invalid requested setup cache geometry");
@@ -80,13 +137,24 @@ impl LazyGpuGKRSetupHost {
                 if cpu_setup.hypercube_evals.is_empty() {
                     return Ok(None);
                 }
-                Ok(Some(Arc::new(GpuGKRSetupHost::precompute_from_cpu_setup(
-                    &cpu_setup,
-                    self.log_lde_factor,
-                    self.log_rows_per_leaf,
-                    self.log_tree_cap_size,
-                    context,
-                )?)))
+                let host = if self.geometry.pack_log2() != 0 && !self.geometry.is_virtual_packing()
+                {
+                    gpu_trace::trace::memory::validate_separate_base_commitment_geometry(
+                        &self.geometry,
+                    );
+                    GpuGKRSetupHost::precompute_for_geometry(&cpu_setup, self.geometry, context)?
+                } else {
+                    // Preserve legacy warmup for unsupported virtual defaults. Its
+                    // producer has no geometry and cannot supply a virtual proof.
+                    GpuGKRSetupHost::precompute_from_cpu_setup(
+                        &cpu_setup,
+                        self.log_lde_factor,
+                        self.log_rows_per_leaf,
+                        self.log_tree_cap_size,
+                        context,
+                    )?
+                };
+                Ok(Some(Arc::new(host)))
             })
             .map(|_| ())
     }
@@ -106,9 +174,68 @@ pub struct CircuitPrecomputations {
     pub gkr_programs: Arc<GkrPrograms>,
     pub setup_host: Arc<LazyGpuGKRSetupHost>,
     pub decoder_host: Option<Arc<StaticPinnedBox<ExecutorFamilyDecoderData>>>,
+    pub(crate) resolved_config: Arc<ResolvedProverConfig<BF>>,
 }
 
 impl CircuitPrecomputations {
+    /// Validate host-only request metadata before any transfer constructor.
+    /// `caps` distinguishes a proof request from its separate memory precommit.
+    pub(crate) fn admit_inputs_before_transfers(
+        &self,
+        circuit_type: CircuitType,
+        security_level: SecurityLevel,
+        caps: Option<&[MerkleTreeCapVarLength]>,
+        twiddle_domain_log2: u32,
+    ) -> (
+        Option<Arc<GpuGKRSetupHost>>,
+        Option<Arc<gpu_trace::trace::memory_transfer::GpuGKRMemoryTransferHost>>,
+    ) {
+        use gpu_trace::trace::memory_transfer::GpuGKRMemoryTransferHost;
+        let circuit = self.gkr_programs.compiled_circuit();
+        let resolved = &self.resolved_config;
+        resolved.validate_request(circuit_type, security_level, circuit);
+        assert_eq!(self.gkr_programs.circuit_type(), circuit_type);
+        let config = resolved.config();
+        let geometry = resolved.geometry();
+        self.setup_host
+            .validate_config(config, BaseColumns::of(circuit));
+        gpu_trace::trace::memory::validate_memory_commitment_config(config, &geometry, circuit);
+        // Proof requests receive the BF transform check in proof preflight.
+        if caps.is_none() && geometry.pack_log2() != 0 {
+            gpu_trace::trace::holder::validate_baby_bear_base_geometry(
+                &geometry,
+                twiddle_domain_log2,
+            );
+        }
+        // Setup batches drain before constructor/add_binary returns, including
+        // for separate memory requests. This accessor allocates nothing.
+        let setup = self.setup_host.get_initialized();
+        if let Some(host) = setup.as_ref() {
+            host.validate_for_geometry(&geometry);
+        } else {
+            assert_eq!(
+                geometry.logical_columns().setup,
+                0,
+                "missing setup producer"
+            );
+        }
+        // Cap packing uses the ordinary heap, never pinned/device allocations.
+        let memory = caps.map(|caps| {
+            let host = if geometry.pack_log2() == 0 {
+                GpuGKRMemoryTransferHost::from_per_coset_caps(
+                    caps,
+                    config.lde_factor().trailing_zeros(),
+                    config.cap_size.trailing_zeros(),
+                )
+            } else {
+                GpuGKRMemoryTransferHost::from_per_coset_caps_for_geometry(caps, geometry)
+            };
+            host.validate_for_geometry(&geometry);
+            Arc::new(host)
+        });
+        (setup, memory)
+    }
+
     pub fn from_canonical(
         circuit_type: CircuitType,
         setup: CanonicalCircuitSetup,
@@ -132,15 +259,20 @@ impl CircuitPrecomputations {
         );
         let config = gpu_circuit_prover::config::prover_config(circuit_type, security_level)
             .expect("unsupported GPU security level");
-        let geometry =
-            BaseCommitmentGeometry::from_config(&config, BaseColumns::of(&compiled_circuit))
-                .expect("invalid canonical setup cache geometry");
         let compiled_circuit = Arc::new(compiled_circuit);
+        let resolved_config = Arc::new(ResolvedProverConfig::new(
+            circuit_type,
+            Arc::clone(&compiled_circuit),
+            config,
+        ));
         let gkr_programs = Arc::new(
             GkrPrograms::compile(circuit_type, Arc::clone(&compiled_circuit))
                 .unwrap_or_else(|error| panic!("{circuit_type:?} GKR programs: {error}")),
         );
-        let setup_host = Arc::new(LazyGpuGKRSetupHost::new(cpu_setup, geometry));
+        let setup_host = Arc::new(LazyGpuGKRSetupHost::new(
+            cpu_setup,
+            resolved_config.geometry(),
+        ));
         let decoder_host = match decoder_table.as_deref() {
             Some(rows) if !rows.is_empty() => {
                 let mut buf =
@@ -156,6 +288,7 @@ impl CircuitPrecomputations {
             gkr_programs,
             setup_host,
             decoder_host,
+            resolved_config,
         })
     }
 }

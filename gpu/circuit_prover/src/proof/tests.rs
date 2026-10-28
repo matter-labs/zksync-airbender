@@ -1,5 +1,5 @@
 use super::*;
-use crate::upstream::{BaseColumns, SecurityLevel};
+use crate::upstream::{BaseColumns, CommitmentMode, SecurityLevel};
 
 fn physical_config(n: usize, k: usize) -> ProverConfig {
     prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(n, k, SecurityLevel::Sec100)
@@ -90,7 +90,7 @@ fn cpu_virtual_and_merged_reject_independently_of_physical_packing() {
             .map(String::as_str)
             .or_else(|| failure.downcast_ref::<&str>().copied())
             .unwrap();
-        assert!(message.contains("virtual base commitment proofs"));
+        assert!(message.contains("virtual base commitments"));
     }
     let mut config = physical_config(20, 4);
     config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;

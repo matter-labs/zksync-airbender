@@ -16,8 +16,8 @@ use fft::GoodAllocator;
 
 use crate::proof::inputs::GpuGKRProofTransfer;
 use crate::upstream::{
-    validate_sumcheck_schedule, BaseColumns, BaseCommitmentGeometry, CommitmentMode,
-    GKRCircuitArtifact, PrimeField, ProverConfig, SumcheckScheduleClass,
+    validate_sumcheck_schedule, BaseColumns, BaseCommitmentGeometry, GKRCircuitArtifact,
+    PrimeField, ProverConfig, SumcheckScheduleClass,
 };
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::UnsafeMutAccessor;
@@ -61,7 +61,7 @@ fn main_folding_steps(gkr_programs: &GkrPrograms) -> usize {
 /// One immutable config/geometry/policy bound before transfers. Positive physical
 /// admission is currently separate, f=1, AllCosets at (n,k)=(20,4)/(20,2)/(23,1),
 /// keyed by shape rather than circuit type. No CPU default is physical-only.
-/// Config-driven memory/cache/worker activation remains a later stage.
+/// Worker requests bind the same geometry before constructing transfers.
 pub struct ProofPreflight<F: PrimeField> {
     dr_tail: gpu_gkr::DrTailProofPlan,
     circuit: Arc<GKRCircuitArtifact<F>>,
@@ -75,6 +75,10 @@ pub struct ProofPreflight<F: PrimeField> {
 impl<F: PrimeField> ProofPreflight<F> {
     pub fn geometry(&self) -> BaseCommitmentGeometry {
         self.geometry
+    }
+
+    pub fn memory_policy(&self) -> ProofMemoryPolicy {
+        self.memory_policy
     }
 
     #[cfg(test)]
@@ -92,30 +96,10 @@ pub(crate) fn validate_physical_proof_geometry_policy(
         memory_policy.witness.is_valid(),
         "invalid witness memory policy"
     );
-    assert!(
-        !geometry.is_virtual_packing(),
-        "virtual base commitment proofs are not admitted yet"
-    );
-    assert_eq!(
-        geometry.values_per_leaf(),
-        2,
-        "GPU physical base round requires fold_log2=1"
-    );
-    assert_eq!(
-        geometry.commitment_mode(),
-        CommitmentMode::SeparateMemoryAndWitness,
-        "merged base commitment proofs are not admitted yet"
-    );
+    gpu_trace::trace::memory::validate_separate_base_commitment_geometry(geometry);
     if geometry.pack_log2() == 0 {
         return;
     }
-    assert!(
-        matches!(
-            (geometry.trace_len_log2(), geometry.pack_log2()),
-            (20, 4) | (20, 2) | (23, 1)
-        ),
-        "physical proof shape has not passed e2e qualification"
-    );
     assert_eq!(memory_policy, ProofMemoryPolicy::default(),
         "physical proofs require materialized GKR and AllCosets with RawAndCosets/ReuseCosets witness");
 }

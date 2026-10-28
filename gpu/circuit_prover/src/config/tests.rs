@@ -111,7 +111,7 @@ fn cpu_builds_prover_config_for_all_supported_security_levels() {
             } else {
                 assert_eq!(shape.pack_log2(), 0);
                 assert!(!shape.is_virtual_packing());
-                gpu_trace::trace::memory::assert_unpacked_prover_config(&cfg);
+                gpu_trace::trace::memory::validate_separate_base_commitment_geometry(&shape);
             }
             checked += 1;
         }
@@ -159,10 +159,10 @@ fn cpu_virtual_defaults_remain_rejected_by_proof_admission() {
                 .map(String::as_str)
                 .or_else(|| panic.downcast_ref::<&str>().copied())
                 .unwrap();
-            let expected = "virtual base commitment proofs are not admitted yet";
-            // Config-driven memory retains the old guard until P1.5/P3.
+            let expected = "virtual base commitments are not admitted yet";
+            // Canonical virtual defaults stay closed independently of physical packing.
             assert!(std::panic::catch_unwind(|| {
-                gpu_trace::trace::memory::assert_unpacked_prover_config(&cfg)
+                gpu_trace::trace::memory::validate_separate_base_commitment_geometry(&geometry)
             })
             .is_err());
             assert!(text.contains(expected), "{circuit:?}: {text}");

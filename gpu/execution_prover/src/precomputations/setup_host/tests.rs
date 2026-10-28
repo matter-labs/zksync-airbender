@@ -85,3 +85,225 @@ fn cpu_setup_cache_rejects_bad_logical_sources_before_gpu_or_pinning() {
         assert!(std::panic::catch_unwind(|| LazyGpuGKRSetupHost::new(bad, geometry)).is_err());
     }
 }
+
+fn artifact(name: &str) -> Arc<GKRCircuitArtifact<BF>> {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../cs/compiled_circuits")
+        .join(format!("{name}_layout_gkr.json"));
+    Arc::new(serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap())
+}
+
+#[test]
+fn cpu_resolved_request_rejects_identity_and_mode_before_transfers() {
+    use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
+    let kind = CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression);
+    let circuit = artifact("blake2_with_extended_control");
+    let config = gpu_circuit_prover::config::prover_config(kind, SecurityLevel::Sec100).unwrap();
+    let resolved = ResolvedProverConfig::new(kind, Arc::clone(&circuit), config.clone());
+    resolved.validate_request(kind, SecurityLevel::Sec100, &circuit);
+    assert_eq!(
+        resolved.config(),
+        &kind.prover_config(SecurityLevel::Sec100)
+    );
+    assert_eq!(
+        resolved.geometry().logical_columns(),
+        BaseColumns::of(&circuit)
+    );
+    // Virtual setup warmup is allowed, but a memory/proof request is not.
+    assert!(resolved.geometry().is_virtual_packing());
+    assert!(std::panic::catch_unwind(|| {
+        gpu_trace::trace::memory::validate_memory_commitment_config(
+            resolved.config(),
+            &resolved.geometry(),
+            &circuit,
+        )
+    })
+    .is_err());
+
+    for (request_kind, request_artifact) in [
+        (
+            CircuitType::Unrolled(UnrolledCircuitType::Unified),
+            Arc::clone(&circuit),
+        ),
+        (kind, Arc::new((*circuit).clone())),
+    ] {
+        let constructed = std::cell::Cell::new(false);
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            resolved.validate_request(request_kind, SecurityLevel::Sec100, &request_artifact);
+            constructed.set(true);
+        }))
+        .is_err());
+        assert!(!constructed.get());
+    }
+    let mut merged = config;
+    merged.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+    let merged = ResolvedProverConfig::new(kind, Arc::clone(&circuit), merged);
+    assert!(std::panic::catch_unwind(|| merged.validate_request(
+        kind,
+        SecurityLevel::Sec100,
+        &circuit
+    ))
+    .is_err());
+}
+
+#[test]
+fn cpu_resolved_physical_request_uses_current_artifact_geometry() {
+    use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
+    use prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture as packed_config;
+    for (kind, name, n, k) in [
+        (
+            CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression),
+            "blake2_with_extended_control",
+            20,
+            2,
+        ),
+        (
+            CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression),
+            "blake2_with_extended_control",
+            20,
+            4,
+        ),
+        (
+            CircuitType::Unrolled(UnrolledCircuitType::Unified),
+            "unified_reduced_machine",
+            23,
+            1,
+        ),
+    ] {
+        let circuit = artifact(name);
+        let resolved = ResolvedProverConfig::new(
+            kind,
+            Arc::clone(&circuit),
+            packed_config(n, k, SecurityLevel::Sec100),
+        );
+        let constructed = std::cell::Cell::new(false);
+        resolved.validate_request(kind, SecurityLevel::Sec100, &circuit);
+        gpu_trace::trace::memory::validate_memory_commitment_config(
+            resolved.config(),
+            &resolved.geometry(),
+            &circuit,
+        );
+        constructed.set(true);
+        assert!(constructed.get());
+        assert_eq!(
+            resolved.geometry().logical_columns(),
+            BaseColumns::of(&circuit)
+        );
+        let mut wrong = resolved.config().clone();
+        wrong.whir_schedule.base_round.fold_log2 = 0;
+        assert!(std::panic::catch_unwind(|| {
+            gpu_trace::trace::memory::validate_memory_commitment_config(
+                &wrong,
+                &resolved.geometry(),
+                &circuit,
+            )
+        })
+        .is_err());
+    }
+}
+
+#[test]
+fn cpu_worker_admission_rejects_metadata_before_transfer_construction() {
+    use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
+    let kind = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns);
+    let circuit = artifact("inits_and_teardowns");
+    let config = gpu_circuit_prover::config::prover_config(kind, SecurityLevel::Sec100).unwrap();
+    let resolved = Arc::new(ResolvedProverConfig::new(
+        kind,
+        Arc::clone(&circuit),
+        config.clone(),
+    ));
+    assert_eq!(resolved.geometry().logical_columns().setup, 0);
+    let cache = Arc::new(LazyGpuGKRSetupHost::new(
+        CpuGKRSetup {
+            hypercube_evals: vec![],
+        },
+        resolved.geometry(),
+    ));
+    assert!(cache.inner.set(None).is_ok());
+    let precomputations = CircuitPrecomputations {
+        gkr_programs: Arc::new(GkrPrograms::compile(kind, Arc::clone(&circuit)).unwrap()),
+        setup_host: cache,
+        decoder_host: None,
+        resolved_config: resolved,
+    };
+    assert_eq!(
+        precomputations.setup_host.base_commitment_geometry(),
+        precomputations.resolved_config.geometry()
+    );
+    let (setup, memory) =
+        precomputations.admit_inputs_before_transfers(kind, SecurityLevel::Sec100, None, 27);
+    assert!(setup.is_none() && memory.is_none());
+    let caps = vec![
+        MerkleTreeCapVarLength {
+            cap: vec![[0; 8]; config.cap_size / config.lde_factor()]
+        };
+        config.lde_factor()
+    ];
+    let (_, memory) =
+        precomputations.admit_inputs_before_transfers(kind, SecurityLevel::Sec100, Some(&caps), 27);
+    memory
+        .unwrap()
+        .validate_for_geometry(&precomputations.resolved_config.geometry());
+
+    for case in 0..6 {
+        let mut wrong = precomputations.clone();
+        let mut request_kind = kind;
+        let mut supplied_caps = caps.clone();
+        match case {
+            0 => {
+                request_kind = CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression)
+            }
+            1 => {
+                wrong.gkr_programs =
+                    Arc::new(GkrPrograms::compile(kind, Arc::new((*circuit).clone())).unwrap())
+            }
+            2 => {
+                let mut cfg = config.clone();
+                cfg.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+                wrong.resolved_config =
+                    Arc::new(ResolvedProverConfig::new(kind, Arc::clone(&circuit), cfg));
+            }
+            3 => {
+                let mut columns = BaseColumns::of(&circuit);
+                columns.memory += 1;
+                wrong.setup_host = Arc::new(LazyGpuGKRSetupHost::new(
+                    CpuGKRSetup {
+                        hypercube_evals: vec![],
+                    },
+                    BaseCommitmentGeometry::from_config(&config, columns).unwrap(),
+                ));
+            }
+            4 => {
+                supplied_caps[0].cap.pop();
+            }
+            _ => {
+                let mut cfg = config.clone();
+                cfg.whir_schedule.base_round.fold_log2 = 0;
+                wrong.resolved_config =
+                    Arc::new(ResolvedProverConfig::new(kind, Arc::clone(&circuit), cfg));
+                wrong.setup_host = Arc::new(LazyGpuGKRSetupHost::new(
+                    CpuGKRSetup {
+                        hypercube_evals: vec![],
+                    },
+                    wrong.resolved_config.geometry(),
+                ));
+            }
+        }
+        let constructed = std::cell::Cell::new(false);
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                wrong.admit_inputs_before_transfers(
+                    request_kind,
+                    SecurityLevel::Sec100,
+                    Some(&supplied_caps),
+                    27,
+                );
+                constructed.set(true);
+            }))
+            .is_err(),
+            "case {case} was admitted"
+        );
+        assert!(!constructed.get());
+    }
+}

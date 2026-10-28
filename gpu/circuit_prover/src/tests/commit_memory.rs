@@ -753,36 +753,24 @@ fn assert_delegation_commit_memory_with_packing<W, O, F>(
     let trace_data = upload_slice_to_device_for_test(buffer, &context);
     let gpu_trace = build_gpu_trace(trace_data);
 
-    let job =
-        if pack_log2 == 0 {
-            commit_memory(
-                CircuitType::Delegation(circuit_type),
-                compiled_circuit,
-                None,
-                &gpu_trace,
-                &prover_config,
-                &context,
-            )
-        } else {
-            let geometry =
+    let job = commit_memory(
+        CircuitType::Delegation(circuit_type),
+        compiled_circuit,
+        None,
+        &gpu_trace,
+        &prover_config,
+        &context,
+    )
+    .unwrap();
+    if pack_log2 != 0 {
+        let geometry =
             prover::gkr::prover_config::commitment_geometry::BaseCommitmentGeometry::from_config(
-                &prover_config, crate::upstream::BaseColumns::of(compiled_circuit),
-            ).unwrap();
-            let job = gpu_trace::trace::memory::commit_memory_for_geometry(
-                CircuitType::Delegation(circuit_type),
-                compiled_circuit,
-                None,
-                None,
-                Some(&gpu_trace),
-                geometry,
-                &context,
-            );
-            if let Ok(ref job) = job {
-                assert_eq!(job.base_commitment_geometry(), Some(geometry));
-            }
-            job
-        }
-        .unwrap();
+                &prover_config,
+                crate::upstream::BaseColumns::of(compiled_circuit),
+            )
+            .unwrap();
+        assert_eq!(job.base_commitment_geometry(), Some(geometry));
+    }
 
     let producing_geometry = job.base_commitment_geometry();
     let (gpu_tree_caps, elapsed_ms) = job.finish().unwrap();

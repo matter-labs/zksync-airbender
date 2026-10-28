@@ -82,10 +82,12 @@ summary — the contract document is the source of truth.
   admission rejects independently of physical packing, including Blake k2/f0.
   `ProofPreflight<F>` binds config, geometry, artifact identity, policy, PoW and
   DR resources before transfers. Legacy k0/f1 holders and policies are retained.
-  Config-driven memory, Lazy setup warmup and worker admission remain guarded
-  by `gpu_trace::trace::memory::assert_unpacked_prover_config` until producer
-  binding is activated in P1.5-separate; direct geometry producers supply the
-  proof-level qualification gates. Merged and virtual proofs remain closed.
+  Config-driven memory and worker admission share the same qualified geometry.
+  One immutable CPU config and artifact identity bind setup and both worker
+  phases; setup/cap metadata is validated before H2D allocation. Positive
+  physical setup warmup uses its producing geometry. Unsupported virtual
+  defaults retain legacy warmup with no producing geometry and reject before
+  request transfers. Merged and virtual proofs remain closed.
 - `src/proof/`:
   - `inputs.rs`: the consolidated H2D transfer bundle
     (`GpuGKRProofTransfer`) — one shared `Transfer` (from `gpu_prover_context`)
