@@ -37,6 +37,8 @@ pub use naive::NaiveGKRBackend;
 #[cfg(target_arch = "aarch64")]
 mod neon;
 #[cfg(target_arch = "aarch64")]
+mod neon_w3;
+#[cfg(target_arch = "aarch64")]
 pub use neon::NeonGKRBackend;
 
 #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]

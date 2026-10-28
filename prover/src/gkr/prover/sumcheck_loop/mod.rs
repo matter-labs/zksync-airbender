@@ -32,6 +32,8 @@ pub(crate) mod batch_evaluation;
 #[cfg(test)]
 mod distribution_analysis;
 mod kernel_collector;
+#[cfg(all(test, target_arch = "aarch64"))]
+mod pressure_probe;
 pub(crate) mod windowed_mode;
 
 pub use windowed_mode::lsb_chain::SameSizeChainOps;

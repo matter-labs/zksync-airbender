@@ -89,7 +89,7 @@ pub const PH_ALL: u32 = 63;
 /// * cells  8..12: (x0, x1, inf)  at 8 + 2*x0 + x1
 /// * cells 12..18: (x0, inf, c)   at 12 + 3*x0 + c, c in {0, 1, inf}
 /// * cells 18..27: (inf, b, c)    at 18 + 3*b + c, b/c in {0, 1, inf}
-const W3_INF: [(u8, u8, u8); 19] = [
+pub(crate) const W3_INF: [(u8, u8, u8); 19] = [
     (8, 1, 0),
     (9, 3, 2),
     (10, 5, 4),
@@ -132,7 +132,12 @@ pub fn w3_soa_cell_of_generic(g: usize) -> usize {
 }
 
 #[inline(always)]
-unsafe fn lsb_read_base_w3(dst: *mut u32, src: *const u32, row: usize, interpolate: bool) {
+pub(crate) unsafe fn lsb_read_base_w3(
+    dst: *mut u32,
+    src: *const u32,
+    row: usize,
+    interpolate: bool,
+) {
     let p = src.add(row * 8);
     vst1q_u32(dst, vld1q_u32(p));
     vst1q_u32(dst.add(4), vld1q_u32(p.add(4)));
@@ -164,7 +169,7 @@ unsafe fn lsb_read_ext_w3_aos(
 /// window-3 ext fill: AoS read + extrapolation into `tmp` (28 cells), then
 /// limb-major transpose into the 7-group SoA grid.
 #[inline(always)]
-unsafe fn fill_ext_w3_soa(
+pub(crate) unsafe fn fill_ext_w3_soa(
     grid: *mut u32,
     src: *const BabyBearExt4,
     row: usize,
@@ -269,7 +274,7 @@ unsafe fn fill_ext_uniskip_soa(grid: *mut u32, src: *const u32, row: usize, tabl
 }
 
 #[inline(always)]
-unsafe fn apply_form_op<F: PrimeField, const NG: usize>(
+pub(crate) unsafe fn apply_form_op<F: PrimeField, const NG: usize>(
     dst: *mut u32,
     src: *const u32,
     op: &FormOp<F>,
@@ -286,7 +291,7 @@ unsafe fn apply_form_op<F: PrimeField, const NG: usize>(
 /// First-member variant of [`apply_form_op`]: a pure STORE (copy / negate /
 /// scale) into the form buffer, which is never pre-zeroed.
 #[inline(always)]
-unsafe fn apply_form_op_first<F: PrimeField, const NG: usize>(
+pub(crate) unsafe fn apply_form_op_first<F: PrimeField, const NG: usize>(
     dst: *mut u32,
     src: *const u32,
     op: &FormOp<F>,
@@ -302,7 +307,7 @@ unsafe fn apply_form_op_first<F: PrimeField, const NG: usize>(
 
 /// Ext twin of [`apply_form_op`] (shared by the uniskip ext passes).
 #[inline(always)]
-unsafe fn apply_ext_form_op<F: PrimeField, const NG: usize>(
+pub(crate) unsafe fn apply_ext_form_op<F: PrimeField, const NG: usize>(
     dst: *mut u32,
     src: *const u32,
     op: &FormOp<F>,
@@ -316,7 +321,7 @@ unsafe fn apply_ext_form_op<F: PrimeField, const NG: usize>(
 
 /// Ext twin of [`apply_form_op_first`].
 #[inline(always)]
-unsafe fn apply_ext_form_op_first<F: PrimeField, const NG: usize>(
+pub(crate) unsafe fn apply_ext_form_op_first<F: PrimeField, const NG: usize>(
     dst: *mut u32,
     src: *const u32,
     op: &FormOp<F>,
@@ -333,7 +338,7 @@ unsafe fn apply_ext_form_op_first<F: PrimeField, const NG: usize>(
 /// Shared kernel epilogue: untranspose the SoA accumulator into AoS ext
 /// values and read out the first `OUT` cells.
 #[inline(always)]
-unsafe fn finish_soa_acc<E: Field, const NG: usize, const OUT: usize>(
+pub(crate) unsafe fn finish_soa_acc<E: Field, const NG: usize, const OUT: usize>(
     acc_soa: &[u32],
     ext_tmp: &mut [BabyBearExt4],
 ) -> [E; OUT] {
