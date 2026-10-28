@@ -80,6 +80,15 @@ def run : IO Unit := do
       {chi.aux_layout_data with relative_timestamp_groups := some #[]}}
   require (rejected missingGroups.splitTimestampGroups)
     "missing chi5 timestamp groups accepted"
+  let extraGroups := theta.aux_layout_data.relative_timestamp_groups.map fun groups =>
+    match groups[0]? with
+    | some group => groups.push {group with members := #[]}
+    | none => groups
+  let extraEmptyGroup : Airbender.Circuit :=
+    {theta with aux_layout_data :=
+      {theta.aux_layout_data with relative_timestamp_groups := extraGroups}}
+  require (rejected extraEmptyGroup.splitTimestampGroups)
+    "empty theta/rho timestamp group accepted"
 
 #eval run
 
