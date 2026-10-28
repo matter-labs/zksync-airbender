@@ -42,7 +42,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         security_level,
     } = request;
     let config = prover_config(circuit_type, security_level);
-    let twiddles = jobs.twiddles(precomputations.trace_len, worker);
+    let twiddles = jobs.twiddles(1usize << config.whir_message_size_log2(), worker);
     let flat_cap = match circuit_type {
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(_)) => {
             let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::NonMemory(trace))) =

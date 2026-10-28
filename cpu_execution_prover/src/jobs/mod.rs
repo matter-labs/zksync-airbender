@@ -57,7 +57,7 @@ impl CpuJobs {
             security_level,
         } = request;
         let config = prover_config(circuit_type, security_level);
-        let twiddles = self.twiddles(precomputations.trace_len, worker);
+        let twiddles = self.twiddles(1usize << config.whir_message_size_log2(), worker);
         precomputations.initialize_setup(&config, &*twiddles, worker);
         SetupInitializationResult {
             batch_id,
@@ -66,13 +66,13 @@ impl CpuJobs {
         }
     }
 
-    fn twiddles(&mut self, trace_len: usize, worker: &Worker) -> Arc<CpuTwiddles> {
+    fn twiddles(&mut self, message_len: usize, worker: &Worker) -> Arc<CpuTwiddles> {
         self.twiddles
-            .entry(trace_len)
+            .entry(message_len)
             .or_insert_with(|| {
                 Arc::new(<DefaultBabyBearBackend as Backend<BF, E4>>::make_twiddles(
                     &self.backend,
-                    trace_len,
+                    message_len,
                     worker,
                 ))
             })
