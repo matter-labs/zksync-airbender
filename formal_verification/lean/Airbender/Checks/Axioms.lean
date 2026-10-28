@@ -590,6 +590,7 @@ import Airbender.Proofs.UnifiedReduced.StreamCalls
 import Airbender.Review.Helpers.Memory.ProgramImage
 import Airbender.Review.Trace.Modular.ExternalTheorems
 import Airbender.Proofs.AddSub.ModularExternalCalls
+import Airbender.Review.Trace.Modular.ReducedUse
 import Tests.UnifiedModularExecution
 import Tests.ModularTrace
 import Airbender.Review.Trace.Modular.Theorems
