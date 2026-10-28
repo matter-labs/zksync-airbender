@@ -591,6 +591,7 @@ import Airbender.Review.Helpers.Memory.ProgramImage
 import Airbender.Review.Trace.Modular.ExternalTheorems
 import Airbender.Proofs.AddSub.ModularExternalCalls
 import Airbender.Review.Trace.Modular.ReducedUse
+import Airbender.Proofs.Keccak.SplitSchedule
 import Tests.UnifiedModularExecution
 import Tests.ModularTrace
 import Airbender.Review.Trace.Modular.Theorems
@@ -13597,3 +13598,15 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.reduced_realizes
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.modular_external_step
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.caller_step
+#print axioms Airbender.Keccak.Split.Proofs.roundPattern_length
+#print axioms Airbender.Keccak.Split.Proofs.schedule_length
+#print axioms Airbender.Keccak.Split.Proofs.parity_calls
+#print axioms Airbender.Keccak.Split.Proofs.theta_rho_calls
+#print axioms Airbender.Keccak.Split.Proofs.chi5_calls
+#print axioms Airbender.Keccak.Split.Proofs.csr_ne_external
+#print axioms Airbender.Keccak.Split.Proofs.csr_ne_special5
+#print axioms Airbender.Keccak.Split.Proofs.schedule_kind
+#print axioms Airbender.Keccak.Split.Proofs.initial_control
+#print axioms Airbender.Keccak.Split.Proofs.final_call_control
+#print axioms Airbender.Keccak.Split.Proofs.final_control
+#print axioms Airbender.Keccak.Split.Proofs.control_progression

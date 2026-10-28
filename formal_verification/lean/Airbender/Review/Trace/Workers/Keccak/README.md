@@ -8,11 +8,15 @@ window contracts retain seed timestamps and protocol scope, while shared executi
 connects the final state to native terminal tokens.
 
 This is conditional coverage of `keccak_special5`. The provided `keccak_f1600`
-wrapper uses 361 calls to three split circuits, which have no current Lean
-coverage and are absent from the inspected unified setup's CSR allowlist.
+wrapper uses 361 calls to three split circuits, which are absent from the
+inspected unified setup's CSR allowlist. The
+[split schedule](SplitSchedule.lean) and its
+[proofs](../../../../Proofs/Keccak/SplitSchedule.lean) establish the exact
+24-round/final-call order, call counts and control progression. No split
+native circuit or functional soundness proof is imported yet.
 Under the [ValidDelegationUse](../../UnifiedReduced/DelegationUse.lean) contract, special5 calls are
 excluded; these lemmas therefore do not establish blessed Keccak execution.
-Split modeling and integration are deferred. See
+Split worker modeling and integration are required open work. See
 [F12](../../../../../FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage).
 
 ## Checked results
