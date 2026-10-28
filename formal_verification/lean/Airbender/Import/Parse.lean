@@ -3,6 +3,7 @@ import Airbender.Review.Helpers.Memory.IndirectPorts
 import Airbender.Review.Helpers.Context.Columns
 import Airbender.Review.Helpers.Memory.Ports
 import Airbender.Review.Helpers.Delegation.Columns
+import Airbender.Review.Helpers.Delegation.GroupedTimestamp
 import Airbender.Review.Helpers.Decoder.Columns
 
 namespace Airbender
@@ -93,6 +94,37 @@ def Circuit.timestampExpressions (c : Circuit) : Except String (Array Expr) :=
     unless query.lookup_set_index == index do throw "timestamp lookup set order mismatch"
     c.lookupExpression query.input
 
+/-- Resolve split-worker grouped timestamps while checking that the native
+groups partition the actual memory ports and name the same read-time limbs. -/
+def Circuit.splitTimestampGroups (c : Circuit) :
+    Except String (Array Delegation.GroupedTimestamp) := do
+  let some groups := c.aux_layout_data.relative_timestamp_groups |
+    throw "split delegation is missing grouped timestamp metadata"
+  if groups.isEmpty then throw "split delegation has no grouped timestamp metadata"
+  let ports := c.memory_layout.ram_access_sets
+  for group in groups do
+    for member in group.members do
+      unless member < ports.size do
+        throw "split timestamp group names an absent memory port"
+  for index in [:ports.size] do
+    let owners := groups.filter (fun group => group.members.contains index)
+    unless owners.size == 1 do
+      throw "split memory port must belong to exactly one timestamp group"
+    let some owner := owners[0]? |
+      throw "split memory port has no timestamp group"
+    let some query := ports[index]? |
+      throw "split timestamp group names an absent memory port"
+    let readTimestamp := match query with
+      | .Readonly q => q.read_timestamp
+      | .Write q => q.read_timestamp
+    unless owner.read_timestamp.values == readTimestamp.values do
+      throw "split timestamp group disagrees with native memory port"
+  groups.mapM fun group => do
+    let raw := group.read_timestamp.values
+    pure ⟨#v[← c.logicalVariable (.BaseLayerMemory raw[0]!),
+      ← c.logicalVariable (.BaseLayerMemory raw[1]!)],
+      ← c.logicalVariable (.BaseLayerWitness group.borrow), group.members⟩
+
 private def Circuit.timestampPorts (c : Circuit) (expectedOffset : Nat → Nat)
     (nonComparisonCount : Nat := 2) :
     Except String (Array Trace.TimestampPort) := do
@@ -109,7 +141,8 @@ private def Circuit.timestampPorts (c : Circuit) (expectedOffset : Nat → Nat)
   let mut ports := #[]
   for i in [:queries.size] do
     let some query := queries[i]? | throw "memory timestamp port is missing"
-    let some auxiliary := borrows[i]? | throw "memory timestamp borrow is missing"
+    let some (some auxiliary) := borrows[i]? |
+      throw "memory timestamp borrow is missing"
     let (offset, previous) := match query with
       | .Readonly q => (q.in_cycle_write_index.val, q.read_timestamp)
       | .Write q => (q.in_cycle_write_index.val, q.read_timestamp)
@@ -443,6 +476,36 @@ def Circuit.keccakQueries (c : Circuit) : Except String (Array (Array Expr)) := 
         unless padding.linear_terms.isEmpty && padding.constant.canonical.val == 0 do
           throw "Keccak byte lookup padding must be zero"
     query.columns.mapM c.lookupExpression
+
+/-- The three blessed split workers have different physical fixed-table widths.
+Keep every native query column, including its table ID and zero padding, while
+checking the expected no-decoder profile for each imported circuit. -/
+private def Circuit.splitKeccakQueries (c : Circuit) (width count boundary : Nat)
+    (ids : List Nat) : Except String (Array (Array Expr)) := do
+  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == width do
+    throw "split Keccak lookup width or table-ID profile mismatch"
+  unless !c.has_decoder_lookup && c.offset_for_decoder_table == boundary &&
+      c.total_tables_size == boundary do
+    throw "unexpected split Keccak setup boundary"
+  unless c.num_generic_lookups == count && c.generic_lookups.size == count do
+    throw "unexpected split Keccak lookup count"
+  c.generic_lookups.mapIdxM fun index query => do
+    unless query.columns.size == width && query.lookup_set_index == index do
+      throw "split Keccak query width or set mismatch"
+    let some tag := query.columns[width - 1]? |
+      throw "split Keccak query is missing its table ID"
+    unless tag.linear_terms.isEmpty && ids.contains tag.constant.canonical.val do
+      throw "split Keccak query uses an unexpected table ID"
+    query.columns.mapM c.lookupExpression
+
+def Circuit.keccakColumnParityQueries (c : Circuit) : Except String (Array (Array Expr)) :=
+  c.splitKeccakQueries 8 22 1114356 [38, 62, 63, 64]
+
+def Circuit.keccakThetaRhoQueries (c : Circuit) : Except String (Array (Array Expr)) :=
+  c.splitKeccakQueries 9 50 590066 [4, 58, 59, 60]
+
+def Circuit.keccakChi5Queries (c : Circuit) : Except String (Array (Array Expr)) :=
+  c.splitKeccakQueries 11 17 1048697 [65, 66]
 
 /-- Decode the Rust artifact using Lean's JSON parser and the typed serde mirror. -/
 def parseCircuit (text : String) : Except String Circuit := do

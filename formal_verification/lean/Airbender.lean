@@ -25,6 +25,7 @@ import Airbender.Review.Trace.Modular.ExternalTheorems
 import Airbender.Proofs.AddSub.ModularExternalCalls
 import Airbender.Review.Trace.Modular.ReducedUse
 import Airbender.Proofs.Keccak.SplitSchedule
+import Airbender.Proofs.Keccak.SplitArtifactChecks
 import Airbender.Review.Trace.UnifiedReduced.ModularExecution
 import Airbender.Proofs.UnifiedReduced.StreamCalls
 import Airbender.Review.Helpers.Memory.ProgramImage

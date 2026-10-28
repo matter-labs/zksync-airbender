@@ -2,6 +2,7 @@ import Airbender.Import.Parse
 import Airbender.Import.Coefficients
 import Airbender.Review.Helpers.Tables.Range
 import Airbender.Review.Helpers.Tables.Lookups
+import Airbender.Review.Helpers.Delegation.GroupedTimestamp
 import Airbender.Review.Circuits.JumpBranchSlt.Tables.Control
 import Airbender.Review.Helpers.Tables.Bytes
 import Lean
@@ -44,12 +45,20 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     submemory:(" subword_memory_lookups")? unified:(" unified_reduced_lookups")?
     blake:(" blake_g_lookups")? blakeRound:(" blake_round_lookups")?
     bigint:(" bigint_lookups")? keccak:(" keccak_lookups")?
-    traceMetadata:(" trace_metadata")? delegationMetadata:(" delegation_metadata")? : command => do
+    keccakParity:(" keccak_column_parity_lookups")?
+    keccakThetaRho:(" keccak_theta_rho_lookups")?
+    keccakChi5:(" keccak_chi5_lookups")?
+    traceMetadata:(" trace_metadata")? delegationMetadata:(" delegation_metadata")?
+    splitMetadata:(" split_delegation_timestamps")? : command => do
   if traceMetadata.isSome && delegationMetadata.isSome then
     throwError "select either machine or delegation metadata"
+  if splitMetadata.isSome && (traceMetadata.isSome || delegationMetadata.isSome) then
+    throwError "split timestamp metadata cannot be combined with ordinary metadata"
   if (comparisons.isSome.toNat + muldiv.isSome.toNat + shifts.isSome.toNat +
       memory.isSome.toNat + submemory.isSome.toNat + unified.isSome.toNat + blake.isSome.toNat +
-      blakeRound.isSome.toNat + bigint.isSome.toNat + keccak.isSome.toNat) > 1 then
+      blakeRound.isSome.toNat + bigint.isSome.toNat + keccak.isSome.toNat +
+      keccakParity.isSome.toNat + keccakThetaRho.isSome.toNat +
+      keccakChi5.isSome.toNat) > 1 then
     throwError "select one fixed-lookup family"
   let source ← IO.FS.readFile path.getString
   let c ← match parseCircuit source with
@@ -64,7 +73,9 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
   -- Native worker pointer alignment moved to the timestamp range table.
   -- Keep these actual queries in the operation core, before its fixed-table
   -- queries, while retaining the complete timestamp metadata separately.
-  let alignments ← if blake.isSome || blakeRound.isSome || bigint.isSome || keccak.isSome then do
+  let splitKeccak := keccakParity.isSome || keccakThetaRho.isSome || keccakChi5.isSome
+  let alignments ← if blake.isSome || blakeRound.isSome || bigint.isSome ||
+      keccak.isSome then do
     let _ ← match c.delegationColumns with
       | .ok columns => pure columns
       | .error e => throwError "circuit import failed: {e}"
@@ -75,12 +86,21 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
       `(_root_.FlatOperation.lookup (Airbender.Trace.timestampLookup $(← cleanExprSyntax e)))
     else pure []
   let memoryFamily := memory.isSome || submemory.isSome || unified.isSome || blake.isSome ||
-    blakeRound.isSome || bigint.isSome || keccak.isSome
-  let tableWidth := if keccak.isSome then 8 else if bigint.isSome then 3 else if blakeRound.isSome then 6 else if unified.isSome then 10 else 9
+    blakeRound.isSome || bigint.isSome || keccak.isSome || splitKeccak
+  let tableWidth := if keccak.isSome || keccakParity.isSome then 8
+    else if keccakThetaRho.isSome then 9
+    else if keccakChi5.isSome then 11
+    else if bigint.isSome then 3
+    else if blakeRound.isSome then 6
+    else if unified.isSome then 10 else 9
   let rom := mkIdent (if submemory.isSome || unified.isSome || blake.isSome || blakeRound.isSome ||
-    bigint.isSome || keccak.isSome then `setup else `rom)
+    bigint.isSome || keccak.isSome || splitKeccak then `setup else `rom)
   let generic ← if memoryFamily then do
-    let queries ← match (if keccak.isSome then c.keccakQueries else if bigint.isSome then c.bigintQueries else if blakeRound.isSome then c.blakeRoundQueries
+    let queries ← match (if keccak.isSome then c.keccakQueries
+        else if keccakParity.isSome then c.keccakColumnParityQueries
+        else if keccakThetaRho.isSome then c.keccakThetaRhoQueries
+        else if keccakChi5.isSome then c.keccakChi5Queries
+        else if bigint.isSome then c.bigintQueries else if blakeRound.isSome then c.blakeRoundQueries
         else if blake.isSome then c.blakeGQueries else if unified.isSome then c.unifiedReducedQueries
         else if submemory.isSome then c.subwordMemoryQueries else c.wordMemoryQueries) with
       | .ok queries => pure queries
@@ -138,7 +158,7 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     `((($(quote v) : Nat), ($(quote n) : String)))
   let names := names.toArray
   elabCommand (← `(def $namesName : List (Nat × String) := [$[$names],*]))
-  if traceMetadata.isSome || delegationMetadata.isSome then
+  if traceMetadata.isSome || delegationMetadata.isSome || splitMetadata.isSome then
     let timestamps ← match c.timestampExpressions with
       | .ok queries => pure queries
       | .error e => throwError "timestamp import failed: {e}"
@@ -148,6 +168,20 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     let timestampName := mkIdent (name.getId.appendAfter "TimestampLookups")
     elabCommand (← `(def $timestampName {$prime : Nat} [Fact (Nat.Prime $prime)] :
       List (_root_.FlatOperation (ZMod $prime)) := [$[$operations],*]))
+  if splitMetadata.isSome then
+    let groups ← match c.splitTimestampGroups with
+      | .ok groups => pure groups
+      | .error e => throwError "split timestamp metadata import failed: {e}"
+    let groupTerms ← groups.toList.mapM fun group => do
+      let low := group.previous[0]
+      let high := group.previous[1]
+      let members := group.members.map quote
+      `(Airbender.Delegation.GroupedTimestamp.mk
+        #v[$(quote low), $(quote high)] $(quote group.borrow) #[$[$members],*])
+    let groupName := mkIdent (name.getId.appendAfter "TimestampGroups")
+    let groupTerms := groupTerms.toArray
+    elabCommand (← `(def $groupName : Array Airbender.Delegation.GroupedTimestamp :=
+      #[$[$groupTerms],*]))
   if delegationMetadata.isSome then
     let columns ← match c.delegationColumns with
       | .ok columns => pure columns

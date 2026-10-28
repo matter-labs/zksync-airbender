@@ -29,6 +29,10 @@ The retained production-shape artifacts use image and text
 words `[0x13, 0x00408093, 0x6f, 0x007181b3]`, with native zero padding. Ordinary
 circuits use FullUnsigned; unified setup uses Reduced. The bigint setup is
 program-independent, as are the hash workers and initialization setup.
+`export_setup_json` also accepts `keccak-column-parity`,
+`keccak-theta-rho` and `keccak-chi5` to export the three blessed split
+workers. These exports are not yet part of the retained artifact manifest or
+Lean native-worker proofs.
 `manifest.json` records every retained artifact hash, twelve exact production
 circuit identities, the separate derived smoke identity and native source inputs.
 `decoder-smoke.json` is a native test-shape ADD/SUB-derived export that exercises
