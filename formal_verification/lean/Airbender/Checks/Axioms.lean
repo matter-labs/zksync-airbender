@@ -13586,6 +13586,7 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Compiler.GroupedLookupArguments
 
 #print axioms Tests.KeccakKnownAnswer.zero_permutation
+#print axioms Tests.KeccakKnownAnswer.fips202_sha3_256_empty_permutation
 #print axioms Tests.Blake2Compression.rfc7693_abc_digest
 
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.decoder_registries_disjoint

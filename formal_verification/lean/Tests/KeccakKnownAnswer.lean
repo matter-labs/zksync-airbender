@@ -26,4 +26,30 @@ theorem zero_permutation :
         0x8c3ee88a1ccf32c8, 0xeaf1ff7b5ceca249] := by
   decide +kernel
 
+/-- NIST's FIPS 202 SHA3-256 example for an empty message supplies a second,
+nonzero input to Keccak-f[1600]. The absorbed block has byte 0x06 in lane
+(0, 0) and the final 0x80 bit in lane (1, 3). NIST prints lanes with x varying
+first; the vectors below use Clean's index 5*x+y.
+https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/SHA3-256_Msg0.pdf
+Pages 2 and 37, "Xor'd state (as lanes of integers)" and "State (as lanes of
+integers)". This checks the reference only, not either native Keccak path. -/
+theorem fips202_sha3_256_empty_permutation :
+    Specs.Keccak256.keccakPermutation
+      #v[0x6, 0, 0, 0, 0,
+        0, 0, 0, 0x8000000000000000, 0,
+        0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0] =
+      #v[0x66d71ebff8c6ffa7, 0xff875921cacc9566, 0xc287a923afe81e79,
+        0x5375f6fb6aa989b0, 0x33fc34664d479817,
+        0x62d661a05647c151, 0x80d97b5776b3ba89, 0x21684ae301601f33,
+        0xc2c6b96032faf11e, 0x2b715c1a078fde58,
+        0xfa493be44dff80f5, 0x28debd55fc6a313b, 0x282e7e469e09e75f,
+        0x63684dd3f055a1b2, 0x140b7c9251369779,
+        0x4a43f8804b0ad882, 0x03ac3d19f1e48ecc, 0xd17d1ed2c282b6b8,
+        0xd908398b988ec2b2, 0x857343a7aabdeb5e,
+        0xe2f36b34b7be6652, 0x78193aecc1e434e9, 0xf050e0d2adaf434e,
+        0x913f10903e0bd326, 0x92136e0efb7b70e5] := by
+  decide +kernel
+
 end Tests.KeccakKnownAnswer
