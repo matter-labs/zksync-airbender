@@ -985,7 +985,7 @@ In contrast, the [Lean artifact](Airbender/Review/Circuits/Keccak/Artifact.lean)
 imports `keccak_special5_layout_no_caches_gkr.json`. The
 [complete worker claims](Airbender/Review/Trace/Workers/Keccak/README.md)
 cover that circuit's 649-call protocol and its seven local modes. The three
-split compiled circuits now have Lean imports of their equations, fixed
+split compiled circuits now have cached and no-cache Lean imports of their equations, fixed
 lookups and timestamp queries, including explicit grouped timestamp metadata.
 They have no worker soundness or composed execution proof. Shared state layout
 and the same mathematical Keccak-f1600
