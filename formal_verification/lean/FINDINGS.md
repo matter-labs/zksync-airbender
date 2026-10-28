@@ -988,6 +988,10 @@ cover that circuit's 649-call protocol and its seven local modes. The three
 split circuits have no Lean models or composed execution proofs in the current
 development. Shared state layout and the same mathematical Keccak-f1600
 reference do not supply a refinement between these different native protocols.
+The [split schedule](Airbender/Review/Trace/Workers/Keccak/SplitSchedule.lean)
+now states the exact public 361-call order and control transition;
+[kernel proofs](Airbender/Proofs/Keccak/SplitSchedule.lean) check the counts and
+progression. This establishes protocol order only, not worker effects.
 
 **Unified setup differs.** The inspected
 [`SUPPORTED_CSRS` list](../../circuit_defs/setups/src/unrolled_circuits/unifier_reduced_machine_circuit/mod.rs)
