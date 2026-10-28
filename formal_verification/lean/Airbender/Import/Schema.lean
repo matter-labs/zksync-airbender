@@ -180,9 +180,17 @@ structure RamAuxComparisonSet where
   intermediate_borrow : GKRAddress
   deriving Repr, FromJson, ToJson
 
+/-- Grouped relative timestamps in the split Keccak worker layouts. -/
+structure RelativeTimestampGroup where
+  read_timestamp : Fixed 2 Nat
+  borrow : Nat
+  members : Array Nat
+  deriving Repr, FromJson, ToJson
+
 /-- Source: `cs/src/gkr_compiler/layout.rs`, `GKRAuxLayoutData`. -/
 structure GKRAuxLayoutData where
-  shuffle_ram_timestamp_comparison_aux_vars : (Array RamAuxComparisonSet)
+  shuffle_ram_timestamp_comparison_aux_vars : Array (Option RamAuxComparisonSet)
+  relative_timestamp_groups : Option (Array RelativeTimestampGroup) := none
   deriving Repr, FromJson, ToJson
 
 /-- Source: `cs/src/gkr_compiler/layout.rs`, `GKRLayerDescription`. -/

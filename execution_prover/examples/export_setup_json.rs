@@ -48,6 +48,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "blake-g" => Some(D::Blake2GFunction),
         "blake-round" => Some(D::Blake2WithCompression),
         "keccak" => Some(D::KeccakSpecial5),
+        "keccak-column-parity" => Some(D::KeccakColumnParity),
+        "keccak-theta-rho" => Some(D::KeccakThetaRho),
+        "keccak-chi5" => Some(D::KeccakChi5),
         _ => None,
     };
     let (setup, program) = if args[0] == "inits-and-teardowns" {

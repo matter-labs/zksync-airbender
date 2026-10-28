@@ -3,7 +3,6 @@ import Airbender.Review.Trace.Workers.Keccak.SplitSchedule
 namespace Airbender.Keccak.Split.Proofs
 open Airbender.Keccak.Split
 set_option maxRecDepth 8192
-set_option maxHeartbeats 4000000
 
 theorem roundPattern_length : roundPattern.length = 15 := by decide
 theorem schedule_length : schedule.length = 361 := by decide

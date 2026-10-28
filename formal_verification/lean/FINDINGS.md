@@ -985,8 +985,10 @@ In contrast, the [Lean artifact](Airbender/Review/Circuits/Keccak/Artifact.lean)
 imports `keccak_special5_layout_no_caches_gkr.json`. The
 [complete worker claims](Airbender/Review/Trace/Workers/Keccak/README.md)
 cover that circuit's 649-call protocol and its seven local modes. The three
-split circuits have no Lean models or composed execution proofs in the current
-development. Shared state layout and the same mathematical Keccak-f1600
+split compiled circuits now have Lean imports of their equations, fixed
+lookups and timestamp queries, including explicit grouped timestamp metadata.
+They have no worker soundness or composed execution proof. Shared state layout
+and the same mathematical Keccak-f1600
 reference do not supply a refinement between these different native protocols.
 The [split schedule](Airbender/Review/Trace/Workers/Keccak/SplitSchedule.lean)
 now states the exact public 361-call order and control transition;

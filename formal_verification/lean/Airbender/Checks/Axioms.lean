@@ -592,6 +592,8 @@ import Airbender.Review.Trace.Modular.ExternalTheorems
 import Airbender.Proofs.AddSub.ModularExternalCalls
 import Airbender.Review.Trace.Modular.ReducedUse
 import Airbender.Proofs.Keccak.SplitSchedule
+import Airbender.Proofs.Keccak.SplitArtifactChecks
+import Tests.SplitKeccakImport
 import Tests.UnifiedModularExecution
 import Tests.ModularTrace
 import Airbender.Review.Trace.Modular.Theorems
@@ -13611,3 +13613,8 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Proofs.final_call_control
 #print axioms Airbender.Keccak.Split.Proofs.final_control
 #print axioms Airbender.Keccak.Split.Proofs.control_progression
+#print axioms Airbender.Keccak.Split.Proofs.column_parity_timestamp_queries
+#print axioms Airbender.Keccak.Split.Proofs.theta_rho_timestamp_queries
+#print axioms Airbender.Keccak.Split.Proofs.chi5_timestamp_queries
+#print axioms Airbender.Keccak.Split.Proofs.theta_rho_timestamp_groups
+#print axioms Airbender.Keccak.Split.Proofs.chi5_timestamp_groups
