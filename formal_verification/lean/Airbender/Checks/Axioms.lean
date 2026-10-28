@@ -594,6 +594,7 @@ import Airbender.Review.Trace.Modular.ReducedUse
 import Airbender.Proofs.Keccak.SplitSchedule
 import Airbender.Proofs.Keccak.SplitArtifactChecks
 import Tests.SplitKeccakImport
+import Airbender.Proofs.GKRProtocol.ProgramRows
 import Tests.UnifiedModularExecution
 import Tests.ModularTrace
 import Airbender.Review.Trace.Modular.Theorems
@@ -13623,3 +13624,7 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Proofs.chi5_cached_timestamp_queries
 #print axioms Airbender.Keccak.Split.Proofs.theta_rho_cached_timestamp_groups
 #print axioms Airbender.Keccak.Split.Proofs.chi5_cached_timestamp_groups
+#print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.active_member
+#print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.active_decoded
+#print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.bounded_pc_not_sentinel
+#print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.bounded_pc_decoded
