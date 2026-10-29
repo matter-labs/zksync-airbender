@@ -99,7 +99,9 @@ The combined registry now supplies one machine and worker memory history.
 This conditional history keeps the round-mask contract explicit.
 Indexed cut composition carries the stream position through each cycle.
 These proofs passed focused kernel and axiom checks.
-Unified still needs combined row retirement, supported worker controls from
+External and modular instructions now retire in the actual shared cycle
+history. Their cycle proofs passed focused kernel and axiom checks.
+Unified still needs the ordinary/custom cycle adapters, supported worker controls from
 stream reachability, and the native worker ROM adapter. The target remains open.
 All nine ordinary worker and CPU memory-port inventories passed focused
 checks. Their timestamp records use an explicit absent borrow subtrahend.

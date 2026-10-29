@@ -3,6 +3,7 @@ import Airbender.Proofs.UnifiedReduced.ExternalInput
 import Airbender.Proofs.UnifiedReduced.StreamDecoder
 import Airbender.Proofs.UnifiedReduced.StreamPrefix
 import Airbender.Proofs.UnifiedReduced.StreamMemory
+import Airbender.Proofs.UnifiedReduced.StreamCycles
 import Airbender.Proofs.Trace.IndexedCycleComposition
 import Airbender.Proofs.GKRProtocol.LogicalLookupSegments
 import Airbender.Review.Compiler.Theorems
@@ -13675,3 +13676,6 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.memory_effects
 #print axioms Airbender.Trace.Proofs.compose_rebased_cuts_with_count
 #print axioms Airbender.Trace.Proofs.compose_cuts_with_count
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.ordinary_context_at
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.external_cycle_at
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.modular_cycle_at
