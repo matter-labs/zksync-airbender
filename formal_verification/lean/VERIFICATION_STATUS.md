@@ -69,16 +69,19 @@ passed focused checks on the new shared columns and affine write gates.
 Unified's zero-register preservation and timestamp proofs passed focused
 checks. The pooled ROM memory-port adapter also passed with the current
 timestamp record. These close the native zero-write and clock obligations
-used by the machine targets. The other unified instruction checks are in progress.
+used by the machine targets.
 Unified's memory, ROM, binary, shift, TRIADD, XOR/rotate and modular proofs
 passed focused checks. Its existing native caller-path proof also passed.
 These restore the native instruction obligations on the new layout.
 The combined stream target still needs its execution proof and initialization adapter.
 All nine ordinary worker and CPU memory-port inventories passed focused
 checks. Their timestamp records use an explicit absent borrow subtrahend.
+The focused circuit and proof group passed all 288 module checks.
+This group includes the timestamp tests, native path and span execution,
+supported delegation use and the three target propositions.
 An earlier batch hit its resident-memory cap
 while it rebuilt an unchanged extended-round import. That was a resource stop.
-The next batch uses the documented 5,120 MiB resident cap.
+The later batches used the documented 5,120 MiB resident cap.
 
 The normal dependency build reached its 1,800-second limit while it rebuilt
 unchanged shift certificates. The guard left no owned process running.
