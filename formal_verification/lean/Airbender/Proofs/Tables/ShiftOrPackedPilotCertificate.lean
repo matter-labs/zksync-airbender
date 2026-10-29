@@ -5,8 +5,6 @@ import Airbender.Proofs.Tables.PackedBitwise
 namespace Airbender.Verification.PackedOrPilot
 open Airbender.Setup.Proofs.PackedBitwise
 set_option warningAsError true
-set_option maxRecDepth 131072
-set_option maxHeartbeats 0
 
 theorem ok : check .bitOr byteOrPackedPilot = true := by decide +kernel
 
