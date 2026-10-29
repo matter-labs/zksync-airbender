@@ -32,7 +32,7 @@ theorem carry_bits {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 3)}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     ∀ i : Fin 16, w (83 + i.val) = 0 ∨ w (83 + i.val) = 1 := by
   intro i
-  have flag := Verification.assertion_of_holds h ⟨100 + i.val,
+  have flag := Verification.assertion_of_holds h ⟨99 + i.val,
     by rw [constraint_count]; have := i.isLt; omega⟩
   fin_cases i <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] at flag ⊢

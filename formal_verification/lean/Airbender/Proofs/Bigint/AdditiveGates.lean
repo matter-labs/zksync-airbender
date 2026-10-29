@@ -82,8 +82,8 @@ theorem returned_control {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 
   have f4 := flags 4
   have f5 := flags 5
   have f6 := flags 6
-  have low := Verification.assertion_of_holds h ⟨90, by rw [constraint_count]; decide⟩
-  have high := Verification.assertion_of_holds h ⟨91, by rw [constraint_count]; decide⟩
+  have low := Verification.assertion_of_holds h ⟨89, by rw [constraint_count]; decide⟩
+  have high := Verification.assertion_of_holds h ⟨90, by rw [constraint_count]; decide⟩
   cases operation <;> simp [Operation.index, Variables.operations] at f0 f1 f2 f3 f4 f5 f6
   all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment, f0, f1, f2, f3, f5, f6] at low high

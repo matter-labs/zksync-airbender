@@ -54,8 +54,9 @@ The remaining small-program cases and unified/bigint proof repairs are pending.
 Earlier build results apply to the old base.
 Unified's current column-role inventory, dispatch bound and ordinary PC
 increment passed focused kernel builds. Bigint's current column-role inventory,
-control-bit proof and timestamp proof passed. The wider memory and instruction
-proof rebuilds are in progress. An earlier batch hit its resident-memory cap
+control-bit proof and timestamp proof passed. Bigint's additive, equality and
+multiplication writeback proofs passed on the derived EQ selector equations.
+The memory and unified instruction proof rebuilds are in progress. An earlier batch hit its resident-memory cap
 while it rebuilt an unchanged extended-round import. That was a resource stop.
 The next batch uses the documented 5,120 MiB resident cap.
 
