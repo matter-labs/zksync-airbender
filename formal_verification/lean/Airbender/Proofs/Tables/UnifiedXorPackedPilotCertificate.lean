@@ -5,8 +5,6 @@ import Airbender.Proofs.Tables.PackedBitwise
 namespace Airbender.UnifiedReduced.Setup.PackedPilot
 open Airbender.Setup.Proofs.PackedBitwise
 set_option warningAsError true
-set_option maxRecDepth 131072
-set_option maxHeartbeats 0
 
 /-- Capture-specific Boolean check; semantic soundness is proved once in
 `PackedBitwise.check_sound`. -/
