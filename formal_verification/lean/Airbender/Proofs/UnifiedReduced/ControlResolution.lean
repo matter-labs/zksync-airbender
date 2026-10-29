@@ -12,7 +12,7 @@ theorem control_conditional_lookup [Fact p.Prime] (hp : FieldCapacity.NativeRomC
     {before : Reference.RiscV.Sail.State} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table before)))
     (selected : w 21 + w 22 + w 23 + w 24 = 1)
-    (binary : w 26 = 0 ∧ w 27 = 0) (rom : w 87 = 0)
+    (binary : w 26 = 0 ∧ w 27 = 0) (rom : w 81 = 0)
     (leftHi : (w 37).val < 65536) (rightHi : (w 60).val < 65536)
     (funct : (w 10).val < 8) :
     (pairLookup conditionalTable

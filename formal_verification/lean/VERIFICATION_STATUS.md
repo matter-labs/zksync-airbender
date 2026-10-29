@@ -62,9 +62,19 @@ Unified's current column-role inventory, dispatch bound and ordinary PC
 increment passed focused kernel builds. Bigint's current column-role inventory,
 control-bit proof and timestamp proof passed. Bigint's additive, equality and
 multiplication writeback proofs passed on the derived EQ selector equations.
+Unified's control projection, control lookup resolution and jump arithmetic
+passed focused checks on the new shared columns and affine write gates.
 The memory and unified instruction proof rebuilds are in progress. An earlier batch hit its resident-memory cap
 while it rebuilt an unchanged extended-round import. That was a resource stop.
 The next batch uses the documented 5,120 MiB resident cap.
+
+The normal dependency build reached its 1,800-second limit while it rebuilt
+unchanged shift certificates. The guard left no owned process running.
+The focused checks now use a separate object directory. A declaration
+dependency inspection found no use of the changed timestamp-group record or
+bigint range input in the 64 retained shift certificates. The focused checks
+reuse this mathematical cache. This is not a full frontend build or kernel
+replay of all dependencies.
 
 Lake now tracks all six split circuit JSONs and all three split setup JSONs.
 These inputs serve the full unsigned target's three fixed-setup premises.

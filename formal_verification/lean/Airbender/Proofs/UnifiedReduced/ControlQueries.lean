@@ -12,17 +12,17 @@ theorem control_lookup_values [Fact p.Prime] (hp : FieldCapacity.NativeRomCapaci
     {before : Reference.RiscV.Sail.State} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table before)))
     (selected : w 21 + w 22 + w 23 + w 24 = 1)
-    (binary : w 26 = 0 ∧ w 27 = 0) (rom : w 87 = 0) :
-    w 57 = (if (w 78 + w 79).val = 0 then 1 else 0) ∧
+    (binary : w 26 = 0 ∧ w 27 = 0) (rom : w 81 = 0) :
+    w 57 = (if (w 74 + w 75).val = 0 then 1 else 0) ∧
     w 58 = (((w 37).val / 32768 : Nat) : ZMod p) ∧
     w 61 = (((w 60).val / 32768 : Nat) : ZMod p) ∧
     (w 61 + 2 * w 58 + 4 * w 53 + 8 * w 57 + 16 * w 10).val < 128 ∧
     w 59 = (Verification.conditionalValue (Setup.conditionalKey
       (w 61 + 2 * w 58 + 4 * w 53 + 8 * w 57 + 16 * w 10).val) : ZMod p) ∧
-    w 56 = (((w 81).val / 2 % 2 : Nat) : ZMod p) ∧
-    w 30 = (((w 81).val - (w 81).val % 4 : Nat) : ZMod p) := by
+    w 56 = (((w 64).val / 2 % 2 : Nat) : ZMod p) ∧
+    w 30 = (((w 64).val - (w 64).val % 4 : Nat) : ZMod p) := by
   have equation (i : Fin 40) := Verification.assertion_of_holds holds
-    ⟨48 + i.val, by rw [constraint_count]; have := i.isLt; omega⟩
+    ⟨45 + i.val, by rw [constraint_count]; have := i.isLt; omega⟩
   have zt := equation 0; have zk := equation 1; have zv := equation 2
   have aTag := equation 4; have ak := equation 5; have av := equation 6
   have bt := equation 13; have bk := equation 14; have bv := equation 15
@@ -30,7 +30,7 @@ theorem control_lookup_values [Fact p.Prime] (hp : FieldCapacity.NativeRomCapaci
   have pt := equation 31; have pk := equation 32; have pv := equation 33; have pr := equation 34
   simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
     selected, binary.1, binary.2, rom] at zt zk zv aTag ak av bt bk bv ct ck cv pt pk pv pr
-  have tags : w 88 = 1 ∧ w 92 = 5 ∧ w 101 = 5 ∧ w 110 = 51 ∧ w 119 = 2 := by
+  have tags : w 82 = 1 ∧ w 86 = 5 ∧ w 95 = 5 ∧ w 104 = 51 ∧ w 113 = 2 := by
     constructor
     · linear_combination zt
     constructor
@@ -40,10 +40,10 @@ theorem control_lookup_values [Fact p.Prime] (hp : FieldCapacity.NativeRomCapaci
     constructor
     · linear_combination ct
     · linear_combination pt
-  have values : w 89 = w 78 + w 79 ∧ w 90 = w 57 ∧
-      w 93 = w 37 ∧ w 94 = w 58 ∧ w 102 = w 60 ∧ w 103 = w 61 ∧
-      w 111 = w 61 + 2 * w 58 + 4 * w 53 + 8 * w 57 + 16 * w 10 ∧
-      w 112 = w 59 ∧ w 120 = w 81 ∧ w 121 = w 56 ∧ w 122 = w 30 := by
+  have values : w 83 = w 74 + w 75 ∧ w 84 = w 57 ∧
+      w 87 = w 37 ∧ w 88 = w 58 ∧ w 96 = w 60 ∧ w 97 = w 61 ∧
+      w 105 = w 61 + 2 * w 58 + 4 * w 53 + 8 * w 57 + 16 * w 10 ∧
+      w 106 = w 59 ∧ w 114 = w 64 ∧ w 115 = w 56 ∧ w 116 = w 30 := by
     repeat' apply And.intro
     all_goals first
       | linear_combination zk | linear_combination zv | linear_combination ak

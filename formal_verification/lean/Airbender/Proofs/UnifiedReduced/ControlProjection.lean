@@ -15,11 +15,11 @@ def controlAssignment (w : Nat → ZMod p) (i : Nat) : ZMod p :=
   | 16 => w 30 | 17 => w 31
   | 22 => w 36 | 23 => w 37 | 26 => w 42 | 27 => w 43
   | 30 => w 50 | 31 => w 51
-  | 34 => w 78 | 35 => w 79 | 36 => w 81
+  | 34 => w 74 | 35 => w 75 | 36 => w 64
   | 37 => w 52 | 38 => w 53 | 39 => w 54 | 40 => w 55
-  | 41 => w 57 | 42 => w 58 | 43 => w 60 | 44 => w 59 | 45 => w 82 | 46 => w 56
-  | 47 => w 23 * w 59 + (w 21 + w 22) * w 78
-  | 48 => (w 21 + w 22) * w 79
+  | 41 => w 57 | 42 => w 58 | 43 => w 60 | 44 => w 59 | 45 => w 79 | 46 => w 56
+  | 47 => w 23 * w 59 + (w 21 + w 22) * w 74
+  | 48 => (w 21 + w 22) * w 75
   | i => w i
 
 theorem control_assertions [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
@@ -37,25 +37,24 @@ theorem control_assertions [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
   have e22 := equation 22; have e23 := equation 23
   simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment, jumps.1, jumps.2, selected] at e0 e12 e13 e14 e15 e16 e17 e18 e19 e20 e21 e22 e23
-  have maskedLow : w 85 * w 50 = 0 := by
-    simpa [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment] using equation 25
-  have comparedHigh : w 84 * w 51 = 0 := by
-    simpa [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment] using equation 24
-  have maskedHigh : w 85 * w 51 = 0 := by
-    simpa [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment] using equation 26
-  have writer : w 83 = 0 := by
-    linear_combination e19
-  have mask : w 85 = w 25 := by
-    linear_combination e21
-  have compare : w 84 = w 23 * (1 - w 25) := by linear_combination e20
-  have partition : w 84 + w 85 = 1 := by
-    rw [compare, mask]
-    linear_combination (1 - w 25) * selected - discarded
   have low : (1 - w 25) * (w 23 * w 59) - w 50 = 0 := by
-    rw [writer] at e22
-    linear_combination e22 - maskedLow - w 59 * compare + w 50 * partition
+    rcases local_flags holds 15 with zero | one
+    · change w 25 = 0 at zero
+      have noBranch : w 24 = 0 := by simpa [zero] using discarded
+      have compare : w 23 = 1 := by linear_combination selected - noBranch
+      simp [zero, noBranch, compare] at e19 ⊢
+      linear_combination e19
+    · change w 25 = 1 at one
+      simp [one] at e22 ⊢
+      exact e22
   have high : w 51 = 0 := by
-    linear_combination comparedHigh + maskedHigh - w 51 * partition
+    rcases local_flags holds 15 with zero | one
+    · change w 25 = 0 at zero
+      have noBranch : w 24 = 0 := by simpa [zero] using discarded
+      have compare : w 23 = 1 := by linear_combination selected - noBranch
+      simpa [compare] using e21
+    · change w 25 = 1 at one
+      simpa [one] using e23
   intro i
   fin_cases i
   all_goals simp [JumpBranchSlt.importedConstraints, FlatOperation.constraints,
