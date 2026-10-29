@@ -22,6 +22,18 @@ structure Row (p : Nat) where
   kind : Kind
   assignment : Nat → ZMod p
 
+/-- Every native register and RAM port in JSON order. A split timestamp group
+may own several ports; the importer checks that each port has one owner and
+retains the group's actual previous-time limbs and borrow on each port. -/
+def Row.ports (cached : Bool) (row : Row p) : Array Airbender.Trace.MemoryPort :=
+  match cached, row.kind with
+  | false, .columnParity => ColumnParity.importedConstraintsMemoryPorts
+  | false, .thetaRho => ThetaRho.importedConstraintsMemoryPorts
+  | false, .chi5 => Chi5.importedConstraintsMemoryPorts
+  | true, .columnParity => ColumnParityCached.importedConstraintsMemoryPorts
+  | true, .thetaRho => ThetaRhoCached.importedConstraintsMemoryPorts
+  | true, .chi5 => Chi5Cached.importedConstraintsMemoryPorts
+
 /-- Dispatch every split worker to the exact imported compiled equations,
 fixed lookup queries and timestamp queries for its public cache mode. -/
 def Row.constraints [Fact p.Prime] (cached : Bool) (setup : Setup p)
@@ -35,7 +47,7 @@ def Row.constraints [Fact p.Prime] (cached : Bool) (setup : Setup p)
   | true, .chi5 => Chi5Cached.clockConstraints setup.chi5
 
 /-- The native-equation slice for every supplied split-worker row. Participation,
-caller/request permutation, grouped memory ports, setup provenance and functional
+caller/request permutation, memory matching, setup provenance and functional
 effect remain separate obligations of the full-machine target. -/
 structure EquationsHold [Fact p.Prime] (cached : Bool) (setup : Setup p)
     (rows : List (Row p)) : Prop where
