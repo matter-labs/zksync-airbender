@@ -183,7 +183,6 @@ structure RamAuxComparisonSet where
 /-- Grouped relative timestamps in the split Keccak worker layouts. -/
 structure RelativeTimestampGroup where
   read_timestamp : Fixed 2 Nat
-  borrow : Nat
   members : Array Nat
   deriving Repr, FromJson, ToJson
 

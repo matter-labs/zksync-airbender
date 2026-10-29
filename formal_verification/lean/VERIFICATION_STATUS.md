@@ -41,7 +41,14 @@ the redundant full-domain CPU cache. The retained lock adds only the local
 cs-to-prover edge required by the new base. It changes no package version.
 Setup freshness passed. All 12 native generators ran. All 16 fresh setup JSONs
 matched. Native dep-info covered 551 inputs. The refreshed manifest covers 731
-source files. Decoder differential checks and focused Lean rebuilds are pending. Earlier build results
+source files.
+
+The changed unified, bigint and initialization imports passed focused builds.
+The four changed split imports passed in both cache modes. The split group
+clock, derived-borrow, control-bound, physical-port and memory-order proofs
+passed kernel elaboration on the new layouts. The split import test module
+also built. Decoder differential checks and the remaining unified/bigint proof
+repairs are pending. Earlier build results
 apply to the old base. The changed split Keccak equations need new proof checks.
 The branch has not been force-pushed.
 

@@ -9,8 +9,10 @@ structure TimestampPort where
   offset : Nat
   /-- Variable IDs for the timestamp of the value read by this port. -/
   previous : Vector Nat 2
-  /-- Variable ID for the Boolean borrow used in the strict-time comparison. -/
+  /-- Borrow column, or the minuend when `subtrahend` is present. -/
   borrow : Nat
+  /-- A grouped comparison derives its borrow by subtraction. -/
+  subtrahend : Option Nat := none
   deriving DecidableEq
 
 /-- Placement-resolved machine-state and memory timestamp metadata from JSON.
