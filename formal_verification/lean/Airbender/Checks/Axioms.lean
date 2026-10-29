@@ -1,3 +1,5 @@
+import Airbender.Proofs.Reduced.NativeExecution
+import Airbender.Proofs.Reduced.SeedClocks
 import Airbender.Proofs.Reduced.CallerCycles
 import Airbender.Proofs.Reduced.CycleDispatch
 import Airbender.Proofs.Reduced.PCBounds
@@ -13872,3 +13874,10 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.caller_source_readonly
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_caller_read_disabled
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_full_caller_cycle_at
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.full_cycle_transition
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.mixed_event_interval
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.execution_at
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_path_execution
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_write_clocks
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_memory_clocks
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_memory_facts

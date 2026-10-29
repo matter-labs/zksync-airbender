@@ -67,6 +67,10 @@ namespace Airbender.AddSub.Modular.External.Caller
 open Trace
 variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
+/-- The external-stream position at an actual native clock boundary. -/
+def countAt [Fact p.Prime] (trace : PooledTrace p) (clock : Nat) : Nat :=
+  ExternalStream.countBefore Row.clock NonDeterminism.Pooled.isRead trace.rows clock
+
 /-- The public pooled clause, exact stream increment and actual native retirement. -/
 def OrdinaryCycle [Fact p.Prime] (stream : List (BitVec 32))
     (program : List PooledProgramEntry) (trace : PooledTrace p)

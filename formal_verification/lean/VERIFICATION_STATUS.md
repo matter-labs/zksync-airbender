@@ -183,6 +183,13 @@ its reads and frame. The extended-round reference and native caller PC equations
 prove complete retirement. The full CSR query disables external reads on callers.
 Round control, worker RAM binding and readonly-ROM history remain explicit at
 this intermediate interface. The final native prefix induction must derive them.
+The complete reduced native path now composes those ordinary and caller cycles.
+It proves `ReducedRealizes` with final PC, shared terminal memory and exact
+stream consumption. Its focused kernel and axiom checks passed. Native worker
+liveness places every worker event inside the same path. Seed-clock lemmas
+also support raw native prefixes without equating ROM bytes to native zero.
+The final target still needs native ROM transport, joint supported-use
+induction and public decoder acceptance assembly.
 The ROM-aware code-frame lemmas passed focused kernel and axiom checks.
 Interpreted ROM events refresh the same public word. Fetch transport can use
 that readonly history without the global tracked-RAM lower bound. The worker
