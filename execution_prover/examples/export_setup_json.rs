@@ -2,7 +2,7 @@
 
 //! Export one actual native setup, with its circuit and selected program inputs.
 //!
-//! Usage: export_setup_json FAMILY IMAGE.bin TEXT.bin OUTPUT.json [--cached]
+//! Usage: export_setup_json FAMILY IMAGE.bin TEXT.bin OUTPUT.json [--cached] [--reduced]
 //! Files contain little-endian u32 words; both input slices are padded exactly
 //! as for proving. Delegation families ignore the program arguments (use `-`).
 
@@ -36,12 +36,21 @@ fn read_words(path: &str) -> io::Result<Vec<u32>> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if !(args.len() == 4 || (args.len() == 5 && args[4] == "--cached")) {
+    if !(4..=6).contains(&args.len()) {
         return Err(
-            "usage: export_setup_json FAMILY IMAGE.bin TEXT.bin OUTPUT.json [--cached]".into(),
+            "usage: export_setup_json FAMILY IMAGE.bin TEXT.bin OUTPUT.json [--cached] [--reduced]"
+                .into(),
         );
     }
-    let use_caches = args.len() == 5;
+    let mut use_caches = false;
+    let mut reduced = false;
+    for flag in &args[4..] {
+        match flag.as_str() {
+            "--cached" if !use_caches => use_caches = true,
+            "--reduced" if !reduced => reduced = true,
+            _ => return Err("unknown or duplicate setup export option".into()),
+        }
+    }
     let worker = worker::Worker::new();
     let delegation = match args[0].as_str() {
         "bigint" => Some(D::BigIntWithControl),
@@ -54,6 +63,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => None,
     };
     let (setup, program) = if args[0] == "inits-and-teardowns" {
+        if reduced {
+            return Err("--reduced applies only to the four shared unrolled CPU families".into());
+        }
         if args[1] != "-" || args[2] != "-" {
             return Err(
                 "program-independent initialization setup expects '-' for both program files"
@@ -67,6 +79,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             None,
         )
     } else if let Some(family) = delegation {
+        if reduced {
+            return Err("--reduced applies only to the four shared unrolled CPU families".into());
+        }
         if args[1] != "-" || args[2] != "-" {
             return Err(
                 "program-independent delegation setup expects '-' for both program files".into(),
@@ -87,9 +102,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "unified" => U::Unified,
             _ => return Err("unknown setup family".into()),
         };
+        if reduced
+            && (family == U::Unified
+                || family == U::NonMemory(N::MulDivUnsigned)
+                || family == U::Memory(M::LoadStoreSubwordOnly))
+        {
+            return Err("--reduced applies only to the four shared unrolled CPU families".into());
+        }
         let image = read_words(&args[1])?;
         let text = read_words(&args[2])?;
-        let machine = if family == U::Unified {
+        let machine = if reduced || family == U::Unified {
             MachineType::Reduced
         } else {
             MachineType::FullUnsigned
