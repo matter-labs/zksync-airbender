@@ -1,7 +1,8 @@
 import copy
+import struct
 import unittest
 
-from check_program_decoder_rows import checked_rows
+from check_program_decoder_rows import SMALL_PROGRAMS, check_group_shapes, checked_rows, csr_word
 
 
 class ProgramDecoderRowsTest(unittest.TestCase):
@@ -43,6 +44,22 @@ class ProgramDecoderRowsTest(unittest.TestCase):
     def test_changed_mask_rejected(self):
         with self.assertRaisesRegex(ValueError, "differs from imported Lean mask"):
             checked_rows(self.artifact, self.active, "changed mask", [True] * 9)
+
+    def test_blake_group_shape(self):
+        valid = b"".join(struct.pack("<I", word) for word in SMALL_PROGRAMS["blake-caller"])
+        check_group_shapes(valid, "reduced", "valid caller")
+        with self.assertRaisesRegex(ValueError, "length 1"):
+            check_group_shapes(struct.pack("<II", csr_word(0x7C7), 0x13),
+                               "reduced", "broken caller")
+
+    def test_split_group_shape(self):
+        words = SMALL_PROGRAMS["split-keccak"]
+        check_group_shapes(b"".join(struct.pack("<I", word) for word in words),
+                           "full", "valid split")
+        changed = words[:8] + (csr_word(0x7CD),) + words[9:]
+        with self.assertRaisesRegex(ValueError, "invalid split Keccak"):
+            check_group_shapes(b"".join(struct.pack("<I", word) for word in changed),
+                               "full", "broken split")
 
 
 if __name__ == "__main__":
