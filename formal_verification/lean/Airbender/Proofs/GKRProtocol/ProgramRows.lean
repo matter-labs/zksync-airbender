@@ -366,4 +366,22 @@ theorem bounded_native_pc_decoded [Fact babyBearModulus.Prime] (config : Config)
   native_active_decoded config initial text capacity fits family query member
     (bounded_pc_not_sentinel query bounded)
 
+/-- One range-checked native decoder row identifies an instruction or virtual
+caller sourced from the public initial image. Exact lookup matching and native
+setup equality remain the caller's explicit premises. -/
+theorem native_active_source (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (image : ROM.TextImage initial text) (size : text.length ≤ ROM.limit / 4)
+    (capacity : Nat) (fits : text.length ≤ capacity)
+    (family : PooledFamily) (query : Vector (ZMod babyBearModulus) 9)
+    (member : query ∈ nativeRows config initial text capacity fits family)
+    (bounded : query[0].val < 65536) :
+    ∃ item ∈ nativeProgramOf config initial text,
+      item.Source config initial ∧ item.family = family ∧ query = item.query := by
+  obtain ⟨item, inProgram, selected, equal⟩ :=
+    native_active_member config initial text capacity fits family query member
+      (bounded_pc_not_sentinel query bounded)
+  exact ⟨item, inProgram, native_sources config initial text image size item inProgram,
+    selected, equal⟩
+
 end Airbender.Trace.NativeDecoder.ProgramRows.Proofs

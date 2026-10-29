@@ -165,4 +165,16 @@ theorem bounded_pc_decoded [Fact babyBearModulus.Prime]
   active_decoded initial text capacity fits query member
     (ProgramRows.Proofs.bounded_pc_not_sentinel query bounded)
 
+theorem native_active_source (initial : Reference.RiscV.Sail.State)
+    (text : List (BitVec 32)) (image : ROM.TextImage initial text)
+    (size : text.length ≤ ROM.limit / 4) (capacity : Nat)
+    (fits : text.length ≤ capacity) (query : Vector (ZMod babyBearModulus) 9)
+    (member : query ∈ rows initial text capacity fits)
+    (bounded : query[0].val < 65536) :
+    ∃ item ∈ programOf initial text, item.Source initial ∧ query = item.query := by
+  obtain ⟨item, inProgram, equal⟩ :=
+    active_member initial text capacity fits query member
+      (ProgramRows.Proofs.bounded_pc_not_sentinel query bounded)
+  exact ⟨item, inProgram, native_sources initial text image size item inProgram, equal⟩
+
 end Airbender.Trace.NativeDecoder.UnifiedProgramRows.Proofs
