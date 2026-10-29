@@ -50,7 +50,11 @@ uncached split setup exports are retained and provenance-checked; cached and
 uncached exports have identical fixed columns and table metadata. The imported
 controller regions have kernel-checked row properties and genuine static-table
 soundness theorems. Proving that every active tagged lookup in the full generic
-setup belongs to these regions remains open. Native fixed-table lookups then
+setup belongs to these regions remains open. The complete theta/rho generic
+table is now imported, and a kernel-checked structural proof isolates its
+controller tag to the exact retained 121-row region. Row equality between the
+generic view and the sliced view, and the corresponding chi5 result, remain
+open. Native fixed-table lookups then
 give positive, nonwrapping distances and strict order for all groups in both
 cache modes. Complete memory effects remain open. All theta/rho and chi5 physical ports now
 have kernel-checked group ownership in both cache modes. A common theorem proves
