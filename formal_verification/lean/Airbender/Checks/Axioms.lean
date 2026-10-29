@@ -1,3 +1,7 @@
+import Airbender.Proofs.UnifiedReduced.StreamPublicBinding
+import Airbender.Proofs.UnifiedReduced.StreamPublicCallers
+import Airbender.Proofs.UnifiedReduced.StreamPublicAcceptance
+import Airbender.Proofs.UnifiedReduced.MachineTarget
 import Airbender.Proofs.UnifiedReduced.StreamSeedClocks
 import Airbender.Proofs.UnifiedReduced.StreamNativePrefix
 import Airbender.Proofs.UnifiedReduced.StreamWorkerDomains
@@ -13786,3 +13790,19 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.supported_worker_and_ram_of_reference
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.supported_native_worker_inputs
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.supported_native_path_execution
+
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.standard_caller_disabled
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.modular_caller_disabled
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.stream_caller_disabled
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.selector_of_packed_query
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unified_mask_row
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unified_mask_query
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unified_csr_fields
+#print axioms Airbender.Compiler.MachineTargets.Proofs.public_caller_data
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unified_public_caller
+#print axioms Airbender.Compiler.MachineTargets.Proofs.text_caller_sources
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unified_caller_image
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unified_native_query_pc_low
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unified_native_row_classification
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unified_native_acceptance
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unified_soundness

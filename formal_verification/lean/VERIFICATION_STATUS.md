@@ -6,8 +6,8 @@ The model proves conditional soundness for the relations below. **No single
 whole-execution theorem currently covers a committed production verifier
 program.** A stream-aware unified relation now combines nondeterminism reads,
 modular operations and delegation calls. Its native soundness theorem now
-derives worker controls and port domains from public supported use. The final
-target still needs the public decoder and native acceptance adapter. The captured compiler execution bridge
+derives worker controls and port domains from public supported use. Its public
+decoder, native acceptance and initialization adapters are now proved. The captured compiler execution bridge
 also retains the four-entry decoder tables. Program-parametric source/trace
 execution and logical lookup/RAM composition are established narrower results.
 
@@ -17,11 +17,12 @@ execution and logical lookup/RAM composition are established narrower results.
 | --- | --- |
 | Unrolled full unsigned | Open. The `UnrolledFullUnsigned` target lists all premises. Prove native soundness for its combined relation. Bind the public program setup. Connect the caller, worker and initialization boundaries. Prove the split Keccak worker functions on the new base. The target excludes special5 calls. |
 | Unrolled reduced | Open. The `UnrolledReduced` target lists all premises. Prove native soundness for its stream and caller relation. Bind the public program setup. Connect the extended-round worker and initialization boundaries. |
-| Unified | Open. Native soundness for the combined stream, modular and caller relation is proved from public boot and supported use. The initialization adapter is proved. Bind public program setup and native acceptance to this theorem. The target excludes special5 calls. |
+| Unified | Proved by `MachineTargets.Proofs.unified_soundness`. The theorem has exactly the `Unified` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. The target excludes special5 calls. |
 
 [The three target definitions](Airbender/Review/Compiler/MachineTargets.lean)
-are Lean propositions. They are not proved theorems. Each target names its
-native acceptance, program setup, decoder lookup and initialization premises.
+are Lean propositions. Unified now has a proof. Both unrolled targets remain
+open. Each target names its native acceptance, program setup, decoder lookup
+and initialization premises.
 Exact lookup matching and state/RAM permutations remain explicit.
 
 Work now follows this order: Unified, UnrolledReduced, then
@@ -142,8 +143,12 @@ Native prefix cutting now uses seed clock bounds. It does not equate native
 zero ROM values to physical program bytes. The ROM input and terminal adapters
 also passed. The native supported-path theorem now proves combined execution
 with the original native terminal view. All checked roots use only the three
-allowed axioms. Unified still needs its public decoder and acceptance adapter.
-The target remains open.
+allowed axioms. The public decoder and acceptance adapter also passed.
+The final `unified_soundness : Unified` theorem passed a focused kernel check.
+Its axiom report lists only `propext`, `Classical.choice` and `Quot.sound`.
+The check used the retained dependency cache. Full environment auditing and
+transitive kernel replay remain pending. All 12,457 pre-rebase audit roots
+remain in the explicit inventory. Work now proceeds to UnrolledReduced.
 The ROM-aware code-frame lemmas passed focused kernel and axiom checks.
 Interpreted ROM events refresh the same public word. Fetch transport can use
 that readonly history without the global tracked-RAM lower bound. The worker
@@ -261,7 +266,7 @@ a raised recursion limit.
 | --- | --- |
 | [Ordinary circuits](Airbender/Review/Circuits/README.md) | Arithmetic, branches/jumps, comparisons, shifts/bitwise and word/subword memory have reference soundness proofs. Local public-image histories and native ROM-shadow histories are distinct interfaces. |
 | [Whole execution](Airbender/Review/Trace/README.md) | Pooled and unified source/trace execution bind final PC and every tracked cell, including registers, for programs admitted by their selected registry. Branches and repeated-PC loops are supported. Discarded x0 writes missing from a registry remain outside it. |
-| [Unified stream inclusion](Airbender/Proofs/UnifiedReduced/FullStreamInclusion.lean) | Every existing mixed ordinary/custom or complete delegated-call step lifts to the stream-aware unified relation without consuming a stream word. Finite runs lift, and existing no-read whole-execution results retain their terminal claims when the native read count is zero. Native soundness of the combined relation with external reads remains open. |
+| [Unified stream inclusion](Airbender/Proofs/UnifiedReduced/FullStreamInclusion.lean) | Every existing mixed ordinary/custom or complete delegated-call step lifts to the stream-aware unified relation without consuming a stream word. Finite runs lift, and existing no-read whole-execution results retain their terminal claims when the native read count is zero. The complete `Unified` target now proves native soundness of this combined relation from its explicit public and exact-matching premises. |
 | [Delegated workers](Airbender/Review/Trace/Workers/README.md) | Bigint, BLAKE2 and special5 Keccak compose under explicit call contracts. Complete algorithms require protocol coverage and valid memory gaps. Extended-round masks remain witness premises in lower-level integrated APIs as well as worker APIs. |
 | [Supported delegation use](Airbender/Review/Trace/UnifiedReduced/SupportedUseExecution.lean) | Public wrapper shapes, safe entry and reference-prefix validity derive bigint/G/extended-round worker contracts. G pointer separation remains in the public domain; accepted complete G spans also derive separation from memory matching. Public initialization, tracked RAM, configuration, setup and exact matching remain explicit. |
 | [Provided Keccak wrapper](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage) | Uncovered. The blessed 361-call split order and control progression are checked; the three public CSR caller forms now have a separate Sail decoder registry and complete code-shape interface. [A proved bridge](Airbender/Proofs/Keccak/SplitCallerBridge.lean) preserves public Sail source evidence and the full-width native lookup query when routing a split CSR to that registry, including membership in the modeled public decoder table; each word of a blessed group selects its scheduled worker and passes the full unsigned allowlist. All three compiled worker constraint/lookup cores are imported. Their complete setup, memory effects, all-stream supported-use condition and functional composition are still required for the full unsigned target. The modeled 649-call special5 protocol is separate. |
