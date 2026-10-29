@@ -43,9 +43,9 @@ abbrev Entry := UnifiedReduced.ProgramEntry ⊕ CallerEntry
 
 def entry (initial : State) (bits : BitVec 32) (index : Nat) : Option Entry :=
   (callerEntryWith delegationCSR initial bits index).map Sum.inr <|> do
-    let instruction ← match run (SailRV32.Functions.encdec_backwards bits) initial with
-      | .ok instruction _ => some instruction
-      | .error _ _ => none
+    let instruction ← match SailRV32.Functions.encdec_backwards bits with
+      | .pure instruction => some instruction
+      | .impure _ _ => none
     let data ← decoderFields instruction
     pure <| Sum.inl ⟨BitVec.ofNat 32 (4 * index), bits, instruction, data⟩
 
