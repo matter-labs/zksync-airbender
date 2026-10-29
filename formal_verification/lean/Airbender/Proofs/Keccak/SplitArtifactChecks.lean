@@ -4,6 +4,7 @@ import Airbender.Review.Circuits.Keccak.SplitChi5
 import Airbender.Review.Circuits.Keccak.SplitColumnParityCached
 import Airbender.Review.Circuits.Keccak.SplitThetaRhoCached
 import Airbender.Review.Circuits.Keccak.SplitChi5Cached
+import Airbender.Review.Trace.Workers.Keccak.SplitNative
 
 namespace Airbender.Keccak.Split.Proofs
 
@@ -59,5 +60,16 @@ theorem theta_rho_cached_memory_ports :
 
 theorem chi5_cached_memory_ports :
     Chi5Cached.importedConstraintsMemoryPorts.size = 12 := by rfl
+
+/-- Both independently emitted metadata arrays select the same native
+previous-time and write-offset descriptor for every physical memory port. -/
+theorem split_port_clocks_match {p : Nat} (cached : Bool) (row : Native.Row p) :
+    (row.ports cached).map Airbender.Trace.MemoryPort.clock =
+      (row.columns cached).ports := by
+  cases row with
+  | mk kind assignment =>
+    cases cached <;> cases kind <;>
+      simp only [Native.Row.ports, Native.Row.columns] <;>
+      decide +kernel
 
 end Airbender.Keccak.Split.Proofs

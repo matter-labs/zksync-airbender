@@ -182,8 +182,9 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     let groupTerms := groupTerms.toArray
     elabCommand (← `(def $groupName : Array Airbender.Delegation.GroupedTimestamp :=
       #[$[$groupTerms],*]))
-  if delegationMetadata.isSome then
-    let columns ← match c.delegationColumns with
+  if delegationMetadata.isSome || splitMetadata.isSome then
+    let columns ← match (if splitMetadata.isSome then c.splitDelegationColumns
+      else c.delegationColumns) with
       | .ok columns => pure columns
       | .error e => throwError "delegation metadata import failed: {e}"
     let pairSyntax := fun (columns : Vector Nat 2) => do

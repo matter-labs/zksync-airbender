@@ -94,6 +94,19 @@ def run : IO Unit := do
     decide (thetaCachedPorts = ThetaRhoCached.importedConstraintsMemoryPorts) &&
     decide (chiCachedPorts = Chi5Cached.importedConstraintsMemoryPorts))
     "split memory port import differs from source parser"
+  let .ok thetaColumns := theta.splitDelegationColumns |
+    throw (IO.userError "theta/rho clock columns rejected")
+  let .ok chiColumns := chi.splitDelegationColumns |
+    throw (IO.userError "chi5 clock columns rejected")
+  let .ok thetaCachedColumns := thetaCached.splitDelegationColumns |
+    throw (IO.userError "cached theta/rho clock columns rejected")
+  let .ok chiCachedColumns := chiCached.splitDelegationColumns |
+    throw (IO.userError "cached chi5 clock columns rejected")
+  require (decide (thetaColumns = ThetaRho.importedConstraintsDelegationColumns) &&
+    decide (chiColumns = Chi5.importedConstraintsDelegationColumns) &&
+    decide (thetaCachedColumns = ThetaRhoCached.importedConstraintsDelegationColumns) &&
+    decide (chiCachedColumns = Chi5Cached.importedConstraintsDelegationColumns))
+    "split invocation columns differ from source parser"
   let wrongTheta : Airbender.Circuit :=
     {theta with generic_lookup_tables_width := 8}
   require (rejected wrongTheta.keccakThetaRhoQueries)
@@ -105,6 +118,8 @@ def run : IO Unit := do
     "missing chi5 timestamp groups accepted"
   require (rejected missingGroups.splitMemoryPorts)
     "missing chi5 memory-port groups accepted"
+  require (rejected missingGroups.splitDelegationColumns)
+    "missing chi5 invocation groups accepted"
   let extraGroups := theta.aux_layout_data.relative_timestamp_groups.map fun groups =>
     match groups[0]? with
     | some group => groups.push {group with members := #[]}
