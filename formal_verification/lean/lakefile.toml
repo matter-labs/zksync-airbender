@@ -83,6 +83,10 @@ root = "Airbender.Import.Main"
 name = "airbender_tests"
 root = "Tests.ArtifactImport"
 
+[[lean_exe]]
+name = "program_rows_oracle"
+root = "Scripts.ProgramRowsOracle"
+
 [[input_file]]
 name = "unifiedReducedJson"
 path = "../../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json"

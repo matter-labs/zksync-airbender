@@ -39,7 +39,7 @@ def write_json(path, value):
 
 def discover(root):
     sources = {'Airbender': root / 'Airbender.lean'}
-    for directory, base in [('Airbender', root), ('Tests', root),
+    for directory, base in [('Airbender', root), ('Tests', root), ('Scripts', root),
                             ('generated/sail-rv32', root / 'generated/sail-rv32')]:
         for path in sorted((root / directory).rglob('*.lean')):
             module = '.'.join(path.relative_to(base).with_suffix('').parts)
@@ -405,7 +405,7 @@ def main():
     root, guard, output = args.root.resolve(), args.guard.resolve(), args.output.resolve()
     if not guard.is_file():
         parser.error('Missing supplied resource guard')
-    if output == root or any(output.is_relative_to(root / group) for group in ('Airbender', 'Tests', 'generated', 'scripts')):
+    if output == root or any(output.is_relative_to(root / group) for group in ('Airbender', 'Tests', 'Scripts', 'generated', 'scripts')):
         parser.error('Output directory must be outside product source directories')
     runner = Runner(root, guard, output, args.workers)
     try:
@@ -415,7 +415,9 @@ def main():
         config = tomllib.loads((root / 'lakefile.toml').read_text())
         executables = config.get('lean_exe', [])
         if {(item['name'], item['root']) for item in executables} != {
-                ('airbender_import', 'Airbender.Import.Main'), ('airbender_tests', 'Tests.ArtifactImport')}:
+                ('airbender_import', 'Airbender.Import.Main'),
+                ('airbender_tests', 'Tests.ArtifactImport'),
+                ('program_rows_oracle', 'Scripts.ProgramRowsOracle')}:
             raise ValueError('Executable inventory changed; review serial native coverage')
         source_names = sorted(sources)
         paths = list(sources.values()) + [root / name for name in ('lakefile.toml', 'lake-manifest.json', 'lean-toolchain')]

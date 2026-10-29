@@ -291,6 +291,37 @@ jobs:
             formal_verification/lean/.lake/config
             formal_verification/lean/.lake/packages
           key: ${{ steps.cache-keys.outputs.lean }}-build
+      - name: Public program decoder row differential
+        timeout-minutes: 75
+        run: |
+          source "$FV_ROOT/guard.sh"
+          fv_stage decoder-differential 4500 bash -euo pipefail <<'FV_STAGE'
+          source "$FV_ROOT/guard.sh"
+          exporter="$CARGO_TARGET_DIR/debug/examples/export_setup_json"
+          oracle=".lake/build/bin/program_rows_oracle"
+          test -x "$exporter"
+          test -x "$oracle"
+          python3 scripts/test_program_decoder_rows.py
+          for name in one two blake-caller split-keccak; do
+            fv "decoder-small-$name" env -u CI -u RUST_MIN_STACK python3 scripts/check_program_decoder_rows.py \
+              --exporter "$exporter" --oracle "$oracle" --small-program "$name"
+          done
+          texts=(../../tools/gkr_verifier/fsv_*.text)
+          test "${#texts[@]}" -eq 5
+          for text in "${texts[@]}"; do
+            name="$(basename "$text" .text)"
+            if [[ "$name" == fsv_unrolled_* ]]; then
+              config=reduced
+              families=add-sub,jump-branch,shift-binop,word-memory
+            else
+              config=unified
+              families=unified
+            fi
+            fv "decoder-$name" env -u CI -u RUST_MIN_STACK python3 scripts/check_program_decoder_rows.py \
+              --exporter "$exporter" --oracle "$oracle" --program "$text" \
+              --configs "$config" --families "$families"
+          done
+          FV_STAGE
       - name: Environment-origin proof inventory and standard axioms
         id: axiom-audit
         timeout-minutes: 190
