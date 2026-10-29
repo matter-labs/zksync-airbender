@@ -109,8 +109,7 @@ fn cpu_resolved_request_rejects_identity_and_mode_before_transfers() {
         resolved.geometry().logical_columns(),
         BaseColumns::of(&circuit)
     );
-    // Primitive memory admission is qualified; execution requests retain their
-    // separate fail-closed boundary in admit_inputs_before_transfers.
+    // Both worker phases consume this same canonical virtual geometry.
     assert!(resolved.geometry().is_virtual_packing());
     gpu_trace::trace::memory::validate_memory_commitment_config(
         resolved.config(),
@@ -307,7 +306,7 @@ fn cpu_worker_admission_rejects_metadata_before_transfer_construction() {
 }
 
 #[test]
-fn cpu_worker_virtual_setup_requests_reject_before_holder_construction() {
+fn cpu_worker_virtual_requests_require_geometry_setup_before_transfers() {
     use gpu_trace::witness::circuit_type::DelegationCircuitType;
     for (delegation, name) in [
         (
@@ -318,6 +317,14 @@ fn cpu_worker_virtual_setup_requests_reject_before_holder_construction() {
             DelegationCircuitType::BigIntWithControl,
             "bigint_with_extended_control",
         ),
+        (DelegationCircuitType::Blake2GFunction, "blake2_g_function"),
+        (DelegationCircuitType::KeccakSpecial5, "keccak_special5"),
+        (DelegationCircuitType::KeccakChi5, "keccak_chi5"),
+        (
+            DelegationCircuitType::KeccakColumnParity,
+            "keccak_column_parity",
+        ),
+        (DelegationCircuitType::KeccakThetaRho, "keccak_theta_rho"),
     ] {
         let kind = CircuitType::Delegation(delegation);
         let circuit = artifact(name);
@@ -329,14 +336,12 @@ fn cpu_worker_virtual_setup_requests_reject_before_holder_construction() {
         ));
         let geometry = resolved.geometry();
         assert!(geometry.is_virtual_packing());
+        resolved.validate_request(kind, SecurityLevel::Sec100, &circuit);
+        let column = Arc::new(prover::allocation_pool::AllocationType::from(
+            vec![BF::ZERO; circuit.trace_len],
+        ));
         let cpu_setup = CpuGKRSetup {
-            hypercube_evals: (0..geometry.logical_columns().setup)
-                .map(|_| {
-                    Arc::new(prover::allocation_pool::AllocationType::from(
-                        vec![BF::ZERO; circuit.trace_len],
-                    ))
-                })
-                .collect(),
+            hypercube_evals: vec![column; geometry.logical_columns().setup],
         };
         let precomputations = CircuitPrecomputations {
             gkr_programs: Arc::new(GkrPrograms::compile(kind, Arc::clone(&circuit)).unwrap()),
@@ -367,10 +372,28 @@ fn cpu_worker_virtual_setup_requests_reject_before_holder_construction() {
                 .map(String::as_str)
                 .or_else(|| error.downcast_ref::<&str>().copied())
                 .unwrap();
-            assert!(message.contains("virtual execution requests"));
+            assert!(message.contains("setup host must be initialized"));
             assert!(!constructed.get());
         }
+        // A matching virtual request reaches the existing setup-initialization
+        // invariant, rather than a virtual guard. No pinning or transfer ran.
         assert!(precomputations.setup_host.inner.get().is_none());
+        for wrong_kind in [CircuitType::Unrolled(
+            gpu_trace::witness::circuit_type::UnrolledCircuitType::Unified,
+        )] {
+            let constructed = std::cell::Cell::new(false);
+            assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                precomputations.admit_inputs_before_transfers(
+                    wrong_kind,
+                    SecurityLevel::Sec100,
+                    None,
+                    27,
+                );
+                constructed.set(true);
+            }))
+            .is_err());
+            assert!(!constructed.get());
+        }
     }
 }
 

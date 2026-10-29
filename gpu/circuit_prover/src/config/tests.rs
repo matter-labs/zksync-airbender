@@ -211,6 +211,7 @@ fn cpu_virtual_defaults_admit_proof_geometry_independently_of_physical_packing()
                 }
             );
             crate::proof::validate_base_proof_geometry_policy(
+                circuit,
                 &geometry,
                 crate::proof::memory_policy::ProofMemoryPolicy::default(),
             );

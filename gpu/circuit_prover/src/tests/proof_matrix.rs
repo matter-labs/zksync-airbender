@@ -15,6 +15,13 @@ pub(super) fn run_proof_parity(fixture: &BasicUnrolledProofFixture) {
 /// uninitialized-witness regression guard). schedule -> schedule -> finish -> finish.
 pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture) {
     let baseline = fixture.base.context.get_used_mem_current();
+    let policy = fixture.base.memory_policy();
+    eprintln!(
+        "production proof policy: circuit={:?} arena_bytes={} policy={policy:?}",
+        fixture.base.circuit_type,
+        fixture.base.context.get_mem_size()
+    );
+    fixture.base.context.reset_used_mem_peak();
     let job0 = fixture.schedule_prove().unwrap();
     let job1 = fixture.schedule_prove().unwrap();
     let (p0, ms0) = job0.finish().unwrap();
@@ -30,6 +37,7 @@ pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture) {
         baseline,
         "device memory must return to baseline after both proofs complete"
     );
+    eprintln!("production multi-schedule peak: circuit={:?} arena_bytes={} peak_bytes={} baseline={baseline}", fixture.base.circuit_type, fixture.base.context.get_mem_size(), fixture.base.context.get_used_mem_peak());
 }
 
 #[test]
@@ -1186,7 +1194,7 @@ fn run_inits_and_teardowns_profile_test() {
     run_profile(&prepare_inits_and_teardowns_matrix_profiling_fixture());
 }
 
-mod keccak_f1600 {
+pub(super) mod keccak_f1600 {
     use super::*;
     use circuit_common::DelegationCircuit;
     use common_constants::keccak_f1600::*;
@@ -1246,9 +1254,7 @@ mod keccak_f1600 {
                 )
             }
 
-            #[test]
-            #[ignore]
-            fn $multi_schedule() {
+            pub(in crate::tests) fn $stem() -> BasicUnrolledProofFixture {
                 let buffer = $buffer();
                 let oracle = $oracle {
                     cycle_data: &buffer,
@@ -1257,7 +1263,7 @@ mod keccak_f1600 {
                 let mut table_driver = TableDriver::<BF>::new();
                 <$definition as DelegationCircuit<BF>>::table_driver_fn(&mut table_driver);
                 let circuit_type = DelegationCircuitType::$variant;
-                let fixture = prepare_delegation_proof_fixture(
+                prepare_delegation_proof_fixture(
                     circuit_type,
                     concat!(
                         "cs/compiled_circuits/",
@@ -1269,8 +1275,13 @@ mod keccak_f1600 {
                     &oracle,
                     setups::$stem::witness_eval_fn,
                     CircuitType::Delegation(circuit_type).get_domain_size(),
-                );
-                super::super::packed_proof::geometry_proof(fixture);
+                )
+            }
+
+            #[test]
+            #[ignore]
+            fn $multi_schedule() {
+                super::super::packed_proof::geometry_proof($stem());
             }
 
             #[test]

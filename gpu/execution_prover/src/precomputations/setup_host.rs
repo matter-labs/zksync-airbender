@@ -206,12 +206,6 @@ impl CircuitPrecomputations {
         assert_eq!(self.gkr_programs.circuit_type(), circuit_type);
         let config = resolved.config();
         let geometry = resolved.geometry();
-        // Virtual execution requests remain closed independently of circuit-proof and
-        // primitive memory admission until their complete pipeline is qualified.
-        assert!(
-            !geometry.is_virtual_packing(),
-            "virtual execution requests are not admitted yet"
-        );
         self.setup_host
             .validate_config(config, BaseColumns::of(circuit));
         if config.commitment_mode == CommitmentMode::MergedMemoryAndWitness {

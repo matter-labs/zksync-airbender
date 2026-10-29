@@ -729,13 +729,8 @@ where
     // validated delegation setup. (`prove()` asserts this equals
     // `base_oracles_values_per_leaf.trailing_zeros()`.)
     let setup = CpuGKRSetup::construct(table_driver, &[], num_delegation_cycles, &compiled_circuit);
-    // The ignored BigInt Materialize/AllCosets parity case exceeds the
-    // automatic 30 GiB arena. This is a test resource budget, not a preset or
-    // a claim that the policy fits a production/CI device.
-    let arena_blocks = (circuit_type == DelegationCircuitType::BigIntWithControl)
-        .then_some((40usize << 30) >> device_allocator_block_log_size);
     let context = make_test_context_with_device_allocator_block_log_size(
-        arena_blocks,
+        None,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );

@@ -79,7 +79,9 @@ summary — the contract document is the source of truth.
   `(20,4)`, `(20,2)` and `(23,1)`, independent of circuit type, with base fold1
   and the default materialized-GKR / AllCosets policy (RawAndCosets witness,
   ReuseCosets opening). Virtual base fold0 is admitted at `(n,k)=(22,0)` and
-  `(20,2)` with the qualified m22 `[0,6,5,5,5]` schedule and the same policy.
+  `(20,2)` with the qualified m22 `[0,6,5,5,5]` schedule. Virtual policies
+  include the default and that circuit's existing 21/30 GiB production presets;
+  regenerated presets require the per-circuit policy parity checks again.
   Physical merge is keyed on k independently of the zero-fold protocol. No
   canonical #584 default is physical-only. `ProofPreflight<F>` binds config,
   geometry, artifact identity, policy, PoW and DR resources before transfers.
@@ -87,8 +89,8 @@ summary — the contract document is the source of truth.
   memory commitments share the qualified base geometry. Setup warmup produces
   geometry-bearing entries for physical or virtual packing, including pure
   virtual k0; geometry-None entries cannot supply either. Execution worker/probe
-  requests retain an independent virtual guard before H2D. The proof
-  entry additionally admits physical merged Blake compression at `(20,4,f1)`
+  requests validate virtual geometry and the same immutable resolved config
+  before H2D. The proof entry additionally admits physical merged Blake compression at `(20,4,f1)`
   with the same default policy. Its explicit merged-cap producer concatenates
   memory then witness and pads only the end. Worker and memory-sweep requests
   dispatch that producer from the same immutable resolved config, after the

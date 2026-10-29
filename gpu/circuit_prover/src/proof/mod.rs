@@ -63,8 +63,8 @@ fn main_folding_steps(gkr_programs: &GkrPrograms) -> usize {
 /// One immutable config/geometry/policy bound before transfers. Positive physical
 /// admission is separate and AllCosets: physical f=1 at (n,k)=(20,4)/(20,2)/(23,1),
 /// or virtual f=0 at (22,0)/(20,2) with the qualified m22 schedule. Admission is
-/// keyed by shape rather than circuit type. Execution requests retain a separate
-/// virtual guard; their immutable config binds geometry before transfers.
+/// keyed by shape rather than circuit type. Virtual policy qualification also
+/// binds the circuit's production preset; execution jobs share the same config.
 pub struct ProofPreflight<F: PrimeField> {
     dr_tail: gpu_gkr::DrTailProofPlan,
     circuit: Arc<GKRCircuitArtifact<F>>,
@@ -92,6 +92,7 @@ impl<F: PrimeField> ProofPreflight<F> {
 
 /// Field-free protocol/policy admission. Backend transform checks are separate.
 pub(crate) fn validate_base_proof_geometry_policy(
+    circuit_type: gpu_trace::witness::circuit_type::CircuitType,
     geometry: &BaseCommitmentGeometry,
     memory_policy: ProofMemoryPolicy,
 ) {
@@ -107,8 +108,39 @@ pub(crate) fn validate_base_proof_geometry_policy(
     if !uses_base_commitment_geometry(geometry) {
         return;
     }
+    if geometry.is_virtual_packing() {
+        // The default was qualified independently of the production presets.
+        // Regenerating presets requires re-running their circuit proof parity.
+        assert!(
+            memory_policy == ProofMemoryPolicy::default()
+                || memory_policy::presets::PRESET_ARENA_BYTES
+                    .iter()
+                    .any(|&arena| {
+                        memory_policy == memory_policy::presets::policy(circuit_type, arena)
+                    }),
+            "unqualified virtual proof memory policy"
+        );
+        use memory_policy::{OpeningStrategy, WitnessCommitmentStrategy, WitnessOpeningStrategy};
+        // Selection from a regenerated preset must still pass the qualified
+        // opening capabilities before any transfers are allocated.
+        assert_eq!(memory_policy.setup, OpeningStrategy::AllCosets);
+        assert_eq!(memory_policy.memory, OpeningStrategy::AllCosets);
+        assert_eq!(
+            memory_policy.witness.commitment,
+            WitnessCommitmentStrategy::AllCosets
+        );
+        assert!(
+            matches!(
+                memory_policy.witness.opening,
+                WitnessOpeningStrategy::ReuseCosets
+                    | WitnessOpeningStrategy::Recompute(OpeningStrategy::AllCosets)
+            ),
+            "unqualified virtual witness opening"
+        );
+        return;
+    }
     assert_eq!(memory_policy, ProofMemoryPolicy::default(),
-        "packed or virtual proofs require materialized GKR and AllCosets with RawAndCosets/ReuseCosets witness");
+        "physical packed proofs require materialized GKR and AllCosets with RawAndCosets/ReuseCosets witness");
 }
 
 /// Existing BabyBear proof backend's pre-transfer capability boundary. The
@@ -129,7 +161,7 @@ pub fn preflight_proof(
     let geometry =
         BaseCommitmentGeometry::from_config(config, BaseColumns::of(programs.compiled_circuit()))
             .expect("invalid base commitment geometry");
-    validate_base_proof_geometry_policy(&geometry, memory_policy);
+    validate_base_proof_geometry_policy(programs.circuit_type(), &geometry, memory_policy);
     if geometry.commitment_mode() == crate::upstream::CommitmentMode::MergedMemoryAndWitness {
         merged_commitment::validate_merged_circuit_type(programs.circuit_type(), &geometry);
     }

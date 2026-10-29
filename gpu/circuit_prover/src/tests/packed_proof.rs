@@ -137,7 +137,12 @@ fn gpu_memory_caps(
 
 pub(super) fn geometry_proof(mut fixture: BasicUnrolledProofFixture) {
     let base = &mut fixture.base;
-    let policy = ProofMemoryPolicy::default();
+    let policy = base.memory_policy();
+    eprintln!(
+        "production proof policy: circuit={:?} arena_bytes={} policy={policy:?}",
+        base.circuit_type,
+        base.context.get_mem_size()
+    );
     let preflight = base.dr_tail_plan_for_policy(policy).unwrap();
     let geometry = preflight.geometry();
     let expected_batching_bits = base.prover_config.base_round().batching_pow_bits::<BF, E4>(

@@ -9,9 +9,12 @@ fn check_policies(
     policies: impl IntoIterator<Item = ProofMemoryPolicy>,
 ) {
     let baseline = fixture.base.context.get_used_mem_current();
+    let cpu_bytes = serde_json::to_vec(&fixture.expected_cpu_proof).unwrap();
     let mut policies = policies.into_iter();
     while let Some(first_policy) = policies.next() {
         let second_policy = policies.next().unwrap_or(first_policy);
+        fixture.base.context.reset_used_mem_peak();
+        eprintln!("policy parity: circuit={:?} arena_bytes={} first={first_policy:?} second={second_policy:?}", fixture.base.circuit_type, fixture.base.context.get_mem_size());
         let first = fixture
             .base
             .schedule_prove_with_memory_policy(first_policy)
@@ -23,8 +26,17 @@ fn check_policies(
         for job in [first, second] {
             let (proof, _) = job.finish().unwrap();
             assert_gkr_proof_eq_for_test(&proof, &fixture.expected_cpu_proof);
+            assert!(
+                serde_json::to_vec(&proof).unwrap() == cpu_bytes,
+                "policy changed serialized proof bytes"
+            );
         }
         assert_eq!(fixture.base.context.get_used_mem_current(), baseline);
+        eprintln!(
+            "policy parity passed: proofs=2 bytes={} peak_bytes={} baseline={baseline}",
+            cpu_bytes.len(),
+            fixture.base.context.get_used_mem_peak()
+        );
     }
 }
 
@@ -198,4 +210,57 @@ gkr_recompute_test!(
 gkr_recompute_test!(
     gkr_recompute_inits_and_teardowns_parity_and_reuse,
     super::proof_matrix::prepare_inits_and_teardowns_matrix_proof_fixture
+);
+
+/// The existing production table is the policy authority. Regeneration of that
+/// table must requalify these bytes; the fixture arena alone is not a fit claim.
+fn check_production_presets(fixture: BasicUnrolledProofFixture) {
+    let policies = [21usize << 30, 30usize << 30].map(|arena| {
+        let policy = presets::policy(fixture.base.circuit_type, arena);
+        eprintln!(
+            "preset parity row: circuit={:?} preset_arena_bytes={arena} policy={policy:?}",
+            fixture.base.circuit_type
+        );
+        policy
+    });
+    check_policies(&fixture, policies);
+}
+
+macro_rules! production_presets_test {
+    ($name:ident, $fixture:path) => {
+        #[test]
+        #[ignore = "both production preset policies against a fresh CPU proof"]
+        fn $name() {
+            check_production_presets($fixture());
+        }
+    };
+}
+
+production_presets_test!(
+    production_presets_bigint_parity_and_reuse,
+    super::proof_matrix::prepare_bigint_proof_fixture
+);
+production_presets_test!(
+    production_presets_blake_compression_parity_and_reuse,
+    super::proof_matrix::prepare_blake2_with_compression_proof_fixture
+);
+production_presets_test!(
+    production_presets_blake_g_parity_and_reuse,
+    super::proof_matrix::prepare_blake2_g_function_proof_fixture
+);
+production_presets_test!(
+    production_presets_keccak_special5_parity_and_reuse,
+    super::proof_matrix::prepare_keccak_special5_proof_fixture
+);
+production_presets_test!(
+    production_presets_keccak_chi5_parity_and_reuse,
+    super::proof_matrix::keccak_f1600::keccak_chi5
+);
+production_presets_test!(
+    production_presets_keccak_column_parity_parity_and_reuse,
+    super::proof_matrix::keccak_f1600::keccak_column_parity
+);
+production_presets_test!(
+    production_presets_keccak_theta_rho_parity_and_reuse,
+    super::proof_matrix::keccak_f1600::keccak_theta_rho
 );
