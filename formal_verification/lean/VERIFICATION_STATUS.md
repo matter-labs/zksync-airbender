@@ -47,9 +47,18 @@ The changed unified, bigint and initialization imports passed focused builds.
 The four changed split imports passed in both cache modes. The split group
 clock, derived-borrow, control-bound, physical-port and memory-order proofs
 passed kernel elaboration on the new layouts. The split import test module
-also built. Decoder differential checks and the remaining unified/bigint proof
-repairs are pending. Earlier build results
+also built. All 22 production-program decoder comparisons passed in both cache
+modes. The combined run reached its 900-second limit during the small-program
+matrix. No decoder mismatch occurred. Its guard left no owned process running.
+The remaining small-program cases and unified/bigint proof repairs are pending. Earlier build results
 apply to the old base. The changed split Keccak equations need new proof checks.
+Unified's current column-role inventory, dispatch bound and ordinary PC
+increment passed focused kernel builds. Bigint's current column-role inventory,
+control-bit proof and timestamp proof passed. The wider memory and instruction
+proof rebuilds are in progress. An earlier batch hit its resident-memory cap
+while it rebuilt an unchanged extended-round import. That was a resource stop.
+The next batch uses the documented 5,120 MiB resident cap.
+
 The branch has not been force-pushed.
 
 The full unsigned relation now combines the six CPU families, modular MOPs,

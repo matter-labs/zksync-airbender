@@ -23,10 +23,16 @@ abbrev comparisonSelector := 23
 abbrev branchSelector := 24
 abbrev finalPCLo := 30
 abbrev finalPCHi := 31
-abbrev pcCarry := 128
-abbrev pcGate := 129
-abbrev familyDispatch := 130
+abbrev pcCarry := 122
 abbrev dispatchColumns := #v[11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 26, 27, 28, 29]
+/-- The PC gate is an affine expression in the imported decoder columns. -/
+def pcGate (w : Nat → ZMod p) : ZMod p :=
+  w 4 - (w 21 + w 22 + w 23 + w 24)
+
+/-- The new circuit ties this dispatch sum directly to execute. -/
+def familyDispatch (w : Nat → ZMod p) : ZMod p :=
+  (dispatchColumns.toList.map w).sum
+
 end Variables
 
 end Airbender.UnifiedReduced
