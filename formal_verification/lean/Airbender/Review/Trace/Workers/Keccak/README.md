@@ -35,10 +35,10 @@ worker-effect proofs remain open. [Split memory proofs](../../../../Proofs/Kecca
 derive bounded clocks for every physical read and write from public seed clocks,
 caller-derived invocation bounds and exact RAM matching. They also establish
 the arithmetic order consequence of a positive grouped read distance. The
-compiled group equations and control lookups still need to supply each distance.
+control lookups still need to establish each positive distance.
 The [group equation proofs](../../../../Proofs/Keccak/SplitGroupEquations.lean)
-extract the control-register group's two equations and Boolean borrow from the
-four theta/rho and chi5 captures.
+extract both clock equations and Boolean borrows for all four theta/rho and
+six chi5 groups from both cache modes.
 Under the [ValidDelegationUse](../../UnifiedReduced/DelegationUse.lean) contract, special5 calls are
 excluded; these lemmas therefore do not establish blessed Keccak execution.
 Split worker modeling and integration are required open work. See
