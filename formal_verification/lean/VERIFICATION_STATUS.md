@@ -42,6 +42,9 @@ from a positive compiled read distance. All four theta/rho and six chi5 groups
 have exact clock equations and Boolean borrows extracted from both cache modes.
 The control lookups still need to establish positive distances and connect
 these equations to the strict-order and worker-effect proofs.
+Both column-parity captures additionally derive every per-port Boolean borrow
+and timestamp comparison bound directly from their imported equations and
+lookup queries.
 
 Both cached and uncached native captures remain required. The checker migration
 must qualify all 22 capture configurations.
