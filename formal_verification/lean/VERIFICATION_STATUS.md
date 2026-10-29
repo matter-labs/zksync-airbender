@@ -123,9 +123,12 @@ adapter must remove that intermediate restriction before it closes Unified.
 Native clocks now prove the zero initial stream count, each cycle's exact
 increment, and the total terminal count. These proofs passed focused kernel
 and axiom checks. They add no ordering premise.
-Unified still needs cycle composition with stream
-positions, supported worker controls from
-stream reachability, and the native worker ROM adapter. The target remains open.
+Indexed path composition now proves the combined execution from exact native
+cycle facts. It includes the final PC, terminal memory and stream count.
+Its kernel and axiom checks passed. This theorem retains native caller-cycle
+facts and the physical code profile as explicit inputs.
+Unified still needs native caller adapters, supported worker controls from
+stream reachability, and native ROM/code transport. The target remains open.
 All nine ordinary worker and CPU memory-port inventories passed focused
 checks. Their timestamp records use an explicit absent borrow subtrahend.
 The focused circuit and proof group passed all 288 module checks.

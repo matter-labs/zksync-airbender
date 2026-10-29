@@ -73,11 +73,25 @@ order. Complete calls and ordinary instructions consume no stream words. -/
 def readCount {p : Nat} [Fact p.Prime] (trace : UnifiedTrace p) : Nat :=
   ExternalStream.count isRead trace.rows
 
+/-- Stream position at a native instruction boundary. -/
+def countAt {p : Nat} [Fact p.Prime] (trace : UnifiedTrace p) (clock : Nat) : Nat :=
+  ExternalStream.countBefore Trace.Row.clock isRead trace.rows clock
+
 /-- Bind native read responses to one independently supplied stream. This is
 an explicit input boundary; native constraints do not authenticate the stream. -/
 def StreamPorts {p : Nat} [Fact p.Prime] (trace : UnifiedTrace p)
     (stream : List (BitVec 32)) : Prop :=
   ExternalStream.Ports Trace.Row.clock isRead response trace.rows stream
+
+/-- Public clause selection and exact retirement for one native noncaller. -/
+def OrdinaryCycle {p : Nat} [Fact p.Prime] (stream : List (BitVec 32))
+    (program : List (Trace.ProgramEntry UnifiedFamily)) (trace : UnifiedTrace p)
+    (cells : List Cell) (events : List MemoryAccess) (initial finalState : State)
+    (row : Trace.Row p UnifiedFamily) : Prop :=
+  ∃ entry ∈ program, row.decoderQuery = entry.query ∧ ∃ clause next,
+    clauseFor stream (countAt trace row.clock) entry.instruction = some (clause, next) ∧
+    next = countAt trace row.clock + (if isRead row then 1 else 0) ∧
+    RetiresCycle cells events initial finalState row clause
 
 /-- A finite unified execution with explicit stream consumption and the same
 terminal PC and tracked-cell agreement as `Trace.Realizes`. -/
