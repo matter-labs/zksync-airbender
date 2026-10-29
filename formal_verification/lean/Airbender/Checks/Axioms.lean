@@ -1,3 +1,7 @@
+import Airbender.Proofs.Reduced.NativePrefix
+import Airbender.Proofs.Reduced.PrefixBoundary
+import Airbender.Proofs.Reduced.SupportedRound
+import Airbender.Proofs.Reduced.SupportedExecution
 import Airbender.Proofs.Reduced.ROMAddresses
 import Airbender.Proofs.Reduced.NativeROM
 import Airbender.Proofs.Reduced.ROMAcceptance
@@ -13909,3 +13913,17 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.interpreted_stream_ports
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.interpreted_realizes
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_rom_path_execution
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.supportedPrefix
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.supported_prefix_callers
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_requests
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.live_worker_clock_aligned
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.supported_prefix_requests
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.supported_prefix_steps_native
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.supported_prefix_accepted_native
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.supported_prefix_worker_read_native
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.endpoint_of_bounds
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.supported_prefix_boot
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.supported_round_and_ram_of_reference
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.supported_prefix_stream_ports
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.supported_native_worker_inputs
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.supported_native_path_execution

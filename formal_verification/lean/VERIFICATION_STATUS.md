@@ -16,7 +16,7 @@ execution and logical lookup/RAM composition are established narrower results.
 | Setup machine | Current target status |
 | --- | --- |
 | Unrolled full unsigned | Open. The `UnrolledFullUnsigned` target lists all premises. Prove native soundness for its combined relation. Bind the public program setup. Connect the caller, worker and initialization boundaries. Prove the split Keccak worker functions on the new base. The target excludes special5 calls. |
-| Unrolled reduced | Open. Standalone initialization, shared native history, instruction cycles and complete round caller cycles are proved. The complete conditional path now interprets public ROM bytes. Derive worker controls and RAM locations from public supported use. Bind public decoder lookup to native acceptance. |
+| Unrolled reduced | Open. Standalone initialization, shared native history, instruction cycles and complete round caller cycles are proved. The native path interprets public ROM bytes and derives worker controls and RAM locations from public supported use. Bind public decoder lookup to native acceptance. |
 | Unified | Proved by `MachineTargets.Proofs.unified_soundness`. The theorem has exactly the `Unified` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. The target excludes special5 calls. |
 
 [The three target definitions](Airbender/Review/Compiler/MachineTargets.lean)
@@ -395,3 +395,13 @@ also remains open. The final reduced machine target is not yet proved.
 The check used Lean 4.31.0 and retained unchanged dependency objects. All selected
 roots use only the three allowed axioms. The full frontend, environment audit,
 transitive kernel replay and Linux qualification did not run.
+
+### Reduced public supported-use obligation
+
+The reduced prefix and supported-use proofs passed focused kernel checks.
+Each prefix keeps exact request and RAM matching. Its actual caller endpoint
+supplies a typed verifier boundary. Joint induction proves native round controls
+and each worker port location from reachable public reference arguments.
+The native path now has no private worker-control or port-domain premise.
+The public decoder and native acceptance adapter remain open. The final reduced
+target is not yet proved. Full validation remains pending as stated above.
