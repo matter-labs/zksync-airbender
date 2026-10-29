@@ -11,6 +11,62 @@ theorem rows_length {p : Nat} (initial : Reference.RiscV.Sail.State)
   simp [rows]
   omega
 
+/-- Each noncaller entry accepted by the unified public-text model is the
+actual pure Sail decode of the supplied bytes at its indexed PC. -/
+theorem ordinary_sources (initial : Reference.RiscV.Sail.State)
+    (text : List (BitVec 32)) (image : ROM.TextImage initial text)
+    (size : text.length ≤ ROM.limit / 4) :
+    ∀ ordinary ∈ ordinaryProgramOf initial text,
+      ordinary.SourceWith initial decoderFields := by
+  intro ordinary member
+  obtain ⟨item, inProgram, selected⟩ := List.mem_filterMap.mp member
+  cases item with
+  | inr caller => simp [ordinaryProgramOf] at selected
+  | inl decodedEntry =>
+    have equal : decodedEntry = ordinary := by simpa using selected
+    subst ordinary
+    obtain ⟨⟨bits, index⟩, inText, source⟩ := List.mem_filterMap.mp inProgram
+    have found : text[index]? = some bits := List.mk_mem_zipIdx_iff_getElem?.mp inText
+    have indexBound : index < text.length := by
+      by_contra notBound
+      have : text[index]? = none := by simp [Nat.le_of_not_gt notBound]
+      rw [this] at found
+      contradiction
+    have value : text[index] = bits := by
+      have : text[index]? = some text[index] := by simp [indexBound]
+      rw [this] at found
+      exact Option.some.inj found
+    have bytes : (Trace.Cell.ram (BitVec.ofNat 32 (4 * index))).read initial =
+        .ok bits initial := by
+      simpa only [value] using ROM.Proofs.bytes_of_text_image initial text image size
+        ⟨index, indexBound⟩
+    unfold entry at source
+    cases caller : callerEntryWith delegationCSR initial bits index with
+    | some found => simp [caller] at source
+    | none =>
+      cases decoded : SailRV32.Functions.encdec_backwards bits with
+      | impure call continuation => simp [caller, decoded] at source
+      | pure instruction =>
+        cases fields : decoderFields instruction with
+        | none => simp [caller, decoded, fields] at source
+        | some data =>
+          simp only [caller, decoded, fields, bind, Option.bind] at source
+          change (some (Sum.inl ⟨BitVec.ofNat 32 (4 * index), bits,
+            instruction, data⟩) : Option Entry) = some (Sum.inl decodedEntry) at source
+          cases source
+          exact ⟨bytes, by rw [decoded]; rfl, fields⟩
+
+/-- The public ordinary unified program can be reconstructed by stateful Sail
+reads. The virtual CSR callers are checked by their separate registry. -/
+theorem ordinary_program_image (initial : Reference.RiscV.Sail.State)
+    (text : List (BitVec 32)) (image : ROM.TextImage initial text)
+    (size : text.length ≤ ROM.limit / 4) :
+    programImageRunWith decoderFields initial
+      ((ordinaryProgramOf initial text).map ProgramEntry.pc) =
+        some (ordinaryProgramOf initial text) :=
+  Airbender.Compiler.PublicProgram.image_run _
+    (ordinary_sources initial text image size)
+
 theorem active_member {p : Nat} (initial : Reference.RiscV.Sail.State)
     (text : List (BitVec 32)) (capacity : Nat) (fits : text.length ≤ capacity)
     (query : Vector (ZMod p) 9)

@@ -56,6 +56,14 @@ def Entry.query {p : Nat} : Entry → Vector (ZMod p) 9
 def programOf (initial : State) (text : List (BitVec 32)) : List Entry :=
   text.zipIdx.filterMap fun (bits, index) => entry initial bits index
 
+/-- The public ordinary/custom/MOP instruction entries after removing virtual
+CSR callers. The caller branch remains in `programOf` for its own binding. -/
+def ordinaryProgramOf (initial : State) (text : List (BitVec 32)) :
+    List UnifiedReduced.ProgramEntry :=
+  (programOf initial text).filterMap fun
+    | .inl ordinary => some ordinary
+    | .inr _ => none
+
 def decoderTable {p : Nat} [Fact p.Prime] (program : List Entry) :
     Table (ZMod p) (fields 9) := .fromStatic {
   name := "Airbender.UnifiedNativeProgramDecoder"
