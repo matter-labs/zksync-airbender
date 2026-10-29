@@ -16,7 +16,7 @@ execution and logical lookup/RAM composition are established narrower results.
 | --- | --- |
 | Unrolled full unsigned | Open. The `UnrolledFullUnsigned` target lists all premises. Prove native soundness for its combined relation. Bind the public program setup. Connect the caller, worker and initialization boundaries. Prove the split Keccak worker functions on the new base. The target excludes special5 calls. |
 | Unrolled reduced | Open. The `UnrolledReduced` target lists all premises. Prove native soundness for its stream and caller relation. Bind the public program setup. Connect the extended-round worker and initialization boundaries. |
-| Unified | Open. The `Unified` target lists all premises. Prove native soundness for the combined stream, modular and caller relation. Bind the public program setup. Connect the inline initialization boundary. The target excludes special5 calls. |
+| Unified | Open. The `Unified` target lists all premises. Prove native soundness for the combined stream, modular and caller relation. Bind the public program setup to the native rows. The initialization adapter is proved. The target excludes special5 calls. |
 
 [The three target definitions](Airbender/Review/Compiler/MachineTargets.lean)
 are Lean propositions. They are not proved theorems. Each target names its
@@ -77,7 +77,10 @@ used by the machine targets.
 Unified's memory, ROM, binary, shift, TRIADD, XOR/rotate and modular proofs
 passed focused checks. Its existing native caller-path proof also passed.
 These restore the native instruction obligations on the new layout.
-The combined stream target still needs its execution proof and initialization adapter.
+The combined stream target still needs its execution proof.
+Its initialization adapter passed a focused kernel check. The adapter binds
+the public text registry and native seed to the combined stream boot inputs.
+Its two proofs use only the three allowed axioms.
 All nine ordinary worker and CPU memory-port inventories passed focused
 checks. Their timestamp records use an explicit absent borrow subtrahend.
 The focused circuit and proof group passed all 288 module checks.

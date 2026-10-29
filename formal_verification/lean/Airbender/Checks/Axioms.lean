@@ -1,3 +1,4 @@
+import Airbender.Proofs.UnifiedReduced.StreamInitialization
 import Airbender.Proofs.GKRProtocol.LogicalLookupSegments
 import Airbender.Review.Compiler.Theorems
 import Tests.GKRMemoryFrames
@@ -13638,3 +13639,7 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.maskOfFamily
 #print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.unifiedMask
 #print axioms Airbender.Trace.ROM.Proofs.words_of_text_image
+
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unified_decoder_fields
+
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unified_initialization_inputs
