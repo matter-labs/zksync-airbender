@@ -28,9 +28,10 @@ equations, participation and exact memory-token matching for all six captures.
 The [split request interface](SplitRequests.lean) matches full-width native CSR
 calls to worker invocation clocks under an explicit virtual-token permutation.
 [Request proofs](../../../../Proofs/Keccak/SplitRequests.lean) derive one-to-one
-nonzero fulfillment, clock bounds, no low-limb rollover, and the worker kind
-selected by the full-width public Sail CSR. Complete setup provenance, caller
-PC/effect composition and worker-effect proofs remain open.
+nonzero fulfillment, clock bounds, no low-limb rollover, the worker kind
+selected by the full-width public Sail CSR, and the caller's canonical PC
+retirement. Complete setup provenance, caller/worker memory composition and
+worker-effect proofs remain open.
 Under the [ValidDelegationUse](../../UnifiedReduced/DelegationUse.lean) contract, special5 calls are
 excluded; these lemmas therefore do not establish blessed Keccak execution.
 Split worker modeling and integration are required open work. See
