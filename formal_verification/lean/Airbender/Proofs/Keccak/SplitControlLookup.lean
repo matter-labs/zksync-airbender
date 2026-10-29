@@ -232,7 +232,7 @@ theorem theta_rho_group_order [Fact p.Prime]
           ThetaRho.importedConstraintsDelegationColumns.invocation).lo : ZMod p) - 2 +
         ((4 * distance : Nat) : ZMod p) -
         (Trace.timestampBase : ZMod p) *
-          w ThetaRho.importedConstraintsTimestampGroups[i].borrow = 0 := by
+          (ThetaRho.importedConstraintsTimestampGroups[i]).borrowValue w = 0 := by
     simpa [Trace.decodeTimestamp, ZMod.natCast_zmod_val,
       ThetaRho.importedConstraintsDelegationColumns, active, same,
       Nat.cast_mul] using low
@@ -241,7 +241,7 @@ theorem theta_rho_group_order [Fact p.Prime]
           ThetaRho.importedConstraintsTimestampGroups[i].previous).hi : ZMod p) -
         ((Trace.decodeTimestamp w
           ThetaRho.importedConstraintsDelegationColumns.invocation).hi : ZMod p) +
-        w ThetaRho.importedConstraintsTimestampGroups[i].borrow = 0 := by
+        (ThetaRho.importedConstraintsTimestampGroups[i]).borrowValue w = 0 := by
     simpa [Trace.decodeTimestamp, ZMod.natCast_zmod_val] using high
   exact grouped_distance_order hp initial previous positive small bit lower upper
 
@@ -272,7 +272,7 @@ theorem theta_rho_cached_group_order [Fact p.Prime]
           ThetaRhoCached.importedConstraintsDelegationColumns.invocation).lo : ZMod p) - 2 +
         ((4 * distance : Nat) : ZMod p) -
         (Trace.timestampBase : ZMod p) *
-          w ThetaRhoCached.importedConstraintsTimestampGroups[i].borrow = 0 := by
+          (ThetaRhoCached.importedConstraintsTimestampGroups[i]).borrowValue w = 0 := by
     simpa [Trace.decodeTimestamp, ZMod.natCast_zmod_val,
       ThetaRhoCached.importedConstraintsDelegationColumns, active, same,
       Nat.cast_mul] using low
@@ -281,7 +281,7 @@ theorem theta_rho_cached_group_order [Fact p.Prime]
           ThetaRhoCached.importedConstraintsTimestampGroups[i].previous).hi : ZMod p) -
         ((Trace.decodeTimestamp w
           ThetaRhoCached.importedConstraintsDelegationColumns.invocation).hi : ZMod p) +
-        w ThetaRhoCached.importedConstraintsTimestampGroups[i].borrow = 0 := by
+        (ThetaRhoCached.importedConstraintsTimestampGroups[i]).borrowValue w = 0 := by
     simpa [Trace.decodeTimestamp, ZMod.natCast_zmod_val] using high
   exact grouped_distance_order hp initial previous positive small bit lower upper
 
@@ -311,7 +311,7 @@ theorem chi5_group_order [Fact p.Prime]
           Chi5.importedConstraintsDelegationColumns.invocation).lo : ZMod p) - 2 +
         ((4 * distance : Nat) : ZMod p) -
         (Trace.timestampBase : ZMod p) *
-          w Chi5.importedConstraintsTimestampGroups[i].borrow = 0 := by
+          (Chi5.importedConstraintsTimestampGroups[i]).borrowValue w = 0 := by
     simpa [Trace.decodeTimestamp, ZMod.natCast_zmod_val,
       Chi5.importedConstraintsDelegationColumns, active, same,
       Nat.cast_mul] using low
@@ -320,7 +320,7 @@ theorem chi5_group_order [Fact p.Prime]
           Chi5.importedConstraintsTimestampGroups[i].previous).hi : ZMod p) -
         ((Trace.decodeTimestamp w
           Chi5.importedConstraintsDelegationColumns.invocation).hi : ZMod p) +
-        w Chi5.importedConstraintsTimestampGroups[i].borrow = 0 := by
+        (Chi5.importedConstraintsTimestampGroups[i]).borrowValue w = 0 := by
     simpa [Trace.decodeTimestamp, ZMod.natCast_zmod_val] using high
   exact grouped_distance_order hp initial previous positive small bit lower upper
 
@@ -350,7 +350,7 @@ theorem chi5_cached_group_order [Fact p.Prime]
           Chi5Cached.importedConstraintsDelegationColumns.invocation).lo : ZMod p) - 2 +
         ((4 * distance : Nat) : ZMod p) -
         (Trace.timestampBase : ZMod p) *
-          w Chi5Cached.importedConstraintsTimestampGroups[i].borrow = 0 := by
+          (Chi5Cached.importedConstraintsTimestampGroups[i]).borrowValue w = 0 := by
     simpa [Trace.decodeTimestamp, ZMod.natCast_zmod_val,
       Chi5Cached.importedConstraintsDelegationColumns, active, same,
       Nat.cast_mul] using low
@@ -359,7 +359,7 @@ theorem chi5_cached_group_order [Fact p.Prime]
           Chi5Cached.importedConstraintsTimestampGroups[i].previous).hi : ZMod p) -
         ((Trace.decodeTimestamp w
           Chi5Cached.importedConstraintsDelegationColumns.invocation).hi : ZMod p) +
-        w Chi5Cached.importedConstraintsTimestampGroups[i].borrow = 0 := by
+        (Chi5Cached.importedConstraintsTimestampGroups[i]).borrowValue w = 0 := by
     simpa [Trace.decodeTimestamp, ZMod.natCast_zmod_val] using high
   exact grouped_distance_order hp initial previous positive small bit lower upper
 

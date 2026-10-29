@@ -121,11 +121,15 @@ def Circuit.splitTimestampGroups (c : Circuit) :
       | .Write q => q.read_timestamp
     unless owner.read_timestamp.values == readTimestamp.values do
       throw "split timestamp group disagrees with native memory port"
+  let some state := c.memory_layout.delegation_state |
+    throw "split timestamp groups need an invocation clock"
+  let invocationHigh ← c.logicalVariable
+    (.BaseLayerMemory state.invocation_timestamp.values[1]!)
   groups.mapM fun group => do
     let raw := group.read_timestamp.values
-    pure ⟨#v[← c.logicalVariable (.BaseLayerMemory raw[0]!),
-      ← c.logicalVariable (.BaseLayerMemory raw[1]!)],
-      ← c.logicalVariable (.BaseLayerWitness group.borrow), group.members⟩
+    let previousHigh ← c.logicalVariable (.BaseLayerMemory raw[1]!)
+    pure ⟨#v[← c.logicalVariable (.BaseLayerMemory raw[0]!), previousHigh],
+      invocationHigh, group.members, some previousHigh⟩
 
 private def Circuit.timestampPorts (c : Circuit) (expectedOffset : Nat → Nat)
     (nonComparisonCount : Nat := 2) :
@@ -149,7 +153,7 @@ private def Circuit.timestampPorts (c : Circuit) (expectedOffset : Nat → Nat)
       | .Readonly q => (q.in_cycle_write_index.val, q.read_timestamp)
       | .Write q => (q.in_cycle_write_index.val, q.read_timestamp)
     unless offset == expectedOffset i && offset < 4 do throw "memory timestamp offset profile mismatch"
-    ports := ports.push ⟨offset, ← pair previous, ← c.logicalVariable auxiliary.intermediate_borrow⟩
+    ports := ports.push ⟨offset, ← pair previous, ← c.logicalVariable auxiliary.intermediate_borrow, none⟩
   return ports
 
 /-- Resolve native machine clocks and consecutive in-cycle port slots. -/
@@ -279,7 +283,7 @@ def Circuit.splitDelegationColumns (c : Circuit) : Except String Delegation.Cloc
       | .Readonly q => q.in_cycle_write_index.val
       | .Write q => q.in_cycle_write_index.val
     unless offset == 2 do throw "split memory port write offset is not two"
-    clocks := clocks.push ⟨offset, group.previous, group.borrow⟩
+    clocks := clocks.push ⟨offset, group.previous, group.borrow, group.subtrahend⟩
   return ⟨← column state.execute,
     #v[← column state.invocation_timestamp.values[0]!,
       ← column state.invocation_timestamp.values[1]!], clocks⟩

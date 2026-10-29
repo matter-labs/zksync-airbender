@@ -9,5 +9,15 @@ structure GroupedTimestamp where
   previous : Vector Nat 2
   borrow : Nat
   members : Array Nat
+  /-- Subtract this column from `borrow` when the native borrow is derived. -/
+  subtrahend : Option Nat := none
+
+/-- Evaluate the native borrow. Grouped comparisons derive it from the high
+invocation limb and the high previous-time limb. -/
+def GroupedTimestamp.borrowValue {F : Type} [Sub F]
+    (group : GroupedTimestamp) (w : Nat → F) : F :=
+  match group.subtrahend with
+  | none => w group.borrow
+  | some column => w group.borrow - w column
 
 end Airbender.Delegation

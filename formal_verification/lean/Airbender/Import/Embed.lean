@@ -176,8 +176,11 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
       let low := group.previous[0]
       let high := group.previous[1]
       let members := group.members.map quote
+      let subtrahend ← match group.subtrahend with
+        | none => `(none)
+        | some column => `(some $(quote column))
       `(Airbender.Delegation.GroupedTimestamp.mk
-        #v[$(quote low), $(quote high)] $(quote group.borrow) #[$[$members],*])
+        #v[$(quote low), $(quote high)] $(quote group.borrow) #[$[$members],*] $subtrahend)
     let groupName := mkIdent (name.getId.appendAfter "TimestampGroups")
     let groupTerms := groupTerms.toArray
     elabCommand (← `(def $groupName : Array Airbender.Delegation.GroupedTimestamp :=
@@ -191,8 +194,11 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
       let terms := columns.toArray.map quote
       `(#v[$[$terms],*])
     let portTerms ← columns.ports.toList.mapM fun port => do
+      let subtrahend ← match port.subtrahend with
+        | none => `(none)
+        | some column => `(some $(quote column))
       `(Airbender.Trace.TimestampPort.mk $(quote port.offset)
-        $(← pairSyntax port.previous) $(quote port.borrow))
+        $(← pairSyntax port.previous) $(quote port.borrow) $subtrahend)
     let portTerms := portTerms.toArray
     let columnsName := mkIdent (name.getId.appendAfter "DelegationColumns")
     elabCommand (← `(def $columnsName : Airbender.Delegation.ClockColumns :=
@@ -205,8 +211,11 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
       let terms := columns.toArray.map quote
       `(#v[$[$terms],*])
     let portTerms ← columns.ports.toList.mapM fun port => do
+      let subtrahend ← match port.subtrahend with
+        | none => `(none)
+        | some column => `(some $(quote column))
       `(Airbender.Trace.TimestampPort.mk $(quote port.offset)
-        $(← pairSyntax port.previous) $(quote port.borrow))
+        $(← pairSyntax port.previous) $(quote port.borrow) $subtrahend)
     let portTerms := portTerms.toArray
     let columnsName := mkIdent (name.getId.appendAfter "TraceColumns")
     elabCommand (← `(def $columnsName : Airbender.Trace.TraceColumns :=
@@ -248,9 +257,12 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
       let writes ← match port.writeValue with
         | none => `(none)
         | some columns => `(some $(← wordSyntax columns))
+      let subtrahend ← match port.clock.subtrahend with
+        | none => `(none)
+        | some column => `(some $(quote column))
       `(Airbender.Trace.MemoryPort.mk
         (Airbender.Trace.TimestampPort.mk $(quote port.clock.offset)
-          $(← pairSyntax port.clock.previous) $(quote port.clock.borrow))
+          $(← pairSyntax port.clock.previous) $(quote port.clock.borrow) $subtrahend)
         $address $(← wordSyntax port.readValue) $writes)
     let memoryTerms := memoryTerms.toArray
     let memoryName := mkIdent (name.getId.appendAfter "MemoryPorts")
