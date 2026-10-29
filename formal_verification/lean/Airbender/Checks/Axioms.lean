@@ -1,3 +1,4 @@
+import Airbender.Proofs.Reduced.StreamMemory
 import Airbender.Proofs.Reduced.TargetInputs
 import Airbender.Proofs.UnifiedReduced.StreamPublicBinding
 import Airbender.Proofs.UnifiedReduced.StreamPublicCallers
@@ -13811,3 +13812,17 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Compiler.MachineTargets.Proofs.reduced_caller_image
 #print axioms Airbender.Compiler.MachineTargets.Proofs.reduced_caller_metadata
 #print axioms Airbender.Compiler.MachineTargets.Proofs.reduced_initialization_inputs
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.mixedData
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.machine_ports_caller
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.machine_ports_ordinary
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.machine_port_native
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.mixed_write_clocks
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.mixed_memory_clocks
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.mixed_memory_facts
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.mixed_machine_member
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.mixed_worker_member
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.mixed_ordinary_source
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.mixed_machine_time
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.mixed_zero_rules
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.mixed_write_rules
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.mixed_memory_effects
