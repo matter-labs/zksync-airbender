@@ -2,14 +2,10 @@
 
 <!-- source-names: keccak_special5 -->
 
-The model proves conditional soundness for the relations below. **No single
-whole-execution theorem currently covers a committed production verifier
-program.** A stream-aware unified relation now combines nondeterminism reads,
-modular operations and delegation calls. Its native soundness theorem now
-derives worker controls and port domains from public supported use. Its public
-decoder, native acceptance and initialization adapters are now proved. The captured compiler execution bridge
-also retains the four-entry decoder tables. Program-parametric source/trace
-execution and logical lookup/RAM composition are established narrower results.
+The model proves the public Unified and UnrolledReduced machine targets.
+Both proofs include the native combined stream relation, public program binding
+and initialization. The full unsigned target remains open. Exact lookup,
+request and RAM matching remain explicit. The final full validation is pending.
 
 ## Production machine targets
 
@@ -20,9 +16,9 @@ execution and logical lookup/RAM composition are established narrower results.
 | Unified | Proved by `MachineTargets.Proofs.unified_soundness`. The theorem has exactly the `Unified` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. The target excludes special5 calls. |
 
 [The three target definitions](Airbender/Review/Compiler/MachineTargets.lean)
-are Lean propositions. Unified now has a proof. Both unrolled targets remain
-open. Each target names its native acceptance, program setup, decoder lookup
-and initialization premises.
+are Lean propositions. Unified and UnrolledReduced now have proofs. The full
+unsigned target remains open. Each target names its native acceptance, program
+setup, decoder lookup and initialization premises.
 Exact lookup matching and state/RAM permutations remain explicit.
 
 Work now follows this order: Unified, UnrolledReduced, then
@@ -405,3 +401,20 @@ and each worker port location from reachable public reference arguments.
 The native path now has no private worker-control or port-domain premise.
 The public decoder and native acceptance adapter remain open. The final reduced
 target is not yet proved. Full validation remains pending as stated above.
+
+### Reduced target proved
+
+`MachineTargets.Proofs.unrolled_reduced_soundness` proves the unchanged
+`UnrolledReduced` proposition. Public text and the actual imported masks supply
+full decoder queries. The proof derives the omitted funct3 field where needed.
+Native selectors classify ordinary and caller rows. Exact state matching bounds
+the incoming PC without a separate CPU RAM permutation. The proof connects
+standalone initialization and public supported use to the full reduced path.
+No private worker control or port-domain premise remains in the final theorem.
+
+The focused source and axiom check passed on Lean 4.31.0. Its selected roots use
+only `propext`, `Classical.choice` and `Quot.sound`. It retains unchanged finite
+table objects. It is not a full frontend or transitive replay. The environment
+audit and Linux qualification remain pending. Work now resumes the full unsigned
+machine and the blessed split Keccak sequence. The packed checker pilot stays
+at its current scope until all three machine targets are done.

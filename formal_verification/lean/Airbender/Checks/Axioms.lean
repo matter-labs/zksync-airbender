@@ -1,3 +1,7 @@
+import Airbender.Proofs.Reduced.PublicBinding
+import Airbender.Proofs.Reduced.PublicCallers
+import Airbender.Proofs.Reduced.PublicAcceptance
+import Airbender.Proofs.Reduced.MachineTarget
 import Airbender.Proofs.Reduced.NativePrefix
 import Airbender.Proofs.Reduced.PrefixBoundary
 import Airbender.Proofs.Reduced.SupportedRound
@@ -13927,3 +13931,14 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.supported_prefix_stream_ports
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.supported_native_worker_inputs
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.supported_native_path_execution
+#print axioms Airbender.Compiler.MachineTargets.Proofs.reduced_mask_query
+#print axioms Airbender.Compiler.MachineTargets.Proofs.base_funct3_zero
+#print axioms Airbender.Compiler.MachineTargets.Proofs.arithmetic_public_properties
+#print axioms Airbender.Compiler.MachineTargets.Proofs.stream_addsub_properties
+#print axioms Airbender.Compiler.MachineTargets.Proofs.stream_dropped_funct3
+#print axioms Airbender.Compiler.MachineTargets.Proofs.reduced_native_query_pc_low
+#print axioms Airbender.Compiler.MachineTargets.Proofs.reduced_public_caller
+#print axioms Airbender.Compiler.MachineTargets.Proofs.addsub_packed_selector
+#print axioms Airbender.Compiler.MachineTargets.Proofs.reduced_native_row_classification
+#print axioms Airbender.Compiler.MachineTargets.Proofs.reduced_native_acceptance
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_reduced_soundness
