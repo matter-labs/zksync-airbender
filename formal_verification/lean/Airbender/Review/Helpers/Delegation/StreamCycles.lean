@@ -30,4 +30,37 @@ def CycleExecution [Fact p.Prime] (data : RequestTrace p) (cells : List Cell)
     SailHistory cells earlier initial before ∧ SailHistory cells current before after ∧
     SailHistory cells newer after finalState
 
+/-- An original clause retires between its actual pooled instruction cuts. -/
+def RetiresCycle (cells : List Cell) (events : List MemoryAccess)
+    (initial finalState : Reference.RiscV.Sail.State) (row : Trace.Row p PooledFamily)
+    (clause : SailRV32.SailM SailRV32.ExecutionResult) : Prop :=
+  ∃ before after,
+    SailHistory cells (events.filter fun event => decide
+      (event.1 ≤ (timeOfPair row.start.timestamp).value)) initial before ∧
+    SailHistory cells (events.filter fun event => decide
+      ((timeOfPair row.start.timestamp).value < event.1 ∧
+        event.1 ≤ (timeOfPair row.finish.timestamp).value)) before after ∧
+    SailHistory cells (events.filter fun event => decide
+      ((timeOfPair row.finish.timestamp).value < event.1)) after finalState ∧
+    Reference.Sail.run (Reference.RiscV.Sail.normalStep clause)
+      (retiredState before row.start.word.toBitVec) =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after row.finish.word.toBitVec)
+
 end Airbender.Delegation.Caller
+
+namespace Airbender.AddSub.Modular.External.Caller
+open Trace
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+
+/-- The public pooled clause, exact stream increment and actual native retirement. -/
+def OrdinaryCycle [Fact p.Prime] (stream : List (BitVec 32))
+    (program : List PooledProgramEntry) (trace : PooledTrace p)
+    (cells : List Cell) (events : List MemoryAccess)
+    (initial finalState : Reference.RiscV.Sail.State) (row : Trace.Row p PooledFamily) : Prop :=
+  ∃ entry ∈ program, entry.data.family = row.family ∧ row.decoderQuery = entry.query ∧
+    ∃ clause next,
+      External.clause stream (External.readIndex trace row) entry.instruction = some (clause, next) ∧
+      next = External.readIndex trace row + (if External.isRead row then 1 else 0) ∧
+      Delegation.Caller.RetiresCycle cells events initial finalState row clause
+
+end Airbender.AddSub.Modular.External.Caller
