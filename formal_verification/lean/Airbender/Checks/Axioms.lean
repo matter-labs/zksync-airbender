@@ -595,6 +595,7 @@ import Airbender.Proofs.Keccak.SplitSchedule
 import Airbender.Proofs.Keccak.SplitArtifactChecks
 import Tests.SplitKeccakImport
 import Airbender.Proofs.GKRProtocol.ProgramRows
+import Airbender.Proofs.GKRProtocol.ProgramMasks
 import Tests.UnifiedModularExecution
 import Tests.ModularTrace
 import Airbender.Review.Trace.Modular.Theorems
@@ -13628,3 +13629,10 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.active_decoded
 #print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.bounded_pc_not_sentinel
 #print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.bounded_pc_decoded
+#print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.rows_length
+#print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.native_decoder_rows_length
+#print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.active_masked_member
+#print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.bounded_masked_pc_not_sentinel
+#print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.bounded_masked_pc_decoded
+#print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.maskOfFamily
+#print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.unifiedMask
