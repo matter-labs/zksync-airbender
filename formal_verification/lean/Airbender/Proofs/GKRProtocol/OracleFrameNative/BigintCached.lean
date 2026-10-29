@@ -14,7 +14,7 @@ import_lookup_oracle_frame native from "artifacts/compiler/bigint-cached.json"
 
 theorem oracle_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 277 → Source.BaseField)
+    (sourceValue : Fin 276 → Source.BaseField)
     (original : Satisfies (Airbender.Compiler.SourceContractNative.BigintCached.native.originals.map Expression.polynomial) sourceValue)
     (clockValid : Source.clockContract Airbender.Compiler.SourceContractNative.BigintCached.native.clock (Airbender.Compiler.FullArithmeticNative.BigintCached.native.helperPlacement.memory.project sourceValue))
     (primitives : Airbender.Compiler.HelperValidityNative.BigintCached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.BigintCached.native.execute.value (Airbender.Compiler.FullArithmeticNative.BigintCached.native.helperPlacement.memory.project sourceValue))

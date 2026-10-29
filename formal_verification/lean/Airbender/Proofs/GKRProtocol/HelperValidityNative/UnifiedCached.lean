@@ -14,11 +14,11 @@ import_helper_validity native from "artifacts/compiler/unified-cached-source.jso
   source_model Airbender.Compiler.SourceContractNative.UnifiedCached.native
   history_model Airbender.Compiler.HistoryErasureNative.UnifiedCached.native
   helper_model Airbender.Compiler.HelperNative.UnifiedCached.native
-  memory_model Airbender.Compiler.MemoryNative.UnifiedCached.native inputs 145
+  memory_model Airbender.Compiler.MemoryNative.UnifiedCached.native inputs 137
 
 theorem helper_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (original : Satisfies (Airbender.Compiler.SourceContractNative.UnifiedCached.native.originals.map Expression.polynomial) sourceValue)
     (clockValid : Source.clockContract Airbender.Compiler.SourceContractNative.UnifiedCached.native.clock (Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.helperPlacement.memory.project sourceValue))
     (primitives : native.profile.ExecutionValid (native.execute.value (Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.helperPlacement.memory.project sourceValue))

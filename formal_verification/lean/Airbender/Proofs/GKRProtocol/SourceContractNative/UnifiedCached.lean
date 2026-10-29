@@ -9,7 +9,7 @@ set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
 import_compiler_source_contract native from "artifacts/compiler/unified-cached.json"
-  source "artifacts/compiler/unified-cached-source.json" base_model Airbender.Compiler.FullArithmeticNative.UnifiedCached.native inputs 145
+  source "artifacts/compiler/unified-cached-source.json" base_model Airbender.Compiler.FullArithmeticNative.UnifiedCached.native inputs 137
 
 theorem source_contract_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

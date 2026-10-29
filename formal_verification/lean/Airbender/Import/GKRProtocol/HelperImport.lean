@@ -177,7 +177,10 @@ elab_rules : command
          ($bank).address (($memoryPlacement).readTimestamp index ⟨1, by decide⟩)))) = [$history,*] := by decide +kernel))
     let borrows := pair.circuit.aux_layout_data.shuffle_ram_timestamp_comparison_aux_vars
     unless borrows.size == requests.comparisons.size do throwError "source/native timestamp comparison counts differ"
-    let borrowTerms ← borrows.mapM (fun row => addressSyntax row.intermediate_borrow)
+    let borrowTerms ← borrows.mapM fun row => do
+      let some row := row |
+        throwError "helper capture needs a placement for its derived timestamp borrow"
+      addressSyntax row.intermediate_borrow
     let borrowAddresses := mkIdent (name.getId ++ `borrowAddresses)
     let placement := mkIdent (name.getId ++ `placement)
     let sourceValues := mkIdent (name.getId ++ `sourceValues)

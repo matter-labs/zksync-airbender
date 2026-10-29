@@ -39,7 +39,10 @@ def synthesize(pair,snapshot):
         if kind=='Define':p=plus(atom(data['dst']),p,-1)
         source_polys.append(p)
     for b in source['booleans']:source_polys.append(plus(times(atom(b),atom(b)),atom(b),-1))
-    borrows=[at(x['intermediate_borrow']) for x in circuit['aux_layout_data']['shuffle_ram_timestamp_comparison_aux_vars']]
+    borrow_aux=circuit['aux_layout_data']['shuffle_ram_timestamp_comparison_aux_vars']
+    if any(row is None for row in borrow_aux):
+        raise ValueError('full arithmetic capture needs a placement for its derived timestamp borrow')
+    borrows=[at(x['intermediate_borrow']) for x in borrow_aux]
     if semantic['executor_machine_state'] is not None:
         state=semantic['executor_machine_state']; lo,hi=fields(state['cycle_start_state']['timestamp']);flo,fhi=fields(state['cycle_end_state']['timestamp'])
         carry=times(const(pow(524288,-1,PRIME)),plus(plus(lo,const(4)),flo,-1))
@@ -196,6 +199,17 @@ def modules(name, case, result):
                 f'start {start} stop {min(start + 32, count)}')))
     result_modules.append((prefix, wrap([foundation] + parts,
         f'finalize_full_compiler_arithmetic native {dimensions}')))
+    # The new captures have fewer relations and source obligations. Keep the
+    # old shard module paths as imports of the complete current certificate.
+    retired = {
+        "UnifiedUncached": ("ForwardPart4", "BackwardPart4"),
+        "UnifiedCached": ("BackwardPart4",),
+    }
+    names = {module for module, _ in result_modules}
+    for suffix in retired.get(case, ()):
+        module = prefix + suffix
+        if module not in names:
+            result_modules.append((module, "import " + prefix + "\n"))
     return result_modules
 
 

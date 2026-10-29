@@ -13,7 +13,6 @@ import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedBackwardPa
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedBackwardPart1
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedBackwardPart2
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedBackwardPart3
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedBackwardPart4
 
 namespace Airbender.Compiler.FullArithmeticNative.UnifiedCached
 open Airbender Airbender.Compiler
@@ -22,6 +21,6 @@ set_option Elab.async false
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-finalize_full_compiler_arithmetic native inputs 145 variables 155 sources 129 gates 139
+finalize_full_compiler_arithmetic native inputs 137 variables 147 sources 120 gates 130
 
 end Airbender.Compiler.FullArithmeticNative.UnifiedCached

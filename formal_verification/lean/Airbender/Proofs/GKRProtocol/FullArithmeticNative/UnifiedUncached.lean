@@ -8,12 +8,10 @@ import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedUncachedForwardP
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedUncachedForwardPart1
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedUncachedForwardPart2
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedUncachedForwardPart3
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedUncachedForwardPart4
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedUncachedBackwardPart0
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedUncachedBackwardPart1
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedUncachedBackwardPart2
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedUncachedBackwardPart3
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedUncachedBackwardPart4
 
 namespace Airbender.Compiler.FullArithmeticNative.UnifiedUncached
 open Airbender Airbender.Compiler
@@ -22,6 +20,6 @@ set_option Elab.async false
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-finalize_full_compiler_arithmetic native inputs 145 variables 149 sources 129 gates 133
+finalize_full_compiler_arithmetic native inputs 137 variables 141 sources 120 gates 124
 
 end Airbender.Compiler.FullArithmeticNative.UnifiedUncached

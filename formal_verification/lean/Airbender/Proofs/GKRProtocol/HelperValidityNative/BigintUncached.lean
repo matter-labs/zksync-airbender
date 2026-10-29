@@ -14,11 +14,11 @@ import_helper_validity native from "artifacts/compiler/bigint-uncached-source.js
   source_model Airbender.Compiler.SourceContractNative.BigintUncached.native
   history_model Airbender.Compiler.HistoryErasureNative.BigintUncached.native
   helper_model Airbender.Compiler.HelperNative.BigintUncached.native
-  memory_model Airbender.Compiler.MemoryNative.BigintUncached.native inputs 277
+  memory_model Airbender.Compiler.MemoryNative.BigintUncached.native inputs 276
 
 theorem helper_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 277 → Source.BaseField)
+    (sourceValue : Fin 276 → Source.BaseField)
     (original : Satisfies (Airbender.Compiler.SourceContractNative.BigintUncached.native.originals.map Expression.polynomial) sourceValue)
     (clockValid : Source.clockContract Airbender.Compiler.SourceContractNative.BigintUncached.native.clock (Airbender.Compiler.FullArithmeticNative.BigintUncached.native.helperPlacement.memory.project sourceValue))
     (primitives : native.profile.ExecutionValid (native.execute.value (Airbender.Compiler.FullArithmeticNative.BigintUncached.native.helperPlacement.memory.project sourceValue))

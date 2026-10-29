@@ -8,7 +8,8 @@ are maintained in [Verification status](VERIFICATION_STATUS.md), separately from
 this evidence register. The [current eight-file native inspection](artifacts/setup/native-evidence.json)
 records the source observations and exact drift guards. The new base includes
 the branch witness, recursion output and cap repairs from upstream #531.
-Focused validation of the new artifacts is in progress.
+Focused qualification of the new artifacts passed. The compiler group passed
+497 checks in both cache modes. The full validation remains pending.
 
 The original review below was dated 13 October 2026 at snapshot
 `59a493173a85441da542155cb825488f43904b1e`; its inventory counts and dated

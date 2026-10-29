@@ -12,7 +12,7 @@ set_option maxHeartbeats 8000000
 
 def ActualRowWitness (publicTops : Nat → Nat) {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin 3 → Source.BaseField)
     (row : Fin Airbender.Compiler.MaterializedNative.UnifiedCached.native.model.imported.data.length) (baseValue : GKRAddress → Source.BaseField)
     (values : GKRAddress → R) : Prop :=
@@ -29,7 +29,7 @@ def ActualRowWitness (publicTops : Nat → Nat) {R : Type} [CommRing R]
 
 theorem graph_extends (publicTops : Nat → Nat) {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (original : Satisfies (Airbender.Compiler.SourceContractNative.UnifiedCached.native.originals.map Expression.polynomial) sourceValue)
     (clockValid : Source.clockContract Airbender.Compiler.SourceContractNative.UnifiedCached.native.clock (Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.helperPlacement.memory.project sourceValue))
     (primitives : Airbender.Compiler.HelperValidityNative.UnifiedCached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.UnifiedCached.native.execute.value (Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.helperPlacement.memory.project sourceValue))
@@ -91,7 +91,7 @@ theorem graph_extends (publicTops : Nat → Nat) {R : Type} [CommRing R]
     · have tableCells : ∀ column ∈ Airbender.Compiler.TableNative.UnifiedCached.native.genericSetupColumns, assignment.base column.address = Airbender.Compiler.MaterializedNative.UnifiedCached.native.model.value row column := by
         intro column member
         exact setupAt column (of_decide_eq_true (List.all_eq_true.mp genericColumns column member))
-      have countCell : assignment.base (.BaseLayerWitness 65) = counts ⟨0, by decide⟩ := countsAt ⟨0, by decide⟩
+      have countCell : assignment.base (.BaseLayerWitness 57) = counts ⟨0, by decide⟩ := countsAt ⟨0, by decide⟩
       have reduced := Airbender.Compiler.TableNative.UnifiedCached.native.genericSourceTableReduction hom challenges gamma assignment defined
         (Airbender.Compiler.FunctionalLinksNative.UnifiedCached.native.lookupCopies baseValue arithmetic) holds (Airbender.Compiler.MaterializedNative.UnifiedCached.native.model.value row) (counts ⟨0, by decide⟩) tableCells countCell
       rw [typedEq] at reduced
@@ -105,7 +105,7 @@ theorem graph_extends (publicTops : Nat → Nat) {R : Type} [CommRing R]
     · have tableCells : ∀ column ∈ Airbender.Compiler.TableNative.UnifiedCached.native.range16SetupColumns, assignment.base column.address = Airbender.Compiler.MaterializedNative.UnifiedCached.native.model.value row column := by
         intro column member
         exact setupAt column (of_decide_eq_true (List.all_eq_true.mp range16Columns column member))
-      have countCell : assignment.base (.BaseLayerWitness 63) = counts ⟨1, by decide⟩ := countsAt ⟨1, by decide⟩
+      have countCell : assignment.base (.BaseLayerWitness 55) = counts ⟨1, by decide⟩ := countsAt ⟨1, by decide⟩
       have reduced := Airbender.Compiler.TableNative.UnifiedCached.native.range16SourceTableReduction hom challenges gamma assignment defined
         (Airbender.Compiler.FunctionalLinksNative.UnifiedCached.native.lookupCopies baseValue arithmetic) holds (Airbender.Compiler.MaterializedNative.UnifiedCached.native.model.value row) (counts ⟨1, by decide⟩) tableCells countCell
       rw [typedEq] at reduced
@@ -119,7 +119,7 @@ theorem graph_extends (publicTops : Nat → Nat) {R : Type} [CommRing R]
     · have tableCells : ∀ column ∈ Airbender.Compiler.TableNative.UnifiedCached.native.timestampSetupColumns, assignment.base column.address = Airbender.Compiler.MaterializedNative.UnifiedCached.native.model.value row column := by
         intro column member
         exact setupAt column (of_decide_eq_true (List.all_eq_true.mp timestampColumns column member))
-      have countCell : assignment.base (.BaseLayerWitness 64) = counts ⟨2, by decide⟩ := countsAt ⟨2, by decide⟩
+      have countCell : assignment.base (.BaseLayerWitness 56) = counts ⟨2, by decide⟩ := countsAt ⟨2, by decide⟩
       have reduced := Airbender.Compiler.HelperNative.UnifiedCached.native.timestampSourceReduction hom challenges gamma assignment helperDefined
         (Airbender.Compiler.FunctionalLinksNative.UnifiedCached.native.helperCopies baseValue arithmetic) holds
       change (Airbender.Compiler.LookupNative.UnifiedCached.native.timestampOutput).value (assignment.value Airbender.Compiler.ConsumerNative.UnifiedCached.native.typing hom) =
@@ -142,7 +142,7 @@ theorem graph_extends (publicTops : Nat → Nat) {R : Type} [CommRing R]
 
 theorem canonical_old_witness (publicTops : Nat → Nat) {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 145 → Source.BaseField) (counts : Fin 3 → Source.BaseField)
+    (sourceValue : Fin Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.inputs.length → Source.BaseField) (counts : Fin 3 → Source.BaseField)
     (row : Fin Airbender.Compiler.MaterializedNative.UnifiedCached.native.model.imported.data.length) (baseValue : GKRAddress → Source.BaseField)
     (witness : ActualRowWitness publicTops hom challenges gamma sourceValue counts row baseValue
       (canonical publicTops hom challenges gamma baseValue)) :
@@ -168,7 +168,7 @@ theorem canonical_old_witness (publicTops : Nat → Nat) {R : Type} [CommRing R]
 
 def BoundaryOutputsPreserved (publicTops : Nat → Nat) {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R)
-    (sourceValue : Fin 145 → Source.BaseField) (fallback baseValue : GKRAddress → Source.BaseField)
+    (sourceValue : Fin Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.inputs.length → Source.BaseField) (fallback baseValue : GKRAddress → Source.BaseField)
     (values : GKRAddress → R) : Prop :=
   values (.InnerLayer 4 8) = (((List.finRange 2).map (fun set => windowedBoundaryToken
     (Airbender.Compiler.MemoryNative.UnifiedCached.native.sourceValues baseValue) publicTops .terminal set.val 512)).map (memoryTokenFingerprint hom challenges)).prod ∧
@@ -181,7 +181,7 @@ def BoundaryOutputsPreserved (publicTops : Nat → Nat) {R : Type} [CommRing R]
 
 def CompleteActualRowWitness (publicTops : Nat → Nat) {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 145 → Source.BaseField) (counts : Fin 3 → Source.BaseField)
+    (sourceValue : Fin Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.inputs.length → Source.BaseField) (counts : Fin 3 → Source.BaseField)
     (row : Fin Airbender.Compiler.MaterializedNative.UnifiedCached.native.model.imported.data.length) (fallback baseValue : GKRAddress → Source.BaseField)
     (values : GKRAddress → R) : Prop :=
   ActualRowWitness publicTops hom challenges gamma sourceValue counts row baseValue values ∧
@@ -191,7 +191,7 @@ def CompleteActualRowWitness (publicTops : Nat → Nat) {R : Type} [CommRing R]
 
 theorem complete_row_extends (publicTops : Nat → Nat) {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.inputs.length → Source.BaseField)
     (original : Satisfies (Airbender.Compiler.SourceContractNative.UnifiedCached.native.originals.map Expression.polynomial) sourceValue)
     (clockValid : Source.clockContract Airbender.Compiler.SourceContractNative.UnifiedCached.native.clock (Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.helperPlacement.memory.project sourceValue))
     (primitives : Airbender.Compiler.HelperValidityNative.UnifiedCached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.UnifiedCached.native.execute.value (Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.helperPlacement.memory.project sourceValue))
@@ -215,7 +215,7 @@ theorem complete_row_extends (publicTops : Nat → Nat) {R : Type} [CommRing R]
     exact memory.2.2.2
 
 theorem complete_trace_extends
-    (sourceValue : Fin Airbender.Compiler.MaterializedNative.UnifiedCached.native.model.imported.data.length → Fin 145 → Source.BaseField)
+    (sourceValue : Fin Airbender.Compiler.MaterializedNative.UnifiedCached.native.model.imported.data.length → Fin 137 → Source.BaseField)
     (original : ∀ row, Satisfies (Airbender.Compiler.SourceContractNative.UnifiedCached.native.originals.map Expression.polynomial) (sourceValue row))
     (clockValid : ∀ row, Source.clockContract Airbender.Compiler.SourceContractNative.UnifiedCached.native.clock (Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.helperPlacement.memory.project (sourceValue row)))
     (primitives : ∀ row, Airbender.Compiler.HelperValidityNative.UnifiedCached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.UnifiedCached.native.execute.value (Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.helperPlacement.memory.project (sourceValue row)))
@@ -255,7 +255,7 @@ theorem complete_trace_extends
   exact cancel group hom challenges.lookupAlpha gamma
 
 theorem complete_trace_clean_extends
-    (sourceValue : Fin Airbender.Compiler.MaterializedNative.UnifiedCached.native.model.imported.data.length → Fin 145 → Source.BaseField)
+    (sourceValue : Fin Airbender.Compiler.MaterializedNative.UnifiedCached.native.model.imported.data.length → Fin 137 → Source.BaseField)
     (original : ∀ row, Satisfies (Airbender.Compiler.SourceContractNative.UnifiedCached.native.originals.map Expression.polynomial) (sourceValue row))
     (clockValid : ∀ row, Source.clockContract Airbender.Compiler.SourceContractNative.UnifiedCached.native.clock (Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.helperPlacement.memory.project (sourceValue row)))
     (primitives : ∀ row, Airbender.Compiler.HelperValidityNative.UnifiedCached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.UnifiedCached.native.execute.value (Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.helperPlacement.memory.project (sourceValue row)))

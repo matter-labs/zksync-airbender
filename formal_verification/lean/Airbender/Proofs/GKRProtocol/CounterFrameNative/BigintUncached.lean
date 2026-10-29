@@ -12,11 +12,11 @@ set_option maxHeartbeats 4000000
 import_counter_frame native from "artifacts/compiler/bigint-uncached.json"
   base_model Airbender.Compiler.FullArithmeticNative.BigintUncached.native
   table_model Airbender.Compiler.TableNative.BigintUncached.native
-  helper_model Airbender.Compiler.HelperNative.BigintUncached.native inputs 277
+  helper_model Airbender.Compiler.HelperNative.BigintUncached.native inputs 276
 
 theorem counter_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 277 → Source.BaseField)
+    (sourceValue : Fin 276 → Source.BaseField)
     (original : Satisfies (Airbender.Compiler.SourceContractNative.BigintUncached.native.originals.map Expression.polynomial) sourceValue)
     (clockValid : Source.clockContract Airbender.Compiler.SourceContractNative.BigintUncached.native.clock (Airbender.Compiler.FullArithmeticNative.BigintUncached.native.helperPlacement.memory.project sourceValue))
     (primitives : Airbender.Compiler.HelperValidityNative.BigintUncached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.BigintUncached.native.execute.value (Airbender.Compiler.FullArithmeticNative.BigintUncached.native.helperPlacement.memory.project sourceValue))

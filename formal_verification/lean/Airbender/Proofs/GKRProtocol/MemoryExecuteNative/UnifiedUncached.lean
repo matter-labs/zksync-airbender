@@ -14,6 +14,6 @@ import_memory_execute native
   helper_model Airbender.Compiler.HelperValidityNative.UnifiedUncached.native
   helper_fields Airbender.Compiler.HelperNative.UnifiedUncached.native
   frame_model Airbender.Compiler.MemoryFrameNative.UnifiedUncached.native
-  inputs 145
+  inputs 137
 
 end Airbender.Compiler.MemoryExecuteNative.UnifiedUncached

@@ -15,6 +15,6 @@ import_memory_frame native from "artifacts/compiler/unified-cached-source.json"
   history_model Airbender.Compiler.HistoryErasureNative.UnifiedCached.native
   helper_model Airbender.Compiler.HelperValidityNative.UnifiedCached.native
   counter_model Airbender.Compiler.CounterFrameNative.UnifiedCached.native
-  inputs 145 phase 3 start 0 stop 56
+  inputs 137 phase 3 start 0 stop 56
 
 end Airbender.Compiler.MemoryFrameNative.UnifiedCached

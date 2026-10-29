@@ -51,6 +51,9 @@ whole-execution theorem covers a committed production verifier program yet.
 Upstream #531 merged as `06c15f275` and is in this base. The unified base
 entrypoint now returns the verified registers. New-base runtime validation
 remains pending.
+Focused compiler qualification passed in both cache modes. The final group
+passed 497 checks. It reuses the unchanged finite-table cache. This result
+does not replace the pending frontend build or transitive kernel replay.
 
 A replay ledger is trusted evidence. Exact artifact/tool hashes bind a recorded
 pass to its inputs but do not authenticate who produced that pass. CI therefore

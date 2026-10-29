@@ -16,6 +16,6 @@ import_query_frame native certificate "artifacts/compiler/lookup/unified-uncache
   source_model Airbender.Compiler.SourceContractNative.UnifiedUncached.native
   history_model Airbender.Compiler.HistoryErasureNative.UnifiedUncached.native
   helper_model Airbender.Compiler.HelperValidityNative.UnifiedUncached.native
-  counter_model Airbender.Compiler.CounterFrameNative.UnifiedUncached.native inputs 145 phase 3 start 0 stop 74
+  counter_model Airbender.Compiler.CounterFrameNative.UnifiedUncached.native inputs 137 phase 3 start 0 stop 74
 
 end Airbender.Compiler.QueryFrameNative.UnifiedUncached

@@ -26,17 +26,17 @@ theorem source_write_tokens (assignment : Nat → Source.BaseField) (other : Sou
           Trace.rawPair assignment Airbender.UnifiedReduced.importedConstraintsTraceColumns.finalTime⟩] := by
   simp [Airbender.Compiler.MemoryNative.UnifiedCached.native.memoryWriteRows, Airbender.UnifiedReduced.importedConstraintsMemoryPorts, Airbender.UnifiedReduced.importedConstraintsTraceColumns, Source.MemoryRow.token, Source.MemoryField.value, Source.LookupInput.value, Trace.writeToken, Trace.rawPair, Trace.MemoryPort.writeCode, Trace.WordColumns.code, Trace.WordColumns.evaluate, Trace.pairCode, Trace.MemoryAddress.code, pcStateMemoryToken]
 
-theorem original_columns : (List.range 131).all (fun index =>
+theorem original_columns : (List.range 123).all (fun index =>
     decide (Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.UnifiedCached.native.placement index) =
       Airbender.Compiler.MemoryNative.UnifiedCached.native.bank.address (Airbender.Compiler.MemoryNative.UnifiedCached.native.sourcePlacement.original index))) = true := by decide +kernel
 
 theorem original_assignment (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
-    (index : Nat) (bounded : index < 131) :
+    (index : Nat) (bounded : index < 123) :
     (Airbender.Compiler.CleanArithmeticNative.UnifiedCached.native.environment physical data).get index = (Airbender.Compiler.MemoryNative.UnifiedCached.native.sourceValues physical).original index := by
   exact congrArg physical (of_decide_eq_true (List.all_eq_true.mp original_columns index (List.mem_range.mpr bounded)))
 
 theorem read_original_indices : Airbender.Compiler.MemoryNative.UnifiedCached.native.memoryReadRows.all
-    (fun row => row.originalIndices.all (fun index => decide (index < 131))) = true := by decide +kernel
+    (fun row => row.originalIndices.all (fun index => decide (index < 123))) = true := by decide +kernel
 
 theorem read_tokens_from_base (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField) :
     Airbender.Compiler.MemoryNative.UnifiedCached.native.memoryReadRows.map (fun row => row.token (Airbender.Compiler.MemoryNative.UnifiedCached.native.sourceValues physical)) =
@@ -56,7 +56,7 @@ theorem read_tokens_from_base (physical : GKRAddress → Source.BaseField) (data
     (List.mem_flatMap.mpr ⟨field, included, used⟩))
 
 theorem write_original_indices : Airbender.Compiler.MemoryNative.UnifiedCached.native.memoryWriteRows.all
-    (fun row => row.originalIndices.all (fun index => decide (index < 131))) = true := by decide +kernel
+    (fun row => row.originalIndices.all (fun index => decide (index < 123))) = true := by decide +kernel
 
 theorem write_tokens_from_base (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField) :
     Airbender.Compiler.MemoryNative.UnifiedCached.native.memoryWriteRows.map (fun row => row.token (Airbender.Compiler.MemoryNative.UnifiedCached.native.sourceValues physical)) =
