@@ -44,7 +44,8 @@ The control lookups still need to establish positive distances and connect
 these equations to the strict-order and worker-effect proofs.
 Both column-parity captures additionally derive every per-port Boolean borrow
 and timestamp comparison bound directly from their imported equations and
-lookup queries.
+lookup queries, then prove strict read-before-write order given the public
+invocation and logically matched previous-clock bounds.
 
 Both cached and uncached native captures remain required. The checker migration
 must qualify all 22 capture configurations.

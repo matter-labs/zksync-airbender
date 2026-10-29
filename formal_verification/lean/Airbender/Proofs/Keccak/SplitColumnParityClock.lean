@@ -104,4 +104,52 @@ theorem column_parity_cached_clock_facts {p : Nat} [Fact p.Prime]
       | solve | convert lower using 1; congr 1; ring
       | solve | convert upper using 1; congr 1; ring
 
+/-- Strict order for every uncached column-parity port follows from the
+imported comparison queries once the logical RAM boundary bounds its read. -/
+theorem column_parity_port_order {p : Nat} [Fact p.Prime]
+    (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (ColumnParity.clockConstraints setup))
+    {port : TimestampPort}
+    (member : port ∈ ColumnParity.importedConstraintsDelegationColumns.ports)
+    (initial : (decodeTimestamp w
+      ColumnParity.importedConstraintsDelegationColumns.invocation).Bounded)
+    (previous : (decodeTimestamp w port.previous).Bounded)
+    (room : (decodeTimestamp w
+      ColumnParity.importedConstraintsDelegationColumns.invocation).lo +
+        port.offset < timestampBase) :
+    (decodeTimestamp w port.previous).value <
+      (decodeTimestamp w
+        ColumnParity.importedConstraintsDelegationColumns.invocation).value + port.offset := by
+  have facts := column_parity_clock_facts h
+  have native := facts.comparisons port member
+  exact Trace.Proofs.native_port_order_of_room hp initial previous
+    (facts.offsets port member) room native.1
+    (by simpa [decodeTimestamp] using native.2.1)
+    (by simpa [decodeTimestamp] using native.2.2)
+
+theorem column_parity_cached_port_order {p : Nat} [Fact p.Prime]
+    (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (ColumnParityCached.clockConstraints setup))
+    {port : TimestampPort}
+    (member : port ∈ ColumnParityCached.importedConstraintsDelegationColumns.ports)
+    (initial : (decodeTimestamp w
+      ColumnParityCached.importedConstraintsDelegationColumns.invocation).Bounded)
+    (previous : (decodeTimestamp w port.previous).Bounded)
+    (room : (decodeTimestamp w
+      ColumnParityCached.importedConstraintsDelegationColumns.invocation).lo +
+        port.offset < timestampBase) :
+    (decodeTimestamp w port.previous).value <
+      (decodeTimestamp w
+        ColumnParityCached.importedConstraintsDelegationColumns.invocation).value + port.offset := by
+  have facts := column_parity_cached_clock_facts h
+  have native := facts.comparisons port member
+  exact Trace.Proofs.native_port_order_of_room hp initial previous
+    (facts.offsets port member) room native.1
+    (by simpa [decodeTimestamp] using native.2.1)
+    (by simpa [decodeTimestamp] using native.2.2)
+
 end Airbender.Keccak.Split.Proofs
