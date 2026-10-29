@@ -4,6 +4,7 @@ import Airbender.Proofs.Trace.Program
 
 namespace Airbender.Keccak.Split.Native.Proofs
 open Airbender.Trace Airbender.Delegation Airbender.Arithmetic
+  Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 
 theorem caller_member [Fact p.Prime] {data : RequestTrace p}
@@ -45,6 +46,59 @@ theorem caller_csr_of_query [Fact p.Prime]
   change (w AddSub.importedConstraintsDecoderColumns.rs2).val = entry.data.family.csr
   rw [key, ZMod.val_natCast_of_lt]
   cases entry.data.family <;> norm_num [Split.Kind.csr] at hp ⊢ <;> omega
+
+private theorem query_pc [Fact p.Prime]
+    (hp : FieldCapacity.NoWrap p 65536)
+    {w : Nat → ZMod p} {entry : Split.Caller.ProgramEntry}
+    (equal : Delegation.Caller.nativeQuery w = Split.Caller.query entry) :
+    Delegation.Caller.initialPC w = Arithmetic.Word.ofBitVec entry.pc := by
+  have low := congrArg (fun values : Vector (ZMod p) 9 => values[0]) equal
+  have high := congrArg (fun values : Vector (ZMod p) 9 => values[1]) equal
+  change w 0 = ((Arithmetic.Word.ofBitVec entry.pc).lo : ZMod p) at low
+  change w 1 = ((Arithmetic.Word.ofBitVec entry.pc).hi : ZMod p) at high
+  change (⟨(w 0).val, (w 1).val⟩ : Arithmetic.Word) =
+    Arithmetic.Word.ofBitVec entry.pc
+  exact Airbender.Trace.Proofs.word_of_pc_query hp low high
+
+/-- The imported ADD/SUB caller equations advance the sourced split CSR's PC
+by four, with canonical final limbs and the original Sail PC retirement. -/
+theorem caller_pc_binding [Fact p.Prime]
+    (hp : FieldCapacity.NoWrap p 196608)
+    (inverse : SerializedInverse.Limb16 p)
+    {data : RequestTrace p} (accepted : RequestChecks data)
+    {before : State} {addresses : List (BitVec 32)}
+    (inputs : RequestInputs data before addresses)
+    {row : Airbender.Trace.Row p PooledFamily} (member : row ∈ data.callers) :
+    CallerPCBinding row.assignment before data.program := by
+  obtain ⟨present, family⟩ := caller_member member
+  have core := accepted.machineConstraints row present
+  simp only [Airbender.Trace.Row.constraints, family, CircuitLayout.constraints] at core
+  have constraints : FlatOperation.ConstraintsHoldFlat
+      (Verification.environment row.assignment) AddSub.importedConstraints :=
+    Verification.holds_of_sublist core
+      (List.sublist_append_left _ AddSub.importedConstraintsTimestampLookups)
+  obtain ⟨entry, entryMember, source, equal⟩ := public_source accepted inputs member
+  have initial := query_pc (by omega) equal
+  have mapping : AddSub.PCMapping (Delegation.Caller.initialPC row.assignment)
+      (Delegation.Caller.finalPC row.assignment) row.assignment := by
+    constructor
+    · change row.assignment 0 = ((row.assignment 0).val : ZMod p)
+      exact (ZMod.natCast_zmod_val _).symm
+    · change row.assignment 1 = ((row.assignment 1).val : ZMod p)
+      exact (ZMod.natCast_zmod_val _).symm
+    · rfl
+    · rfl
+  have result := AddSub.Proofs.pc_successor hp inverse constraints mapping
+    (initial.symm ▸ Word.ofBitVec_bound entry.pc)
+  refine ⟨⟨entry, entryMember, source, initial⟩,
+    AddSub.Proofs.pc_bounds constraints mapping, result.2.2, ?_⟩
+  intro state read
+  have prepare := initialize_next_pc read
+  rw [run_bind_of_ok _ _ _ _ _ prepare]
+  have finish := tick_pc_run
+    (state := { state with regs := state.regs.insert .nextPC ((Delegation.Caller.initialPC row.assignment).toBitVec + 4) })
+    (pc := (Delegation.Caller.initialPC row.assignment).toBitVec + 4) (by simp)
+  simpa only [result.2.2] using finish
 
 /-- Native state clocks are unique, so the issued split CSR timestamps are
 unique even when the physical worker rows are presented out of order. -/

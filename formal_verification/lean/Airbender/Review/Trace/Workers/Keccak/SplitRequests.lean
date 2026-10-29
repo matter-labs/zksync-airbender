@@ -78,4 +78,23 @@ structure RequestClockBinding [Fact p.Prime] (data : RequestTrace p) : Prop wher
     ((data.fulfillments.filter fun request => decide (Requests.Live request)).map
       Requests.Request.time).Nodup
 
+/-- The public split caller's native PC boundary. Worker RAM effects are
+separate; this records only source, canonical PC limbs and original Sail
+retirement after the native ADD/SUB caller row. -/
+structure CallerPCBinding (w : Nat → ZMod p)
+    (before : Reference.RiscV.Sail.State)
+    (program : List Split.Caller.ProgramEntry) : Prop where
+  instruction : ∃ entry ∈ program,
+    entry.SourceWith before Split.Caller.decoderFields ∧
+      Delegation.Caller.initialPC w = Arithmetic.Word.ofBitVec entry.pc
+  bounded : (Delegation.Caller.finalPC w).Bounded
+  advances : (Delegation.Caller.finalPC w).toBitVec =
+    (Delegation.Caller.initialPC w).toBitVec + 4
+  sail : ∀ state : Reference.RiscV.Sail.State,
+    Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) state =
+      .ok (Delegation.Caller.initialPC w).toBitVec state →
+    Reference.Sail.run (do SailRV32.Functions.normal_base_next_pc (); SailRV32.Functions.tick_pc ()) state =
+      .ok () { state with regs :=
+        (state.regs.insert .nextPC (Delegation.Caller.finalPC w).toBitVec).insert .PC (Delegation.Caller.finalPC w).toBitVec }
+
 end Airbender.Keccak.Split.Native
