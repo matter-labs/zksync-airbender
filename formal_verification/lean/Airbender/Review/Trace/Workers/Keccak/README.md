@@ -43,6 +43,12 @@ six chi5 groups from both cache modes.
 derive the ordinary per-port comparison facts and strict read-before-write
 order from both compiled captures, conditional on bounded invocation and
 previous clocks.
+The [controller lookup proofs](../../../../Proofs/Keccak/SplitControlLookup.lean)
+derive positive grouped distances and strict order for theta/rho and chi5 in
+both cache modes from the imported lookup queries, bounded read clocks and the
+explicit public [controller-table premise](SplitNative.lean). The fixed setup
+certificate still has to discharge that premise; physical-port grouping and
+the resulting complete RAM histories remain open.
 Under the [ValidDelegationUse](../../UnifiedReduced/DelegationUse.lean) contract, special5 calls are
 excluded; these lemmas therefore do not establish blessed Keccak execution.
 Split worker modeling and integration are required open work. See
