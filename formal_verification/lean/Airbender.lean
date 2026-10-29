@@ -31,6 +31,7 @@ import Airbender.Review.Trace.UnifiedReduced.ModularExecution
 import Airbender.Proofs.UnifiedReduced.StreamCalls
 import Airbender.Review.Helpers.Memory.ProgramImage
 import Airbender.Proofs.GKRProtocol.ProgramRows
+import Airbender.Proofs.GKRProtocol.PublicProgramSetup
 import Airbender.Proofs.Trace.ReducedPublicProgram
 import Airbender.Proofs.GKRProtocol.ProgramMasks
 import Airbender.Proofs.GKRProtocol.TextImage
