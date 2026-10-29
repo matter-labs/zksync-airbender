@@ -14,14 +14,31 @@ execution and logical lookup/RAM composition are established narrower results.
 
 | Setup machine | Current target status |
 | --- | --- |
-| Unrolled full unsigned | Open: native soundness for the combined full unsigned stream relation, program-parametric native setup, caller/worker and initialization composition, and functional soundness of the blessed split Keccak workers. The relation, public-text registries and all-stream supported-use contract now include the three split calls. Their independent micro-call reference fixes the touched lanes, delayed Iota, Theta/Rho, Chi and full Sail frame. Special5 calls retain an explicit public exclusion. |
-| Unrolled reduced | Open: program-parametric native setup, BLAKE2 extended-round caller/worker composition, and stream-aware initialization. The four-family stream/caller relation, its pooled inclusion, and a public all-stream use contract are present; native soundness is not. |
-| Unified | Open: program-parametric native setup, native soundness for the combined stream/modular/caller relation, and its initialization adapter. Special5 calls require an explicit public exclusion. |
+| Unrolled full unsigned | Open. The `UnrolledFullUnsigned` target lists all premises. Prove native soundness for its combined relation. Bind the public program setup. Connect the caller, worker and initialization boundaries. Prove the split Keccak worker functions on the new base. The target excludes special5 calls. |
+| Unrolled reduced | Open. The `UnrolledReduced` target lists all premises. Prove native soundness for its stream and caller relation. Bind the public program setup. Connect the extended-round worker and initialization boundaries. |
+| Unified | Open. The `Unified` target lists all premises. Prove native soundness for the combined stream, modular and caller relation. Bind the public program setup. Connect the inline initialization boundary. The target excludes special5 calls. |
 
-These are required target scopes, not proved theorems. The corresponding Lean
-`Prop` declarations and complete circuit acceptance interfaces are still being
-designed. Exact lookup matching and state/RAM permutations remain explicit
-logical assumptions in all three targets.
+[The three target definitions](Airbender/Review/Compiler/MachineTargets.lean)
+are Lean propositions. They are not proved theorems. Each target names its
+native acceptance, program setup, decoder lookup and initialization premises.
+Exact lookup matching and state/RAM permutations remain explicit.
+
+Work now follows this order: Unified, UnrolledReduced, then
+UnrolledFullUnsigned. The packed checker pilot stays at its current scope.
+
+## Rebase checks
+
+The branch now uses base `c1a662222cafcd96db4383dce737edb79fa62b09` from
+`origin/av_gkr_compiler`. The remote tip matched this commit on 29 October 2026.
+The local EVM initialization-window fix is present.
+
+The three target definitions passed a focused source check. That check used
+the retained dependency cache. It does not validate the changed native imports.
+The native setup exporter passed its scoped Cargo check and build. Native
+artifact regeneration, source manifest refresh, setup freshness checks, decoder
+differential checks and focused Lean rebuilds are pending. Earlier build results
+apply to the old base. The changed split Keccak equations need new proof checks.
+The branch has not been force-pushed.
 
 The full unsigned relation now combines the six CPU families, modular MOPs,
 nondeterminism reads, bigint, BLAKE2 extended-round and the three split Keccak
