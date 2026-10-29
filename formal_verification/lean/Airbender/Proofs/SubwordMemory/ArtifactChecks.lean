@@ -7,13 +7,13 @@ theorem timestamp_count {p : Nat} [Fact p.Prime] :
 
 theorem clock_columns : importedConstraintsTraceColumns =
     (⟨4, #v[0, 1], #v[13, 14], #v[2, 3], #v[15, 16],
-      #[⟨0, #v[17, 18], 62⟩, ⟨1, #v[23, 24], 63⟩, ⟨2, #v[29, 30], 64⟩]⟩ :
+      #[⟨0, #v[17, 18], 62, none⟩, ⟨1, #v[23, 24], 63, none⟩, ⟨2, #v[29, 30], 64, none⟩]⟩ :
       Trace.TraceColumns) := rfl
 
 theorem memory_ports : importedConstraintsMemoryPorts =
-    (#[⟨⟨0, #v[17, 18], 62⟩, .register 5, #v[19, 20], none⟩,
-       ⟨⟨1, #v[23, 24], 63⟩, .mixed 10 true #v[21, 22], #v[25, 26], none⟩,
-       ⟨⟨2, #v[29, 30], 64⟩, .mixed 10 false #v[27, 28], #v[31, 32], some #v[33, 34]⟩] :
+    (#[⟨⟨0, #v[17, 18], 62, none⟩, .register 5, #v[19, 20], none⟩,
+       ⟨⟨1, #v[23, 24], 63, none⟩, .mixed 10 true #v[21, 22], #v[25, 26], none⟩,
+       ⟨⟨2, #v[29, 30], 64, none⟩, .mixed 10 false #v[27, 28], #v[31, 32], some #v[33, 34]⟩] :
       Array Trace.MemoryPort) := rfl
 
 theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =

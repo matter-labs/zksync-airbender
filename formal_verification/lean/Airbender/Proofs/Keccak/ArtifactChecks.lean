@@ -10,7 +10,7 @@ theorem timestamp_count {p : Nat} [Fact p.Prime] :
 theorem delegation_columns : importedConstraintsDelegationColumns =
     (⟨0, #v[1, 2], (Vector.ofFn (fun i : Fin 14 =>
       Trace.TimestampPort.mk 2 #v[222 + 3 * i.val, 223 + 3 * i.val]
-        (224 + 3 * i.val))).toArray⟩ : Delegation.ClockColumns) := by decide
+        (224 + 3 * i.val) none)).toArray⟩ : Delegation.ClockColumns) := by decide
 
 theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
     importedConstraintsDelegationColumns.ports := by

@@ -70,6 +70,8 @@ Unified's zero-register preservation and timestamp proofs passed focused
 checks. The pooled ROM memory-port adapter also passed with the current
 timestamp record. These close the native zero-write and clock obligations
 used by the machine targets. The other unified instruction checks are in progress.
+All nine ordinary worker and CPU memory-port inventories passed focused
+checks. Their timestamp records use an explicit absent borrow subtrahend.
 An earlier batch hit its resident-memory cap
 while it rebuilt an unchanged extended-round import. That was a resource stop.
 The next batch uses the documented 5,120 MiB resident cap.
