@@ -3,7 +3,6 @@ import Airbender.Proofs.GKRCompiler.WiringParts.UnifiedUncachedUnique0
 import Airbender.Proofs.GKRCompiler.WiringParts.UnifiedUncachedUnique1
 import Airbender.Proofs.GKRCompiler.WiringParts.UnifiedUncachedPlacement0
 import Airbender.Proofs.GKRCompiler.WiringParts.UnifiedUncachedPlacement1
-import Airbender.Proofs.GKRCompiler.WiringParts.UnifiedUncachedPlacement2
 import Airbender.Proofs.GKRCompiler.WiringParts.UnifiedUncachedGates0
 import Airbender.Proofs.GKRCompiler.WiringParts.UnifiedUncachedGates1
 import Airbender.Proofs.GKRCompiler.WiringParts.UnifiedUncachedGates2

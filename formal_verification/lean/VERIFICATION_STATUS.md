@@ -56,7 +56,11 @@ modes with the current oracle. All 68 small-program comparisons also passed.
 These cover both cache modes for two ordinary programs, an extended-round
 caller and the blessed split Keccak caller. The small matrix used an optimized
 exporter build. It changed no Rust source or dependency version.
-The compiler binding builds are pending.
+The compiler binding builds are in progress. The bigint and unified wiring
+certificates passed in both cache modes with fresh native graph imports.
+The wiring generator check passed for all 22 captures and 304 module targets.
+The full arithmetic and windowed agreement generator checks also passed.
+The arithmetic and protocol binding builds are pending.
 Earlier build results apply to the old base.
 Unified's current column-role inventory, dispatch bound and ordinary PC
 increment passed focused kernel builds. Bigint's current column-role inventory,
