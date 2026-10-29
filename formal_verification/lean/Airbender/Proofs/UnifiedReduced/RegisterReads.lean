@@ -18,8 +18,8 @@ theorem register_reads [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     run (SailRV32.Functions.rX_bits (.Regidx entry.data.rs2)) before =
       .ok (Word.mk (w 42).val (w 43).val).toBitVec before := by
   have indices := native_query_indices hp query
-  have low := Verification.assertion_of_holds h ⟨29, by rw [constraint_count]; decide⟩
-  have high := Verification.assertion_of_holds h ⟨30, by rw [constraint_count]; decide⟩
+  have low := Verification.assertion_of_holds h ⟨26, by rw [constraint_count]; decide⟩
+  have high := Verification.assertion_of_holds h ⟨27, by rw [constraint_count]; decide⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment, noRAM] at low high
   have location : w 38 = w 6 := by linear_combination low

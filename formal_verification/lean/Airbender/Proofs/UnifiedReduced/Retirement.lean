@@ -20,8 +20,8 @@ theorem register_effects [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
     run (projectedStep (.Regidx rd) output)
       (retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
       .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after output.pc.toBitVec) := by
-  have low := Verification.assertion_of_holds holds ⟨31, by rw [constraint_count]; decide⟩
-  have high := Verification.assertion_of_holds holds ⟨32, by rw [constraint_count]; decide⟩
+  have low := Verification.assertion_of_holds holds ⟨28, by rw [constraint_count]; decide⟩
+  have high := Verification.assertion_of_holds holds ⟨29, by rw [constraint_count]; decide⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment, noStore] at low high
   have location : w 44 = w 7 := by linear_combination low

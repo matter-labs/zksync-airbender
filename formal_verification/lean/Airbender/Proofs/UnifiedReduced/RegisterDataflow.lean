@@ -135,8 +135,8 @@ theorem decoded_frame_row_destination [Fact p.Prime] (hp : FieldCapacity.NativeR
   have destinationRAM : w 29 = 0 := by simpa [importedConstraintsDecoderColumns, bank] using flags 18
   have indices := native_query_indices (by dsimp [limbBase]; omega) query
   have index : (w 7).val = destination.toNat := by simpa [destinationIndex, importedConstraintsDecoderColumns] using indices.2.2
-  have lower := Verification.assertion_of_holds core ⟨31, by rw [UnifiedReduced.constraint_count]; decide⟩
-  have upper := Verification.assertion_of_holds core ⟨32, by rw [UnifiedReduced.constraint_count]; decide⟩
+  have lower := Verification.assertion_of_holds core ⟨28, by rw [UnifiedReduced.constraint_count]; decide⟩
+  have upper := Verification.assertion_of_holds core ⟨29, by rw [UnifiedReduced.constraint_count]; decide⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, destinationRAM] at lower upper
   have location : w 44 = w 7 := by linear_combination lower
   have high : w 45 = 0 := by linear_combination upper
@@ -860,8 +860,8 @@ theorem bigint_return_row_one [Fact p.Prime] (hp : FieldCapacity.NativeHashCapac
   have load : w 28 = 0 := by simpa [metadata, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using flags 17
   have indices := native_query_indices (by dsimp [limbBase]; omega) query
   have rightIndex : (w 6).val = 0 := by simpa [metadata, importedConstraintsDecoderColumns] using indices.2.1
-  have lower := Verification.assertion_of_holds core ⟨29, by rw [UnifiedReduced.constraint_count]; decide⟩
-  have upper := Verification.assertion_of_holds core ⟨30, by rw [UnifiedReduced.constraint_count]; decide⟩
+  have lower := Verification.assertion_of_holds core ⟨26, by rw [UnifiedReduced.constraint_count]; decide⟩
+  have upper := Verification.assertion_of_holds core ⟨27, by rw [UnifiedReduced.constraint_count]; decide⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, load] at lower upper
   have location : w 38 = w 6 := by linear_combination lower
   have high : w 39 = 0 := by linear_combination upper

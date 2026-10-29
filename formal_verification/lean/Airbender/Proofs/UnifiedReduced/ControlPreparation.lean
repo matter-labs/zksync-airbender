@@ -295,8 +295,8 @@ theorem wrapped_program_pc_advance [Fact p.Prime] (hp : FieldCapacity.NativeRomC
             And.intro (selectors 15) (selectors 16)
         have noROM : w 28 = 0 := by
           simpa [mask, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using selectors 17
-        have gate := Verification.assertion_of_holds core ⟨42, by rw [constraint_count]; decide⟩
-        have rom : w 87 = 0 := by
+        have gate := Verification.assertion_of_holds core ⟨39, by rw [constraint_count]; decide⟩
+        have rom : w 81 = 0 := by
           simpa [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, noROM] using gate
         have aligned : (w 0).val % 4 = 0 := by
           have code := registry.aligned entry present
@@ -670,10 +670,10 @@ theorem literal_row_output_of_program [Fact p.Prime] (hp : FieldCapacity.ClockNo
   have indices := native_query_indices (by dsimp [limbBase]; omega) query
   have indices : (w 5).val = 0 ∧ (w 6).val = 0 ∧ (w 7).val = register.toNat := by
     simpa [data, importedConstraintsDecoderColumns] using indices
-  have lower := Verification.assertion_of_holds core ⟨29, by rw [UnifiedReduced.constraint_count]; decide⟩
-  have upper := Verification.assertion_of_holds core ⟨30, by rw [UnifiedReduced.constraint_count]; decide⟩
-  have destinationLower := Verification.assertion_of_holds core ⟨31, by rw [UnifiedReduced.constraint_count]; decide⟩
-  have destinationUpper := Verification.assertion_of_holds core ⟨32, by rw [UnifiedReduced.constraint_count]; decide⟩
+  have lower := Verification.assertion_of_holds core ⟨26, by rw [UnifiedReduced.constraint_count]; decide⟩
+  have upper := Verification.assertion_of_holds core ⟨27, by rw [UnifiedReduced.constraint_count]; decide⟩
+  have destinationLower := Verification.assertion_of_holds core ⟨28, by rw [UnifiedReduced.constraint_count]; decide⟩
+  have destinationUpper := Verification.assertion_of_holds core ⟨29, by rw [UnifiedReduced.constraint_count]; decide⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, sourceRAM] at lower upper
   simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, destinationRAM] at destinationLower destinationUpper
   have rightLocation : w 38 = w 6 := by linear_combination lower

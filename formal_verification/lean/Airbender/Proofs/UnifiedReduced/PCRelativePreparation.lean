@@ -106,8 +106,8 @@ theorem auipc_row_output [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
     simpa [metadata, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using flags 18
   have indices := native_query_indices (by dsimp [limbBase]; omega) query
   have target : (w 7).val = register.toNat := by simpa [metadata, importedConstraintsDecoderColumns] using indices.2.2
-  have lower := Verification.assertion_of_holds core ⟨31, by rw [UnifiedReduced.constraint_count]; decide⟩
-  have upper := Verification.assertion_of_holds core ⟨32, by rw [UnifiedReduced.constraint_count]; decide⟩
+  have lower := Verification.assertion_of_holds core ⟨28, by rw [UnifiedReduced.constraint_count]; decide⟩
+  have upper := Verification.assertion_of_holds core ⟨29, by rw [UnifiedReduced.constraint_count]; decide⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, destinationRAM] at lower upper
   have location : w 44 = w 7 := by linear_combination lower
   have top : w 45 = 0 := by linear_combination upper

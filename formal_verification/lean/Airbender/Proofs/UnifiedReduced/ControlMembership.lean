@@ -13,7 +13,7 @@ theorem control_constraints [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.table before)))
     (jumps : w 21 = 0 ∧ w 22 = 0) (selected : w 23 + w 24 = 1)
     (discarded : w 24 * (1 - w 25) = 0)
-    (binary : w 26 = 0 ∧ w 27 = 0) (rom : w 87 = 0)
+    (binary : w 26 = 0 ∧ w 27 = 0) (rom : w 81 = 0)
     (leftHi : (w 37).val < 65536) (rightHi : (w 60).val < 65536)
     (funct : (w 10).val < 8) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (controlAssignment w))
@@ -25,20 +25,20 @@ theorem control_constraints [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity
   have a := range16_bound (query 0); have b := range16_bound (query 1)
   have raw := range16_bound (query 5)
   simp [Expression.eval, Verification.environment] at a b raw
-  have zeroBound : (w 78 + w 79).val < 131072 := by
+  have zeroBound : (w 74 + w 75).val < 131072 := by
     rw [ZMod.val_add]
-    have mod := Nat.mod_le ((w 78).val + (w 79).val) p
+    have mod := Nat.mod_le ((w 74).val + (w 75).val) p
     dsimp [limbBase] at a b
     omega
-  have zero : (pairLookup regIsZeroTable (.var ⟨78⟩ + .var ⟨79⟩) (.var ⟨57⟩)).Contains
+  have zero : (pairLookup regIsZeroTable (.var ⟨74⟩ + .var ⟨75⟩) (.var ⟨57⟩)).Contains
       (Verification.environment w) := by
     apply (pairLookup regIsZeroTable _ _).table.implied_by_completeness
     apply (Lookup.completeness_def regIsZeroTable (Verification.environment w)
-      (.var ⟨78⟩ + .var ⟨79⟩, .var ⟨57⟩)).mpr
+      (.var ⟨74⟩ + .var ⟨75⟩, .var ⟨57⟩)).mpr
     simp only [regIsZeroTable_characterization]
-    with_unfolding_all change ∃ i : Fin 131072, (w 78 + w 79, w 57) =
+    with_unfolding_all change ∃ i : Fin 131072, (w 74 + w 75, w 57) =
       ((i.val : ZMod p), ((if i.val = 0 then 1 else 0 : Nat) : ZMod p))
-    refine ⟨⟨(w 78 + w 79).val, zeroBound⟩, ?_⟩
+    refine ⟨⟨(w 74 + w 75).val, zeroBound⟩, ?_⟩
     exact Prod.ext (ZMod.natCast_zmod_val _).symm (by simpa using values.1)
   have sign : (pairLookup u16SignTable (.var ⟨37⟩) (.var ⟨58⟩)).Contains
       (Verification.environment w) := by
@@ -48,15 +48,15 @@ theorem control_constraints [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity
     with_unfolding_all change ∃ i : Fin 65536, (w 37, w 58) =
       ((i.val : ZMod p), ((i.val / 32768 : Nat) : ZMod p))
     exact ⟨⟨(w 37).val, leftHi⟩, Prod.ext (ZMod.natCast_zmod_val _).symm values.2.1⟩
-  have cleanup : (jumpCleanup (.var ⟨81⟩) (.var ⟨56⟩) (.var ⟨30⟩)).Contains
+  have cleanup : (jumpCleanup (.var ⟨64⟩) (.var ⟨56⟩) (.var ⟨30⟩)).Contains
       (Verification.environment w) := by
     apply (jumpCleanup _ _ _).table.implied_by_completeness
     apply (Lookup.completeness_def jumpCleanupTable (Verification.environment w)
-      (.var ⟨81⟩, .var ⟨56⟩, .var ⟨30⟩)).mpr
+      (.var ⟨64⟩, .var ⟨56⟩, .var ⟨30⟩)).mpr
     simp only [jumpCleanupTable_characterization]
-    with_unfolding_all change ∃ i : Fin 65536, (w 81, w 56, w 30) =
+    with_unfolding_all change ∃ i : Fin 65536, (w 64, w 56, w 30) =
       ((i.val : ZMod p), ((i.val / 2 % 2 : Nat) : ZMod p), ((i.val - i.val % 4 : Nat) : ZMod p))
-    exact ⟨⟨(w 81).val, raw⟩, Prod.ext (ZMod.natCast_zmod_val _).symm
+    exact ⟨⟨(w 64).val, raw⟩, Prod.ext (ZMod.natCast_zmod_val _).symm
       (Prod.ext values.2.2.2.2.2.1 values.2.2.2.2.2.2)⟩
   have condition := control_conditional_lookup hp holds total binary rom leftHi rightHi funct
   apply FlatOperation.constraintsHoldFlat_iff_forall_mem.mpr

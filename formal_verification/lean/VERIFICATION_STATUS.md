@@ -56,7 +56,7 @@ modes with the current oracle. All 68 small-program comparisons also passed.
 These cover both cache modes for two ordinary programs, an extended-round
 caller and the blessed split Keccak caller. The small matrix used an optimized
 exporter build. It changed no Rust source or dependency version.
-Unified proof repairs and the compiler binding builds are pending.
+The compiler binding builds are pending.
 Earlier build results apply to the old base.
 Unified's current column-role inventory, dispatch bound and ordinary PC
 increment passed focused kernel builds. Bigint's current column-role inventory,
@@ -70,6 +70,10 @@ Unified's zero-register preservation and timestamp proofs passed focused
 checks. The pooled ROM memory-port adapter also passed with the current
 timestamp record. These close the native zero-write and clock obligations
 used by the machine targets. The other unified instruction checks are in progress.
+Unified's memory, ROM, binary, shift, TRIADD, XOR/rotate and modular proofs
+passed focused checks. Its existing native caller-path proof also passed.
+These restore the native instruction obligations on the new layout.
+The combined stream target still needs its execution proof and initialization adapter.
 All nine ordinary worker and CPU memory-port inventories passed focused
 checks. Their timestamp records use an explicit absent borrow subtrahend.
 An earlier batch hit its resident-memory cap

@@ -39,7 +39,7 @@ open Trace Arithmetic Reference.RiscV.Sail
 
 /-- Replace the native ROM read limbs and their unused product column. -/
 def readData (w : Nat → ZMod p) (lo hi : ZMod p) : Nat → ZMod p :=
-  fun i => if i = 42 then lo else if i = 43 then hi else if i = 80 then
+  fun i => if i = 42 then lo else if i = 43 then hi else if i = 78 then
     (w 36 + 65536 * w 37) * (lo + 65536 * hi) * 943718400 + (w 48 + 65536 * w 49) * w 17
     else w i
 

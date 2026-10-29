@@ -223,8 +223,8 @@ theorem row_soundness_from_history [Fact p.Prime] [MemoryPlatform SailRV32.excep
       pairCode, memoryWord, Cell.read, ← sourceWord] using actual
   have storeRead (mode : input.store = true) :
       run (SailRV32.Functions.rX_bits input.rs2) input.before = .ok input.readData.toBitVec input.before := by
-    have low := Verification.assertion_of_holds core ⟨29, by rw [constraint_count]; decide⟩
-    have high := Verification.assertion_of_holds core ⟨30, by rw [constraint_count]; decide⟩
+    have low := Verification.assertion_of_holds core ⟨26, by rw [constraint_count]; decide⟩
+    have high := Verification.assertion_of_holds core ⟨27, by rw [constraint_count]; decide⟩
     simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
       selected, mode] at low high
     have location : w 38 = w 6 := by linear_combination low

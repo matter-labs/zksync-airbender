@@ -18,9 +18,9 @@ def lift (w : Nat → ZMod babyBearModulus) : Nat → ZMod babyBearModulus
   | 23 => w 34 | 24 => w 35 | 25 => w 36 | 26 => w 37
   | 27 => w 40 | 28 => w 41 | 29 => w 42 | 30 => w 43
   | 31 => w 48 | 32 => w 49 | 33 => w 50 | 34 => w 51
-  | 35 => w 46 | 36 => w 47 | 37 => w 78 | 38 => w 79
-  | 39 => w 53 | 40 => w 52 | 41 => w 80
-  | 42 => w 131 | 43 => w 132 | 44 => w 133
+  | 35 => w 46 | 36 => w 47 | 37 => w 74 | 38 => w 75
+  | 39 => w 53 | 40 => w 52 | 41 => w 78
+  | 42 => w 123 | 43 => w 124 | 44 => w 125
   | i => w i
 
 theorem canonical_output {setup : Table (ZMod babyBearModulus) (fields 10)}
@@ -49,17 +49,17 @@ theorem canonical_output {setup : Table (ZMod babyBearModulus) (fields 10)}
   have ohi := Verification.range16_bound (Verification.lookup_of_holds h
     ⟨3, by rw [UnifiedReduced.lookup_count]; decide⟩)
   simp [Expression.eval, Verification.environment] at rlo rhi olo ohi
-  have lowEq : (((w 78).val : Nat) : ZMod babyBearModulus) + 1 =
+  have lowEq : (((w 74).val : Nat) : ZMod babyBearModulus) + 1 =
       (w 50).val + 65536 * c := by
     simp only [ZMod.natCast_zmod_val]
     rw [hc] at low
     linear_combination low
-  have highEq : (c : ZMod babyBearModulus) + (w 79).val + 30720 = (w 51).val + 65536 := by
+  have highEq : (c : ZMod babyBearModulus) + (w 75).val + 30720 = (w 51).val + 65536 := by
     simp only [ZMod.natCast_zmod_val]
     rw [hc, b] at high
     linear_combination high
   exact Word.lt_of_borrow (p := babyBearModulus) (output := ⟨(w 50).val, (w 51).val⟩)
-    (remainder := ⟨(w 78).val, (w 79).val⟩) (modulus := ⟨1, 30720⟩)
+    (remainder := ⟨(w 74).val, (w 75).val⟩) (modulus := ⟨1, 30720⟩)
     (by decide) ⟨olo, ohi⟩ ⟨by decide, by decide⟩ ⟨rlo, rhi⟩ cb
     (by simpa using lowEq) (by simpa using highEq)
 

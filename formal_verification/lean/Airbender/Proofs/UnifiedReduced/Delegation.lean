@@ -74,7 +74,7 @@ theorem caller_binding [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
   have s27 : w 27 = 0 := selectors 16
   have s28 : w 28 = 0 := selectors 17
   have s29 : w 29 = 0 := selectors 18
-  have disabled := Verification.assertion_of_holds h ⟨92, by rw [constraint_count]; decide⟩
+  have disabled := Verification.assertion_of_holds h ⟨88, by rw [constraint_count]; decide⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment, s11, s12, s13, s14, s15, s16, s17, s18, s19, s20, s21, s22, s23, s24, s25, s26, s27, s28, s29] at disabled
   have active : w 4 = 1 := by linear_combination -disabled
@@ -89,10 +89,10 @@ theorem caller_binding [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
   have rd := congrArg (fun fields : Vector (ZMod p) 9 => fields[4]) query
   change w 5 = 0 at rs1
   change w 7 = 0 at rd
-  have a29 := Verification.assertion_of_holds h ⟨29, by rw [constraint_count]; decide⟩
-  have a30 := Verification.assertion_of_holds h ⟨30, by rw [constraint_count]; decide⟩
-  have a31 := Verification.assertion_of_holds h ⟨31, by rw [constraint_count]; decide⟩
-  have a32 := Verification.assertion_of_holds h ⟨32, by rw [constraint_count]; decide⟩
+  have a29 := Verification.assertion_of_holds h ⟨26, by rw [constraint_count]; decide⟩
+  have a30 := Verification.assertion_of_holds h ⟨27, by rw [constraint_count]; decide⟩
+  have a31 := Verification.assertion_of_holds h ⟨28, by rw [constraint_count]; decide⟩
+  have a32 := Verification.assertion_of_holds h ⟨29, by rw [constraint_count]; decide⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment, s28, s29, rd] at a29 a30 a31 a32
   have memread : w 38 = w 6 := by linear_combination a29

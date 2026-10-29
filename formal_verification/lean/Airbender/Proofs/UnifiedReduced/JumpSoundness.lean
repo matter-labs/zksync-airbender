@@ -74,8 +74,8 @@ theorem soundness_from_history [Fact p.Prime] (hp : FieldCapacity.NativeRomCapac
   have other : w 23 = 0 ∧ w 24 = 0 := ⟨excluded 12 (by decide), excluded 13 (by decide)⟩
   have binary : w 26 = 0 ∧ w 27 = 0 := ⟨excluded 15 (by decide), excluded 16 (by decide)⟩
   have noLoad : w 28 = 0 := excluded 17 (by decide)
-  have gate := Verification.assertion_of_holds core ⟨42, by rw [constraint_count]; decide⟩
-  have noROM : w 87 = 0 := by
+  have gate := Verification.assertion_of_holds core ⟨39, by rw [constraint_count]; decide⟩
+  have noROM : w 81 = 0 := by
     simpa [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, noLoad] using gate
   have mask : w 25 = if input.rd = zeroRegister then 1 else 0 := by
     have bit := flag 14

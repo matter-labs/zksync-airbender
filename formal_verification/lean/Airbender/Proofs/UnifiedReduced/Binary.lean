@@ -29,13 +29,13 @@ theorem binary_wiring [Fact p.Prime] {setup : Table (ZMod p) (fields 10)} {w : N
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (i : Fin 4) :
-    w (92 + 9 * i.val) = w 10 ∧
-      w (93 + 9 * i.val) = leftByte w i ∧
-      w (94 + 9 * i.val) = rightByte w i + immediateByte w i ∧
-      (∀ j : Fin 4, w (95 + 9 * i.val + j.val) = w (58 + 4 * i.val + j.val)) ∧
-      w (99 + 9 * i.val) = 0 ∧ w (100 + 9 * i.val) = 0 := by
+    w (86 + 9 * i.val) = w 10 ∧
+      w (87 + 9 * i.val) = leftByte w i ∧
+      w (88 + 9 * i.val) = rightByte w i + immediateByte w i ∧
+      (∀ j : Fin 4, w (89 + 9 * i.val + j.val) = w (58 + 4 * i.val + j.val)) ∧
+      w (93 + 9 * i.val) = 0 ∧ w (94 + 9 * i.val) = 0 := by
   have h (j : Fin 9) := Verification.assertion_of_holds holds
-    ⟨52 + 9 * i.val + j.val, by rw [constraint_count]; have := i.isLt; have := j.isLt; omega⟩
+    ⟨49 + 9 * i.val + j.val, by rw [constraint_count]; have := i.isLt; have := j.isLt; omega⟩
   fin_cases i
   all_goals
     have t := h 0; have a := h 1; have b := h 2
