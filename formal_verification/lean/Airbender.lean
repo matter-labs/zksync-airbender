@@ -27,6 +27,7 @@ import Airbender.Review.Trace.Modular.ReducedUse
 import Airbender.Proofs.Keccak.SplitSchedule
 import Airbender.Proofs.Keccak.SplitCallerBridge
 import Airbender.Proofs.Keccak.SplitArtifactChecks
+import Airbender.Review.Trace.Workers.Keccak.SplitNative
 import Airbender.Proofs.Tables.UnifiedXorPackedPilotCertificate
 import Airbender.Review.Trace.UnifiedReduced.ModularExecution
 import Airbender.Proofs.UnifiedReduced.StreamCalls
