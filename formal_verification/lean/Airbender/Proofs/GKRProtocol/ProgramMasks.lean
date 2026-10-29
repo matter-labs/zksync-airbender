@@ -1,4 +1,5 @@
 import Airbender.Review.Helpers.Decoder.ProgramRows
+import Airbender.Review.Compiler.PublicProgramSetup
 import Airbender.Data.Decoder.Setup.AddSub
 import Airbender.Data.Decoder.Setup.JumpBranch
 import Airbender.Data.Decoder.Setup.ShiftBinop
@@ -36,5 +37,15 @@ def unifiedMask : Mask := {
   pcLow := by decide
   pcHigh := by decide
 }
+
+/-- The imported mask constructors satisfy the public setup interface's
+program-independent mask binding. -/
+theorem mask_of_family_matches (family : PooledFamily) :
+    (maskOfFamily family).columns =
+      Airbender.Compiler.unrolledNativeMaskColumns family := by
+  cases family <;> rfl
+
+theorem unified_mask_matches :
+    unifiedMask.columns = unifiedSetup.columnsMask := rfl
 
 end Airbender.Trace.NativeDecoder.ProgramRows.Proofs
