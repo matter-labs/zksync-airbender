@@ -30,6 +30,7 @@ import Airbender.Proofs.Keccak.SplitArtifactChecks
 import Airbender.Review.Trace.Workers.Keccak.SplitNative
 import Airbender.Review.Trace.Workers.Keccak.SplitRequests
 import Airbender.Proofs.Keccak.SplitRequests
+import Airbender.Proofs.Keccak.SplitMemory
 import Airbender.Proofs.Tables.UnifiedXorPackedPilotCertificate
 import Airbender.Review.Trace.UnifiedReduced.ModularExecution
 import Airbender.Proofs.UnifiedReduced.StreamCalls
