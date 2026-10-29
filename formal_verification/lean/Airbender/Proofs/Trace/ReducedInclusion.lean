@@ -3,16 +3,16 @@ import Airbender.Review.Trace.Modular.ExternalCalls
 namespace Airbender.AddSub.Modular.External.Caller
 open Airbender.Trace Reference.RiscV.Sail
 set_option warningAsError true
-variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 /-- The native four-family filter preserves a sourced ordinary instruction. -/
-omit [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] in
 theorem source_reduced (entry : PooledProgramEntry) (before : State)
     (family : reducedFamily entry.data.family = true)
     (source : entry.SourceWith before AddSub.Modular.External.decoderFields) :
     entry.SourceWith before reducedDecoderFields := by
   refine ⟨source.bytes, source.decoded, ?_⟩
   simp [reducedDecoderFields, source.fields, family]
+
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 /-- Every ordinary step whose public program uses only the four native reduced
 families is also a step of the reduced machine. -/
