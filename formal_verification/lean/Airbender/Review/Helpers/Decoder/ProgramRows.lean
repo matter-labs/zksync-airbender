@@ -24,11 +24,11 @@ def Config.fields (config : Config) :
 /-- Decode one public text word at its native byte PC. Unsupported words have
 no entry. The original Sail instruction and native-family projection remain
 visible in the entry, independently of witness values. -/
-def wordEntry (config : Config) (initial : State) (bits : BitVec 32)
+def wordEntry (config : Config) (_initial : State) (bits : BitVec 32)
     (index : Nat) : Option PooledProgramEntry := do
-  let instruction ← match run (SailRV32.Functions.encdec_backwards bits) initial with
-    | .ok instruction _ => some instruction
-    | .error _ _ => none
+  let instruction ← match SailRV32.Functions.encdec_backwards bits with
+    | .pure instruction => some instruction
+    | .impure _ _ => none
   let data ← config.fields instruction
   pure ⟨BitVec.ofNat 32 (4 * index), bits, instruction, data⟩
 
@@ -97,11 +97,11 @@ structure CallerEntry where
   instruction : SailRV32.instruction
   csr : Nat
 
-def callerEntryWith (allowed : Nat → Bool) (initial : State) (bits : BitVec 32)
+def callerEntryWith (allowed : Nat → Bool) (_initial : State) (bits : BitVec 32)
     (index : Nat) : Option CallerEntry := do
-  let instruction ← match run (SailRV32.Functions.encdec_backwards bits) initial with
-    | .ok instruction _ => some instruction
-    | .error _ _ => none
+  let instruction ← match SailRV32.Functions.encdec_backwards bits with
+    | .pure instruction => some instruction
+    | .impure _ _ => none
   match instruction with
   | .CSRReg (address, .Regidx source, .Regidx destination, .CSRRW) =>
       if source == 0 && destination == 0 && allowed address.toNat then

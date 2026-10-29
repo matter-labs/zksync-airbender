@@ -1,7 +1,64 @@
 import Airbender.Review.Helpers.Decoder.ProgramRows
+import Airbender.Review.Helpers.Memory.TextImage
+import Airbender.Proofs.GKRProtocol.PublicProgram
 
 namespace Airbender.Trace.NativeDecoder.ProgramRows.Proofs
 open Airbender.Trace.NativeDecoder.ProgramRows
+
+/-- Every ordinary entry projected from admitted public text has its actual
+bytes and pure Sail decoding in the supplied initial state. Requiring a pure
+decoder result avoids silently dropping decoder state effects. -/
+theorem program_sources (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (image : ROM.TextImage initial text) (size : text.length ≤ ROM.limit / 4) :
+    ∀ entry ∈ programOf config initial text,
+      entry.SourceWith initial config.fields := by
+  intro entry member
+  obtain ⟨⟨bits, index⟩, inText, selected⟩ := List.mem_filterMap.mp member
+  have found : text[index]? = some bits := List.mk_mem_zipIdx_iff_getElem?.mp inText
+  have indexBound : index < text.length := by
+    by_contra notBound
+    have : text[index]? = none := by simp [Nat.le_of_not_gt notBound]
+    rw [this] at found
+    contradiction
+  have wordBound : 4 * index < 2 ^ 32 := by
+    have h := Nat.lt_of_lt_of_le indexBound size
+    unfold ROM.limit at h
+    omega
+  have bytes : (Trace.Cell.ram (BitVec.ofNat 32 (4 * index))).read initial =
+      .ok bits initial := by
+    change (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4
+      (BitVec.ofNat 32 (4 * index)).toNat).run initial = .ok bits initial
+    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt wordBound]
+    have h := image ⟨index, indexBound⟩
+    have value : text[index] = bits := by
+      have : text[index]? = some text[index] := by simp [indexBound]
+      rw [this] at found
+      exact Option.some.inj found
+    simpa [value] using h
+  unfold wordEntry at selected
+  cases decoded : SailRV32.Functions.encdec_backwards bits with
+  | pure instruction =>
+    cases fields : config.fields instruction with
+    | none => simp [decoded, fields] at selected
+    | some data =>
+      simp only [decoded, fields, bind, Option.bind] at selected
+      change (some ⟨BitVec.ofNat 32 (4 * index), bits, instruction, data⟩ :
+        Option PooledProgramEntry) = some entry at selected
+      cases selected
+      exact ⟨bytes, by rw [decoded]; rfl, fields⟩
+  | impure call continuation => simp [decoded] at selected
+
+/-- The whole ordinary program image is reconstructed by stateful Sail reads
+from public text. Unsupported words stay absent from the logical program. -/
+theorem program_image (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (image : ROM.TextImage initial text) (size : text.length ≤ ROM.limit / 4) :
+    programImageRunWith config.fields initial
+      ((programOf config initial text).map ProgramEntry.pc) =
+        some (programOf config initial text) :=
+  Airbender.Compiler.PublicProgram.image_run _
+    (program_sources config initial text image size)
 
 /-- Native preprocessing rejects a text longer than the ROM capacity. For an
 admitted text, the modeled decoder has exactly one row per padded word. -/
