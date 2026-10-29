@@ -89,7 +89,7 @@ impl BabyBearExt6 {
 
     #[cfg(target_arch = "riscv32")]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    pub const fn project_ref_from_array(els: &'_ [BabyBearField; 4]) -> &'_ Self {
+    pub const fn project_ref_from_array(els: &'_ [BabyBearField; 6]) -> &'_ Self {
         // alignments match, so we can just cast pointer
         unsafe { core::mem::transmute(els) }
     }
