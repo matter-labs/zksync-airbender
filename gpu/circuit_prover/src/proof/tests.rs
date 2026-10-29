@@ -23,6 +23,58 @@ fn geometry(config: &ProverConfig) -> BaseCommitmentGeometry {
 }
 
 #[test]
+fn cpu_merged_proof_admission_is_physical_blake_only() {
+    use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType};
+    let mut config = physical_config(20, 4);
+    config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+    let shape = geometry(&config);
+    validate_base_proof_geometry_policy(&shape, ProofMemoryPolicy::default());
+    assert_eq!(shape.total_physical_columns(), 49);
+    super::merged_commitment::validate_merged_circuit_type(
+        CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression),
+        &shape,
+    );
+    assert!(
+        std::panic::catch_unwind(|| super::merged_commitment::validate_merged_circuit_type(
+            CircuitType::Delegation(DelegationCircuitType::Blake2GFunction),
+            &shape,
+        ))
+        .is_err()
+    );
+    for (n, k) in [(20, 0), (20, 2), (23, 1)] {
+        let mut config = physical_config(n, k);
+        config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+        assert!(
+            std::panic::catch_unwind(|| validate_base_proof_geometry_policy(
+                &geometry(&config),
+                ProofMemoryPolicy::default(),
+            ))
+            .is_err()
+        );
+    }
+    let mut virtual_config = CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression)
+        .prover_config(SecurityLevel::Sec100);
+    virtual_config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+    assert!(
+        std::panic::catch_unwind(|| validate_base_proof_geometry_policy(
+            &geometry(&virtual_config),
+            ProofMemoryPolicy::default(),
+        ))
+        .is_err()
+    );
+    let mut nondefault = ProofMemoryPolicy::default();
+    nondefault.memory = gpu_trace::trace::holder::OpeningStrategy::PerCoset;
+    assert!(
+        std::panic::catch_unwind(|| validate_base_proof_geometry_policy(&shape, nondefault))
+            .is_err()
+    );
+    assert!(std::panic::catch_unwind(|| {
+        gpu_trace::trace::memory::validate_separate_base_commitment_geometry(&shape)
+    })
+    .is_err());
+}
+
+#[test]
 fn cpu_physical_proof_admission_checks_full_schedule_and_policy() {
     let policy = ProofMemoryPolicy::default();
     for (n, k) in [(20, 4), (20, 2), (23, 1)] {
@@ -103,7 +155,8 @@ fn cpu_virtual_admission_checks_shape_policy_and_merged_mode() {
             .is_err()
         );
     }
-    let mut config = physical_config(20, 4);
+    let mut config =
+        CircuitType::Delegation(D::Blake2WithCompression).prover_config(SecurityLevel::Sec100);
     config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
     assert!(
         std::panic::catch_unwind(|| validate_base_proof_geometry_policy(

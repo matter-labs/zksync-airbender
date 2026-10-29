@@ -198,8 +198,8 @@ impl<T> TraceHolder<T> {
     pub fn validate_base_layout(geometry: &BaseCommitmentGeometry, trees_mode: TreesCacheMode) {
         assert!(
             geometry.commitment_mode() == CommitmentMode::SeparateMemoryAndWitness
-                || (geometry.pack_log2() == 0 && !geometry.is_virtual_packing()),
-            "packed or virtual merged base holders are not admitted yet"
+                || !geometry.is_virtual_packing(),
+            "virtual merged base holders are not admitted"
         );
         assert!(
             geometry.cap_size() >= geometry.lde_factor(),

@@ -267,5 +267,10 @@ fn cpu_batching_pow_keeps_base_round_override_and_physical_count() {
             batched_proximity_check_pow_bits_for_geometry(&cfg, &merged),
             expected
         );
+        cfg.whir_schedule.base_round.batching_pow_bits = Some(13);
+        assert_eq!(
+            batched_proximity_check_pow_bits_for_geometry(&cfg, &merged),
+            13
+        );
     }
 }

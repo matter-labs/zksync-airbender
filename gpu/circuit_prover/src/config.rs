@@ -4,9 +4,10 @@
 //! `ProverConfig`, and owns the GPU-supported-security-level contract. The
 //! canonical configs include virtual packing, with independent physical
 //! packing in the Blake compression default. The proof backend qualifies
-//! separate physical-only configurations through shared geometry admission.
+//! separate physical-only configurations and the qualified merged Blake shape
+//! through shared geometry admission.
 //! Workers retain one resolved CPU config for setup and both request phases;
-//! virtual defaults and merged commitments remain closed.
+//! virtual defaults and merged commitments remain closed at that execution boundary.
 //! Lives in
 //! the prover layer because `ProverConfig` is a `prove()` input (see
 //! `proof/mod.rs`): `execution` calls down into this and threads the result

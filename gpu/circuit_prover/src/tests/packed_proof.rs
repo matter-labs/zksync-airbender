@@ -1,4 +1,5 @@
 use super::*;
+use prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture as packed_config;
 
 #[test]
 #[ignore = "fresh CPU merged cap parity through the combined stage1 producer"]
@@ -9,9 +10,7 @@ fn packed_merged_commit_unpacked_cpu_parity() {
     };
     use gpu_gkr::setup::GpuGKRSetupTransfer;
     // CPU-expressible test construction; canonical BF configs stay unchanged.
-    let mut config = prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
-        20, 0, SecurityLevel::Sec100,
-    );
+    let mut config = packed_config(20, 0, SecurityLevel::Sec100);
     config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
     let fixture = proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
     let base = &fixture.base;
@@ -87,23 +86,45 @@ fn gpu_memory_caps(
         context,
     )
     .unwrap();
-    let mut inputs = gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::new(
-        decoder,
-        inits,
-        Some(trace),
-        context,
-    )
-    .unwrap();
-    inputs.schedule(context).unwrap();
-    let job = gpu_trace::trace::memory::commit_memory_from_transfers_for_geometry(
-        base.circuit_type,
-        &base.compiled_circuit,
-        inputs,
-        &base.prover_config,
-        geometry,
-        context,
-    )
-    .unwrap();
+    let job = if geometry.commitment_mode() == CommitmentMode::MergedMemoryAndWitness {
+        use crate::proof::merged_commitment::{
+            commit_merged_from_transfers_for_geometry, GpuGKRMergedCommitTransfer,
+        };
+        let setup = gpu_gkr::setup::GpuGKRSetupTransfer::new(
+            Arc::clone(base.gpu_setup_host.as_ref().unwrap()),
+            context,
+        )
+        .unwrap();
+        let mut inputs =
+            GpuGKRMergedCommitTransfer::new(setup, decoder, inits, Some(trace), context).unwrap();
+        inputs.schedule(context).unwrap();
+        commit_merged_from_transfers_for_geometry(
+            &base.gkr_programs,
+            &base.prover_config,
+            geometry,
+            inputs,
+            context,
+        )
+        .unwrap()
+    } else {
+        let mut inputs = gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::new(
+            decoder,
+            inits,
+            Some(trace),
+            context,
+        )
+        .unwrap();
+        inputs.schedule(context).unwrap();
+        gpu_trace::trace::memory::commit_memory_from_transfers_for_geometry(
+            base.circuit_type,
+            &base.compiled_circuit,
+            inputs,
+            &base.prover_config,
+            geometry,
+            context,
+        )
+        .unwrap()
+    };
     assert_eq!(job.base_commitment_geometry(), Some(geometry));
     let (caps, _) = job.finish().unwrap();
     assert_eq!(context.get_used_mem_current(), baseline);
@@ -143,10 +164,27 @@ pub(super) fn geometry_proof(mut fixture: BasicUnrolledProofFixture) {
         geometry.message_size_log2(),
         base.prover_config.whir_message_size_log2()
     );
-    assert_eq!(
-        geometry.commitment_mode(),
-        CommitmentMode::SeparateMemoryAndWitness
-    );
+    if geometry.commitment_mode() == CommitmentMode::MergedMemoryAndWitness {
+        assert_eq!((geometry.trace_len_log2(), geometry.pack_log2()), (20, 4));
+        assert_eq!(
+            geometry.oracle(BaseOracleRole::Memory).logical_columns(),
+            763
+        );
+        assert_eq!(
+            geometry.oracle(BaseOracleRole::Memory).padded_columns(),
+            768
+        );
+        assert_eq!(
+            geometry.oracle(BaseOracleRole::Memory).physical_columns(),
+            48
+        );
+        assert_eq!(
+            geometry.oracle(BaseOracleRole::Witness).physical_columns(),
+            0
+        );
+        assert_eq!(geometry.oracle(BaseOracleRole::Setup).physical_columns(), 1);
+        assert_eq!(geometry.total_physical_columns(), 49);
+    }
     if geometry.is_virtual_packing() {
         assert_eq!(
             base.prover_config,
@@ -285,4 +323,13 @@ fn packed_full_proof_unified23_pack1_cpu_parity() {
 #[ignore = "fresh CPU/GPU physical-only Blake k2/f1 proof parity"]
 fn packed_full_proof_blake20_pack2_cpu_parity() {
     geometry_proof(proof_matrix::prepare_blake2_with_compression_proof_fixture_with_packing(2));
+}
+
+#[test]
+#[ignore = "fresh CPU/GPU merged physical proof parity"]
+fn packed_full_proof_blake20_pack4_merged_cpu_parity() {
+    // The CPU already exposes this mode; no canonical BF default selects it.
+    let mut config = packed_config(20, 4, SecurityLevel::Sec100);
+    config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+    geometry_proof(proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config));
 }

@@ -8,6 +8,7 @@ use prover::gkr::prover::transcript_utils::{
 };
 use prover::gkr::prover::WhirSchedule;
 use prover::gkr::prover_config::commitment_geometry::{BaseCommitmentGeometry, BaseOracleRole};
+use prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture as packed_config;
 use prover::gkr::prover_config::{BaseColumns, ProverConfig};
 use prover::gkr::whir::hypercube_to_monomial::parallel_multivariate_hypercube_evals_into_coeffs;
 use prover::transcript::{Blake2sTranscript, Seed};
@@ -22,6 +23,10 @@ fn read<T: Copy + Default>(data: &DeviceSlice<T>, context: &ProverContext) -> Ve
 }
 
 fn handoff(k: usize) {
+    handoff_for_mode(k, false);
+}
+
+fn handoff_for_mode(k: usize, merged_mode: bool) {
     let context = make_test_context(256, 16);
     let worker = Worker::new_with_num_threads(4);
     let message_log = 13usize;
@@ -29,31 +34,43 @@ fn handoff(k: usize) {
     let pack = 1usize << k;
     let rows = 1usize << n;
     let message = 1usize << message_log;
-    let widths = [pack + 1, 2 * pack + 1, 1];
+    let logical_widths = if merged_mode {
+        [225, 538, 6]
+    } else {
+        [pack + 1, 2 * pack + 1, 1]
+    };
+    let widths = if merged_mode {
+        [logical_widths[0] + logical_widths[1], 0, logical_widths[2]]
+    } else {
+        logical_widths
+    };
     let mut config = ProverConfig::whir_only(
         message_log,
         WhirSchedule::from_legacy_arrays(2, 16, 0, &[1, 5], &[1, 1], &[2], &[0, 0]),
         SecurityLevel::Sec100,
     );
+    if merged_mode {
+        config.commitment_mode = prover::gkr::prover_config::CommitmentMode::MergedMemoryAndWitness;
+    }
     config.trace_len_log2 = n;
     config.whir_schedule.base_round.physical_packing_log2 = k;
     let geometry = BaseCommitmentGeometry::from_config(
         &config,
         BaseColumns {
-            memory: widths[0],
-            witness: widths[1],
-            setup: widths[2],
+            memory: logical_widths[0],
+            witness: logical_widths[1],
+            setup: logical_widths[2],
         },
     )
     .unwrap();
     let logical_point: Vec<_> = (0..n).map(|i| sample_ext(19 + 13 * i as u32)).collect();
-    let raw: [Vec<BF>; 3] = std::array::from_fn(|role| {
-        (0..widths[role] * rows)
+    let unmerged_raw: [Vec<BF>; 3] = std::array::from_fn(|role| {
+        (0..logical_widths[role] * rows)
             .map(|i| BF::new((i as u32 * 73 + role as u32 * 101 + 7) % 100003))
             .collect()
     });
-    let logical_claims: [Vec<E4>; 3] = std::array::from_fn(|role| {
-        raw[role]
+    let unmerged_claims: [Vec<E4>; 3] = std::array::from_fn(|role| {
+        unmerged_raw[role]
             .chunks_exact(rows)
             .map(|column| {
                 let mut values: Vec<E4> = column.iter().copied().map(E4::from_base).collect();
@@ -64,6 +81,40 @@ fn handoff(k: usize) {
             })
             .collect()
     });
+    let logical_claims = if merged_mode {
+        [
+            unmerged_claims[0]
+                .iter()
+                .chain(&unmerged_claims[1])
+                .copied()
+                .collect(),
+            Vec::new(),
+            unmerged_claims[2].clone(),
+        ]
+    } else {
+        unmerged_claims.clone()
+    };
+    let raw = if merged_mode {
+        [
+            [unmerged_raw[0].as_slice(), unmerged_raw[1].as_slice()].concat(),
+            Vec::new(),
+            unmerged_raw[2].clone(),
+        ]
+    } else {
+        unmerged_raw
+    };
+    if merged_mode {
+        assert_eq!(&logical_claims[0][225..], &unmerged_claims[1]);
+        assert_eq!(
+            geometry.oracle(BaseOracleRole::Memory).physical_columns(),
+            48
+        );
+        assert_eq!(
+            geometry.oracle(BaseOracleRole::Witness).physical_columns(),
+            0
+        );
+        assert_eq!(geometry.total_physical_columns(), 49);
+    }
     // Reproduce the preceding GKR draw so the negative control is anchored at
     // the boundary that must advance past an already emitted digest.
     let mut seed = Seed(std::array::from_fn(|i| {
@@ -139,13 +190,55 @@ fn handoff(k: usize) {
             "merge preserves original claims"
         );
     }
+    if merged_mode {
+        let expected = merge_claims(&logical_claims[0], &coordinates);
+        let mut wrong = unmerged_claims[0].clone();
+        wrong.resize(240, E4::ZERO);
+        wrong.extend_from_slice(&unmerged_claims[1]);
+        let wrong = merge_claims(&wrong, &coordinates);
+        assert_ne!(
+            expected[14], wrong[14],
+            "per-side padding changes the boundary fold"
+        );
+        assert_eq!(expected.len(), 48);
+        assert!(
+            logical_claims[1].is_empty(),
+            "empty Witness returns before the merge kernel launch"
+        );
+    }
     assert_eq!(
         read(&device_seed, &context),
         device_fresh_seed,
         "claims are not re-absorbed"
     );
-    let (expected_nonce, batching) =
-        draw_random_field_els_with_pow::<BF, E4, Blake2sTranscript>(&mut seed, 1, 8, &worker);
+    let batching_bits = if merged_mode {
+        let mut real_config = packed_config(20, 4, SecurityLevel::Sec100);
+        real_config.commitment_mode =
+            prover::gkr::prover_config::CommitmentMode::MergedMemoryAndWitness;
+        let real_geometry = BaseCommitmentGeometry::from_config(
+            &real_config,
+            BaseColumns {
+                memory: 225,
+                witness: 538,
+                setup: 6,
+            },
+        )
+        .unwrap();
+        assert_eq!(real_geometry.total_physical_columns(), 49);
+        real_config.base_round().batching_pow_bits::<BF, E4>(
+            real_config.security_level.security_bits(),
+            real_geometry.message_size_log2(),
+            real_geometry.total_physical_columns(),
+        )
+    } else {
+        8
+    };
+    let (expected_nonce, batching) = draw_random_field_els_with_pow::<BF, E4, Blake2sTranscript>(
+        &mut seed,
+        1,
+        batching_bits,
+        &worker,
+    );
     let mut device_nonce = context
         .alloc::<u64>(1, AllocationPlacement::BestFit)
         .unwrap();
@@ -155,7 +248,7 @@ fn handoff(k: usize) {
     crate::pow::schedule_draw_e4_challenges_with_pow(
         &mut device_seed,
         &mut device_batching,
-        8,
+        batching_bits,
         &mut device_nonce[0],
         &context,
     )
@@ -249,4 +342,9 @@ cases! {
     packed_handoff_cpu_parity_k2: 2,
     packed_handoff_cpu_parity_k3: 3,
     packed_handoff_cpu_parity_k4: 4
+}
+
+#[test]
+fn packed_handoff_merged_blake_widths_cpu_parity() {
+    handoff_for_mode(4, true);
 }

@@ -19,6 +19,43 @@ use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::holder::{WitnessCommitmentStrategy, WitnessPostCommitStorage};
 use gpu_trace::trace::memory::{schedule_memory_cap_readback, MemoryCommitmentJob};
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
+use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType};
+
+pub(crate) fn validate_merged_packed_geometry(geometry: &BaseCommitmentGeometry) {
+    assert_eq!(
+        geometry.commitment_mode(),
+        CommitmentMode::MergedMemoryAndWitness
+    );
+    assert!(
+        !geometry.is_virtual_packing(),
+        "virtual merged commitment is not admitted"
+    );
+    assert_eq!(
+        geometry.values_per_leaf(),
+        2,
+        "merged proof requires fold_log2=1"
+    );
+    assert_eq!(
+        (geometry.trace_len_log2(), geometry.pack_log2()),
+        (20, 4),
+        "unqualified packed merged shape"
+    );
+    assert_eq!(geometry.lde_factor(), 2, "unqualified merged LDE");
+    assert_eq!(geometry.cap_size(), 16, "unqualified merged cap");
+}
+
+pub(crate) fn validate_merged_circuit_type(
+    circuit_type: CircuitType,
+    geometry: &BaseCommitmentGeometry,
+) {
+    if geometry.pack_log2() != 0 {
+        assert_eq!(
+            circuit_type,
+            CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression),
+            "unqualified packed merged circuit"
+        );
+    }
+}
 
 /// Shared H2D ownership for the existing BF memory-and-witness generator.
 pub struct GpuGKRMergedCommitTransfer<'a, A: GoodAllocator> {
@@ -80,11 +117,6 @@ pub fn validate_merged_commitment_geometry<F: PrimeField>(
         *geometry, expected,
         "merged commitment config/geometry mismatch"
     );
-    assert_eq!(
-        geometry.pack_log2(),
-        0,
-        "packed merged commitment is not admitted yet"
-    );
     assert!(
         !geometry.is_virtual_packing(),
         "virtual merged commitment is not admitted"
@@ -94,6 +126,9 @@ pub fn validate_merged_commitment_geometry<F: PrimeField>(
         2,
         "merged primitive requires fold_log2=1"
     );
+    if geometry.pack_log2() != 0 {
+        validate_merged_packed_geometry(geometry);
+    }
     gpu_trace::trace::memory::validate_stage1_commitment_geometry(geometry, circuit);
 }
 
@@ -107,6 +142,7 @@ pub fn commit_merged_from_transfers_for_geometry<'a, A: GoodAllocator + 'a>(
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     validate_merged_commitment_geometry(config, &geometry, gkr_programs.compiled_circuit());
+    validate_merged_circuit_type(gkr_programs.circuit_type(), &geometry);
     inputs.setup.host.validate_for_geometry(&geometry);
     gpu_trace::trace::holder::validate_baby_bear_base_geometry(
         &geometry,

@@ -99,7 +99,11 @@ pub(crate) fn validate_base_proof_geometry_policy(
         memory_policy.witness.is_valid(),
         "invalid witness memory policy"
     );
-    gpu_trace::trace::memory::validate_separate_base_commitment_geometry(geometry);
+    if geometry.commitment_mode() == crate::upstream::CommitmentMode::MergedMemoryAndWitness {
+        merged_commitment::validate_merged_packed_geometry(geometry);
+    } else {
+        gpu_trace::trace::memory::validate_separate_base_commitment_geometry(geometry);
+    }
     if !uses_base_commitment_geometry(geometry) {
         return;
     }
@@ -126,6 +130,9 @@ pub fn preflight_proof(
         BaseCommitmentGeometry::from_config(config, BaseColumns::of(programs.compiled_circuit()))
             .expect("invalid base commitment geometry");
     validate_base_proof_geometry_policy(&geometry, memory_policy);
+    if geometry.commitment_mode() == crate::upstream::CommitmentMode::MergedMemoryAndWitness {
+        merged_commitment::validate_merged_circuit_type(programs.circuit_type(), &geometry);
+    }
     // Leave legacy (k0,f1) on its existing transform path, including MSB shapes.
     if uses_base_commitment_geometry(&geometry) {
         gpu_trace::trace::holder::validate_baby_bear_base_opening(

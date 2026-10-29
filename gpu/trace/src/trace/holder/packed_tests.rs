@@ -8,6 +8,7 @@ use prover::definitions::SecurityLevel;
 use prover::gkr::prover::backend::NaiveBackend;
 use prover::gkr::prover::stages::commitment_utils::commit_trace_part_with_packing;
 use prover::gkr::prover::WhirSchedule;
+use prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture as packed_config;
 use prover::gkr::prover_config::ProverConfig;
 use prover::gkr::whir::hypercube_to_monomial::parallel_multivariate_hypercube_evals_into_coeffs;
 use prover::gkr::whir::ColumnMajorBaseOracleForLDE;
@@ -92,6 +93,35 @@ fn cpu_oracle(config: &ProverConfig, raw: &[BF], worker: &Worker) -> CpuOracle {
         config.cap_size,
         config.trace_len_log2,
         config.pack_log2(),
+        &GenericAllocationPool::proxy(),
+        worker,
+    )
+}
+
+fn cpu_merged_oracle(
+    config: &ProverConfig,
+    memory: &[BF],
+    witness: &[BF],
+    worker: &Worker,
+) -> CpuOracle {
+    use prover::gkr::prover::stages::initial_commit::commit_merged_memory_and_witness_subtrees;
+    use prover::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
+    let rows = 1usize << config.trace_len_log2;
+    let trace = GKRFullWitnessTrace::<BF, Global, Global> {
+        column_major_memory_trace: memory.chunks_exact(rows).map(<[BF]>::to_vec).collect(),
+        column_major_witness_trace: witness.chunks_exact(rows).map(<[BF]>::to_vec).collect(),
+        column_major_scratch_space_trace: vec![],
+        generic_lookup_mapping: vec![],
+        range_check_16_lookup_mapping: vec![],
+        timestamp_range_check_lookup_mapping: vec![],
+    };
+    let twiddles =
+        fft::Twiddles::<BF, Global>::new(1usize << config.whir_message_size_log2(), worker);
+    commit_merged_memory_and_witness_subtrees::<BF, E4, Blake2sU32MerkleTreeWithCap<Global>, _>(
+        &NaiveBackend,
+        &trace,
+        &twiddles,
+        config,
         &GenericAllocationPool::proxy(),
         worker,
     )
@@ -283,8 +313,33 @@ fn materialized_case(
     worker: &Worker,
     context: &ProverContext,
 ) {
+    materialized_case_for_geometry(
+        geometry(config, role, columns),
+        role,
+        columns,
+        raw,
+        cpu,
+        tree,
+        deferred,
+        monomials,
+        worker,
+        context,
+    );
+}
+
+fn materialized_case_for_geometry(
+    geometry: BaseCommitmentGeometry,
+    role: BaseOracleRole,
+    columns: usize,
+    raw: &[BF],
+    cpu: &CpuOracle,
+    tree: TreesCacheMode,
+    deferred: bool,
+    monomials: bool,
+    worker: &Worker,
+    context: &ProverContext,
+) {
     let baseline = context.get_used_mem_current();
-    let geometry = geometry(config, role, columns);
     validate_baby_bear_base_geometry(
         &geometry,
         context
@@ -295,7 +350,7 @@ fn materialized_case(
     let mut holder = TraceHolder::<BF>::new_base(geometry, role, tree, context).unwrap();
     assert_eq!(
         (holder.log_domain_size as usize, holder.columns_count),
-        (config.trace_len_log2, columns)
+        (geometry.trace_len_log2(), columns)
     );
     assert_eq!(
         holder.allocated_columns(),
@@ -452,8 +507,31 @@ fn recomputed_case(
     worker: &Worker,
     context: &ProverContext,
 ) {
+    recomputed_case_for_geometry(
+        geometry(config, role, columns),
+        role,
+        columns,
+        raw,
+        cpu,
+        tree,
+        retained,
+        worker,
+        context,
+    );
+}
+
+fn recomputed_case_for_geometry(
+    geometry: BaseCommitmentGeometry,
+    role: BaseOracleRole,
+    columns: usize,
+    raw: &[BF],
+    cpu: &CpuOracle,
+    tree: TreesCacheMode,
+    retained: bool,
+    worker: &Worker,
+    context: &ProverContext,
+) {
     let baseline = context.get_used_mem_current();
-    let geometry = geometry(config, role, columns);
     validate_baby_bear_base_opening(
         &geometry,
         OpeningStrategy::PerCoset,
@@ -669,7 +747,7 @@ recomputed_tests! {
 }
 
 fn production_target(trace_log: usize, k: usize, widths: [usize; 3], role: BaseOracleRole) {
-    let config = prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(trace_log, k, SecurityLevel::Sec100);
+    let config = packed_config(trace_log, k, SecurityLevel::Sec100);
     assert_eq!(
         (
             config.whir_message_size_log2(),
@@ -750,6 +828,11 @@ fn cpu_packed_base_geometry_admission_is_cuda_free() {
     invalid.push(root);
     let mut merged = test_config(20, 1);
     merged.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+    validate_test_geometry(
+        &geometry(&merged, BaseOracleRole::Memory, 1),
+        PARTIAL_TREE_REDUCTION_LAYERS,
+    );
+    merged.whir_schedule.base_round.fold_log2 = 0;
     invalid.push(merged);
     let mut cap = test_config(20, 1);
     cap.cap_size = 1;
@@ -889,4 +972,211 @@ fn cpu_baby_bear_capability_checks_transform_domain_and_context_separately() {
         assert!(result.is_err());
         assert!(!scheduled.get());
     }
+}
+
+// Each family/k is a separately discovered test. CPU packing sees the unpadded
+// concatenation, so a GPU implementation that pads each side cannot match it.
+fn merged_matrix(k: usize, policy: usize) {
+    use crate::upstream::CommitmentMode;
+    let context = super::tests::make_test_context(256, 16);
+    let worker = Worker::new_with_num_threads(4);
+    let mut config = test_config(if policy == 0 { 13 } else { 20 }, k);
+    config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+    let pack = 1usize << k;
+    let rows = 1usize << config.trace_len_log2;
+    let mut cases = 0;
+    for (memory, witness) in [
+        (0, 0),
+        (0, pack + 1),
+        (pack - 1, 0),
+        (pack - 1, pack + 2),
+        (1, pack),
+        (pack + 1, pack + 2),
+    ] {
+        let total = memory + witness;
+        let memory_source = source(total, rows);
+        let (m, w) = memory_source.split_at(memory * rows);
+        let raw = [m, w].concat();
+        let cpu = cpu_merged_oracle(&config, m, w, &worker);
+        let geometry = BaseCommitmentGeometry::from_config(
+            &config,
+            BaseColumns {
+                memory,
+                witness,
+                setup: 0,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            geometry.oracle(BaseOracleRole::Memory).logical_columns(),
+            total
+        );
+        assert_eq!(
+            geometry.oracle(BaseOracleRole::Memory).padded_columns(),
+            total.div_ceil(pack) * pack
+        );
+        assert_eq!(
+            geometry.oracle(BaseOracleRole::Witness).physical_columns(),
+            0
+        );
+        if memory % pack != 0 && witness != 0 {
+            let mut wrongly_padded = m.to_vec();
+            wrongly_padded.resize(memory.div_ceil(pack) * pack * rows, BF::ZERO);
+            wrongly_padded.extend_from_slice(w);
+            let wrong = cpu_oracle(&config, &wrongly_padded, &worker);
+            assert_ne!(
+                cpu.get_cap(),
+                wrong.get_cap(),
+                "negative control: per-side padding must change cap"
+            );
+        }
+        if policy == 0 {
+            for tree in [
+                TreesCacheMode::CacheNone,
+                TreesCacheMode::CachePartial,
+                TreesCacheMode::CacheFull,
+            ] {
+                for deferred in [false, true] {
+                    materialized_case_for_geometry(
+                        geometry,
+                        BaseOracleRole::Memory,
+                        total,
+                        &raw,
+                        &cpu,
+                        tree,
+                        deferred,
+                        !deferred,
+                        &worker,
+                        &context,
+                    );
+                    cases += 1;
+                }
+            }
+        } else {
+            let modes: &[TreesCacheMode] = if policy == 1 {
+                &[TreesCacheMode::CachePartial]
+            } else {
+                &[TreesCacheMode::CacheNone, TreesCacheMode::CachePartial]
+            };
+            for &tree in modes {
+                recomputed_case_for_geometry(
+                    geometry,
+                    BaseOracleRole::Memory,
+                    total,
+                    &raw,
+                    &cpu,
+                    tree,
+                    policy == 1,
+                    &worker,
+                    &context,
+                );
+                cases += 1;
+            }
+        }
+    }
+    assert_eq!(cases, [36, 6, 12][policy]);
+    eprintln!("merged_packed_base_cpu_parity k={k} policy={policy}: {cases} cases passed; empty sets, boundary, tail; cap16/LDE2");
+}
+
+macro_rules! merged_tests {
+    ($($name:ident: ($k:expr, $policy:expr)),* $(,)?) => { $(
+        #[test]
+        fn $name() {
+            merged_matrix($k, $policy);
+        }
+    )* };
+}
+merged_tests! {
+    merged_packed_base_cpu_parity_materialized_k0: (0, 0),
+    merged_packed_base_cpu_parity_materialized_k1: (1, 0),
+    merged_packed_base_cpu_parity_materialized_k2: (2, 0),
+    merged_packed_base_cpu_parity_materialized_k3: (3, 0),
+    merged_packed_base_cpu_parity_materialized_k4: (4, 0),
+    merged_packed_base_cpu_parity_retained_k0: (0, 1),
+    merged_packed_base_cpu_parity_retained_k1: (1, 1),
+    merged_packed_base_cpu_parity_retained_k2: (2, 1),
+    merged_packed_base_cpu_parity_retained_k3: (3, 1),
+    merged_packed_base_cpu_parity_retained_k4: (4, 1),
+    merged_packed_base_cpu_parity_recompute_k0: (0, 2),
+    merged_packed_base_cpu_parity_recompute_k1: (1, 2),
+    merged_packed_base_cpu_parity_recompute_k2: (2, 2),
+    merged_packed_base_cpu_parity_recompute_k3: (3, 2),
+    merged_packed_base_cpu_parity_recompute_k4: (4, 2),
+}
+
+fn merged_blake20_production(policy: usize) {
+    let context = super::tests::make_test_context(16 * 1024, 128);
+    let worker = Worker::new_with_num_threads(4);
+    let mut config = packed_config(20, 4, SecurityLevel::Sec100);
+    config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+    let rows = 1usize << 20;
+    let raw = source(763, rows);
+    let (memory, witness) = raw.split_at(225 * rows);
+    let cpu = cpu_merged_oracle(&config, memory, witness, &worker);
+    let geometry = BaseCommitmentGeometry::from_config(
+        &config,
+        BaseColumns {
+            memory: 225,
+            witness: 538,
+            setup: 6,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        geometry.oracle(BaseOracleRole::Memory).padded_columns(),
+        768
+    );
+    assert_eq!(
+        geometry.oracle(BaseOracleRole::Memory).physical_columns(),
+        48
+    );
+    assert_eq!(
+        geometry.oracle(BaseOracleRole::Witness).physical_columns(),
+        0
+    );
+    if policy == 0 {
+        for deferred in [false, true] {
+            materialized_case_for_geometry(
+                geometry,
+                BaseOracleRole::Memory,
+                763,
+                &raw,
+                &cpu,
+                TreesCacheMode::CachePartial,
+                deferred,
+                !deferred,
+                &worker,
+                &context,
+            );
+        }
+    } else {
+        recomputed_case_for_geometry(
+            geometry,
+            BaseOracleRole::Memory,
+            763,
+            &raw,
+            &cpu,
+            TreesCacheMode::CachePartial,
+            policy == 1,
+            &worker,
+            &context,
+        );
+    }
+    eprintln!("merged Blake20/k4 component: M225/W538, Q48, boundary14/1, lastgroup11+5zeros, policy={policy}");
+}
+
+#[test]
+#[ignore = "real-width merged CPU/GPU cap, leaf and path parity"]
+fn merged_packed_base_cpu_parity_blake20_materialized() {
+    merged_blake20_production(0);
+}
+#[test]
+#[ignore = "real-width merged retained opening CPU parity"]
+fn merged_packed_base_cpu_parity_blake20_retained() {
+    merged_blake20_production(1);
+}
+#[test]
+#[ignore = "real-width merged raw-recompute opening CPU parity"]
+fn merged_packed_base_cpu_parity_blake20_recompute() {
+    merged_blake20_production(2);
 }

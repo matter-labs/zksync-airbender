@@ -87,9 +87,14 @@ summary — the contract document is the source of truth.
   memory commitments share the qualified base geometry. Setup warmup produces
   geometry-bearing entries for physical or virtual packing, including pure
   virtual k0; geometry-None entries cannot supply either. Execution worker/probe
-  requests retain an independent virtual guard before H2D. Merged proofs remain
-  closed.
+  requests retain independent virtual and merged guards before H2D. The proof
+  entry additionally admits physical merged Blake compression at `(20,4,f1)`
+  with the same default policy. Its explicit merged-cap producer concatenates
+  memory then witness and pads only the end; config-driven merged memory and
+  worker requests remain closed. No canonical BF config selects merged mode.
 - `src/proof/`:
+  - `merged_commitment.rs`: explicit geometry-bound BF merged cap production;
+    cap-only transfer ownership, with no persisted-tree or profile options.
   - `inputs.rs`: the consolidated H2D transfer bundle
     (`GpuGKRProofTransfer`) — one shared `Transfer` (from `gpu_prover_context`)
     for every pre-prove H2D piece.
