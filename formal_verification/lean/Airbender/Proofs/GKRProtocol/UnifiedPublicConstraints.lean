@@ -44,47 +44,47 @@ theorem not_decoder (setup : Table Source.BaseField (fields 10)) (w : Nat → So
     (List.sublist_append_left (UnifiedReduced.importedConstraints setup) UnifiedReduced.importedConstraintsTimestampLookups)
   have total := UnifiedReduced.Proofs.dispatch_count (by decide +kernel) core active
   simp [UnifiedReduced.Variables.dispatchColumns, Fin.sum_univ_succ] at total
-  have gate := Verification.assertion_of_holds core ⟨42, by rw [UnifiedReduced.constraint_count]; decide⟩
+  have gate := Verification.assertion_of_holds core ⟨39, by rw [UnifiedReduced.constraint_count]; decide⟩
   simp [UnifiedReduced.importedConstraints, FlatOperation.constraints, _root_.Expression.eval,
     Verification.environment] at gate
-  have romEq : w 87 = w 28 * w 54 := by linear_combination gate
-  have romLe : (w 87).val ≤ (w 28).val := by
+  have romEq : w 81 = w 28 * w 54 := by linear_combination gate
+  have romLe : (w 81).val ≤ (w 28).val := by
     have load : w 28 = 0 ∨ w 28 = 1 := by simpa using UnifiedReduced.Proofs.local_flags core 18
     have rom : w 54 = 0 ∨ w 54 = 1 := by simpa using UnifiedReduced.Proofs.local_flags core 22
     rw [romEq]
     rcases load with load | load <;> rcases rom with rom | rom
     all_goals norm_num [load, rom]
   let control := (w 21).val + (w 22).val + (w 23).val + (w 24).val
-  have oneHotBound : control + (w 26).val + (w 27).val + (w 87).val ≤ 1 := by dsimp [control]; omega
-  have tags := one_hot_tags (w 10) operation control (w 26).val (w 27).val (w 87).val oneHotBound
+  have oneHotBound : control + (w 26).val + (w 27).val + (w 81).val ≤ 1 := by dsimp [control]; omega
+  have tags := one_hot_tags (w 10) operation control (w 26).val (w 27).val (w 81).val oneHotBound
   have equation (index : Fin 5) := Verification.assertion_of_holds core
-    ⟨(#v[48, 52, 61, 70, 79][index]), by rw [UnifiedReduced.constraint_count]; fin_cases index <;> norm_num⟩
+    ⟨(#v[45, 49, 58, 67, 76][index]), by rw [UnifiedReduced.constraint_count]; fin_cases index <;> norm_num⟩
   have e0 := equation 0; have e1 := equation 1; have e2 := equation 2
   have e3 := equation 3; have e4 := equation 4
   simp [UnifiedReduced.importedConstraints, FlatOperation.constraints, _root_.Expression.eval,
     Verification.environment, active] at e0 e1 e2 e3 e4
   have ccast : (control : Source.BaseField) = w 21 + w 22 + w 23 + w 24 := by
     simp [control, Nat.cast_add]
-  have t0 : w 88 = (control : Source.BaseField) + 8 * (w 26).val + 3 * (w 27).val + 34 * (w 87).val := by
+  have t0 : w 82 = (control : Source.BaseField) + 8 * (w 26).val + 3 * (w 27).val + 34 * (w 81).val := by
     simp only [ccast, ZMod.natCast_zmod_val]
     linear_combination e0
-  have t1 : w 92 = 5 * (control : Source.BaseField) + 9 * (w 26).val + (w 27).val * w 10 := by
+  have t1 : w 86 = 5 * (control : Source.BaseField) + 9 * (w 26).val + (w 27).val * w 10 := by
     simp only [ccast, ZMod.natCast_zmod_val]
     linear_combination e1
-  have t2 : w 101 = 5 * (control : Source.BaseField) + 9 * (w 26).val + (w 27).val * w 10 := by
+  have t2 : w 95 = 5 * (control : Source.BaseField) + 9 * (w 26).val + (w 27).val * w 10 := by
     simp only [ccast, ZMod.natCast_zmod_val]
     linear_combination e2
-  have t3 : w 110 = 51 * (control : Source.BaseField) + 9 * (w 26).val + (w 27).val * w 10 := by
+  have t3 : w 104 = 51 * (control : Source.BaseField) + 9 * (w 26).val + (w 27).val * w 10 := by
     simp only [ccast, ZMod.natCast_zmod_val]
     linear_combination e3
-  have t4 : w 119 = 2 * (control : Source.BaseField) + 9 * (w 26).val + (w 27).val * w 10 := by
+  have t4 : w 113 = 2 * (control : Source.BaseField) + 9 * (w 26).val + (w 27).val * w 10 := by
     simp only [ccast, ZMod.natCast_zmod_val]
     linear_combination e4
-  have n0 : w 88 ≠ 46 := by rw [t0]; exact tags.1
-  have n1 : w 92 ≠ 46 := by rw [t1]; exact tags.2.1
-  have n2 : w 101 ≠ 46 := by rw [t2]; exact tags.2.1
-  have n3 : w 110 ≠ 46 := by rw [t3]; exact tags.2.2.1
-  have n4 : w 119 ≠ 46 := by rw [t4]; exact tags.2.2.2
+  have n0 : w 82 ≠ 46 := by rw [t0]; exact tags.1
+  have n1 : w 86 ≠ 46 := by rw [t1]; exact tags.2.1
+  have n2 : w 95 ≠ 46 := by rw [t2]; exact tags.2.1
+  have n3 : w 104 ≠ 46 := by rw [t3]; exact tags.2.2.1
+  have n4 : w 113 ≠ 46 := by rw [t4]; exact tags.2.2.2
   intro query member
   simp [rowQueries, CleanGenericArgumentsNative.UnifiedUncached.native.genericExpressions] at member
   rcases member with rfl | rfl | rfl | rfl | rfl

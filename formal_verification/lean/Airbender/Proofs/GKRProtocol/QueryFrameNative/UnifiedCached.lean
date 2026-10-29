@@ -16,6 +16,6 @@ import_query_frame native certificate "artifacts/compiler/lookup/unified-cached.
   source_model Airbender.Compiler.SourceContractNative.UnifiedCached.native
   history_model Airbender.Compiler.HistoryErasureNative.UnifiedCached.native
   helper_model Airbender.Compiler.HelperValidityNative.UnifiedCached.native
-  counter_model Airbender.Compiler.CounterFrameNative.UnifiedCached.native inputs 145 phase 3 start 0 stop 74
+  counter_model Airbender.Compiler.CounterFrameNative.UnifiedCached.native inputs 137 phase 3 start 0 stop 74
 
 end Airbender.Compiler.QueryFrameNative.UnifiedCached

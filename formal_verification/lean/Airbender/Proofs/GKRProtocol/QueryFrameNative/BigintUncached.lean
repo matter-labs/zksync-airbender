@@ -16,6 +16,6 @@ import_query_frame native certificate "artifacts/compiler/lookup/bigint-uncached
   source_model Airbender.Compiler.SourceContractNative.BigintUncached.native
   history_model Airbender.Compiler.HistoryErasureNative.BigintUncached.native
   helper_model Airbender.Compiler.HelperValidityNative.BigintUncached.native
-  counter_model Airbender.Compiler.CounterFrameNative.BigintUncached.native inputs 277 phase 3 start 0 stop 215
+  counter_model Airbender.Compiler.CounterFrameNative.BigintUncached.native inputs 276 phase 3 start 0 stop 215
 
 end Airbender.Compiler.QueryFrameNative.BigintUncached

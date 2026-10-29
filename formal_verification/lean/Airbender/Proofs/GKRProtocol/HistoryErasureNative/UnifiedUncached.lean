@@ -10,6 +10,6 @@ set_option maxHeartbeats 4000000
 
 import_history_erasure native from "artifacts/compiler/unified-uncached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native
-  source_model Airbender.Compiler.SourceContractNative.UnifiedUncached.native inputs 145
+  source_model Airbender.Compiler.SourceContractNative.UnifiedUncached.native inputs 137
 
 end Airbender.Compiler.HistoryErasureNative.UnifiedUncached

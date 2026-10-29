@@ -287,7 +287,10 @@ elab_rules : command
       readTimes := readTimes.push (← `(($(← locateInput (.BaseLayerMemory low)), $(← locateInput (.BaseLayerMemory high)))))
     let borrows := pair.circuit.aux_layout_data.shuffle_ram_timestamp_comparison_aux_vars
     unless borrows.size == helperRequests.comparisons.size do throwError "source/native arithmetic borrow counts differ"
-    let borrowIndices ← borrows.mapM (fun row => locateInput row.intermediate_borrow)
+    let borrowIndices ← borrows.mapM fun row => do
+      let some row := row |
+        throwError "full arithmetic capture needs a placement for its derived timestamp borrow"
+      locateInput row.intermediate_borrow
     let originalProjection := mkIdent (name.getId ++ `originalProjection)
     let readProjection := mkIdent (name.getId ++ `readProjection)
     let borrowProjection := mkIdent (name.getId ++ `borrowProjection)

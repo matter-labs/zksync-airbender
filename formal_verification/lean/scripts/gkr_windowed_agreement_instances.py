@@ -91,6 +91,18 @@ def module(mode):
             for _ in range(n):member=f'List.mem_cons_of_mem _ ({member})'
             text+=f'theorem {name}\n'+common+f' :\n    {left} {term} = {right} {term} :=\n  FunctionalStep.output_agrees {old}.step{step} hom challenges gamma _ _ (stepHolds{step} publicTops hom challenges gamma physical) ({old}.canonical_step_holds hom challenges gamma physical {old}.step{step} (List.get_mem {old}.program ⟨{step}, by decide +kernel⟩)) ({input_name} publicTops hom challenges gamma physical) {term} ({member})\n\n'
             known[key(a)]=name;known_addresses[key(a)]=a
+    # Keep the public names from the larger witness layout. These addresses
+    # still occur in the current graph. Reuse their checked equality, with the
+    # same statement and no additional premise.
+    first = 155 if mode == 'uncached' else 161
+    for n, offset in enumerate(range(43, 51), first):
+        if n < len(base):
+            continue
+        a = {'InnerLayer': {'layer': 1, 'offset': offset}}
+        assert key(a) in known, ('missing retained address', mode, a)
+        term = address(a)
+        text += (f'theorem baseAgree{n}\n' + common + f' :\n    {left} {term} = {right} {term} :=\n'
+                 f'  {known[key(a)]} publicTops hom challenges gamma physical\n\n')
     for group,ports in c['global_output_map'].items():
         if group=='InitsAndTeardownsProduct':continue
         for i,a in enumerate(ports):

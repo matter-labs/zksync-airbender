@@ -1,7 +1,7 @@
 
 theorem canonical_old_witness (publicTops : Nat → Nat) {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 145 → Source.BaseField) (counts : Fin 3 → Source.BaseField)
+    (sourceValue : Fin @BASE@.inputs.length → Source.BaseField) (counts : Fin 3 → Source.BaseField)
     (row : Fin @MODEL@.imported.data.length) (baseValue : GKRAddress → Source.BaseField)
     (witness : ActualRowWitness publicTops hom challenges gamma sourceValue counts row baseValue
       (canonical publicTops hom challenges gamma baseValue)) :
@@ -27,7 +27,7 @@ theorem canonical_old_witness (publicTops : Nat → Nat) {R : Type} [CommRing R]
 
 def BoundaryOutputsPreserved (publicTops : Nat → Nat) {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R)
-    (sourceValue : Fin 145 → Source.BaseField) (fallback baseValue : GKRAddress → Source.BaseField)
+    (sourceValue : Fin @BASE@.inputs.length → Source.BaseField) (fallback baseValue : GKRAddress → Source.BaseField)
     (values : GKRAddress → R) : Prop :=
   values (.InnerLayer 4 8) = (((List.finRange 2).map (fun set => windowedBoundaryToken
     (@MEMORY@.sourceValues baseValue) publicTops .terminal set.val 512)).map (memoryTokenFingerprint hom challenges)).prod ∧
@@ -40,7 +40,7 @@ def BoundaryOutputsPreserved (publicTops : Nat → Nat) {R : Type} [CommRing R]
 
 def CompleteActualRowWitness (publicTops : Nat → Nat) {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 145 → Source.BaseField) (counts : Fin 3 → Source.BaseField)
+    (sourceValue : Fin @BASE@.inputs.length → Source.BaseField) (counts : Fin 3 → Source.BaseField)
     (row : Fin @MODEL@.imported.data.length) (fallback baseValue : GKRAddress → Source.BaseField)
     (values : GKRAddress → R) : Prop :=
   ActualRowWitness publicTops hom challenges gamma sourceValue counts row baseValue values ∧
@@ -50,7 +50,7 @@ def CompleteActualRowWitness (publicTops : Nat → Nat) {R : Type} [CommRing R]
 
 theorem complete_row_extends (publicTops : Nat → Nat) {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin @BASE@.inputs.length → Source.BaseField)
     (original : Satisfies (@CONTRACT@.originals.map Expression.polynomial) sourceValue)
     (clockValid : Source.clockContract @CONTRACT@.clock (@BASE@.helperPlacement.memory.project sourceValue))
     (primitives : @HELPER@.profile.ExecutionValid (@HELPER@.execute.value (@BASE@.helperPlacement.memory.project sourceValue))

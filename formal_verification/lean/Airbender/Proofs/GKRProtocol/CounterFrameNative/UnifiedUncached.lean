@@ -12,11 +12,11 @@ set_option maxHeartbeats 4000000
 import_counter_frame native from "artifacts/compiler/unified-uncached.json"
   base_model Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native
   table_model Airbender.Compiler.TableNative.UnifiedUncached.native
-  helper_model Airbender.Compiler.HelperNative.UnifiedUncached.native inputs 145
+  helper_model Airbender.Compiler.HelperNative.UnifiedUncached.native inputs 137
 
 theorem counter_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (original : Satisfies (Airbender.Compiler.SourceContractNative.UnifiedUncached.native.originals.map Expression.polynomial) sourceValue)
     (clockValid : Source.clockContract Airbender.Compiler.SourceContractNative.UnifiedUncached.native.clock (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.helperPlacement.memory.project sourceValue))
     (primitives : Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.execute.value (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.helperPlacement.memory.project sourceValue))

@@ -10,7 +10,7 @@ set_option maxHeartbeats 8000000
 
 theorem public_boundary_outputs (publicTops : Nat → Nat) {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 145 → Source.BaseField) (counts : Fin 3 → Source.BaseField)
+    (sourceValue : Fin Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.inputs.length → Source.BaseField) (counts : Fin 3 → Source.BaseField)
     (row : Fin Airbender.Compiler.MaterializedNative.UnifiedCached.native.model.imported.data.length)
     (fallback baseValue : GKRAddress → Source.BaseField) (values : GKRAddress → R)
     (witness : CompleteActualRowWitness publicTops hom challenges gamma sourceValue counts row

@@ -15,6 +15,6 @@ import_memory_frame native from "artifacts/compiler/bigint-uncached-source.json"
   history_model Airbender.Compiler.HistoryErasureNative.BigintUncached.native
   helper_model Airbender.Compiler.HelperValidityNative.BigintUncached.native
   counter_model Airbender.Compiler.CounterFrameNative.BigintUncached.native
-  inputs 277 phase 0 start 0 stop 280
+  inputs 276 phase 0 start 0 stop 280
 
 end Airbender.Compiler.MemoryFrameNative.BigintUncached

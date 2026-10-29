@@ -26,7 +26,7 @@ theorem clock_lookup_inventory :
     (Airbender.Compiler.CleanArgumentsNative.UnifiedUncached.native.timestampExpressions.map Trace.timestampLookup) := by rfl
 
 theorem range_lookup0
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)
@@ -47,7 +47,7 @@ theorem range_lookup0
   exact Airbender.Compiler.CleanScalarNative.UnifiedUncached.native.range16_clean_refinement _ valid _
 
 theorem range_lookup1
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)
@@ -68,7 +68,7 @@ theorem range_lookup1
   exact Airbender.Compiler.CleanScalarNative.UnifiedUncached.native.range16_clean_refinement _ valid _
 
 theorem range_lookup2
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)
@@ -89,7 +89,7 @@ theorem range_lookup2
   exact Airbender.Compiler.CleanScalarNative.UnifiedUncached.native.range16_clean_refinement _ valid _
 
 theorem range_lookup3
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)
@@ -110,7 +110,7 @@ theorem range_lookup3
   exact Airbender.Compiler.CleanScalarNative.UnifiedUncached.native.range16_clean_refinement _ valid _
 
 theorem range_lookup4
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)
@@ -131,7 +131,7 @@ theorem range_lookup4
   exact Airbender.Compiler.CleanScalarNative.UnifiedUncached.native.range16_clean_refinement _ valid _
 
 theorem range_lookup5
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)
@@ -152,7 +152,7 @@ theorem range_lookup5
   exact Airbender.Compiler.CleanScalarNative.UnifiedUncached.native.range16_clean_refinement _ valid _
 
 theorem range_lookup6
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)
@@ -173,7 +173,7 @@ theorem range_lookup6
   exact Airbender.Compiler.CleanScalarNative.UnifiedUncached.native.range16_clean_refinement _ valid _
 
 theorem range_lookup7
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)
@@ -194,7 +194,7 @@ theorem range_lookup7
   exact Airbender.Compiler.CleanScalarNative.UnifiedUncached.native.range16_clean_refinement _ valid _
 
 theorem range_lookup8
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)
@@ -215,7 +215,7 @@ theorem range_lookup8
   exact Airbender.Compiler.CleanScalarNative.UnifiedUncached.native.range16_clean_refinement _ valid _
 
 theorem range_lookup9
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)
@@ -236,7 +236,7 @@ theorem range_lookup9
   exact Airbender.Compiler.CleanScalarNative.UnifiedUncached.native.range16_clean_refinement _ valid _
 
 theorem range_lookup10
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)
@@ -257,7 +257,7 @@ theorem range_lookup10
   exact Airbender.Compiler.CleanScalarNative.UnifiedUncached.native.range16_clean_refinement _ valid _
 
 theorem range_lookup11
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)
@@ -278,7 +278,7 @@ theorem range_lookup11
   exact Airbender.Compiler.CleanScalarNative.UnifiedUncached.native.range16_clean_refinement _ valid _
 
 theorem range_lookup12
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)
@@ -299,7 +299,7 @@ theorem range_lookup12
   exact Airbender.Compiler.CleanScalarNative.UnifiedUncached.native.range16_clean_refinement _ valid _
 
 theorem generic_lookup0
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)
@@ -350,7 +350,7 @@ theorem generic_lookup0
   exact valid
 
 theorem generic_lookup1
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)
@@ -401,7 +401,7 @@ theorem generic_lookup1
   exact valid
 
 theorem generic_lookup2
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)
@@ -452,7 +452,7 @@ theorem generic_lookup2
   exact valid
 
 theorem generic_lookup3
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)
@@ -503,7 +503,7 @@ theorem generic_lookup3
   exact valid
 
 theorem generic_lookup4
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)
@@ -554,7 +554,7 @@ theorem generic_lookup4
   exact valid
 
 theorem retained_clock_from_source
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (physical : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
     (inputAgreement : ∀ wire, physical (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.inputBank.address wire) = Airbender.Compiler.CounterFrameNative.UnifiedUncached.native.assigned (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue) counts wire)

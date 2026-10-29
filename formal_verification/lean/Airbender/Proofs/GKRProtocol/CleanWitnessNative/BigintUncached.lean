@@ -10,7 +10,7 @@ set_option maxRecDepth 65536
 set_option maxHeartbeats 4000000
 
 theorem complete_trace_clean_extends
-    (sourceValue : Fin Airbender.Compiler.MaterializedNative.BigintUncached.native.model.imported.data.length → Fin 277 → Source.BaseField)
+    (sourceValue : Fin Airbender.Compiler.MaterializedNative.BigintUncached.native.model.imported.data.length → Fin 276 → Source.BaseField)
     (original : ∀ row, Satisfies (Airbender.Compiler.SourceContractNative.BigintUncached.native.originals.map Expression.polynomial) (sourceValue row))
     (clockValid : ∀ row, Source.clockContract Airbender.Compiler.SourceContractNative.BigintUncached.native.clock (Airbender.Compiler.FullArithmeticNative.BigintUncached.native.helperPlacement.memory.project (sourceValue row)))
     (primitives : ∀ row, Airbender.Compiler.HelperValidityNative.BigintUncached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.BigintUncached.native.execute.value (Airbender.Compiler.FullArithmeticNative.BigintUncached.native.helperPlacement.memory.project (sourceValue row)))

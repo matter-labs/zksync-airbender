@@ -56,14 +56,21 @@ modes with the current oracle. All 68 small-program comparisons also passed.
 These cover both cache modes for two ordinary programs, an extended-round
 caller and the blessed split Keccak caller. The small matrix used an optimized
 exporter build. It changed no Rust source or dependency version.
-The compiler binding builds are in progress. The bigint and unified wiring
+The compiler binding builds passed. The bigint and unified wiring
 certificates passed in both cache modes with fresh native graph imports.
 The wiring generator check passed for all 22 captures and 304 module targets.
 The full arithmetic and windowed agreement generator checks also passed.
-All four current arithmetic imports passed focused checks. The bigint cached
-arithmetic, functional, helper and argument bindings passed. The other binding
-builds remain in progress. The last batch reached its 900-second limit.
-It left no owned process running. The checked module records remain available.
+All four current arithmetic imports passed focused checks. The complete
+compiler group passed 497 checks. It covers every bigint and unified compiler
+case module, both cache modes, the shared logical and program execution
+consumers, and the decoder dependencies that those consumers import.
+The group reuses the unchanged finite-table cache. Earlier batches reached
+their time limit or found stale cache imports. The last batch passed and left
+no owned process running. All checked module records remain available.
+The windowed witness and public-boundary templates now use the imported input
+list length. They no longer fix the old 145-wire dimension. The public-table
+tag proof uses the new ROM gate and pooled query columns. Its statement and
+premises stay the same. All eleven final source and generator checks passed.
 Earlier build results apply to the old base.
 Unified's current column-role inventory, dispatch bound and ordinary PC
 increment passed focused kernel builds. Bigint's current column-role inventory,
@@ -130,7 +137,9 @@ These inputs serve the full unsigned target's three fixed-setup premises.
 The provenance controls check that Lake requires each native JSON input.
 All 20 controls passed. A focused build passed with the new dependencies.
 
-The branch has not been force-pushed.
+The focused rebase qualification passed. The full frontend build, environment
+audit and baseline refresh, transitive kernel replay, and Linux runtime and
+warm-cache qualification did not run. They remain pending for user review.
 
 The full unsigned relation now combines the six CPU families, modular MOPs,
 nondeterminism reads, bigint, BLAKE2 extended-round and the three split Keccak

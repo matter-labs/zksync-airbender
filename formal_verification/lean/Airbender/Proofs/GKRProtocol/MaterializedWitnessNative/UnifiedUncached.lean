@@ -23,7 +23,7 @@ theorem timestampColumns : Airbender.Compiler.TableNative.UnifiedUncached.native
 
 def OutputsPreserved {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length → Source.BaseField)
     (row : Fin Airbender.Compiler.MaterializedNative.UnifiedUncached.native.model.imported.data.length) (values : GKRAddress → R) : Prop :=
   (Airbender.Compiler.LookupNative.UnifiedUncached.native.genericOutput).value values =
@@ -41,7 +41,7 @@ def OutputsPreserved {R : Type} [CommRing R]
 
 theorem source_outputs_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (original : Satisfies (Airbender.Compiler.SourceContractNative.UnifiedUncached.native.originals.map Expression.polynomial) sourceValue)
     (clockValid : Source.clockContract Airbender.Compiler.SourceContractNative.UnifiedUncached.native.clock (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.helperPlacement.memory.project sourceValue))
     (primitives : Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.execute.value (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.helperPlacement.memory.project sourceValue))
@@ -78,7 +78,7 @@ theorem source_outputs_extends {R : Type} [CommRing R]
   · have tableCells : ∀ column ∈ Airbender.Compiler.TableNative.UnifiedUncached.native.genericSetupColumns, assignment.base column.address = Airbender.Compiler.MaterializedNative.UnifiedUncached.native.model.value row column := by
       intro column member
       exact setupAt column (of_decide_eq_true (List.all_eq_true.mp genericColumns column member))
-    have countCell : assignment.base (.BaseLayerWitness 65) = counts ⟨0, by decide⟩ := countsAt ⟨0, by decide⟩
+    have countCell : assignment.base (.BaseLayerWitness 57) = counts ⟨0, by decide⟩ := countsAt ⟨0, by decide⟩
     have reduced := Airbender.Compiler.TableNative.UnifiedUncached.native.genericSourceTableReduction hom challenges gamma assignment defined
       (Airbender.Compiler.FunctionalLinksNative.UnifiedUncached.native.lookupCopies baseValue arithmetic) holds (Airbender.Compiler.MaterializedNative.UnifiedUncached.native.model.value row) (counts ⟨0, by decide⟩) tableCells countCell
     rw [typedEq] at reduced
@@ -92,7 +92,7 @@ theorem source_outputs_extends {R : Type} [CommRing R]
   · have tableCells : ∀ column ∈ Airbender.Compiler.TableNative.UnifiedUncached.native.range16SetupColumns, assignment.base column.address = Airbender.Compiler.MaterializedNative.UnifiedUncached.native.model.value row column := by
       intro column member
       exact setupAt column (of_decide_eq_true (List.all_eq_true.mp range16Columns column member))
-    have countCell : assignment.base (.BaseLayerWitness 63) = counts ⟨1, by decide⟩ := countsAt ⟨1, by decide⟩
+    have countCell : assignment.base (.BaseLayerWitness 55) = counts ⟨1, by decide⟩ := countsAt ⟨1, by decide⟩
     have reduced := Airbender.Compiler.TableNative.UnifiedUncached.native.range16SourceTableReduction hom challenges gamma assignment defined
       (Airbender.Compiler.FunctionalLinksNative.UnifiedUncached.native.lookupCopies baseValue arithmetic) holds (Airbender.Compiler.MaterializedNative.UnifiedUncached.native.model.value row) (counts ⟨1, by decide⟩) tableCells countCell
     rw [typedEq] at reduced
@@ -106,7 +106,7 @@ theorem source_outputs_extends {R : Type} [CommRing R]
   · have tableCells : ∀ column ∈ Airbender.Compiler.TableNative.UnifiedUncached.native.timestampSetupColumns, assignment.base column.address = Airbender.Compiler.MaterializedNative.UnifiedUncached.native.model.value row column := by
       intro column member
       exact setupAt column (of_decide_eq_true (List.all_eq_true.mp timestampColumns column member))
-    have countCell : assignment.base (.BaseLayerWitness 64) = counts ⟨2, by decide⟩ := countsAt ⟨2, by decide⟩
+    have countCell : assignment.base (.BaseLayerWitness 56) = counts ⟨2, by decide⟩ := countsAt ⟨2, by decide⟩
     have reduced := Airbender.Compiler.HelperNative.UnifiedUncached.native.timestampSourceReduction hom challenges gamma assignment helperDefined
       (Airbender.Compiler.FunctionalLinksNative.UnifiedUncached.native.helperCopies baseValue arithmetic) holds
     change (Airbender.Compiler.LookupNative.UnifiedUncached.native.timestampOutput).value (assignment.value Airbender.Compiler.ConsumerNative.UnifiedUncached.native.typing hom) =
@@ -130,13 +130,13 @@ noncomputable def outputPorts (group : Fin 3) : RationalPorts :=
 def setupColumns (group : Fin 3) : List SourceSetupColumn :=
   ([Airbender.Compiler.TableNative.UnifiedUncached.native.genericSetupColumns, Airbender.Compiler.TableNative.UnifiedUncached.native.range16SetupColumns, Airbender.Compiler.TableNative.UnifiedUncached.native.timestampSetupColumns]).get group
 
-noncomputable def sourceRequests (sourceValue : Fin 145 → Source.BaseField) (group : Fin 3) : List MaterializedQuery :=
+noncomputable def sourceRequests (sourceValue : Fin 137 → Source.BaseField) (group : Fin 3) : List MaterializedQuery :=
   ([Airbender.Compiler.LookupSourceNative.UnifiedUncached.native.genericQueries.map (fun query => query.materialized (sourceValue ∘ Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.originalProjection)),
     Airbender.Compiler.LookupSourceNative.UnifiedUncached.native.range16Queries.map (fun query => query.materialized (sourceValue ∘ Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.originalProjection)),
     Airbender.Compiler.HelperNative.UnifiedUncached.native.fields.map (fun field => MaterializedQuery.mk
       [field.value (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.helperPlacement.project (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.canonical sourceValue))] 1)]).get group
 
-def AuthoredLookupValid (sourceValue : Fin 145 → Source.BaseField) : Prop :=
+def AuthoredLookupValid (sourceValue : Fin 137 → Source.BaseField) : Prop :=
   (∀ query ∈ Airbender.Compiler.LookupSourceNative.UnifiedUncached.native.genericQueries,
     query.weight (RingHom.id _) (sourceValue ∘ Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.originalProjection) ≠ 0 →
     Airbender.Compiler.MaterializedNative.UnifiedUncached.native.model.Contains Airbender.Compiler.TableNative.UnifiedUncached.native.genericSetupColumns
@@ -148,7 +148,7 @@ def AuthoredLookupValid (sourceValue : Fin 145 → Source.BaseField) : Prop :=
 
 theorem outputs_preserved_uniform {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin 3 → Source.BaseField)
     (row : Fin Airbender.Compiler.MaterializedNative.UnifiedUncached.native.model.imported.data.length) (values : GKRAddress → R)
     (preserved : OutputsPreserved hom challenges gamma sourceValue counts row values) :
@@ -167,7 +167,7 @@ theorem outputs_preserved_uniform {R : Type} [CommRing R]
     have coordinate : (2 : Fin 3) = (⟨2, by decide⟩ : Fin Airbender.Compiler.TableNative.UnifiedUncached.native.multiplicityColumns.length) := by decide +kernel
     rw [coordinate]
 
-theorem source_requests_valid (sourceValue : Fin 145 → Source.BaseField)
+theorem source_requests_valid (sourceValue : Fin 137 → Source.BaseField)
     (primitives : Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.execute.value (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.helperPlacement.memory.project sourceValue))
       (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.helperPlacement.memory.project sourceValue))
     (authored : AuthoredLookupValid sourceValue) :
@@ -195,7 +195,7 @@ theorem source_requests_valid (sourceValue : Fin 145 → Source.BaseField)
 
 def RowWitness {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (sourceValue : Fin 145 → Source.BaseField)
+    (sourceValue : Fin 137 → Source.BaseField)
     (counts : Fin 3 → Source.BaseField)
     (row : Fin Airbender.Compiler.MaterializedNative.UnifiedUncached.native.model.imported.data.length) (baseValue : GKRAddress → Source.BaseField)
     (values : GKRAddress → R) : Prop :=
@@ -211,7 +211,7 @@ def RowWitness {R : Type} [CommRing R]
       OutputsPreserved hom challenges gamma sourceValue counts row values
 
 theorem native_lookup_trace_extends
-    (sourceValue : Fin Airbender.Compiler.MaterializedNative.UnifiedUncached.native.model.imported.data.length → Fin 145 → Source.BaseField)
+    (sourceValue : Fin Airbender.Compiler.MaterializedNative.UnifiedUncached.native.model.imported.data.length → Fin 137 → Source.BaseField)
     (original : ∀ row, Satisfies (Airbender.Compiler.SourceContractNative.UnifiedUncached.native.originals.map Expression.polynomial) (sourceValue row))
     (clockValid : ∀ row, Source.clockContract Airbender.Compiler.SourceContractNative.UnifiedUncached.native.clock (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.helperPlacement.memory.project (sourceValue row)))
     (primitives : ∀ row, Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.profile.ExecutionValid (Airbender.Compiler.HelperValidityNative.UnifiedUncached.native.execute.value (Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native.helperPlacement.memory.project (sourceValue row)))

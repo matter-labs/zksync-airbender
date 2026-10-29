@@ -29,6 +29,6 @@ set_option Elab.async false
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
-finalize_full_compiler_arithmetic native inputs 277 variables 324 sources 136 gates 183
+finalize_full_compiler_arithmetic native inputs 276 variables 323 sources 135 gates 182
 
 end Airbender.Compiler.FullArithmeticNative.BigintCached

@@ -14,6 +14,6 @@ import_memory_execute native
   helper_model Airbender.Compiler.HelperValidityNative.BigintUncached.native
   helper_fields Airbender.Compiler.HelperNative.BigintUncached.native
   frame_model Airbender.Compiler.MemoryFrameNative.BigintUncached.native
-  inputs 277
+  inputs 276
 
 end Airbender.Compiler.MemoryExecuteNative.BigintUncached

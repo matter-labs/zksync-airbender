@@ -10,6 +10,6 @@ set_option maxHeartbeats 4000000
 
 import_history_erasure native from "artifacts/compiler/bigint-cached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.BigintCached.native
-  source_model Airbender.Compiler.SourceContractNative.BigintCached.native inputs 277
+  source_model Airbender.Compiler.SourceContractNative.BigintCached.native inputs 276
 
 end Airbender.Compiler.HistoryErasureNative.BigintCached

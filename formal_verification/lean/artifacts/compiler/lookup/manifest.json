@@ -34,13 +34,13 @@
         "copy_equations": 8,
         "decoder_requests": 0,
         "generic_requests": 61,
-        "lower_variables": 223,
+        "lower_variables": 222,
         "range16_requests": 32,
-        "source_variables": 217
+        "source_variables": 216
       },
-      "pair_sha256": "08f17f9d586e3e51a2ff2364d20b3bec1e43657c9c66480543e9d39d3dbc3283",
-      "sha256": "610fe1a1f6c5ed1606f63317e5ad6211bb942da7fb0858003a2ce24acb24c599",
-      "source_sha256": "54055a64181dcf76a915fa3053c75b89403da961f0ee546053caa5c2adcbb08c"
+      "pair_sha256": "dfd94c41c84ade03488ac1bd7d439cf1362de17796317e54146a6593e28d8c1f",
+      "sha256": "c9ac0b4a191a7794e5de7e91750afd8eafd77b6ff68ad2f6f50435947345bcce",
+      "source_sha256": "12a5b84cfc4577d79e71fc76855037a9ab31334a4d4aab80bfbdd3693cebe7de"
     },
     "bigint-uncached": {
       "counts": {
@@ -48,13 +48,13 @@
         "copy_equations": 8,
         "decoder_requests": 0,
         "generic_requests": 61,
-        "lower_variables": 223,
+        "lower_variables": 222,
         "range16_requests": 32,
-        "source_variables": 217
+        "source_variables": 216
       },
-      "pair_sha256": "8a3aa0a3f4139d30ea400f62809a116823e22b31664b4b5e835b860acf77f8f6",
-      "sha256": "610fe1a1f6c5ed1606f63317e5ad6211bb942da7fb0858003a2ce24acb24c599",
-      "source_sha256": "79b9d4ee996a1613cc37bcab07ca01b188ebb1d499c3a171c06587f4bb218e28"
+      "pair_sha256": "c9217b020047987718b7dbbbf5af0b6666b05249742f5a42c23210fad50005c0",
+      "sha256": "c9ac0b4a191a7794e5de7e91750afd8eafd77b6ff68ad2f6f50435947345bcce",
+      "source_sha256": "02c5aefd93b887296f349b1dbb6d031769faff6dcc05833e2d4a9449b0af90b8"
     },
     "blake-g-cached": {
       "counts": {
@@ -258,13 +258,13 @@
         "copy_equations": 4,
         "decoder_requests": 1,
         "generic_requests": 5,
-        "lower_variables": 136,
+        "lower_variables": 128,
         "range16_requests": 13,
-        "source_variables": 131
+        "source_variables": 123
       },
-      "pair_sha256": "e951bbead0990e2b103db991d4420f41643b1192eb370a895754199fb3b8d9b0",
-      "sha256": "095db7f9e46eb4d1135b08e95112679ed6fbb701af8f99d5de577a34a3d83c30",
-      "source_sha256": "348f702900ca09b26e183af85e8e5fb470ee46dab8126f48f323efe5614fb425"
+      "pair_sha256": "e0336bb56fc2fa42175be4274617a7a3c686d2d2cf808dda7301aa8303c65485",
+      "sha256": "5b6663dcfa8b530c8681a3140165b583d52fbc7d654f5c4d2c6cf43ce58ded15",
+      "source_sha256": "36401e8a6bbb8cee17a9e39501ca11a418b0881436d126293fe25f28d449877f"
     },
     "unified-uncached": {
       "counts": {
@@ -272,13 +272,13 @@
         "copy_equations": 3,
         "decoder_requests": 1,
         "generic_requests": 5,
-        "lower_variables": 134,
+        "lower_variables": 126,
         "range16_requests": 13,
-        "source_variables": 131
+        "source_variables": 123
       },
-      "pair_sha256": "1d7e22d89bb28d54b908021530ba209745f43ed78f27df58bfffc1db55526669",
-      "sha256": "9f7d1b36ce7480ecfa66b2d53bfcbbf36365aece2dbc875440ed4cf935b12937",
-      "source_sha256": "ee0cbe8112c6644991d2e9199203a334185fec255a1ad48d0f4f75e607bdd4c7"
+      "pair_sha256": "aa0a98b45fe363c41d4e6087fc92abac053bbb0f39450860348b542c33e59729",
+      "sha256": "359e939f8d86545c20c521f06bb0a26b16513123e3ce97160d8206a7638421fb",
+      "source_sha256": "69a2ebd311daf6789c9c6c96cbfdd1c4fbded170f2839b243cebea8ddf86f876"
     },
     "word-memory-cached": {
       "counts": {
@@ -310,7 +310,7 @@
     }
   },
   "format_version": 1,
-  "parent_manifest_sha256": "bc915fbe5cd91b8445b04cbf018853b04c9b1aa5672edf07e06ff4b842e8d09a",
+  "parent_manifest_sha256": "b67e94e5e7cd9376689dd65d97c2b41bb048ed262cc8f151658cba19044fb255",
   "scope": "source lookup/range16/decoder fields only; graph reduction, cache binding and RAM remain required",
   "synthesizer_inputs": {
     "cs/src/definitions/table_type.rs": "8add95beeb27ae1156257bc3d213bb18fe0ac5bade89e538391c1539244c3455",
