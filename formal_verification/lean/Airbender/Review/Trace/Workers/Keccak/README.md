@@ -39,6 +39,8 @@ control lookups still need to establish each positive distance.
 The [group equation proofs](../../../../Proofs/Keccak/SplitGroupEquations.lean)
 extract both clock equations and Boolean borrows for all four theta/rho and
 six chi5 groups from both cache modes.
+[Column-parity clock proofs](../../../../Proofs/Keccak/SplitColumnParityClock.lean)
+derive the ordinary per-port comparison facts from both compiled captures.
 Under the [ValidDelegationUse](../../UnifiedReduced/DelegationUse.lean) contract, special5 calls are
 excluded; these lemmas therefore do not establish blessed Keccak execution.
 Split worker modeling and integration are required open work. See
