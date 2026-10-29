@@ -81,6 +81,10 @@ The combined stream target still needs its execution proof.
 Its initialization adapter passed a focused kernel check. The adapter binds
 the public text registry and native seed to the combined stream boot inputs.
 Its two proofs use only the three allowed axioms.
+Unified's native external-read specification and register-history execution
+proof passed focused kernel checks. They keep the stream slot binding
+explicit. Both proofs use only the three allowed axioms. Stream ordering and
+the combined execution proof remain open.
 All nine ordinary worker and CPU memory-port inventories passed focused
 checks. Their timestamp records use an explicit absent borrow subtrahend.
 The focused circuit and proof group passed all 288 module checks.

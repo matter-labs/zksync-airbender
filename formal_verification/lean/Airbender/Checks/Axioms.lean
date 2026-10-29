@@ -1,4 +1,5 @@
 import Airbender.Proofs.UnifiedReduced.StreamInitialization
+import Airbender.Proofs.UnifiedReduced.ExternalInput
 import Airbender.Proofs.GKRProtocol.LogicalLookupSegments
 import Airbender.Review.Compiler.Theorems
 import Tests.GKRMemoryFrames
@@ -13643,3 +13644,7 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unified_decoder_fields
 
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unified_initialization_inputs
+
+#print axioms Airbender.UnifiedReduced.ExternalInput.Proofs.read_spec
+
+#print axioms Airbender.UnifiedReduced.ExternalInput.Proofs.read_execution
