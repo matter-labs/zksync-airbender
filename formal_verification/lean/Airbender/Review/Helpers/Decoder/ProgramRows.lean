@@ -97,6 +97,18 @@ structure CallerEntry where
   instruction : SailRV32.instruction
   csr : Nat
 
+/-- Public-source evidence for a virtual CSR caller. Family-specific worker
+behavior is deliberately absent from this decoder claim. -/
+structure CallerEntry.Source (before : State) (allowed : Nat → Bool)
+    (entry : CallerEntry) : Prop where
+  bytes : (Cell.ram entry.pc).read before = .ok entry.bits before
+  decoded : run (SailRV32.Functions.encdec_backwards entry.bits) before =
+    .ok entry.instruction before
+  csrShape : ∃ address : BitVec 12,
+    entry.instruction = .CSRReg (address, .Regidx 0, .Regidx 0, .CSRRW) ∧
+      entry.csr = address.toNat
+  allowlisted : allowed entry.csr = true
+
 def callerEntryWith (allowed : Nat → Bool) (_initial : State) (bits : BitVec 32)
     (index : Nat) : Option CallerEntry := do
   let instruction ← match SailRV32.Functions.encdec_backwards bits with
@@ -112,6 +124,10 @@ def callerEntryWith (allowed : Nat → Bool) (_initial : State) (bits : BitVec 3
 def callerEntry (config : Config) (initial : State) (bits : BitVec 32)
     (index : Nat) : Option CallerEntry :=
   callerEntryWith config.delegationCSR initial bits index
+
+def callerProgramOf (config : Config) (initial : State)
+    (text : List (BitVec 32)) : List CallerEntry :=
+  text.zipIdx.filterMap fun (bits, index) => callerEntry config initial bits index
 
 def CallerEntry.query {p : Nat} (entry : CallerEntry) : Vector (ZMod p) 9 :=
   let pc := Word.ofBitVec entry.pc

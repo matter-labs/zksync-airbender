@@ -56,6 +56,10 @@ def Entry.query {p : Nat} : Entry → Vector (ZMod p) 9
 def programOf (initial : State) (text : List (BitVec 32)) : List Entry :=
   text.zipIdx.filterMap fun (bits, index) => entry initial bits index
 
+def callerProgramOf (initial : State) (text : List (BitVec 32)) : List CallerEntry :=
+  text.zipIdx.filterMap fun (bits, index) =>
+    callerEntryWith delegationCSR initial bits index
+
 /-- The public ordinary/custom/MOP instruction entries after removing virtual
 CSR callers. The caller branch remains in `programOf` for its own binding. -/
 def ordinaryProgramOf (initial : State) (text : List (BitVec 32)) :
