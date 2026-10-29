@@ -115,6 +115,9 @@ kernel and axiom checks. All instruction classes now have native cycle proofs
 for the combined registry. The native read bit matches public metadata.
 Ordinary, custom, modular and caller rows consume no stream words. These
 selector proofs passed focused kernel and axiom checks.
+The combined noncaller dispatcher also passed. It selects the public Sail
+clause for every ordinary, custom, modular and external-input row. It proves
+retirement in the actual native cycle and the exact stream-count change.
 Unified still needs cycle composition with stream
 positions, supported worker controls from
 stream reachability, and the native worker ROM adapter. The target remains open.
