@@ -34,6 +34,20 @@ theorem reduced_excludes_split (kind : Kind) :
     Config.reduced.delegationCSR kind.csr = false := by
   cases kind <;> decide
 
+/-- Every word of a blessed public group selects its intended split worker
+and is admitted by the full unsigned native preprocessing allowlist. The
+separate worker/control proof must still establish its functional effect. -/
+theorem blessed_group_admitted (text : List (BitVec 32)) (index : Nat)
+    (group : SplitCallGroup text index) :
+    ∃ start, start ≤ index ∧ index < start + 361 ∧
+      ∀ offset < 361,
+        text[start + offset]? = some (csrWord (kindAt offset).csr) ∧
+        kindOfCSR (kindAt offset).csr = some (kindAt offset) ∧
+        Config.fullUnsigned.delegationCSR (kindAt offset).csr = true := by
+  obtain ⟨start, begins, ends, words⟩ := group
+  exact ⟨start, begins, ends, fun offset bound =>
+    ⟨words offset bound, kind_of_csr _, full_unsigned_allows_split _⟩⟩
+
 /-- Preserve the public PC, instruction and bits when interpreting a native
 virtual caller as a split-worker caller. -/
 def fromNative (caller : CallerEntry) (kind : Kind) : ProgramEntry :=
