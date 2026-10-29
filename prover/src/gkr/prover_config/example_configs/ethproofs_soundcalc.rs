@@ -145,7 +145,7 @@ impl EthproofsInternalRound {
             .expect("an internal round folds at least once")
     }
 
-    fn to_round(&self) -> WhirInternalRound {
+    fn to_round(self) -> WhirInternalRound {
         assert_eq!(
             self.analysis.folding_pow_bits_per_step.len(),
             self.folding_log2,
@@ -395,6 +395,13 @@ const fn round(
     }
 }
 
+/// Johnson bits per query at r = 13: r/2 - log2(7/6), rounded to two decimals.
+#[expect(
+    clippy::approx_constant,
+    reason = "rounded Johnson bits per query, unrelated to the circle constant tau"
+)]
+const JOHNSON_R13_BITS_PER_QUERY: f64 = 6.28;
+
 /// Every certified schedule. Sec-100, base LDE factor 2, cap 16.
 pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
     EthproofsSoundcalcEntry {
@@ -415,7 +422,7 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
                 "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE 2^9 (the ladder's) keeps the domain at 2^26 where the fold grind is 24 bits; 4.28 bits/query")),
             round(11, 5, 14, 27, 2, jbr(3, 5.28, 74, &[24, 23, 22, 21, 20],
                 "m = 3; LDE cut from the ladder's 2^14 to 2^11 so the 2^23 domain keeps the fold grind at 24 bits; 5.28 bits/query")),
-            round(13, 4, 12, 25, 0, jbr(3, 6.28, 74, &[24, 23, 22, 21],
+            round(13, 4, 12, 25, 0, jbr(3, JOHNSON_R13_BITS_PER_QUERY, 74, &[24, 23, 22, 21],
                 "m = 3; LDE cut from the ladder's 2^19 to 2^13 (domain 2^20) so 24 bits of fold grind suffice; 6.28 bits/query, the OOD term needs no grind")),
         ],
         pessimistic_ladder: "ladder: folds [1,5,5,5,4], LDE log2 [4,9,14,19], queries [89,23,10,7,5], query PoW [26,24,25,19,21], no folding / OOD PoW.",
@@ -463,7 +470,7 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
                 "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE cut from the ladder's 2^11 to 2^9 (domain 2^25), fold grind 23 bits; 4.28 bits/query")),
             round(11, 5, 14, 27, 1, jbr(3, 5.28, 74, &[23, 22, 21, 20, 19],
                 "m = 3; LDE cut from the ladder's 2^15 to 2^11 (domain 2^22), fold grind 23 bits; 5.28 bits/query")),
-            round(13, 5, 12, 25, 0, jbr(3, 6.28, 74, &[23, 22, 21, 20, 19],
+            round(13, 5, 12, 25, 0, jbr(3, JOHNSON_R13_BITS_PER_QUERY, 74, &[23, 22, 21, 20, 19],
                 "m = 3; LDE cut from the ladder's 2^19 to 2^13 (domain 2^19), fold grind 23 bits; 6.28 bits/query, no OOD grind")),
         ],
         pessimistic_ladder: "ladder (virtual twin): folds [0,6,5,5,5], LDE log2 [5,11,15,19], queries [89,15,8,6,5], query PoW [26,25,27,25,21], no folding / OOD PoW.",

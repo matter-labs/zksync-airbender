@@ -152,7 +152,7 @@ pub fn prove_built_family_trace_with_prover_config_and_gkr_backend<
         .commit_for_config_with_backend::<DefaultTreeConstructor, BabyBearExt4, _>(
             &backend,
             &twiddles,
-            &prover_config,
+            prover_config,
             worker,
         );
     println!(

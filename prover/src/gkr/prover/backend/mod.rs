@@ -903,6 +903,7 @@ fn ws_lde_packed_monomials_into_cosets<F: PrimeField + TwoAdicField>(
 ///      at least as many blocks as threads (no barriers at all), the
 ///      worker-parallel transform block by block otherwise;
 ///   3. the poly x coset LDE grid ([`ws_lde_packed_monomials_into_cosets`]).
+///
 /// Same field operations as the reference composition in a different order:
 /// the values are identical (exact arithmetic) — see the parity tests.
 fn ws_lde_packed_polys_from_hypercubes<F: PrimeField + TwoAdicField>(
@@ -995,11 +996,9 @@ fn ws_lde_packed_polys_from_hypercubes<F: PrimeField + TwoAdicField>(
             .flat_map(|packed| packed.chunks_mut(n))
             .collect();
         if blocks.len() >= worker.get_num_cores() {
-            worker.pool.install(|| {
-                blocks
-                    .into_par_iter()
-                    .for_each(|block| block_transform_serial(block))
-            });
+            worker
+                .pool
+                .install(|| blocks.into_par_iter().for_each(block_transform_serial));
         } else {
             for block in blocks {
                 crate::gkr::whir::hypercube_to_monomial::parallel_multivariate_hypercube_evals_into_coeffs(
