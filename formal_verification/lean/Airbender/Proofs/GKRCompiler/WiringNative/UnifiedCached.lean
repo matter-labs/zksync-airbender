@@ -4,7 +4,6 @@ import Airbender.Proofs.GKRCompiler.WiringParts.UnifiedCachedUnique1
 import Airbender.Proofs.GKRCompiler.WiringParts.UnifiedCachedUnique2
 import Airbender.Proofs.GKRCompiler.WiringParts.UnifiedCachedPlacement0
 import Airbender.Proofs.GKRCompiler.WiringParts.UnifiedCachedPlacement1
-import Airbender.Proofs.GKRCompiler.WiringParts.UnifiedCachedPlacement2
 import Airbender.Proofs.GKRCompiler.WiringParts.UnifiedCachedGates0
 import Airbender.Proofs.GKRCompiler.WiringParts.UnifiedCachedGates1
 import Airbender.Proofs.GKRCompiler.WiringParts.UnifiedCachedGates2

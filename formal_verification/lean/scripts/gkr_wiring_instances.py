@@ -60,6 +60,16 @@ def generated():
             name = "Airbender.Proofs.GKRCompiler.WiringNative." + case
             files[name] = module(case, path, imports, "assemble", public=True)
             jobs.append(name)
+    # Keep old module paths after native source slots disappear. Each module
+    # re-exports the complete current certificate. The native graph still checks
+    # every current placement; no empty shard acts as a proof.
+    for suffix in ("Cached", "Uncached"):
+        case = "Unified" + suffix
+        retired = "Airbender.Proofs.GKRCompiler.WiringParts." + case + "Placement2"
+        if retired not in files:
+            owner = "Airbender.Proofs.GKRCompiler.WiringNative." + case
+            files[retired] = "import " + owner + "\n"
+            jobs.append(retired)
     return files, jobs
 
 
