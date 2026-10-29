@@ -34,7 +34,12 @@ proofs derive one-to-one nonzero fulfillment and bounded invocation clocks
 from machine constraints and the public initial clock. Exact decoder matching
 and public Sail bytes also fix each matched worker's split kind. The imported
 ADD/SUB constraints prove canonical caller PC retirement. Shared caller/worker
-memory composition and functional worker soundness remain open.
+memory composition and functional worker soundness remain open. A focused split
+memory proof now derives bounded timestamps for all physical reads and writes
+from public seed clocks, caller-derived worker clocks and the explicit RAM
+permutation. A generic grouped-clock lemma proves strict read-before-write order
+from a positive compiled read distance; connecting each imported theta/rho and
+chi5 group equation and control lookup to that lemma remains open.
 
 Both cached and uncached native captures remain required. The checker migration
 must qualify all 22 capture configurations.
