@@ -35,6 +35,7 @@ import Airbender.Proofs.GKRProtocol.ProgramRows
 import Airbender.Proofs.GKRProtocol.PublicProgramSetup
 import Airbender.Proofs.GKRProtocol.PublicProgramCases
 import Airbender.Proofs.GKRProtocol.PublicNativeRows
+import Airbender.Proofs.GKRProtocol.PublicAcceptedRows
 import Airbender.Proofs.Trace.ReducedPublicProgram
 import Airbender.Proofs.GKRProtocol.ProgramMasks
 import Airbender.Proofs.GKRProtocol.TextImage
