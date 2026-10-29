@@ -60,11 +60,12 @@ fn main_folding_steps(gkr_programs: &GkrPrograms) -> usize {
     gkr_programs.compiled_circuit().trace_len.trailing_zeros() as usize
 }
 
-/// One immutable config/geometry/policy bound before transfers. Positive physical
-/// admission is separate and AllCosets: physical f=1 at (n,k)=(20,4)/(20,2)/(23,1),
-/// or virtual f=0 at (22,0)/(20,2) with the qualified m22 schedule. Admission is
-/// keyed by shape rather than circuit type. Memory representations are checked
-/// per role, independently of preset selection; execution jobs share the config.
+/// One immutable config/geometry/policy bound before transfers. Separate physical
+/// admission is f=1 at (n,k)=(20,4)/(20,2)/(23,1), and virtual admission is f=0
+/// at (22,0)/(20,2) with the qualified m22 schedule. Separate admission is keyed
+/// by shape; merged admission also binds the circuit type. Memory representations
+/// are checked per role, independently of preset selection; execution jobs share
+/// the config.
 pub struct ProofPreflight<F: PrimeField> {
     dr_tail: gpu_gkr::DrTailProofPlan,
     circuit: Arc<GKRCircuitArtifact<F>>,

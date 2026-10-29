@@ -76,12 +76,14 @@ summary — the contract document is the source of truth.
   `SecurityLevel` to the canonical upstream `ProverConfig`, and owns
   `GPU_SUPPORTED_SECURITY_LEVELS` / `UnsupportedGpuSecurityLevel`. The proof
   entry and DR preflight admit separate physical `(trace log, pack log)` shapes
-  `(20,4)`, `(20,2)` and `(23,1)`, independent of circuit type, with base fold1
-  and the default materialized-GKR / AllCosets policy (RawAndCosets witness,
-  ReuseCosets opening). Virtual base fold0 is admitted at `(n,k)=(22,0)` and
-  `(20,2)` with the qualified m22 `[0,6,5,5,5]` schedule. Virtual policies
-  include the default and that circuit's existing 21/30 GiB production presets;
-  regenerated presets require the per-circuit policy parity checks again.
+  `(20,4)`, `(20,2)` and `(23,1)`, independent of circuit type, with base fold1.
+  Virtual base fold0 is admitted at `(n,k)=(22,0)` and `(20,2)` with the qualified
+  m22 `[0,6,5,5,5]` schedule. Memory policies are admitted by their representation,
+  MAIN omission bounds and actual per-role backend constraints, not by membership
+  in a default or preset tuple. Presets select defaults only; regenerated presets
+  still require per-circuit CPU-byte parity and exact-arena replay. The current
+  witness storage contract and direct-holder/backend limits are documented in
+  [`../execution_prover/docs/memory_policies.md`](../execution_prover/docs/memory_policies.md).
   Physical merge is keyed on k independently of the zero-fold protocol. No
   canonical #584 default is physical-only. `ProofPreflight<F>` binds config,
   geometry, artifact identity, policy, PoW and DR resources before transfers.
@@ -91,7 +93,7 @@ summary — the contract document is the source of truth.
   virtual k0; geometry-None entries cannot supply either. Execution worker/probe
   requests validate virtual geometry and the same immutable resolved config
   before H2D. The proof entry additionally admits physical merged Blake compression at `(20,4,f1)`
-  with the same default policy. Its explicit merged-cap producer concatenates
+  with the same policy-validity checks. Its explicit merged-cap producer concatenates
   memory then witness and pads only the end. Worker and memory-sweep requests
   dispatch that producer from the same immutable resolved config, after the
   qualified shape/circuit, cache and cap identity checks. The lower trace
