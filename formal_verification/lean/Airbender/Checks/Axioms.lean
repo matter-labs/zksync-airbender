@@ -1,3 +1,4 @@
+import Airbender.Proofs.Reduced.CycleDispatch
 import Airbender.Proofs.Reduced.PCBounds
 import Airbender.Proofs.Reduced.StreamCount
 import Airbender.Proofs.Reduced.NativeClocks
@@ -13857,3 +13858,4 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_cycle_count
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_initial_count
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_terminal_count
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.ordinary_cycle_at

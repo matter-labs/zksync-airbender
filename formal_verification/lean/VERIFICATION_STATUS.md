@@ -172,6 +172,11 @@ State matching and the existing typed boundary derive every final-PC range.
 Native clocks derive the initial, per-cycle and terminal stream counts.
 Their axiom reports use only the three allowed axioms. The ordinary dispatcher,
 complete caller retirement and supported-use composition remain open.
+The reduced ordinary dispatcher has now passed focused kernel and axiom checks.
+It binds all four native CPU families to the public modular/external clauses,
+actual shared cycle states and exact stream increments. The native ROM adapter
+must supply its readonly-event property. Caller retirement and final supported-use
+composition remain open.
 The ROM-aware code-frame lemmas passed focused kernel and axiom checks.
 Interpreted ROM events refresh the same public word. Fetch transport can use
 that readonly history without the global tracked-RAM lower bound. The worker
