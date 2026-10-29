@@ -13682,3 +13682,8 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.modular_cycle_at
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.custom_cycle_at
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.arithmetic_cycle_at
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.branch_cycle_at
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.jump_cycle_at
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.comparison_cycle_at
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.binary_cycle_at
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.ram_cycle_at

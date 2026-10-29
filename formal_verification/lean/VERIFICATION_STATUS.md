@@ -103,7 +103,10 @@ External and modular instructions now retire in the actual shared cycle
 history. Their cycle proofs passed focused kernel and axiom checks.
 Ordinary arithmetic, TRIADD and XOR/rotate now retire in the stream registry's
 shared native history. Their adapters passed focused kernel and axiom checks.
-Unified still needs the remaining control, binary and RAM cycle adapters, supported worker controls from
+Control, comparison, binary, shift and RAM cycle adapters also passed focused
+kernel and axiom checks. All instruction classes now have native cycle proofs
+for the combined registry. Unified still needs cycle composition with stream
+positions, supported worker controls from
 stream reachability, and the native worker ROM adapter. The target remains open.
 All nine ordinary worker and CPU memory-port inventories passed focused
 checks. Their timestamp records use an explicit absent borrow subtrahend.
