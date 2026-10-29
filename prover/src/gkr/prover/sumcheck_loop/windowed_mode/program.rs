@@ -116,6 +116,11 @@ pub struct OwnedSoaProgram<F: PrimeField, E: Field> {
     pub folded_quad: Vec<(u16, u16, E)>,
     pub folded_lin: Vec<(u16, E)>,
     pub additive_constant: E,
+    /// Base slots proven boolean by an `x (x - 1) = 0` constraint gate of
+    /// this layer: on a valid trace they hold 0 or 1, so a kernel may read
+    /// them as PLAIN small integers (window extrapolation keeps the values
+    /// within +-4) instead of Montgomery field elements.
+    pub boolean_slots: Vec<bool>,
 }
 
 /// A degree-<=1 polynomial in the layer inputs: `constant + sum c_i * addr_i`.
@@ -317,6 +322,7 @@ pub(in crate::gkr::prover::sumcheck_loop) fn build_soa_program<
     let mut products: Vec<(FormRef, FormRef, E)> = vec![];
     let mut rest_steps: Vec<ProgramStep<E>> = vec![];
     let mut additive_constant = E::ZERO;
+    let mut bool_addrs: BTreeSet<GKRAddress> = BTreeSet::new();
 
     // lower one affine quad factor to a grid operand: a bare unit-coefficient
     // slot stays a slot reference; everything else becomes a CSE'd form
@@ -383,6 +389,14 @@ pub(in crate::gkr::prover::sumcheck_loop) fn build_soa_program<
             // beyond max-quadratic shape: leave this kernel on the flattened path
             continue;
         };
+        if matches!(
+            gate.enforced_relation,
+            GKRRelation::EnforceSingleMaxQuadraticConstraint { .. }
+        ) {
+            if let Some(addr) = booleanity_constraint(&q) {
+                bool_addrs.insert(addr);
+            }
+        }
         // max-quadratic gate expressions are BASE-ONLY by construction:
         // every place they reference is a base-field slot. Keeping that as
         // the compiled-program invariant (checked here, flattened fallback
@@ -492,6 +506,8 @@ pub(in crate::gkr::prover::sumcheck_loop) fn build_soa_program<
         }
     }
 
+    let boolean_slots: Vec<bool> = base_polys.iter().map(|a| bool_addrs.contains(a)).collect();
+
     OwnedSoaProgram {
         base_interp,
         ext_interp,
@@ -501,5 +517,44 @@ pub(in crate::gkr::prover::sumcheck_loop) fn build_soa_program<
         folded_quad,
         folded_lin,
         additive_constant,
+        boolean_slots,
     }
+}
+
+/// `Some(x)` when the compiled constraint is `c * (x + a)(x + b) + l * x + k`
+/// in ONE address `x` and vanishes at both `x = 0` and `x = 1` — i.e. it is
+/// (a nonzero multiple of) the booleanity constraint `x (x - 1) = 0`.
+fn booleanity_constraint<F: PrimeField>(q: &QPoly<F>) -> Option<GKRAddress> {
+    if q.quads.len() != 1 {
+        return None;
+    }
+    let (scale, a, b) = &q.quads[0];
+    if a.linear.len() != 1 || b.linear.len() != 1 {
+        return None;
+    }
+    let (addr, ca) = a.linear.iter().next()?;
+    let (addr_b, cb) = b.linear.iter().next()?;
+    if addr != addr_b || *ca != F::ONE || *cb != F::ONE {
+        return None;
+    }
+    if q.affine.linear.keys().any(|k| k != addr) {
+        return None;
+    }
+    let eval = |x: F| -> F {
+        let mut fa = a.constant;
+        fa.add_assign(&x);
+        let mut fb = b.constant;
+        fb.add_assign(&x);
+        let mut v = fa;
+        v.mul_assign(&fb);
+        v.mul_assign(scale);
+        if let Some(l) = q.affine.linear.get(addr) {
+            let mut t = *l;
+            t.mul_assign(&x);
+            v.add_assign(&t);
+        }
+        v.add_assign(&q.affine.constant);
+        v
+    };
+    (!scale.is_zero() && eval(F::ZERO).is_zero() && eval(F::ONE).is_zero()).then_some(*addr)
 }

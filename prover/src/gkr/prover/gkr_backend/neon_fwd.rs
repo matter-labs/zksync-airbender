@@ -79,7 +79,11 @@ unsafe fn base_plus_ext(b: uint32x4_t, g: &Limbs) -> Limbs {
 }
 
 /// `a (x) b + c (x) d` with one REDC per limb: both products' raw cross terms
-/// (8 per limb, condsub after the first 4) share the accumulators.
+/// (8 per limb) share the accumulators, with a condsub after every SECOND
+/// raw product — the lazy range rule (`R P + 2 P^2 < 2^64`, see `neon_w3`).
+/// A condsub only after the first four let the sum reach `R P + 4 P^2 >
+/// 2^64` and wrap on rare rows (non-canonical or wrong limbs in the
+/// lookup-pair outputs; found by the output-substitution self-check).
 #[inline(always)]
 unsafe fn ext_mul2_lazy(a: &Limbs, b: &Limbs, c: &Limbs, d: &Limbs, r11v: uint32x4_t) -> Limbs {
     let b1s = mont_mul4(b[1], r11v);
@@ -88,47 +92,60 @@ unsafe fn ext_mul2_lazy(a: &Limbs, b: &Limbs, c: &Limbs, d: &Limbs, r11v: uint32
     let d1s = mont_mul4(d[1], r11v);
     let d2s = mont_mul4(d[2], r11v);
     let d3s = mont_mul4(d[3], r11v);
-    let mut l0 = Acc::zero();
-    l0.mla(a[0], b[0]);
-    l0.mla(a[1], b1s);
-    l0.mla(a[2], b3s);
-    l0.mla(a[3], b2s);
-    l0.condsub();
-    l0.mla(c[0], d[0]);
-    l0.mla(c[1], d1s);
-    l0.mla(c[2], d3s);
-    l0.mla(c[3], d2s);
-    let mut l1 = Acc::zero();
-    l1.mla(a[0], b[1]);
-    l1.mla(a[1], b[0]);
-    l1.mla(a[2], b[2]);
-    l1.mla(a[3], b3s);
-    l1.condsub();
-    l1.mla(c[0], d[1]);
-    l1.mla(c[1], d[0]);
-    l1.mla(c[2], d[2]);
-    l1.mla(c[3], d3s);
-    let mut l2 = Acc::zero();
-    l2.mla(a[0], b[2]);
-    l2.mla(a[2], b[0]);
-    l2.mla(a[1], b3s);
-    l2.mla(a[3], b1s);
-    l2.condsub();
-    l2.mla(c[0], d[2]);
-    l2.mla(c[2], d[0]);
-    l2.mla(c[1], d3s);
-    l2.mla(c[3], d1s);
-    let mut l3 = Acc::zero();
-    l3.mla(a[0], b[3]);
-    l3.mla(a[1], b[2]);
-    l3.mla(a[2], b[1]);
-    l3.mla(a[3], b[0]);
-    l3.condsub();
-    l3.mla(c[0], d[3]);
-    l3.mla(c[1], d[2]);
-    l3.mla(c[2], d[1]);
-    l3.mla(c[3], d[0]);
-    [l0.redc(), l1.redc(), l2.redc(), l3.redc()]
+    // the 8 (x, y) raw products of one output limb, condsub after each pair
+    #[inline(always)]
+    unsafe fn limb(terms: [(uint32x4_t, uint32x4_t); 8]) -> uint32x4_t {
+        let mut l = Acc::zero();
+        for (k, (x, y)) in terms.iter().enumerate() {
+            l.mla(*x, *y);
+            if k % 2 == 1 && k < 7 {
+                l.condsub();
+            }
+        }
+        l.redc()
+    }
+    [
+        limb([
+            (a[0], b[0]),
+            (a[1], b1s),
+            (a[2], b3s),
+            (a[3], b2s),
+            (c[0], d[0]),
+            (c[1], d1s),
+            (c[2], d3s),
+            (c[3], d2s),
+        ]),
+        limb([
+            (a[0], b[1]),
+            (a[1], b[0]),
+            (a[2], b[2]),
+            (a[3], b3s),
+            (c[0], d[1]),
+            (c[1], d[0]),
+            (c[2], d[2]),
+            (c[3], d3s),
+        ]),
+        limb([
+            (a[0], b[2]),
+            (a[2], b[0]),
+            (a[1], b3s),
+            (a[3], b1s),
+            (c[0], d[2]),
+            (c[2], d[0]),
+            (c[1], d3s),
+            (c[3], d1s),
+        ]),
+        limb([
+            (a[0], b[3]),
+            (a[1], b[2]),
+            (a[2], b[1]),
+            (a[3], b[0]),
+            (c[0], d[3]),
+            (c[1], d[2]),
+            (c[2], d[1]),
+            (c[3], d[0]),
+        ]),
+    ]
 }
 
 /// Rows per dynamically scheduled task (2^23 rows -> 1024 tasks): the
@@ -530,8 +547,10 @@ impl NeonPlan {
                 Some(ch) => mla4(&mut acc, a, ch),
                 None => acc[0].mla(a, rm),
             }
+            // lazy range rule: a condsub after every second raw product
+            // (`R P + 2 P^2 < 2^64`; three let the sum wrap on rare rows)
             since_condsub += 1;
-            if since_condsub == 3 {
+            if since_condsub == 2 {
                 condsub4(&mut acc);
                 since_condsub = 0;
             }

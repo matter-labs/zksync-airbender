@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 use crate::gkr::prover::dimension_reduction::kernels::logup::LookupPairDimensionReducingGKRRelation;
@@ -96,6 +96,27 @@ macro_rules! define_kernel_variants {
                         storage, step, batch_challenges, folding_challenges,
                         accumulator, total_sumcheck_rounds, last_evaluations, worker,
                     ),)*
+                }
+            }
+
+            pub fn variant_name(&self) -> &'static str {
+                match self {
+                    $(KernelVariant::$s_name(..) => stringify!($s_name),)*
+                    $(KernelVariant::$p_name(..) => stringify!($p_name),)*
+                    $(KernelVariant::$n_name(..) => stringify!($n_name),)*
+                }
+            }
+
+            /// `(output address, batching challenge)` of every output this
+            /// kernel produces -- the terms of [`Self::compute_output_claim`];
+            /// empty for the constraint (no-output) kernels.
+            pub fn outputs_with_challenges(&self) -> Vec<(GKRAddress, E)> {
+                match self {
+                    $(KernelVariant::$s_name(_, challenge, output_addr) => vec![(*output_addr, challenge[0])],)*
+                    $(KernelVariant::$p_name(_, challenges, addrs) => {
+                        addrs.iter().copied().zip(challenges.iter().copied()).collect()
+                    })*
+                    $(KernelVariant::$n_name(..) => Vec::new(),)*
                 }
             }
 
@@ -571,6 +592,142 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
         //     _ => self.kernels.push(kernel),
         // }
         self.kernels.push(kernel)
+    }
+
+    /// The layer's batched relation restricted to the hypercube: on a real
+    /// row every kernel with an output equals that output and every
+    /// constraint kernel is 0, so `P(x) = sum_j c_j * out_j(x)` with exactly
+    /// the `(output, challenge)` pairs of [`Self::compute_combined_claim`]
+    /// (an address repeated across kernels has its challenges summed).
+    pub(super) fn output_substitution(&self) -> Vec<(GKRAddress, E)> {
+        let mut acc: BTreeMap<GKRAddress, E> = BTreeMap::new();
+        for kernel in self.kernels.iter() {
+            for (addr, c) in kernel.outputs_with_challenges() {
+                acc.entry(addr).or_insert(E::ZERO).add_assign(&c);
+            }
+        }
+        acc.into_iter().collect()
+    }
+
+    /// Self-check of [`Self::output_substitution`]: every kernel term,
+    /// evaluated over storage at the given hypercube rows, must equal its
+    /// output poly there (0 for a constraint term). Returns one line per
+    /// violation (kernel variant, term index, row, both values).
+    #[cfg(test)]
+    pub(super) fn check_output_substitution(
+        &self,
+        challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+        storage: &GKRStorage<F, E>,
+        rows: &[usize],
+    ) -> Vec<String> {
+        let value_at = |addr: &GKRAddress, row: usize| -> E {
+            if let Some(p) = storage.try_get_base_poly(*addr) {
+                E::from_base(p[row])
+            } else if let Some(p) = storage.try_get_ext_poly(*addr) {
+                p[row]
+            } else {
+                panic!("address {addr:?} not in storage")
+            }
+        };
+        // non-canonical limbs (raw repr >= P) per referenced poly
+        let noncanon = |addr: &GKRAddress| -> Option<(usize, usize)> {
+            let limbs: &[F] = if let Some(p) = storage.try_get_base_poly(*addr) {
+                p
+            } else if let Some(p) = storage.try_get_ext_poly(*addr) {
+                let k = core::mem::size_of::<E>() / core::mem::size_of::<F>();
+                unsafe { core::slice::from_raw_parts(p.as_ptr() as *const F, p.len() * k) }
+            } else {
+                return None;
+            };
+            let bad = limbs
+                .iter()
+                .filter(|x| x.as_u32_raw_repr() >= F::CHARACTERISTICS_U32)
+                .count();
+            Some((bad, limbs.len()))
+        };
+        let mut out = Vec::new();
+        let mut seen: BTreeSet<GKRAddress> = BTreeSet::new();
+        for kernel in self.kernels.iter() {
+            let terms = kernel.get_terms(challenge_constants);
+            for term in terms.iter() {
+                let addrs = term
+                    .quadratic_part_base_by_base
+                    .iter()
+                    .chain(term.quadratic_part_base_by_ext.iter())
+                    .chain(term.quadratic_part_ext_by_ext.iter())
+                    .flat_map(|(a, o)| core::iter::once(*a).chain(o.keys().copied()))
+                    .chain(term.linear_part_base.keys().copied())
+                    .chain(term.linear_part_ext.keys().copied())
+                    .chain(term.output_in_base)
+                    .chain(term.output_in_extension);
+                for a in addrs {
+                    if seen.insert(a) {
+                        if let Some((bad, n)) = noncanon(&a) {
+                            if bad > 0 {
+                                out.push(format!(
+                                    "(noncanonical) {a:?}: {bad} of {n} limbs have raw repr >= P (kernel {})",
+                                    kernel.variant_name()
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+            if self.kernels.len() <= 32 {
+                out.push(format!(
+                    "(info) kernel {} : {} terms, outputs {:?}",
+                    kernel.variant_name(),
+                    terms.len(),
+                    terms
+                        .iter()
+                        .map(|t| (t.output_in_base, t.output_in_extension))
+                        .collect::<Vec<_>>()
+                ));
+            }
+            for (ti, term) in terms.iter().enumerate() {
+                for &row in rows {
+                    let mut v = term.constant_term;
+                    for (a, other) in term
+                        .quadratic_part_base_by_base
+                        .iter()
+                        .chain(term.quadratic_part_base_by_ext.iter())
+                        .chain(term.quadratic_part_ext_by_ext.iter())
+                    {
+                        let av = value_at(a, row);
+                        for (b, c) in other.iter() {
+                            let mut t = *c;
+                            t.mul_assign(&av);
+                            t.mul_assign(&value_at(b, row));
+                            v.add_assign(&t);
+                        }
+                    }
+                    for (a, c) in term
+                        .linear_part_base
+                        .iter()
+                        .chain(term.linear_part_ext.iter())
+                    {
+                        let mut t = *c;
+                        t.mul_assign(&value_at(a, row));
+                        v.add_assign(&t);
+                    }
+                    let expected = match (term.output_in_base, term.output_in_extension) {
+                        (Some(o), _) | (None, Some(o)) => value_at(&o, row),
+                        (None, None) => E::ZERO,
+                    };
+                    if v != expected {
+                        out.push(format!(
+                            "{} term {ti} row {row}: term value {:?} != output {:?} (outputs {:?})",
+                            kernel.variant_name(),
+                            v,
+                            expected,
+                            (term.output_in_base, term.output_in_extension)
+                        ));
+                        break;
+                    }
+                }
+            }
+        }
+        out
     }
 
     pub(super) fn compute_combined_claim(&self, output_claims: &BTreeMap<GKRAddress, E>) -> E {

@@ -531,6 +531,37 @@ pub fn evaluate_sumcheck_for_layer<
             );
             let chain = make_chain(prog);
             times.program = chain_timer.elapsed();
+            let output_subst = collector.output_substitution();
+            #[cfg(test)]
+            if std::env::var_os("W3_SUBST_CHECK").is_some() {
+                // every row for small layers, a sample otherwise
+                let rows: Vec<usize> = if collector.kernels.len() <= 32 {
+                    (0..trace_len).collect()
+                } else {
+                    vec![
+                        0usize,
+                        1,
+                        7,
+                        8,
+                        9,
+                        1000,
+                        trace_len / 2,
+                        trace_len - 2,
+                        trace_len - 1,
+                    ]
+                };
+                let bad =
+                    collector.check_output_substitution(&challenge_constants, gkr_storage, &rows);
+                println!(
+                    "[subst-check] layer {layer_idx}: {} kernels, {} violations, {} rows checked",
+                    collector.kernels.len(),
+                    bad.iter().filter(|l| !l.starts_with('(')).count(),
+                    rows.len()
+                );
+                for line in bad.iter().take(40) {
+                    println!("[subst-check]   {line}");
+                }
+            }
             let outcome = same_size_chain_sumcheck::<F, E, TR, C>(
                 schedule,
                 &chain,
@@ -540,6 +571,7 @@ pub fn evaluate_sumcheck_for_layer<
                 &prev_entries,
                 folding_steps,
                 gkr_storage,
+                &output_subst,
                 &mut fold_buffers,
                 seed,
                 worker,
@@ -908,6 +940,7 @@ fn same_size_chain_sumcheck<
     prev_entries: &[EvaluationPointEntry<E>],
     folding_steps: usize,
     gkr_storage: &GKRStorage<F, E>,
+    output_subst: &[(GKRAddress, E)],
     fold_buffers: &mut [Box<[core::mem::MaybeUninit<E>]>],
     seed: &mut TR::Seed,
     worker: &Worker,
@@ -936,6 +969,20 @@ fn same_size_chain_sumcheck<
                 .expect("chain sources must be present in storage")
         })
         .collect();
+    // the output substitution for the initial pass (see
+    // `SameSizeChainOps::window_initial_pass_subst`): the output layer is
+    // still in storage until this layer's postlude purge
+    let mut subst_base: Vec<(&[F], E)> = Vec::new();
+    let mut subst_ext: Vec<(&[E], E)> = Vec::new();
+    for (addr, c) in output_subst.iter() {
+        if let Some(p) = gkr_storage.try_get_base_poly(*addr) {
+            subst_base.push((p, *c));
+        } else if let Some(p) = gkr_storage.try_get_ext_poly(*addr) {
+            subst_ext.push((p, *c));
+        } else {
+            panic!("output {addr:?} of the layer's relation is not in storage");
+        }
+    }
     let num_passes = schedule
         .iter()
         .filter(|s| {
@@ -1032,9 +1079,11 @@ fn same_size_chain_sumcheck<
         }
         SumcheckStep::WindowInitial { window: 3 } => {
             let t = std::time::Instant::now();
-            let acc27 = chain.window_initial_pass(
+            let acc27 = chain.window_initial_pass_subst(
                 &base_polys,
                 &ext_polys,
+                &subst_base,
+                &subst_ext,
                 initial_suffix,
                 out_size,
                 worker,

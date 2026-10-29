@@ -70,6 +70,28 @@ pub trait SameSizeChainOps<F: PrimeField, E: FieldExtension<F> + Field> {
         worker: &Worker,
     ) -> [E; 27];
 
+    /// [`Self::window_initial_pass`] with the layer's OUTPUT SUBSTITUTION:
+    /// on the 8 binary cells of a window (real trace rows) the batched
+    /// relation equals `sum_j c_j * out_j(x)` over the kernels' output polys
+    /// (`subst_base` / `subst_ext`: `(poly, challenge)`, each poly
+    /// `>= 8 * out_size` long), so a backend may skip every product, form,
+    /// linear term and constant there and add these linear terms instead.
+    /// Exact field identity: the result is bit-identical to the full
+    /// evaluation. The default ignores the substitution.
+    fn window_initial_pass_subst(
+        &self,
+        base_polys: &[&[F]],
+        ext_polys: &[&[E]],
+        subst_base: &[(&[F], E)],
+        subst_ext: &[(&[E], E)],
+        eq_suffix: &[E],
+        out_size: usize,
+        worker: &Worker,
+    ) -> [E; 27] {
+        let _ = (subst_base, subst_ext);
+        self.window_initial_pass(base_polys, ext_polys, eq_suffix, out_size, worker)
+    }
+
     /// CONTINUING width-3 window pass over the folded tables.
     fn window_continuing_pass(
         &self,

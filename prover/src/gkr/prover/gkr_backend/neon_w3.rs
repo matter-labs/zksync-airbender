@@ -335,7 +335,24 @@ fn group_by_frequency(terms: &[(Opnd, Opnd, BabyBearExt4)]) -> Vec<Group> {
 /// inside a group (the same monomial from two gates, 35 of layer 0's 289
 /// compiled products) is MERGED: `c1 a b + c2 a b = (c1 + c2) a b`, one MLA
 /// instead of two — exact field arithmetic, so the proofs are unchanged.
+/// Probe knob (tests only): keep just the first member of every group, so a
+/// kernel timing isolates the inner member stream (results are WRONG).
+#[cfg(test)]
+pub(crate) static PROBE_TRUNCATE_GROUPS: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 fn group_by_pivot(terms: impl Iterator<Item = (Opnd, Opnd, BabyBearExt4)>) -> Vec<Group> {
+    let mut groups: Vec<Group> = group_by_pivot_inner(terms);
+    #[cfg(test)]
+    if PROBE_TRUNCATE_GROUPS.load(std::sync::atomic::Ordering::Relaxed) {
+        for g in groups.iter_mut() {
+            g.members.truncate(1);
+        }
+    }
+    groups
+}
+
+fn group_by_pivot_inner(terms: impl Iterator<Item = (Opnd, Opnd, BabyBearExt4)>) -> Vec<Group> {
     let mut groups: Vec<Group> = Vec::new();
     for (pivot, member, c) in terms {
         match groups.iter_mut().find(|g| g.pivot == pivot) {
@@ -426,32 +443,87 @@ unsafe fn resolve(groups: &[Group], f: &dyn Fn(Opnd) -> *const u32) -> Vec<RGrou
         .collect()
 }
 
+/// A/B switch for the probe: `false` runs the `N` groups' member loops one
+/// after the other (the pre-interleaving kernel).
+const INTERLEAVE: bool = true;
+
 /// Inner sum `sum_k c_k * member_k` over BASE member grids at cell group
-/// offset `off` (u32 units), as canonical ext limbs.
+/// offset `off` (u32 units), as canonical ext limbs (one group; the sweeps
+/// use [`inner_base_n`]).
 #[inline(always)]
+#[allow(dead_code)]
 unsafe fn inner_base(members: &[(*const u32, uint32x4_t, Coeff)], off: usize) -> [uint32x4_t; 4] {
-    let mut inner = [Acc::zero(); 4];
+    inner_base_n::<1>(members, [off])[0]
+}
+
+/// Inner sums `sum_k c_k * member_k` over BASE member grids for the `N` cell
+/// groups at u32 offsets `offs`, as canonical ext limbs, in ONE member loop:
+/// every member's coefficient register is reused across the groups and the
+/// `N` accumulator sets (`8 N` `umlal` chains) run interleaved. A single set
+/// is latency-bound (8 dependent chains, ~6 cycles per member) while the
+/// core issues 2+ `umlal` per cycle, so two sets cost ~the same step time as
+/// one. Each set sees exactly the products and condsubs of a single-group
+/// loop in the same order (condsub after every second member, one REDC per
+/// limb), so the results are bit-identical.
+#[inline(always)]
+unsafe fn inner_base_n<const N: usize>(
+    members: &[(*const u32, uint32x4_t, Coeff)],
+    offs: [usize; N],
+) -> [[uint32x4_t; 4]; N] {
+    let mut inner = [[Acc::zero(); 4]; N];
+    if !INTERLEAVE {
+        for g in 0..N {
+            let mut t = 0u32;
+            for (m, cv, _) in members.iter() {
+                mla4(&mut inner[g], vld1q_u32(m.add(offs[g])), *cv);
+                t += 1;
+                if t == 2 {
+                    condsub4(&mut inner[g]);
+                    t = 0;
+                }
+            }
+        }
+        return core::array::from_fn(|g| redc4(&inner[g]));
+    }
     let mut t = 0u32;
     for (m, cv, _) in members.iter() {
-        mla4(&mut inner, vld1q_u32(m.add(off)), *cv);
+        for g in 0..N {
+            mla4(&mut inner[g], vld1q_u32(m.add(offs[g])), *cv);
+        }
         t += 1;
         if t == 2 {
-            condsub4(&mut inner);
+            for g in 0..N {
+                condsub4(&mut inner[g]);
+            }
             t = 0;
         }
     }
-    redc4(&inner)
+    core::array::from_fn(|g| redc4(&inner[g]))
 }
 
-/// Inner sum `sum_k c_k (x) member_k` over EXT member grids at cell group
-/// offset `off` (u32 units), as canonical ext limbs.
+/// Inner sums `sum_k c_k (x) member_k` over EXT member grids for the `N`
+/// cell groups at u32 offsets `offs`, one member loop (see [`inner_base_n`];
+/// the table multiply carries its own condsubs).
 #[inline(always)]
-unsafe fn inner_ext(members: &[(*const u32, uint32x4_t, Coeff)], off: usize) -> [uint32x4_t; 4] {
-    let mut inner = [Acc::zero(); 4];
-    for (m, _, k) in members.iter() {
-        table_mla4(&mut inner, &load_cell(m.add(off)), k);
+unsafe fn inner_ext_n<const N: usize>(
+    members: &[(*const u32, uint32x4_t, Coeff)],
+    offs: [usize; N],
+) -> [[uint32x4_t; 4]; N] {
+    let mut inner = [[Acc::zero(); 4]; N];
+    if !INTERLEAVE {
+        for g in 0..N {
+            for (m, _, k) in members.iter() {
+                table_mla4(&mut inner[g], &load_cell(m.add(offs[g])), k);
+            }
+        }
+        return core::array::from_fn(|g| redc4(&inner[g]));
     }
-    redc4(&inner)
+    for (m, _, k) in members.iter() {
+        for g in 0..N {
+            table_mla4(&mut inner[g], &load_cell(m.add(offs[g])), k);
+        }
+    }
+    core::array::from_fn(|g| redc4(&inner[g]))
 }
 
 /// INITIAL pass: one register-resident sweep of every term over groups
@@ -507,10 +579,10 @@ unsafe fn sweep_initial<const N: usize>(
                 table_mla4(&mut acc[g], &w, k);
             }
         } else {
+            let inners = inner_ext_n::<N>(&grp.members, core::array::from_fn(|g| 16 * (g0 + g)));
             for g in 0..N {
                 let off = 16 * (g0 + g);
-                let inner = inner_ext(&grp.members, off);
-                let w = ext_mul_lazy(&load_cell(grp.pivot.add(off)), &inner, r11v);
+                let w = ext_mul_lazy(&load_cell(grp.pivot.add(off)), &inners[g], r11v);
                 for l in 0..4 {
                     acc[g][l].mla(w[l], rm);
                 }
@@ -530,9 +602,9 @@ unsafe fn sweep_initial<const N: usize>(
                 table_mla4(&mut acc[g], &t, k);
             }
         } else {
+            let inners = inner_base_n::<N>(&grp.members, core::array::from_fn(|g| 4 * (g0 + g)));
             for g in 0..N {
-                let inner = inner_base(&grp.members, 4 * (g0 + g));
-                let w = ext_mul_lazy(&load_cell(grp.pivot.add(16 * (g0 + g))), &inner, r11v);
+                let w = ext_mul_lazy(&load_cell(grp.pivot.add(16 * (g0 + g))), &inners[g], r11v);
                 for l in 0..4 {
                     acc[g][l].mla(w[l], rm);
                 }
@@ -561,13 +633,12 @@ unsafe fn sweep_initial<const N: usize>(
             }
             tick!();
         } else {
+            let inners = inner_base_n::<N>(&grp.members, core::array::from_fn(|g| 4 * (g0 + g)));
             for g in 0..N {
-                let off = 4 * (g0 + g);
-                let inner = inner_base(&grp.members, off);
-                let pv = vld1q_u32(grp.pivot.add(off));
+                let pv = vld1q_u32(grp.pivot.add(4 * (g0 + g)));
                 // raw (R^2-scaled) products straight into the accumulator
                 for l in 0..4 {
-                    acc[g][l].mla(pv, inner[l]);
+                    acc[g][l].mla(pv, inners[g][l]);
                 }
             }
             tick!();
@@ -587,6 +658,53 @@ unsafe fn sweep_initial<const N: usize>(
     for g in 0..N {
         for l in 0..4 {
             vst1q_u32(lazy_out.add(16 * (g0 + g) + 4 * l), acc[g][l].redc());
+        }
+    }
+}
+
+/// The binary cell groups `0 .. N` of `row` by OUTPUT SUBSTITUTION:
+/// `sum_j c_j * out_j(8 row + i)` over the base (`sb`: poly, coefficient
+/// limbs) and ext (`se`: poly, coefficient table) output polys, written as
+/// canonical cell values into `lazy_out` (layout `16 * group + 4 * limb`).
+/// Base terms are lane-indexed `umlal`s with a condsub after every second
+/// poly; ext terms transpose 4 consecutive AoS values to SoA and go through
+/// the coefficient table (needs `acc < R P` on entry: `settle` first).
+#[inline(always)]
+unsafe fn sweep_subst<const N: usize>(
+    row: usize,
+    sb: &[(*const u32, uint32x4_t)],
+    se: &[(*const BabyBearExt4, Coeff)],
+    lazy_out: *mut u32,
+) {
+    let mut acc = [[Acc::zero(); 4]; N];
+    let mut ticks = 0u32;
+    for (p, cv) in sb.iter() {
+        let p = p.add(8 * row);
+        for g in 0..N {
+            mla4(&mut acc[g], vld1q_u32(p.add(4 * g)), *cv);
+        }
+        ticks += 1;
+        if ticks == 2 {
+            for g in 0..N {
+                condsub4(&mut acc[g]);
+            }
+            ticks = 0;
+        }
+    }
+    if ticks != 0 {
+        for g in 0..N {
+            condsub4(&mut acc[g]);
+        }
+    }
+    for (p, k) in se.iter() {
+        let p = p.add(8 * row);
+        for g in 0..N {
+            table_mla4(&mut acc[g], &neon::soa_transpose_ext4(p.add(4 * g)), k);
+        }
+    }
+    for g in 0..N {
+        for l in 0..4 {
+            vst1q_u32(lazy_out.add(16 * g + 4 * l), acc[g][l].redc());
         }
     }
 }
@@ -622,10 +740,10 @@ unsafe fn sweep_continuing<const N: usize>(
                 table_mla4(&mut acc[g], &w, k);
             }
         } else {
+            let inners = inner_ext_n::<N>(&grp.members, core::array::from_fn(|g| 16 * (g0 + g)));
             for g in 0..N {
                 let off = 16 * (g0 + g);
-                let inner = inner_ext(&grp.members, off);
-                let w = ext_mul_lazy(&load_cell(grp.pivot.add(off)), &inner, r11v);
+                let w = ext_mul_lazy(&load_cell(grp.pivot.add(off)), &inners[g], r11v);
                 for l in 0..4 {
                     acc[g][l].mla(w[l], rm);
                 }
@@ -670,11 +788,25 @@ fn reduce_chunks(chunks: &[[BabyBearExt4; 27]]) -> [BabyBearExt4; 27] {
 /// The window-3 INITIAL pass: T-weighted `{0,1,inf}^3` accumulator (NEON SoA
 /// cell order) of the layer program over the ORIGINAL inputs, `rows` rows of
 /// 8 trace points each, `t_suffix[row]` the scalar suffix-eq weight.
+/// The layer's output substitution for the binary cells (see
+/// `SameSizeChainOps::window_initial_pass_subst`): `(poly, challenge)` over
+/// base and ext output polys.
+pub(super) type OutputSubst<'a> = (
+    &'a [(&'a [BabyBearField], BabyBearExt4)],
+    &'a [(&'a [BabyBearExt4], BabyBearExt4)],
+);
+
+/// The window-3 INITIAL pass. With `subst = Some(..)` the 8 binary cells
+/// (groups `0 .. NBIN`, the real trace rows) take `sum_j c_j * out_j(row)`
+/// over the output polys instead of the term program (products, forms,
+/// linear terms and the additive constant all skip those groups) -- an exact
+/// field identity, so the result is bit-identical to the full evaluation.
 pub(super) fn window_initial_pass_regacc(
     prog: &OwnedSoaProgram<BabyBearField, BabyBearExt4>,
     grouped: &GroupedProgram,
     base_polys: &[&[BabyBearField]],
     ext_polys: &[&[BabyBearExt4]],
+    subst: Option<OutputSubst<'_>>,
     t_suffix: &[BabyBearExt4],
     rows: usize,
     worker: &Worker,
@@ -690,6 +822,24 @@ pub(super) fn window_initial_pass_regacc(
     }
     let base_ptrs: Vec<usize> = base_polys.iter().map(|p| p.as_ptr() as usize).collect();
     let ext_ptrs: Vec<usize> = ext_polys.iter().map(|p| p.as_ptr() as usize).collect();
+    // substitution sources as addresses (the closures below must be Send)
+    let subst_b: Option<Vec<(usize, BabyBearExt4)>> = subst.map(|(b, _)| {
+        b.iter()
+            .map(|(p, c)| {
+                assert!(p.len() >= rows * 8);
+                (p.as_ptr() as usize, *c)
+            })
+            .collect()
+    });
+    let subst_e: Option<Vec<(usize, BabyBearExt4)>> = subst.map(|(_, e)| {
+        e.iter()
+            .map(|(p, c)| {
+                assert!(p.len() >= rows * 8);
+                (p.as_ptr() as usize, *c)
+            })
+            .collect()
+    });
+    let substitute = subst.is_some();
 
     let geometry = worker.get_geometry_with_threshold(rows, PAR_THRESHOLD);
     let mut acc_chunks = vec![[BabyBearExt4::ZERO; 27]; geometry.num_chunks];
@@ -701,12 +851,25 @@ pub(super) fn window_initial_pass_regacc(
             let chunk_size = geometry.get_chunk_size(thread_idx);
             let base_ptrs = base_ptrs.clone();
             let ext_ptrs = ext_ptrs.clone();
+            let subst_b = subst_b.clone();
+            let subst_e = subst_e.clone();
             let acc_dst = it.next().unwrap();
 
             Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
                 let r11v = neon::soa_r11v();
                 let const_bcast = neon::soa_broadcast_ext(&prog.additive_constant);
-                let has_const = !prog.additive_constant.is_zero();
+                // with the substitution the constant is part of the outputs
+                let has_const = !prog.additive_constant.is_zero() && !substitute;
+                let sb: Vec<(*const u32, uint32x4_t)> = subst_b
+                    .iter()
+                    .flatten()
+                    .map(|(p, c)| (*p as *const u32, coeff_vec(c)))
+                    .collect();
+                let se: Vec<(*const BabyBearExt4, Coeff)> = subst_e
+                    .iter()
+                    .flatten()
+                    .map(|(p, c)| (*p as *const BabyBearExt4, Coeff::new(c)))
+                    .collect();
                 // per-row scratch: grids (base, ext, forms), the sweeps'
                 // canonical output, the constant's canonical cells, the
                 // running SoA accumulator
@@ -784,12 +947,19 @@ pub(super) fn window_initial_pass_regacc(
                         for (op, idx) in members {
                             apply_form_op::<BabyBearField, NG>(g, bptr.add(*idx as usize * BS), op);
                         }
-                        if !form.constant.is_zero() {
+                        // a form's constant lives on the binary cells only,
+                        // which the substitution never reads
+                        if !substitute && !form.constant.is_zero() {
                             neon::soa_base_form_add_const_n::<NBIN>(g, form.constant);
                         }
                     }
-                    // every term, register-resident per group range
-                    sweep_initial::<2>(0, &g_base, &g_be, &g_ext, &lin_b, &lin_e, r11v, lo);
+                    // every term, register-resident per group range; the
+                    // binary groups take the output substitution instead
+                    if substitute {
+                        sweep_subst::<NBIN>(row, &sb, &se, lo);
+                    } else {
+                        sweep_initial::<2>(0, &g_base, &g_be, &g_ext, &lin_b, &lin_e, r11v, lo);
+                    }
                     sweep_initial::<2>(2, &g_base, &g_be, &g_ext, &lin_b, &lin_e, r11v, lo);
                     sweep_initial::<2>(4, &g_base, &g_be, &g_ext, &lin_b, &lin_e, r11v, lo);
                     sweep_initial::<1>(6, &g_base, &g_be, &g_ext, &lin_b, &lin_e, r11v, lo);
@@ -1040,5 +1210,203 @@ unsafe fn fill_ext_w3_vec(
     for g in 0..7 {
         let v = neon::soa_transpose_ext4(tmp.add(4 * g));
         neon::soa_store_cell(grid.add(16 * g), &v);
+    }
+}
+
+#[cfg(test)]
+mod throughput_bench {
+    //! Issue-rate floors of the initial-pass member stream on this core
+    //! (`#[ignore]`d): raw `umlal` throughput, the exact per-member
+    //! instruction stream (`mla4` + condsub every second member) register-
+    //! resident, and the same stream with its L1 loads (302 operand grids and
+    //! coefficient vectors, the layer-0 shape).
+    use super::*;
+    use std::hint::black_box;
+    use std::time::Instant;
+
+    #[test]
+    #[ignore]
+    fn member_stream_floors() {
+        unsafe {
+            const ITERS: usize = 1 << 22;
+            // A: 8 independent umlal chains (4 limbs x lo/hi), 8 instructions per step
+            let a = vdupq_n_u32(0x1234_5678);
+            let b = vdupq_n_u32(0x0abc_def1);
+            let mut acc = [Acc::zero(); 4];
+            let t = Instant::now();
+            for i in 0..ITERS {
+                let ai = vaddq_u32(a, vdupq_n_u32(i as u32));
+                mla4(&mut acc, ai, b);
+            }
+            let d_a = t.elapsed();
+            black_box(&acc);
+            println!(
+                "[floor] A raw mla4 (8 umlal): {:.3} ns per member-step = {:.3} ns per umlal",
+                d_a.as_secs_f64() * 1e9 / ITERS as f64,
+                d_a.as_secs_f64() * 1e9 / (8 * ITERS) as f64
+            );
+            // B: the kernel's member stream register-resident: mla4 + condsub4 every 2
+            let mut acc = [Acc::zero(); 4];
+            let t = Instant::now();
+            let mut k = 0u32;
+            for i in 0..ITERS {
+                let ai = vaddq_u32(a, vdupq_n_u32(i as u32));
+                mla4(&mut acc, ai, b);
+                k += 1;
+                if k == 2 {
+                    condsub4(&mut acc);
+                    k = 0;
+                }
+            }
+            let d_b = t.elapsed();
+            black_box(&acc);
+            println!(
+                "[floor] B mla4 + condsub4 every 2 (8 umlal + 12 condsub ops): {:.3} ns per member",
+                d_b.as_secs_f64() * 1e9 / ITERS as f64
+            );
+            // C: the stream with its loads: 302 members over L1-resident grids and
+            // coefficient vectors (one group of 302, redc at the end), many cell groups
+            const MEMBERS: usize = 302;
+            let grids: Vec<u32> = (0..MEMBERS * 28)
+                .map(|i| (i as u32).wrapping_mul(2654435761) % P)
+                .collect();
+            let coeffs: Vec<BabyBearExt4> = (0..MEMBERS)
+                .map(|i| {
+                    BabyBearExt4::from_array_of_base(core::array::from_fn(|l| {
+                        BabyBearField::new(((i * 4 + l) as u32).wrapping_mul(40503) % P)
+                    }))
+                })
+                .collect();
+            let members: Vec<(*const u32, uint32x4_t, Coeff)> = (0..MEMBERS)
+                .map(|m| {
+                    (
+                        grids.as_ptr().add(m * 28),
+                        coeff_vec(&coeffs[m]),
+                        Coeff::new(&coeffs[m]),
+                    )
+                })
+                .collect();
+            let reps = 1usize << 13;
+            let mut sink = vdupq_n_u32(0);
+            let t = Instant::now();
+            for r in 0..reps {
+                let off = 4 * (r % 7);
+                let inner = inner_base(&members, off);
+                sink = veorq_u32(
+                    sink,
+                    veorq_u32(veorq_u32(inner[0], inner[1]), veorq_u32(inner[2], inner[3])),
+                );
+            }
+            let d_c = t.elapsed();
+            black_box(sink);
+            println!(
+                "[floor] C inner_base over 302 L1-resident members (+ redc4): {:.3} ns per member",
+                d_c.as_secs_f64() * 1e9 / (reps * MEMBERS) as f64
+            );
+            // I: the same stream for two cell groups in one member loop (the
+            // sweeps' N = 2 shape)
+            let mut sink = vdupq_n_u32(0);
+            let t = Instant::now();
+            for r in 0..reps {
+                let g = r % 6;
+                let inner = inner_base_n::<2>(&members, [4 * g, 4 * (g + 1)]);
+                for i in inner.iter() {
+                    sink = veorq_u32(
+                        sink,
+                        veorq_u32(veorq_u32(i[0], i[1]), veorq_u32(i[2], i[3])),
+                    );
+                }
+            }
+            let d_i = t.elapsed();
+            black_box(sink);
+            println!(
+                "[floor] I inner_base_n::<2> over 302 L1-resident members (+ 2 redc4): {:.3} ns per step = {:.3} ns per member",
+                d_i.as_secs_f64() * 1e9 / (reps * MEMBERS) as f64,
+                d_i.as_secs_f64() * 1e9 / (2 * reps * MEMBERS) as f64
+            );
+            // F/G: 2 and 4 independent accumulator sets per step (16 / 32 umlal):
+            // latency-bound chains keep the step time, throughput-bound ones double it
+            let mut acc2 = [[Acc::zero(); 4]; 2];
+            let t = Instant::now();
+            for i in 0..ITERS {
+                let ai = vaddq_u32(a, vdupq_n_u32(i as u32));
+                mla4(&mut acc2[0], ai, b);
+                mla4(&mut acc2[1], ai, a);
+            }
+            let d_f = t.elapsed();
+            black_box(&acc2);
+            let mut acc4 = [[Acc::zero(); 4]; 4];
+            let t = Instant::now();
+            for i in 0..ITERS {
+                let ai = vaddq_u32(a, vdupq_n_u32(i as u32));
+                mla4(&mut acc4[0], ai, b);
+                mla4(&mut acc4[1], ai, a);
+                mla4(&mut acc4[2], ai, vaddq_u32(b, a));
+                mla4(&mut acc4[3], ai, vsubq_u32(b, a));
+            }
+            let d_g = t.elapsed();
+            black_box(&acc4);
+            println!(
+                "[floor] F 2 acc sets (16 umlal/step): {:.3} ns per step = {:.3} ns per umlal; G 4 sets (32 umlal/step): {:.3} ns per step = {:.3} ns per umlal",
+                d_f.as_secs_f64() * 1e9 / ITERS as f64,
+                d_f.as_secs_f64() * 1e9 / (16 * ITERS) as f64,
+                d_g.as_secs_f64() * 1e9 / ITERS as f64,
+                d_g.as_secs_f64() * 1e9 / (32 * ITERS) as f64
+            );
+            // H: the member stream with condsubs, two cell groups interleaved (as a
+            // 2-way interleaved inner_base would run)
+            let mut acc2 = [[Acc::zero(); 4]; 2];
+            let t = Instant::now();
+            let mut k = 0u32;
+            for i in 0..ITERS {
+                let ai = vaddq_u32(a, vdupq_n_u32(i as u32));
+                mla4(&mut acc2[0], ai, b);
+                mla4(&mut acc2[1], ai, a);
+                k += 1;
+                if k == 2 {
+                    condsub4(&mut acc2[0]);
+                    condsub4(&mut acc2[1]);
+                    k = 0;
+                }
+            }
+            let d_h = t.elapsed();
+            black_box(&acc2);
+            println!(
+                "[floor] H member stream x2 interleaved (16 umlal + 24 condsub ops per step): {:.3} ns per step = {:.3} ns per member",
+                d_h.as_secs_f64() * 1e9 / ITERS as f64,
+                d_h.as_secs_f64() * 1e9 / (2 * ITERS) as f64
+            );
+            // D: condsub4 alone
+            let mut acc = [Acc::zero(); 4];
+            let t = Instant::now();
+            for i in 0..ITERS {
+                acc[0].lo = vaddq_u64(acc[0].lo, vdupq_n_u64(i as u64));
+                condsub4(&mut acc);
+            }
+            let d_d = t.elapsed();
+            black_box(&acc);
+            println!(
+                "[floor] D condsub4 alone (24 ops): {:.3} ns",
+                d_d.as_secs_f64() * 1e9 / ITERS as f64
+            );
+            // E: redc4 alone
+            let mut acc = [Acc::zero(); 4];
+            let mut sink = vdupq_n_u32(0);
+            let t = Instant::now();
+            for i in 0..ITERS {
+                acc[0].lo = vaddq_u64(acc[0].lo, vdupq_n_u64(i as u64));
+                let r = redc4(&acc);
+                sink = veorq_u32(
+                    sink,
+                    veorq_u32(veorq_u32(r[0], r[1]), veorq_u32(r[2], r[3])),
+                );
+            }
+            let d_e = t.elapsed();
+            black_box(sink);
+            println!(
+                "[floor] E redc4 alone: {:.3} ns",
+                d_e.as_secs_f64() * 1e9 / ITERS as f64
+            );
+        }
     }
 }

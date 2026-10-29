@@ -597,10 +597,61 @@ impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBear
             &self.grouped,
             base_polys,
             ext_polys,
+            None,
             eq_suffix,
             out_size,
             worker,
         );
+        core::array::from_fn(|g| acc[lsb_bench::w3_soa_cell_of_generic(g)])
+    }
+
+    fn window_initial_pass_subst(
+        &self,
+        base_polys: &[&[BabyBearField]],
+        ext_polys: &[&[BabyBearExt4]],
+        subst_base: &[(&[BabyBearField], BabyBearExt4)],
+        subst_ext: &[(&[BabyBearExt4], BabyBearExt4)],
+        eq_suffix: &[BabyBearExt4],
+        out_size: usize,
+        worker: &Worker,
+    ) -> [BabyBearExt4; 27] {
+        use crate::gkr::prover::sumcheck_loop::windowed_mode::lsb_bench;
+        let acc = super::neon_w3::window_initial_pass_regacc(
+            &self.prog,
+            &self.grouped,
+            base_polys,
+            ext_polys,
+            Some((subst_base, subst_ext)),
+            eq_suffix,
+            out_size,
+            worker,
+        );
+        #[cfg(test)]
+        if std::env::var_os("W3_SUBST_CHECK").is_some() {
+            let full = super::neon_w3::window_initial_pass_regacc(
+                &self.prog,
+                &self.grouped,
+                base_polys,
+                ext_polys,
+                None,
+                eq_suffix,
+                out_size,
+                worker,
+            );
+            let bad: Vec<usize> = (0..27).filter(|&c| full[c] != acc[c]).collect();
+            println!(
+                "[subst-check] NEON initial pass with vs without substitution ({} base + {} ext outputs, {} base + {} ext slots): {}",
+                subst_base.len(),
+                subst_ext.len(),
+                base_polys.len(),
+                ext_polys.len(),
+                if bad.is_empty() {
+                    "identical".to_string()
+                } else {
+                    format!("DIFF at SoA cells {bad:?}")
+                }
+            );
+        }
         core::array::from_fn(|g| acc[lsb_bench::w3_soa_cell_of_generic(g)])
     }
 

@@ -142,7 +142,10 @@ pub struct DelegationEvalFns {
     >,
 }
 
-/// Unified-mode entry point. Takes a pre-captured `VmRunOutput<C>` from
+/// Unified-mode entry point. Writes `test_proofs/unified_reduced_machine_<suffix>_gkr_proof.json`
+/// and, for each proved delegation, `test_proofs/<delegation>_<suffix>_unified_gkr_proof.json`
+/// (the plain `<delegation>_<suffix>` fixtures are the per-family smoke test's).
+/// Takes a pre-captured `VmRunOutput<C>` from
 /// [`run_vm_and_capture`] (so the caller stays in charge of when the VM
 /// runs — symmetric with how `family_circuits.rs` drives the per-family
 /// helpers), proves the unified circuit plus each active delegation,
@@ -172,6 +175,14 @@ where
 {
     let prove_empty = parse_prove_empty();
     let circuits_filter = parse_circuits_filter();
+
+    // The delegation proofs of the unified run are written under their own name
+    // (`test_proofs/<delegation>_<suffix>_unified_gkr_proof.json`): the plain
+    // `<delegation>_<suffix>` fixtures belong to the per-family smoke test
+    // (`gkr_run_basic_unrolled_test_sec_100`, the CI generator), which proves the same
+    // delegation circuits from its own program with the hardcoded external challenges.
+    // Writing both to one path made the committed fixture depend on which test ran last.
+    let delegation_proof_suffix = format!("{proof_suffix}_unified");
 
     // We derive Fiat-Shamir-consistent external challenges (matching what the full statement
     // verifier re-derives from the memory transcript) ONLY when proving the full applicable
@@ -236,7 +247,7 @@ where
             &unified_memory_cap,
             inits_and_teardowns_top_bits,
             level,
-            proof_suffix,
+            &delegation_proof_suffix,
             worker,
             delegation_eval_fns,
             delegation_call_counts,
@@ -261,7 +272,7 @@ where
             prove_empty,
             false,
             &circuits_filter,
-            proof_suffix,
+            &delegation_proof_suffix,
             worker,
             eval_fn,
         ));
@@ -278,7 +289,7 @@ where
             prove_empty,
             false,
             &circuits_filter,
-            proof_suffix,
+            &delegation_proof_suffix,
             worker,
             eval_fn,
         ));
@@ -295,7 +306,7 @@ where
             prove_empty,
             false,
             &circuits_filter,
-            proof_suffix,
+            &delegation_proof_suffix,
             worker,
             eval_fn,
         ));
@@ -312,7 +323,7 @@ where
             prove_empty,
             false,
             &circuits_filter,
-            proof_suffix,
+            &delegation_proof_suffix,
             worker,
             eval_fn,
         ));
@@ -457,7 +468,7 @@ fn derive_unified_fiat_shamir_challenges<C>(
     unified_memory_cap: &MerkleTreeCapVarLength,
     inits_and_teardowns_top_bits: &[u32],
     level: SecurityLevel,
-    proof_suffix: &str,
+    delegation_proof_suffix: &str,
     worker: &Worker,
     delegation_eval_fns: &DelegationEvalFns,
     delegation_call_counts: &DelegationCallCounts,
@@ -504,7 +515,7 @@ where
                 prove_empty,
                 true,
                 circuits_filter,
-                proof_suffix,
+                delegation_proof_suffix,
                 worker,
                 eval_fn,
             );
@@ -530,7 +541,7 @@ where
                 prove_empty,
                 true,
                 circuits_filter,
-                proof_suffix,
+                delegation_proof_suffix,
                 worker,
                 eval_fn,
             );
@@ -556,7 +567,7 @@ where
                 prove_empty,
                 true,
                 circuits_filter,
-                proof_suffix,
+                delegation_proof_suffix,
                 worker,
                 eval_fn,
             );
@@ -582,7 +593,7 @@ where
                 prove_empty,
                 true,
                 circuits_filter,
-                proof_suffix,
+                delegation_proof_suffix,
                 worker,
                 eval_fn,
             );

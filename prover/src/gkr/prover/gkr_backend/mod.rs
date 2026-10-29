@@ -42,7 +42,7 @@ mod neon;
 #[cfg(target_arch = "aarch64")]
 mod neon_fwd;
 #[cfg(target_arch = "aarch64")]
-mod neon_w3;
+pub(crate) mod neon_w3;
 #[cfg(target_arch = "aarch64")]
 pub use neon::NeonGKRBackend;
 

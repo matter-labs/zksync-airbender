@@ -377,13 +377,27 @@ fn measure_variant(
     layer: &GKRLayerDescription<BB>,
     layer_idx: usize,
     ch: &Challenges,
-    data: &Data,
+    data: &mut Data,
     worker: &Worker,
     threads: usize,
     reps: usize,
     phases: bool,
 ) {
     let (prog, base_addrs, ext_addrs) = build_program(layer, layer_idx, ch);
+    // the plain-predicate kernels read boolean slots as 0/1: give them valid
+    // boolean data (the rest of the pool stays random)
+    for (i, is_bool) in prog.boolean_slots.iter().enumerate() {
+        if *is_bool {
+            let mut st = 0xB00Bu64 ^ ((i as u64) << 20) ^ layer_idx as u64;
+            for v in data.base[i].iter_mut() {
+                *v = if splitmix(&mut st) & 1 == 1 {
+                    BB::ONE
+                } else {
+                    BB::ZERO
+                };
+            }
+        }
+    }
     let nb = base_addrs.len();
     let ne = ext_addrs.len();
     assert!(
@@ -547,6 +561,31 @@ fn measure_variant(
             "[pressure] {tag}: continuing pass 1 SKELETON (fills + forms + eq, no terms) {:.1} ms",
             ms(d)
         );
+        // pivots only: every group cut to its first member (wrong results) =
+        // the kernel without the inner member stream
+        {
+            use crate::gkr::prover::gkr_backend::neon_w3::PROBE_TRUNCATE_GROUPS;
+            use std::sync::atomic::Ordering;
+            let (p1, _, _) = build_program(layer, layer_idx, ch);
+            PROBE_TRUNCATE_GROUPS.store(true, Ordering::Relaxed);
+            let p1_chain = NeonGKRBackend.make_same_size_chain(p1);
+            PROBE_TRUNCATE_GROUPS.store(false, Ordering::Relaxed);
+            let (d, _) = time_min(reps, || {
+                p1_chain.window_initial_pass(&base_refs, &ext_refs, &data.eq_suffix, rows, worker)
+            });
+            println!(
+                "[pressure] {tag}: initial pass PIVOTS-ONLY (groups cut to 1 member, wrong values) {:.1} ms",
+                ms(d)
+            );
+            let fr: Vec<&[E4]> = folded.iter().map(|v| &v[..]).collect();
+            let (d, _) = time_min(reps, || {
+                p1_chain.window_continuing_pass(&fr, &data.eq_suffix_next, rows / 8, worker)
+            });
+            println!(
+                "[pressure] {tag}: continuing pass 1 PIVOTS-ONLY {:.1} ms",
+                ms(d)
+            );
+        }
     }
 
     let backend = NeonGKRBackend;
@@ -644,7 +683,7 @@ fn same_size_pressure_probe() {
         max_ne = max_ne.max(e.len());
     }
     let t = Instant::now();
-    let data = Data {
+    let mut data = Data {
         base: random_base_polys(max_nb, trace_len, threads, 11),
         ext: random_ext_polys(max_ne, trace_len, threads, 13),
         eq_suffix: (0..rows).map(|_| r(&mut st)).collect(),
@@ -665,7 +704,7 @@ fn same_size_pressure_probe() {
             layer,
             li,
             &ch,
-            &data,
+            &mut data,
             &worker,
             threads,
             reps,
@@ -692,7 +731,7 @@ fn same_size_pressure_probe() {
                 &only,
                 li,
                 &ch,
-                &data,
+                &mut data,
                 &worker,
                 threads,
                 reps,
@@ -706,7 +745,7 @@ fn same_size_pressure_probe() {
                     &without,
                     li,
                     &ch,
-                    &data,
+                    &mut data,
                     &worker,
                     threads,
                     reps,
