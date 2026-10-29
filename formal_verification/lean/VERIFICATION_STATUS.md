@@ -16,7 +16,7 @@ execution and logical lookup/RAM composition are established narrower results.
 | Setup machine | Current target status |
 | --- | --- |
 | Unrolled full unsigned | Open. The `UnrolledFullUnsigned` target lists all premises. Prove native soundness for its combined relation. Bind the public program setup. Connect the caller, worker and initialization boundaries. Prove the split Keccak worker functions on the new base. The target excludes special5 calls. |
-| Unrolled reduced | Open. The standalone initialization adapter and public ordinary/caller images are proved. Compose its native shared history, instruction cycles and extended-round caller cycles. Derive worker controls from public supported use. Bind public decoder lookup to native acceptance. |
+| Unrolled reduced | Open. Standalone initialization, shared native history, instruction cycles and complete round caller cycles are proved. The complete conditional path now interprets public ROM bytes. Derive worker controls and RAM locations from public supported use. Bind public decoder lookup to native acceptance. |
 | Unified | Proved by `MachineTargets.Proofs.unified_soundness`. The theorem has exactly the `Unified` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. The target excludes special5 calls. |
 
 [The three target definitions](Airbender/Review/Compiler/MachineTargets.lean)
@@ -379,3 +379,19 @@ with reviewed deltas. A direct report is a smoke check, not that audit.
 [Findings](FINDINGS.md) distinguishes supported-use exclusions, conditional proof
 coverage and implementation issues. Production circuits are not changed to make
 proofs succeed; discrepancies require documentation and narrow explicit assumptions.
+
+### Reduced native ROM obligation
+
+The reduced native ROM adapter passed its focused kernel check. It derives
+canonical addresses from exact shared matching and strict native clock order.
+It does not assume physical values in the native zero seed. ROM interpretation
+preserves imported constraints, decoder queries, callers, requests and shared
+memory matching. It preserves public instruction bytes and external responses.
+The physical initialization adapter and complete conditional reduced path pass.
+Worker controls and RAM port locations remain explicit intermediate premises.
+The public supported-use adapter must prove them. Public decoder acceptance
+also remains open. The final reduced machine target is not yet proved.
+
+The check used Lean 4.31.0 and retained unchanged dependency objects. All selected
+roots use only the three allowed axioms. The full frontend, environment audit,
+transitive kernel replay and Linux qualification did not run.
