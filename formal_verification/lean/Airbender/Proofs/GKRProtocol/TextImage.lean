@@ -28,6 +28,20 @@ theorem words_of_text_image (before : Reference.RiscV.Sail.State)
     (index : Fin text.length) : words before index.val = text[index.val] := by
   simp [words, image index]
 
+theorem bytes_of_text_image (before : Reference.RiscV.Sail.State)
+    (text : List (BitVec 32)) (image : TextImage before text)
+    (fits : text.length ≤ limit / 4) (index : Fin text.length) :
+    (Trace.Cell.ram (BitVec.ofNat 32 (4 * index.val))).read before =
+      .ok text[index.val] before := by
+  have bound : 4 * index.val < 2 ^ 32 := by
+    have h := Nat.lt_of_lt_of_le index.isLt fits
+    unfold limit at h
+    omega
+  change (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4
+    (BitVec.ofNat 32 (4 * index.val)).toNat).run before = _
+  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt bound]
+  exact image index
+
 /-- A public text word that is present in the initial cell image has the
 corresponding row in the modeled word ROM. This holds for arbitrary text and
 does not consult the retained native ROM capture. -/
@@ -50,10 +64,8 @@ theorem text_row_member {p : Nat} [Fact p.Prime]
     have h := Nat.lt_of_lt_of_le index.isLt fits
     simp only [address, BitVec.toNat_ofNat, Nat.mod_eq_of_lt bound]
     omega
-  have read : (Trace.Cell.ram address).read before = .ok text[index.val] before := by
-    change (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4
-      address.toNat).run before = .ok text[index.val] before
-    simpa only [address, BitVec.toNat_ofNat, Nat.mod_eq_of_lt bound] using image index
+  have read : (Trace.Cell.ram address).read before = .ok text[index.val] before :=
+    bytes_of_text_image before text image fits index
   have zipped := image_zip_member physical domain read
   have present : row address (Arithmetic.Word.ofBitVec text[index.val]) ∈
       rows cells tokens := by

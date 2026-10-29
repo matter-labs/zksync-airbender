@@ -1,5 +1,5 @@
 import Airbender.Review.Helpers.Decoder.ProgramRows
-import Airbender.Review.Helpers.Memory.TextImage
+import Airbender.Proofs.GKRProtocol.TextImage
 import Airbender.Proofs.GKRProtocol.PublicProgram
 
 namespace Airbender.Trace.NativeDecoder.ProgramRows.Proofs
@@ -21,21 +21,14 @@ theorem program_sources (config : Config)
     have : text[index]? = none := by simp [Nat.le_of_not_gt notBound]
     rw [this] at found
     contradiction
-  have wordBound : 4 * index < 2 ^ 32 := by
-    have h := Nat.lt_of_lt_of_le indexBound size
-    unfold ROM.limit at h
-    omega
+  have value : text[index] = bits := by
+    have : text[index]? = some text[index] := by simp [indexBound]
+    rw [this] at found
+    exact Option.some.inj found
   have bytes : (Trace.Cell.ram (BitVec.ofNat 32 (4 * index))).read initial =
       .ok bits initial := by
-    change (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4
-      (BitVec.ofNat 32 (4 * index)).toNat).run initial = .ok bits initial
-    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt wordBound]
-    have h := image ⟨index, indexBound⟩
-    have value : text[index] = bits := by
-      have : text[index]? = some text[index] := by simp [indexBound]
-      rw [this] at found
-      exact Option.some.inj found
-    simpa [value] using h
+    simpa only [value] using ROM.Proofs.bytes_of_text_image initial text image size
+      ⟨index, indexBound⟩
   unfold wordEntry at selected
   cases decoded : SailRV32.Functions.encdec_backwards bits with
   | pure instruction =>
