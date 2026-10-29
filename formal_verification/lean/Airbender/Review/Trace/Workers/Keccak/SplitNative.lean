@@ -17,6 +17,18 @@ structure Setup (p : Nat) where
   thetaRho : Table (ZMod p) (fields 9)
   chi5 : Table (ZMod p) (fields 11)
 
+/-- Public fixed-table provenance needed to interpret the split controller
+lookups. It describes only the controller rows selected by their native tags;
+the remaining arithmetic tables require their own functional certificates. -/
+structure ControlSetupFacts (setup : Setup p) : Prop where
+  thetaRho : ∀ row : Vector (ZMod p) 9,
+    setup.thetaRho.toRaw.Soundness #[] row → row[8] = 59 → row[1] = 1 →
+      ∃ selected : Fin 5, ∀ index : Fin 5,
+        row[3 + index.val] = if index = selected then 1 else 0
+  chi5 : ∀ row : Vector (ZMod p) 11,
+    setup.chi5.toRaw.Soundness #[] row → row[10] = 66 → row[1] = 1 →
+      row[8].val < 5
+
 /-- One actual split-worker assignment and its selected compiled circuit. No
 result, reference state or expected memory effect is stored in this record. -/
 structure Row (p : Nat) where

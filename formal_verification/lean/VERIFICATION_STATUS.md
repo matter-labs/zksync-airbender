@@ -40,12 +40,16 @@ from public seed clocks, caller-derived worker clocks and the explicit RAM
 permutation. A generic grouped-clock lemma proves strict read-before-write order
 from a positive compiled read distance. All four theta/rho and six chi5 groups
 have exact clock equations and Boolean borrows extracted from both cache modes.
-The control lookups still need to establish positive distances and connect
-these equations to the strict-order and worker-effect proofs.
 Both column-parity captures additionally derive every per-port Boolean borrow
 and timestamp comparison bound directly from their imported equations and
 lookup queries, then prove strict read-before-write order given the public
 invocation and logically matched previous-clock bounds.
+For theta/rho and chi5, an explicit public controller-table soundness premise
+now yields one-hot iteration flags or a bounded row index. Native fixed-table
+lookups then give positive, nonwrapping distances and strict order for all
+groups in both cache modes. Proving that premise from the captured fixed setup,
+connecting every physical port to its group, and complete memory effects remain
+open.
 
 Both cached and uncached native captures remain required. The checker migration
 must qualify all 22 capture configurations.
