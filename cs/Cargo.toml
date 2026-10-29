@@ -48,5 +48,10 @@ legacy_blake_round_function = []
 default = ["compiler"]
 # default = ["compiler", "experimental_witness_eval"]
 
+[[test]]
+name = "delegation_zero_timestamp"
+path = "tests/delegation_zero_timestamp.rs"
+required-features = ["compiler"]
+
 [lints]
 workspace = true
