@@ -129,6 +129,12 @@ def callerProgramOf (config : Config) (initial : State)
     (text : List (BitVec 32)) : List CallerEntry :=
   text.zipIdx.filterMap fun (bits, index) => callerEntry config initial bits index
 
+/-- Explicit public exclusion for the unblessed 649-call special5 path. The
+full unsigned and unified production targets keep the blessed split protocol
+in scope; they may use this predicate only for the separate 0x7CB caller. -/
+def NoSpecial5Call (callers : List CallerEntry) : Prop :=
+  ∀ caller ∈ callers, caller.csr ≠ 0x7cb
+
 def CallerEntry.query {p : Nat} (entry : CallerEntry) : Vector (ZMod p) 9 :=
   let pc := Word.ofBitVec entry.pc
   #v[pc.lo, pc.hi, 0, entry.csr, 0, 0, 0, 0, 128]
