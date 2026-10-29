@@ -186,12 +186,10 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
             );
 
             let mut generic_lookup_preprocessing = Vec::with_capacity_in(trace_len, A::default());
-            // Cache the complete committed setup domain, including its filler.
-            // Forward scalar/SIMD consumers must not synthesize a zero tail
-            // when the committed decoder setup has a nonzero sentinel there.
-            let mut dst = &mut generic_lookup_preprocessing.spare_capacity_mut()[..trace_len];
+            let mut dst = &mut generic_lookup_preprocessing.spare_capacity_mut()
+                [..generic_lookup_tables_size];
 
-            worker.scope(trace_len, |scope, geometry| {
+            worker.scope(generic_lookup_tables_size, |scope, geometry| {
                 for thread_idx in 0..geometry.len() {
                     let chunk_size = geometry.get_chunk_size(thread_idx);
                     let chunk_start = geometry.get_chunk_start_pos(thread_idx);
@@ -222,11 +220,11 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
                     });
                 }
 
-                assert!(dst.is_empty(), "expected to process all elements, but got {} remaining. Work size is {}, num cores = {}", dst.len(), trace_len, worker.get_num_cores());
+                assert!(dst.is_empty(), "expected to process all elements, but got {} remaining. Work size is {}, num cores = {}", dst.len(), generic_lookup_tables_size, worker.get_num_cores());
             });
 
             unsafe {
-                generic_lookup_preprocessing.set_len(trace_len);
+                generic_lookup_preprocessing.set_len(generic_lookup_tables_size);
             }
 
             let decoder_lookup_fill_value = if compiled_circuit.tables_ids_in_generic_lookups {

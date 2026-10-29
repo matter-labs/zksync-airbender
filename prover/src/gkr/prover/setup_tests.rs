@@ -128,7 +128,7 @@ fn check_decoder_padding(cached: bool, tagged: bool, supports_pc_zero: bool) {
     let mut storage = GKRStorage { layers: vec![] };
     let (preprocessed, inactive_fill) =
         setup.preprocess_generic_lookups(&circuit, alpha, trace_len, &mut storage, &worker);
-    assert_eq!(preprocessed.len(), trace_len);
+    assert_eq!(preprocessed.len(), circuit.total_tables_size);
     let powers = materialize_powers_serial_starting_with_one::<E, Global>(alpha, width);
     let compressed: Vec<E> = (0..trace_len)
         .map(|row| {
@@ -141,7 +141,7 @@ fn check_decoder_padding(cached: bool, tagged: bool, supports_pc_zero: bool) {
             value
         })
         .collect();
-    assert_eq!(&*preprocessed, compressed);
+    assert_eq!(&*preprocessed, &compressed[..circuit.total_tables_size]);
     assert_eq!(
         inactive_fill,
         if tagged {
@@ -159,7 +159,9 @@ fn check_decoder_padding(cached: bool, tagged: bool, supports_pc_zero: bool) {
             term.mul_assign_by_base(&F::MINUS_ONE);
             expected_tail.add_assign(&term);
         }
-        assert_eq!(preprocessed[trace_len - 1], expected_tail);
+        assert!(compressed[circuit.total_tables_size..]
+            .iter()
+            .all(|value| *value == expected_tail));
     }
 
     let selected = [offset + usize::from(!supports_pc_zero), offset + 3];

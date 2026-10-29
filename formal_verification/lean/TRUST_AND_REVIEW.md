@@ -2,7 +2,7 @@
 
 The target is the imported richer no-cache relation built from this checkout,
 with upstream `av_gkr_compiler` baseline revision
-`4518846625730fabc4cd83744d4bd983a5e42b97`. The restored native delegation
+`c1a662222cafcd96db4383dce737edb79fa62b09`. The restored native delegation
 relations admit invalid invocations outside the developers' supported-use domain;
 lower-level conditional proofs retain the explicit
 [F11 hash witness contracts](FINDINGS.md#f11--hash-witness-contracts-remain-unenforced).
@@ -44,12 +44,13 @@ under the explicit F11 hash witness contracts and without an occurrence plan;
 [complete spans](Airbender/Review/Trace/UnifiedReduced/PathSpanExecution.lean)
 derive the full native worker partition/count and algorithms in one history
 under their per-trace occurrence plan and complete protocol coverage.
-No single registry combines nondeterminism reads, modular MOPs and delegation
-calls, and the compiler decoder interpretation retains four entries. No whole-
-execution theorem therefore covers a committed production verifier program.
-The unified base-layer entrypoint also discards verified outputs and commits a
-fixed eight-word success output beginning with one; see
-[the implementation](../../tools/gkr_verifier/src/common_fsv_unified_base_sec_100.rs).
+The combined unified relation includes nondeterminism reads, modular MOPs and
+delegation calls. Its native soundness proof remains open. The compiler
+execution bridge still uses the retained four-entry decoder tables. No proved
+whole-execution theorem covers a committed production verifier program yet.
+Upstream #531 merged as `06c15f275` and is in this base. The unified base
+entrypoint now returns the verified registers. New-base runtime validation
+remains pending.
 
 A replay ledger is trusted evidence. Exact artifact/tool hashes bind a recorded
 pass to its inputs but do not authenticate who produced that pass. CI therefore

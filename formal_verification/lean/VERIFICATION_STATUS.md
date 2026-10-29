@@ -34,9 +34,14 @@ The local EVM initialization-window fix is present.
 
 The three target definitions passed a focused source check. That check used
 the retained dependency cache. It does not validate the changed native imports.
-The native setup exporter passed its scoped Cargo check and build. Native
-artifact regeneration, source manifest refresh, setup freshness checks, decoder
-differential checks and focused Lean rebuilds are pending. Earlier build results
+The native setup exporter passed its scoped Cargo check and build. All 16
+setup exports and all 22 compiler captures regenerated. The setup artifact and
+native evidence checks passed. The padding regression passed after removal of
+the redundant full-domain CPU cache. The retained lock adds only the local
+cs-to-prover edge required by the new base. It changes no package version.
+Setup freshness passed. All 12 native generators ran. All 16 fresh setup JSONs
+matched. Native dep-info covered 551 inputs. The refreshed manifest covers 731
+source files. Decoder differential checks and focused Lean rebuilds are pending. Earlier build results
 apply to the old base. The changed split Keccak equations need new proof checks.
 The branch has not been force-pushed.
 
@@ -122,9 +127,9 @@ a raised recursion limit.
 | [Public program setup](Airbender/Review/Compiler/PublicProgramSetup.lean) | New unrolled and unified interfaces bind independently supplied decoder columns, the actual imported circuit masks, capacity, delegation group syntax and initial image to public text. [The imported mask constructors](Airbender/Proofs/GKRProtocol/ProgramMasks.lean) satisfy that binding. [Source and classification theorems](Airbender/Proofs/GKRProtocol/PublicProgramCases.lean) map a range-checked query in those columns to a Sail-sourced ordinary instruction or virtual caller in its corresponding public program. [Native row corollaries](Airbender/Proofs/GKRProtocol/PublicNativeRows.lean) use an explicit exact decoder lookup premise to classify actual trace rows; [accepted-row corollaries](Airbender/Proofs/GKRProtocol/PublicAcceptedRows.lean) derive the required PC range from constraints, state matching and the public initial PC. Matching each compiled circuit's lookup to the supplied columns, deriving native acceptance from all certificates, then proving compiler execution remain open. |
 | [Compiler preservation](Airbender/Review/Compiler/README.md) | Base-field arithmetic preservation covers 22 captures. Fourteen row compositions derive helper bounds, authored lookup membership and source validity from physical native arithmetic/active rows and exact emitted-tuple matching. Separate public-text row models have generic active-PC membership for ordinary instructions and full-width delegation-CSR caller rows, with captured masks and ROM capacity. A range-checked active modeled decoder row, including its selected native column mask, now yields an ordinary or virtual caller entry sourced from public Sail bytes. Caller source includes the decoded CSR shape and configuration allowlist; an effectful decoder result is not silently accepted. A generic initial-ROM lemma places each present public text word into the modeled word-ROM table. The caller projection also requires a public well-formed call-group premise to match native preprocessing. The compiler wrappers still require retained four-entry tables; the differential checks do not yet replace that premise. |
 
-The unified base-layer verifier entrypoint currently discards the verified
-outputs and returns the fixed eight-word success output beginning with one.
-This implementation behavior is recorded without changing the production code.
+Upstream #531 merged as `06c15f275` and is in the new base. The unified
+base-layer entrypoint now returns the verified registers. It no longer returns
+the fixed success vector. New-base runtime validation remains pending.
 See [the source](../../tools/gkr_verifier/src/common_fsv_unified_base_sec_100.rs)
 and the [trust boundaries](TRUST_AND_REVIEW.md).
 
