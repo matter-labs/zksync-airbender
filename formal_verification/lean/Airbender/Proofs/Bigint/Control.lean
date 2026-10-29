@@ -16,7 +16,7 @@ theorem control_bits {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 3)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     ∀ i : Fin 8, w Variables.controlBits[i] = 0 ∨ w Variables.controlBits[i] = 1 := by
   intro i
-  have flag := Verification.assertion_of_holds h ⟨92 + i.val,
+  have flag := Verification.assertion_of_holds h ⟨91 + i.val,
     by rw [constraint_count]; have := i.isLt; omega⟩
   fin_cases i <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment, Variables.controlBits,
@@ -72,7 +72,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : FieldCapacity.AtLeast p 256)
     exact ZMod.val_natCast_of_lt (lt_of_le_of_lt
       (show output.bits[i].toNat ≤ 1 by cases output.bits[i] <;> decide) (by omega))
   have read := Verification.assertion_of_holds h ⟨1, by rw [constraint_count]; decide⟩
-  have high := Verification.assertion_of_holds h ⟨91, by rw [constraint_count]; decide⟩
+  have high := Verification.assertion_of_holds h ⟨90, by rw [constraint_count]; decide⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment] at read high
   have field : (mask output.bits : ZMod p) = w 55 := by
