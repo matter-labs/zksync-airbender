@@ -24,7 +24,7 @@ srcDir = "generated/sail-rv32"
 
 [[lean_lib]]
 name = "Airbender"
-needs = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson", "shiftBinopJson", "wordMemoryJson", "subwordMemoryJson", "unifiedReducedJson", "blakeGJson", "blakeRoundJson", "bigintJson", "keccakJson", "setupSmokeJson", "setupAddSubJson", "setupBigintJson", "setupBlakeGJson", "setupKeccakJson", "setupBlakeRoundJson", "setupJumpBranchJson", "setupMulDivJson", "setupShiftBinopJson", "setupWordMemoryJson", "setupSubwordMemoryJson", "setupUnifiedJson", "setupInitsJson", "initializationJson"]
+needs = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson", "shiftBinopJson", "wordMemoryJson", "subwordMemoryJson", "unifiedReducedJson", "blakeGJson", "blakeRoundJson", "bigintJson", "keccakJson", "setupSmokeJson", "setupAddSubJson", "setupBigintJson", "setupBlakeGJson", "setupKeccakJson", "setupBlakeRoundJson", "setupJumpBranchJson", "setupMulDivJson", "setupShiftBinopJson", "setupWordMemoryJson", "setupSubwordMemoryJson", "setupUnifiedJson", "setupInitsJson", "initializationJson", "keccakColumnParityJson", "keccakColumnParityCachedJson", "keccakThetaRhoJson", "keccakThetaRhoCachedJson", "keccakChi5Json", "keccakChi5CachedJson", "setupKeccakColumnParityJson", "setupKeccakThetaRhoJson", "setupKeccakChi5Json"]
 
 [[lean_lib]]
 name = "Tests"
@@ -624,3 +624,48 @@ name = "GKRProtocol"
 roots = ["Airbender.Proofs.GKRProtocol", "Airbender.Import.GKRProtocol", "Airbender.Import.Compiler.Rows"]
 globs = ["Airbender.Proofs.GKRProtocol", "Airbender.Import.GKRProtocol.+", "Airbender.Import.Compiler.Rows.+"]
 needs = ["gkrAddSubUncachedPair", "gkrAddSubCachedPair", "gkrJumpBranchUncachedPair", "gkrJumpBranchCachedPair", "gkrMulDivUncachedPair", "gkrMulDivCachedPair", "gkrShiftBinopUncachedPair", "gkrShiftBinopCachedPair", "gkrWordMemoryUncachedPair", "gkrWordMemoryCachedPair", "gkrSubwordMemoryUncachedPair", "gkrSubwordMemoryCachedPair", "gkrUnifiedUncachedPair", "gkrUnifiedCachedPair", "gkrBigintUncachedPair", "gkrBigintCachedPair", "gkrBlakeGUncachedPair", "gkrBlakeGCachedPair", "gkrBlakeRoundUncachedPair", "gkrBlakeRoundCachedPair", "gkrKeccakUncachedPair", "gkrKeccakCachedPair", "compilerSourceAddSubUncached", "compilerSourceAddSubCached", "compilerSourceJumpBranchUncached", "compilerSourceJumpBranchCached", "compilerSourceMulDivUncached", "compilerSourceMulDivCached", "compilerSourceShiftBinopUncached", "compilerSourceShiftBinopCached", "compilerSourceWordMemoryUncached", "compilerSourceWordMemoryCached", "compilerSourceSubwordMemoryUncached", "compilerSourceSubwordMemoryCached", "compilerSourceUnifiedUncached", "compilerSourceUnifiedCached", "compilerSourceBigintUncached", "compilerSourceBigintCached", "compilerSourceBlakeGUncached", "compilerSourceBlakeGCached", "compilerSourceBlakeRoundUncached", "compilerSourceBlakeRoundCached", "compilerSourceKeccakUncached", "compilerSourceKeccakCached", "compilerLookupAddSubUncached", "compilerLookupAddSubCached", "compilerLookupJumpBranchUncached", "compilerLookupJumpBranchCached", "compilerLookupMulDivUncached", "compilerLookupMulDivCached", "compilerLookupShiftBinopUncached", "compilerLookupShiftBinopCached", "compilerLookupWordMemoryUncached", "compilerLookupWordMemoryCached", "compilerLookupSubwordMemoryUncached", "compilerLookupSubwordMemoryCached", "compilerLookupUnifiedUncached", "compilerLookupUnifiedCached", "compilerLookupBigintUncached", "compilerLookupBigintCached", "compilerLookupBlakeGUncached", "compilerLookupBlakeGCached", "compilerLookupBlakeRoundUncached", "compilerLookupBlakeRoundCached", "compilerLookupKeccakUncached", "compilerLookupKeccakCached"]
+
+[[input_file]]
+name = "keccakColumnParityJson"
+path = "../../cs/compiled_circuits/keccak_column_parity_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "keccakColumnParityCachedJson"
+path = "../../cs/compiled_circuits/keccak_column_parity_layout_gkr.json"
+text = true
+
+[[input_file]]
+name = "keccakThetaRhoJson"
+path = "../../cs/compiled_circuits/keccak_theta_rho_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "keccakThetaRhoCachedJson"
+path = "../../cs/compiled_circuits/keccak_theta_rho_layout_gkr.json"
+text = true
+
+[[input_file]]
+name = "keccakChi5Json"
+path = "../../cs/compiled_circuits/keccak_chi5_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "keccakChi5CachedJson"
+path = "../../cs/compiled_circuits/keccak_chi5_layout_gkr.json"
+text = true
+
+[[input_file]]
+name = "setupKeccakColumnParityJson"
+path = "artifacts/setup/keccak-column-parity.json"
+text = true
+
+[[input_file]]
+name = "setupKeccakThetaRhoJson"
+path = "artifacts/setup/keccak-theta-rho.json"
+text = true
+
+[[input_file]]
+name = "setupKeccakChi5Json"
+path = "artifacts/setup/keccak-chi5.json"
+text = true

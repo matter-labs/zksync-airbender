@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
+import tomllib
 import unittest
 
 import check_native_evidence as evidence
@@ -32,8 +33,26 @@ class ProvenanceControls(unittest.TestCase):
             freshness.compare_artifact(output, original)
 
     def test_current_retained_guards(self):
-        self.assertEqual(retained.check()[0], 13)
+        self.assertEqual(retained.check()[0], 16)
         self.assertEqual(evidence.check(), 8)
+
+    def test_native_json_inputs_are_required_lake_dependencies(self):
+        config = tomllib.loads((retained.REPO / "formal_verification/lean/lakefile.toml").read_text())
+        inputs = {entry["path"]: entry["name"] for entry in config["input_file"]}
+        library = next(entry for entry in config["lean_lib"] if entry["name"] == "Airbender")
+        required = {
+            f"../../cs/compiled_circuits/{stem}_layout_no_caches_gkr.json"
+            for stem in retained.PRODUCTION_CIRCUITS.values()
+        }
+        required.update(f"artifacts/setup/{name}" for name in self.manifest["artifacts"])
+        required.update(
+            f"../../cs/compiled_circuits/{stem}_layout_gkr.json"
+            for stem in ("keccak_column_parity", "keccak_theta_rho", "keccak_chi5")
+        )
+        for path in sorted(required):
+            with self.subTest(path=path):
+                self.assertIn(path, inputs)
+                self.assertIn(inputs[path], library["needs"])
 
     def test_clean_checkout_lock_bootstrap_never_overwrites(self):
         pinned = self.scratch / retained.NATIVE_LOCK
