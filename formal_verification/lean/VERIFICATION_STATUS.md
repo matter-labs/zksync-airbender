@@ -5,8 +5,9 @@
 The model proves conditional soundness for the relations below. **No single
 whole-execution theorem currently covers a committed production verifier
 program.** A stream-aware unified relation now combines nondeterminism reads,
-modular operations and delegation calls, but no native-to-reference soundness
-theorem has been proved for that relation. The captured compiler execution bridge
+modular operations and delegation calls. Its native soundness theorem now
+retains explicit worker-domain binding. The final target must derive that
+binding from public supported use. The captured compiler execution bridge
 also retains the four-entry decoder tables. Program-parametric source/trace
 execution and logical lookup/RAM composition are established narrower results.
 
@@ -135,12 +136,19 @@ The stream-aware prefix induction now derives those worker controls from
 public supported use. It proves combined execution under the intermediate
 physical RAM profile. Its kernel and axiom checks passed. Private command and
 controller contracts are conclusions at this entrypoint.
-Unified still needs native ROM/code transport and the final target-input
-adapters. The target remains open.
+Unified still needs the joint worker-control and worker-domain induction and
+the final target-input adapters. The target remains open.
 The ROM-aware code-frame lemmas passed focused kernel and axiom checks.
 Interpreted ROM events refresh the same public word. Fetch transport can use
 that readonly history without the global tracked-RAM lower bound. The worker
 RAM binding remains explicit at this intermediate transport interface.
+The full ROM-aware native path passed focused kernel and axiom checks.
+It includes load/store retirement, caller retirement, and final stream count.
+The public setup and initialization supply its ROM execution profile.
+Worker ABI bounds now follow from each exact worker-port binding.
+These results admit tracked low ROM cells. No global tracked-RAM lower bound
+occurs in this path. The joint prefix induction must derive worker-port
+binding from the public runtime argument contract.
 The ROM-aware load/store cycle proof also passed. It uses the current native
 equations for readonly loads. It removes the global RAM lower bound from this
 cycle proof. A separate worker-port lemma derives each indirect RAM bound
