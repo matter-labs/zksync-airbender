@@ -337,10 +337,18 @@ impl TraceHolder<BF> {
         cap_dst: Option<&mut DeviceSlice<u32>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        assert!(
-            !self.is_packed_base_oracle(),
-            "packed in-place commitments are not admitted"
-        );
+        if self.is_empty_base_oracle() {
+            return match cap_dst {
+                Some(dst) => self.commit_all_into(dst, context),
+                None => self.commit_all(context),
+            };
+        }
+        if self.base_geometry.is_some() {
+            assert!(
+                gpu_ntt::ntt::log_size_supports_in_place(self.commitment_log_domain_size() as usize),
+                "in-place commitments require the generated transform domain"
+            );
+        }
         if let Some(dst) = cap_dst {
             return self.commit_in_place_into(dst, context);
         }

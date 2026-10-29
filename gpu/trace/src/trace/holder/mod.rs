@@ -76,12 +76,17 @@ pub fn validate_baby_bear_base_opening(
 ) {
     validate_baby_bear_base_geometry(geometry, twiddle_domain_log2);
     TraceHolder::<BF>::validate_base_layout(geometry, trees_mode);
-    if geometry.pack_log2() > 0 {
-        assert_ne!(
-            policy,
-            OpeningStrategy::InPlace,
-            "packed in-place openings are not admitted"
+    if policy == OpeningStrategy::InPlace {
+        assert!(
+            gpu_ntt::ntt::log_size_supports_in_place(geometry.message_size_log2()),
+            "in-place openings require the generated transform domain"
         );
+        assert!(
+            !matches!(trees_mode, TreesCacheMode::CacheFull),
+            "in-place openings require partial or uncached trees"
+        );
+    }
+    if geometry.pack_log2() > 0 {
         if policy == OpeningStrategy::PerCoset {
             assert!(
                 gpu_ntt::ntt::log_size_supports_retained_monomials(geometry.message_size_log2()),
@@ -578,12 +583,13 @@ impl<T> TraceHolder<T> {
     /// Defer LDE materialization until queries. Requires raw backing and no
     /// materialized cosets; configure before `finish_raw_batching`.
     pub fn defer_materialization_until_queries(&mut self, policy: OpeningStrategy) {
-        if self.is_packed_base_oracle() {
-            assert_ne!(
-                policy,
-                OpeningStrategy::InPlace,
-                "packed in-place openings are not admitted"
+        if self.base_geometry.is_some() && policy == OpeningStrategy::InPlace {
+            assert!(
+                matches!(self.trees, TreesHolder::None | TreesHolder::Partial(_)),
+                "in-place openings require partial or uncached trees"
             );
+        }
+        if self.is_packed_base_oracle() {
             if policy == OpeningStrategy::PerCoset {
                 assert!(
                     matches!(self.trees, TreesHolder::None | TreesHolder::Partial(_)),

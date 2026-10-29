@@ -433,6 +433,7 @@ fn assert_recomputed_openings(
     holder: &mut TraceHolder<BF>,
     cpu: &CpuOracle,
     context: &ProverContext,
+    policy: OpeningStrategy,
 ) {
     let log_f = holder.log_lde_factor;
     let leaves_per_coset =
@@ -467,7 +468,7 @@ fn assert_recomputed_openings(
     let mut paths = context
         .alloc::<u32>(query_host.len() * layers * 8, AllocationPlacement::BestFit)
         .unwrap();
-    holder.defer_materialization_until_queries(OpeningStrategy::PerCoset);
+    holder.defer_materialization_until_queries(policy);
     holder.finish_raw_batching(context).unwrap();
     assert!(holder.raw_hypercube_evals.is_none());
     holder
@@ -586,7 +587,7 @@ fn recomputed_case_for_geometry(
         raw,
         "PerCoset commit preserves logical source",
     );
-    assert_recomputed_openings(&mut holder, cpu, context);
+    assert_recomputed_openings(&mut holder, cpu, context, OpeningStrategy::PerCoset);
     drop(holder);
     assert_eq!(context.get_used_mem_current(), baseline);
 }
@@ -853,7 +854,7 @@ fn cpu_packed_base_geometry_admission_is_cuda_free() {
 }
 
 #[test]
-fn packed_base_cpu_parity_rejects_untested_policies_before_work() {
+fn packed_base_cpu_parity_rejects_domain_and_storage_before_work() {
     use std::panic::{catch_unwind, AssertUnwindSafe};
     let context = super::tests::make_test_context(256, 16);
     let config = test_config(13, 1);
@@ -865,10 +866,18 @@ fn packed_base_cpu_parity_rejects_untested_policies_before_work() {
     )
     .unwrap();
     let before = context.get_used_mem_current();
-    assert!(catch_unwind(AssertUnwindSafe(
-        || holder.defer_materialization_until_queries(OpeningStrategy::InPlace)
-    ))
-    .is_err());
+    assert!(
+        catch_unwind(AssertUnwindSafe(|| validate_baby_bear_base_opening(
+            &geometry(&config, BaseOracleRole::Memory, 1),
+            OpeningStrategy::InPlace,
+            TreesCacheMode::CachePartial,
+            context
+                .ntt_device_context()
+                .whir_leaf_transform_params()
+                .omega_log_order,
+        )))
+        .is_err()
+    );
     assert!(catch_unwind(AssertUnwindSafe(|| {
         validate_baby_bear_base_opening(
             &geometry(&config, BaseOracleRole::Memory, 1),
@@ -889,8 +898,8 @@ fn packed_base_cpu_parity_rejects_untested_policies_before_work() {
     assert!(catch_unwind(AssertUnwindSafe(|| holder.commit_in_place(None, &context))).is_err());
     assert_eq!(context.get_used_mem_current(), before);
 
-    // A supported transform family alone does not admit untested storage
-    // combinations. Reject before cap allocation or any raw-data write.
+    // Retained commitment requires its partial-tree storage, independently
+    // of the transform domain. Reject before cap allocation or a raw write.
     let config = test_config(20, 1);
     let geometry = geometry(&config, BaseOracleRole::Memory, 1);
     for (all_cosets, tree) in [
@@ -1179,4 +1188,194 @@ fn merged_packed_base_cpu_parity_blake20_retained() {
 #[ignore = "real-width merged raw-recompute opening CPU parity"]
 fn merged_packed_base_cpu_parity_blake20_recompute() {
     merged_blake20_production(2);
+}
+
+// The CPU oracle sees only logical columns. The in-place transform must restore
+// the complete committed backing, including padding, before logical GKR readers.
+fn in_place_case_for_geometry(
+    geometry: BaseCommitmentGeometry,
+    role: BaseOracleRole,
+    raw: &[BF],
+    cpu: &CpuOracle,
+    tree: TreesCacheMode,
+    retained: bool,
+    context: &ProverContext,
+) {
+    let baseline = context.get_used_mem_current();
+    validate_baby_bear_base_opening(
+        &geometry,
+        OpeningStrategy::InPlace,
+        tree,
+        context
+            .ntt_device_context()
+            .whir_leaf_transform_params()
+            .omega_log_order,
+    );
+    let mut holder =
+        TraceHolder::<BF>::new_base_without_cosets(geometry, role, tree, context).unwrap();
+    memory_copy_async(
+        holder.get_uninit_hypercube_evals_mut(),
+        raw,
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    let raw_pointer = holder.padded_hypercube_evals().as_ptr();
+    match (tree, retained) {
+        (TreesCacheMode::CacheNone, false) => {
+            // Memory arrives with a cap and no cached tree in production.
+            holder.commit_all(context).unwrap();
+            holder.release_cosets();
+        }
+        (TreesCacheMode::CachePartial, true) => {
+            holder.commit_with_monomials(None, context).unwrap();
+            holder.retain_after_commitment(WitnessPostCommitStorage::RawAndMonomials);
+        }
+        (TreesCacheMode::CachePartial, false) => {
+            holder.commit_in_place(None, context).unwrap();
+            // Stage1 applies retention after every commitment, including empty
+            // roles whose commit path marks their empty cosets ready.
+            holder.retain_after_commitment(WitnessPostCommitStorage::RawEvaluations);
+        }
+        _ => unreachable!(),
+    }
+    assert_eq!(
+        holder.read_full_cap_synchronously(context).unwrap(),
+        cpu.get_cap()
+    );
+    assert_eq!(holder.padded_hypercube_evals().as_ptr(), raw_pointer);
+    let restored = read_device(holder.padded_hypercube_evals(), context);
+    assert_values(
+        &restored[..raw.len()],
+        raw,
+        "in-place restores logical source",
+    );
+    assert!(
+        restored[raw.len()..].iter().all(|value| *value == BF::ZERO),
+        "in-place restores zero tail without a repair memset"
+    );
+    assert_eq!(
+        restored.len(),
+        geometry.oracle(role).physical_columns() << geometry.message_size_log2()
+    );
+    assert_recomputed_openings(&mut holder, cpu, context, OpeningStrategy::InPlace);
+    drop(holder);
+    assert_eq!(context.get_used_mem_current(), baseline);
+}
+
+fn in_place_geometry_matrix(n: usize, k: usize, fold: usize) {
+    let context = super::tests::make_test_context(4096, 16);
+    let worker = Worker::new_with_num_threads(4);
+    let config = test_config_with_base_fold(n + k, k, fold);
+    let mut cases = 0;
+    for columns in [0, (1usize << k) + 1] {
+        let raw = source(columns, 1usize << n);
+        let cpu = cpu_oracle(&config, &raw, &worker);
+        for (role, tree, retained) in [
+            (BaseOracleRole::Memory, TreesCacheMode::CacheNone, false),
+            (BaseOracleRole::Witness, TreesCacheMode::CachePartial, false),
+            (BaseOracleRole::Witness, TreesCacheMode::CachePartial, true),
+            (BaseOracleRole::Setup, TreesCacheMode::CachePartial, false),
+        ] {
+            in_place_case_for_geometry(
+                geometry(&config, role, columns),
+                role,
+                &raw,
+                &cpu,
+                tree,
+                retained,
+                &context,
+            );
+            cases += 1;
+        }
+    }
+    assert_eq!(cases, 8);
+    eprintln!("InPlace primitive n={n} k={k} f={fold}: {cases} cases, raw/retained, all roles, empty and padded tails");
+}
+
+macro_rules! in_place_geometry_tests {
+    ($($name:ident: ($n:expr, $k:expr, $fold:expr)),* $(,)?) => { $(
+        #[test]
+        #[ignore = "m22/m24 independent CPU/GPU InPlace primitive parity"]
+        fn $name() { in_place_geometry_matrix($n, $k, $fold); }
+    )* };
+}
+in_place_geometry_tests! {
+    in_place_base_cpu_parity_virtual_k0: (22, 0, 0),
+    in_place_base_cpu_parity_virtual_k2: (20, 2, 0),
+    in_place_base_cpu_parity_physical_blake20_pack2: (20, 2, 1),
+    in_place_base_cpu_parity_physical_blake20_pack4: (20, 4, 1),
+    in_place_base_cpu_parity_physical_unified23_pack1: (23, 1, 1),
+}
+
+#[test]
+#[ignore = "m24 merged boundary and empty-role InPlace opening parity"]
+fn in_place_base_cpu_parity_merged_blake20_pack4() {
+    let context = super::tests::make_test_context(4096, 16);
+    let worker = Worker::new_with_num_threads(4);
+    let mut config = test_config(24, 4);
+    config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+    let counts = BaseColumns {
+        memory: 15,
+        witness: 18,
+        setup: 0,
+    };
+    let raw = source(counts.memory + counts.witness, 1usize << 20);
+    let (memory, witness) = raw.split_at(counts.memory << 20);
+    let cpu = cpu_merged_oracle(&config, memory, witness, &worker);
+    let geometry = BaseCommitmentGeometry::from_config(&config, counts).unwrap();
+    // Witness starts in slot15 of the first group and the last group has a
+    // single live column. Per-side padding would produce a different oracle.
+    assert_eq!(
+        geometry.oracle(BaseOracleRole::Memory).physical_columns(),
+        3
+    );
+    in_place_case_for_geometry(
+        geometry,
+        BaseOracleRole::Memory,
+        &raw,
+        &cpu,
+        TreesCacheMode::CacheNone,
+        false,
+        &context,
+    );
+    let empty_cpu = cpu_oracle(&config, &[], &worker);
+    for role in [BaseOracleRole::Witness, BaseOracleRole::Setup] {
+        in_place_case_for_geometry(
+            geometry,
+            role,
+            &[],
+            &empty_cpu,
+            TreesCacheMode::CachePartial,
+            false,
+            &context,
+        );
+    }
+    eprintln!("InPlace merged n20/k4: 3 cases, boundary15/1, tail1+15zeros, empty witness/setup");
+}
+
+#[test]
+fn cpu_in_place_geometry_checks_domain_and_tree_before_work() {
+    for (message, k, fold) in [(22, 0, 0), (22, 2, 0), (22, 2, 1), (24, 4, 1), (24, 1, 1)] {
+        let config = test_config_with_base_fold(message, k, fold);
+        let shape = geometry(&config, BaseOracleRole::Witness, (1usize << k) + 1);
+        for tree in [TreesCacheMode::CacheNone, TreesCacheMode::CachePartial] {
+            validate_baby_bear_base_opening(&shape, OpeningStrategy::InPlace, tree, 27);
+        }
+        assert!(std::panic::catch_unwind(|| validate_baby_bear_base_opening(
+            &shape,
+            OpeningStrategy::InPlace,
+            TreesCacheMode::CacheFull,
+            27
+        ))
+        .is_err());
+    }
+    let config = test_config(13, 1);
+    let shape = geometry(&config, BaseOracleRole::Witness, 3);
+    assert!(std::panic::catch_unwind(|| validate_baby_bear_base_opening(
+        &shape,
+        OpeningStrategy::InPlace,
+        TreesCacheMode::CachePartial,
+        27
+    ))
+    .is_err());
 }

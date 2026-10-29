@@ -44,8 +44,8 @@ mod forward;
 mod in_place;
 mod inverse;
 pub use in_place::{
-    coset_to_monomials_in_place, hypercube_to_coset_in_place, monomials_to_coset_in_place,
-    monomials_to_hypercube_in_place,
+    coset_to_monomials_in_place, hypercube_to_coset_in_place, log_size_supports_in_place,
+    monomials_to_coset_in_place, monomials_to_hypercube_in_place,
 };
 mod kernels;
 mod lde;
