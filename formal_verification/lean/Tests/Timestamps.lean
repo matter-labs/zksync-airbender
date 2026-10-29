@@ -77,7 +77,7 @@ theorem equal_previous_rejected : ¬ FlatOperation.ConstraintsHoldFlat
       simp [AddSub.importedConstraintsTraceColumns] at member
       rcases member with rfl | rfl | rfl
       all_goals constructor <;> norm_num [Trace.decodeTimestamp, AddSub.importedConstraintsTraceColumns, row, Trace.timestampBase, ZMod.val_ofNat, ZMod.val_natCast, Arithmetic.limbBase, babyBearModulus])
-  have order := effects.accesses ⟨0, #v[23, 24], 42⟩ (by simp [AddSub.importedConstraintsTraceColumns])
+  have order := effects.accesses ⟨0, #v[23, 24], 42, none⟩ (by simp [AddSub.importedConstraintsTraceColumns])
   change 4 < 4 ∧ _ at order
   omega
 
