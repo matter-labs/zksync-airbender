@@ -155,6 +155,11 @@ also passed. Native matching derives clocks, zero-register reads, canonical
 word bounds, worker operations and one actual Sail memory history. The round
 controller contract remains explicit at this intermediate memory interface.
 The reduced target must derive it from public supported use before completion.
+Reduced arithmetic, modular, external, shift, bitwise and control-flow clauses
+now have shared-history execution adapters. Their focused kernel and axiom
+checks passed. These adapters take actual operands and histories from the shared
+transport. The control adapter keeps its native final-PC range explicit.
+The native PC path must derive that range before final target assembly.
 The ROM-aware code-frame lemmas passed focused kernel and axiom checks.
 Interpreted ROM events refresh the same public word. Fetch transport can use
 that readonly history without the global tracked-RAM lower bound. The worker

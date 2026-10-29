@@ -1,3 +1,4 @@
+import Airbender.Proofs.Reduced.ControlExecution
 import Airbender.Proofs.Reduced.StreamMemory
 import Airbender.Proofs.Reduced.TargetInputs
 import Airbender.Proofs.UnifiedReduced.StreamPublicBinding
@@ -13826,3 +13827,6 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.mixed_zero_rules
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.mixed_write_rules
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.mixed_memory_effects
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.addsub_execution_from_shared_history
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.shift_execution_from_shared_history
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.control_execution_from_shared_history
