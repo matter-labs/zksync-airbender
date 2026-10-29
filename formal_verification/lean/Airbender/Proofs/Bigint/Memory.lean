@@ -47,8 +47,8 @@ private theorem empty_writes [Fact p.Prime] {w : Nat → ZMod p}
     all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
       Verification.environment, f0, f1, f2, f3, f4, f5, f6] at gate
     all_goals simpa [Variables.writtenLimbs] using gate
-  · have low := Verification.assertion_of_holds h ⟨90, by rw [constraint_count]; decide⟩
-    have high := Verification.assertion_of_holds h ⟨91, by rw [constraint_count]; decide⟩
+  · have low := Verification.assertion_of_holds h ⟨89, by rw [constraint_count]; decide⟩
+    have high := Verification.assertion_of_holds h ⟨90, by rw [constraint_count]; decide⟩
     simp [importedConstraints, FlatOperation.constraints, Expression.eval,
       Verification.environment, f0, f1, f2, f3, f5, f6] at low high
     exact ⟨low, high⟩
