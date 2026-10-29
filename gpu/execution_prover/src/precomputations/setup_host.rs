@@ -69,11 +69,15 @@ impl<F: PrimeField> ResolvedProverConfig<F> {
             Arc::ptr_eq(circuit, &self.circuit),
             "request artifact differs from resolved config"
         );
-        assert_eq!(
-            self.config.commitment_mode,
-            CommitmentMode::SeparateMemoryAndWitness,
-            "GPU requests require separate memory and witness commitments"
-        );
+        if self.config.commitment_mode == CommitmentMode::MergedMemoryAndWitness {
+            gpu_circuit_prover::proof::merged_commitment::validate_merged_packed_geometry(
+                &self.geometry,
+            );
+            gpu_circuit_prover::proof::merged_commitment::validate_merged_circuit_type(
+                circuit_type,
+                &self.geometry,
+            );
+        }
     }
 }
 
@@ -139,9 +143,15 @@ impl LazyGpuGKRSetupHost {
                     return Ok(None);
                 }
                 let host = if uses_base_commitment_geometry(&self.geometry) {
-                    gpu_trace::trace::memory::validate_separate_base_commitment_geometry(
-                        &self.geometry,
-                    );
+                    if self.geometry.commitment_mode() == CommitmentMode::MergedMemoryAndWitness {
+                        gpu_circuit_prover::proof::merged_commitment::validate_merged_packed_geometry(
+                            &self.geometry,
+                        );
+                    } else {
+                        gpu_trace::trace::memory::validate_separate_base_commitment_geometry(
+                            &self.geometry,
+                        );
+                    }
                     GpuGKRSetupHost::precompute_for_geometry(&cpu_setup, self.geometry, context)?
                 } else {
                     // Unpacked nonvirtual setup retains its legacy producer.
@@ -178,7 +188,7 @@ pub struct CircuitPrecomputations {
 
 impl CircuitPrecomputations {
     /// Validate host-only request metadata before any transfer constructor.
-    /// `caps` distinguishes a proof request from its separate memory precommit.
+    /// `caps` distinguishes a proof request from its memory precommit.
     pub(crate) fn admit_inputs_before_transfers(
         &self,
         circuit_type: CircuitType,
@@ -196,7 +206,7 @@ impl CircuitPrecomputations {
         assert_eq!(self.gkr_programs.circuit_type(), circuit_type);
         let config = resolved.config();
         let geometry = resolved.geometry();
-        // Execution requests remain closed independently of circuit-proof and
+        // Virtual execution requests remain closed independently of circuit-proof and
         // primitive memory admission until their complete pipeline is qualified.
         assert!(
             !geometry.is_virtual_packing(),
@@ -204,7 +214,17 @@ impl CircuitPrecomputations {
         );
         self.setup_host
             .validate_config(config, BaseColumns::of(circuit));
-        gpu_trace::trace::memory::validate_memory_commitment_config(config, &geometry, circuit);
+        if config.commitment_mode == CommitmentMode::MergedMemoryAndWitness {
+            use gpu_circuit_prover::proof::merged_commitment::{
+                validate_merged_circuit_type, validate_merged_commitment_geometry,
+                validate_merged_packed_geometry,
+            };
+            validate_merged_packed_geometry(&geometry);
+            validate_merged_circuit_type(circuit_type, &geometry);
+            validate_merged_commitment_geometry(config, &geometry, circuit);
+        } else {
+            gpu_trace::trace::memory::validate_memory_commitment_config(config, &geometry, circuit);
+        }
         // Proof requests receive the BF transform check in proof preflight.
         if caps.is_none() && uses_base_commitment_geometry(&geometry) {
             gpu_trace::trace::holder::validate_baby_bear_base_geometry(
@@ -213,7 +233,7 @@ impl CircuitPrecomputations {
             );
         }
         // Setup batches drain before constructor/add_binary returns, including
-        // for separate memory requests. This accessor allocates nothing.
+        // for memory requests. This accessor allocates nothing.
         let setup = self.setup_host.get_initialized();
         if let Some(host) = setup.as_ref() {
             host.validate_for_geometry(&geometry);
@@ -222,6 +242,12 @@ impl CircuitPrecomputations {
                 geometry.logical_columns().setup,
                 0,
                 "missing setup producer"
+            );
+        }
+        if config.commitment_mode == CommitmentMode::MergedMemoryAndWitness {
+            assert!(
+                setup.is_some(),
+                "merged memory producer requires initialized setup"
             );
         }
         // Cap packing uses the ordinary heap, never pinned/device allocations.

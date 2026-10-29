@@ -1,9 +1,12 @@
 use super::factory::{stable_external_challenges, PreparedCircuit};
-use crate::upstream::{DefaultTreeConstructor, GKRProof, MerkleTreeCapVarLength};
+use crate::upstream::{CommitmentMode, DefaultTreeConstructor, GKRProof, MerkleTreeCapVarLength};
 use crate::A;
 use era_cudart::result::CudaResult;
 use gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer;
 use gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy;
+use gpu_circuit_prover::proof::merged_commitment::{
+    commit_merged_from_transfers_for_geometry, GpuGKRMergedCommitTransfer,
+};
 use gpu_circuit_prover::proof::ProofPreflight;
 use gpu_circuit_prover::proof::{admit_dr_tail_before_transfers, prove, DrTailPreflightRequest};
 use gpu_core::allocator::tracker::AllocationDirection;
@@ -77,7 +80,7 @@ pub(super) fn commit_memory(
         let resolved = &circuit.precomputations.resolved_config;
         let config = resolved.config();
         let geometry = resolved.geometry();
-        circuit.precomputations.admit_inputs_before_transfers(
+        let (setup_host, _) = circuit.precomputations.admit_inputs_before_transfers(
             circuit.circuit,
             circuit.security_level,
             None,
@@ -87,19 +90,39 @@ pub(super) fn commit_memory(
                 .omega_log_order,
         );
         let (decoder, inits, trace) = input_transfers(context, circuit)?;
-        let mut inputs = GpuGKRCommitMemoryTransfer::new(decoder, inits, trace, context)?;
-        if let Err(error) = inputs.schedule(context) {
-            drain(context)?;
-            return Err(error);
-        }
-        let job = commit_memory_from_transfers_for_geometry::<A>(
-            circuit.circuit,
-            circuit.precomputations.gkr_programs.compiled_circuit(),
-            inputs,
-            config,
-            geometry,
-            context,
-        )?;
+        let job = if config.commitment_mode == CommitmentMode::MergedMemoryAndWitness {
+            let setup = GpuGKRSetupTransfer::new(
+                setup_host.expect("merged setup metadata admitted"),
+                context,
+            )?;
+            let mut inputs =
+                GpuGKRMergedCommitTransfer::new(setup, decoder, inits, trace, context)?;
+            if let Err(error) = inputs.schedule(context) {
+                drain(context)?;
+                return Err(error);
+            }
+            commit_merged_from_transfers_for_geometry::<A>(
+                &circuit.precomputations.gkr_programs,
+                config,
+                geometry,
+                inputs,
+                context,
+            )?
+        } else {
+            let mut inputs = GpuGKRCommitMemoryTransfer::new(decoder, inits, trace, context)?;
+            if let Err(error) = inputs.schedule(context) {
+                drain(context)?;
+                return Err(error);
+            }
+            commit_memory_from_transfers_for_geometry::<A>(
+                circuit.circuit,
+                circuit.precomputations.gkr_programs.compiled_circuit(),
+                inputs,
+                config,
+                geometry,
+                context,
+            )?
+        };
         job.finish().map(|(caps, _)| caps)
     })();
     drain(context)?;

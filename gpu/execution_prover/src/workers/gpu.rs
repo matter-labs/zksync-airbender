@@ -8,6 +8,9 @@ use execution_prover::messages::{
     MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest, ProofResult,
     SetupInitializationRequest, SetupInitializationResult,
 };
+use gpu_circuit_prover::proof::merged_commitment::{
+    commit_merged_from_transfers_for_geometry, GpuGKRMergedCommitTransfer,
+};
 use gpu_circuit_prover::proof::{
     admit_dr_tail_before_transfers, DrTailPreflightRequest, GpuGKRProofJob,
 };
@@ -23,7 +26,9 @@ use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use log::{debug, error, info, trace};
 
-use crate::upstream::{GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel};
+use crate::upstream::{
+    CommitmentMode, GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel,
+};
 use std::ffi::CStr;
 use std::mem;
 use std::process::exit;
@@ -101,6 +106,7 @@ enum PhaseOneInputs<'a> {
         gpu_circuit_prover::proof::ProofPreflight<BF>,
     ),
     MemoryCommitment(gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>),
+    MergedMemoryCommitment(GpuGKRMergedCommitTransfer<'a, A>),
     SetupInitialization,
 }
 
@@ -405,6 +411,20 @@ fn schedule_phase_one<'a>(
                     bundle,
                     dr_tail_plan.expect("proof preflight must return a DR-tail plan"),
                 )
+            } else if config.commitment_mode == CommitmentMode::MergedMemoryAndWitness {
+                let setup_transfer = GpuGKRSetupTransfer::new(
+                    Arc::clone(setup_host.as_ref().expect("merged setup metadata admitted")),
+                    context,
+                )?;
+                let mut bundle = GpuGKRMergedCommitTransfer::new(
+                    setup_transfer,
+                    decoder_transfer,
+                    inits_and_teardowns_transfer,
+                    tracing_data_transfer,
+                    context,
+                )?;
+                bundle.schedule(context)?;
+                PhaseOneInputs::MergedMemoryCommitment(bundle)
             } else {
                 let mut bundle =
                     gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<'_, A>::new(
@@ -466,6 +486,16 @@ fn enqueue_phase_two<'a>(
                 bundle,
                 prover_config,
                 resolved.geometry(),
+                context,
+            )?;
+            JobType::MemoryCommitment(job)
+        }
+        PhaseOneInputs::MergedMemoryCommitment(bundle) => {
+            let job = commit_merged_from_transfers_for_geometry::<A>(
+                &state.precomputations.gkr_programs,
+                prover_config,
+                resolved.geometry(),
+                bundle,
                 context,
             )?;
             JobType::MemoryCommitment(job)

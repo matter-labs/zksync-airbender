@@ -21,7 +21,8 @@ use gpu_trace::trace::memory::{schedule_memory_cap_readback, MemoryCommitmentJob
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType};
 
-pub(crate) fn validate_merged_packed_geometry(geometry: &BaseCommitmentGeometry) {
+/// Field-free admission for the qualified physical merged proof/request shape.
+pub fn validate_merged_packed_geometry(geometry: &BaseCommitmentGeometry) {
     assert_eq!(
         geometry.commitment_mode(),
         CommitmentMode::MergedMemoryAndWitness
@@ -44,10 +45,8 @@ pub(crate) fn validate_merged_packed_geometry(geometry: &BaseCommitmentGeometry)
     assert_eq!(geometry.cap_size(), 16, "unqualified merged cap");
 }
 
-pub(crate) fn validate_merged_circuit_type(
-    circuit_type: CircuitType,
-    geometry: &BaseCommitmentGeometry,
-) {
+/// Bind packed merged admission to the circuit qualified by full CPU parity.
+pub fn validate_merged_circuit_type(circuit_type: CircuitType, geometry: &BaseCommitmentGeometry) {
     if geometry.pack_log2() != 0 {
         assert_eq!(
             circuit_type,
@@ -101,7 +100,7 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRMergedCommitTransfer<'a, A> {
     }
 }
 
-/// Bind the explicit primitive's geometry without opening config-driven jobs.
+/// Bind the merged producer to its immutable config and logical artifact.
 pub fn validate_merged_commitment_geometry<F: PrimeField>(
     config: &ProverConfig,
     geometry: &BaseCommitmentGeometry,

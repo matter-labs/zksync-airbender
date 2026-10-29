@@ -87,11 +87,15 @@ summary — the contract document is the source of truth.
   memory commitments share the qualified base geometry. Setup warmup produces
   geometry-bearing entries for physical or virtual packing, including pure
   virtual k0; geometry-None entries cannot supply either. Execution worker/probe
-  requests retain independent virtual and merged guards before H2D. The proof
+  requests retain an independent virtual guard before H2D. The proof
   entry additionally admits physical merged Blake compression at `(20,4,f1)`
   with the same default policy. Its explicit merged-cap producer concatenates
-  memory then witness and pads only the end; config-driven merged memory and
-  worker requests remain closed. No canonical BF config selects merged mode.
+  memory then witness and pads only the end. Worker and memory-sweep requests
+  dispatch that producer from the same immutable resolved config, after the
+  qualified shape/circuit, cache and cap identity checks. The lower trace
+  memory-only producer remains separate-only. No canonical BF config selects
+  merged mode, so this execution branch is structurally open but unreachable
+  from current defaults.
 - `src/proof/`:
   - `merged_commitment.rs`: explicit geometry-bound BF merged cap production;
     cap-only transfer ownership, with no persisted-tree or profile options.
@@ -133,8 +137,9 @@ clearly-marked `#[cfg(test)]` section of the same manifest file.
 
 This crate's own module DAG is small: `config` and `proof::inputs` are leaves;
 `proof::orchestration` drives `gpu_trace`/`gpu_gkr`/`gpu_whir` directly.
-`proof::prove()` is the only production entry point exposed upward to
-`gpu_execution_prover`.
+`proof::prove()` is the proof entry point exposed upward to
+`gpu_execution_prover`; merged memory jobs use
+`proof::merged_commitment::commit_merged_from_transfers_for_geometry`.
 
 The crate stack itself — which modules became `gpu_core` / `gpu_ntt` /
 `gpu_ops` / `gpu_hash` / `gpu_prover_context` / `gpu_trace` /

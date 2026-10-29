@@ -89,3 +89,50 @@ fn cpu_empty_memory_caps_and_malformed_metadata_are_checked() {
             .is_err()
     );
 }
+
+#[test]
+fn cpu_memory_cap_mode_identity_rejects_before_transfer() {
+    use crate::upstream::CommitmentMode;
+    let config = ProverConfig::whir_only(
+        20,
+        WhirSchedule::from_legacy_arrays(2, 16, 0, &[1, 5], &[1, 1], &[2], &[0, 0]),
+        SecurityLevel::Sec100,
+    );
+    let columns = BaseColumns {
+        memory: 3,
+        witness: 5,
+        setup: 1,
+    };
+    let separate = BaseCommitmentGeometry::from_config(&config, columns).unwrap();
+    let mut merged_config = config;
+    merged_config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+    let merged = BaseCommitmentGeometry::from_config(&merged_config, columns).unwrap();
+    let caps = vec![
+        MerkleTreeCapVarLength {
+            cap: vec![[0; 8]; 8]
+        };
+        2
+    ];
+    let separate_host = GpuGKRMemoryTransferHost::from_per_coset_caps_for_geometry(&caps, separate);
+    let merged_host = GpuGKRMemoryTransferHost::from_per_coset_caps_for_geometry(&caps, merged);
+    let legacy = GpuGKRMemoryTransferHost::from_per_coset_caps(&caps, 1, 4);
+    separate_host.validate_for_geometry(&separate);
+    merged_host.validate_for_geometry(&merged);
+    legacy.validate_for_geometry(&separate);
+    for (name, host, requested) in [
+        ("merged cap for separate request", &merged_host, separate),
+        ("separate cap for merged request", &separate_host, merged),
+        ("legacy cap for merged request", &legacy, merged),
+    ] {
+        let constructed = std::cell::Cell::new(false);
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                host.validate_for_geometry(&requested);
+                constructed.set(true);
+            }))
+            .is_err(),
+            "{name}"
+        );
+        assert!(!constructed.get(), "{name} reached transfer construction");
+    }
+}

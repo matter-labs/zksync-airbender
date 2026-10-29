@@ -11,7 +11,9 @@ use fft::GoodAllocator;
 use crate::trace::decoder::DecoderTableTransfer;
 use crate::trace::holder::bitreverse_index;
 use crate::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
-use crate::upstream::{BaseCommitmentGeometry, BaseOracleRole, MerkleTreeCapVarLength};
+use crate::upstream::{
+    BaseCommitmentGeometry, BaseOracleRole, CommitmentMode, MerkleTreeCapVarLength,
+};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_hash::blake2s::Digest;
@@ -128,8 +130,10 @@ impl GpuGKRMemoryTransferHost {
             );
         } else {
             assert!(
-                geometry.pack_log2() == 0 && !geometry.is_virtual_packing(),
-                "legacy memory cap lacks packed or virtual geometry"
+                geometry.pack_log2() == 0
+                    && !geometry.is_virtual_packing()
+                    && geometry.commitment_mode() == CommitmentMode::SeparateMemoryAndWitness,
+                "legacy memory cap lacks packed, virtual or merged geometry"
             );
         }
         let expected = if geometry.oracle(BaseOracleRole::Memory).physical_columns() == 0 {

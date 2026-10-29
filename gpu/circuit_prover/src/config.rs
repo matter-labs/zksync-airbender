@@ -7,7 +7,8 @@
 //! separate physical-only configurations and the qualified merged Blake shape
 //! through shared geometry admission.
 //! Workers retain one resolved CPU config for setup and both request phases;
-//! virtual defaults and merged commitments remain closed at that execution boundary.
+//! virtual defaults remain closed at that execution boundary. The qualified
+//! physical merged Blake shape uses the same immutable config binding.
 //! Lives in
 //! the prover layer because `ProverConfig` is a `prove()` input (see
 //! `proof/mod.rs`): `execution` calls down into this and threads the result
