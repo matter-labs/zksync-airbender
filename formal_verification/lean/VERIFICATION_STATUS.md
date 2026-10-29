@@ -16,7 +16,7 @@ execution and logical lookup/RAM composition are established narrower results.
 | Setup machine | Current target status |
 | --- | --- |
 | Unrolled full unsigned | Open. The `UnrolledFullUnsigned` target lists all premises. Prove native soundness for its combined relation. Bind the public program setup. Connect the caller, worker and initialization boundaries. Prove the split Keccak worker functions on the new base. The target excludes special5 calls. |
-| Unrolled reduced | Open. The `UnrolledReduced` target lists all premises. Prove native soundness for its stream and caller relation. Bind the public program setup. Connect the extended-round worker and initialization boundaries. |
+| Unrolled reduced | Open. The standalone initialization adapter and public ordinary/caller images are proved. Compose its native shared history, instruction cycles and extended-round caller cycles. Derive worker controls from public supported use. Bind public decoder lookup to native acceptance. |
 | Unified | Proved by `MachineTargets.Proofs.unified_soundness`. The theorem has exactly the `Unified` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. The target excludes special5 calls. |
 
 [The three target definitions](Airbender/Review/Compiler/MachineTargets.lean)

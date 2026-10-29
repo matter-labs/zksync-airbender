@@ -1,3 +1,4 @@
+import Airbender.Proofs.Reduced.TargetInputs
 import Airbender.Proofs.UnifiedReduced.StreamPublicBinding
 import Airbender.Proofs.UnifiedReduced.StreamPublicCallers
 import Airbender.Proofs.UnifiedReduced.StreamPublicAcceptance
@@ -13806,3 +13807,7 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unified_native_row_classification
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unified_native_acceptance
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unified_soundness
+#print axioms Airbender.Compiler.MachineTargets.Proofs.reduced_ordinary_image
+#print axioms Airbender.Compiler.MachineTargets.Proofs.reduced_caller_image
+#print axioms Airbender.Compiler.MachineTargets.Proofs.reduced_caller_metadata
+#print axioms Airbender.Compiler.MachineTargets.Proofs.reduced_initialization_inputs
