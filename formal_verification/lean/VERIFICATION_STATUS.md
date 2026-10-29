@@ -137,6 +137,10 @@ physical RAM profile. Its kernel and axiom checks passed. Private command and
 controller contracts are conclusions at this entrypoint.
 Unified still needs native ROM/code transport and the final target-input
 adapters. The target remains open.
+The ROM-aware code-frame lemmas passed focused kernel and axiom checks.
+Interpreted ROM events refresh the same public word. Fetch transport can use
+that readonly history without the global tracked-RAM lower bound. The worker
+RAM binding remains explicit at this intermediate transport interface.
 All nine ordinary worker and CPU memory-port inventories passed focused
 checks. Their timestamp records use an explicit absent borrow subtrahend.
 The focused circuit and proof group passed all 288 module checks.
