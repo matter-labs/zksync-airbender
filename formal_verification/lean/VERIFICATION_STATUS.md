@@ -131,8 +131,12 @@ The native caller adapters also passed focused kernel and axiom checks.
 The conditional native stream entrypoint derives all caller cycles from
 current worker equations and the shared history. It retains explicit bigint
 commands, hash-controller contracts and the physical code profile.
-Unified still needs those worker controls from public stream reachability
-and native ROM/code transport. The target remains open.
+The stream-aware prefix induction now derives those worker controls from
+public supported use. It proves combined execution under the intermediate
+physical RAM profile. Its kernel and axiom checks passed. Private command and
+controller contracts are conclusions at this entrypoint.
+Unified still needs native ROM/code transport and the final target-input
+adapters. The target remains open.
 All nine ordinary worker and CPU memory-port inventories passed focused
 checks. Their timestamp records use an explicit absent borrow subtrahend.
 The focused circuit and proof group passed all 288 module checks.
