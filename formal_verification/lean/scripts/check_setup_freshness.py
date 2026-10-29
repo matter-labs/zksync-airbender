@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reconstruct all thirteen retained native setups with existing scoped commands.
+"""Reconstruct all sixteen retained native setups with existing scoped commands.
 
 Each regenerate/export invocation is ONE job for the external bounded single
 worker. This script never raises resource limits, schedules parallel jobs, runs
@@ -34,7 +34,8 @@ GENERATORS = {
     "keccak": ("gkr_circuits::delegation::keccak_special5::test", "keccak_special5"),
     "inits-and-teardowns": ("gkr_compiler::inits_and_teardowns::test", "inits_and_teardowns"),
 }
-FAMILIES = tuple(GENERATORS) + ("decoder-smoke",)
+EXPORT_ONLY_FAMILIES = ("keccak-column-parity", "keccak-theta-rho", "keccak-chi5")
+FAMILIES = tuple(GENERATORS) + EXPORT_ONLY_FAMILIES + ("decoder-smoke",)
 PROGRAM_FAMILIES = {"add-sub", "jump-branch", "mul-div", "shift-binop", "word-memory", "subword-memory", "unified"}
 
 
@@ -131,7 +132,7 @@ def job(mode, family, repo, work):
     before = None
     if mode == "regenerate":
         if family not in GENERATORS:
-            raise ValueError("Decoder smoke is derived by its export test, not a production generator")
+            raise ValueError(f"No native generator is registered for {family}")
         test = generator_test(family)
         command = test_command("cs", test)
         relative = manifest["circuit_identities"][family + ".json"]["retained_path"]
@@ -221,7 +222,7 @@ def verify(work, repo, dep_info):
     required = ("cs/src/lib.rs", "prover/src/lib.rs", "execution_prover/src/lib.rs",
                 "execution_prover/examples/export_setup_json.rs")
     covered = retained.check_dep_info(repo, retained.read_json(artifacts / "manifest.json"), dep_info, required)
-    print(f"PASS 12 executed native generators, 13 complete fresh setups, 12 production/1 derived identities; {covered} native dep-info inputs covered")
+    print(f"PASS 12 executed native generators, 16 complete fresh setups, 15 production/1 derived identities; {covered} native dep-info inputs covered")
 
 
 def main():
@@ -234,7 +235,7 @@ def main():
         item = sub.add_parser(mode, help="Run one native job inside the external bounded worker")
         item.add_argument("family", choices=tuple(GENERATORS) if mode == "regenerate" else FAMILIES)
         item.add_argument("--work-dir", type=Path, required=True)
-    item = sub.add_parser("compare", help="Compare all thirteen complete fresh JSONs only; not execution evidence")
+    item = sub.add_parser("compare", help="Compare all sixteen complete fresh JSONs only; not execution evidence")
     item.add_argument("--fresh-dir", type=Path, required=True)
     item = sub.add_parser("verify", help="Verify all native execution receipts, outputs and dep-info coverage")
     item.add_argument("--work-dir", type=Path, required=True)

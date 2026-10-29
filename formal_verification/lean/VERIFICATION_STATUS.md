@@ -45,10 +45,14 @@ and timestamp comparison bound directly from their imported equations and
 lookup queries, then prove strict read-before-write order given the public
 invocation and logically matched previous-clock bounds.
 For theta/rho and chi5, an explicit public controller-table soundness premise
-now yields one-hot iteration flags or a bounded row index. Native fixed-table
-lookups then give positive, nonwrapping distances and strict order for all
-groups in both cache modes. Proving that premise from the captured fixed setup,
-complete memory effects remain open. All theta/rho and chi5 physical ports now
+now yields one-hot iteration flags or a bounded row index. The complete
+uncached split setup exports are retained and provenance-checked; cached and
+uncached exports have identical fixed columns and table metadata. The imported
+controller regions have kernel-checked row properties and genuine static-table
+soundness theorems. Proving that every active tagged lookup in the full generic
+setup belongs to these regions remains open. Native fixed-table lookups then
+give positive, nonwrapping distances and strict order for all groups in both
+cache modes. Complete memory effects remain open. All theta/rho and chi5 physical ports now
 have kernel-checked group ownership in both cache modes. A common theorem proves
 strict read-before-write order for all six capture families. Exact RAM matching,
 public initial clock bounds and the explicit controller premise now yield the

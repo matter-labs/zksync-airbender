@@ -22,6 +22,9 @@ PRODUCTION_CIRCUITS = {
     "add-sub": "add_sub_lui_auipc_mop", "bigint": "bigint_with_extended_control",
     "blake-g": "blake2_g_function", "blake-round": "blake2_with_extended_control",
     "keccak": "keccak_special5", "shift-binop": "shift_binop",
+    "keccak-column-parity": "keccak_column_parity",
+    "keccak-theta-rho": "keccak_theta_rho",
+    "keccak-chi5": "keccak_chi5",
     "jump-branch": "jump_branch_slt", "mul-div": "unsigned_mul_div",
     "word-memory": "mem_word_only", "subword-memory": "mem_subword_only",
     "unified": "unified_reduced_machine", "inits-and-teardowns": "inits_and_teardowns",
@@ -186,7 +189,7 @@ def check_identities(repo, artifacts, manifest):
     identities = manifest["circuit_identities"]
     expected = {name + ".json" for name in PRODUCTION_CIRCUITS} | {"decoder-smoke.json"}
     if set(identities) != expected:
-        raise ValueError("Expected twelve production identities and one derived smoke identity")
+        raise ValueError("Expected fifteen production identities and one derived smoke identity")
     for family, basename in PRODUCTION_CIRCUITS.items():
         name = family + ".json"
         identity = identities[name]
@@ -259,7 +262,7 @@ def check(repo=REPO, artifacts=None, dep_info=()):
     expected = {family + ".json" for family in PRODUCTION_CIRCUITS} | {"decoder-smoke.json"}
     actual = {path.name for path in artifacts.glob("*.json")} - MANIFEST_FILES
     if actual != expected or set(manifest["artifacts"]) != expected:
-        raise ValueError("Setup artifact inventory differs from required thirteen artifacts")
+        raise ValueError("Setup artifact inventory differs from required sixteen artifacts")
     for name, metadata in manifest["artifacts"].items():
         check_artifact(checked_path(artifacts, name), metadata)
     check_sources(repo, manifest)
