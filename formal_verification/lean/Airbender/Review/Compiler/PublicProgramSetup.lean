@@ -33,4 +33,23 @@ structure UnifiedProgramSetup (initial : State) (text : List (BitVec 32))
   decoderRows : columns = UnifiedProgramRows.nativeDecoderRows initial text
     capacity fits mask
 
+/-- Exact decoder lookup matching for actual unrolled witness rows against
+the independently supplied public setup columns. A top theorem must use the
+mask selected by each imported circuit, rather than an arbitrary wider mask.
+This is the permitted logical lookup abstraction, not a proved constraint. -/
+def UnrolledDecoderExactLookup [Fact babyBearModulus.Prime]
+    (trace : PooledTrace babyBearModulus)
+    (masks : PooledFamily → ProgramRows.Mask)
+    (columns : PooledFamily → List (List (ZMod babyBearModulus))) : Prop :=
+  ∀ row ∈ trace.rows,
+    ProgramRows.maskRow (masks row.family) row.decoderQuery ∈ columns row.family
+
+/-- The same exact logical lookup boundary for the unified circuit. -/
+def UnifiedDecoderExactLookup [Fact babyBearModulus.Prime]
+    (trace : UnifiedTrace babyBearModulus)
+    (mask : ProgramRows.Mask)
+    (columns : List (List (ZMod babyBearModulus))) : Prop :=
+  ∀ row ∈ trace.rows,
+    ProgramRows.maskRow mask row.decoderQuery ∈ columns
+
 end Airbender.Compiler
