@@ -103,6 +103,42 @@ theorem caller_sources (config : Config)
       caller.Source initial config.delegationCSR :=
   caller_sources_with config.delegationCSR initial text image size
 
+/-- The separate caller registry is exactly the right branch of the native
+decoder program. This connects the public source result to an active native
+caller lookup without assuming a caller entry as a fresh private input. -/
+theorem native_caller_iff (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (caller : CallerEntry) :
+    Sum.inr caller ∈ nativeProgramOf config initial text ↔
+      caller ∈ callerProgramOf config initial text := by
+  constructor
+  · intro member
+    obtain ⟨⟨bits, index⟩, inText, selected⟩ := List.mem_filterMap.mp member
+    cases decoded : callerEntry config initial bits index with
+    | none =>
+      simp only [nativeEntry, decoded, Option.map_none, Option.none_or] at selected
+      cases ordinary : wordEntry config initial bits index with
+      | none => simp [ordinary] at selected
+      | some entry => simp [ordinary] at selected
+    | some entry =>
+      have equal : entry = caller := by
+        simpa [nativeEntry, decoded] using selected
+      subst entry
+      exact List.mem_filterMap.mpr ⟨(bits, index), inText, decoded⟩
+  · intro member
+    obtain ⟨⟨bits, index⟩, inText, selected⟩ := List.mem_filterMap.mp member
+    apply List.mem_filterMap.mpr
+    refine ⟨(bits, index), inText, ?_⟩
+    simpa [nativeEntry, selected] using congrArg (Option.map Sum.inr) selected
+
+theorem native_caller_source (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (image : ROM.TextImage initial text) (size : text.length ≤ ROM.limit / 4)
+    (caller : CallerEntry) (member : Sum.inr caller ∈ nativeProgramOf config initial text) :
+    caller.Source initial config.delegationCSR :=
+  caller_sources config initial text image size caller
+    ((native_caller_iff config initial text caller).mp member)
+
 /-- Native preprocessing rejects a text longer than the ROM capacity. For an
 admitted text, the modeled decoder has exactly one row per padded word. -/
 theorem rows_length {p : Nat} (config : Config)
