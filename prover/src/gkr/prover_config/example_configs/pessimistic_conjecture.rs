@@ -320,8 +320,14 @@ mod tests {
     }
 
     #[test]
-    fn l1_feeder_rounds_preserve_security_margin() {
-        assert_every_round_preserves_security_margin(&l1_feeder_config_for_2_23());
+    fn l1_feeder_and_wrap_rounds_preserve_security_margin() {
+        for config in [
+            l1_feeder_config_for_2_22(),
+            l1_feeder_a_config_for_2_23(),
+            l1_wrap_2p21::packed_prover_config(SecurityLevel::Sec100),
+        ] {
+            assert_every_round_preserves_security_margin(&config);
+        }
     }
 
     /// The three base-round strategies on the 2^20 (blake delegation) trace

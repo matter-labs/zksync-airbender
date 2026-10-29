@@ -5,7 +5,8 @@ use crate::upstream::{
     mul_div_unsigned_circuit_setup,
     opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization,
     opcodes_for_reduced_machine, process_binary_into_separate_tables_ext,
-    shift_binary_circuit_setup, unified_reduced_machine_circuit_setup, BF, ROM_WORD_SIZE,
+    shift_binary_circuit_setup, unified_reduced_machine_2_22_circuit_setup,
+    unified_reduced_machine_circuit_setup, BF, ROM_WORD_SIZE,
 };
 use execution_prover_model::circuit_type::{
     DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
@@ -33,6 +34,16 @@ pub fn build_unrolled_setup(
                 true,
                 worker,
             ))
+        }
+        UnrolledCircuitType::Unified22 => {
+            return CanonicalCircuitSetup::Riscv(
+                unified_reduced_machine_2_22_circuit_setup::<Global>(
+                    binary_image,
+                    text_section,
+                    true,
+                    worker,
+                ),
+            )
         }
         UnrolledCircuitType::InitsAndTeardowns => {
             panic!("inits-and-teardowns is binary-independent and is set up as a common circuit")
@@ -85,7 +96,9 @@ pub fn build_unrolled_setup(
         UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::MulDivUnsigned) => {
             mul_div_unsigned_circuit_setup::<Global>(&table_data, true, worker)
         }
-        UnrolledCircuitType::InitsAndTeardowns | UnrolledCircuitType::Unified => unreachable!(),
+        UnrolledCircuitType::InitsAndTeardowns
+        | UnrolledCircuitType::Unified
+        | UnrolledCircuitType::Unified22 => unreachable!(),
     };
     CanonicalCircuitSetup::Riscv(setup)
 }

@@ -2,6 +2,7 @@ use super::*;
 use crate::cs::circuit_trait::*;
 use crate::structured_expr::Expr;
 use crate::types::*;
+use common_constants::rom::RomGeometry;
 use field::PrimeField;
 
 use super::circuit::{LookupRequest, F4_SCRATCH_BOOLS, F4_SCRATCH_VARS};
@@ -42,6 +43,7 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     scratch_vars: [Variable; F4_SCRATCH_VARS],
     // Shared RC-16 slot (limb 0 of the F1/F2/F4 Register) for the SW-align `top_14`.
     top_14_slot: Variable,
+    rom: RomGeometry,
 ) -> Vec<LookupRequest<F>> {
     // LW: rd                          <- mem[addr] || rom[addr]  with +0 offset accepted
     // SW: mem[addr] || trap rom[addr] <- rs2                     with +0 offset accepted
@@ -99,5 +101,6 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
         of_slots,
         scratch_vars,
         top_14_slot,
+        rom,
     )
 }

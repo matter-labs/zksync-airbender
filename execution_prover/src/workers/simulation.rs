@@ -4,6 +4,7 @@ use crate::upstream::FinalRegisterValue;
 use crate::workers::simulation_runner::{
     EmptyInitsAndTeardownsStreamer, SimulationRunner, Snapshot,
 };
+use common_constants::rom::RomGeometry;
 use common_constants::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use crossbeam_channel::{Receiver, Sender};
 use execution_prover_model::allocator::HostTraceAllocator;
@@ -26,8 +27,13 @@ use type_map::concurrent::TypeMap;
 use worker::Worker;
 
 const PAGE_SIZE_WORDS: usize = 1 << PAGE_SIZE_LOG2;
-const ROM_PAGES: usize = common_constants::rom::ROM_BYTE_SIZE / 4 / PAGE_SIZE_WORDS;
-const _: () = assert!(common_constants::rom::ROM_BYTE_SIZE.is_multiple_of(4 * PAGE_SIZE_WORDS));
+
+/// Pages below this index hold the circuit's ROM: their teardown values are
+/// zero in the circuit.
+const fn rom_pages(rom: RomGeometry) -> usize {
+    assert!(rom.word_size().is_multiple_of(PAGE_SIZE_WORDS));
+    rom.word_size() / PAGE_SIZE_WORDS
+}
 
 pub(crate) fn run_simulator<
     ND: NonDeterminismCSRSource + Send + 'static,
@@ -38,6 +44,7 @@ pub(crate) fn run_simulator<
 >(
     batch_id: u64,
     machine_type: MachineType,
+    unified_circuit: CircuitType,
     binary_image: impl Deref<Target = impl Deref<Target = [u32]>>,
     text_section: impl Deref<Target = impl Deref<Target = [u32]>>,
     cycles_bound: Option<u32>,
@@ -64,19 +71,21 @@ pub(crate) fn run_simulator<
     let non_determinism_source = non_determinism_guard.take().unwrap();
     let ram_words = memory_holder.memory().len();
     let carrier = if T::IS_SPLIT {
-        UnrolledCircuitType::InitsAndTeardowns
+        CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns)
     } else {
-        UnrolledCircuitType::Unified
+        unified_circuit
     };
     let geometry = InitsAndTeardownsGeometry::new(carrier, ram_words);
     let empty_it_streamer = (!T::IS_SPLIT).then(|| EmptyInitsAndTeardownsStreamer {
-        cycles_per_circuit: UnrolledCircuitType::Unified.get_domain_size(),
+        circuit_type: unified_circuit,
+        cycles_per_circuit: unified_circuit.get_domain_size(),
         max_it_instances: geometry.max_instances(),
         next_sequence_id: 0,
     });
     let runner = SimulationRunner::<_, T, _, _>::new(
         batch_id,
         machine_type,
+        unified_circuit,
         non_determinism_source,
         free_trace_chunks_sender,
         free_trace_chunks_receiver,
@@ -120,14 +129,17 @@ pub(crate) fn run_simulator<
         let mut instant = Instant::now();
         let partitioning = InitsAndTeardownsPartitioning::new(touched_pages, geometry);
         let (circuit_type, sequence_id_offset) = if T::IS_SPLIT {
-            (UnrolledCircuitType::InitsAndTeardowns, 0usize)
+            (
+                CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
+                0usize,
+            )
         } else {
             // Unified mode: sequence_ids must span the full circuit count even
             // for circuits with no I&T data, or the replayer's tracing results
             // would not pair up. Each unified circuit covers `domain_size`
             // cycles, matching where the tracing producer slices
             // (`cycles_per_circuit_for`).
-            let per_circuit_count = UnrolledCircuitType::Unified.get_domain_size();
+            let per_circuit_count = unified_circuit.get_domain_size();
             let timestamp_diff = state.timestamp - INITIAL_TIMESTAMP;
             assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
             let total_cycles = (timestamp_diff / TIMESTAMP_STEP) as usize;
@@ -135,6 +147,9 @@ pub(crate) fn run_simulator<
             // The i&t-carrying instances are the TRAILING ones, so the markers
             // take the leading sequence_ids.
             let it_circuits = partitioning.instances_count();
+            if unified_circuit.is_l1_wrap() {
+                assert_l1_wrap_geometry(total_circuits, it_circuits);
+            }
             assert!(
                 it_circuits <= total_circuits,
                 "inits-and-teardowns needs {it_circuits} unified instances but the execution \
@@ -144,7 +159,7 @@ pub(crate) fn run_simulator<
             let streamed = empty_it_streamer.map_or(0, |s| s.next_sequence_id);
             for sequence_id in streamed..empty_circuits {
                 let data = InitsAndTeardownsData {
-                    circuit_type: CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                    circuit_type: unified_circuit,
                     sequence_id,
                     inits_and_teardowns: None,
                 };
@@ -153,9 +168,8 @@ pub(crate) fn run_simulator<
                     "CPU worker results channel closed while sending empty init/teardown data",
                 );
             }
-            (UnrolledCircuitType::Unified, empty_circuits)
+            (unified_circuit, empty_circuits)
         };
-        let circuit_type = CircuitType::Unrolled(circuit_type);
         for (sequence_id, inits_and_teardowns_data) in partitioning
             .into_chunks(memory, timestamps, worker, free_allocators)
             .enumerate()
@@ -210,6 +224,7 @@ pub(crate) fn run_replayer<
 >(
     batch_id: u64,
     worker_id: usize,
+    rom: RomGeometry,
     tape: impl Deref<Target = impl InstructionTape>,
     snapshots: Receiver<Snapshot<T::Ranges, S>>,
     free_trace_chunks: Sender<S>,
@@ -249,6 +264,7 @@ pub(crate) fn run_replayer<
         let final_state: State<T::Counters> = final_state.into();
         let mut ram = ReplayerMemChunks {
             chunks: &mut [(&trace.values[..trace_len], &trace.timestamps[..trace_len])],
+            rom_byte_size: rom.byte_size(),
         };
         let mut nd = QuasiUARTSource::new_with_reads(vec![]);
         let mut tracer = T::Tracer::new(trace_ranges);
@@ -315,6 +331,14 @@ fn find_touched_pages(timestamps: &[TimestampScalar], worker: &Worker) -> Vec<u3
     touched.concat()
 }
 
+pub(crate) fn assert_l1_wrap_geometry(chunks: usize, it_instances: usize) {
+    assert_eq!(
+        it_instances, 1,
+        "L1Wrap touched more than one inits/teardowns instance"
+    );
+    assert_eq!(chunks, 1, "L1Wrap needs exactly one unified chunk");
+}
+
 /// Address geometry of the circuit carrying the inits-and-teardowns data: each
 /// of its `num_sets` sets covers one *window* of `1 << trace_len_log2`
 /// consecutive RAM words, named in the proof by its global window index
@@ -324,6 +348,7 @@ struct InitsAndTeardownsGeometry {
     pages_per_set_log2: u32,
     num_sets: usize,
     windows_in_ram: u32,
+    rom_pages: usize,
 }
 
 impl InitsAndTeardownsGeometry {
@@ -332,7 +357,7 @@ impl InitsAndTeardownsGeometry {
         (self.windows_in_ram as usize).div_ceil(self.num_sets)
     }
 
-    fn new(carrier: UnrolledCircuitType, ram_words: usize) -> Self {
+    fn new(carrier: CircuitType, ram_words: usize) -> Self {
         let trace_len_log2 = carrier.get_domain_size_log2();
         assert!(
             trace_len_log2 >= PAGE_SIZE_LOG2,
@@ -342,6 +367,7 @@ impl InitsAndTeardownsGeometry {
             pages_per_set_log2: trace_len_log2 - PAGE_SIZE_LOG2,
             num_sets: carrier.get_num_inits_and_teardowns_sets(),
             windows_in_ram: ram_words.div_ceil(1usize << trace_len_log2) as u32,
+            rom_pages: rom_pages(carrier.rom()),
         }
     }
 }
@@ -379,6 +405,7 @@ impl InitsAndTeardownsPartitioning {
             pages_per_set_log2,
             num_sets,
             windows_in_ram: _,
+            rom_pages: _,
         } = geometry;
         let mut touched: Vec<(u32, usize)> = Vec::new();
         for &page_idx in pages.iter() {
@@ -435,6 +462,7 @@ impl InitsAndTeardownsPartitioning {
                 InitsAndTeardownsGeometry {
                     pages_per_set_log2,
                     num_sets,
+                    rom_pages,
                     ..
                 },
         } = self;
@@ -452,8 +480,14 @@ impl InitsAndTeardownsPartitioning {
                 .map(|&page_idx| local_page_index(page_idx, slots, pages_per_set_log2))
                 .collect();
             let page_indices = chunk_into_blocks(&page_indices_flat, &free_allocators);
-            let (values_packed, timestamps_packed) =
-                pack_pages(instance_pages, memory, timestamps, &free_allocators, worker);
+            let (values_packed, timestamps_packed) = pack_pages(
+                instance_pages,
+                memory,
+                timestamps,
+                rom_pages,
+                &free_allocators,
+                worker,
+            );
             InitsAndTeardownsTraceHost {
                 page_indices,
                 values_packed,
@@ -500,6 +534,7 @@ fn pack_pages<A: HostTraceAllocator>(
     pages: &[u32],
     memory: &mut [u32],
     timestamps: &mut [TimestampScalar],
+    rom_pages: usize,
     free_allocators: &Receiver<A>,
     worker: &Worker,
 ) -> (
@@ -543,7 +578,7 @@ fn pack_pages<A: HostTraceAllocator>(
             rest = tail;
             Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                 for ((page_idx, src_values, src_stamps), (dst_values, dst_stamps)) in items {
-                    let keep_values = *page_idx >= ROM_PAGES;
+                    let keep_values = *page_idx >= rom_pages;
                     for idx in 0..PAGE_SIZE_WORDS {
                         let timestamp = src_stamps[idx];
                         let value = src_values[idx];
@@ -606,10 +641,25 @@ fn chunk_into_blocks<A: HostTraceAllocator>(
 mod cpu_partitioning_tests {
     use super::*;
 
+    #[test]
+    #[should_panic(expected = "L1Wrap touched more than one inits/teardowns instance")]
+    fn cpu_l1_wrap_it_overflow_is_rejected_before_generic_geometry_check() {
+        assert_l1_wrap_geometry(1, 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "L1Wrap needs exactly one unified chunk")]
+    fn cpu_l1_wrap_cycle_overflow_is_rejected() {
+        assert_l1_wrap_geometry(2, 1);
+    }
+
     const UNIFIED_RAM_WORDS: usize = (1usize << 30) / 4;
 
     fn unified_geometry() -> InitsAndTeardownsGeometry {
-        InitsAndTeardownsGeometry::new(UnrolledCircuitType::Unified, UNIFIED_RAM_WORDS)
+        InitsAndTeardownsGeometry::new(
+            CircuitType::Unrolled(UnrolledCircuitType::Unified),
+            UNIFIED_RAM_WORDS,
+        )
     }
 
     /// Global index of page `page_in_window` in `window`.
@@ -744,6 +794,7 @@ mod cpu_partitioning_tests {
             pages_per_set_log2: words_per_chunk_log2 - PAGE_SIZE_LOG2,
             num_sets,
             windows_in_ram: (ram_words >> words_per_chunk_log2) as u32,
+            rom_pages: rom_pages(common_constants::rom::REGULAR_ROM),
         };
         let pages = touched_windows
             .iter()
@@ -777,7 +828,7 @@ mod cpu_partitioning_tests {
     #[test]
     fn cpu_standalone_carries_touched_windows_and_rebases_pages() {
         let geometry = InitsAndTeardownsGeometry::new(
-            UnrolledCircuitType::InitsAndTeardowns,
+            CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
             UNIFIED_RAM_WORDS,
         );
         let p = InitsAndTeardownsPartitioning::new(
@@ -801,12 +852,14 @@ mod cpu_partitioning_tests {
     fn cpu_page_scan_packs_touched_pages_and_cleans_the_holder() {
         use execution_prover_model::allocator::CpuTraceAllocator;
 
+        const ROM_PAGES: usize = rom_pages(common_constants::rom::REGULAR_ROM);
         const RAM_WORDS: usize = 4 * ROM_PAGES * PAGE_SIZE_WORDS;
         const TOUCHED: [usize; 8] = [3, 1023, 1024, 1500, 1501, 2047, 3000, 4095];
         let geometry = InitsAndTeardownsGeometry {
             pages_per_set_log2: 7,
             num_sets: 2,
             windows_in_ram: (RAM_WORDS >> (7 + PAGE_SIZE_LOG2)) as u32,
+            rom_pages: ROM_PAGES,
         };
         let mut memory = vec![0u32; RAM_WORDS];
         let mut timestamps = vec![0 as TimestampScalar; RAM_WORDS];

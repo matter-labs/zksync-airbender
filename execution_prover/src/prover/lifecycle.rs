@@ -72,7 +72,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             .map(|(circuit_type, setup)| {
                 (
                     circuit_type,
-                    backend.prepare(circuit_type, setup, selection),
+                    backend.prepare(circuit_type, setup, selection, &[ProofProfile::Standard]),
                 )
             })
             .collect();
@@ -114,6 +114,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             free_allocators_sender,
             free_allocators_receiver,
         }
+    }
+
+    #[doc(hidden)]
+    pub fn backend(&self) -> &B {
+        &self.backend
     }
 
     pub(super) fn free_inits_and_teardowns(

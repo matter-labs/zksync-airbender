@@ -27,7 +27,7 @@ pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mu
 
     #[cfg(all(target_arch = "riscv32", feature = "memcpy_via_precompile"))]
     {
-        if src.addr() >= common_constants::rom::ROM_BYTE_SIZE
+        if src.addr() >= crate::GUEST_ROM_GEOMETRY.byte_size()
             && src.addr() % 32 == 0
             && dest.addr() % 32 == 0
             && n >= 32

@@ -5,6 +5,7 @@
 //! The pinned identity of every row lives in the tracked manifest next to the binaries,
 //! checked by `full_statement_verifier::host_utils::load_fsv_exact`.
 
+use crate::prover::common_constants::{RomGeometry, L1_WRAP_ROM, REGULAR_ROM};
 use crate::prover::definitions::USE_REDUCED_BLAKE2_ROUNDS;
 
 pub use crate::prover::definitions::{BlakeMode, SecurityLevel, SoundnessMode};
@@ -15,6 +16,10 @@ pub enum FsvProgram {
     UnrolledRecursionLayer,
     UnifiedBaseLayer,
     UnifiedRecursionLayer,
+    UnifiedRecursionLayerL1FeederWrap,
+    /// The recurrent L1 feeder verifier over proofs of the 2^23 feeder
+    /// profile A.
+    UnifiedRecursionLayerL1FeederA,
 }
 
 impl FsvProgram {
@@ -25,6 +30,20 @@ impl FsvProgram {
             Self::UnrolledRecursionLayer => "fsv_unrolled_recursion_layer_sec_100",
             Self::UnifiedBaseLayer => "fsv_unified_base_layer_sec_100",
             Self::UnifiedRecursionLayer => "fsv_unified_recursion_layer_sec_100",
+            Self::UnifiedRecursionLayerL1FeederWrap => {
+                "fsv_unified_recursion_layer_sec_100_l1_feeder_wrap"
+            }
+            Self::UnifiedRecursionLayerL1FeederA => {
+                "fsv_unified_recursion_layer_sec_100_l1_feeder_a"
+            }
+        }
+    }
+
+    #[must_use]
+    pub const fn rom(self) -> RomGeometry {
+        match self {
+            Self::UnifiedRecursionLayerL1FeederWrap => L1_WRAP_ROM,
+            _ => REGULAR_ROM,
         }
     }
 
@@ -36,6 +55,8 @@ impl FsvProgram {
             Self::UnrolledRecursionLayer => "unrolled_recursion_layer",
             Self::UnifiedBaseLayer => "unified_base_layer",
             Self::UnifiedRecursionLayer => "unified_recursion_layer",
+            Self::UnifiedRecursionLayerL1FeederWrap => "unified_recursion_layer_l1_feeder_wrap",
+            Self::UnifiedRecursionLayerL1FeederA => "unified_recursion_layer_l1_feeder_a",
         }
     }
 
@@ -57,8 +78,22 @@ impl FsvProgram {
             ) | (
                 Self::UnifiedRecursionLayer,
                 BlakeMode::Compression | BlakeMode::BlakeSpecialOpcodes
+            ) | (
+                Self::UnifiedRecursionLayerL1FeederWrap | Self::UnifiedRecursionLayerL1FeederA,
+                BlakeMode::BlakeSpecialOpcodes
             )
         )
+    }
+
+    #[must_use]
+    pub fn file_stem(self, mode: BlakeMode) -> alloc::string::String {
+        assert!(
+            self.supports(mode),
+            "{} is not built with blake mode {}",
+            self.base_name(),
+            mode.tag()
+        );
+        alloc::format!("{}_{}", self.base_name(), mode.tag())
     }
 }
 

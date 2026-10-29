@@ -166,6 +166,9 @@ fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<Tr
         ))))
     }
     match circuit {
+        CircuitType::L1Wrap21 | CircuitType::Unrolled(UnrolledCircuitType::Unified22) => {
+            panic!("GPU backend does not support this CPU-only circuit type")
+        }
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => Ok(None),
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => delegation(
             DelegationCircuitType::BigIntWithControl,
@@ -292,6 +295,9 @@ impl SyntheticInputFactory {
     /// the per-binary builder over the zero image; Blake2G retained for proof-matrix coverage.
     fn precomputations(&self, circuit: CircuitType) -> CircuitPrecomputations {
         match circuit {
+            CircuitType::L1Wrap21 | CircuitType::Unrolled(UnrolledCircuitType::Unified22) => {
+                panic!("GPU backend does not support this CPU-only circuit type")
+            }
             CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => {
                 let setup = execution_prover::setup::build_delegation_setup(
                     DelegationCircuitType::Blake2GFunction,

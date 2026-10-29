@@ -4,14 +4,8 @@ pub use ::prover;
 pub use ::setups;
 
 pub mod bundle;
-
-#[cfg(feature = "l1")]
-pub mod compression;
-#[cfg(feature = "l1")]
-pub mod l1;
 pub mod proof_assembly;
 pub mod unified;
-pub mod unified_transition;
 pub mod unrolled;
 
 pub use proof_assembly::{assemble_program_proof, program_setups};

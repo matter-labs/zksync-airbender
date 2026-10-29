@@ -6,6 +6,7 @@ use execution_prover::messages::{
     WorkResult,
 };
 use execution_prover::setup::build_delegation_setup;
+use execution_prover::ProofProfile;
 use execution_prover_model::allocator::CpuTraceAllocator;
 use execution_prover_model::circuit_type::{CircuitType, DelegationCircuitType};
 use execution_prover_model::trace::{
@@ -54,6 +55,7 @@ fn prove(
             security_level: SECURITY_LEVEL,
             soundness_mode: SoundnessMode::DEFAULT,
         },
+        &[ProofProfile::Standard],
     );
     jobs.execute::<CpuTraceAllocator>(
         WorkRequest::SetupInitialization(SetupInitializationRequest {
@@ -80,6 +82,7 @@ fn prove(
                 security_level: SECURITY_LEVEL,
                 soundness_mode: SoundnessMode::DEFAULT,
             },
+            profile: ProofProfile::Standard,
         }),
         &worker,
     ) else {
@@ -99,6 +102,7 @@ fn prove(
                 security_level: SECURITY_LEVEL,
                 soundness_mode: SoundnessMode::DEFAULT,
             },
+            profile: ProofProfile::Standard,
         }),
         &worker,
     ) else {
