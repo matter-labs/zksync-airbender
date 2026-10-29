@@ -46,4 +46,26 @@ theorem extractAnd (a b index : Nat) :
     (Nat.and_mod_two_pow (a := a / 2 ^ (8 * index))
       (b := b / 2 ^ (8 * index)) (n := 8))
 
+theorem extractOr (a b index : Nat) :
+    ((a ||| b) / 256 ^ index) % 256 =
+      ((a / 256 ^ index) % 256) ||| ((b / 256 ^ index) % 256) := by
+  have hpow : 256 ^ index = 2 ^ (8 * index) := by
+    rw [pow_mul]
+    norm_num
+  rw [hpow, Nat.or_div_two_pow]
+  simpa only [show (2 : Nat) ^ 8 = 256 by norm_num] using
+    (Nat.or_mod_two_pow (a := a / 2 ^ (8 * index))
+      (b := b / 2 ^ (8 * index)) (n := 8))
+
+theorem extractXor (a b index : Nat) :
+    ((a ^^^ b) / 256 ^ index) % 256 =
+      ((a / 256 ^ index) % 256) ^^^ ((b / 256 ^ index) % 256) := by
+  have hpow : 256 ^ index = 2 ^ (8 * index) := by
+    rw [pow_mul]
+    norm_num
+  rw [hpow, Nat.xor_div_two_pow]
+  simpa only [show (2 : Nat) ^ 8 = 256 by norm_num] using
+    (Nat.xor_mod_two_pow (a := a / 2 ^ (8 * index))
+      (b := b / 2 ^ (8 * index)) (n := 8))
+
 end Airbender.Setup.Proofs.PackedBytes
