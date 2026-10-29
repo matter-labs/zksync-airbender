@@ -264,3 +264,129 @@ production_presets_test!(
     production_presets_keccak_theta_rho_parity_and_reuse,
     super::proof_matrix::keccak_f1600::keccak_theta_rho
 );
+
+#[test]
+#[ignore = "virtual BigInt opening/witness families against one fresh CPU proof"]
+fn virtual_bigint_opening_witness_policies_parity_and_reuse() {
+    let fixture = super::proof_matrix::prepare_bigint_proof_fixture();
+    // Materialize pairs exceed this existing 30 GiB fixture arena. Keep the
+    // production GKR baseline while varying every opening/witness candidate.
+    let gkr = presets::policy(fixture.base.circuit_type, 30usize << 30).gkr;
+    let openings = [
+        OpeningStrategy::InPlace,
+        OpeningStrategy::PerCoset,
+        OpeningStrategy::AllCosets,
+    ];
+    check_policies(
+        &fixture,
+        openings.into_iter().flat_map(|setup| {
+            openings.into_iter().map(move |memory| ProofMemoryPolicy {
+                gkr,
+                setup,
+                memory,
+                ..Default::default()
+            })
+        }),
+    );
+    check_policies(
+        &fixture,
+        std::iter::once(in_place_policy(gkr)).chain(WitnessMemoryPolicy::candidates().map(
+            |witness| ProofMemoryPolicy {
+                gkr,
+                witness,
+                ..Default::default()
+            },
+        )),
+    );
+}
+
+#[test]
+#[ignore = "virtual Special5 opening/witness families against one fresh CPU proof"]
+fn virtual_special5_opening_witness_policies_parity_and_reuse() {
+    let fixture = super::proof_matrix::prepare_keccak_special5_proof_fixture();
+    check_opening_policies(&fixture);
+    check_witness_policies(&fixture);
+}
+
+#[test]
+#[ignore = "virtual Blake compression opening/witness families against one fresh CPU proof"]
+fn virtual_blake_compression_opening_witness_policies_parity_and_reuse() {
+    let fixture = super::proof_matrix::prepare_blake2_with_compression_proof_fixture();
+    check_opening_policies(&fixture);
+    check_witness_policies(&fixture);
+}
+
+#[test]
+#[ignore = "virtual Blake G opening/witness families against one fresh CPU proof"]
+fn virtual_blake_g_opening_witness_policies_parity_and_reuse() {
+    let fixture = super::proof_matrix::prepare_blake2_g_function_proof_fixture();
+    check_opening_policies(&fixture);
+    check_witness_policies(&fixture);
+}
+
+#[test]
+#[ignore = "virtual Chi5 policy families against one fresh CPU proof"]
+fn virtual_chi5_memory_policies_parity_and_reuse() {
+    let fixture = super::proof_matrix::keccak_f1600::keccak_chi5();
+    check_opening_policies(&fixture);
+    check_witness_policies(&fixture);
+    check_gkr_recompute(&fixture, GkrMemoryPolicy::candidates());
+}
+
+#[test]
+#[ignore = "virtual ColumnParity policy families against one fresh CPU proof"]
+fn virtual_column_parity_memory_policies_parity_and_reuse() {
+    let fixture = super::proof_matrix::keccak_f1600::keccak_column_parity();
+    check_opening_policies(&fixture);
+    check_witness_policies(&fixture);
+    check_gkr_recompute(&fixture, GkrMemoryPolicy::candidates());
+}
+
+#[test]
+#[ignore = "virtual ThetaRho policy families against one fresh CPU proof"]
+fn virtual_theta_rho_memory_policies_parity_and_reuse() {
+    let fixture = super::proof_matrix::keccak_f1600::keccak_theta_rho();
+    check_opening_policies(&fixture);
+    check_witness_policies(&fixture);
+    check_gkr_recompute(&fixture, GkrMemoryPolicy::candidates());
+}
+
+#[test]
+#[ignore = "physical Blake20/k2 opening/witness families against one fresh CPU proof"]
+fn physical_blake20_pack2_opening_witness_policies_parity_and_reuse() {
+    let fixture =
+        super::proof_matrix::prepare_blake2_with_compression_proof_fixture_with_packing(2);
+    check_opening_policies(&fixture);
+    check_witness_policies(&fixture);
+}
+
+#[test]
+#[ignore = "physical Blake20/k4 policy families against one fresh CPU proof"]
+fn physical_blake20_pack4_memory_policies_parity_and_reuse() {
+    let fixture =
+        super::proof_matrix::prepare_blake2_with_compression_proof_fixture_with_packing(4);
+    check_opening_policies(&fixture);
+    check_witness_policies(&fixture);
+    check_gkr_recompute(&fixture, GkrMemoryPolicy::candidates());
+}
+
+#[test]
+#[ignore = "physical unified23/k1 policy families against one fresh CPU proof"]
+fn physical_unified23_pack1_memory_policies_parity_and_reuse() {
+    let fixture = super::prepare_unified_proof_fixture_with_packing(1);
+    check_opening_policies(&fixture);
+    check_witness_policies(&fixture);
+    check_gkr_recompute(&fixture, GkrMemoryPolicy::candidates());
+}
+
+#[test]
+#[ignore = "merged Blake20/k4 policy families against one fresh CPU proof"]
+fn merged_blake20_pack4_memory_policies_parity_and_reuse() {
+    let mut config = prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(20, 4, SecurityLevel::Sec100);
+    config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+    let fixture =
+        super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
+    check_opening_policies(&fixture);
+    check_witness_policies(&fixture);
+    check_gkr_recompute(&fixture, GkrMemoryPolicy::candidates());
+}

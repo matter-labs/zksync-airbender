@@ -211,9 +211,9 @@ fn cpu_virtual_defaults_admit_proof_geometry_independently_of_physical_packing()
                 }
             );
             crate::proof::validate_base_proof_geometry_policy(
-                circuit,
                 &geometry,
                 crate::proof::memory_policy::ProofMemoryPolicy::default(),
+                compiled.layers.len(),
             );
             gpu_trace::trace::memory::validate_memory_commitment_config(&cfg, &geometry, &compiled);
             gpu_whir::validate_baby_bear_recursive_schedule(22, &cfg.whir_schedule, 27);

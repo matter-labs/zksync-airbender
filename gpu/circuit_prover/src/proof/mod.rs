@@ -63,8 +63,8 @@ fn main_folding_steps(gkr_programs: &GkrPrograms) -> usize {
 /// One immutable config/geometry/policy bound before transfers. Positive physical
 /// admission is separate and AllCosets: physical f=1 at (n,k)=(20,4)/(20,2)/(23,1),
 /// or virtual f=0 at (22,0)/(20,2) with the qualified m22 schedule. Admission is
-/// keyed by shape rather than circuit type. Virtual policy qualification also
-/// binds the circuit's production preset; execution jobs share the same config.
+/// keyed by shape rather than circuit type. Memory representations are checked
+/// per role, independently of preset selection; execution jobs share the config.
 pub struct ProofPreflight<F: PrimeField> {
     dr_tail: gpu_gkr::DrTailProofPlan,
     circuit: Arc<GKRCircuitArtifact<F>>,
@@ -92,55 +92,62 @@ impl<F: PrimeField> ProofPreflight<F> {
 
 /// Field-free protocol/policy admission. Backend transform checks are separate.
 pub(crate) fn validate_base_proof_geometry_policy(
-    circuit_type: gpu_trace::witness::circuit_type::CircuitType,
     geometry: &BaseCommitmentGeometry,
     memory_policy: ProofMemoryPolicy,
+    main_layers: usize,
 ) {
     assert!(
         memory_policy.witness.is_valid(),
         "invalid witness memory policy"
     );
+    memory_policy.gkr.validate_for_main_layers(main_layers);
     if geometry.commitment_mode() == crate::upstream::CommitmentMode::MergedMemoryAndWitness {
         merged_commitment::validate_merged_packed_geometry(geometry);
     } else {
         gpu_trace::trace::memory::validate_separate_base_commitment_geometry(geometry);
     }
+}
+
+/// Validate the representations the BabyBear producers and query readers use.
+/// Legacy holders retain their existing transform path; empty roles do no work.
+fn validate_baby_bear_base_proof_policy(
+    geometry: &BaseCommitmentGeometry,
+    policy: ProofMemoryPolicy,
+    twiddle_domain_log2: u32,
+) {
+    use crate::upstream::BaseOracleRole as Role;
+    use gpu_trace::trace::holder::{validate_baby_bear_base_opening, TreesCacheMode};
+    use memory_policy::{
+        OpeningStrategy as Opening, WitnessCommitmentStrategy as Commit, WitnessOpeningStrategy,
+        WitnessPostCommitStorage as Store,
+    };
     if !uses_base_commitment_geometry(geometry) {
         return;
     }
-    if geometry.is_virtual_packing() {
-        // The default was qualified independently of the production presets.
-        // Regenerating presets requires re-running their circuit proof parity.
-        assert!(
-            memory_policy == ProofMemoryPolicy::default()
-                || memory_policy::presets::PRESET_ARENA_BYTES
-                    .iter()
-                    .any(|&arena| {
-                        memory_policy == memory_policy::presets::policy(circuit_type, arena)
-                    }),
-            "unqualified virtual proof memory policy"
-        );
-        use memory_policy::{OpeningStrategy, WitnessCommitmentStrategy, WitnessOpeningStrategy};
-        // Selection from a regenerated preset must still pass the qualified
-        // opening capabilities before any transfers are allocated.
-        assert_eq!(memory_policy.setup, OpeningStrategy::AllCosets);
-        assert_eq!(memory_policy.memory, OpeningStrategy::AllCosets);
-        assert_eq!(
-            memory_policy.witness.commitment,
-            WitnessCommitmentStrategy::AllCosets
-        );
-        assert!(
-            matches!(
-                memory_policy.witness.opening,
-                WitnessOpeningStrategy::ReuseCosets
-                    | WitnessOpeningStrategy::Recompute(OpeningStrategy::AllCosets)
-            ),
-            "unqualified virtual witness opening"
-        );
-        return;
+    let validate = |role, opening, trees| {
+        if geometry.oracle(role).physical_columns() != 0 {
+            validate_baby_bear_base_opening(geometry, opening, trees, twiddle_domain_log2);
+        }
+    };
+    // Setup is transferred with Partial trees; memory carries only its cap.
+    validate(Role::Setup, policy.setup, TreesCacheMode::CachePartial);
+    validate(Role::Memory, policy.memory, TreesCacheMode::CacheNone);
+    // In merged mode the combined nonempty set is Memory; Witness is empty.
+    if geometry.oracle(Role::Witness).physical_columns() != 0 {
+        let commitment = match policy.witness.commitment {
+            Commit::AllCosets if policy.witness.post_commitment != Store::RawAndMonomials => {
+                Opening::AllCosets
+            }
+            Commit::AllCosets | Commit::PerCoset => Opening::PerCoset,
+            Commit::InPlace => Opening::InPlace,
+        };
+        validate(Role::Witness, commitment, TreesCacheMode::CachePartial);
+        let opening = match policy.witness.opening {
+            WitnessOpeningStrategy::ReuseCosets => Opening::AllCosets,
+            WitnessOpeningStrategy::Recompute(opening) => opening,
+        };
+        validate(Role::Witness, opening, TreesCacheMode::CachePartial);
     }
-    assert_eq!(memory_policy, ProofMemoryPolicy::default(),
-        "physical packed proofs require materialized GKR and AllCosets with RawAndCosets/ReuseCosets witness");
 }
 
 /// Existing BabyBear proof backend's pre-transfer capability boundary. The
@@ -161,19 +168,11 @@ pub fn preflight_proof(
     let geometry =
         BaseCommitmentGeometry::from_config(config, BaseColumns::of(programs.compiled_circuit()))
             .expect("invalid base commitment geometry");
-    validate_base_proof_geometry_policy(programs.circuit_type(), &geometry, memory_policy);
+    validate_base_proof_geometry_policy(&geometry, memory_policy, programs.main_layers_count());
     if geometry.commitment_mode() == crate::upstream::CommitmentMode::MergedMemoryAndWitness {
         merged_commitment::validate_merged_circuit_type(programs.circuit_type(), &geometry);
     }
-    // Leave legacy (k0,f1) on its existing transform path, including MSB shapes.
-    if uses_base_commitment_geometry(&geometry) {
-        gpu_trace::trace::holder::validate_baby_bear_base_opening(
-            &geometry,
-            gpu_trace::trace::holder::OpeningStrategy::AllCosets,
-            gpu_trace::trace::holder::TreesCacheMode::CachePartial,
-            twiddle_domain_log2,
-        );
-    }
+    validate_baby_bear_base_proof_policy(&geometry, memory_policy, twiddle_domain_log2);
     gpu_whir::validate_baby_bear_recursive_schedule(
         u32::try_from(geometry.message_size_log2()).expect("message log2 exceeds u32"),
         &config.whir_schedule,
