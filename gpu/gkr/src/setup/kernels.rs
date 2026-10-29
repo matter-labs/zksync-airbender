@@ -92,6 +92,7 @@ pub struct GpuGKRSetupHost {
     pub log_rows_per_leaf: u32,
     pub log_tree_cap_size: u32,
     base_geometry: Option<BaseCommitmentGeometry>,
+    pub(crate) partial_tree_reduction_layers: u32,
 }
 
 impl GpuGKRSetupHost {
@@ -151,6 +152,7 @@ impl GpuGKRSetupHost {
             geometry,
             BaseOracleRole::Setup,
             gpu_trace::trace::holder::TreesCacheMode::CachePartial,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             context,
         )?;
         let (partial_trees, unified_tree_cap) =
@@ -166,6 +168,14 @@ impl GpuGKRSetupHost {
             log_rows_per_leaf: geometry.values_per_leaf().trailing_zeros(),
             log_tree_cap_size: geometry.cap_size().trailing_zeros(),
             base_geometry: Some(geometry),
+            partial_tree_reduction_layers:
+                gpu_trace::trace::holder::resolve_partial_tree_reduction_layers(
+                    gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                    u32::try_from(geometry.message_size_log2()).expect("message log2 exceeds u32"),
+                    geometry.lde_factor().trailing_zeros(),
+                    geometry.values_per_leaf().trailing_zeros(),
+                    geometry.cap_size().trailing_zeros(),
+                ),
         })
     }
 
@@ -226,6 +236,14 @@ impl GpuGKRSetupHost {
             "trace len must be a power of two"
         );
         let log_domain_size = trace_len.trailing_zeros();
+        let partial_tree_reduction_layers =
+            gpu_trace::trace::holder::resolve_partial_tree_reduction_layers(
+                gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                log_domain_size,
+                log_lde_factor,
+                log_rows_per_leaf,
+                log_tree_cap_size,
+            );
         for column in setup.hypercube_evals.iter() {
             assert_eq!(column.len(), trace_len, "all setup columns must match");
         }
@@ -252,6 +270,7 @@ impl GpuGKRSetupHost {
             log_rows_per_leaf,
             log_tree_cap_size,
             base_geometry: None,
+            partial_tree_reduction_layers,
         })
     }
 
@@ -289,7 +308,6 @@ pub(super) fn bind_trace_holder_column_range_into_storage<E>(
         trace_holder.columns_count * trace_len,
         "trace holder backing must be laid out as flat column-major hypercube evals",
     );
-
     assert!(first_column
         .checked_add(columns_count)
         .is_some_and(|end| end <= trace_holder.columns_count));

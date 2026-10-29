@@ -13,6 +13,7 @@ pub mod gkr_ops;
 pub mod packed_merge;
 mod programs;
 pub mod proof_layout;
+pub mod proth120;
 pub mod setup;
 pub mod stage1;
 pub(crate) mod storage;

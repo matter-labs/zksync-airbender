@@ -1,6 +1,6 @@
 //! Scalar reference interpreters for backward coefficient programs.
 
-use field::{Field, FieldExtension, PrimeField};
+use field::Field;
 
 use super::group;
 use super::lean::{
@@ -12,12 +12,12 @@ use super::model::{
     SourceId,
 };
 use super::order::split_round_robin;
-use super::{Bf, Ext};
 
 /// Values supplied by the interpreter's environment.
-pub trait CoeffResolver {
-    fn coefficient(&self, id: CoefficientRecipeId) -> Ext;
-    fn source_pair(&self, id: SourceId, row: usize) -> (Ext, Ext);
+pub trait CoeffResolver<E> {
+    fn coefficient(&self, id: CoefficientRecipeId) -> E;
+    fn source_pair(&self, id: SourceId, row: usize) -> (E, E);
+    fn immediate(&self, value: u128) -> E;
 }
 
 /// Interpret one row of `layer`, returning `(acc_c0, acc_c2)`.
@@ -52,16 +52,16 @@ pub trait CoeffResolver {
 ///
 /// An UNGROUPED layer takes exactly the path it always did: `layer.groups` is
 /// empty, every term is plain, and the group loop does not run.
-pub fn interpret_coeff_layer(
+pub fn interpret_coeff_layer<E: Field>(
     layer: &CoeffLayer,
     row: usize,
-    resolver: &impl CoeffResolver,
-) -> Result<(Ext, Ext), CoeffError> {
+    resolver: &impl CoeffResolver<E>,
+) -> Result<(E, E), CoeffError> {
     let mut acc_c0 = match layer.c_init {
         Some(id) => coefficient(layer, id, resolver)?,
-        None => Ext::ZERO,
+        None => E::ZERO,
     };
-    let mut acc_c2 = Ext::ZERO;
+    let mut acc_c2 = E::ZERO;
 
     // A grouped member is NOT a plain term: its `coefficient()` is its group's
     // core, so evaluating it here would silently drop its immediate. The mask is
@@ -116,10 +116,10 @@ pub fn interpret_coeff_layer(
     // one.
     for group in &layer.groups {
         let core = coefficient(layer, group.core, resolver)?;
-        let mut s_c0 = Ext::ZERO;
-        let mut s_c2 = Ext::ZERO;
+        let mut s_c0 = E::ZERO;
+        let mut s_c2 = E::ZERO;
         for member in &group.members {
-            let imm = immediate_value(layer, member.immediate)?;
+            let imm = immediate_value(layer, member.immediate, resolver)?;
             let term = &layer.terms[member.term.0 as usize];
             match term {
                 CoeffTerm::C0Linear { value, .. } => {
@@ -159,7 +159,7 @@ pub fn interpret_coeff_layer(
     Ok((acc_c0, acc_c2))
 }
 
-/// The `Ext`-lifted base-field value a member's [`ImmediateId`] denotes.
+/// The extension-lifted base-field value a member's [`ImmediateId`] denotes.
 ///
 /// The id space itself is decoded by [`group::immediate_value`] — the crate's ONE
 /// decoder of it — so the interpreter cannot disagree with the transform that
@@ -168,15 +168,17 @@ pub fn interpret_coeff_layer(
 ///
 /// The lift is unconditional, including for the two reserved literals: what `±1`
 /// saves is a MULTIPLICATION, and that saving lives in [`accumulate_imm`].
-fn immediate_value(layer: &CoeffLayer, id: ImmediateId) -> Result<Ext, CoeffError> {
+fn immediate_value<E: Field>(
+    layer: &CoeffLayer,
+    id: ImmediateId,
+    resolver: &impl CoeffResolver<E>,
+) -> Result<E, CoeffError> {
     let value = group::immediate_value(layer, id).ok_or(CoeffError::UnknownImmediate { id })?;
-    Ok(<Ext as FieldExtension<Bf>>::from_base(
-        Bf::from_u32_with_reduction(value),
-    ))
+    Ok(resolver.immediate(value))
 }
 
 /// Add `imm * v`, using direct add/subtract for the reserved literals.
-fn accumulate_imm(acc: &mut Ext, id: ImmediateId, imm: Ext, v: Ext) {
+fn accumulate_imm<E: Field>(acc: &mut E, id: ImmediateId, imm: E, v: E) {
     if id == ImmediateId::ONE {
         acc.add_assign(&v);
     } else if id == ImmediateId::NEG_ONE {
@@ -191,11 +193,11 @@ fn accumulate_imm(acc: &mut Ext, id: ImmediateId, imm: Ext, v: Ext) {
 /// Reserved literals resolve internally (no bank entry, no resolver call); every
 /// other id is validated against the bank before the resolver is asked. A banked
 /// zero recipe is a compiler error, so it is rejected rather than evaluated.
-fn coefficient(
+fn coefficient<E: Field>(
     layer: &CoeffLayer,
     id: CoefficientRecipeId,
-    resolver: &impl CoeffResolver,
-) -> Result<Ext, CoeffError> {
+    resolver: &impl CoeffResolver<E>,
+) -> Result<E, CoeffError> {
     if let Some(v) = id.literal() {
         return Ok(v);
     }
@@ -206,12 +208,12 @@ fn coefficient(
     }
 }
 
-fn source_pair(
+fn source_pair<E: Field>(
     layer: &CoeffLayer,
     id: SourceId,
     row: usize,
-    resolver: &impl CoeffResolver,
-) -> Result<(Ext, Ext), CoeffError> {
+    resolver: &impl CoeffResolver<E>,
+) -> Result<(E, E), CoeffError> {
     if layer.source(id).is_none() {
         return Err(CoeffError::UnknownSource { id });
     }
@@ -219,13 +221,13 @@ fn source_pair(
 }
 
 /// Resolve a projection, rejecting a role its opcode cannot consume.
-fn projection(
+fn projection<E: Field>(
     layer: &CoeffLayer,
     p: ProjectionId,
     expected: Projection,
     row: usize,
-    resolver: &impl CoeffResolver,
-) -> Result<(Ext, Ext), CoeffError> {
+    resolver: &impl CoeffResolver<E>,
+) -> Result<(E, E), CoeffError> {
     if p.projection != expected {
         return Err(CoeffError::ProjectionRoleMismatch);
     }
@@ -270,17 +272,17 @@ impl From<CoeffError> for LeanInterpError {
 /// # Panics
 ///
 /// If `k == 0` — there is no zero-warp launch.
-pub fn interpret_lean_program(
+pub fn interpret_lean_program<E: Field>(
     program: &LeanProgram,
     layer: &CoeffLayer,
     row: usize,
-    resolver: &impl CoeffResolver,
+    resolver: &impl CoeffResolver<E>,
     k: usize,
-) -> Result<(Ext, Ext), LeanInterpError> {
+) -> Result<(E, E), LeanInterpError> {
     let atoms = lean::decode_atoms(program)?;
     let seed = match layer.c_init {
         Some(id) => coefficient(layer, id, resolver)?,
-        None => Ext::ZERO,
+        None => E::ZERO,
     };
     // The RECORD index each atom starts at, which is the index the codec's errors
     // speak in (a header counts as a record, exactly as `LeanCodecError` documents)
@@ -296,13 +298,13 @@ pub fn interpret_lean_program(
         };
     }
     let indices: Vec<usize> = (0..atoms.len()).collect();
-    let mut acc_c0 = Ext::ZERO;
-    let mut acc_c2 = Ext::ZERO;
+    let mut acc_c0 = E::ZERO;
+    let mut acc_c2 = E::ZERO;
     for (list, list_atoms) in split_round_robin(&indices, k).iter().enumerate() {
         // Seed exactly one partial.
         let mut partial = LeanAccumulators {
-            c0: if list == 0 { seed } else { Ext::ZERO },
-            c2: Ext::ZERO,
+            c0: if list == 0 { seed } else { E::ZERO },
+            c2: E::ZERO,
         };
         for &index in list_atoms {
             match &atoms[index] {
@@ -342,13 +344,13 @@ pub fn interpret_lean_program(
 }
 
 /// Per-side products with the coefficient factored out.
-enum LeanParts {
+enum LeanParts<E> {
     /// `acc_c0 += <coefficient> * v`.
-    C0(Ext),
+    C0(E),
     /// `acc_c2 += <coefficient> * v`.
-    C2(Ext),
+    C2(E),
     /// Both sides, from one source-pair resolution per operand.
-    Dual { c0: Ext, c2: Ext },
+    Dual { c0: E, c2: E },
 }
 
 /// The projections `category` consumes at `row`, resolved.
@@ -362,14 +364,14 @@ enum LeanParts {
 /// is the same element either way. A squared product resolves its source twice,
 /// exactly as the semantic interpreter does; that a kernel loads it once is a
 /// physical property of the kernel and not of the value.
-fn lean_parts(
+fn lean_parts<E: Field>(
     layer: &CoeffLayer,
     category: TermCategory,
     position: usize,
     record: &LeanTerm,
     row: usize,
-    resolver: &impl CoeffResolver,
-) -> Result<LeanParts, LeanInterpError> {
+    resolver: &impl CoeffResolver<E>,
+) -> Result<LeanParts<E>, LeanInterpError> {
     let a = SourceId(u32::from(record.source_a));
     match category {
         TermCategory::C0LinearBf | TermCategory::C0LinearE4 => {
@@ -412,14 +414,14 @@ fn record_category(position: usize, record: &LeanTerm) -> Result<TermCategory, L
 /// a [`CoefficientRecipeId`], so resolving it as a recipe would read the wrong id
 /// space entirely. Members go through [`lean_group`], which is the only caller that
 /// decodes that field as an immediate.
-fn lean_record(
+fn lean_record<E: Field>(
     layer: &CoeffLayer,
     position: usize,
     record: &LeanTerm,
     row: usize,
-    resolver: &impl CoeffResolver,
-    acc_c0: &mut Ext,
-    acc_c2: &mut Ext,
+    resolver: &impl CoeffResolver<E>,
+    acc_c0: &mut E,
+    acc_c2: &mut E,
 ) -> Result<(), LeanInterpError> {
     let category = record_category(position, record)?;
     let k = coefficient(
@@ -458,9 +460,9 @@ struct GroupHeader {
     has_c2: bool,
 }
 
-struct LeanAccumulators {
-    c0: Ext,
-    c2: Ext,
+struct LeanAccumulators<E> {
+    c0: E,
+    c2: E,
 }
 
 /// Add `core * SUM_m imm_m * v_m` for one decoded group.
@@ -469,25 +471,25 @@ struct LeanAccumulators {
 /// core that is a reserved literal would evaluate as that literal instead of being
 /// rejected: `GroupCoreIsLiteral` is [`lean::validate_program`]'s statement about a
 /// stream, not a step this evaluation needs (the value would still be the layer's).
-fn lean_group(
+fn lean_group<E: Field>(
     layer: &CoeffLayer,
     header: usize,
     group: GroupHeader,
     members: &[LeanTerm],
     row: usize,
-    resolver: &impl CoeffResolver,
-    accumulators: &mut LeanAccumulators,
+    resolver: &impl CoeffResolver<E>,
+    accumulators: &mut LeanAccumulators<E>,
 ) -> Result<(), LeanInterpError> {
     let core = coefficient(layer, CoefficientRecipeId(u32::from(group.core)), resolver)?;
-    let mut s_c0 = Ext::ZERO;
-    let mut s_c2 = Ext::ZERO;
+    let mut s_c0 = E::ZERO;
+    let mut s_c2 = E::ZERO;
     for (offset, member) in members.iter().enumerate() {
         // Members occupy the records right after their header, so this is the
         // member's own position in the program.
         let position = header + 1 + offset;
         let category = record_category(position, member)?;
         let id = ImmediateId(member.coeff);
-        let imm = immediate_value(layer, id)?;
+        let imm = immediate_value(layer, id, resolver)?;
         match lean_parts(layer, category, position, member, row, resolver)? {
             LeanParts::C0(v) => accumulate_imm(&mut s_c0, id, imm, v),
             LeanParts::C2(v) => accumulate_imm(&mut s_c2, id, imm, v),

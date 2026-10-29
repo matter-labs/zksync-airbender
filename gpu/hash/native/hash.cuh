@@ -141,6 +141,15 @@ template <typename ReadE4> DEVICE_FORCEINLINE void absorb_e4_stream(u32 state[ST
   }
 }
 
+DEVICE_FORCEINLINE digest hash_node(const digest &left, const digest &right) {
+  digest children[2] = {left, right};
+  digest state;
+  initialize(state.words);
+  u32 t = 0;
+  compress<true>(state.words, t, reinterpret_cast<const u32 *>(children), BLOCK_SIZE);
+  return state;
+}
+
 DEVICE_FORCEINLINE void reduce_merkle_subtrees_block(digest *values, unsigned active) {
 #pragma unroll
   for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
@@ -203,6 +212,132 @@ DEVICE_FORCEINLINE void collect_merkle_path_warp(u32 state[STATE_SIZE], u32 *mer
     tree_layer += (1u << log_digests_count) * STATE_SIZE;
     log_digests_count--;
     merkle_paths_dst += layer_stride_words;
+  }
+}
+
+template <typename HashLeaf>
+DEVICE_FORCEINLINE void collect_merkle_path_block(digest *frontier, u32 *merkle_paths, const unsigned layer_stride_words, const unsigned query_index,
+                                                  const unsigned log_total_leaves_count, const unsigned reduction_layers, const unsigned layers_count,
+                                                  const u32 *tree_bottom, const bool physical_order, HashLeaf hash_leaf) {
+  const unsigned subtree_size = 1u << reduction_layers;
+  for (unsigned slot = threadIdx.x; slot < subtree_size; slot += blockDim.x) {
+    const digest state = hash_leaf(slot);
+    frontier[physical_order ? bitreverse_low_bits(slot, reduction_layers) : slot] = state;
+  }
+  __syncthreads();
+  const unsigned local_index = query_index & (subtree_size - 1);
+  for (unsigned layer = 0; layer < reduction_layers; layer++) {
+    if (threadIdx.x == 0)
+      ::airbender::primitives::memory::store_cs(reinterpret_cast<digest *>(merkle_paths + layer * layer_stride_words), frontier[(local_index >> layer) ^ 1]);
+    const unsigned parents_count = subtree_size >> (layer + 1);
+    for (unsigned first = 0; first < parents_count; first += blockDim.x) {
+      const unsigned parent = first + threadIdx.x;
+      const bool enabled = parent < parents_count;
+      digest node;
+      if (enabled)
+        node = hash_node(frontier[2 * parent], frontier[2 * parent + 1]);
+      __syncthreads();
+      if (enabled)
+        frontier[parent] = node;
+      __syncthreads();
+    }
+  }
+  if (threadIdx.x >= STATE_SIZE)
+    return;
+  unsigned digest_index = query_index >> reduction_layers;
+  unsigned log_digests_count = log_total_leaves_count - reduction_layers;
+  const u32 *tree_layer = tree_bottom + threadIdx.x;
+  u32 *merkle_paths_dst = merkle_paths + reduction_layers * layer_stride_words + threadIdx.x;
+  for (unsigned layer = reduction_layers; layer < layers_count; layer++) {
+    *merkle_paths_dst = *(tree_layer + (digest_index ^ 1) * STATE_SIZE);
+    digest_index >>= 1;
+    tree_layer += (1u << log_digests_count) * STATE_SIZE;
+    log_digests_count--;
+    merkle_paths_dst += layer_stride_words;
+  }
+}
+
+constexpr u64 POW_STOP = u64{1} << 63;
+
+/// Min-nonce search: warps claim consecutive chunks of `chunk_steps * 32` nonces from `counter`;
+/// a hit pushes the counter past every valid index, and the claimed chunks are finished.
+DEVICE_FORCEINLINE void pow_search_counter(const u64 *seed, const u32 bits_count, const u64 max_nonce, const u32 chunk_steps, u64 *counter, u64 *result) {
+  const u32 lane = threadIdx.x & 31;
+  const u32 digest_mask = 0xffffffff << 32 - bits_count;
+  auto *counter_ptr = reinterpret_cast<unsigned long long *>(counter);
+  auto *result_ptr = reinterpret_cast<unsigned long long *>(result);
+  __align__(8) u32 m_u32[BLOCK_SIZE] = {};
+  auto m_u64 = reinterpret_cast<u64 *>(m_u32);
+#pragma unroll
+  for (unsigned i = 0; i < 4; i++)
+    m_u64[i] = seed[i];
+  bool hit = false;
+  const auto try_nonce = [&](const u64 nonce) {
+    m_u64[STATE_SIZE / 2] = nonce;
+    u32 state[STATE_SIZE];
+    initialize(state);
+    u32 t = 0;
+    compress<true>(state, t, m_u32, STATE_SIZE + 2);
+    if (!(state[0] & digest_mask)) {
+      atomicMin(result_ptr, static_cast<unsigned long long>(nonce));
+      hit = true;
+    }
+  };
+  const u64 chunk = static_cast<u64>(chunk_steps) * 32;
+  while (true) {
+    u64 index = 0;
+    if (lane == 0)
+      index = atomicAdd(counter_ptr, 1ull);
+    index = __shfl_sync(0xffffffffu, index, 0);
+    const u64 start = index * chunk;
+    if (index >= POW_STOP || __umul64hi(index, chunk) != 0 || start >= max_nonce)
+      return;
+    const u64 limit = max_nonce - start;
+    if (limit >= chunk) {
+#pragma unroll 1
+      for (u32 step = 0; step < chunk_steps; step++)
+        try_nonce(start + step * 32 + lane);
+    } else {
+#pragma unroll 1
+      for (u32 step = 0; step < chunk_steps; step++) {
+        const u64 offset = step * 32 + lane;
+        if (offset < limit)
+          try_nonce(start + offset);
+      }
+    }
+    if (__any_sync(0xffffffffu, hit)) {
+      if (lane == 0)
+        atomicMax(counter_ptr, static_cast<unsigned long long>(POW_STOP));
+      return;
+    }
+  }
+}
+
+/// Grid-stride search; DETERMINISTIC keeps the minimum nonce, otherwise the first published hit stops it.
+template <bool DETERMINISTIC> DEVICE_FORCEINLINE void pow_search_grid_stride(const u64 *seed, const u32 bits_count, const u64 max_nonce, volatile u64 *result) {
+  const u32 digest_mask = 0xffffffff << 32 - bits_count;
+  const auto result_ptr = reinterpret_cast<unsigned long long *>(const_cast<u64 *>(result));
+  __align__(8) u32 m_u32[BLOCK_SIZE] = {};
+  auto m_u64 = reinterpret_cast<u64 *>(m_u32);
+#pragma unroll
+  for (unsigned i = 0; i < 4; i++)
+    m_u64[i] = seed[i];
+  const unsigned stride = blockDim.x * gridDim.x;
+  for (u64 nonce = threadIdx.x + blockIdx.x * blockDim.x; nonce < max_nonce; nonce += stride) {
+    m_u64[STATE_SIZE / 2] = nonce;
+    u32 state[STATE_SIZE];
+    initialize(state);
+    u32 t = 0;
+    compress<true>(state, t, m_u32, STATE_SIZE + 2);
+    if (!(state[0] & digest_mask)) {
+      if constexpr (DETERMINISTIC)
+        atomicMin(result_ptr, static_cast<unsigned long long>(nonce));
+      else
+        atomicCAS(result_ptr, UINT64_MAX, nonce);
+      __threadfence();
+    }
+    if (DETERMINISTIC ? *result <= nonce : *result != UINT64_MAX)
+      return;
   }
 }
 

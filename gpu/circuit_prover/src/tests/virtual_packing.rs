@@ -297,9 +297,14 @@ fn standalone_for_config(config: &ProverConfig, first_leaf_values: usize) {
     .into_iter()
     .enumerate()
     .map(|(role, kind)| {
-        let mut holder =
-            TraceHolder::<BF>::new_base(geometry, kind, TreesCacheMode::CachePartial, &context)
-                .unwrap();
+        let mut holder = TraceHolder::<BF>::new_base(
+            geometry,
+            kind,
+            TreesCacheMode::CachePartial,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+            &context,
+        )
+        .unwrap();
         if !raw[role].is_empty() {
             memory_copy_async(
                 holder.get_uninit_hypercube_evals_mut(),

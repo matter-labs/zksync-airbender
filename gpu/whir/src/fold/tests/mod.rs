@@ -177,6 +177,7 @@ fn make_trace_holder(columns: &[Vec<BF>], context: &ProverContext) -> TraceHolde
         0,
         columns.len(),
         TreesCacheMode::CacheNone,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         context,
     )
     .unwrap();
@@ -212,6 +213,7 @@ fn make_lde_trace_holder(
         log_tree_cap_size,
         columns.len(),
         TreesCacheMode::CacheFull,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         context,
     )
     .unwrap();

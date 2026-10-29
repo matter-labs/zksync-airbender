@@ -41,6 +41,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         tracing_data,
         external_challenges,
         memory_caps,
+        memory_partial_trees: _,
         selection,
         profile,
     } = request;

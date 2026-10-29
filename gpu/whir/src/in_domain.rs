@@ -759,8 +759,9 @@ mod tests {
 
     #[test]
     fn leaves_from_monomials_match_host_and_fused_query() {
-        // All ten fused shapes, including M = 2 (R > M) and M = 256
-        // (chain length 32), retain both independent comparisons.
+        // All eleven fused shapes, including M = 2 (R > M) and M = 256
+        // (chain length 32), plus the L1 feeder's fused oracles at their
+        // configured geometry, retain both independent comparisons.
         let context = make_test_context(64, 16);
         for (log_n, log_c, log_v) in [
             (13u32, 14u32, 5u32),
@@ -771,9 +772,17 @@ mod tests {
             (8, 19, 4),
             (7, 19, 4),
             (6, 19, 5),
+            (6, 19, 3),
             (5, 19, 4),
             (4, 19, 3),
-        ] {
+        ]
+        .into_iter()
+        .chain(
+            crate::test_utils::l1_feeder_oracle_shapes()
+                .into_iter()
+                .filter(|&(log_n, log_v, _, _)| crate::fused_commit::supported(log_n, log_v))
+                .map(|(log_n, log_v, lde_factor, _)| (log_n, lde_factor.trailing_zeros(), log_v)),
+        ) {
             assert_leaves_from_monomials_match_host(log_n, log_c, log_v, true, &context);
         }
     }

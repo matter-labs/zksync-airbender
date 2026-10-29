@@ -54,11 +54,13 @@ rather than letting the duplicate drift by convention.
 - **Archive / `links` key**: `gpu_whir_native` (`build.rs`:
   `gpu_native_build::CudaArchive::new("gpu_whir_native", "GPU_WHIR").build()`
   — no `export_include`; nothing above this crate includes its headers).
-- **Kernel count**: 27 `__global__` kernels — `accumulate_eq.cu` 4,
+- **Kernel count**: 51 `__global__` kernels — `accumulate_eq.cu` 4,
   `columns.cu` 1, `fold.cu` 9, `leaves.cu` 1, `residue_commit.cu` 6,
-  `in_domain.cu` 6. Count with
-  `rg -c '__global__' gpu/whir/native/whir/*.cu`, or equivalently
-  `rg -o 'ab_[a-z0-9_]*_kernel' gpu/whir/native/whir/*.cu | sort -u | wc -l`.
+  `in_domain.cu` 6; `proth120/base.cu` 4, `proth120/commit.cu` 5,
+  `proth120/fold.cu` 8, `proth120/in_domain.cu` 3, `proth120/openings.cu` 3,
+  `proth120/round.cu` 1. Count with
+  `rg -c '__global__' gpu/whir/native/whir/*.cu gpu/whir/native/whir/proth120/*.cu`, or equivalently
+  `rg -o 'ab_[a-z0-9_]*_kernel' gpu/whir/native/whir/*.cu gpu/whir/native/whir/proth120/*.cu | sort -u | wc -l`.
   Count `__global__` regardless of whether `void` appears on the same line.
   No `__constant__` symbols (all 8 cluster-wide ones live in `gpu_gkr`).
 - **Namespace**: `airbender::whir`.
@@ -69,7 +71,9 @@ rather than letting the duplicate drift by convention.
   `DEP_GPU_HASH_NATIVE_INCLUDE`. `residue_commit.cu` and `in_domain.cu` also read
   gpu_ntt's `whir_leaf_transform.cuh` via `DEP_GPU_NTT_NATIVE_INCLUDE`. `in_domain.cu`
   also consumes the inline WHIR transcript update in `ops/gkr_ops_helpers.cuh`
-  through `DEP_GPU_GKR_NATIVE_INCLUDE`. All three
+  through `DEP_GPU_GKR_NATIVE_INCLUDE`. Proth120 round updates and commits read
+  `gpu_hash`'s exported `keccak256.cuh`; `proth120/commit.cu` and
+  `proth120/openings.cu` read gpu_ntt's exported `proth120/context.cuh`. All three
   directories resolve automatically as CMake `-D` defines that
   `gpu_native_build` forwards. This crate also reads gpu_core's base headers.
   `deterministic_pow` is not a native `#define`
@@ -108,6 +112,17 @@ natural-order coefficient leaves from the current oracle; add the symbolic
 contribution to `[f0, f1, 4*f_half]` before the transcript update, then fold term
 coefficients, weights and points on exec. Recomputed leaves are refreshed by
 Horner evaluation directly from monomial coefficients.
+
+The Proth120 L1 phase (`proth120/`, `schedule_l1_whir_fold`) commits each
+intermediate oracle coset by coset through one fixed tile of
+`L1_WHIR_TILE_BYTES` (32 passes of batched LDE, leaf conversion and keccak
+partial trees) and keeps only the retained slabs, the top tree and a monomial
+copy. Its openings recompute the queried bottom subtrees by Horner evaluation
+from that copy and never repeat an LDE; the base oracles open through
+`gpu_trace`'s packed replay. `schedule_l1_whir_fold` enqueues no D2H: it returns
+an `L1WhirPendingReadback`, whose `schedule_readback` copies the proof fields into
+host-pool twins for the caller's own assembly callback (`readback()`), and whose
+`schedule_readback_and_assemble` keeps a standalone copy-and-callback path.
 
 ## Widening convention
 

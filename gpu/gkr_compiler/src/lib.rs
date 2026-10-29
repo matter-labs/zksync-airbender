@@ -3,6 +3,7 @@
 mod analysis;
 pub mod backward;
 mod forward;
+pub mod geometry;
 mod interval_pack;
 #[cfg(feature = "search")]
 mod search;
@@ -28,6 +29,7 @@ pub use forward::isa::{
 pub use forward::source::{
     virtual_setup_kind_code, SpecialStrategy as ForwardSpecialStrategy, KIND_ORDER,
 };
+pub use forward::{ElementModel, FieldTag};
 #[cfg(feature = "search")]
 pub use search::{search_forward, ForwardSearchError, ForwardSearchRequest, SearchConfig};
 
@@ -37,9 +39,23 @@ pub fn compile_forward(
     dag: &gkr_eval_ir::DagCircuit,
     artifact: &ForwardSearchArtifact,
 ) -> Result<ForwardProgramBundle, ForwardCompileError> {
+    compile_forward_with_model(dag, artifact, ElementModel::for_dag(dag))
+}
+
+pub fn compile_forward_with_model(
+    dag: &gkr_eval_ir::DagCircuit,
+    artifact: &ForwardSearchArtifact,
+    model: ElementModel,
+) -> Result<ForwardProgramBundle, ForwardCompileError> {
+    if model != ElementModel::for_dag(dag) {
+        return Err(ForwardCompileError::InvalidSchedule(format!(
+            "forward element model {model:?} does not match DAG modulus {}",
+            dag.modulus
+        )));
+    }
     forward::artifact::validate_forward_artifact(dag, artifact)
         .map_err(|error| ForwardCompileError::InvalidSchedule(error.to_string()))?;
-    let layers = forward::compile::compile_circuit(dag, artifact)?;
+    let layers = forward::compile::compile_circuit(dag, artifact, model)?;
     for compiled in &layers {
         forward::validate::validate_compiled(compiled)?;
     }

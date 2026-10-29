@@ -376,4 +376,54 @@ mod tests {
     fn bit_reverse_rows_1_b256() {
         test_bit_reverse_rows_1::<[u32; 8]>();
     }
+
+    fn test_bit_reverse_in_place_pr(log_rows: u32) {
+        const COLS: usize = 4;
+        let rows = 1usize << log_rows;
+        let mut rng = rng();
+        let h_src = (0..COLS * rows)
+            .map(|_| PR::random_element(&mut rng))
+            .collect_vec();
+        let stream = CudaStream::default();
+        let mut d_values = DeviceAllocation::alloc(COLS * rows).unwrap();
+        memory_copy_async(&mut d_values, &h_src, &stream).unwrap();
+        let mut matrix = DeviceMatrixMut::new(&mut d_values, rows);
+        bit_reverse_in_place(&mut matrix, &stream).unwrap();
+        let mut h_dst = vec![PR::default(); COLS * rows];
+        memory_copy_async(&mut h_dst, &d_values, &stream).unwrap();
+        stream.synchronize().unwrap();
+        for col in 0..COLS {
+            for i in 0..rows {
+                let j = i.reverse_bits() >> (usize::BITS - log_rows);
+                assert_eq!(
+                    h_src[col * rows + i],
+                    h_dst[col * rows + j],
+                    "col {col}, row {i}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn bit_reverse_in_place_pr() {
+        test_bit_reverse_in_place_pr(10);
+        test_bit_reverse_in_place_pr(17);
+    }
+
+    #[test]
+    fn bit_reverse_rows_1_pr() {
+        const COLS: usize = 4;
+        let h_src = (0..COLS)
+            .map(|_| PR::random_element(&mut rng()))
+            .collect_vec();
+        let stream = CudaStream::default();
+        let mut d_values = DeviceAllocation::alloc(COLS).unwrap();
+        memory_copy_async(&mut d_values, &h_src, &stream).unwrap();
+        let mut matrix = DeviceMatrixMut::new(&mut d_values, 1);
+        bit_reverse_in_place(&mut matrix, &stream).unwrap();
+        let mut h_dst = vec![PR::default(); COLS];
+        memory_copy_async(&mut h_dst, &d_values, &stream).unwrap();
+        stream.synchronize().unwrap();
+        assert_eq!(h_src, h_dst);
+    }
 }

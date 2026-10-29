@@ -19,7 +19,6 @@ use super::abi::{
     MAIN_CONTINUATION_WINDOW_WARPS,
 };
 use super::{ContinuationPublicationError, ContinuationPublishedLevel, ContinuationPublishedShape};
-use crate::backward::make_eq_sizes;
 use crate::backward::window::bank::family_read_place;
 use crate::backward::window::common::{
     bwd_source_lane, BwdSourceWindow, BWD_COEFF_NONE, BWD_COEFF_ORIGIN_PROCEDURAL,
@@ -28,6 +27,7 @@ use crate::backward::window::common::{
 };
 use crate::backward::window::zeroed_box;
 use crate::backward::GkrEqSizes;
+use crate::backward::{babybear_from_canonical, make_eq_sizes};
 use crate::forward::vm::lower::read_place_to_gkr_address;
 use crate::forward::vm::production_bind::resolve_storage_column;
 use crate::upstream::PrimeField;
@@ -661,9 +661,9 @@ fn prior_input_lanes(
     Ok((lanes, folds))
 }
 
-fn encode_main_continuation_immediate_prefix(canonical: &[u32], destination: &mut [u32]) {
+fn encode_main_continuation_immediate_prefix(canonical: &[u128], destination: &mut [u32]) {
     for (encoded, &value) in destination[..canonical.len()].iter_mut().zip(canonical) {
-        *encoded = BF::from_u32_with_reduction(value).as_u32_raw_repr_reduced();
+        *encoded = babybear_from_canonical(value).as_u32_raw_repr_reduced();
     }
 }
 

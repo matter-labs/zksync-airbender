@@ -228,8 +228,10 @@ A `Transfer` issues the `E_alloc` wait once, at its first copy or at
 **Per-request sources.** Small inputs that change with every request (top bits,
 external challenges, the unified memory cap) are recorded with
 `Transfer::stage` before any direct copy of the bundle. They are packed into
-the context's fixed pinned staging buffer (`H2D_STAGING_BYTES`) by one
-`h2d_stream` callback enqueued ahead of the wait, and copied right after it.
+the context's fixed pinned staging buffer (`ProverContextConfig::h2d_staging_bytes`,
+64 KiB by default) by one `h2d_stream` callback enqueued ahead of the wait, and
+copied right after it. Submission panics if a bundle stages more than the buffer
+holds.
 Each bundle's fill sits behind every earlier staged copy on the in-order
 `h2d_stream`, so all bundles reuse the same buffer.
 
@@ -239,6 +241,18 @@ D2H copies run on `exec_stream`. Schedule the consumer callback after the copy.
 The stream-ordered host-pool destination may be released once that callback is
 scheduled. Keep the callback owner alive until stream or event synchronization
 confirms completion: the CUDA callback dispatch holds only a weak reference.
+
+**L1 wrap.** Commitment, device-derived challenges and proof are one device
+workflow. Every H2D of a wrap request (trace inputs, setup, per-circuit
+constants from pinned buffers built at setup initialization, staged per-request
+values) goes into its phase-one `Transfer`. Between `prove()`'s
+`ensure_transferred` and the readback phase nothing crosses to the host: no
+copy to or from it, no callback, no host synchronization; kernels, D2D copies,
+memsets and device-side event waits stay on the device. The readback phase
+copies the proof slab and the WHIR proof fields back to back, then schedules
+one callback that assembles the `L1WrapResult`. A host hop in between would
+stall the stream, and a small exec-stream H2D can queue behind the next
+request's phase-one copies on the copy engine.
 
 ## H2D source lifetime
 

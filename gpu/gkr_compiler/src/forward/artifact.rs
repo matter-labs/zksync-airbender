@@ -36,6 +36,8 @@ pub fn parse_forward_artifact(
 pub struct ForwardSearchArtifact {
     pub circuit: String,
     pub budget_buckets: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub field: Option<super::FieldTag>,
     pub layers: Vec<ForwardLayerArtifact>,
 }
 
@@ -131,6 +133,13 @@ pub(crate) fn validate_forward_artifact_inner(
     circuit: &DagCircuit,
     sched: &ForwardSearchArtifact,
 ) -> Result<(), String> {
+    let model = super::ElementModel::for_dag(circuit);
+    if sched.field != model.field {
+        return Err(format!(
+            "forward artifact field {:?} does not match DAG field {:?}",
+            sched.field, model.field
+        ));
+    }
     if sched.layers.len() != circuit.layers.len() {
         return Err(format!(
             "schedule has {} layers, circuit has {}",
@@ -139,7 +148,7 @@ pub(crate) fn validate_forward_artifact_inner(
         ));
     }
     for (li, (layer, ls)) in circuit.layers.iter().zip(&sched.layers).enumerate() {
-        validate_layer_schedule(layer, ls).map_err(|e| format!("layer {li}: {e}"))?;
+        validate_layer_schedule(layer, ls, model).map_err(|e| format!("layer {li}: {e}"))?;
     }
     Ok(())
 }
@@ -151,7 +160,11 @@ pub(crate) fn validate_forward_artifact(
     validate_forward_artifact_inner(circuit, artifact).map_err(ForwardArtifactError::Invalid)
 }
 
-fn validate_layer_schedule(layer: &DagLayer, ls: &ForwardLayerArtifact) -> Result<(), String> {
+fn validate_layer_schedule(
+    layer: &DagLayer,
+    ls: &ForwardLayerArtifact,
+    model: super::ElementModel,
+) -> Result<(), String> {
     let canonical = relation_units(layer);
     if canonical.is_empty() && layer.roots.iter().any(|root| root.materialize.is_some()) {
         return Err("materialized layer has no claim-bearing roots".into());
@@ -194,7 +207,7 @@ fn validate_layer_schedule(layer: &DagLayer, ls: &ForwardLayerArtifact) -> Resul
     }
     let order = atom_order(layer, &ls.units);
     let compute_roots = build_compute_roots(layer);
-    let domain = enumerate_site_domain(layer, &order, &compute_roots);
+    let domain = enumerate_site_domain(layer, &order, &compute_roots, model);
     check_site_domain_match(&stored, &domain)?;
 
     for (k, p) in &ls.sites {
