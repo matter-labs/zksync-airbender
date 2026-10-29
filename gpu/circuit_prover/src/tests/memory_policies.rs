@@ -214,7 +214,7 @@ gkr_recompute_test!(
 
 /// The existing production table is the policy authority. Regeneration of that
 /// table must requalify these bytes; the fixture arena alone is not a fit claim.
-fn check_production_presets(fixture: BasicUnrolledProofFixture) {
+fn check_production_presets(fixture: &BasicUnrolledProofFixture) {
     let policies = [21usize << 30, 30usize << 30].map(|arena| {
         let policy = presets::policy(fixture.base.circuit_type, arena);
         eprintln!(
@@ -223,7 +223,7 @@ fn check_production_presets(fixture: BasicUnrolledProofFixture) {
         );
         policy
     });
-    check_policies(&fixture, policies);
+    check_policies(fixture, policies);
 }
 
 macro_rules! production_presets_test {
@@ -231,7 +231,7 @@ macro_rules! production_presets_test {
         #[test]
         #[ignore = "both production preset policies against a fresh CPU proof"]
         fn $name() {
-            check_production_presets($fixture());
+            check_production_presets(&$fixture());
         }
     };
 }

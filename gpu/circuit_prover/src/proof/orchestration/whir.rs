@@ -112,7 +112,7 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
             setup_trace_holder,
             point,
             final_device_seed_mut,
-            &*batching_challenge_device,
+            batching_challenge_device,
             whir_schedule.base_lde_factor(),
             whir_schedule.fold_steps(),
             whir_schedule.queries_per_round(),

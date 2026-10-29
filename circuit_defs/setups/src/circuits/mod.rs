@@ -152,11 +152,10 @@ fn produce_verifier_setup_for_circuit(
     let prover_config = &circuit.prover_config_in_mode(security_level, mode);
     let twiddles: Twiddles<BabyBearField, Global> =
         Twiddles::new(circuit.trace_len << prover_config.pack_log2(), worker);
-    let setup_commitment = circuit.setup.commit_for_config::<DefaultTreeConstructor>(
-        &twiddles,
-        &prover_config,
-        worker,
-    );
+    let setup_commitment =
+        circuit
+            .setup
+            .commit_for_config::<DefaultTreeConstructor>(&twiddles, prover_config, worker);
 
     let cap = setup_commitment.get_cap();
     let mut num_permutation_terms_per_cycle = 1; // delegation itself

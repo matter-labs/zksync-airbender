@@ -378,9 +378,10 @@ fn cpu_worker_virtual_requests_require_geometry_setup_before_transfers() {
         // A matching virtual request reaches the existing setup-initialization
         // invariant, rather than a virtual guard. No pinning or transfer ran.
         assert!(precomputations.setup_host.inner.get().is_none());
-        for wrong_kind in [CircuitType::Unrolled(
-            gpu_trace::witness::circuit_type::UnrolledCircuitType::Unified,
-        )] {
+        {
+            let wrong_kind = CircuitType::Unrolled(
+                gpu_trace::witness::circuit_type::UnrolledCircuitType::Unified,
+            );
             let constructed = std::cell::Cell::new(false);
             assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 precomputations.admit_inputs_before_transfers(

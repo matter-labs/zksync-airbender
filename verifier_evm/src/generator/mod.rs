@@ -60,7 +60,7 @@ pub struct Lit {
 impl Lit {
     pub fn num(value: u128) -> Self {
         Self {
-            value: value,
+            value,
             expr: value.to_string(),
             prec: 3,
         }

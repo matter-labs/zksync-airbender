@@ -1,6 +1,6 @@
 use super::*;
 use gpu_gkr::packed_merge::launch_merge_claims_e4;
-use gpu_hash::blake2s::{transcript_squeeze_fresh_e4, STATE_SIZE};
+use gpu_hash::blake2s::transcript_squeeze_fresh_e4;
 use prover::definitions::SecurityLevel;
 use prover::gkr::prover::merge_claims;
 use prover::gkr::prover::transcript_utils::{

@@ -36,7 +36,7 @@ pub fn get_table_driver<F: PrimeField>() -> prover::cs::tables::TableDriver<F> {
 /// `DelegationCircuit::geometry`: a 2^24 trace, unpacked.
 pub fn geometry() -> circuit_common::CircuitGeometry {
     circuit_common::CircuitGeometry {
-        trace_len_log2: TRACE_LEN_LOG2 as u32,
+        trace_len_log2: TRACE_LEN_LOG2,
         base_packing: circuit_common::BasePacking::NONE,
     }
 }

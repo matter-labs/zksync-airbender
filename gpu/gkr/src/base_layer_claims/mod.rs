@@ -75,32 +75,6 @@ enum DenseSource {
     Setup(usize),
 }
 
-#[cfg(test)]
-mod cpu_merged_address_tests {
-    use super::*;
-
-    #[test]
-    fn cpu_merged_dense_witness_sources_follow_memory() {
-        for (address, expected) in [
-            (GKRAddress::BaseLayerMemory(224), DenseSource::Memory(224)),
-            (GKRAddress::BaseLayerWitness(0), DenseSource::Memory(225)),
-            (GKRAddress::BaseLayerWitness(537), DenseSource::Memory(762)),
-            (GKRAddress::Setup(5), DenseSource::Setup(5)),
-        ] {
-            assert_eq!(DenseSource::from_address(address, Some(225)), expected);
-        }
-        assert_eq!(
-            DenseSource::from_address(GKRAddress::BaseLayerWitness(537), None),
-            DenseSource::Witness(537)
-        );
-        assert!(std::panic::catch_unwind(|| DenseSource::from_address(
-            GKRAddress::BaseLayerWitness(1),
-            Some(usize::MAX)
-        ))
-        .is_err());
-    }
-}
-
 impl DenseSource {
     fn from_address(address: GKRAddress, merged_witness_offset: Option<usize>) -> Self {
         match address {
@@ -450,4 +424,30 @@ pub fn schedule_prepare_base_layer_claims_with_sources(
         _extras_plan: extras_plan,
         shared_state,
     })
+}
+
+#[cfg(test)]
+mod cpu_merged_address_tests {
+    use super::*;
+
+    #[test]
+    fn cpu_merged_dense_witness_sources_follow_memory() {
+        for (address, expected) in [
+            (GKRAddress::BaseLayerMemory(224), DenseSource::Memory(224)),
+            (GKRAddress::BaseLayerWitness(0), DenseSource::Memory(225)),
+            (GKRAddress::BaseLayerWitness(537), DenseSource::Memory(762)),
+            (GKRAddress::Setup(5), DenseSource::Setup(5)),
+        ] {
+            assert_eq!(DenseSource::from_address(address, Some(225)), expected);
+        }
+        assert_eq!(
+            DenseSource::from_address(GKRAddress::BaseLayerWitness(537), None),
+            DenseSource::Witness(537)
+        );
+        assert!(std::panic::catch_unwind(|| DenseSource::from_address(
+            GKRAddress::BaseLayerWitness(1),
+            Some(usize::MAX)
+        ))
+        .is_err());
+    }
 }

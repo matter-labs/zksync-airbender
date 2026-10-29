@@ -268,6 +268,17 @@ impl CircuitData {
     }
 }
 
+fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
+    let src =
+        std::fs::File::open(filename).unwrap_or_else(|_| panic!("{} doesn't exist", filename));
+    serde_json::from_reader(src).unwrap()
+}
+
+fn try_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> Result<T, ()> {
+    let src = std::fs::File::open(filename).map_err(|_| ())?;
+    Ok(serde_json::from_reader(src).unwrap())
+}
+
 #[cfg(test)]
 mod fixture_maintenance {
     use super::*;
@@ -296,15 +307,4 @@ mod fixture_maintenance {
             }
         }
     }
-}
-
-fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-    let src =
-        std::fs::File::open(filename).unwrap_or_else(|_| panic!("{} doesn't exist", filename));
-    serde_json::from_reader(src).unwrap()
-}
-
-fn try_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> Result<T, ()> {
-    let src = std::fs::File::open(filename).map_err(|_| ())?;
-    Ok(serde_json::from_reader(src).unwrap())
 }

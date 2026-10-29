@@ -86,17 +86,15 @@ pub fn validate_baby_bear_base_opening(
             "in-place openings require partial or uncached trees"
         );
     }
-    if geometry.pack_log2() > 0 {
-        if policy == OpeningStrategy::PerCoset {
-            assert!(
-                gpu_ntt::ntt::log_size_supports_retained_monomials(geometry.message_size_log2()),
-                "packed PerCoset openings require the retained-monomial dispatch family"
-            );
-            assert!(
-                !matches!(trees_mode, TreesCacheMode::CacheFull),
-                "packed PerCoset openings require partial or uncached trees"
-            );
-        }
+    if geometry.pack_log2() > 0 && policy == OpeningStrategy::PerCoset {
+        assert!(
+            gpu_ntt::ntt::log_size_supports_retained_monomials(geometry.message_size_log2()),
+            "packed PerCoset openings require the retained-monomial dispatch family"
+        );
+        assert!(
+            !matches!(trees_mode, TreesCacheMode::CacheFull),
+            "packed PerCoset openings require partial or uncached trees"
+        );
     }
 }
 
@@ -589,13 +587,11 @@ impl<T> TraceHolder<T> {
                 "in-place openings require partial or uncached trees"
             );
         }
-        if self.is_packed_base_oracle() {
-            if policy == OpeningStrategy::PerCoset {
-                assert!(
-                    matches!(self.trees, TreesHolder::None | TreesHolder::Partial(_)),
-                    "packed PerCoset openings require partial or uncached trees"
-                );
-            }
+        if self.is_packed_base_oracle() && policy == OpeningStrategy::PerCoset {
+            assert!(
+                matches!(self.trees, TreesHolder::None | TreesHolder::Partial(_)),
+                "packed PerCoset openings require partial or uncached trees"
+            );
         }
         assert!(!self.cosets_materialized);
         assert!(self.raw_hypercube_evals.is_some());

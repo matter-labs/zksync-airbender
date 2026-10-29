@@ -4,7 +4,6 @@ use std::mem::size_of;
 use std::ops::Range;
 
 use super::*;
-use crate::upstream::Field;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WhirBaseLayerKind {

@@ -1,5 +1,5 @@
 use super::*;
-use crate::upstream::{Field, FieldExtension, PrimeField};
+use crate::upstream::{FieldExtension, PrimeField};
 
 fn sample_e4(value: u32) -> E4 {
     E4::from_base(BF::from_u32_unchecked(value))
@@ -460,7 +460,7 @@ fn cpu_parser_splits_whir_streams_by_schedule() {
     let layout = ProofLayout::new(&inputs);
     let mut slab_storage = AlignedSlab::zeroed(layout.total_bytes);
     let slab = slab_storage.as_bytes_mut();
-    let point = vec![sample_e4(10), sample_e4(20)];
+    let point = [sample_e4(10), sample_e4(20)];
     let batching = sample_e4(30);
     // 8 sumcheck polynomials over the sample's 3 rounds (2 intermediate
     // oracles): a round-0 fold of 1, then 4 + 3 = 8 total

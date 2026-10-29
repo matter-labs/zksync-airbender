@@ -104,116 +104,6 @@ fn admit_baby_bear_recursive_oracle_shape(
     fused
 }
 
-#[cfg(test)]
-mod cpu_recursive_shapes {
-    use super::admit_baby_bear_recursive_oracle_shape as admit;
-
-    #[test]
-    fn cpu_virtual_default_ladders_fit_recursive_capabilities() {
-        use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType as Delegation};
-        use prover::definitions::SecurityLevel;
-
-        let mut checked = 0;
-        for circuit in [
-            Delegation::BigIntWithControl,
-            Delegation::Blake2GFunction,
-            Delegation::Blake2WithCompression,
-            Delegation::KeccakChi5,
-            Delegation::KeccakColumnParity,
-            Delegation::KeccakSpecial5,
-            Delegation::KeccakThetaRho,
-        ] {
-            let config = CircuitType::Delegation(circuit).prover_config(SecurityLevel::Sec100);
-            assert_eq!(config.base_round().fold_log2, 0);
-            let mut log_n = config.whir_message_size_log2();
-            let mut previous_fold = config.base_round().fold_log2;
-            let mut shapes = Vec::new();
-            for round in &config.whir_schedule.internal_rounds {
-                log_n = log_n.checked_sub(previous_fold).unwrap();
-                let fused = admit(
-                    u32::try_from(log_n).unwrap(),
-                    u32::try_from(round.folding_log2).unwrap(),
-                    u32::try_from(round.lde_factor_log2).unwrap(),
-                    config.cap_size.trailing_zeros(),
-                    27,
-                );
-                assert_eq!(
-                    fused,
-                    matches!((log_n, round.folding_log2), (11, 5) | (6, 5))
-                );
-                shapes.push((log_n, round.folding_log2));
-                eprintln!("virtual recursive capability: {circuit:?}, n={log_n}, v={}, lde_log={}, cap={}, fused={fused}", round.folding_log2, round.lde_factor_log2, config.cap_size);
-                previous_fold = round.folding_log2;
-                checked += 1;
-            }
-            assert_eq!(shapes, [(22, 6), (16, 5), (11, 5), (6, 5)]);
-        }
-        assert_eq!(checked, 28);
-    }
-
-    #[test]
-    fn cpu_virtual_schedule_admission_and_batching_override() {
-        use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType as D};
-        use prover::definitions::SecurityLevel;
-        for circuit in [
-            D::BigIntWithControl,
-            D::Blake2GFunction,
-            D::Blake2WithCompression,
-            D::KeccakChi5,
-            D::KeccakColumnParity,
-            D::KeccakSpecial5,
-            D::KeccakThetaRho,
-        ] {
-            let config = CircuitType::Delegation(circuit).prover_config(SecurityLevel::Sec100);
-            let mut schedule = config.whir_schedule.clone();
-            super::validate_baby_bear_recursive_schedule(22, &schedule, 27);
-            schedule.base_round.batching_pow_bits = Some(13);
-            super::validate_baby_bear_recursive_schedule(22, &schedule, 27);
-            let mut tuned = schedule.clone();
-            tuned.base_round.num_queries += 1;
-            tuned.internal_rounds[0].num_queries += 1;
-            tuned.internal_rounds[0].queries_pow_bits -= 1;
-            super::validate_baby_bear_recursive_schedule(22, &tuned, 27);
-            for change in 0..5 {
-                let mut bad = schedule.clone();
-                match change {
-                    0 => bad.base_round.lde_factor_log2 += 1,
-                    1 => bad.internal_rounds[0].folding_log2 = 5,
-                    2 => bad.internal_rounds[0].lde_factor_log2 += 1,
-                    3 => bad.internal_rounds[2].num_ood_samples = 2,
-                    _ => bad.cap_size *= 2,
-                }
-                assert!(
-                    std::panic::catch_unwind(|| super::validate_baby_bear_recursive_schedule(
-                        22, &bad, 27
-                    ))
-                    .is_err()
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn cpu_leaf64_retained_default_shape_is_supported() {
-        assert!(!admit(22, 6, 5, 4, 27));
-    }
-
-    #[test]
-    fn cpu_leaf64_rejects_unqualified_shapes_and_bounds() {
-        for (n, v, lde, cap, capacity) in [
-            (21, 6, 5, 4, 27),
-            (23, 6, 4, 4, 27),
-            (22, 7, 5, 4, 27),
-            (22, 6, 5, 4, 26),
-            (22, 6, 6, 4, 28),
-            (22, 6, 5, 16, 27),
-            (22, 6, 0, 4, 27),
-        ] {
-            assert!(std::panic::catch_unwind(|| admit(n, v, lde, cap, capacity)).is_err());
-        }
-    }
-}
-
 /// Check the full target schedule against the instantiated BabyBear backend
 /// before transfer construction, using the same predicate as the oracle owner.
 pub fn validate_baby_bear_recursive_schedule(
@@ -715,4 +605,114 @@ fn decode_leaf_values(leafs: &[BF], values_per_leaf: usize) -> Vec<E4> {
     }
 
     result
+}
+
+#[cfg(test)]
+mod cpu_recursive_shapes {
+    use super::admit_baby_bear_recursive_oracle_shape as admit;
+
+    #[test]
+    fn cpu_virtual_default_ladders_fit_recursive_capabilities() {
+        use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType as Delegation};
+        use prover::definitions::SecurityLevel;
+
+        let mut checked = 0;
+        for circuit in [
+            Delegation::BigIntWithControl,
+            Delegation::Blake2GFunction,
+            Delegation::Blake2WithCompression,
+            Delegation::KeccakChi5,
+            Delegation::KeccakColumnParity,
+            Delegation::KeccakSpecial5,
+            Delegation::KeccakThetaRho,
+        ] {
+            let config = CircuitType::Delegation(circuit).prover_config(SecurityLevel::Sec100);
+            assert_eq!(config.base_round().fold_log2, 0);
+            let mut log_n = config.whir_message_size_log2();
+            let mut previous_fold = config.base_round().fold_log2;
+            let mut shapes = Vec::new();
+            for round in &config.whir_schedule.internal_rounds {
+                log_n = log_n.checked_sub(previous_fold).unwrap();
+                let fused = admit(
+                    u32::try_from(log_n).unwrap(),
+                    u32::try_from(round.folding_log2).unwrap(),
+                    u32::try_from(round.lde_factor_log2).unwrap(),
+                    config.cap_size.trailing_zeros(),
+                    27,
+                );
+                assert_eq!(
+                    fused,
+                    matches!((log_n, round.folding_log2), (11, 5) | (6, 5))
+                );
+                shapes.push((log_n, round.folding_log2));
+                eprintln!("virtual recursive capability: {circuit:?}, n={log_n}, v={}, lde_log={}, cap={}, fused={fused}", round.folding_log2, round.lde_factor_log2, config.cap_size);
+                previous_fold = round.folding_log2;
+                checked += 1;
+            }
+            assert_eq!(shapes, [(22, 6), (16, 5), (11, 5), (6, 5)]);
+        }
+        assert_eq!(checked, 28);
+    }
+
+    #[test]
+    fn cpu_virtual_schedule_admission_and_batching_override() {
+        use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType as D};
+        use prover::definitions::SecurityLevel;
+        for circuit in [
+            D::BigIntWithControl,
+            D::Blake2GFunction,
+            D::Blake2WithCompression,
+            D::KeccakChi5,
+            D::KeccakColumnParity,
+            D::KeccakSpecial5,
+            D::KeccakThetaRho,
+        ] {
+            let config = CircuitType::Delegation(circuit).prover_config(SecurityLevel::Sec100);
+            let mut schedule = config.whir_schedule.clone();
+            super::validate_baby_bear_recursive_schedule(22, &schedule, 27);
+            schedule.base_round.batching_pow_bits = Some(13);
+            super::validate_baby_bear_recursive_schedule(22, &schedule, 27);
+            let mut tuned = schedule.clone();
+            tuned.base_round.num_queries += 1;
+            tuned.internal_rounds[0].num_queries += 1;
+            tuned.internal_rounds[0].queries_pow_bits -= 1;
+            super::validate_baby_bear_recursive_schedule(22, &tuned, 27);
+            for change in 0..5 {
+                let mut bad = schedule.clone();
+                match change {
+                    0 => bad.base_round.lde_factor_log2 += 1,
+                    1 => bad.internal_rounds[0].folding_log2 = 5,
+                    2 => bad.internal_rounds[0].lde_factor_log2 += 1,
+                    3 => bad.internal_rounds[2].num_ood_samples = 2,
+                    _ => bad.cap_size *= 2,
+                }
+                assert!(
+                    std::panic::catch_unwind(|| super::validate_baby_bear_recursive_schedule(
+                        22, &bad, 27
+                    ))
+                    .is_err()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn cpu_leaf64_retained_default_shape_is_supported() {
+        assert!(!admit(22, 6, 5, 4, 27));
+    }
+
+    #[test]
+    fn cpu_leaf64_rejects_unqualified_shapes_and_bounds() {
+        for (n, v, lde, cap, capacity) in [
+            (21, 6, 5, 4, 27),
+            (23, 6, 4, 4, 27),
+            (22, 7, 5, 4, 27),
+            (22, 6, 5, 4, 26),
+            (22, 6, 6, 4, 28),
+            (22, 6, 5, 16, 27),
+            (22, 6, 0, 4, 27),
+        ] {
+            assert!(std::panic::catch_unwind(|| admit(n, v, lde, cap, capacity)).is_err());
+        }
+    }
 }

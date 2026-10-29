@@ -74,11 +74,8 @@ impl CpuCircuitPrecomputations {
         worker: &Worker,
     ) -> &SetupCommitment<BF, DefaultTreeConstructor> {
         self.setup_commitment.get_or_init(|| {
-            self.setup.commit_for_config::<DefaultTreeConstructor>(
-                twiddles.plain(),
-                &config,
-                worker,
-            )
+            self.setup
+                .commit_for_config::<DefaultTreeConstructor>(twiddles.plain(), config, worker)
         })
     }
 }

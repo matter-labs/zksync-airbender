@@ -1826,7 +1826,7 @@ pub(crate) fn prove_delegation_circuit<
     let setup_commitment =
         setup
             .setup
-            .commit_for_config(twiddles_for_size.plain(), &prover_config, worker);
+            .commit_for_config(twiddles_for_size.plain(), prover_config, worker);
 
     let mut per_tree_set = vec![];
 
