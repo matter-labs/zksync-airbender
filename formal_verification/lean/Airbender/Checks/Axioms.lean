@@ -7,6 +7,7 @@ import Airbender.Proofs.UnifiedReduced.StreamCycles
 import Airbender.Proofs.UnifiedReduced.StreamOrdinaryCycles
 import Airbender.Proofs.UnifiedReduced.StreamReadTag
 import Airbender.Proofs.UnifiedReduced.StreamCycleDispatch
+import Airbender.Proofs.UnifiedReduced.StreamClockCount
 import Airbender.Proofs.Trace.IndexedCycleComposition
 import Airbender.Proofs.GKRProtocol.LogicalLookupSegments
 import Airbender.Review.Compiler.Theorems
@@ -13696,3 +13697,10 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.native_caller_read_disabled
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.mixed_cycle_at
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.ordinary_cycle_at
+#print axioms Airbender.Trace.ExternalStream.Proofs.count_at_row
+#print axioms Airbender.Trace.ExternalStream.Proofs.count_after_cycle
+#print axioms Airbender.Trace.ExternalStream.Proofs.count_at_start
+#print axioms Airbender.Trace.ExternalStream.Proofs.count_at_finish
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.native_cycle_count
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.native_initial_count
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.native_terminal_count
