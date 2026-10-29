@@ -27,12 +27,13 @@ The split-worker native interface now selects all six exact compiled
 constraint/lookup/timestamp imports, invocation columns and memory ports by
 worker kind and cache mode. It states participation and exact memory-token
 matching as explicit logical acceptance premises. Setup provenance, grouped
-memory effects, public split caller binding and functional soundness remain
+memory effects, complete split caller composition and functional soundness remain
 open. A separate split request interface retains full-width CSR addresses and
 exact virtual-token matching for the three blessed worker families; focused
 proofs derive one-to-one nonzero fulfillment and bounded invocation clocks
-from machine constraints and the public initial clock. Public caller binding
-and functional worker soundness remain open.
+from machine constraints and the public initial clock. Exact decoder matching
+and public Sail bytes also fix each matched worker's split kind. Caller PC and
+functional worker soundness remain open.
 
 Both cached and uncached native captures remain required. The checker migration
 must qualify all 22 capture configurations.
