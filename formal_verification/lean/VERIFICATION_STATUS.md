@@ -56,12 +56,14 @@ modes with the current oracle. All 68 small-program comparisons also passed.
 These cover both cache modes for two ordinary programs, an extended-round
 caller and the blessed split Keccak caller. The small matrix used an optimized
 exporter build. It changed no Rust source or dependency version.
-Unified proof repairs and the bigint memory proof are pending.
+Unified proof repairs and the compiler binding builds are pending.
 Earlier build results apply to the old base.
 Unified's current column-role inventory, dispatch bound and ordinary PC
 increment passed focused kernel builds. Bigint's current column-role inventory,
 control-bit proof and timestamp proof passed. Bigint's additive, equality and
 multiplication writeback proofs passed on the derived EQ selector equations.
+Bigint's memory rules, address soundness and memory value bounds passed
+focused checks with the current timestamp columns.
 Unified's control projection, control lookup resolution and jump arithmetic
 passed focused checks on the new shared columns and affine write gates.
 The memory and unified instruction proof rebuilds are in progress. An earlier batch hit its resident-memory cap
