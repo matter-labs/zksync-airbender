@@ -41,6 +41,10 @@ def decoderFields (instruction : SailRV32.instruction) :
 
 abbrev Entry := UnifiedReduced.ProgramEntry ⊕ CallerEntry
 
+def Entry.Source (initial : State) : Entry → Prop
+  | .inl ordinary => ordinary.SourceWith initial decoderFields
+  | .inr caller => caller.Source initial delegationCSR
+
 def entry (initial : State) (bits : BitVec 32) (index : Nat) : Option Entry :=
   (callerEntryWith delegationCSR initial bits index).map Sum.inr <|> do
     let instruction ← match SailRV32.Functions.encdec_backwards bits with

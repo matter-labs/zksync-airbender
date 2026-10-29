@@ -116,7 +116,7 @@ theorem native_caller_iff (config : Config)
     obtain ⟨⟨bits, index⟩, inText, selected⟩ := List.mem_filterMap.mp member
     cases decoded : callerEntry config initial bits index with
     | none =>
-      simp only [nativeEntry, decoded, Option.map_none, Option.none_or] at selected
+      simp only [nativeEntry, decoded, Option.map_none] at selected
       cases ordinary : wordEntry config initial bits index with
       | none => simp [ordinary] at selected
       | some entry => simp [ordinary] at selected
@@ -129,7 +129,7 @@ theorem native_caller_iff (config : Config)
     obtain ⟨⟨bits, index⟩, inText, selected⟩ := List.mem_filterMap.mp member
     apply List.mem_filterMap.mpr
     refine ⟨(bits, index), inText, ?_⟩
-    simpa [nativeEntry, selected] using congrArg (Option.map Sum.inr) selected
+    simp [nativeEntry, selected]
 
 theorem native_caller_source (config : Config)
     (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
@@ -138,6 +138,35 @@ theorem native_caller_source (config : Config)
     caller.Source initial config.delegationCSR :=
   caller_sources config initial text image size caller
     ((native_caller_iff config initial text caller).mp member)
+
+/-- Every modeled native decoder row, ordinary or virtual, is sourced from
+the same public text and initial state. This does not prove the Rust setup
+equals the modeled rows or that a worker computes its reference operation. -/
+theorem native_sources (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (image : ROM.TextImage initial text) (size : text.length ≤ ROM.limit / 4) :
+    ∀ item ∈ nativeProgramOf config initial text,
+      item.Source config initial := by
+  intro item member
+  cases item with
+  | inr caller =>
+    exact native_caller_source config initial text image size caller member
+  | inl ordinary =>
+    obtain ⟨⟨bits, index⟩, inText, selected⟩ := List.mem_filterMap.mp member
+    cases caller : callerEntry config initial bits index with
+    | some found => simp [nativeEntry, caller] at selected
+    | none =>
+      have source : wordEntry config initial bits index = some ordinary := by
+        cases decoded : wordEntry config initial bits index with
+        | none => simp [nativeEntry, caller, decoded] at selected
+        | some found =>
+          have equal : found = ordinary := by
+            simpa [nativeEntry, caller, decoded] using selected
+          subst found
+          rfl
+      have ordinaryMember : ordinary ∈ programOf config initial text :=
+        List.mem_filterMap.mpr ⟨(bits, index), inText, source⟩
+      exact program_sources config initial text image size ordinary ordinaryMember
 
 /-- Native preprocessing rejects a text longer than the ROM capacity. For an
 admitted text, the modeled decoder has exactly one row per padded word. -/
