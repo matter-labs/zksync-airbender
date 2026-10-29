@@ -31,9 +31,13 @@ circuits use FullUnsigned; unified setup uses Reduced. The bigint setup is
 program-independent, as are the hash workers and initialization setup.
 `export_setup_json` also accepts `keccak-column-parity`,
 `keccak-theta-rho` and `keccak-chi5` to export the three blessed split
-workers. These exports are not yet part of the retained artifact manifest or
-Lean native-worker proofs.
-`manifest.json` records every retained artifact hash, twelve exact production
+workers. Their complete uncached exports are retained in this directory. The
+cached exports have identical fixed columns and table metadata for all three
+workers; their circuit objects differ, and both cache modes remain required
+for native capture qualification. The theta/rho and chi5 controller regions
+are imported as literal fixed data with kernel-checked row properties. Binding
+those slices to every tagged row of the full generic setup table remains open.
+`manifest.json` records every retained artifact hash, fifteen exact production
 circuit identities, the separate derived smoke identity and native source inputs.
 `decoder-smoke.json` is a native test-shape ADD/SUB-derived export that exercises
 fixed tables, tagged decoder rows and both range polynomials. Its complete circuit

@@ -31,6 +31,7 @@ import Airbender.Proofs.Keccak.SplitGroupEquations
 import Airbender.Proofs.Keccak.SplitColumnParityClock
 import Airbender.Proofs.Keccak.SplitGroupedOrder
 import Airbender.Proofs.Keccak.SplitControlLookup
+import Airbender.Proofs.Keccak.SplitControlSetup
 import Airbender.Proofs.Keccak.SplitPortOrder
 import Airbender.Proofs.Keccak.SplitMemoryOrder
 import Airbender.Review.Trace.Workers.Keccak.SplitNative

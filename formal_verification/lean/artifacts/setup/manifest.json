@@ -42,6 +42,24 @@
       "sha256": "2e4a13a1508b86288e7ff88f47070001a28864f3946dc6e31ea874f7e85e3e9e",
       "trace_len": 16777216
     },
+    "keccak-chi5.json": {
+      "circuit_sha256": "9f55115aa08caaad75ca01948c1a4129175ac304d9e5ec3699d8401672c93f05",
+      "columns": 11,
+      "sha256": "bec21c0de04cb8fe606f2c093b5e89f5fca3ab94f9a16f13d1c4ba86508f7fd7",
+      "trace_len": 4194304
+    },
+    "keccak-column-parity.json": {
+      "circuit_sha256": "9cefebc0710b324d059ad4b9cc087207ecaa0eac43c1d3e4d8e4a1a1f21bbdf2",
+      "columns": 8,
+      "sha256": "e3ceeb5372616a87cfacfe888a0847bad784bf94cad81e5c143a1ff77d47919d",
+      "trace_len": 4194304
+    },
+    "keccak-theta-rho.json": {
+      "circuit_sha256": "2ff5eb400ed81a72db3623f83dcd119f3d7c36be0efe226793de83a40dd36985",
+      "columns": 9,
+      "sha256": "02afb0dd250cfe6a3c3a5ac0bed4a6f1eaf421da38972034905504cfd3ad5c85",
+      "trace_len": 4194304
+    },
     "keccak.json": {
       "circuit_sha256": "ee76cfb772d2c4814ac9f0d7f2729360295fd2ed64ba8057aeedf9ac5c7db808",
       "columns": 8,
@@ -116,6 +134,18 @@
     "jump-branch.json": {
       "kind": "production",
       "retained_path": "cs/compiled_circuits/jump_branch_slt_layout_no_caches_gkr.json"
+    },
+    "keccak-chi5.json": {
+      "kind": "production",
+      "retained_path": "cs/compiled_circuits/keccak_chi5_layout_no_caches_gkr.json"
+    },
+    "keccak-column-parity.json": {
+      "kind": "production",
+      "retained_path": "cs/compiled_circuits/keccak_column_parity_layout_no_caches_gkr.json"
+    },
+    "keccak-theta-rho.json": {
+      "kind": "production",
+      "retained_path": "cs/compiled_circuits/keccak_theta_rho_layout_no_caches_gkr.json"
     },
     "keccak.json": {
       "kind": "production",
