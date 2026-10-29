@@ -1,3 +1,8 @@
+import Airbender.Proofs.Reduced.ROMAddresses
+import Airbender.Proofs.Reduced.NativeROM
+import Airbender.Proofs.Reduced.ROMAcceptance
+import Airbender.Proofs.Reduced.ROMInputs
+import Airbender.Proofs.Reduced.ROMExecution
 import Airbender.Proofs.Reduced.NativeExecution
 import Airbender.Proofs.Reduced.SeedClocks
 import Airbender.Proofs.Reduced.CallerCycles
@@ -13881,3 +13886,26 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_write_clocks
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_memory_clocks
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_memory_facts
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_initialized_cell
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_ordinary_addresses
+#print axioms Airbender.Delegation.Caller.NativeROM.view
+#print axioms Airbender.Delegation.Caller.NativeROM.Proofs.caller_row
+#print axioms Airbender.Delegation.Caller.NativeROM.Proofs.callers
+#print axioms Airbender.Delegation.Caller.NativeROM.Proofs.callers_unchanged
+#print axioms Airbender.Delegation.Caller.NativeROM.Proofs.calls
+#print axioms Airbender.Delegation.Caller.NativeROM.Proofs.zip_maps
+#print axioms Airbender.Delegation.Caller.NativeROM.Proofs.machine_steps
+#print axioms Airbender.Delegation.Caller.NativeROM.Proofs.steps
+#print axioms Airbender.Delegation.Caller.NativeROM.Proofs.row_active
+#print axioms Airbender.Delegation.Caller.NativeROM.Proofs.accepted
+#print axioms Airbender.Delegation.Caller.NativeROM.Proofs.rom_token_refresh
+#print axioms Airbender.Delegation.Caller.NativeROM.Proofs.rom_unchanged
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.reduced_fields_original
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.full_projection_boot
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_seed_clocks
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.interpreted_inputs
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.interpreted_stream_row
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.interpreted_read_count
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.interpreted_stream_ports
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.interpreted_realizes
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_rom_path_execution
