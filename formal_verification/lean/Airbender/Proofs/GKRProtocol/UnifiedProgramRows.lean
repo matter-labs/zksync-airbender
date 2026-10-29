@@ -74,6 +74,41 @@ theorem caller_sources (initial : Reference.RiscV.Sail.State)
       caller.Source initial delegationCSR :=
   ProgramRows.Proofs.caller_sources_with delegationCSR initial text image size
 
+theorem native_caller_iff (initial : Reference.RiscV.Sail.State)
+    (text : List (BitVec 32)) (caller : CallerEntry) :
+    Sum.inr caller ∈ programOf initial text ↔
+      caller ∈ callerProgramOf initial text := by
+  constructor
+  · intro member
+    obtain ⟨⟨bits, index⟩, inText, selected⟩ := List.mem_filterMap.mp member
+    cases decoded : callerEntryWith delegationCSR initial bits index with
+    | none =>
+      simp only [entry, decoded, Option.map_none, Option.none_or] at selected
+      cases sail : SailRV32.Functions.encdec_backwards bits with
+      | impure call continuation => simp [sail] at selected
+      | pure instruction =>
+        cases fields : decoderFields instruction with
+        | none => simp [sail, fields] at selected
+        | some data => simp [sail, fields] at selected
+    | some entry =>
+      have equal : entry = caller := by simpa [UnifiedProgramRows.entry, decoded] using selected
+      subst entry
+      exact List.mem_filterMap.mpr ⟨(bits, index), inText, decoded⟩
+  · intro member
+    obtain ⟨⟨bits, index⟩, inText, selected⟩ := List.mem_filterMap.mp member
+    apply List.mem_filterMap.mpr
+    refine ⟨(bits, index), inText, ?_⟩
+    simpa [UnifiedProgramRows.entry, selected] using
+      congrArg (Option.map Sum.inr) selected
+
+theorem native_caller_source (initial : Reference.RiscV.Sail.State)
+    (text : List (BitVec 32)) (image : ROM.TextImage initial text)
+    (size : text.length ≤ ROM.limit / 4) (caller : CallerEntry)
+    (member : Sum.inr caller ∈ programOf initial text) :
+    caller.Source initial delegationCSR :=
+  caller_sources initial text image size caller
+    ((native_caller_iff initial text caller).mp member)
+
 theorem active_member {p : Nat} (initial : Reference.RiscV.Sail.State)
     (text : List (BitVec 32)) (capacity : Nat) (fits : text.length ≤ capacity)
     (query : Vector (ZMod p) 9)
