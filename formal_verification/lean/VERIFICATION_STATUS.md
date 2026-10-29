@@ -23,6 +23,10 @@ These are required target scopes, not proved theorems. The corresponding Lean
 designed. Exact lookup matching and state/RAM permutations remain explicit
 logical assumptions in all three targets.
 
+The split-worker native-equation interface now selects all six exact compiled
+constraint/lookup/timestamp imports by worker kind and cache mode. It does not
+yet supply their grouped memory effects or a functional soundness proof.
+
 Both cached and uncached native captures remain required. The checker migration
 must qualify all 22 capture configurations.
 
