@@ -118,6 +118,11 @@ selector proofs passed focused kernel and axiom checks.
 The combined noncaller dispatcher also passed. It selects the public Sail
 clause for every ordinary, custom, modular and external-input row. It proves
 retirement in the actual native cycle and the exact stream-count change.
+The current dispatcher uses the existing physical RAM profile. The native ROM
+adapter must remove that intermediate restriction before it closes Unified.
+Native clocks now prove the zero initial stream count, each cycle's exact
+increment, and the total terminal count. These proofs passed focused kernel
+and axiom checks. They add no ordering premise.
 Unified still needs cycle composition with stream
 positions, supported worker controls from
 stream reachability, and the native worker ROM adapter. The target remains open.

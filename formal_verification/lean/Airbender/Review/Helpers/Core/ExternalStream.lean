@@ -3,6 +3,11 @@ import Init.Data.BitVec.Lemmas
 
 namespace Airbender.Trace.ExternalStream
 
+/-- Number of external reads before a native clock boundary. -/
+def countBefore {Row : Type} (clock : Row → Nat) (read : Row → Bool)
+    (rows : List Row) (boundary : Nat) : Nat :=
+  (rows.filter fun row => read row && decide (clock row < boundary)).length
+
 /-- Position of an external read: count selected rows with an earlier native
     clock. Physical list order does not choose the stream position. -/
 def index {Row : Type} (clock : Row → Nat) (read : Row → Bool)
