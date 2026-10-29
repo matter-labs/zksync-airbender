@@ -62,4 +62,18 @@ theorem source_of_native (before : Reference.RiscV.Sail.State)
   rw [shape]
   simp [decoderFields, selected]
 
+/-- A split caller projected from the public native program is present in
+the modeled add/sub decoder table with its complete CSR query. Exact matching
+to an actual compiled lookup remains an explicit boundary premise. -/
+theorem modeled_split_member {p : Nat} [Fact p.Prime]
+    (program : List NativeEntry) (caller : CallerEntry) (kind : Kind)
+    (member : Sum.inr caller ∈ program)
+    (selected : kindOfCSR caller.csr = some kind) :
+    (nativeDecoderTable (p := p) program .addSub).Contains #[]
+      (query (p := p) (fromNative caller kind)) := by
+  apply (nativeDecoderTable (p := p) program .addSub).implied_by_completeness
+  change ∃ entry ∈ program, entry.family = .addSub ∧
+    query (p := p) (fromNative caller kind) = entry.query
+  exact ⟨.inr caller, member, rfl, query_from_native caller kind selected⟩
+
 end Airbender.Keccak.Split.Caller.Proofs
