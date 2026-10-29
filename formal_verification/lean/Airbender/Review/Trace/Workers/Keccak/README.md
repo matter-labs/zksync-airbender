@@ -22,8 +22,10 @@ cached and no-cache compiled circuits now have native imports for their equation
 lookups and timestamp queries: [column parity](../../../Circuits/Keccak/SplitColumnParity.lean),
 [theta/rho](../../../Circuits/Keccak/SplitThetaRho.lean) and
 [chi5](../../../Circuits/Keccak/SplitChi5.lean), with their cached variants in the same directory. Theta/rho and chi5 preserve
-grouped timestamp metadata and the native memory ports bound to each checked
-group. Complete setup, shared memory matching and worker-effect proofs remain open.
+grouped timestamp metadata, invocation columns and the native memory ports bound
+to each checked group. The [split native interface](SplitNative.lean) now states
+equations, participation and exact memory-token matching for all six captures.
+Complete setup provenance and worker-effect proofs remain open.
 Under the [ValidDelegationUse](../../UnifiedReduced/DelegationUse.lean) contract, special5 calls are
 excluded; these lemmas therefore do not establish blessed Keccak execution.
 Split worker modeling and integration are required open work. See

@@ -259,13 +259,17 @@ def Circuit.delegationPorts (c : Circuit) : Except String (Array Trace.MemoryPor
 borrow across a native group of ports. Resolve each physical port through its
 unique checked group; the native write slot remains two. Column parity uses
 the ordinary delegation-port metadata. -/
-def Circuit.splitMemoryPorts (c : Circuit) : Except String (Array Trace.MemoryPort) := do
-  let some _ := c.memory_layout.delegation_state |
+def Circuit.splitDelegationColumns (c : Circuit) : Except String Delegation.ClockColumns := do
+  let some state := c.memory_layout.delegation_state |
     throw "split delegation metadata is missing"
   unless c.memory_layout.machine_state.isNone && c.memory_layout.decoder_input.isNone do
     throw "split delegation cannot contain machine/decoder state"
+  let column := fun n => do
+    unless n < c.memory_layout.total_width do
+      throw "split delegation clock outside memory layout"
+    c.logicalVariable (.BaseLayerMemory n)
   let groups ← c.splitTimestampGroups
-  let mut clocks := #[]
+  let mut clocks : Array Trace.TimestampPort := #[]
   for index in [:c.memory_layout.ram_access_sets.size] do
     let some group := groups.find? (fun group => group.members.contains index) |
       throw "split memory port has no timestamp group"
@@ -276,7 +280,12 @@ def Circuit.splitMemoryPorts (c : Circuit) : Except String (Array Trace.MemoryPo
       | .Write q => q.in_cycle_write_index.val
     unless offset == 2 do throw "split memory port write offset is not two"
     clocks := clocks.push ⟨offset, group.previous, group.borrow⟩
-  c.resolveMemoryPorts clocks true
+  return ⟨← column state.execute,
+    #v[← column state.invocation_timestamp.values[0]!,
+      ← column state.invocation_timestamp.values[1]!], clocks⟩
+
+def Circuit.splitMemoryPorts (c : Circuit) : Except String (Array Trace.MemoryPort) := do
+  c.resolveMemoryPorts (← c.splitDelegationColumns).ports true
 
 /-- Validate a fixed-table query shape, including tags, padding and placement. -/
 private def Circuit.fixedQueries (c : Circuit) (width : Nat) (tables : List (Nat × Nat)) :
