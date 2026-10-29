@@ -37,9 +37,7 @@ def programOf (config : Config) (initial : State) (text : List (BitVec 32)) :
     List PooledProgramEntry :=
   text.zipIdx.filterMap fun (bits, index) => wordEntry config initial bits index
 
-/-- Rust uses minus one in every selected column for an unsupported word.
-The unmasked nine-column row is kept here; captured family masks and the
-actual Rust decoder still require separate binding evidence. -/
+/-- Rust uses minus one in every selected column for an unsupported word. -/
 def sentinel {p : Nat} : Vector (ZMod p) 9 :=
   #v[-1, -1, -1, -1, -1, -1, -1, -1, -1]
 
@@ -51,11 +49,35 @@ def familyRow {p : Nat} (config : Config) (initial : State)
   | none => sentinel
 
 /-- One row per public word index, followed by unsupported padding up to the
-native ROM capacity. Program-dependent column masks are a later layer. -/
+native ROM capacity. -/
 def rows {p : Nat} (config : Config) (initial : State)
-    (text : List (BitVec 32)) (capacity : Nat) (family : PooledFamily) :
+    (text : List (BitVec 32)) (capacity : Nat)
+    (_fits : text.length ≤ capacity) (family : PooledFamily) :
     List (Vector (ZMod p) 9) :=
   text.zipIdx.map (fun (bits, index) => familyRow config initial family bits index) ++
     List.replicate (capacity - text.length) sentinel
+
+/-- The native setup keeps precisely the columns selected by its circuit mask,
+in their original order. A mask has the full nine-column width and selects both
+PC limbs, as required by Rust's materializer. -/
+structure Mask where
+  columns : Array Bool
+  width : columns.size = 9
+  pcLow : columns[0]?.getD false = true
+  pcHigh : columns[1]?.getD false = true
+
+def maskRow {p : Nat} (mask : Mask) (row : Vector (ZMod p) 9) : List (ZMod p) :=
+  row[0] :: row[1] ::
+  ((mask.columns.toList.drop 2).zip (row.toList.drop 2)).filterMap fun (selected, value) =>
+    if selected then some value else none
+
+/-- Program-dependent decoder columns, including unsupported and padded rows.
+The remaining premise for a native circuit is equality of its imported setup
+columns to these rows; this definition alone does not assert that equality. -/
+def nativeDecoderRows {p : Nat} (config : Config) (initial : State)
+    (text : List (BitVec 32)) (capacity : Nat)
+    (fits : text.length ≤ capacity) (family : PooledFamily) (mask : Mask) :
+    List (List (ZMod p)) :=
+  (rows config initial text capacity fits family).map (maskRow mask)
 
 end Airbender.Trace.NativeDecoder.ProgramRows
