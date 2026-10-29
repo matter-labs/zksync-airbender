@@ -127,8 +127,12 @@ Indexed path composition now proves the combined execution from exact native
 cycle facts. It includes the final PC, terminal memory and stream count.
 Its kernel and axiom checks passed. This theorem retains native caller-cycle
 facts and the physical code profile as explicit inputs.
-Unified still needs native caller adapters, supported worker controls from
-stream reachability, and native ROM/code transport. The target remains open.
+The native caller adapters also passed focused kernel and axiom checks.
+The conditional native stream entrypoint derives all caller cycles from
+current worker equations and the shared history. It retains explicit bigint
+commands, hash-controller contracts and the physical code profile.
+Unified still needs those worker controls from public stream reachability
+and native ROM/code transport. The target remains open.
 All nine ordinary worker and CPU memory-port inventories passed focused
 checks. Their timestamp records use an explicit absent borrow subtrahend.
 The focused circuit and proof group passed all 288 module checks.

@@ -9,6 +9,7 @@ import Airbender.Proofs.UnifiedReduced.StreamReadTag
 import Airbender.Proofs.UnifiedReduced.StreamCycleDispatch
 import Airbender.Proofs.UnifiedReduced.StreamClockCount
 import Airbender.Proofs.UnifiedReduced.StreamExecution
+import Airbender.Proofs.UnifiedReduced.StreamCallerCycles
 import Airbender.Proofs.Trace.IndexedCycleComposition
 import Airbender.Proofs.GKRProtocol.LogicalLookupSegments
 import Airbender.Review.Compiler.Theorems
@@ -13707,3 +13708,13 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.native_terminal_count
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.full_cycle_transition
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.execution_at
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.worker_addresses_distinct
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.bigint_pointer_abi
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.path_hash_worker_call
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.path_worker_call
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.native_round_masks
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.native_memory_effects
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.native_worker_call
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.caller_source
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.native_full_caller_cycle_at
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.native_path_execution
