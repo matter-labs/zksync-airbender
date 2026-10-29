@@ -50,8 +50,10 @@ lookups then give positive, nonwrapping distances and strict order for all
 groups in both cache modes. Proving that premise from the captured fixed setup,
 complete memory effects remain open. All theta/rho and chi5 physical ports now
 have kernel-checked group ownership in both cache modes. A common theorem proves
-strict read-before-write order for all six capture families, given bounded
-logical read and invocation clocks and the explicit controller premise.
+strict read-before-write order for all six capture families. Exact RAM matching,
+public initial clock bounds and the explicit controller premise now yield the
+complete split-pool logical RAM history facts: matching, preserved addresses
+and strict per-port time order. Functional worker effects remain open.
 
 Both cached and uncached native captures remain required. The checker migration
 must qualify all 22 capture configurations.
