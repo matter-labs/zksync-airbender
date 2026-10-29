@@ -253,10 +253,6 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
     let add_correction = MW::add_assign(quote! { claim_correction }, quote! { t });
 
     let add_claim = MW::add_assign(quote! { claim }, quote! { claim_correction });
-    let mul_ood_delin = MW::mul_assign(
-        quote! { claim_correction },
-        quote! { delinearization_challenge },
-    );
     let advance_current_delin = MW::mul_assign(
         quote! { current_delinearization_challenge },
         quote! { delinearization_challenge },
@@ -817,10 +813,6 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
     let add_correction = MW::add_assign(quote! { claim_correction }, quote! { t });
     let add_claim = MW::add_assign(quote! { claim }, quote! { claim_correction });
 
-    let mul_ood_delin = MW::mul_assign(
-        quote! { claim_correction },
-        quote! { delinearization_challenge },
-    );
     let advance_current_delin = MW::mul_assign(
         quote! { current_delinearization_challenge },
         quote! { delinearization_challenge },
