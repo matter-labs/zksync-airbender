@@ -7,7 +7,7 @@ use crate::ir::{
 };
 use crate::{jit::minimal_tracer::PreallocatedSnapshots, vm::test::*};
 use field::Mersenne31Field;
-use std::{alloc::Global, io::Read, path::Path};
+use std::{alloc::Global, io::Read};
 
 #[cfg(test)]
 use test_utils::skip_if_ci;

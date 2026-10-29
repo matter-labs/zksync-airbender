@@ -15,7 +15,6 @@ use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::commitment_utils::commit_trace_part_for_config;
 use crate::gkr::prover::OperationMode;
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
-use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::family_circuits::{
     build_unified_table_driver, evaluate_gkr_memory_witness_for_executor_family,
     evaluate_gkr_witness_for_executor_family, GKRMemoryOnlyWitnessTrace,

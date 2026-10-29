@@ -514,34 +514,6 @@ pub fn compute_column_major_lde_single_coset_with_offset_serial<
     evals.into_boxed_slice()
 }
 
-#[cfg(feature = "gkr_self_checks")]
-pub(crate) fn compute_column_major_monomial_form_from_main_domain<
-    F: PrimeField + TwoAdicField,
-    E: FieldExtension<F> + Field,
-    A: GoodAllocator,
->(
-    source_domain: &[E],
-    twiddles: &Twiddles<F, A>,
-) -> Vec<E> {
-    let trace_len_log2 = source_domain.len().trailing_zeros();
-
-    let mut ifft: Vec<E> = source_domain.to_vec();
-    let size_inv = F::from_u32_unchecked(1 << trace_len_log2)
-        .inverse()
-        .unwrap();
-    fft::naive::cache_friendly_ntt_natural_to_bitreversed(
-        &mut ifft[..],
-        trace_len_log2,
-        &twiddles.inverse_twiddles[..],
-    );
-    for el in ifft.iter_mut() {
-        el.mul_assign_by_base(&size_inv);
-    }
-    bitreverse_enumeration_inplace(&mut ifft[..]);
-
-    ifft
-}
-
 #[allow(dead_code)]
 pub(crate) fn compute_column_major_monomial_form_from_main_domain_owned<
     F: PrimeField + TwoAdicField,

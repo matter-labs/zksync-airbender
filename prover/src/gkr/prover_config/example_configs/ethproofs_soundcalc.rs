@@ -395,8 +395,6 @@ const fn round(
     }
 }
 
-const FLOOR_M: &str = "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term";
-
 /// Every certified schedule. Sec-100, base LDE factor 2, cap 16.
 pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
     EthproofsSoundcalcEntry {

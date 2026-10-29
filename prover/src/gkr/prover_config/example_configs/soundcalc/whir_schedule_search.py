@@ -19,7 +19,7 @@ from soundcalc.common.utils import get_bits_of_security_from_error as bits
 TARGET = 100; LATER_POW = 27; FOLD_CAP = 24; MAX_DOM = 27; FIELD_BITS = 123
 
 class Mixed(ProximityGapsRegime):
-    """per-iteration regime (WHIR Thm 5.2 has per-iteration delta_i / ell_i); keyed by iteration rate"""
+    """per-iteration regime (WHIR Theorem 5.2 has per-iteration delta_i / ell_i); keyed by iteration rate"""
     def __init__(self, field, by_rate): super().__init__(field); self.by_rate = by_rate
     def pick(self, r): return self.by_rate[round(-math.log2(r))]
     def identifier(self): return "mixed"

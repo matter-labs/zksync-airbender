@@ -53,7 +53,7 @@ SHAPES = [
 
 
 class Mixed(ProximityGapsRegime):
-    """per-iteration regime (WHIR Thm 5.2 has per-iteration delta_i / ell_i), keyed by the oracle's rate"""
+    """per-iteration regime (WHIR Theorem 5.2 has per-iteration delta_i / ell_i), keyed by the oracle's rate"""
     def __init__(self, field, by_rate): super().__init__(field); self.by_rate = by_rate
     def pick(self, r): return self.by_rate[round(-math.log2(r))]
     def identifier(self): return "mixed"

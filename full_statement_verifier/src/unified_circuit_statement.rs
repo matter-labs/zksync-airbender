@@ -2,7 +2,7 @@ use super::*;
 use crate::delegation_params::*;
 use crate::imports::{DelegationCircuitOutput, UnifiedCircuitOutput};
 use crate::statement_common::{
-    read_setup_cap, FINAL_PC_BUFFER_PC_IDX, FINAL_PC_BUFFER_TS_HIGH_IDX, FINAL_PC_BUFFER_TS_LOW_IDX,
+    FINAL_PC_BUFFER_PC_IDX, FINAL_PC_BUFFER_TS_HIGH_IDX, FINAL_PC_BUFFER_TS_LOW_IDX,
 };
 use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
 use prover::definitions::DEFAULT_CAP_SIZE;
