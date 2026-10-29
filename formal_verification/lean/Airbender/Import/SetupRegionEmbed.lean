@@ -145,6 +145,51 @@ elab "import_setup_slice " name:ident " from " path:str " native_table_id " id:n
     Airbender.Setup.Region.mk $(quote region.id) $(quote region.offset) $(quote region.length)
       $(quote region.width) $(quote region.key_columns)))
 
+/-- Pilot representation for an eight-bit setup column: one 2048-bit natural
+number per 256 native rows. The importer still validates the parsed region and
+compares every selected value to the source column before emitting literals.
+This is data import, not a proof that a table satisfies an expected formula. -/
+elab "import_setup_packed_bytes " name:ident " from " path:str
+    " native_table_id " id:num " physical_column " physical:num : command => do
+  let source ← IO.FS.readFile path.getString
+  let artifact ← match parse source with
+    | .ok artifact => pure artifact
+    | .error error => throwError "setup import failed: {error}"
+  let some region := artifact.tables.find? (fun region => region.id == id.getNat)
+    | throwError "setup table ID {id.getNat} is absent"
+  let some original := artifact.columns[physical.getNat]?
+    | throwError "setup physical column is absent"
+  let sliced := sliceColumn original region.offset region.length
+  match sliced.validate region.length babyBearModulus with
+  | .error error => throwError "setup region slice failed: {error}"
+  | .ok () => pure ()
+  unless matchesSource original sliced region.offset region.length do
+    throwError "setup region slice changed a parsed value"
+  unless region.length % 256 == 0 do
+    throwError "packed-byte region length must be a multiple of 256"
+  let mut bytes := #[]
+  for block in sliced.blocks do
+    for index in [:block.length] do
+      let some value := block.get? index
+        | throwError "packed-byte source contains an absent value"
+      unless value < 256 do
+        throwError "packed-byte source value exceeds 255"
+      bytes := bytes.push value
+  unless bytes.size == region.length do
+    throwError "packed-byte source length differs from region"
+  let mut packed := #[]
+  for row in [:region.length / 256] do
+    let mut value := 0
+    let mut place := 1
+    for column in [:256] do
+      value := value + bytes[row * 256 + column]! * place
+      place := place * 256
+    packed := packed.push value
+  let literal ← arraySyntax (packed.map quote)
+  elabCommand (← `(def $name : Array Nat := $literal))
+  let sourceName := mkIdent (name.getId.appendAfter "SourceBytes")
+  elabCommand (← `(def $sourceName : String := $(quote source)))
+
 /-- One shared copy of the exact artifact bytes for column-level imports. -/
 elab "import_setup_source " name:ident " from " path:str : command => do
   let source ← IO.FS.readFile path.getString
