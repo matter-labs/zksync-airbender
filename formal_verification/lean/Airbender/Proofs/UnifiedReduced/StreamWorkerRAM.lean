@@ -24,4 +24,22 @@ theorem worker_indirect_ram_of_binding [Fact p.Prime]
     have equal := Cell.ram.inj same
     exact equal ▸ outside
 
+/-- Exact worker-domain binding bounds a RAM cell identified by its native code. -/
+theorem worker_cell_ram_of_binding [Fact p.Prime]
+    {workers : List (Delegation.Row p)}
+    (ram : ExternalBoundary.WorkerRAM.Binding workers)
+    {worker : Delegation.Row p} (member : worker ∈ workers)
+    {port : MemoryPort} (present : port ∈ worker.ports)
+    {address : BitVec 32}
+    (code : (Cell.ram address).addressCode = port.address.code worker.assignment) :
+    ROM.limit ≤ address.toNat := by
+  obtain ⟨location, actual⟩ := ram worker member port present
+  have same : location.cell = Cell.ram address :=
+    Trace.Proofs.cell_address_injective (actual.symm.trans code.symm)
+  cases location with
+  | register index => cases same
+  | ram target outside =>
+    change Cell.ram target = Cell.ram address at same
+    exact Cell.ram.inj same ▸ outside
+
 end Airbender.UnifiedReduced.Caller.Stream.Proofs

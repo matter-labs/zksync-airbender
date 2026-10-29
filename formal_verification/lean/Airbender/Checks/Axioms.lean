@@ -1,3 +1,11 @@
+import Airbender.Proofs.UnifiedReduced.StreamROMDispatch
+import Airbender.Proofs.UnifiedReduced.StreamROMInitialization
+import Airbender.Proofs.UnifiedReduced.StreamROMWorkerABI
+import Airbender.Proofs.UnifiedReduced.StreamROMPathCallABI
+import Airbender.Proofs.UnifiedReduced.StreamROMNativeCalls
+import Airbender.Proofs.UnifiedReduced.StreamROMComposition
+import Airbender.Proofs.UnifiedReduced.StreamROMExecution
+import Airbender.Proofs.UnifiedReduced.StreamROMCallerCycles
 import Airbender.Proofs.UnifiedReduced.StreamInitialization
 import Airbender.Proofs.UnifiedReduced.ExternalInput
 import Airbender.Proofs.UnifiedReduced.StreamDecoder
@@ -13732,3 +13740,18 @@ import Tests.KeccakKnownAnswer
 
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.ram_cycle_at_interpreted
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.worker_indirect_ram_of_binding
+
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.worker_cell_ram_of_binding
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.bigint_pointer_abi_of_binding
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.path_hash_worker_call_of_binding
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.path_worker_call_of_binding
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.native_worker_call_of_binding
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.full_cycle_transition_readonly
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.execution_at_readonly
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.caller_source_readonly
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.native_full_caller_cycle_at_readonly
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.native_path_execution_interpreted
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.mixed_cycle_at_interpreted
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.ordinary_cycle_at_interpreted
+#print axioms Airbender.Compiler.MachineTargets.Proofs.text_caller_code
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unified_rom_profile
