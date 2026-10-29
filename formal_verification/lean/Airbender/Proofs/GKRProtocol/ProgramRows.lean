@@ -384,4 +384,20 @@ theorem native_active_source (config : Config)
   exact ⟨item, inProgram, native_sources config initial text image size item inProgram,
     selected, equal⟩
 
+theorem native_active_masked_source (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (image : ROM.TextImage initial text) (size : text.length ≤ ROM.limit / 4)
+    (capacity : Nat) (fits : text.length ≤ capacity) (family : PooledFamily)
+    (mask : Mask) (query : List (ZMod babyBearModulus))
+    (member : query ∈ nativeDecoderRows config initial text capacity fits family mask)
+    (bounded : (query.head?.getD 0).val < 65536) :
+    ∃ item ∈ nativeProgramOf config initial text,
+      item.Source config initial ∧ item.family = family ∧
+        query = maskRow mask item.query := by
+  obtain ⟨item, inProgram, selected, equal⟩ :=
+    bounded_masked_pc_decoded config initial text capacity fits family mask query
+      member bounded
+  exact ⟨item, inProgram, native_sources config initial text image size item inProgram,
+    selected, equal⟩
+
 end Airbender.Trace.NativeDecoder.ProgramRows.Proofs

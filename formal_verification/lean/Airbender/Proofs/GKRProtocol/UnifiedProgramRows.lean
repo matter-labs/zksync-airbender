@@ -177,4 +177,26 @@ theorem native_active_source (initial : Reference.RiscV.Sail.State)
       (ProgramRows.Proofs.bounded_pc_not_sentinel query bounded)
   exact ⟨item, inProgram, native_sources initial text image size item inProgram, equal⟩
 
+/-- The selected captured columns preserve an active public instruction source
+after applying the native column mask. -/
+theorem native_active_masked_source (initial : Reference.RiscV.Sail.State)
+    (text : List (BitVec 32)) (image : ROM.TextImage initial text)
+    (size : text.length ≤ ROM.limit / 4) (capacity : Nat)
+    (fits : text.length ≤ capacity) (mask : Mask)
+    (query : List (ZMod babyBearModulus))
+    (member : query ∈ nativeDecoderRows initial text capacity fits mask)
+    (bounded : (query.head?.getD 0).val < 65536) :
+    ∃ item ∈ programOf initial text, item.Source initial ∧
+      query = maskRow mask item.query := by
+  have active : query ≠ maskRow mask sentinel :=
+    ProgramRows.Proofs.bounded_masked_pc_not_sentinel mask query bounded
+  obtain ⟨row, rowMember, rowEq⟩ := List.mem_map.mp member
+  have nonSentinel : row ≠ sentinel := by
+    intro equal
+    exact active (rowEq.symm.trans (congrArg (maskRow mask) equal))
+  obtain ⟨item, inProgram, fullEq⟩ :=
+    active_member initial text capacity fits row rowMember nonSentinel
+  exact ⟨item, inProgram, native_sources initial text image size item inProgram,
+    rowEq.symm.trans (congrArg (maskRow mask) fullEq)⟩
+
 end Airbender.Trace.NativeDecoder.UnifiedProgramRows.Proofs
