@@ -596,6 +596,7 @@ import Airbender.Proofs.Keccak.SplitArtifactChecks
 import Tests.SplitKeccakImport
 import Airbender.Proofs.GKRProtocol.ProgramRows
 import Airbender.Proofs.GKRProtocol.ProgramMasks
+import Airbender.Proofs.GKRProtocol.TextImage
 import Tests.UnifiedModularExecution
 import Tests.ModularTrace
 import Airbender.Review.Trace.Modular.Theorems
@@ -13636,3 +13637,4 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.bounded_masked_pc_decoded
 #print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.maskOfFamily
 #print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.unifiedMask
+#print axioms Airbender.Trace.ROM.Proofs.words_of_text_image
