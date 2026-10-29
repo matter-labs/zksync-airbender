@@ -73,6 +73,8 @@ theorem entry_source {Kind : Type} {before : Reference.RiscV.Sail.State} {pc : B
     (image : programEntryWith projection before pc = some entry) :
     entry.pc = pc ∧ entry.SourceWith before projection := by
   unfold programEntryWith at image
+  split at image
+  · cases image
   cases read : (Cell.ram pc).read before with
   | error error after => simp [read, bind, Option.bind] at image
   | ok bits after =>
@@ -143,6 +145,8 @@ theorem decoder_fields_of_image {Kind : Type} {before : Reference.RiscV.Sail.Sta
         subst program
         rcases List.mem_cons.mp present with rfl | present
         · unfold programEntryWith at first
+          split at first
+          · cases first
           cases read : (Cell.ram address).read before with
           | error => simp [read, bind, Option.bind] at first
           | ok bits after =>

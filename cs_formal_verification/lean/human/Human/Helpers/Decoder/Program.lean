@@ -1,4 +1,5 @@
 import Human.Helpers.Memory.InitialImage
+import Human.Helpers.Memory.ROM
 import Human.Helpers.Core.Configuration
 
 -- The full Sail model compiles its decoder (`encdec_backwards`) as noncomputable (sail/regen.sh,
@@ -78,6 +79,8 @@ noncomputable abbrev programEntryWith {Kind : Type}
     (projection : SailRV32.instruction → Option (DecoderData Kind))
     (before : Reference.RiscV.Sail.State) (pc : BitVec 32) :
     Option (ProgramEntry Kind) := do
+  -- Airbender fetches instructions from ROM at aligned addresses only (`RV.step`, `Human/ISA/State.lean`).
+  if ¬(pc.toNat < ROM.limit ∧ pc.toNat % 4 = 0) then none else
   let bits ← match (Cell.ram pc).read before with
     | .ok bits _ => some bits
     | .error _ _ => none
