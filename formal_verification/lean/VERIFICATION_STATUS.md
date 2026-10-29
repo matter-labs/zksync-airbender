@@ -141,6 +141,12 @@ The ROM-aware code-frame lemmas passed focused kernel and axiom checks.
 Interpreted ROM events refresh the same public word. Fetch transport can use
 that readonly history without the global tracked-RAM lower bound. The worker
 RAM binding remains explicit at this intermediate transport interface.
+The ROM-aware load/store cycle proof also passed. It uses the current native
+equations for readonly loads. It removes the global RAM lower bound from this
+cycle proof. A separate worker-port lemma derives each indirect RAM bound
+from exact worker-domain binding. The public ROM profile admits low ROM
+shadow cells. Unified still needs the joint worker-domain induction and its
+final target assembly.
 All nine ordinary worker and CPU memory-port inventories passed focused
 checks. Their timestamp records use an explicit absent borrow subtrahend.
 The focused circuit and proof group passed all 288 module checks.

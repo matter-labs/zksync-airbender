@@ -12,6 +12,8 @@ import Airbender.Proofs.UnifiedReduced.StreamExecution
 import Airbender.Proofs.UnifiedReduced.StreamCallerCycles
 import Airbender.Proofs.UnifiedReduced.StreamSupportedExecution
 import Airbender.Proofs.UnifiedReduced.StreamROMHistory
+import Airbender.Proofs.UnifiedReduced.StreamROMCycles
+import Airbender.Proofs.UnifiedReduced.StreamWorkerRAM
 import Airbender.Proofs.Trace.IndexedCycleComposition
 import Airbender.Proofs.GKRProtocol.LogicalLookupSegments
 import Airbender.Review.Compiler.Theorems
@@ -13727,3 +13729,6 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.interpreted_rom_refresh
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.interpreted_rom_unchanged
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.cycle_source_of_readonly
+
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.ram_cycle_at_interpreted
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.worker_indirect_ram_of_binding
