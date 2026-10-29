@@ -10,6 +10,7 @@ import Airbender.Proofs.UnifiedReduced.StreamCycleDispatch
 import Airbender.Proofs.UnifiedReduced.StreamClockCount
 import Airbender.Proofs.UnifiedReduced.StreamExecution
 import Airbender.Proofs.UnifiedReduced.StreamCallerCycles
+import Airbender.Proofs.UnifiedReduced.StreamSupportedExecution
 import Airbender.Proofs.Trace.IndexedCycleComposition
 import Airbender.Proofs.GKRProtocol.LogicalLookupSegments
 import Airbender.Review.Compiler.Theorems
@@ -13718,3 +13719,6 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.caller_source
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.native_full_caller_cycle_at
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.native_path_execution
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.supported_worker_of_reference
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.supported_worker_inputs
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.supported_path_execution
