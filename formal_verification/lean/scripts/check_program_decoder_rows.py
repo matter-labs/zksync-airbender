@@ -32,6 +32,52 @@ SMALL_PROGRAMS = {
 }
 
 
+def csr_word(csr):
+    return (csr << 20) | 0x1073
+
+
+def check_group_shapes(data, config, label):
+    """Check the explicit public call-group premise before native preprocessing.
+
+    This diagnostic mirrors the syntactic part of the Lean premise. The native
+    exporter and full row differential remain the cross-language check.
+    """
+    if len(data) % 4:
+        raise ValueError(f"{label}: text length is not a whole number of words")
+    words = tuple(word[0] for word in struct.iter_unpack("<I", data))
+    split = tuple(csr_word(0x7CD if index == 360 or index % 15 < 5 else
+                           0x7CC if index % 15 < 10 else 0x7CE)
+                  for index in range(361))
+    i = 0
+    while i < len(words):
+        word = words[i]
+        if word in (csr_word(0x7C7), csr_word(0x7C8), csr_word(0x7CB)):
+            csr = word >> 20
+            if csr == 0x7C8 and config != "unified":
+                raise ValueError(f"{label}: unsupported BLAKE2 G CSR at word {i}")
+            if csr == 0x7CB and config == "reduced":
+                raise ValueError(f"{label}: unsupported special5 CSR at word {i}")
+            end = i + 1
+            while end < len(words) and words[end] == word:
+                end += 1
+            length = end - i
+            sizes = {0x7C7: (7, 10), 0x7C8: (56, 80), 0x7CB: (649,)}[csr]
+            if length not in sizes or end == len(words):
+                raise ValueError(f"{label}: invalid CSR 0x{csr:03x} group at word {i}, length {length}")
+            i = end
+            continue
+        if word == csr_word(0x7CD) and config == "full":
+            if tuple(words[i:i + 361]) != split:
+                raise ValueError(f"{label}: invalid split Keccak group at word {i}")
+            i += 361
+            continue
+        if word in (csr_word(0x7CC), csr_word(0x7CD), csr_word(0x7CE)):
+            raise ValueError(f"{label}: split Keccak CSR outside a full-machine group at word {i}")
+        if word == csr_word(0x7CA) and config == "reduced":
+            raise ValueError(f"{label}: unsupported bigint CSR at word {i}")
+        i += 1
+
+
 def block_length(block):
     kind = block["kind"]
     if kind == "dense":
@@ -187,6 +233,7 @@ def main():
                 path.write_bytes(b"".join(struct.pack("<I", word) for word in words))
                 programs.append((path, path))
         hashes = {}
+        validated = set()
         for text, image in programs:
             if not text.is_file() or not image.is_file():
                 raise FileNotFoundError(f"missing public text or image: {text}, {image}")
@@ -198,6 +245,9 @@ def main():
                         continue
                     if text.stem == "split-keccak" and config != "full":
                         continue
+                    if (text, config) not in validated:
+                        check_group_shapes(text.read_bytes(), config, text.name)
+                        validated.add((text, config))
                     for family in families:
                         if text.stem == "split-keccak" and family != "add-sub":
                             continue
