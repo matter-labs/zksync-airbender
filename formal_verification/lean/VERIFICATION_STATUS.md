@@ -60,7 +60,10 @@ The compiler binding builds are in progress. The bigint and unified wiring
 certificates passed in both cache modes with fresh native graph imports.
 The wiring generator check passed for all 22 captures and 304 module targets.
 The full arithmetic and windowed agreement generator checks also passed.
-The arithmetic and protocol binding builds are pending.
+All four current arithmetic imports passed focused checks. The bigint cached
+arithmetic, functional, helper and argument bindings passed. The other binding
+builds remain in progress. The last batch reached its 900-second limit.
+It left no owned process running. The checked module records remain available.
 Earlier build results apply to the old base.
 Unified's current column-role inventory, dispatch bound and ordinary PC
 increment passed focused kernel builds. Bigint's current column-role inventory,
@@ -85,6 +88,12 @@ Unified's native external-read specification and register-history execution
 proof passed focused kernel checks. They keep the stream slot binding
 explicit. Both proofs use only the three allowed axioms. Stream ordering and
 the combined execution proof remain open.
+The external-hint specification and exact register-history execution also
+passed. Public text supplies aligned, bounded instruction PCs. Public setup
+and initialization supply all ordinary execution inputs. The combined registry supplies native x0 rules for
+ordinary, modular, external and worker rows. These proofs passed focused
+kernel checks. Their axioms stay within the three allowed axioms. Exact
+request and RAM matching remain explicit.
 All nine ordinary worker and CPU memory-port inventories passed focused
 checks. Their timestamp records use an explicit absent borrow subtrahend.
 The focused circuit and proof group passed all 288 module checks.

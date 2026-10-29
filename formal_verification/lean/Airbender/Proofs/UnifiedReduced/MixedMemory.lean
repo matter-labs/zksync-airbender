@@ -77,12 +77,12 @@ theorem ordinary_zero_preserving [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524
     RowZeroPreserving row :=
   ordinary_zero_preserving_of_program hp accepted inputs.ordinaryProgram member ordinary
 
-theorem mixed_zero_rules_of_program [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+theorem mixed_zero_rules_of_preserving [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     (inverse : SerializedInverse.Clock p)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
-    {ca oa : List (BitVec 32)}
+    {ca : List (BitVec 32)}
     (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
-    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (preserving : ∀ row ∈ data.machine.rows, row ∉ data.callers → RowZeroPreserving row)
     (requests : RequestBinding data before) : Transfer.CellWriteRules (mixedData data) (Cell.register 0).addressCode 0 := by
   intro edge present same reads
   rcases List.mem_append.mp present with machine | worker
@@ -100,8 +100,7 @@ theorem mixed_zero_rules_of_program [Fact p.Prime] (hp : FieldCapacity.ClockNoWr
         change _ = Nat.pair 0 0
         simpa only [destinationToken, MemoryToken.word, Nat.pair_unpair,
           Trace.Row.columns, CircuitLayout.columns] using zero
-    · have preserving := ordinary_zero_preserving_of_program (by dsimp [timestampBase] at hp; omega) accepted ordinaryProgram member caller
-      apply preserving port native same
+    · apply preserving row member caller port native same
       intro earlier earlierMember order zero
       apply reads _ (mixed_machine_member member (by rwa [machine_ports_ordinary member caller]))
       · rw [mixed_machine_time_of_program hp inverse accepted publicProgram member earlierMember,
@@ -111,6 +110,18 @@ theorem mixed_zero_rules_of_program [Fact p.Prime] (hp : FieldCapacity.ClockNoWr
   · obtain ⟨row, _, step⟩ := List.mem_flatMap.mp worker
     obtain ⟨port, portMember, rfl⟩ := List.mem_map.mp step
     exact False.elim (Delegation.Proofs.port_not_zero row (by simpa using portMember) same)
+
+theorem mixed_zero_rules_of_program [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
+    (inverse : SerializedInverse.Clock p)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)}
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (ordinaryProgram : Mixed.programImage before oa = some program)
+    (requests : RequestBinding data before) :
+    Transfer.CellWriteRules (mixedData data) (Cell.register 0).addressCode 0 :=
+  mixed_zero_rules_of_preserving hp inverse accepted publicProgram
+    (fun _ member ordinary => ordinary_zero_preserving_of_program
+      (by dsimp [timestampBase] at hp; omega) accepted ordinaryProgram member ordinary) requests
 
 theorem mixed_zero_rules [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timestampBase)
     (inverse : SerializedInverse.Clock p)

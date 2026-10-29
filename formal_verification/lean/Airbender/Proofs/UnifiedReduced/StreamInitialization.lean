@@ -34,6 +34,47 @@ theorem unified_decoder_fields (instruction : SailRV32.instruction) :
           NonDeterminism.decoderFields, UnifiedReduced.arithmeticFields,
           DecoderData.mapFamily]
 
+/-- Each accepted public instruction has an aligned PC in the readonly text. -/
+theorem unified_program_code (initial : State) (text : List (BitVec 32))
+    (size : text.length ≤ ROM.limit / 4) :
+    ∀ ordinary ∈ NativeDecoder.UnifiedProgramRows.ordinaryProgramOf initial text,
+      ordinary.pc.toNat < ROM.limit ∧ ordinary.pc.toNat % 4 = 0 := by
+  intro ordinary member
+  obtain ⟨item, inProgram, selected⟩ := List.mem_filterMap.mp member
+  cases item with
+  | inr caller => simp at selected
+  | inl decodedEntry =>
+    have equal : decodedEntry = ordinary := by simpa using selected
+    subst ordinary
+    obtain ⟨⟨bits, index⟩, inText, source⟩ := List.mem_filterMap.mp inProgram
+    have found : text[index]? = some bits := List.mk_mem_zipIdx_iff_getElem?.mp inText
+    have indexBound : index < text.length := by
+      by_contra notBound
+      have : text[index]? = none := by simp [Nat.le_of_not_gt notBound]
+      rw [this] at found
+      contradiction
+    have pcBound : 4 * index < ROM.limit := by omega
+    unfold NativeDecoder.UnifiedProgramRows.entry at source
+    cases caller : NativeDecoder.ProgramRows.callerEntryWith
+        NativeDecoder.UnifiedProgramRows.delegationCSR initial bits index with
+    | some found => simp [caller] at source
+    | none =>
+      cases decoded : SailRV32.Functions.encdec_backwards bits with
+      | impure call continuation => simp [caller, decoded] at source
+      | pure instruction =>
+        cases fields : NativeDecoder.UnifiedProgramRows.decoderFields instruction with
+        | none => simp [caller, decoded, fields] at source
+        | some data =>
+          simp only [caller, decoded, fields, bind, Option.bind] at source
+          change (some (Sum.inl ⟨BitVec.ofNat 32 (4 * index), bits,
+            instruction, data⟩) : Option NativeDecoder.UnifiedProgramRows.Entry) =
+              some (Sum.inl decodedEntry) at source
+          cases source
+          have wordBound : 4 * index < 2 ^ 32 := by
+            exact Nat.lt_trans pcBound (by decide +kernel)
+          simpa only [BitVec.toNat_ofNat, Nat.mod_eq_of_lt wordBound,
+            Nat.mul_mod_right] using And.intro pcBound (Nat.mul_mod_right 4 index)
+
 variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 /-- The target's native initialization boundary supplies its boot inputs.
@@ -82,5 +123,27 @@ theorem unified_initialization_inputs [Fact babyBearModulus.Prime]
     initialPC := initialBoundary
     programImage := ⟨_, image⟩
     setup := romSetup }
+
+/-- Public setup and initialization supply all ordinary execution inputs. -/
+theorem unified_execution_inputs [Fact babyBearModulus.Prime]
+    {initial : State} {text : List (BitVec 32)}
+    {trace : UnifiedTrace babyBearModulus} {cells : List Cell}
+    (geometry : Initialization.Geometry Initialization.unified.layout)
+    (windows : Initialization.Windows Initialization.unified.layout)
+    (cellImage : cells = Initialization.cells geometry windows)
+    (profile : PublicProfile initial cells)
+    (size : text.length ≤ ROM.limit / 4)
+    (boot : UnifiedReduced.BootInputsWith UnifiedReduced.Caller.Stream.decoderFields
+      trace initial cells (NativeDecoder.UnifiedProgramRows.ordinaryProgramOf initial text))
+    (loads : ∀ entry ∈ NativeDecoder.UnifiedProgramRows.ordinaryProgramOf initial text,
+      ∀ (imm : BitVec 12) (rs1 : BitVec 5),
+        entry.instruction ≠ .LOAD (imm, .Regidx rs1, .Regidx 0, false, 4)) :
+    UnifiedReduced.ExecutionInputsWith UnifiedReduced.Caller.Stream.decoderFields
+      trace initial cells (NativeDecoder.UnifiedProgramRows.ordinaryProgramOf initial text) := by
+  refine ⟨boot, ?_, unified_program_code initial text size,
+    profile.configuration, profile.ordinary, fun _ => profile.landingPadDisabled, loads⟩
+  intro index
+  rw [cellImage]
+  exact ExternalBoundary.Initialization.Proofs.all_registers (windows.selection geometry) index
 
 end Airbender.Compiler.MachineTargets.Proofs
