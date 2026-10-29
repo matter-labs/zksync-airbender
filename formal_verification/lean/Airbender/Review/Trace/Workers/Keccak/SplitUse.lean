@@ -2,7 +2,7 @@ import Airbender.Review.Helpers.Delegation.SplitCaller
 import Airbender.Review.Helpers.Memory.ROM
 
 namespace Airbender.Keccak.Split
-open Airbender.Trace
+open Airbender.Trace Reference.RiscV.Sail Reference.Sail
 
 /-- One public 361-call wrapper interval. Worker state and output are not
 encoded in the descriptor. -/
@@ -29,5 +29,24 @@ structure Shapes (callers : List Caller.ProgramEntry) (bundles : List Bundle) : 
   disjoint : ∀ one ∈ bundles, ∀ two ∈ bundles,
     ∀ i j : Fin 361,
       one.callPC i.val = two.callPC j.val → one = two ∧ i.val = j.val
+
+def AtPC (state : State) (pc : BitVec 32) : Prop :=
+  run (SailRV32.Functions.get_arch_pc ()) state = .ok pc state
+
+/-- The first native call may only be reached from the wrapper entry. This is
+one public initial-state condition, independent of any native witness. -/
+def SafeInitialEntry (bundles : List Bundle) (initial : State) : Prop :=
+  ∀ bundle ∈ bundles, ∀ index : Fin 361,
+    0 < index.val → ¬ AtPC initial (bundle.callPC index.val)
+
+/-- The blessed ABI carries the progressing control in x10 and a 256-byte
+aligned state pointer in x11. These are assertions about successful reference
+reads at an actual call, not supplied native controller or memory columns. -/
+def ArgumentsAt (index : Nat) (state : State) : Prop :=
+  ∃ control pointer : BitVec 32,
+    (Cell.register 10).read state = .ok control state ∧
+    (Cell.register 11).read state = .ok pointer state ∧
+    control = BitVec.ofNat 32 (controlAt index) ∧
+    ROM.limit ≤ pointer.toNat ∧ pointer.toNat % 256 = 0
 
 end Airbender.Keccak.Split
