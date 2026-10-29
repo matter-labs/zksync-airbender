@@ -166,6 +166,12 @@ and readonly-ROM history. The native clock proofs derive unique aligned row
 clocks, four-tick advancement and exact CPU event windows. Their axiom reports
 use only the three allowed axioms. Global cycle and caller composition remains
 open for the reduced target.
+Exact caller slots now identify every worker in each native instruction
+window. The cycle split and ordinary row history passed focused kernel checks.
+State matching and the existing typed boundary derive every final-PC range.
+Native clocks derive the initial, per-cycle and terminal stream counts.
+Their axiom reports use only the three allowed axioms. The ordinary dispatcher,
+complete caller retirement and supported-use composition remain open.
 The ROM-aware code-frame lemmas passed focused kernel and axiom checks.
 Interpreted ROM events refresh the same public word. Fetch transport can use
 that readonly history without the global tracked-RAM lower bound. The worker
