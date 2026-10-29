@@ -13,9 +13,9 @@ theorem timestamp_equations {p : Nat} [Fact p.Prime]
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     ∃ carry : Nat, carry ≤ 1 ∧ w 2 + 4 = w 32 + 524288 * carry ∧ w 3 + carry = w 33 := by
   have carry := Verification.assertion_of_holds h
-    ⟨93, by simp [importedConstraints, FlatOperation.constraints]⟩
+    ⟨89, by simp [importedConstraints, FlatOperation.constraints]⟩
   have high := Verification.assertion_of_holds h
-    ⟨94, by simp [importedConstraints, FlatOperation.constraints]⟩
+    ⟨90, by simp [importedConstraints, FlatOperation.constraints]⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment] at carry high
   have boolean : (-3840 * (w 2 + 4 - w 32)) *
@@ -71,7 +71,7 @@ theorem clocks {p : Nat} [Fact p.Prime]
     simp [importedConstraintsTraceColumns] at member
     rcases member with rfl | rfl | rfl
     · have bit := Verification.assertion_of_holds core
-        ⟨126, by simp [importedConstraints, FlatOperation.constraints]⟩
+        ⟨117, by simp [importedConstraints, FlatOperation.constraints]⟩
       have lower := Trace.Proofs.range_bound (Verification.lookup_of_holds timestamps
         ⟨2, by simp [importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
       have upper := Trace.Proofs.range_bound (Verification.lookup_of_holds timestamps
@@ -80,12 +80,12 @@ theorem clocks {p : Nat} [Fact p.Prime]
       refine ⟨?_, ?_, ?_⟩
       · simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
           Verification.environment, sub_eq_add_neg] using bit
-      · change ((w 34 - w 2 - (0 : Nat) + timestampBase * w 131) : ZMod p).val < timestampBase
+      · change ((w 34 - w 2 - (0 : Nat) + timestampBase * w 123) : ZMod p).val < timestampBase
         convert lower using 1; congr 1; ring
-      · change ((w 35 + timestampBase - w 131 - w 3) : ZMod p).val < timestampBase
+      · change ((w 35 + timestampBase - w 123 - w 3) : ZMod p).val < timestampBase
         convert upper using 1; congr 1; ring
     · have bit := Verification.assertion_of_holds core
-        ⟨127, by simp [importedConstraints, FlatOperation.constraints]⟩
+        ⟨118, by simp [importedConstraints, FlatOperation.constraints]⟩
       have lower := Trace.Proofs.range_bound (Verification.lookup_of_holds timestamps
         ⟨4, by simp [importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
       have upper := Trace.Proofs.range_bound (Verification.lookup_of_holds timestamps
@@ -94,12 +94,12 @@ theorem clocks {p : Nat} [Fact p.Prime]
       refine ⟨?_, ?_, ?_⟩
       · simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
           Verification.environment, sub_eq_add_neg] using bit
-      · change ((w 40 - w 2 - (1 : Nat) + timestampBase * w 132) : ZMod p).val < timestampBase
+      · change ((w 40 - w 2 - (1 : Nat) + timestampBase * w 124) : ZMod p).val < timestampBase
         convert lower using 1; congr 1; ring
-      · change ((w 41 + timestampBase - w 132 - w 3) : ZMod p).val < timestampBase
+      · change ((w 41 + timestampBase - w 124 - w 3) : ZMod p).val < timestampBase
         convert upper using 1; congr 1; ring
     · have bit := Verification.assertion_of_holds core
-        ⟨128, by simp [importedConstraints, FlatOperation.constraints]⟩
+        ⟨119, by simp [importedConstraints, FlatOperation.constraints]⟩
       have lower := Trace.Proofs.range_bound (Verification.lookup_of_holds timestamps
         ⟨6, by simp [importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
       have upper := Trace.Proofs.range_bound (Verification.lookup_of_holds timestamps
@@ -108,9 +108,9 @@ theorem clocks {p : Nat} [Fact p.Prime]
       refine ⟨?_, ?_, ?_⟩
       · simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
           Verification.environment, sub_eq_add_neg] using bit
-      · change ((w 46 - w 2 - (2 : Nat) + timestampBase * w 133) : ZMod p).val < timestampBase
+      · change ((w 46 - w 2 - (2 : Nat) + timestampBase * w 125) : ZMod p).val < timestampBase
         convert lower using 1; congr 1; ring
-      · change ((w 47 + timestampBase - w 133 - w 3) : ZMod p).val < timestampBase
+      · change ((w 47 + timestampBase - w 125 - w 3) : ZMod p).val < timestampBase
         convert upper using 1; congr 1; ring
 
 end Airbender.UnifiedReduced.Proofs

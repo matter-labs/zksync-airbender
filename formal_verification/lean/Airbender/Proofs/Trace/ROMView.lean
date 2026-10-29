@@ -135,10 +135,10 @@ theorem row_transfers {p : Nat} [Fact p.Prime] (hp : FieldCapacity.NoWrap p 1310
       (List.sublist_append_left (WordMemory.importedConstraints rom)
         WordMemory.importedConstraintsTimestampLookups)
     have loadBound : (Word.mk (w 19).val (w 20).val).Bounded := by
-      exact bounds ⟨⟨1, #v[21, 22], 47⟩, .mixed 10 true #v[19, 20], #v[23, 24], none⟩
+      exact bounds ⟨⟨1, #v[21, 22], 47, none⟩, .mixed 10 true #v[19, 20], #v[23, 24], none⟩
         (by simp [Row.ports, WordMemory.importedConstraintsMemoryPorts])
     have storeBound : (Word.mk (w 25).val (w 26).val).Bounded := by
-      exact bounds ⟨⟨2, #v[27, 28], 48⟩, .mixed 10 false #v[25, 26], #v[29, 30], some #v[31, 32]⟩
+      exact bounds ⟨⟨2, #v[27, 28], 48, none⟩, .mixed 10 false #v[25, 26], #v[29, 30], some #v[31, 32]⟩
         (by simp [Row.ports, WordMemory.importedConstraintsMemoryPorts])
     have flag : w 10 = 0 ∨ w 10 = 1 := WordMemory.Proofs.local_flags base 1
     rcases flag with load | store
