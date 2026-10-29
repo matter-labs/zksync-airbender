@@ -278,13 +278,14 @@ pub fn prove_unified_transition_with_replayer_timed<
     program_proof.final_pc = final_pc;
     program_proof.final_timestamp = final_timestamp;
 
-    let mut twiddles: HashMap<usize, B::TwiddleSet> = HashMap::new();
-    twiddles
-        .entry(trace_len)
-        .or_insert_with(|| backend.make_twiddles(trace_len, worker));
-
     let prover_config = unified_prover_config.clone();
     assert_eq!(prover_config.security_level, security_level);
+
+    let mut twiddles: HashMap<usize, B::TwiddleSet> = HashMap::new();
+    let message_len = 1usize << prover_config.whir_message_size_log2();
+    twiddles
+        .entry(message_len)
+        .or_insert_with(|| backend.make_twiddles(message_len, worker));
 
     let zero_inits_and_teardowns = |num_sets: usize| -> (Vec<u32>, Vec<_>) {
         let mut inits_and_teardowns = Vec::with_capacity(num_sets);
@@ -304,7 +305,7 @@ pub fn prove_unified_transition_with_replayer_timed<
     let mut memory_trees: Vec<(Vec<u32>, MerkleTreeCapVarLength)> = vec![];
     let merged_commit_started = std::time::Instant::now();
     {
-        let twiddles_for_size = &twiddles[&trace_len];
+        let twiddles_for_size = &twiddles[&message_len];
         for (i, unified_buffer) in unified_buffers.iter().enumerate() {
             let (top_bits, inits_and_teardowns) = if i >= num_dummy_inits_and_teardowns {
                 inits_and_teardown_chunks[i - num_dummy_inits_and_teardowns].clone()
@@ -390,7 +391,7 @@ pub fn prove_unified_transition_with_replayer_timed<
     // RS codewords and trees served per the caller's storage policy
     // (recompute on memory-constrained machines, in-memory on large ones).
     {
-        let twiddles_for_size = &twiddles[&trace_len];
+        let twiddles_for_size = &twiddles[&message_len];
         // The setup is committed with the prover config's geometry on the proving
         // backend (`GKRSetup::commit_for_config_with_backend`).
         let setup_commit_started = std::time::Instant::now();
@@ -703,13 +704,14 @@ pub fn prove_unified_transition_with_replayer_precommitted_timed<
     program_proof.final_pc = final_pc;
     program_proof.final_timestamp = final_timestamp;
 
-    let mut twiddles: HashMap<usize, B::TwiddleSet> = HashMap::new();
-    twiddles
-        .entry(trace_len)
-        .or_insert_with(|| backend.make_twiddles(trace_len, worker));
-
     let prover_config = unified_prover_config.clone();
     assert_eq!(prover_config.security_level, security_level);
+
+    let mut twiddles: HashMap<usize, B::TwiddleSet> = HashMap::new();
+    let message_len = 1usize << prover_config.whir_message_size_log2();
+    twiddles
+        .entry(message_len)
+        .or_insert_with(|| backend.make_twiddles(message_len, worker));
 
     let zero_inits_and_teardowns = |num_sets: usize| -> (Vec<u32>, Vec<_>) {
         let mut inits_and_teardowns = Vec::with_capacity(num_sets);
@@ -731,7 +733,7 @@ pub fn prove_unified_transition_with_replayer_precommitted_timed<
     let mut precommitted = Vec::with_capacity(num_circuits_to_prove);
     let merged_commit_started = std::time::Instant::now();
     {
-        let twiddles_for_size = &twiddles[&trace_len];
+        let twiddles_for_size = &twiddles[&message_len];
         let mut inits_and_teardowns_it = inits_and_teardown_chunks.into_iter();
         for (i, unified_buffer) in unified_buffers.iter().enumerate() {
             let (top_bits, inits_and_teardowns) = if i >= num_dummy_inits_and_teardowns {
@@ -809,7 +811,7 @@ pub fn prove_unified_transition_with_replayer_precommitted_timed<
     // Prove every unified chunk in MERGED mode, consuming the precommitted
     // witness trace and merged oracle of each chunk (no cloning).
     {
-        let twiddles_for_size = &twiddles[&trace_len];
+        let twiddles_for_size = &twiddles[&message_len];
         // The setup is committed with the prover config's geometry on the proving
         // backend (`GKRSetup::commit_for_config_with_backend`).
         let setup_commit_started = std::time::Instant::now();

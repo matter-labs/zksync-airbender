@@ -108,7 +108,7 @@ pub(crate) fn replay_unified_circuit<C: Counters>(
 /// asserts that the global permutation grand-product closes to ONE.
 ///
 /// The caller chooses the compute backends: the FFT/tree [`Backend`] (whose
-/// [`Backend::TwiddleSet`]s are built here, once per trace length) and the
+/// [`Backend::TwiddleSet`]s are built here, once per WHIR message length) and the
 /// [`GKRBackend`] sumcheck engine. Proof bytes are backend-independent; pass
 /// `DefaultBabyBearBackend::default()` + `DefaultBabyBearGKRBackend::default()`
 /// for the target-recommended pair.
@@ -443,11 +443,6 @@ fn prove_unified_execution_with_replayer_impl<
     program_proof.final_pc = final_pc;
     program_proof.final_timestamp = final_timestamp;
 
-    let mut twiddles: HashMap<usize, B::TwiddleSet> = HashMap::new();
-    twiddles
-        .entry(trace_len)
-        .or_insert_with(|| backend.make_twiddles(trace_len, worker));
-
     // The UNIFIED circuit's commitment parameters: its own config from the
     // setup unless overridden; delegation circuits below always use their own
     // setups' configs.
@@ -467,10 +462,16 @@ fn prove_unified_execution_with_replayer_impl<
         None => unified_setup.prover_config(security_level).clone(),
     };
 
+    let mut twiddles: HashMap<usize, B::TwiddleSet> = HashMap::new();
+    let message_len = 1usize << prover_config.whir_message_size_log2();
+    twiddles
+        .entry(message_len)
+        .or_insert_with(|| backend.make_twiddles(message_len, worker));
+
     // Commit the unified memory tree (which embeds inits/teardowns).
     let mut memory_trees: Vec<(Vec<u32>, prover::merkle_trees::MerkleTreeCapVarLength)> = vec![];
     {
-        let twiddles_for_size = &twiddles[&trace_len];
+        let twiddles_for_size = &twiddles[&message_len];
         let UnrolledCircuitWitnessEvalFn::Unified {
             witness_fn: _,
             decoder_table,
@@ -526,11 +527,11 @@ fn prove_unified_execution_with_replayer_impl<
         let delegation_circuits = &blake_circuits;
         let setup = &blake_round_function_setup;
         if !delegation_circuits.is_empty() {
-            let trace_len = setup.trace_len;
             let prover_config = setup.prover_config(security_level).clone();
+            let message_len = 1usize << prover_config.whir_message_size_log2();
             let twiddles_for_size = twiddles
-                .entry(trace_len)
-                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
+                .entry(message_len)
+                .or_insert_with(|| backend.make_twiddles(message_len, worker));
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
                 let caps = commit_memory_tree_for_delegation_circuit::<
@@ -566,11 +567,11 @@ fn prove_unified_execution_with_replayer_impl<
         let delegation_circuits = &bigint_circuits;
         let setup = &bigint_setup;
         if !delegation_circuits.is_empty() {
-            let trace_len = setup.trace_len;
             let prover_config = setup.prover_config(security_level).clone();
+            let message_len = 1usize << prover_config.whir_message_size_log2();
             let twiddles_for_size = twiddles
-                .entry(trace_len)
-                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
+                .entry(message_len)
+                .or_insert_with(|| backend.make_twiddles(message_len, worker));
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
                 let caps = commit_memory_tree_for_delegation_circuit::<
@@ -607,11 +608,11 @@ fn prove_unified_execution_with_replayer_impl<
         let delegation_circuits = &keccak_special5_circuits;
         let setup = &keccak_special5_setup;
         if !delegation_circuits.is_empty() {
-            let trace_len = setup.trace_len;
             let prover_config = setup.prover_config(security_level).clone();
+            let message_len = 1usize << prover_config.whir_message_size_log2();
             let twiddles_for_size = twiddles
-                .entry(trace_len)
-                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
+                .entry(message_len)
+                .or_insert_with(|| backend.make_twiddles(message_len, worker));
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
                 let caps = commit_memory_tree_for_delegation_circuit::<
@@ -648,11 +649,11 @@ fn prove_unified_execution_with_replayer_impl<
         let delegation_circuits = &blake_g_function_circuits;
         let setup = &blake_g_function_setup;
         if !delegation_circuits.is_empty() {
-            let trace_len = setup.trace_len;
             let prover_config = setup.prover_config(security_level).clone();
+            let message_len = 1usize << prover_config.whir_message_size_log2();
             let twiddles_for_size = twiddles
-                .entry(trace_len)
-                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
+                .entry(message_len)
+                .or_insert_with(|| backend.make_twiddles(message_len, worker));
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
                 let caps = commit_memory_tree_for_delegation_circuit::<
@@ -735,7 +736,7 @@ fn prove_unified_execution_with_replayer_impl<
     // Prove the unified circuit.
     let mut unified_proofs = vec![];
     {
-        let twiddles_for_size = &twiddles[&trace_len];
+        let twiddles_for_size = &twiddles[&message_len];
         // The setup is committed with the prover config's geometry on the naive
         // backend (`GKRSetup::commit_for_config`, not performance-sensitive).
         let setup_commitment = unified_setup
