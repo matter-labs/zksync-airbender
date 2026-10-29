@@ -6,8 +6,8 @@ The model proves conditional soundness for the relations below. **No single
 whole-execution theorem currently covers a committed production verifier
 program.** A stream-aware unified relation now combines nondeterminism reads,
 modular operations and delegation calls. Its native soundness theorem now
-retains explicit worker-domain binding. The final target must derive that
-binding from public supported use. The captured compiler execution bridge
+derives worker controls and port domains from public supported use. The final
+target still needs the public decoder and native acceptance adapter. The captured compiler execution bridge
 also retains the four-entry decoder tables. Program-parametric source/trace
 execution and logical lookup/RAM composition are established narrower results.
 
@@ -17,7 +17,7 @@ execution and logical lookup/RAM composition are established narrower results.
 | --- | --- |
 | Unrolled full unsigned | Open. The `UnrolledFullUnsigned` target lists all premises. Prove native soundness for its combined relation. Bind the public program setup. Connect the caller, worker and initialization boundaries. Prove the split Keccak worker functions on the new base. The target excludes special5 calls. |
 | Unrolled reduced | Open. The `UnrolledReduced` target lists all premises. Prove native soundness for its stream and caller relation. Bind the public program setup. Connect the extended-round worker and initialization boundaries. |
-| Unified | Open. The `Unified` target lists all premises. Prove native soundness for the combined stream, modular and caller relation. Bind the public program setup to the native rows. The initialization adapter is proved. The target excludes special5 calls. |
+| Unified | Open. Native soundness for the combined stream, modular and caller relation is proved from public boot and supported use. The initialization adapter is proved. Bind public program setup and native acceptance to this theorem. The target excludes special5 calls. |
 
 [The three target definitions](Airbender/Review/Compiler/MachineTargets.lean)
 are Lean propositions. They are not proved theorems. Each target names its
@@ -136,8 +136,14 @@ The stream-aware prefix induction now derives those worker controls from
 public supported use. It proves combined execution under the intermediate
 physical RAM profile. Its kernel and axiom checks passed. Private command and
 controller contracts are conclusions at this entrypoint.
-Unified still needs the joint worker-control and worker-domain induction and
-the final target-input adapters. The target remains open.
+The joint worker-control and worker-domain induction passed kernel checks.
+It derives both contracts from public supported use and exact native prefixes.
+Native prefix cutting now uses seed clock bounds. It does not equate native
+zero ROM values to physical program bytes. The ROM input and terminal adapters
+also passed. The native supported-path theorem now proves combined execution
+with the original native terminal view. All checked roots use only the three
+allowed axioms. Unified still needs its public decoder and acceptance adapter.
+The target remains open.
 The ROM-aware code-frame lemmas passed focused kernel and axiom checks.
 Interpreted ROM events refresh the same public word. Fetch transport can use
 that readonly history without the global tracked-RAM lower bound. The worker
@@ -148,7 +154,8 @@ The public setup and initialization supply its ROM execution profile.
 Worker ABI bounds now follow from each exact worker-port binding.
 These results admit tracked low ROM cells. No global tracked-RAM lower bound
 occurs in this path. The joint prefix induction must derive worker-port
-binding from the public runtime argument contract.
+binding from the public runtime argument contract. That induction has now
+passed focused kernel and axiom checks.
 The ROM-aware load/store cycle proof also passed. It uses the current native
 equations for readonly loads. It removes the global RAM lower bound from this
 cycle proof. A separate worker-port lemma derives each indirect RAM bound
