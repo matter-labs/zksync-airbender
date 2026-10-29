@@ -177,6 +177,12 @@ It binds all four native CPU families to the public modular/external clauses,
 actual shared cycle states and exact stream increments. The native ROM adapter
 must supply its readonly-event property. Caller retirement and final supported-use
 composition remain open.
+The complete reduced caller-cycle adapter has now passed focused kernel and
+axiom checks. Exact slots select one actual worker. Shared history supplies
+its reads and frame. The extended-round reference and native caller PC equations
+prove complete retirement. The full CSR query disables external reads on callers.
+Round control, worker RAM binding and readonly-ROM history remain explicit at
+this intermediate interface. The final native prefix induction must derive them.
 The ROM-aware code-frame lemmas passed focused kernel and axiom checks.
 Interpreted ROM events refresh the same public word. Fetch transport can use
 that readonly history without the global tracked-RAM lower bound. The worker
