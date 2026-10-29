@@ -6,7 +6,6 @@ use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::OperationMode;
 use crate::gkr::prover::{prove_configured_with_gkr_with_storage_and_backend, WhirOracleStorage};
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
-use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use crate::gkr::witness_gen::delegation_circuits::{
     evaluate_gkr_memory_witness_for_delegation_circuit, evaluate_gkr_witness_for_delegation_circuit,
@@ -73,14 +72,6 @@ pub enum BaseCommitmentVariant {
     /// (`common::fixture_prover_config`): the production fixture, plain
     /// proof name.
     Production,
-    /// The standard config packed by `2^pack_log2`
-    /// (`packed_config_for_security_level_under_pessimistic_conjecture`;
-    /// `pack_log2 = 0` is the plain config).
-    Packed { pack_log2: usize },
-    /// The virtual-packing twin of the packed config (`fold_log2 = 0`, one
-    /// value per (packed) column per base leaf,
-    /// `virtual_packed_config_for_security_level_under_pessimistic_conjecture`).
-    VirtualPacking { pack_log2: usize },
 }
 
 impl BaseCommitmentVariant {
@@ -98,58 +89,11 @@ impl BaseCommitmentVariant {
                 assert_eq!(config.trace_len_log2, trace_len_log2, "{stem}");
                 config
             }
-            Self::Packed { pack_log2 } => {
-                example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
-                    trace_len_log2,
-                    pack_log2,
-                    level,
-                )
-            }
-            Self::VirtualPacking { pack_log2 } => {
-                example_configs::virtual_packed_config_for_security_level_under_pessimistic_conjecture(
-                    trace_len_log2,
-                    pack_log2,
-                    level,
-                )
-            }
         }
-    }
-
-    /// The proof-file / verifier-dir name infix: `""` for the plain config,
-    /// `"_pack{k}"` for a packed one, `"_virtual"` / `"_pack{k}_virtual"` for
-    /// virtual packing.
-    pub fn proof_name_infix(self) -> String {
-        match self {
-            Self::Production => String::new(),
-            // `_pack0` (not the empty infix): the circuit's own production
-            // fixture is the plain `sec_100` name
-            Self::Packed { pack_log2 } => format!("_pack{pack_log2}"),
-            Self::VirtualPacking { pack_log2: 0 } => "_virtual".to_string(),
-            Self::VirtualPacking { pack_log2 } => format!("_pack{pack_log2}_virtual"),
-        }
-    }
-
-    /// The blake comparison sweep: every physical packing `2^0 ..= 2^4` with
-    /// two (`Packed`) and one (`VirtualPacking`) value per column per base leaf.
-    pub fn blake_sweep() -> Vec<Self> {
-        (0..=4)
-            .flat_map(|pack_log2| {
-                [
-                    Self::Packed { pack_log2 },
-                    Self::VirtualPacking { pack_log2 },
-                ]
-            })
-            .collect()
     }
 }
 
-/// Common prove-side logic shared by all four delegations.
-/// Prove one delegation circuit with the base-round geometry of `variant`:
-/// `Packed { pack_log2 > 0 }` commits the memory, witness and setup columns
-/// PACKED (`ProverConfig::pack_log2`, see
-/// `packed_config_for_security_level_under_pessimistic_conjecture`; the WHIR
-/// message is `2^(log2(num_delegation_cycles) + pack_log2)`), `VirtualPacking`
-/// commits one value per column per base leaf and runs no round-0 sumcheck.
+/// Common prove-side logic using each delegation circuit's production config.
 fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
     circuit: &GKRCircuitArtifact<BabyBearField>,
     table_driver: &TableDriver<BabyBearField>,
@@ -318,12 +262,9 @@ where
     )
 }
 
-/// [`prove_delegation_blake`] with the base-round geometry of `variant`: a
-/// PACKED base commitment (`Packed { pack_log2 > 0 }`: the 2^20 Blake trace
-/// columns are committed as `2^(20 + pack_log2)`-variate packed polynomials)
-/// or the virtual-packing one. The proof is written to
-/// `test_proofs/blake2_with_extended_control_{suffix}{infix}_gkr_proof.json`
-/// with the variant's [`BaseCommitmentVariant::proof_name_infix`].
+/// Prove the Blake delegation with its production fixture config. The common
+/// callers use `BaseCommitmentVariant::DEFAULT`; the config itself determines
+/// physical and virtual packing. The proof keeps its plain production suffix.
 pub fn prove_delegation_blake_with_packing<C>(
     snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
     tape: &SimpleTape,
@@ -392,11 +333,7 @@ where
         "blake2_with_extended_control",
         variant,
         should_prove,
-        &format!(
-            "test_proofs/blake2_with_extended_control_{}{}_gkr_proof.json",
-            proof_suffix,
-            variant.proof_name_infix()
-        ),
+        &format!("test_proofs/blake2_with_extended_control_{proof_suffix}_gkr_proof.json"),
         worker,
     );
 

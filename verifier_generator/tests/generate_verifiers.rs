@@ -257,69 +257,6 @@ fn unified_reduced_machine_l1_feeder() {
     );
 }
 
-/// Packed base commitment: the `blake2_with_extended_control` 2^20 circuit
-/// with `pack_log2 = 4` (2^24 WHIR message, the 2^24 WHIR schedule). Generated
-/// into `.../blake2_with_extended_control/pessimistic_conjecture_pack4`; the proof fixture
-/// is verified by `tests/packed_verify.rs`.
-#[test]
-fn blake2_with_extended_control_pack4() {
-    use verifier_common::test_circuits::packed_fixture;
-    let circuit = packed_fixture::circuit();
-    let prover_config = packed_fixture::prover_config();
-    assert_eq!(
-        circuit.compiled_circuit().trace_len.trailing_zeros() as usize,
-        prover_config.trace_len_log2,
-    );
-    generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
-        circuit,
-        &prover_config,
-        packed_fixture::DIR_SUFFIX,
-    );
-}
-
-/// Virtual-packing base round: the `blake2_with_extended_control` 2^20 circuit
-/// with `fold_log2 = 0` (one value per column per base leaf, no round-0
-/// sumcheck). Generated into `.../blake2_with_extended_control/pessimistic_conjecture_virtual`;
-/// the proof fixture is verified by `tests/virtual_packing_verify.rs`.
-#[test]
-fn blake2_with_extended_control_virtual() {
-    use verifier_common::test_circuits::virtual_packing_fixture;
-    let circuit = virtual_packing_fixture::circuit();
-    let prover_config = virtual_packing_fixture::prover_config();
-    assert_eq!(
-        circuit.compiled_circuit().trace_len.trailing_zeros() as usize,
-        prover_config.trace_len_log2,
-    );
-    assert!(prover_config.is_virtual_packing());
-    generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
-        circuit,
-        &prover_config,
-        virtual_packing_fixture::DIR_SUFFIX,
-    );
-}
-
-/// The blake base-round comparison sweep: a verifier per
-/// `verifier_common::test_circuits::blake_variants::BlakeVariant` (every
-/// physical packing 2^0..=2^4, two or one value(s) per column per base leaf),
-/// generated into `.../blake2_with_extended_control/pessimistic_conjecture{infix}`.
-#[test]
-fn blake2_with_extended_control_variants() {
-    use verifier_common::test_circuits::blake_variants::BlakeVariant;
-    let circuit = BlakeVariant::circuit();
-    for variant in BlakeVariant::all() {
-        let prover_config = variant.prover_config();
-        assert_eq!(
-            circuit.compiled_circuit().trace_len.trailing_zeros() as usize,
-            prover_config.trace_len_log2,
-        );
-        generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
-            circuit,
-            &prover_config,
-            &variant.dir_suffix(),
-        );
-    }
-}
-
 /// ONE-OFF: generate a verifier for `ONE_OFF_CIRCUIT` from the prover config
 /// file `ONE_OFF_CONFIG` (e.g. the `test_proofs/<circuit>_<suffix>_prover_config.json`
 /// a `GKR_BASE_PACKING_OVERRIDE` prover run writes) into

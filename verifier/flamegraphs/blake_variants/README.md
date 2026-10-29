@@ -1,5 +1,9 @@
 # blake2_with_extended_control (2^20, 769 columns) base-round sweep, sec 100
 
+Historical experiment results. The experiment-specific verifier generators,
+proof fixtures and RISC-V binaries have been removed; the names below identify
+the recorded measurements, not currently available build targets.
+
 Each row: one generated RISC-V verifier run in the transpiler on its own proof fixture
 (`prover/test_proofs/blake2_with_extended_control_sec_100{infix}_gkr_proof.json`); every verifier accepted its proof.
 Proof size = flattened non-determinism stream (u32 words). Flamegraph: `gkr_flamegraph_<variant>.svg` here.

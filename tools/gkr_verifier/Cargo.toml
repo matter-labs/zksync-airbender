@@ -177,46 +177,6 @@ path = "src/bin/circuit_verifiers/ethproofs_soundcalc/unified_reduced_machine.rs
 name = "unsigned_mul_div_ethproofs_soundcalc"
 path = "src/bin/circuit_verifiers/ethproofs_soundcalc/unsigned_mul_div.rs"
 
-# --- Blake base-round comparison sweep (pessimistic conjecture) ---
-[[bin]]
-name = "blake2_with_extended_control_pack0_pessimistic_conjecture"
-path = "src/bin/circuit_verifiers/pessimistic_conjecture/blake2_with_extended_control_pack0.rs"
-
-[[bin]]
-name = "blake2_with_extended_control_pack1_pessimistic_conjecture"
-path = "src/bin/circuit_verifiers/pessimistic_conjecture/blake2_with_extended_control_pack1.rs"
-
-[[bin]]
-name = "blake2_with_extended_control_pack1_virtual_pessimistic_conjecture"
-path = "src/bin/circuit_verifiers/pessimistic_conjecture/blake2_with_extended_control_pack1_virtual.rs"
-
-[[bin]]
-name = "blake2_with_extended_control_pack2_pessimistic_conjecture"
-path = "src/bin/circuit_verifiers/pessimistic_conjecture/blake2_with_extended_control_pack2.rs"
-
-[[bin]]
-name = "blake2_with_extended_control_pack2_virtual_pessimistic_conjecture"
-path = "src/bin/circuit_verifiers/pessimistic_conjecture/blake2_with_extended_control_pack2_virtual.rs"
-
-[[bin]]
-name = "blake2_with_extended_control_pack3_pessimistic_conjecture"
-path = "src/bin/circuit_verifiers/pessimistic_conjecture/blake2_with_extended_control_pack3.rs"
-
-[[bin]]
-name = "blake2_with_extended_control_pack3_virtual_pessimistic_conjecture"
-path = "src/bin/circuit_verifiers/pessimistic_conjecture/blake2_with_extended_control_pack3_virtual.rs"
-
-[[bin]]
-name = "blake2_with_extended_control_pack4_pessimistic_conjecture"
-path = "src/bin/circuit_verifiers/pessimistic_conjecture/blake2_with_extended_control_pack4.rs"
-
-[[bin]]
-name = "blake2_with_extended_control_pack4_virtual_pessimistic_conjecture"
-path = "src/bin/circuit_verifiers/pessimistic_conjecture/blake2_with_extended_control_pack4_virtual.rs"
-
-[[bin]]
-name = "blake2_with_extended_control_virtual_pessimistic_conjecture"
-path = "src/bin/circuit_verifiers/pessimistic_conjecture/blake2_with_extended_control_virtual.rs"
 [workspace]
 
 [profile.release]
