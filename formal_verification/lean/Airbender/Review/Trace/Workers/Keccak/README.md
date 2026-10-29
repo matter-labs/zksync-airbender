@@ -36,6 +36,9 @@ derive bounded clocks for every physical read and write from public seed clocks,
 caller-derived invocation bounds and exact RAM matching. They also establish
 the arithmetic order consequence of a positive grouped read distance. The
 compiled group equations and control lookups still need to supply each distance.
+The [group equation proofs](../../../../Proofs/Keccak/SplitGroupEquations.lean)
+extract the control-register group's two equations and Boolean borrow from the
+four theta/rho and chi5 captures.
 Under the [ValidDelegationUse](../../UnifiedReduced/DelegationUse.lean) contract, special5 calls are
 excluded; these lemmas therefore do not establish blessed Keccak execution.
 Split worker modeling and integration are required open work. See

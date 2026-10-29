@@ -39,7 +39,9 @@ memory proof now derives bounded timestamps for all physical reads and writes
 from public seed clocks, caller-derived worker clocks and the explicit RAM
 permutation. A generic grouped-clock lemma proves strict read-before-write order
 from a positive compiled read distance; connecting each imported theta/rho and
-chi5 group equation and control lookup to that lemma remains open.
+chi5 group equation and control lookup to that lemma remains open. The first
+group's exact equations and Boolean borrow are already extracted from both
+cached and uncached theta/rho and chi5 artifacts.
 
 Both cached and uncached native captures remain required. The checker migration
 must qualify all 22 capture configurations.
