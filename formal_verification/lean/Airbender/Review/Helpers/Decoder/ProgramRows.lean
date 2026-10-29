@@ -135,6 +135,13 @@ def CallerEntry.query {p : Nat} (entry : CallerEntry) : Vector (ZMod p) 9 :=
 
 abbrev NativeEntry := PooledProgramEntry ⊕ CallerEntry
 
+/-- The two public source interfaces of a native decoder entry. Ordinary
+instructions keep their full projected metadata; virtual callers keep their
+complete CSR and must use a separately modeled worker reference. -/
+def NativeEntry.Source (config : Config) (initial : State) : NativeEntry → Prop
+  | .inl ordinary => ordinary.SourceWith initial config.fields
+  | .inr caller => caller.Source initial config.delegationCSR
+
 def nativeEntry (config : Config) (initial : State) (bits : BitVec 32)
     (index : Nat) : Option NativeEntry :=
   (callerEntry config initial bits index).map Sum.inr <|>

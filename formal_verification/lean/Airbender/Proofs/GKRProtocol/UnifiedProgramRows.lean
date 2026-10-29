@@ -109,6 +109,18 @@ theorem native_caller_source (initial : Reference.RiscV.Sail.State)
   caller_sources initial text image size caller
     ((native_caller_iff initial text caller).mp member)
 
+theorem native_sources (initial : Reference.RiscV.Sail.State)
+    (text : List (BitVec 32)) (image : ROM.TextImage initial text)
+    (size : text.length ≤ ROM.limit / 4) :
+    ∀ item ∈ programOf initial text, item.Source initial := by
+  intro item member
+  cases item with
+  | inr caller => exact native_caller_source initial text image size caller member
+  | inl ordinary =>
+    have ordinaryMember : ordinary ∈ ordinaryProgramOf initial text :=
+      List.mem_filterMap.mpr ⟨Sum.inl ordinary, member, rfl⟩
+    exact ordinary_sources initial text image size ordinary ordinaryMember
+
 theorem active_member {p : Nat} (initial : Reference.RiscV.Sail.State)
     (text : List (BitVec 32)) (capacity : Nat) (fits : text.length ≤ capacity)
     (query : Vector (ZMod p) 9)
