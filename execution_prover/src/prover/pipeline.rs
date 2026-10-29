@@ -19,6 +19,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         pow_challenge: u64,
         external_challenges: Option<GKRExternalChallenges<BF, E4>>,
         proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
+        mut proof_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees>,
         profile: ProofProfile,
     ) -> ExecutionProverResult {
         if let Some(cache) = cache.as_ref() {
@@ -63,6 +64,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             batch_id,
             external_challenges.as_ref(),
             &proof_caps,
+            &mut proof_partial_trees,
             &work_requests_sender,
             profile,
         );
@@ -111,6 +113,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             binary_holder,
             external_challenges: external_challenges.as_ref(),
             proof_caps: &proof_caps,
+            proof_partial_trees: RefCell::new(proof_partial_trees),
         };
         for sequence_id in trivial_unified_inits_and_teardowns {
             let data = InitsAndTeardownsData {
@@ -389,6 +392,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 0,
                 None,
                 BTreeMap::new(),
+                BTreeMap::new(),
                 profile,
             )
             .into_memory_commitment_result();
@@ -409,6 +413,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         pow_challenge: u64,
         external_challenges: GKRExternalChallenges<BF, E4>,
         proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
+        proof_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees>,
         profile: ProofProfile,
     ) -> ProveResult {
         info!("BATCH[{batch_id}] PROVER producing proofs for binary with key {binary_key:?}");
@@ -423,6 +428,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 pow_challenge,
                 Some(external_challenges),
                 proof_caps,
+                proof_partial_trees,
                 profile,
             )
             .into_proof_result();
@@ -452,6 +458,7 @@ fn assemble_result<A: fft::GoodAllocator>(
         circuit_families_memory_caps,
         inits_and_teardowns_memory_caps,
         delegation_circuits_memory_caps,
+        memory_partial_trees,
         circuit_families_proofs,
         inits_and_teardowns_proofs,
         delegation_circuits_proofs,
@@ -521,6 +528,7 @@ fn assemble_result<A: fft::GoodAllocator>(
             circuit_families_memory_caps,
             inits_and_teardowns_memory_caps,
             delegation_circuits_memory_caps,
+            memory_partial_trees,
             num_trivial_unified_circuits: trivial_unified_inits_and_teardowns_count,
             inits_and_teardowns_top_bits,
             binary_handle: BinaryHandle(binary_key),
@@ -566,6 +574,7 @@ mod tests {
             binary_holder: &prover.binary_holders[&handle.0],
             external_challenges: None,
             proof_caps: &proof_caps,
+            proof_partial_trees: Default::default(),
         };
         context.build_work_request(
             &prover,

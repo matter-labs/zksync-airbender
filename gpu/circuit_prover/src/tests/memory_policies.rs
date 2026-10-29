@@ -216,7 +216,11 @@ gkr_recompute_test!(
 /// table must requalify these bytes; the fixture arena alone is not a fit claim.
 fn check_production_presets(fixture: &BasicUnrolledProofFixture) {
     let policies = [21usize << 30, 30usize << 30].map(|arena| {
-        let policy = presets::policy(fixture.base.circuit_type, arena);
+        let policy = presets::policy(
+            fixture.base.circuit_type,
+            crate::upstream::ProofProfile::Standard,
+            arena,
+        );
         eprintln!(
             "preset parity row: circuit={:?} preset_arena_bytes={arena} policy={policy:?}",
             fixture.base.circuit_type
@@ -271,7 +275,12 @@ fn virtual_bigint_opening_witness_policies_parity_and_reuse() {
     let fixture = super::proof_matrix::prepare_bigint_proof_fixture();
     // Materialize pairs exceed this existing 30 GiB fixture arena. Keep the
     // production GKR baseline while varying every opening/witness candidate.
-    let gkr = presets::policy(fixture.base.circuit_type, 30usize << 30).gkr;
+    let gkr = presets::policy(
+        fixture.base.circuit_type,
+        crate::upstream::ProofProfile::Standard,
+        30usize << 30,
+    )
+    .gkr;
     let openings = [
         OpeningStrategy::InPlace,
         OpeningStrategy::PerCoset,
@@ -415,7 +424,11 @@ fn geometry_guard_g_check_policies(
     for arena in [21usize << 30, 30usize << 30] {
         assert_ne!(
             second,
-            presets::policy(fixture.base.circuit_type, arena),
+            presets::policy(
+                fixture.base.circuit_type,
+                crate::upstream::ProofProfile::Standard,
+                arena
+            ),
             "the second policy is an explicit nonpreset test tuple"
         );
     }

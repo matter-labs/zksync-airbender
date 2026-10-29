@@ -916,3 +916,6 @@ fn cpu_native_feeder_a_accepts_a_valid_stream_and_rejects_trailing_words() {
     let error = FeederProfile::A.native_verify(stream).unwrap_err();
     assert!(error.contains("1 trailing words"), "{error}");
 }
+
+#[cfg(feature = "gpu")]
+pub(super) mod gpu;

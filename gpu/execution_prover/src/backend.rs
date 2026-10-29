@@ -1,6 +1,6 @@
 use crate::config::GpuBackendConfiguration;
 use crate::host_storage::{LockedBoxedMemoryHolder, LockedBoxedTraceChunk};
-use crate::precomputations::CircuitPrecomputations;
+use crate::precomputations::{validate_profiles, CircuitPrecomputations};
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, SecurityLevel};
 use crate::workers::gpu_manager::GpuManager;
 use crate::A;
@@ -11,9 +11,8 @@ use execution_prover::config::ExecutionProverConfiguration;
 use execution_prover::config::{ProvingSelection, SelectionError, SoundnessMode};
 use execution_prover::messages::WorkBatch;
 use execution_prover::setup::CanonicalCircuitSetup;
-use execution_prover::{ExecutionKind, ProofProfile};
+use execution_prover::ProofProfile;
 use execution_prover_model::circuit_type::CircuitType;
-use execution_prover_model::MachineType;
 use gpu_core::primitives::field::BF;
 use riscv_transpiler::jit::JitRunnerRam;
 use std::sync::Arc;
@@ -21,12 +20,13 @@ use worker::Worker;
 
 impl CircuitPrecomputation for CircuitPrecomputations {
     fn compiled_circuit(&self) -> &Arc<GKRCircuitArtifact<BF>> {
-        self.gkr_programs.compiled_circuit()
+        self.baby_bear().gkr_programs.compiled_circuit()
     }
 
-    fn setup_cap(&self, _profile: ProofProfile) -> Option<MerkleTreeCapVarLength> {
-        self.setup_host
-            .get_initialized()
+    fn setup_cap(&self, profile: ProofProfile) -> Option<MerkleTreeCapVarLength> {
+        self.baby_bear()
+            .setup_host
+            .get_initialized(profile)
             .map(|setup_host| MerkleTreeCapVarLength {
                 cap: setup_host.unified_tree_cap().to_vec(),
             })
@@ -83,10 +83,6 @@ impl ExecutionBackend for GpuBackend {
         self.extra_trace_blocks
     }
 
-    fn admit_binary(&self, kind: ExecutionKind, _machine: MachineType, profiles: &[ProofProfile]) {
-        assert_supported_registration(kind, profiles);
-    }
-
     fn prepare(
         &self,
         circuit: CircuitType,
@@ -111,10 +107,12 @@ impl ExecutionBackend for GpuBackend {
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
         selection: ProvingSelection,
-        _profiles: &[ProofProfile],
+        profiles: &[ProofProfile],
     ) -> Result<Self::Precomputations, SelectionError> {
-        // `admit_binary` has already restricted this backend to `ProofProfile::Standard`.
-        CircuitPrecomputations::from_canonical(circuit, setup, selection)
+        let profiles: Vec<ProofProfile> = validate_profiles(circuit, &setup, profiles)
+            .into_iter()
+            .collect();
+        CircuitPrecomputations::from_canonical(circuit, setup, selection, &profiles)
     }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {
@@ -134,46 +132,6 @@ mod tests {
                 ..ProvingSelection::default()
             };
             assert_eq!(GpuBackend::validate_selection(selection), Ok(()));
-        }
-    }
-}
-
-fn assert_supported_registration(kind: ExecutionKind, profiles: &[ProofProfile]) {
-    assert!(
-        matches!(kind, ExecutionKind::Unrolled | ExecutionKind::Unified),
-        "GPU backend does not support this CPU-only execution kind"
-    );
-    assert!(
-        profiles
-            .iter()
-            .all(|profile| *profile == ProofProfile::Standard),
-        "GPU backend only supports ProofProfile::Standard"
-    );
-}
-
-#[cfg(test)]
-mod cpu_tests {
-    use super::*;
-
-    #[test]
-    fn l1_registration_is_rejected_before_setup() {
-        for kind in [ExecutionKind::Unified22, ExecutionKind::L1Wrap21] {
-            assert!(std::panic::catch_unwind(|| assert_supported_registration(
-                kind,
-                &[ProofProfile::Standard]
-            ))
-            .is_err());
-        }
-        for profile in [
-            ProofProfile::L1Feeder,
-            ProofProfile::L1FeederA,
-            ProofProfile::L1Wrap,
-        ] {
-            assert!(std::panic::catch_unwind(|| assert_supported_registration(
-                ExecutionKind::Unified,
-                &[profile]
-            ))
-            .is_err());
         }
     }
 }

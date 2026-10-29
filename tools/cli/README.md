@@ -213,7 +213,7 @@ cargo run --release -p cli -- verify \
 proves the L1 feeder verifier's execution as one Proth120 packed unified proof
 with Keccak commitments, the proof shape the EVM verifier consumes. The
 artifact (schema 6) keeps the BabyBear feeder sidecar and adds the `l1` bundle
-(proof and operation-mode data).
+(proof and `operation_mode` data).
 
 ```bash
 cargo run --release -p cli -- continue-proof \
@@ -224,14 +224,24 @@ cargo run --release -p cli -- continue-proof \
   --output-dir output \
   --output-file l1.json
 
+# The GPU backend produces the same bundle.
+cargo run --release -p cli --features gpu -- continue-proof \
+  --proof output/l1_feeder.json \
+  --bin examples/basic_fibonacci/app.bin \
+  --target l1 \
+  --backend gpu \
+  --gpu-memory-preset 21gib \
+  --output-dir output \
+  --output-file l1.json
+
 cargo run --release -p cli -- verify \
   --proof output/l1.json \
   --bin examples/basic_fibonacci/app.bin
 ```
 
 There is no native verifier for the Proth120 proof: `verify` on an L1 artifact
-checks the feeder sidecar, the recursion chain and the bundle's packing
-parameters, and says that the Proth proof was not verified.
+checks the feeder sidecar, the recursion chain and the bundle's operation mode,
+and says that the Proth proof was not verified.
 
 ## Prove Batch
 

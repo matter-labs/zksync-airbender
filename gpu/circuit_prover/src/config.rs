@@ -17,11 +17,11 @@
 //! domain type with no `ProverConfig`/`SecurityLevel` coupling.
 
 use crate::upstream::{
-    pow_bits, BaseCommitmentGeometry, ConfigSelectionError, GKRCircuitArtifact, ProverConfig,
-    ProvingSelection, SecurityLevel,
+    pow_bits, BaseCommitmentGeometry, ConfigSelectionError, GKRCircuitArtifact, ProofProfile,
+    ProverConfig, ProvingSelection, SecurityLevel,
 };
 use gpu_core::primitives::field::{BF, E4};
-use gpu_trace::witness::circuit_type::{CircuitType, UnrolledCircuitType};
+use gpu_trace::witness::circuit_type::CircuitType;
 
 /// Security levels the GPU prover supports.
 pub const GPU_SUPPORTED_SECURITY_LEVELS: [SecurityLevel; 1] = [SecurityLevel::Sec100];
@@ -58,6 +58,23 @@ pub fn prover_config_for_selection(
     circuit_type.try_prover_config_in_mode(compiled_circuit, selection)
 }
 
+/// [`prover_config_for_selection`] for one declared `profile`: `Standard` resolves the
+/// selected mode from the compiled columns; the L1 profiles use their special configs, which
+/// exist only under `PessimisticConjecture` (deferred-scope `UnsupportedSpecialConfigMode`).
+pub fn prover_config_for_profile_selection(
+    circuit_type: CircuitType,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    profile: ProofProfile,
+    selection: ProvingSelection,
+) -> Result<ProverConfig, ConfigSelectionError> {
+    match profile {
+        ProofProfile::Standard => {
+            prover_config_for_selection(circuit_type, compiled_circuit, selection)
+        }
+        l1 => l1.try_prover_config(circuit_type.get_domain_size_log2() as usize, selection),
+    }
+}
+
 /// Pessimistic-conjecture `ProverConfig` for `circuit_type` at
 /// `security_level`: the circuit definition's own config, equal to
 /// [`prover_config_for_selection`] in that mode.
@@ -66,28 +83,20 @@ pub fn prover_config_for_selection(
 /// unsupported variant, so both arms are `Ok`).
 pub fn prover_config(
     circuit_type: CircuitType,
+    profile: ProofProfile,
     security_level: SecurityLevel,
 ) -> Result<ProverConfig, UnsupportedGpuSecurityLevel> {
-    assert_supported_circuit(circuit_type);
-    Ok(config_for_supported_level(circuit_type, security_level))
-}
-
-/// Reject CPU-only circuit types before setup allocation or GPU transfers.
-pub fn assert_supported_circuit(circuit: CircuitType) {
-    assert!(
-        !matches!(
-            circuit,
-            CircuitType::L1Wrap21 | CircuitType::Unrolled(UnrolledCircuitType::Unified22)
-        ),
-        "GPU backend does not support this CPU-only circuit type"
-    );
+    Ok(if profile == ProofProfile::Standard {
+        config_for_supported_level(circuit_type, security_level)
+    } else {
+        profile.prover_config(circuit_type.get_domain_size_log2() as usize, security_level)
+    })
 }
 
 fn config_for_supported_level(
     circuit_type: CircuitType,
     security_level: SecurityLevel,
 ) -> ProverConfig {
-    // the circuit definition's own config (`CircuitType::prover_config`)
     circuit_type.prover_config(security_level)
 }
 
@@ -120,3 +129,74 @@ pub(crate) fn batched_proximity_check_pow_bits_for_geometry(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod l1_profile_tests {
+    use super::*;
+    use gpu_trace::witness::circuit_type::UnrolledCircuitType;
+    #[test]
+    fn cpu_l1_profile_configs() {
+        use gpu_trace::witness::circuit_type::{
+            DelegationCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType,
+        };
+        let geometry = |config: &ProverConfig| {
+            (
+                config.trace_len_log2,
+                config.lde_factor(),
+                config.cap_size,
+                config.base_oracles_values_per_leaf(),
+            )
+        };
+        for &level in GPU_SUPPORTED_SECURITY_LEVELS.iter() {
+            let feeder = prover_config(
+                CircuitType::Unrolled(UnrolledCircuitType::Unified22),
+                ProofProfile::L1Feeder,
+                level,
+            )
+            .unwrap();
+            assert_eq!(geometry(&feeder), (22, 16, 16, 2));
+            let feeder_a = prover_config(
+                CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                ProofProfile::L1FeederA,
+                level,
+            )
+            .unwrap();
+            assert_eq!(geometry(&feeder_a), (23, 4, 4, 2));
+            let wrap = prover_config(CircuitType::L1Wrap21, ProofProfile::L1Wrap, level).unwrap();
+            assert_eq!(geometry(&wrap), (21, 128, 8, 2));
+            assert_eq!(wrap.security_level, level);
+            let circuits = DelegationCircuitType::get_all_delegation_types()
+                .iter()
+                .map(|&circuit| CircuitType::Delegation(circuit))
+                .chain(
+                    [
+                        UnrolledCircuitType::InitsAndTeardowns,
+                        UnrolledCircuitType::Memory(
+                            UnrolledMemoryCircuitType::LoadStoreSubwordOnly,
+                        ),
+                        UnrolledCircuitType::Memory(UnrolledMemoryCircuitType::LoadStoreWordOnly),
+                        UnrolledCircuitType::NonMemory(
+                            UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+                        ),
+                        UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::JumpBranchSlt),
+                        UnrolledCircuitType::NonMemory(
+                            UnrolledNonMemoryCircuitType::MulDivUnsigned,
+                        ),
+                        UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::ShiftBinary),
+                        UnrolledCircuitType::Unified,
+                        UnrolledCircuitType::Unified22,
+                    ]
+                    .map(CircuitType::Unrolled),
+                );
+            for circuit in circuits {
+                let actual = prover_config(circuit, ProofProfile::Standard, level).unwrap();
+                let expected = circuit.prover_config(level);
+                assert_eq!(
+                    format!("{actual:?}"),
+                    format!("{expected:?}"),
+                    "{circuit:?}"
+                );
+            }
+        }
+    }
+}

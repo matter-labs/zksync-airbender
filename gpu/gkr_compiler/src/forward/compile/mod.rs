@@ -15,13 +15,18 @@ use super::isa::{DstLine, Instr, OperandField, OperandLine, Program};
 use super::stats::CompileStats;
 use crate::analysis::build_cross_layer_field_map;
 use crate::forward::artifact::{ForwardLayerArtifact, ForwardSearchArtifact};
-use crate::forward::BF_LANES_PER_E4_BUCKET;
+use crate::forward::ElementModel;
 use gkr_eval_ir::{DagCircuit, DagLayer, FieldKind, ReadPlace, SinkInfo, SinkKind};
 use std::collections::HashMap;
 
-fn tally_dram_traffic(op: &OperandLine, field: OperandField, traffic: &mut usize) {
+fn tally_dram_traffic(
+    op: &OperandLine,
+    field: OperandField,
+    traffic: &mut usize,
+    model: ElementModel,
+) {
     if matches!(op, OperandLine::Source { .. }) {
-        *traffic += field.lanes();
+        *traffic += field.lanes(model);
     }
 }
 
@@ -80,11 +85,21 @@ pub(crate) fn compile_layer(
     cross_layer_fields: &HashMap<ReadPlace, FieldKind>,
     schedule: &ForwardLayerArtifact,
     budget: usize,
+    model: ElementModel,
 ) -> Result<CompiledLayerBuild, CompileError> {
     const FILL: usize = 1 << 20;
     let decisions = SiteDecisions::new(schedule.sites.iter().copied());
-    let at =
-        |lb: usize| compile_layer_at(layer, cross_layer_fields, schedule, budget, lb, &decisions);
+    let at = |lb: usize| {
+        compile_layer_at(
+            layer,
+            cross_layer_fields,
+            schedule,
+            budget,
+            lb,
+            &decisions,
+            model,
+        )
+    };
     match at(FILL) {
         Ok(c) => return Ok(c),
         Err(CompileError::BudgetBelowFloor { .. }) => {}
@@ -114,6 +129,7 @@ fn compile_layer_at(
     place_budget: usize,
     lower_budget: usize,
     decisions: &SiteDecisions,
+    model: ElementModel,
 ) -> Result<CompiledLayerBuild, CompileError> {
     let mut ctx = DagForwardContext::default();
     let compute_roots = build_compute_roots(layer);
@@ -125,18 +141,19 @@ fn compile_layer_at(
         &compute_roots,
         decisions,
         lower_budget,
+        model,
     )?;
 
     // Value-preserving peephole optimization.
     let vinstrs = self::optimize::optimize_vinstrs(vinstrs, &widths);
 
-    let cell_of = plan_placement(&vinstrs, &widths, place_budget)?;
+    let cell_of = plan_placement(&vinstrs, &widths, place_budget, model)?;
 
     let mut program = Program::default();
     for (i, vi) in vinstrs.iter().enumerate() {
         program
             .instrs
-            .push(materialize_vinstr(vi, i, &cell_of, &widths)?);
+            .push(materialize_vinstr(vi, i, &cell_of, &widths, model)?);
     }
 
     // Bind logical reads to source windows.
@@ -150,21 +167,21 @@ fn compile_layer_at(
         match instr {
             Instr::Mov { src, field, .. } => {
                 if let Some(op) = src {
-                    tally_dram_traffic(op, *field, &mut stats.dram_traffic);
+                    tally_dram_traffic(op, *field, &mut stats.dram_traffic, model);
                 }
             }
             Instr::Add {
                 field, operands, ..
             } => {
                 for op in operands {
-                    tally_dram_traffic(op, *field, &mut stats.dram_traffic);
+                    tally_dram_traffic(op, *field, &mut stats.dram_traffic, model);
                 }
             }
             Instr::Mul {
                 field, operands, ..
             } => {
                 for op in operands {
-                    tally_dram_traffic(op, *field, &mut stats.dram_traffic);
+                    tally_dram_traffic(op, *field, &mut stats.dram_traffic, model);
                 }
             }
             Instr::Fma {
@@ -174,8 +191,8 @@ fn compile_layer_at(
                 ..
             } => {
                 for (l, r) in pairs {
-                    tally_dram_traffic(l, *field_lhs, &mut stats.dram_traffic);
-                    tally_dram_traffic(r, *field_rhs, &mut stats.dram_traffic);
+                    tally_dram_traffic(l, *field_lhs, &mut stats.dram_traffic, model);
+                    tally_dram_traffic(r, *field_rhs, &mut stats.dram_traffic, model);
                 }
             }
         }
@@ -185,19 +202,24 @@ fn compile_layer_at(
         program,
         ctx,
         budget_lanes: place_budget,
+        model,
         stats,
     })
 }
 
 /// Convert an allocator lane to the field-dependent shared-memory wire index.
-fn smem_wire_index(lane: u16, field: OperandField) -> Result<u16, CompileError> {
+fn smem_wire_index(
+    lane: u16,
+    field: OperandField,
+    model: ElementModel,
+) -> Result<u16, CompileError> {
     match field {
         OperandField::Base => Ok(lane),
         OperandField::Ext => {
-            if !lane.is_multiple_of(4) {
+            if !lane.is_multiple_of(model.bf_lanes_per_bucket as u16) {
                 return Err(CompileError::ExtCellMisaligned(lane));
             }
-            Ok(lane / 4)
+            Ok(lane / model.bf_lanes_per_bucket as u16)
         }
     }
 }
@@ -208,6 +230,7 @@ fn materialize_vinstr(
     i: usize,
     cell_of: &HashMap<ValueId, u16>,
     widths: &HashMap<ValueId, OperandField>,
+    model: ElementModel,
 ) -> Result<Instr, CompileError> {
     let lane_of = |v: &ValueId, field: OperandField| -> Result<u16, CompileError> {
         if widths.get(v).copied() != Some(field) {
@@ -223,7 +246,7 @@ fn materialize_vinstr(
     let op_of = |op: &VirtualOp, field: OperandField| -> Result<OperandLine, CompileError> {
         match op {
             VirtualOp::Value(v) => Ok(OperandLine::Smem {
-                cell: smem_wire_index(lane_of(v, field)?, field)?,
+                cell: smem_wire_index(lane_of(v, field)?, field, model)?,
             }),
             VirtualOp::Global { slot, col } => Ok(OperandLine::LogicalGlobal {
                 slot: *slot,
@@ -284,7 +307,7 @@ fn materialize_vinstr(
             let dst = match dst {
                 None => None,
                 Some(VDst::Cell(v)) => Some(DstLine::Smem {
-                    cell: smem_wire_index(lane_of(v, *field)?, *field)?,
+                    cell: smem_wire_index(lane_of(v, *field)?, *field, model)?,
                 }),
                 Some(VDst::GlobalMaterialize { slot, col }) => Some(DstLine::GlobalMaterialize {
                     slot: *slot,
@@ -309,8 +332,9 @@ fn materialize_vinstr(
 pub(crate) fn compile_circuit(
     dag: &DagCircuit,
     schedule: &ForwardSearchArtifact,
+    model: ElementModel,
 ) -> Result<Vec<CompiledLayerBuild>, CompileError> {
-    let budget_lanes = schedule.budget_buckets * BF_LANES_PER_E4_BUCKET;
+    let budget_lanes = schedule.budget_buckets * model.bf_lanes_per_bucket as usize;
     let cross = build_cross_layer_field_map(dag);
     let mut layers = Vec::with_capacity(dag.layers.len());
     for (li, layer) in dag.layers.iter().enumerate() {
@@ -320,10 +344,11 @@ pub(crate) fn compile_circuit(
                 program: Program::default(),
                 ctx: DagForwardContext::default(),
                 budget_lanes,
+                model,
                 stats: CompileStats::default(),
             });
         } else {
-            layers.push(compile_layer(layer, &cross, ls, budget_lanes)?);
+            layers.push(compile_layer(layer, &cross, ls, budget_lanes, model)?);
         }
     }
     Ok(layers)

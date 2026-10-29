@@ -85,28 +85,6 @@ fn malformed_l1_envelopes_fail_verify_and_continuation_before_loading_programs()
 }
 
 #[test]
-fn l1_activation_rejects_gpu_before_registration() {
-    for target in [ProofTarget::L1, ProofTarget::L1Feeder] {
-        let error = ProgramProver::new(
-            unused_source(),
-            ProgramProverConfig {
-                target,
-                backend: ProverBackend::Gpu,
-                ..Default::default()
-            },
-        )
-        .err()
-        .expect(
-            "GPU L1 targets must be rejected before reading the source or registering binaries",
-        );
-        assert_eq!(
-            error,
-            format!("ProofTarget::{target:?} is not supported by the GPU backend")
-        );
-    }
-}
-
-#[test]
 fn l1_bundle_rejects_unknown_wrap_version() {
     let mut json = serde_json::to_value(L1Bundle::from_result(result())).unwrap();
     json["wrap"] = "unknown_wrap".into();

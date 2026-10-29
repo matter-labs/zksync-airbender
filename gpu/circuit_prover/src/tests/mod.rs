@@ -72,6 +72,7 @@ mod asserts;
 mod commit_memory;
 mod fixtures;
 mod inits_and_teardowns;
+mod l1_reference;
 mod lsb_commit_pipeline;
 mod memory_policies;
 mod packed_proof;
@@ -249,7 +250,13 @@ impl BasicUnrolledFixture {
         let setup_transfer = self
             .gpu_setup_host
             .as_ref()
-            .map(|host| GpuGKRSetupTransfer::new(Arc::clone(host), context))
+            .map(|host| {
+                GpuGKRSetupTransfer::new(
+                    Arc::clone(host),
+                    gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                    context,
+                )
+            })
             .transpose()?;
         let decoder_transfer = if self.compiled_circuit.has_decoder_lookup {
             Some(DecoderTableTransfer::new(
@@ -344,6 +351,7 @@ impl BasicUnrolledFixture {
             transfers,
             &dr_tail_plan,
             self.memory_policy(),
+            crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
             &self.context,
         )
     }
@@ -362,6 +370,7 @@ impl BasicUnrolledFixture {
             self.final_trace_size_log_2,
             era_cudart::device::get_device()?,
             policy,
+            gpu_trace::trace::holder::PartialTreePolicy::DEFAULT,
             self.context
                 .ntt_device_context()
                 .whir_leaf_transform_params()
@@ -370,7 +379,11 @@ impl BasicUnrolledFixture {
     }
 
     fn memory_policy(&self) -> ProofMemoryPolicy {
-        presets::policy(self.circuit_type, self.context.get_mem_size())
+        presets::policy(
+            self.circuit_type,
+            ProofProfile::Standard,
+            self.context.get_mem_size(),
+        )
     }
 
     fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static>> {
@@ -398,6 +411,7 @@ impl BasicUnrolledFixture {
             transfers,
             &dr_tail_plan,
             policy,
+            crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
             &self.context,
         )?;
         let mem_after_prove = self.context.get_used_mem_current();

@@ -274,8 +274,12 @@ pub(super) fn finish_proof_fixture(
     eprintln!("fixture: tracing host ready");
 
     let compute_memory_tree_caps_for_fixture = || {
-        let mut setup_transfer =
-            GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
+        let mut setup_transfer = GpuGKRSetupTransfer::new(
+            Arc::clone(&gpu_setup_host),
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+            &context,
+        )
+        .unwrap();
         let mut decoder_transfer = if compiled_circuit.has_decoder_lookup {
             Some(DecoderTableTransfer::new(Arc::clone(&decoder_table_host), &context).unwrap())
         } else {
@@ -311,6 +315,7 @@ pub(super) fn finish_proof_fixture(
             decoder_transfer.as_ref().map(|t| &t.data_device[..]),
             &tracing_data_transfer.data_device,
             &prover_config,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             &context,
         )
         .unwrap();
@@ -570,7 +575,9 @@ pub(super) fn finish_proof_fixture_memory(
     };
 
     let fixture_circuit_type = circuit_type;
-    let prover_config = crate::config::prover_config(fixture_circuit_type, security_level).unwrap();
+    let prover_config =
+        crate::config::prover_config(fixture_circuit_type, ProofProfile::Standard, security_level)
+            .unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = CpuGKRSetup::construct(
         table_driver,
@@ -659,8 +666,12 @@ pub(super) fn finish_proof_fixture_memory(
     eprintln!("fixture(memory): tracing host ready");
 
     let compute_memory_tree_caps_for_fixture = || {
-        let mut setup_transfer =
-            GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
+        let mut setup_transfer = GpuGKRSetupTransfer::new(
+            Arc::clone(&gpu_setup_host),
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+            &context,
+        )
+        .unwrap();
         let mut decoder_transfer = if compiled_circuit.has_decoder_lookup {
             Some(DecoderTableTransfer::new(Arc::clone(&decoder_table_host), &context).unwrap())
         } else {
@@ -693,6 +704,7 @@ pub(super) fn finish_proof_fixture_memory(
             decoder_transfer.as_ref().map(|t| &t.data_device[..]),
             &tracing_data_transfer.data_device,
             &prover_config,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             &context,
         )
         .unwrap();

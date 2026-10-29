@@ -23,6 +23,10 @@ pub struct GkrReplay {
     pub layers: Vec<LayerPoints>,
     /// The reconstructed seed after the WHIR batching draw.
     pub handoff_seed: [u8; 32],
+    /// Base claim point followed by the physical-packing coordinates.
+    pub handoff_point: Vec<Proth120>,
+    /// The WHIR batching challenge reconstructed from the CPU transcript.
+    pub batching_challenge: Proth120,
 }
 
 fn draw(seed: &mut Keccak256Seed, n: usize) -> Vec<Proth120> {
@@ -162,7 +166,7 @@ pub fn replay_gkr_points(
         layers.push(lp);
     }
 
-    draw(&mut seed, config.pack_log2()); // packing coordinates
+    point.extend(draw(&mut seed, config.pack_log2())); // packing coordinates
     Keccak256Transcript::verify_pow(&mut seed, proof.whir_proof.batching_challenge_pow_nonce, 0);
     let gamma = draw(&mut seed, 1)[0]; // WHIR batching
                                        // #584 removed the prover's optional handoff-seed snapshot. Bind the
@@ -197,5 +201,7 @@ pub fn replay_gkr_points(
     GkrReplay {
         layers,
         handoff_seed: seed.0,
+        handoff_point: point,
+        batching_challenge: gamma,
     }
 }

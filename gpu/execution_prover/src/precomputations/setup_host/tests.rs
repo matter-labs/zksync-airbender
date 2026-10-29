@@ -42,9 +42,15 @@ fn setup() -> CpuGKRSetup<BF> {
 fn cpu_setup_cache_identity_binds_complete_base_geometry_before_initialization() {
     let cfg = config();
     let geometry = BaseCommitmentGeometry::from_config(&cfg, columns()).unwrap();
-    let cache = LazyGpuGKRSetupHost::new(setup(), geometry);
-    cache.validate_config(&cfg, columns());
-    assert_eq!(cache.base_commitment_geometry(), geometry);
+    let cache = LazyGpuGKRSetupHost::new(
+        setup(),
+        BTreeMap::from([(ProofProfile::Standard, geometry)]),
+    );
+    cache.validate_config(ProofProfile::Standard, &cfg, columns());
+    assert_eq!(
+        cache.base_commitment_geometry(ProofProfile::Standard,),
+        geometry
+    );
     for case in 0..5 {
         let mut wrong = cfg.clone();
         let mut counts = columns();
@@ -58,12 +64,16 @@ fn cpu_setup_cache_identity_binds_complete_base_geometry_before_initialization()
             }
             _ => counts.memory += 1,
         }
-        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(
-            || cache.validate_config(&wrong, counts)
-        ))
-        .is_err());
         assert!(
-            cache.inner.get().is_none(),
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| cache.validate_config(
+                ProofProfile::Standard,
+                &wrong,
+                counts,
+            )))
+            .is_err()
+        );
+        assert!(
+            cache.cache.published.get().is_none(),
             "rejected config must not initialize or pin setup"
         );
     }
@@ -82,7 +92,11 @@ fn cpu_setup_cache_rejects_bad_logical_sources_before_gpu_or_pinning() {
                     8
                 ]));
         }
-        assert!(std::panic::catch_unwind(|| LazyGpuGKRSetupHost::new(bad, geometry)).is_err());
+        assert!(std::panic::catch_unwind(|| LazyGpuGKRSetupHost::new(
+            bad,
+            BTreeMap::from([(ProofProfile::Standard, geometry)]),
+        ))
+        .is_err());
     }
 }
 
@@ -98,7 +112,12 @@ fn cpu_resolved_request_rejects_identity_and_mode_before_transfers() {
     use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
     let kind = CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression);
     let circuit = artifact("blake2_with_extended_control");
-    let config = gpu_circuit_prover::config::prover_config(kind, SecurityLevel::Sec100).unwrap();
+    let config = gpu_circuit_prover::config::prover_config(
+        kind,
+        prover::gkr::prover_config::ProofProfile::Standard,
+        SecurityLevel::Sec100,
+    )
+    .unwrap();
     let resolved = ResolvedProverConfig::new(kind, Arc::clone(&circuit), config.clone());
     resolved.validate_request(kind, SecurityLevel::Sec100, &circuit);
     assert_eq!(
@@ -199,7 +218,12 @@ fn cpu_worker_admission_rejects_metadata_before_transfer_construction() {
     use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
     let kind = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns);
     let circuit = artifact("inits_and_teardowns");
-    let config = gpu_circuit_prover::config::prover_config(kind, SecurityLevel::Sec100).unwrap();
+    let config = gpu_circuit_prover::config::prover_config(
+        kind,
+        prover::gkr::prover_config::ProofProfile::Standard,
+        SecurityLevel::Sec100,
+    )
+    .unwrap();
     let resolved = Arc::new(ResolvedProverConfig::new(
         kind,
         Arc::clone(&circuit),
@@ -210,21 +234,34 @@ fn cpu_worker_admission_rejects_metadata_before_transfer_construction() {
         CpuGKRSetup {
             hypercube_evals: vec![],
         },
-        resolved.geometry(),
+        BTreeMap::from([(ProofProfile::Standard, resolved.geometry())]),
     ));
-    assert!(cache.inner.set(None).is_ok());
-    let precomputations = CircuitPrecomputations {
+    assert!(cache
+        .cache
+        .published
+        .set(BTreeMap::from([(ProofProfile::Standard, None)]))
+        .is_ok());
+    let precomputations = BabyBearPrecomputations {
         gkr_programs: Arc::new(GkrPrograms::compile(kind, Arc::clone(&circuit)).unwrap()),
         setup_host: cache,
         decoder_host: None,
-        resolved_config: resolved,
+        resolved_configs: BTreeMap::from([(ProofProfile::Standard, resolved)]),
     };
     assert_eq!(
-        precomputations.setup_host.base_commitment_geometry(),
-        precomputations.resolved_config.geometry()
+        precomputations
+            .setup_host
+            .base_commitment_geometry(ProofProfile::Standard,),
+        precomputations
+            .resolved_config(ProofProfile::Standard)
+            .geometry()
     );
-    let (setup, memory) =
-        precomputations.admit_inputs_before_transfers(kind, SecurityLevel::Sec100, None, 27);
+    let (setup, memory) = precomputations.admit_inputs_before_transfers(
+        kind,
+        SecurityLevel::Sec100,
+        ProofProfile::Standard,
+        None,
+        27,
+    );
     assert!(setup.is_none() && memory.is_none());
     let caps = vec![
         MerkleTreeCapVarLength {
@@ -232,11 +269,18 @@ fn cpu_worker_admission_rejects_metadata_before_transfer_construction() {
         };
         config.lde_factor()
     ];
-    let (_, memory) =
-        precomputations.admit_inputs_before_transfers(kind, SecurityLevel::Sec100, Some(&caps), 27);
-    memory
-        .unwrap()
-        .validate_for_geometry(&precomputations.resolved_config.geometry());
+    let (_, memory) = precomputations.admit_inputs_before_transfers(
+        kind,
+        SecurityLevel::Sec100,
+        ProofProfile::Standard,
+        Some(&caps),
+        27,
+    );
+    memory.unwrap().validate_for_geometry(
+        &precomputations
+            .resolved_config(ProofProfile::Standard)
+            .geometry(),
+    );
 
     for case in 0..6 {
         let mut wrong = precomputations.clone();
@@ -253,8 +297,10 @@ fn cpu_worker_admission_rejects_metadata_before_transfer_construction() {
             2 => {
                 let mut cfg = config.clone();
                 cfg.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
-                wrong.resolved_config =
-                    Arc::new(ResolvedProverConfig::new(kind, Arc::clone(&circuit), cfg));
+                wrong.resolved_configs.insert(
+                    ProofProfile::Standard,
+                    Arc::new(ResolvedProverConfig::new(kind, Arc::clone(&circuit), cfg)),
+                );
             }
             3 => {
                 let mut columns = BaseColumns::of(&circuit);
@@ -263,7 +309,10 @@ fn cpu_worker_admission_rejects_metadata_before_transfer_construction() {
                     CpuGKRSetup {
                         hypercube_evals: vec![],
                     },
-                    BaseCommitmentGeometry::from_config(&config, columns).unwrap(),
+                    BTreeMap::from([(
+                        ProofProfile::Standard,
+                        BaseCommitmentGeometry::from_config(&config, columns).unwrap(),
+                    )]),
                 ));
             }
             4 => {
@@ -272,13 +321,18 @@ fn cpu_worker_admission_rejects_metadata_before_transfer_construction() {
             _ => {
                 let mut cfg = config.clone();
                 cfg.whir_schedule.base_round.fold_log2 = 0;
-                wrong.resolved_config =
-                    Arc::new(ResolvedProverConfig::new(kind, Arc::clone(&circuit), cfg));
+                wrong.resolved_configs.insert(
+                    ProofProfile::Standard,
+                    Arc::new(ResolvedProverConfig::new(kind, Arc::clone(&circuit), cfg)),
+                );
                 wrong.setup_host = Arc::new(LazyGpuGKRSetupHost::new(
                     CpuGKRSetup {
                         hypercube_evals: vec![],
                     },
-                    wrong.resolved_config.geometry(),
+                    BTreeMap::from([(
+                        ProofProfile::Standard,
+                        wrong.resolved_config(ProofProfile::Standard).geometry(),
+                    )]),
                 ));
             }
         }
@@ -288,6 +342,7 @@ fn cpu_worker_admission_rejects_metadata_before_transfer_construction() {
                 wrong.admit_inputs_before_transfers(
                     request_kind,
                     SecurityLevel::Sec100,
+                    ProofProfile::Standard,
                     Some(&supplied_caps),
                     27,
                 );
@@ -338,11 +393,14 @@ fn cpu_worker_virtual_requests_require_geometry_setup_before_transfers() {
         let cpu_setup = CpuGKRSetup {
             hypercube_evals: vec![column; geometry.logical_columns().setup],
         };
-        let precomputations = CircuitPrecomputations {
+        let precomputations = BabyBearPrecomputations {
             gkr_programs: Arc::new(GkrPrograms::compile(kind, Arc::clone(&circuit)).unwrap()),
-            setup_host: Arc::new(LazyGpuGKRSetupHost::new(cpu_setup, geometry)),
+            setup_host: Arc::new(LazyGpuGKRSetupHost::new(
+                cpu_setup,
+                BTreeMap::from([(ProofProfile::Standard, geometry)]),
+            )),
             decoder_host: None,
-            resolved_config: resolved,
+            resolved_configs: BTreeMap::from([(ProofProfile::Standard, resolved)]),
         };
         let caps = vec![
             MerkleTreeCapVarLength {
@@ -356,6 +414,7 @@ fn cpu_worker_virtual_requests_require_geometry_setup_before_transfers() {
                 precomputations.admit_inputs_before_transfers(
                     kind,
                     SecurityLevel::Sec100,
+                    ProofProfile::Standard,
                     caps,
                     27,
                 );
@@ -372,7 +431,7 @@ fn cpu_worker_virtual_requests_require_geometry_setup_before_transfers() {
         }
         // A matching virtual request reaches the existing setup-initialization
         // invariant, rather than a virtual guard. No pinning or transfer ran.
-        assert!(precomputations.setup_host.inner.get().is_none());
+        assert!(precomputations.setup_host.cache.published.get().is_none());
         {
             let wrong_kind = CircuitType::Unrolled(
                 gpu_trace::witness::circuit_type::UnrolledCircuitType::Unified,
@@ -382,6 +441,7 @@ fn cpu_worker_virtual_requests_require_geometry_setup_before_transfers() {
                 precomputations.admit_inputs_before_transfers(
                     wrong_kind,
                     SecurityLevel::Sec100,
+                    ProofProfile::Standard,
                     None,
                     27,
                 );
@@ -470,17 +530,24 @@ fn cpu_worker_merged_admission_rejects_before_transfer_construction() {
     let cpu_setup = || CpuGKRSetup {
         hypercube_evals: vec![Arc::clone(&setup_column); geometry.logical_columns().setup],
     };
-    let make_cache = |geometry| Arc::new(LazyGpuGKRSetupHost::new(cpu_setup(), geometry));
+    let make_cache = |geometry| {
+        Arc::new(LazyGpuGKRSetupHost::new(
+            cpu_setup(),
+            BTreeMap::from([(ProofProfile::Standard, geometry)]),
+        ))
+    };
     let cache = make_cache(geometry);
-    cache.validate_config(&config, BaseColumns::of(&circuit));
-    let precomputations = CircuitPrecomputations {
+    cache.validate_config(ProofProfile::Standard, &config, BaseColumns::of(&circuit));
+    let precomputations = BabyBearPrecomputations {
         gkr_programs: Arc::new(GkrPrograms::compile(kind, Arc::clone(&circuit)).unwrap()),
         setup_host: cache,
         decoder_host: None,
-        resolved_config: resolved,
+        resolved_configs: BTreeMap::from([(ProofProfile::Standard, resolved)]),
     };
     assert_eq!(
-        precomputations.setup_host.base_commitment_geometry(),
+        precomputations
+            .setup_host
+            .base_commitment_geometry(ProofProfile::Standard,),
         geometry
     );
     let caps = vec![
@@ -499,11 +566,14 @@ fn cpu_worker_merged_admission_rejects_before_transfer_construction() {
             }
             1 => {
                 request_kind = CircuitType::Delegation(D::Blake2GFunction);
-                wrong.resolved_config = Arc::new(ResolvedProverConfig::new(
-                    request_kind,
-                    Arc::clone(&circuit),
-                    config.clone(),
-                ));
+                wrong.resolved_configs.insert(
+                    ProofProfile::Standard,
+                    Arc::new(ResolvedProverConfig::new(
+                        request_kind,
+                        Arc::clone(&circuit),
+                        config.clone(),
+                    )),
+                );
                 "request circuit differs from GKR programs"
             }
             2 => {
@@ -523,36 +593,50 @@ fn cpu_worker_merged_admission_rejects_before_transfer_construction() {
             4 => {
                 let mut virtual_config = kind.prover_config(SecurityLevel::Sec100);
                 virtual_config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
-                wrong.resolved_config = Arc::new(ResolvedProverConfig::new(
-                    kind,
-                    Arc::clone(&circuit),
-                    virtual_config,
-                ));
+                wrong.resolved_configs.insert(
+                    ProofProfile::Standard,
+                    Arc::new(ResolvedProverConfig::new(
+                        kind,
+                        Arc::clone(&circuit),
+                        virtual_config,
+                    )),
+                );
                 "setup cache commitment geometry mismatch"
             }
             5 => {
                 let mut additional = packed_config(20, 2, SecurityLevel::Sec100);
                 additional.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
-                wrong.resolved_config = Arc::new(ResolvedProverConfig::new(
-                    kind,
-                    Arc::clone(&circuit),
-                    additional,
-                ));
+                wrong.resolved_configs.insert(
+                    ProofProfile::Standard,
+                    Arc::new(ResolvedProverConfig::new(
+                        kind,
+                        Arc::clone(&circuit),
+                        additional,
+                    )),
+                );
                 "setup cache commitment geometry mismatch"
             }
             6 => {
                 let mut separate = config.clone();
                 separate.commitment_mode = CommitmentMode::SeparateMemoryAndWitness;
-                wrong.resolved_config = Arc::new(ResolvedProverConfig::new(
-                    kind,
-                    Arc::clone(&circuit),
-                    separate,
-                ));
+                wrong.resolved_configs.insert(
+                    ProofProfile::Standard,
+                    Arc::new(ResolvedProverConfig::new(
+                        kind,
+                        Arc::clone(&circuit),
+                        separate,
+                    )),
+                );
                 "setup cache commitment geometry mismatch"
             }
             _ => {
                 wrong.setup_host = make_cache(geometry);
-                assert!(wrong.setup_host.inner.set(None).is_ok());
+                assert!(wrong
+                    .setup_host
+                    .cache
+                    .published
+                    .set(BTreeMap::from([(ProofProfile::Standard, None)]))
+                    .is_ok());
                 "missing setup producer"
             }
         };
@@ -561,7 +645,13 @@ fn cpu_worker_merged_admission_rejects_before_transfer_construction() {
         for caps in [None, Some(caps.as_slice())] {
             let constructed = std::cell::Cell::new(false);
             let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                wrong.admit_inputs_before_transfers(request_kind, SecurityLevel::Sec100, caps, 27);
+                wrong.admit_inputs_before_transfers(
+                    request_kind,
+                    SecurityLevel::Sec100,
+                    ProofProfile::Standard,
+                    caps,
+                    27,
+                );
                 constructed.set(true);
             }))
             .expect_err("invalid metadata was admitted");
@@ -576,7 +666,7 @@ fn cpu_worker_merged_admission_rejects_before_transfer_construction() {
                 "case {case} reached transfer construction"
             );
             assert!(
-                wrong.setup_host.cpu_setup.lock().unwrap().is_some(),
+                wrong.setup_host.cache.source.lock().unwrap().is_some(),
                 "rejection consumed the CPU setup"
             );
         }

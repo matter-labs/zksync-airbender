@@ -44,7 +44,7 @@ impl MainContinuationWindowShape {
     pub const BANKED_GROUP_IMMEDIATE: Self = Self(1 << 3);
     /// At least one grouped member has exactly [`ImmediateId::NEG_ONE`]. This
     /// is an ID predicate, distinct from R0's value-based
-    /// `WINDOW_NEG_ONE_IMMEDIATE` / `WINDOW_FLAG_NEGATE_COEFFICIENT` encoding.
+    /// `ElementModel::minus_one` / `WINDOW_FLAG_NEGATE_COEFFICIENT` encoding.
     pub const NEGATIVE_GROUP_IMMEDIATE: Self = Self(1 << 4);
 
     pub const fn bits(self) -> u16 {
@@ -73,7 +73,7 @@ pub struct MainContinuationWindowProgram {
     /// Candidates constructed from this program; selection uses runtime geometry/device.
     pub partitions: Vec<super::main_continuation_partitions::MainContinuationPartitionPlan>,
     pub c_init: Option<CoefficientRecipeId>,
-    pub immediates: Vec<u32>,
+    pub immediates: Vec<u128>,
     /// Dense by semantic source id, never by traversal position.
     pub sources: Vec<MainContinuationWindowSource>,
     pub shape: MainContinuationWindowShape,

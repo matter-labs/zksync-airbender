@@ -172,7 +172,12 @@ fn setup_host_transfer_and_logical_binding(fold: usize, pack_logs: &[usize]) {
                 (config.trace_len_log2, columns)
             );
             assert_eq!(host.base_commitment_geometry(), Some(geometry));
-            let mut transfer = GpuGKRSetupTransfer::new(host, &context).unwrap();
+            let mut transfer = GpuGKRSetupTransfer::new(
+                host,
+                gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                &context,
+            )
+            .unwrap();
             let h2d = gpu_prover_context::transfer::single_shot_h2d(
                 |t| transfer.schedule_transfer(t, &context),
                 &context,

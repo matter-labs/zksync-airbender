@@ -14,7 +14,8 @@ pub(crate) use gkr_eval_ir::{
 // -----------------------------------------------------------------------
 
 pub(crate) use cs::definitions::{
-    GKRAddress, VirtualSetupPoly, NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES,
+    split_timestamp, GKRAddress, VirtualSetupPoly,
+    NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
@@ -38,7 +39,7 @@ pub(crate) use field::{Field, FieldExtension, PrimeField};
 // `prover` — CPU prover types the GPU prover mirrors / interoperates with
 // -----------------------------------------------------------------------
 
-pub(crate) use prover::definitions::GKRExternalChallenges;
+pub(crate) use prover::definitions::{GKRExternalChallenges, SecurityLevel};
 pub(crate) use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 pub(crate) use prover::gkr::prover_config::commitment_geometry::{
     BaseCommitmentGeometry, BaseOracleRole,
@@ -47,8 +48,13 @@ pub(crate) use prover::gkr::prover_config::CommitmentMode;
 // Aliased to avoid collision with crate-local types of the same name.
 pub(crate) use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 pub(crate) use prover::gkr::prover::{
-    SumcheckIntermediateProofValues, SumcheckRoundCoefficients, WhirSchedule,
+    OperationMode, SumcheckIntermediateProofValues, SumcheckRoundCoefficients, WhirSchedule,
 };
+pub(crate) use prover::gkr::prover_config::example_configs::l1_wrap_2p21::EXPLICIT_OUTPUT_LOG2 as L1_WRAP_EXPLICIT_OUTPUT_LOG2;
+pub(crate) use prover::gkr::prover_config::pow_bits::{
+    lookup_challenges_pow_bits, lookup_identity_degree,
+};
+pub(crate) use prover::gkr::prover_config::ProverConfig;
 pub(crate) use prover::gkr::whir::{
     BaseFieldQuery, ExtensionFieldQuery, WhirBaseLayerCommitmentAndQueries, WhirCommitment,
     WhirIntermediateCommitmentAndQueries, WhirPolyCommitProof,
@@ -56,3 +62,8 @@ pub(crate) use prover::gkr::whir::{
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 #[cfg(test)]
 pub(crate) use prover::transcript::Seed;
+
+pub(crate) use field::proth120::Proth120 as PR;
+pub(crate) type GKRRelationPr = cs::gkr_compiler::GKRRelation<PR>;
+#[allow(unused_imports)]
+pub(crate) use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;

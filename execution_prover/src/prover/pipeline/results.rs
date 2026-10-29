@@ -11,6 +11,9 @@ pub(super) struct RequestContext<'a, B: ExecutionBackend> {
     pub(super) binary_holder: &'a BinaryHolder<B>,
     pub(super) external_challenges: Option<&'a GKRExternalChallenges<BF, E4>>,
     pub(super) proof_caps: &'a BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
+    /// Taken by the first proof request built for each instance; a later
+    /// duplicate of a cache-served request gets `None` and is never dispatched.
+    pub(super) proof_partial_trees: RefCell<BTreeMap<(CircuitType, usize), MemoryPartialTrees>>,
 }
 
 impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
@@ -97,6 +100,10 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                     .external_challenges
                     .expect("proof request construction requires external challenges"),
                 memory_caps,
+                memory_partial_trees: self
+                    .proof_partial_trees
+                    .borrow_mut()
+                    .remove(&(circuit_type, sequence_id)),
                 selection: prover.configuration.selection(),
                 profile,
             };
@@ -179,6 +186,7 @@ pub(super) struct ResultAccumulator<A: GoodAllocator> {
     pub(super) inits_and_teardowns_memory_caps: BTreeMap<usize, Vec<MerkleTreeCapVarLength>>,
     pub(super) delegation_circuits_memory_caps:
         BTreeMap<u32, BTreeMap<usize, Vec<MerkleTreeCapVarLength>>>,
+    pub(super) memory_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees>,
     pub(super) circuit_families_proofs: BTreeMap<u8, BTreeMap<usize, ScheduledProof>>,
     pub(super) inits_and_teardowns_proofs: BTreeMap<usize, ScheduledProof>,
     pub(super) delegation_circuits_proofs: BTreeMap<u32, BTreeMap<usize, ScheduledProof>>,
@@ -342,6 +350,7 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                     inits_and_teardowns,
                     tracing_data,
                     merkle_tree_caps,
+                    memory_partial_trees,
                 } = commitment;
                 trace!(
                     "BATCH[{batch_id}] PROVER received memory commitment for circuit {circuit_type:?}[{sequence_id}]"
@@ -379,6 +388,12 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                     },
                 };
                 assert!(caps.insert(sequence_id, merkle_tree_caps).is_none());
+                if let Some(trees) = memory_partial_trees {
+                    assert!(self
+                        .memory_partial_trees
+                        .insert((circuit_type, sequence_id), trees)
+                        .is_none());
+                }
             }
             WorkResult::Proof(proof) => {
                 assert!(proving);

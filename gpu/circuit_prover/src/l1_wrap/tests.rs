@@ -1,0 +1,439 @@
+use super::geometry::cpu_tests::wrap_geometry;
+use super::inputs::ALLOCATOR_BLOCK_BYTES;
+use super::*;
+use crate::config::GPU_SUPPORTED_SECURITY_LEVELS;
+use crate::proof::inputs::EXTERNAL_CHALLENGES_E4_LEN;
+use crate::proof::memory_policy::presets::{self, l1_feeder};
+use crate::proof::memory_policy::presets::{H2D_STAGING_BYTES, INPUTS_RESERVE_BYTES};
+use crate::upstream::OutputType;
+use crate::upstream::ProofProfile;
+use crate::upstream::{FinalRegisterValue, GKRCircuitArtifact, SecurityLevel};
+use cs::definitions::GKRAddress;
+use gpu_core::primitives::field::E4;
+use gpu_gkr::proth120::backward::max_coefficient_table_bytes;
+use gpu_gkr::proth120::packed_challenges::BOUNDARY_PREFIX_U32_LEN;
+use gpu_gkr::proth120::programs::GkrProgramsPr;
+use gpu_gkr::proth120::proof_layout::GkrProofFields;
+use gpu_hash::blake2s::Digest as Blake2sDigest;
+use gpu_prover_context::{ProverContextConfig, DEFAULT_H2D_STAGING_BYTES};
+use gpu_trace::trace::holder::resolve_partial_tree_reduction_layers;
+use gpu_trace::trace::memory_transfer::PartialTreesGeometry;
+use gpu_trace::witness::circuit_type::{CircuitType, UnrolledCircuitType};
+use gpu_whir::proth120::L1WhirProof;
+use prover::definitions::GKRExternalChallenges;
+use prover::gkr::prover::{SumcheckIntermediateProofValues, SumcheckRoundCoefficients};
+use prover::gkr::prover_config::example_configs::l1_wrap_2p21::EXTERNAL_CHALLENGES_POW_BITS;
+use std::alloc::Global;
+use std::collections::BTreeMap;
+use std::marker::PhantomData;
+use std::panic::{catch_unwind, AssertUnwindSafe};
+
+fn panic_message(f: impl FnOnce()) -> String {
+    let payload = catch_unwind(AssertUnwindSafe(f)).expect_err("expected a named panic");
+    payload
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| {
+            payload
+                .downcast_ref::<&str>()
+                .map(|message| message.to_string())
+        })
+        .expect("panic payload is a message")
+}
+
+fn production_mode() -> OperationMode {
+    OperationMode::SingleChunk {
+        external_challenges_pow_bits: EXTERNAL_CHALLENGES_POW_BITS,
+        register_final_state: [FinalRegisterValue {
+            value: 0,
+            last_access_timestamp: 0,
+        }; 32],
+        final_pc: 0,
+        final_timestamp: 0,
+    }
+}
+
+#[test]
+fn cpu_l1_inputs_fit_reserve() {
+    assert_eq!(
+        ALLOCATOR_BLOCK_BYTES,
+        1 << ProverContextConfig::default().allocator_block_log_size
+    );
+    let (geometry, _) = wrap_geometry(CircuitType::L1Wrap21);
+    let bytes = L1WrapInputs::<'static, Global>::phase_one_capacity_bytes(
+        &geometry,
+        crate::proof::memory_policy::presets::l1_wrap::PARTIAL_TREES.setup,
+    );
+    let mib = 1 << 20;
+    // Tracing data, I&T pages/values/timestamps, decoder, transcript prefix,
+    // then the setup's raw evaluations, packed monomials and depth-10 trees.
+    assert_eq!(bytes, (112 + 1 + 16 + 32 + 3 + 1 + 320 + 512 + 64) * mib);
+    assert!(bytes <= INPUTS_RESERVE_BYTES);
+}
+
+/// Most bytes an L1 wrap phase one stages: the transcript prefix and the
+/// coefficient tables without their zero-coefficient filtering.
+fn l1_wrap_staged_bytes_bound() -> usize {
+    let circuit: GKRCircuitArtifact<Proth120> = serde_json::from_str(include_str!(
+        "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json"
+    ))
+    .expect("committed Proth120 layout");
+    let num_sets = circuit.memory_layout.teardown_sets.len();
+    let programs = GkrProgramsPr::compile(CircuitType::L1Wrap21, std::sync::Arc::new(circuit))
+        .expect("L1Wrap21 programs");
+    (BOUNDARY_PREFIX_U32_LEN + num_sets) * size_of::<u32>() + max_coefficient_table_bytes(&programs)
+}
+
+/// Bytes an L1 feeder proof stages: the unified memory cap, the persisted memory
+/// partial trees, the inits-and-teardowns top bits and the external challenges.
+fn l1_feeder_proof_staged_bytes(
+    circuit: CircuitType,
+    profile: ProofProfile,
+    security: SecurityLevel,
+) -> usize {
+    let config =
+        crate::config::prover_config(circuit, profile, security).expect("L1 feeder config");
+    let log_domain_size = circuit.get_domain_size().trailing_zeros();
+    let log_lde_factor = config.lde_factor().trailing_zeros();
+    let log_rows_per_leaf = config.base_oracles_values_per_leaf().trailing_zeros();
+    let log_tree_cap_size = config.cap_size.trailing_zeros();
+    let trees = PartialTreesGeometry {
+        log_domain_size,
+        log_lde_factor,
+        log_rows_per_leaf,
+        log_tree_cap_size,
+        reduction_layers: resolve_partial_tree_reduction_layers(
+            presets::partial_trees(circuit, profile).memory,
+            log_domain_size,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+        ),
+        columns_count: 0,
+    };
+    let trees_bytes = trees.cosets_count() * trees.coset_stride() * size_of::<Blake2sDigest>();
+    let expected_trees = match profile {
+        ProofProfile::L1Feeder => 2 << 20,
+        ProofProfile::L1FeederA => 1 << 20,
+        _ => panic!("{profile:?} is not a feeder profile"),
+    };
+    assert_eq!(
+        trees_bytes, expected_trees,
+        "{security:?} {profile:?} partial trees"
+    );
+    (1 << log_tree_cap_size) * size_of::<Blake2sDigest>()
+        + trees_bytes
+        + circuit.get_num_inits_and_teardowns_sets() * size_of::<u32>()
+        + EXTERNAL_CHALLENGES_E4_LEN * size_of::<E4>()
+}
+
+#[test]
+fn cpu_h2d_staging_is_the_largest_bundle_rounded_up() {
+    let wrap = l1_wrap_staged_bytes_bound();
+    let feeder = GPU_SUPPORTED_SECURITY_LEVELS
+        .into_iter()
+        .flat_map(|security| {
+            [
+                (UnrolledCircuitType::Unified22, ProofProfile::L1Feeder),
+                (UnrolledCircuitType::Unified, ProofProfile::L1FeederA),
+            ]
+            .map(|(circuit, profile)| {
+                l1_feeder_proof_staged_bytes(CircuitType::Unrolled(circuit), profile, security)
+            })
+        })
+        .max()
+        .unwrap();
+    let unit = DEFAULT_H2D_STAGING_BYTES;
+    assert_eq!(
+        H2D_STAGING_BYTES,
+        wrap.max(feeder).div_ceil(unit) * unit,
+        "staged bundles: L1 wrap {wrap} B, L1 feeder proof {feeder} B"
+    );
+    println!(
+        "L1 wrap stages up to {wrap} B; fits the {unit} B default staging buffer: {}",
+        wrap <= unit
+    );
+}
+
+#[test]
+fn cpu_l1_preflight() {
+    let circuit: GKRCircuitArtifact<Proth120> = serde_json::from_str(include_str!(
+        "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json"
+    ))
+    .expect("committed Proth120 layout");
+    let (geometry, config) = wrap_geometry(CircuitType::L1Wrap21);
+    assert_eq!(
+        L1_WRAP_NTT_LOG_MAX_DOMAIN as usize,
+        config.trace_len_log2 + config.pack_log2() + config.lde_factor().trailing_zeros() as usize
+    );
+    let cpu_batching_pow_bits = config.base_round().batching_pow_bits::<Proth120, Proth120>(
+        config.security_level.security_bits(),
+        config.whir_message_size_log2(),
+        prover::gkr::prover_config::pow_bits::committed_base_oracle_columns(
+            &circuit,
+            config.pack_log2(),
+            config.merged_memory_and_witness(),
+        ),
+    );
+    assert_eq!(cpu_batching_pow_bits, 13);
+    assert_eq!(
+        l1_wrap_batching_pow_bits(&config, &circuit),
+        cpu_batching_pow_bits
+    );
+    validate_l1_wrap_preconditions(
+        &geometry,
+        &config,
+        &production_mode(),
+        L1_WRAP_POLICY,
+        L1_WRAP_NTT_LOG_MAX_DOMAIN,
+    );
+    let recompute = ProofMemoryPolicy {
+        gkr: GkrMemoryPolicy::Recompute {
+            value_layers: 1,
+            cache_layers: 0,
+        },
+        ..L1_WRAP_POLICY
+    };
+    let standard = crate::config::prover_config(
+        CircuitType::Unrolled(gpu_trace::witness::circuit_type::UnrolledCircuitType::Unified),
+        ProofProfile::Standard,
+        SecurityLevel::Sec100,
+    )
+    .unwrap();
+    let mode_message = format!("L1Wrap21 requires OperationMode::SingleChunk with external_challenges_pow_bits {EXTERNAL_CHALLENGES_POW_BITS}");
+    let mut other_pack = config.clone();
+    other_pack.whir_schedule.base_round.physical_packing_log2 -= 1;
+    let mut other_commitment = config.clone();
+    other_commitment.commitment_mode = crate::upstream::CommitmentMode::SeparateMemoryAndWitness;
+    let mut other_pow = production_mode();
+    if let OperationMode::SingleChunk {
+        external_challenges_pow_bits,
+        ..
+    } = &mut other_pow
+    {
+        *external_challenges_pow_bits -= 1;
+    }
+    let cases: [(&ProverConfig, OperationMode, ProofMemoryPolicy, u32, String); 8] = [
+        (
+            &config,
+            production_mode(),
+            recompute,
+            L1_WRAP_NTT_LOG_MAX_DOMAIN,
+            "L1Wrap does not support GkrMemoryPolicy::Recompute".to_string(),
+        ),
+        (
+            &config,
+            production_mode(),
+            l1_feeder::POLICY,
+            L1_WRAP_NTT_LOG_MAX_DOMAIN,
+            format!(
+                "L1Wrap requires presets::l1_wrap::L1_WRAP_POLICY, got {:?}",
+                l1_feeder::POLICY
+            ),
+        ),
+        (
+            &standard,
+            production_mode(),
+            L1_WRAP_POLICY,
+            L1_WRAP_NTT_LOG_MAX_DOMAIN,
+            "L1Wrap21 requires the ProofProfile::L1Wrap prover config".to_string(),
+        ),
+        (
+            &config,
+            OperationMode::MultipleChunks,
+            L1_WRAP_POLICY,
+            L1_WRAP_NTT_LOG_MAX_DOMAIN,
+            mode_message.clone(),
+        ),
+        (
+            &other_pack,
+            production_mode(),
+            L1_WRAP_POLICY,
+            L1_WRAP_NTT_LOG_MAX_DOMAIN,
+            "L1Wrap21 requires the ProofProfile::L1Wrap prover config".to_string(),
+        ),
+        (
+            &other_commitment,
+            production_mode(),
+            L1_WRAP_POLICY,
+            L1_WRAP_NTT_LOG_MAX_DOMAIN,
+            "L1Wrap21 requires the ProofProfile::L1Wrap prover config".to_string(),
+        ),
+        (
+            &config,
+            other_pow,
+            L1_WRAP_POLICY,
+            L1_WRAP_NTT_LOG_MAX_DOMAIN,
+            mode_message,
+        ),
+        (
+            &config,
+            production_mode(),
+            L1_WRAP_POLICY,
+            L1_WRAP_NTT_LOG_MAX_DOMAIN - 1,
+            format!(
+                "L1Wrap requires a Proth120 NTT context with log_max_domain {L1_WRAP_NTT_LOG_MAX_DOMAIN}, got {}",
+                L1_WRAP_NTT_LOG_MAX_DOMAIN - 1
+            ),
+        ),
+    ];
+    for (config, mode, policy, log_max_domain, expected) in cases {
+        assert_eq!(
+            panic_message(|| validate_l1_wrap_preconditions(
+                &geometry,
+                config,
+                &mode,
+                policy,
+                log_max_domain
+            )),
+            expected
+        );
+    }
+}
+
+fn sentinel_gkr_fields() -> GkrProofFields {
+    let external = std::array::from_fn::<
+        _,
+        { GKRExternalChallenges::<Proth120, Proth120>::TOTAL_CHALLENGES },
+        _,
+    >(|index| Proth120(index as u128 + 1));
+    let final_explicit_evaluations = BTreeMap::from([
+        (
+            OutputType::PermutationProduct,
+            [vec![Proth120(21)], vec![Proth120(22)]],
+        ),
+        (
+            OutputType::InitsAndTeardownsProduct,
+            [
+                vec![Proth120(23), Proth120(24)],
+                vec![Proth120(25), Proth120(26)],
+            ],
+        ),
+    ]);
+    let sumcheck_intermediate_values = BTreeMap::from([(
+        3,
+        SumcheckIntermediateProofValues {
+            sumcheck_num_rounds: 1,
+            internal_round_coefficients: vec![SumcheckRoundCoefficients::Multilinear([
+                Proth120(31),
+                Proth120(32),
+                Proth120(33),
+                Proth120(34),
+            ])],
+            final_step_evaluations: BTreeMap::from([(
+                GKRAddress::ScratchSpace(2),
+                vec![Proth120(35), Proth120(36)],
+            )]),
+            extra_evaluations_from_caching_relations: BTreeMap::from([(
+                GKRAddress::Cached {
+                    layer: 1,
+                    offset: 4,
+                },
+                Proth120(37),
+            )]),
+            _marker: PhantomData,
+        },
+    )]);
+    GkrProofFields {
+        external_challenges: GKRExternalChallenges::from_slice(&external),
+        lookup_challenges_pow_nonce: 0x1122_3344_5566_7788,
+        final_explicit_evaluations,
+        sumcheck_intermediate_values,
+        grand_product_accumulator_computed: Proth120(41),
+        batched_proximity_check_pow_nonce: 0x8877_6655_4433_2211,
+        merged_claims: ((51..58).map(Proth120).collect(), vec![Proth120(58)]),
+        evaluation_point: (61..87).map(Proth120).collect(),
+        batching_challenge: Proth120(91),
+        intermediate_transcript_seed: [0xa5; 32],
+    }
+}
+
+fn sentinel_whir() -> L1WhirProof {
+    let oracle = |num_columns, evals| prover::gkr::whir::WhirBaseLayerCommitmentAndQueries {
+        commitment: Default::default(),
+        num_columns,
+        evals,
+        queries: vec![],
+    };
+    L1WhirProof {
+        setup_commitment: oracle(1, vec![Proth120(112)]),
+        memory_commitment: oracle(2, vec![Proth120(113), Proth120(114)]),
+        witness_commitment: oracle(3, vec![Proth120(115), Proth120(116), Proth120(117)]),
+        batching_challenge_pow_nonce: sentinel_gkr_fields().batched_proximity_check_pow_nonce,
+        base_sumcheck_polys: vec![[Proth120(103), Proth120(104), Proth120(105)]],
+        base_folding_pow_nonces: vec![],
+        base_queries_pow_nonce: 0x9988_7766_5544_3322,
+        intermediate_whir_oracles: vec![],
+        final_monomials: vec![Proth120(106), Proth120(107)],
+        whir_schedule: ProofProfile::L1Wrap
+            .prover_config(21, SecurityLevel::Sec100)
+            .whir_schedule,
+    }
+}
+
+#[test]
+fn cpu_l1_assembly() {
+    let gkr = sentinel_gkr_fields();
+    let whir = sentinel_whir();
+    let top_bits = vec![17, 23];
+    let mut mode = production_mode();
+    if let OperationMode::SingleChunk {
+        register_final_state,
+        final_pc,
+        final_timestamp,
+        ..
+    } = &mut mode
+    {
+        register_final_state[7].value = 0x1234_5678;
+        register_final_state[7].last_access_timestamp = 0x1020_3040;
+        *final_pc = 0x0506_0708;
+        *final_timestamp = 0x5060_7080;
+    }
+    let result = assemble_l1_proof(gkr.clone(), whir.clone(), top_bits.clone(), mode);
+    let proof = result.proof;
+    assert_eq!(proof.external_challenges, gkr.external_challenges);
+    assert_eq!(
+        proof.final_explicit_evaluations,
+        gkr.final_explicit_evaluations
+    );
+    assert_eq!(
+        serde_json::to_value(&proof.sumcheck_intermediate_values).unwrap(),
+        serde_json::to_value(&gkr.sumcheck_intermediate_values).unwrap(),
+    );
+    assert_eq!(
+        serde_json::to_value(&proof.whir_proof).unwrap(),
+        serde_json::to_value(&whir).unwrap()
+    );
+    assert_eq!(
+        proof.grand_product_accumulator_computed,
+        gkr.grand_product_accumulator_computed
+    );
+    assert_eq!(
+        proof.lookup_challenges_pow_nonce,
+        gkr.lookup_challenges_pow_nonce
+    );
+    assert_eq!(
+        proof.whir_proof.batching_challenge_pow_nonce,
+        gkr.batched_proximity_check_pow_nonce
+    );
+    assert_eq!(proof.inits_and_teardowns_top_bits, top_bits);
+    assert_eq!(
+        serde_json::to_value(result.operation_mode).unwrap(),
+        serde_json::to_value(mode).unwrap()
+    );
+}
+
+#[test]
+fn cpu_l1_batching_nonce_provenance() {
+    let gkr = sentinel_gkr_fields();
+    let nonce = gkr.batched_proximity_check_pow_nonce;
+    let mut whir = sentinel_whir();
+    whir.batching_challenge_pow_nonce = 0;
+    whir.base_queries_pow_nonce = !nonce;
+    let result = assemble_l1_proof(gkr, whir, vec![17, 23], production_mode());
+    assert_eq!(result.proof.whir_proof.batching_challenge_pow_nonce, nonce);
+    assert_ne!(
+        result.proof.whir_proof.batching_challenge_pow_nonce,
+        result.proof.whir_proof.base_queries_pow_nonce
+    );
+}

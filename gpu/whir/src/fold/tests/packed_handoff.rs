@@ -274,6 +274,7 @@ fn handoff_for_mode(k: usize, merged_mode: bool) {
             geometry,
             role,
             TreesCacheMode::CacheNone,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             &context,
         )
         .unwrap();

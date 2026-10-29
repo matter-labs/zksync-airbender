@@ -232,6 +232,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
 
     let prover_config = crate::config::prover_config(
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
+        ProofProfile::Standard,
         SecurityLevel::Sec100,
     )
     .unwrap();
