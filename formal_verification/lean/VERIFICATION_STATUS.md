@@ -38,10 +38,10 @@ memory composition and functional worker soundness remain open. A focused split
 memory proof now derives bounded timestamps for all physical reads and writes
 from public seed clocks, caller-derived worker clocks and the explicit RAM
 permutation. A generic grouped-clock lemma proves strict read-before-write order
-from a positive compiled read distance; connecting each imported theta/rho and
-chi5 group equation and control lookup to that lemma remains open. The first
-group's exact equations and Boolean borrow are already extracted from both
-cached and uncached theta/rho and chi5 artifacts.
+from a positive compiled read distance. All four theta/rho and six chi5 groups
+have exact clock equations and Boolean borrows extracted from both cache modes.
+The control lookups still need to establish positive distances and connect
+these equations to the strict-order and worker-effect proofs.
 
 Both cached and uncached native captures remain required. The checker migration
 must qualify all 22 capture configurations.
