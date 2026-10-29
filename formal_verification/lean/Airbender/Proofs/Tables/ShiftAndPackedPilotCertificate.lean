@@ -14,8 +14,6 @@ def check (data : Array Nat) : Bool :=
 def Fact (data : Array Nat) : Prop :=
   Airbender.Setup.Proofs.PackedBitwise.Fact .bitAnd data
 
-set_option maxRecDepth 131072
-set_option maxHeartbeats 0
 theorem ok : check byteAndPackedPilot = true := by decide +kernel
 
 theorem expectedRow_byte (row column : Nat) (hr : row < 256) (hc : column < 256) :

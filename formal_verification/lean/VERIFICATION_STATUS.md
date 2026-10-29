@@ -35,6 +35,9 @@ claim for all 65,536 outputs. Each packed import retains definitionally equal
 full source artifact bytes to its corresponding original source import. The
 existing Block and setup-prefix shards remain; these are four pilot columns,
 not a migration of the 22 configurations or a cold-build baseline.
+The shared bitwise checker and all three shift-table capture checks now
+elaborate with default heartbeats. The shared replication proof still requires
+a raised recursion limit.
 
 ## Supporting proved results
 
