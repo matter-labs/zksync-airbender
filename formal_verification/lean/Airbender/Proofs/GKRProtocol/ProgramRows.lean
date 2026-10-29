@@ -18,7 +18,8 @@ theorem native_decoder_rows_length {p : Nat} (config : Config)
     (mask : Mask) :
     (nativeDecoderRows (p := p) config initial text capacity fits family mask).length =
       capacity := by
-  simp [nativeDecoderRows, rows_length]
+  simp [nativeDecoderRows, nativeRows]
+  omega
 
 /-- A non-sentinel row of the program-derived decoder model has an actual
 Sail-decoded public entry of the selected native family. This is a logical
@@ -51,6 +52,36 @@ theorem active_member {p : Nat} (config : Config)
   · have hs : query = sentinel := (List.mem_replicate.mp padding).2
     exact (active hs).elim
 
+/-- Native rows include public delegation calls, whose virtual CSR cannot be
+represented by the ordinary five-bit rs2 metadata. -/
+theorem native_active_member {p : Nat} (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (capacity : Nat) (fits : text.length ≤ capacity)
+    (family : PooledFamily) (query : Vector (ZMod p) 9)
+    (member : query ∈ nativeRows config initial text capacity fits family)
+    (active : query ≠ sentinel) :
+    ∃ entry ∈ nativeProgramOf config initial text,
+      entry.family = family ∧ query = entry.query := by
+  rcases List.mem_append.mp member with source | padding
+  · rcases List.mem_map.mp source with ⟨pair, inText, rowEq⟩
+    rcases pair with ⟨bits, index⟩
+    cases entryEq : nativeEntry config initial bits index with
+    | none =>
+        have hs : query = sentinel := by simpa [nativeFamilyRow, entryEq] using rowEq.symm
+        exact (active hs).elim
+    | some entry =>
+        by_cases selected : entry.family = family
+        · have inProgram : entry ∈ nativeProgramOf config initial text := by
+            exact List.mem_filterMap.mpr ⟨(bits, index), inText, entryEq⟩
+          have hq : query = entry.query := by
+            simpa [nativeFamilyRow, entryEq, selected] using rowEq.symm
+          exact ⟨entry, inProgram, selected, hq⟩
+        · have hs : query = sentinel := by
+            simpa [nativeFamilyRow, entryEq, selected] using rowEq.symm
+          exact (active hs).elim
+  · have hs : query = sentinel := (List.mem_replicate.mp padding).2
+    exact (active hs).elim
+
 /-- A selected masked row comes from a Sail-decoded public entry whenever it
 is not the masked unsupported sentinel. This is independent of the text and
 mask values; equality to native setup columns remains a separate premise. -/
@@ -60,14 +91,14 @@ theorem active_masked_member {p : Nat} (config : Config)
     (family : PooledFamily) (mask : Mask) (query : List (ZMod p))
     (member : query ∈ nativeDecoderRows config initial text capacity fits family mask)
     (active : query ≠ maskRow mask sentinel) :
-    ∃ entry ∈ programOf config initial text,
-      entry.data.family = family ∧ query = maskRow mask entry.query := by
+    ∃ entry ∈ nativeProgramOf config initial text,
+      entry.family = family ∧ query = maskRow mask entry.query := by
   obtain ⟨row, rowMember, rowEq⟩ := List.mem_map.mp member
   have nonSentinel : row ≠ sentinel := by
     intro equal
     exact active (rowEq.symm.trans (congrArg (maskRow mask) equal))
   obtain ⟨entry, inProgram, selected, fullEq⟩ :=
-    active_member config initial text capacity fits family row rowMember nonSentinel
+    native_active_member config initial text capacity fits family row rowMember nonSentinel
   exact ⟨entry, inProgram, selected,
     rowEq.symm.trans (congrArg (maskRow mask) fullEq)⟩
 
@@ -85,6 +116,22 @@ theorem active_decoded {p : Nat} [Fact p.Prime] (config : Config)
   apply (decoderTable (programOf config initial text) family).implied_by_completeness #[] query
   change ∃ entry ∈ programOf config initial text,
     entry.data.family = family ∧ query = entry.query
+  exact ⟨entry, inProgram, selected, hq⟩
+
+/-- The complete native row model admits ordinary instructions and public
+delegation callers. Equality to Rust setup columns remains a separate premise. -/
+theorem native_active_decoded {p : Nat} [Fact p.Prime] (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (capacity : Nat) (fits : text.length ≤ capacity)
+    (family : PooledFamily) (query : Vector (ZMod p) 9)
+    (member : query ∈ nativeRows config initial text capacity fits family)
+    (active : query ≠ sentinel) :
+    (nativeDecoderTable (nativeProgramOf config initial text) family).Contains #[] query := by
+  obtain ⟨entry, inProgram, selected, hq⟩ :=
+    native_active_member config initial text capacity fits family query member active
+  apply (nativeDecoderTable (nativeProgramOf config initial text) family).implied_by_completeness #[] query
+  change ∃ entry ∈ nativeProgramOf config initial text,
+    entry.family = family ∧ query = entry.query
   exact ⟨entry, inProgram, selected, hq⟩
 
 /-- The native 16-bit PC-limb range excludes the unsupported minus-one row
@@ -127,8 +174,8 @@ theorem bounded_masked_pc_decoded (config : Config)
     (mask : Mask) (query : List (ZMod babyBearModulus))
     (member : query ∈ nativeDecoderRows config initial text capacity fits family mask)
     (bounded : (query.head?.getD 0).val < 65536) :
-    ∃ entry ∈ programOf config initial text,
-      entry.data.family = family ∧ query = maskRow mask entry.query :=
+    ∃ entry ∈ nativeProgramOf config initial text,
+      entry.family = family ∧ query = maskRow mask entry.query :=
   active_masked_member config initial text capacity fits family mask query member
     (bounded_masked_pc_not_sentinel mask query bounded)
 
@@ -142,6 +189,16 @@ theorem bounded_pc_decoded [Fact babyBearModulus.Prime] (config : Config)
     (bounded : query[0].val < 65536) :
     (decoderTable (programOf config initial text) family).Contains #[] query :=
   active_decoded config initial text capacity fits family query member
+    (bounded_pc_not_sentinel query bounded)
+
+theorem bounded_native_pc_decoded [Fact babyBearModulus.Prime] (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (capacity : Nat) (fits : text.length ≤ capacity) (family : PooledFamily)
+    (query : Vector (ZMod babyBearModulus) 9)
+    (member : query ∈ nativeRows config initial text capacity fits family)
+    (bounded : query[0].val < 65536) :
+    (nativeDecoderTable (nativeProgramOf config initial text) family).Contains #[] query :=
+  native_active_decoded config initial text capacity fits family query member
     (bounded_pc_not_sentinel query bounded)
 
 end Airbender.Trace.NativeDecoder.ProgramRows.Proofs
