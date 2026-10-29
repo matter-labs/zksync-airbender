@@ -1,3 +1,5 @@
+import Airbender.Proofs.Reduced.PCBounds
+import Airbender.Proofs.Reduced.StreamCount
 import Airbender.Proofs.Reduced.NativeClocks
 import Airbender.Proofs.Reduced.WordExecution
 import Airbender.Proofs.Reduced.ControlExecution
@@ -13840,3 +13842,18 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.machine_clock_facts
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.machine_event_time
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.machine_event_window
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.workerClock
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.worker_event_clock
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.live_worker_slot
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.worker_event_window
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.machine_window_group
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.worker_window_group
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.cycle_window_permutation
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.machine_clock_floor
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.mixed_cycle_execution
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.ordinary_cycle_history
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.ordinary_context_at
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_pc_bounds
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_cycle_count
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_initial_count
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_terminal_count
