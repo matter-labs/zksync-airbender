@@ -44,6 +44,39 @@ theorem reduced_program_family (initial : State) (text : List (BitVec 32)) :
       cases selected
       exact reduced_fields_family fields
 
+/-- The reduced native preprocessor admits only the BLAKE2 extended-round CSR
+among virtual caller words. This follows from the public text projection. -/
+theorem reduced_delegation_csr {csr : Nat}
+    (allowed : Config.reduced.delegationCSR csr = true) : csr = 0x7c7 := by
+  unfold Config.delegationCSR at allowed
+  split at allowed <;> simp_all
+
+theorem reduced_caller_program (initial : State) (text : List (BitVec 32)) :
+    ∀ caller ∈ callerProgramOf .reduced initial text, caller.csr = 0x7c7 := by
+  intro caller member
+  obtain ⟨⟨bits, index⟩, _, selected⟩ := List.mem_filterMap.mp member
+  unfold callerEntry callerEntryWith at selected
+  cases decoded : SailRV32.Functions.encdec_backwards bits with
+  | impure call continuation => simp [decoded] at selected
+  | pure instruction =>
+    simp only [decoded, bind, Option.bind] at selected
+    split at selected
+    next address source destination =>
+      split at selected
+      next admitted =>
+        cases selected
+        simp only [Bool.and_eq_true, beq_iff_eq] at admitted
+        exact reduced_delegation_csr admitted.2
+      next rejected => simp at selected
+    next => simp at selected
+
+/-- No special5 exclusion has to be supplied separately for reduced text. -/
+theorem reduced_no_special5 (initial : State) (text : List (BitVec 32)) :
+    NoSpecial5Call (callerProgramOf .reduced initial text) := by
+  intro caller member
+  rw [reduced_caller_program initial text caller member]
+  decide
+
 variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 /-- The reduced-family hypothesis in the run-inclusion theorem follows from
