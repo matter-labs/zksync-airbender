@@ -1,5 +1,6 @@
 import Airbender.Proofs.UnifiedReduced.StreamInitialization
 import Airbender.Proofs.UnifiedReduced.ExternalInput
+import Airbender.Proofs.UnifiedReduced.StreamDecoder
 import Airbender.Proofs.GKRProtocol.LogicalLookupSegments
 import Airbender.Review.Compiler.Theorems
 import Tests.GKRMemoryFrames
@@ -13648,3 +13649,15 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.UnifiedReduced.ExternalInput.Proofs.read_spec
 
 #print axioms Airbender.UnifiedReduced.ExternalInput.Proofs.read_execution
+
+#print axioms Airbender.UnifiedReduced.ExternalInput.Proofs.hint_spec
+#print axioms Airbender.UnifiedReduced.ExternalInput.Proofs.hint_execution
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unified_program_code
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unified_execution_inputs
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.external_fields_cases
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.fields_cases
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.field_bounds
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.decoder_zero_cases
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.ordinary_zero_preserving_of_program
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.mixed_zero_rules_of_program
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_zero_rules_of_preserving
