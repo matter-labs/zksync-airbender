@@ -13,6 +13,10 @@ inspected unified setup's CSR allowlist. The
 [split schedule](SplitSchedule.lean) and its
 [proofs](../../../../Proofs/Keccak/SplitSchedule.lean) establish the exact
 24-round/final-call order, call counts and control progression. The three
+[split caller forms](../../../Helpers/Delegation/SplitCaller.lean) retain the
+full virtual CSR and original Sail instruction. Their
+[public code-shape interface](SplitUse.lean) requires all 361 positions and
+complete caller coverage without assuming worker outputs. The three
 cached and no-cache compiled circuits now have native imports for their equations, fixed
 lookups and timestamp queries: [column parity](../../../Circuits/Keccak/SplitColumnParity.lean),
 [theta/rho](../../../Circuits/Keccak/SplitThetaRho.lean) and
