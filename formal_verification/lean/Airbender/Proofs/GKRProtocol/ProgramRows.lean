@@ -53,6 +53,56 @@ theorem program_image (config : Config)
   Airbender.Compiler.PublicProgram.image_run _
     (program_sources config initial text image size)
 
+/-- The virtual CSR caller entries also come from actual public bytes and a
+pure Sail decode. Their complete call-group syntax and worker semantics are
+separate obligations. -/
+theorem caller_sources_with (allowed : Nat → Bool)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (image : ROM.TextImage initial text) (size : text.length ≤ ROM.limit / 4) :
+    ∀ caller ∈ text.zipIdx.filterMap (fun (bits, index) =>
+      callerEntryWith allowed initial bits index),
+      caller.Source initial allowed := by
+  intro caller member
+  obtain ⟨⟨bits, index⟩, inText, selected⟩ := List.mem_filterMap.mp member
+  have found : text[index]? = some bits := List.mk_mem_zipIdx_iff_getElem?.mp inText
+  have indexBound : index < text.length := by
+    by_contra notBound
+    have : text[index]? = none := by simp [Nat.le_of_not_gt notBound]
+    rw [this] at found
+    contradiction
+  have value : text[index] = bits := by
+    have : text[index]? = some text[index] := by simp [indexBound]
+    rw [this] at found
+    exact Option.some.inj found
+  have bytes : (Trace.Cell.ram (BitVec.ofNat 32 (4 * index))).read initial =
+      .ok bits initial := by
+    simpa only [value] using ROM.Proofs.bytes_of_text_image initial text image size
+      ⟨index, indexBound⟩
+  unfold callerEntryWith at selected
+  cases decoded : SailRV32.Functions.encdec_backwards bits with
+  | impure call continuation => simp [decoded] at selected
+  | pure instruction =>
+    simp only [decoded, bind, Option.bind] at selected
+    split at selected
+    next address source destination =>
+      split at selected
+      next admitted =>
+        cases selected
+        simp only [Bool.and_eq_true, beq_iff_eq] at admitted
+        have sourceZero : source = 0 := admitted.1.1
+        have destinationZero : destination = 0 := admitted.1.2
+        refine ⟨bytes, by rw [decoded]; rfl, ⟨address, ?_, rfl⟩, admitted.2⟩
+        rw [sourceZero, destinationZero]
+      next rejected => simp at selected
+    next => simp at selected
+
+theorem caller_sources (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (image : ROM.TextImage initial text) (size : text.length ≤ ROM.limit / 4) :
+    ∀ caller ∈ callerProgramOf config initial text,
+      caller.Source initial config.delegationCSR :=
+  caller_sources_with config.delegationCSR initial text image size
+
 /-- Native preprocessing rejects a text longer than the ROM capacity. For an
 admitted text, the modeled decoder has exactly one row per padded word. -/
 theorem rows_length {p : Nat} (config : Config)

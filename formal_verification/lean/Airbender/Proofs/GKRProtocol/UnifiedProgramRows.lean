@@ -67,6 +67,13 @@ theorem ordinary_program_image (initial : Reference.RiscV.Sail.State)
   Airbender.Compiler.PublicProgram.image_run _
     (ordinary_sources initial text image size)
 
+theorem caller_sources (initial : Reference.RiscV.Sail.State)
+    (text : List (BitVec 32)) (image : ROM.TextImage initial text)
+    (size : text.length ≤ ROM.limit / 4) :
+    ∀ caller ∈ callerProgramOf initial text,
+      caller.Source initial delegationCSR :=
+  ProgramRows.Proofs.caller_sources_with delegationCSR initial text image size
+
 theorem active_member {p : Nat} (initial : Reference.RiscV.Sail.State)
     (text : List (BitVec 32)) (capacity : Nat) (fits : text.length ≤ capacity)
     (query : Vector (ZMod p) 9)
