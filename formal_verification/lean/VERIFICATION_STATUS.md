@@ -66,7 +66,11 @@ Bigint's memory rules, address soundness and memory value bounds passed
 focused checks with the current timestamp columns.
 Unified's control projection, control lookup resolution and jump arithmetic
 passed focused checks on the new shared columns and affine write gates.
-The memory and unified instruction proof rebuilds are in progress. An earlier batch hit its resident-memory cap
+Unified's zero-register preservation and timestamp proofs passed focused
+checks. The pooled ROM memory-port adapter also passed with the current
+timestamp record. These close the native zero-write and clock obligations
+used by the machine targets. The other unified instruction checks are in progress.
+An earlier batch hit its resident-memory cap
 while it rebuilt an unchanged extended-round import. That was a resource stop.
 The next batch uses the documented 5,120 MiB resident cap.
 

@@ -140,7 +140,7 @@ theorem row_zero_preserving_of_metadata [Fact p.Prime] (hp : FieldCapacity.NoWra
   · have address : (w 29).val = 0 ∧ (w 44).val = 0 ∧ (w 45).val = 0 := by
       simpa [MemoryAddress.code, pairCode, Cell.addressCode, Nat.pair_eq_pair] using zero
     have noRAM : w 29 = 0 := by simpa using address.1
-    have location := Verification.assertion_of_holds h ⟨31, by rw [constraint_count]; decide⟩
+    have location := Verification.assertion_of_holds h ⟨28, by rw [constraint_count]; decide⟩
     simp [importedConstraints, FlatOperation.constraints, Expression.eval,
       Verification.environment, noRAM] at location
     have targetZero : w 7 = 0 := by
@@ -153,7 +153,7 @@ theorem row_zero_preserving_of_metadata [Fact p.Prime] (hp : FieldCapacity.NoWra
       have value := congrArg ZMod.val rd
       rw [targetZero, ZMod.val_zero, ZMod.val_natCast_of_lt (by have := entry.data.rd.isLt; omega)] at value
       exact BitVec.eq_of_toNat_eq value.symm
-    rcases zeroCases originalZero with nop | ⟨marker, i, operation⟩ | store
+    rcases zeroCases originalZero with nop | ⟨marker, _i, _operation⟩ | store
     · rw [nop] at flags
       have rs1 := congrArg (fun q : Vector (ZMod p) 9 => q[2]) query
       have rs2 := congrArg (fun q : Vector (ZMod p) 9 => q[3]) query
@@ -167,8 +167,8 @@ theorem row_zero_preserving_of_metadata [Fact p.Prime] (hp : FieldCapacity.NoWra
       norm_num at rs1 rs2 immLo immHi
       have selected : w 11 = 1 := by simpa [importedConstraintsDecoderColumns] using flags 0
       have noReadRAM : w 28 = 0 := by simpa [importedConstraintsDecoderColumns] using (show w importedConstraintsDecoderColumns.flags[17] = 0 from flags 17)
-      have low := Verification.assertion_of_holds h ⟨29, by rw [constraint_count]; decide⟩
-      have high := Verification.assertion_of_holds h ⟨30, by rw [constraint_count]; decide⟩
+      have low := Verification.assertion_of_holds h ⟨26, by rw [constraint_count]; decide⟩
+      have high := Verification.assertion_of_holds h ⟨27, by rw [constraint_count]; decide⟩
       simp [importedConstraints, FlatOperation.constraints, Expression.eval,
         Verification.environment, noReadRAM, rs2] at low high
       have secondLo : w 38 = 0 := by linear_combination low
@@ -198,55 +198,12 @@ theorem row_zero_preserving_of_metadata [Fact p.Prime] (hp : FieldCapacity.NoWra
         omega
       simp [writeToken, MemoryPort.writeCode, pairCode, limbs.1, limbs.2]
       rfl
-    · have selected : w Variables.dispatchColumns[10 + i.val] = 1 := by
-        have bit := flags ⟨10 + i.val, by have := i.isLt; omega⟩
-        rw [operation] at bit
-        fin_cases i <;> simpa [Variables.dispatchColumns, importedConstraintsDecoderColumns] using bit
-      have other := dispatch_exclusive (by omega) h active ⟨10 + i.val, by have := i.isLt; omega⟩ selected
-      have marked : w 25 = 1 := by simpa [marker, importedConstraintsDecoderColumns] using flags 14
-      have gate := Verification.assertion_of_holds h ⟨21, by rw [constraint_count]; decide⟩
-      have low := Verification.assertion_of_holds h ⟨25, by rw [constraint_count]; decide⟩
-      have high := Verification.assertion_of_holds h ⟨26, by rw [constraint_count]; decide⟩
-      have familySum : w 21 + w 22 + w 23 + w 24 = 1 := by
-        fin_cases i
-        · have one : w 21 = 1 := by simpa [Variables.dispatchColumns] using selected
-          have zero1 : w 22 = 0 := by
-            simpa [Variables.dispatchColumns] using other 11 (by norm_num [Fin.ext_iff])
-          have zero2 : w 23 = 0 := by
-            simpa [Variables.dispatchColumns] using other 12 (by norm_num [Fin.ext_iff])
-          have zero3 : w 24 = 0 := by
-            simpa [Variables.dispatchColumns] using other 13 (by norm_num [Fin.ext_iff])
-          simp [one, zero1, zero2, zero3]
-        · have one : w 22 = 1 := by simpa [Variables.dispatchColumns] using selected
-          have zero0 : w 21 = 0 := by
-            simpa [Variables.dispatchColumns] using other 10 (by norm_num [Fin.ext_iff])
-          have zero2 : w 23 = 0 := by
-            simpa [Variables.dispatchColumns] using other 12 (by norm_num [Fin.ext_iff])
-          have zero3 : w 24 = 0 := by
-            simpa [Variables.dispatchColumns] using other 13 (by norm_num [Fin.ext_iff])
-          simp [one, zero0, zero2, zero3]
-        · have one : w 23 = 1 := by simpa [Variables.dispatchColumns] using selected
-          have zero0 : w 21 = 0 := by
-            simpa [Variables.dispatchColumns] using other 10 (by norm_num [Fin.ext_iff])
-          have zero1 : w 22 = 0 := by
-            simpa [Variables.dispatchColumns] using other 11 (by norm_num [Fin.ext_iff])
-          have zero3 : w 24 = 0 := by
-            simpa [Variables.dispatchColumns] using other 13 (by norm_num [Fin.ext_iff])
-          simp [one, zero0, zero1, zero3]
-        · have one : w 24 = 1 := by simpa [Variables.dispatchColumns] using selected
-          have zero0 : w 21 = 0 := by
-            simpa [Variables.dispatchColumns] using other 10 (by norm_num [Fin.ext_iff])
-          have zero1 : w 22 = 0 := by
-            simpa [Variables.dispatchColumns] using other 11 (by norm_num [Fin.ext_iff])
-          have zero2 : w 23 = 0 := by
-            simpa [Variables.dispatchColumns] using other 12 (by norm_num [Fin.ext_iff])
-          simp [one, zero0, zero1, zero2]
-      have enabled : w 85 = 1 := by
-        simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-          Verification.environment, marked] at gate
-        linear_combination gate + familySum
+    · have marked : w 25 = 1 := by
+        simpa [marker, importedConstraintsDecoderColumns] using flags 14
+      have low := Verification.assertion_of_holds h ⟨22, by rw [constraint_count]; decide⟩
+      have high := Verification.assertion_of_holds h ⟨23, by rw [constraint_count]; decide⟩
       simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, enabled] at low high
+        Verification.environment, marked] at low high
       simp [writeToken, MemoryPort.writeCode, pairCode, low, high]
       rfl
     · have ram : w 29 = 1 := by simpa [store, importedConstraintsDecoderColumns] using flags 18
