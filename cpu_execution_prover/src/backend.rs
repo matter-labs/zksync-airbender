@@ -7,6 +7,7 @@ use execution_prover::config::ExecutionProverConfiguration;
 use execution_prover::config::{ProvingSelection, SelectionError, SoundnessMode};
 use execution_prover::messages::WorkBatch;
 use execution_prover::setup::CanonicalCircuitSetup;
+use execution_prover::ProofProfile;
 use execution_prover_model::allocator::CpuTraceAllocator;
 use execution_prover_model::circuit_type::CircuitType;
 use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, TraceChunk};
@@ -57,6 +58,7 @@ impl ExecutionBackend for CpuBackend {
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
         security: SecurityLevel,
+        profiles: &[ProofProfile],
     ) -> Self::Precomputations {
         self.prepare_with_selection(
             circuit,
@@ -65,6 +67,7 @@ impl ExecutionBackend for CpuBackend {
                 security_level: security,
                 soundness_mode: SoundnessMode::PessimisticConjecture,
             },
+            profiles,
         )
         .unwrap_or_else(|error| panic!("{error}"))
     }
@@ -74,8 +77,9 @@ impl ExecutionBackend for CpuBackend {
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
         selection: ProvingSelection,
+        profiles: &[ProofProfile],
     ) -> Result<Self::Precomputations, SelectionError> {
-        CpuCircuitPrecomputations::from_canonical(circuit, setup, selection)
+        CpuCircuitPrecomputations::from_canonical(circuit, setup, selection, profiles)
     }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {

@@ -14,11 +14,43 @@ pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator + 'static>(
     binary_image: &[u32],
     text_section: &[u32],
     use_caches: bool,
-    _worker: &Worker,
+    worker: &Worker,
 ) -> CircuitSetup<A> {
     let compiled_circuit = ::unified_reduced_machine::get_circuit(use_caches);
     let table_driver = ::unified_reduced_machine::get_table_driver(binary_image);
+    let trace_len = 1
+        << <::unified_reduced_machine::UnifiedReducedMachineCircuit as RiscVCycleCircuit<
+            BabyBearField,
+            true,
+        >>::trace_len_log2();
+    unified_circuit_setup_from_parts::<A>(
+        compiled_circuit,
+        table_driver,
+        trace_len,
+        text_section,
+        ::unified_reduced_machine::witness_eval_fn,
+        <::unified_reduced_machine::UnifiedReducedMachineCircuit as RiscVCycleCircuit<
+            BabyBearField,
+            true,
+        >>::prover_config,
+        worker,
+    )
+}
 
+/// Shared body of the unified setups: the decoder table is derived from
+/// `text_section`, the setup from the compiled artifact of the selected trace
+/// length.
+pub(super) fn unified_circuit_setup_from_parts<A: GoodAllocator + 'static>(
+    compiled_circuit: GKRCircuitArtifact<BabyBearField>,
+    table_driver: TableDriver<BabyBearField>,
+    trace_len: usize,
+    text_section: &[u32],
+    witness_fn: fn(
+        &'_ mut ColumnMajorWitnessProxy<'_, UnifiedRiscvCircuitOracle<'_>, BabyBearField>,
+    ),
+    prover_config: fn(SecurityLevel) -> ProverConfig,
+    _worker: &Worker,
+) -> CircuitSetup<A> {
     use common_constants::*;
     use cs::gkr_circuits::*;
     use riscv_transpiler::ir::ReducedMachineDecoderConfig;
@@ -46,19 +78,18 @@ pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator + 'static>(
         .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
         .expect("UnifiedReducedMachineDecoder must produce a family-128 entry");
 
-    let trace_len = 1
-        << <::unified_reduced_machine::UnifiedReducedMachineCircuit as RiscVCycleCircuit<
-            BabyBearField,
-            true,
-        >>::trace_len_log2();
+    assert_eq!(compiled_circuit.trace_len, trace_len);
     let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &compiled_circuit);
 
     #[cfg(not(feature = "witness_eval_fn"))]
-    let witness_eval_fn = None;
+    let witness_eval_fn = {
+        let _ = (witness_fn, decoder_table);
+        None
+    };
 
     #[cfg(feature = "witness_eval_fn")]
     let witness_eval_fn = Some(UnrolledCircuitWitnessEvalFn::Unified {
-        witness_fn: ::unified_reduced_machine::witness_eval_fn,
+        witness_fn,
         decoder_table,
     });
 
@@ -73,11 +104,6 @@ pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator + 'static>(
         table_driver,
         setup,
         witness_eval_fn,
-        prover_configs: circuit_common::prover_configs_for_all_levels(
-            <::unified_reduced_machine::UnifiedReducedMachineCircuit as RiscVCycleCircuit<
-                BabyBearField,
-                true,
-            >>::prover_config,
-        ),
+        prover_configs: circuit_common::prover_configs_for_all_levels(prover_config),
     }
 }

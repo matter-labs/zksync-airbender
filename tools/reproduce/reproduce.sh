@@ -44,6 +44,9 @@ cd "$REPO_ROOT/tools/gkr_verifier"
 # the committed file.
 ./dump_recursive_verifiers.sh --soundness-mode all
 
+# Build the independent 512 KiB-ROM L1 wrap guest.
+bash ../gkr_verifier_l1_wrap/dump_bin.sh
+
 # Standalone per-circuit verifiers (both soundness modes; the pessimistic-conjecture set is the
 # one the cost-model drift guard consumes): every binary under src/bin/circuit_verifiers/.
 PER_CIRCUIT=""

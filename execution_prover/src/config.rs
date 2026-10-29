@@ -1,4 +1,5 @@
 use crate::upstream::{ProverConfig, SecurityLevel};
+use crate::{CommitmentMode, ExecutionKind, ProofProfile};
 use execution_prover_model::circuit_type::CircuitType;
 pub use prover::definitions::{ProvingSelection, SoundnessMode};
 use prover::gkr::prover_config::example_configs::ConfigSelectionError;
@@ -44,10 +45,32 @@ impl From<ConfigSelectionError> for SelectionError {
     }
 }
 
-/// Commitments and proofs must use the same geometry on both backends: the
-/// circuit definition's own config (`CircuitType::prover_config`).
-pub fn prover_config(circuit_type: CircuitType, security_level: SecurityLevel) -> ProverConfig {
-    circuit_type.prover_config(security_level)
+/// Commitments and proofs use the circuit's own config unless an L1 profile overrides it.
+pub fn prover_config(
+    circuit_type: CircuitType,
+    profile: ProofProfile,
+    security_level: SecurityLevel,
+) -> ProverConfig {
+    match profile {
+        ProofProfile::Standard => circuit_type.prover_config(security_level),
+        l1 => l1.prover_config(circuit_type.get_domain_size_log2() as usize, security_level),
+    }
+}
+
+/// Unified executions take their mode from the selected circuit configuration.
+/// Per-family unrolled executions only support separate commitments.
+pub fn execution_commitment_mode(
+    kind: ExecutionKind,
+    profile: ProofProfile,
+    security_level: SecurityLevel,
+) -> CommitmentMode {
+    match kind.unified_circuit() {
+        Some(circuit) => prover_config(circuit, profile, security_level).commitment_mode,
+        None => {
+            assert_eq!(profile, ProofProfile::Standard);
+            CommitmentMode::SeparateMemoryAndWitness
+        }
+    }
 }
 
 pub trait BackendConfiguration: Copy + Send + Sync + 'static + Sized {

@@ -7,7 +7,6 @@ use verifier_common::BlakeMode;
 
 /// The cost model is calibrated on the `blake2_with_compression` binaries.
 const CALIBRATED_BLAKE: BlakeMode = BlakeMode::Compression;
-use verifier_common::prover::definitions::MerkleTreeCap;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Section {
@@ -40,7 +39,7 @@ pub fn plan_unrolled_stream(
     let mut w = 0usize;
 
     for params in setups.values() {
-        w += MerkleTreeCap::flatten_single(&params.setup_caps).len();
+        w += params.flattened_setup_caps().len();
     }
     w += 32 * 3;
     w += 3;

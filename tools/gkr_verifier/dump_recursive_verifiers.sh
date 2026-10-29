@@ -8,7 +8,7 @@
 #     fsv_unrolled_base_layer_sec_100      : blake2_with_compression
 #     fsv_unrolled_recursion_layer_sec_100 : blake2_with_compression
 #     fsv_unified_recursion_layer_sec_100  : blake2_with_compression, special_opcodes_extension
-#     fsv_unified_recursion_layer_sec_100_l1_feeder : special_opcodes_extension
+#     fsv_unified_recursion_layer_sec_100_l1_feeder_a : special_opcodes_extension
 #   ethproofs_soundcalc (full_statement_verifiers/ethproofs_soundcalc/):
 #     fsv_unrolled_base_layer_sec_100      : blake2_with_compression
 #     fsv_unrolled_recursion_layer_sec_100 : blake2_with_compression
@@ -95,7 +95,7 @@ for soundness in $MODES; do
         done
     done
     if [ "$soundness" = "pessimistic_conjecture" ]; then
-        build_variant "fsv_unified_recursion_layer_sec_100_l1_feeder" "${soundness}" "special_opcodes_extension"
+        build_variant "fsv_unified_recursion_layer_sec_100_l1_feeder_a" "${soundness}" "special_opcodes_extension"
     fi
 done
 

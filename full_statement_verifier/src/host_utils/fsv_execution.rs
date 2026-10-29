@@ -226,7 +226,10 @@ pub fn fsv_stream(
         FsvProgram::UnrolledBaseLayer | FsvProgram::UnrolledRecursionLayer => {
             build_unrolled_stream(setups, proof, descriptor.blake)
         }
-        FsvProgram::UnifiedBaseLayer | FsvProgram::UnifiedRecursionLayer => {
+        FsvProgram::UnifiedBaseLayer
+        | FsvProgram::UnifiedRecursionLayer
+        | FsvProgram::UnifiedRecursionLayerL1FeederWrap
+        | FsvProgram::UnifiedRecursionLayerL1FeederA => {
             build_unified_stream(setups, proof, descriptor.blake)
         }
     })

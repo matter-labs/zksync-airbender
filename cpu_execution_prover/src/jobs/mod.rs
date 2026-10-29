@@ -1,10 +1,17 @@
+use execution_prover::ProofProfile;
 mod caps;
 mod inits_and_teardowns;
+mod l1_wrap;
 mod memory;
 mod proof;
 
+#[cfg(any(test, feature = "test-support"))]
+pub(crate) use l1_wrap::evaluate_witness;
+
 use crate::precomputations::CpuCircuitPrecomputations;
-use crate::upstream::{Backend, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, BF, E4};
+use crate::upstream::{
+    Backend, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, WhirOracleStorage, BF, E4,
+};
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{
     SetupInitializationRequest, SetupInitializationResult, WorkRequest, WorkResult,
@@ -33,6 +40,9 @@ impl CpuJobs {
         worker: &Worker,
     ) -> WorkResult<A> {
         match request {
+            WorkRequest::L1WrapProof(request) => {
+                WorkResult::L1WrapProof(l1_wrap::run(request, worker))
+            }
             WorkRequest::SetupInitialization(request) => {
                 WorkResult::SetupInitialization(self.initialize_setup(request, worker))
             }
@@ -55,11 +65,17 @@ impl CpuJobs {
             precomputations,
             selection,
         } = request;
-        let config = precomputations
-            .config_for_request(circuit_type, selection)
-            .unwrap_or_else(|error| panic!("{error}"));
-        let twiddles = self.twiddles(1usize << config.whir_message_size_log2(), worker);
-        precomputations.initialize_setup(&*twiddles, worker);
+        if circuit_type.is_l1_wrap() {
+            let l1_wrap = precomputations.l1_wrap();
+            assert_eq!(circuit_type, l1_wrap.circuit_type);
+            l1_wrap.initialize_setup(selection.security_level, worker);
+        } else {
+            let message_size_log2 = precomputations
+                .whir_message_size_log2_for_request(circuit_type, selection)
+                .unwrap_or_else(|error| panic!("{error}"));
+            let twiddles = self.twiddles(1usize << message_size_log2, worker);
+            precomputations.initialize_setup(&*twiddles, worker);
+        }
         SetupInitializationResult {
             batch_id,
             circuit_type,
@@ -78,6 +94,19 @@ impl CpuJobs {
                 ))
             })
             .clone()
+    }
+}
+
+fn whir_storage(
+    profile: ProofProfile,
+    config: &crate::upstream::ProverConfig,
+) -> WhirOracleStorage {
+    if profile.is_l1_feeder() {
+        WhirOracleStorage::recompute_base_materialized_intermediates()
+    } else if config.pack_log2() > 0 {
+        WhirOracleStorage::fully_recompute()
+    } else {
+        WhirOracleStorage::fully_in_memory()
     }
 }
 

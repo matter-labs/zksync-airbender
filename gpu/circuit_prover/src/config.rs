@@ -21,7 +21,7 @@ use crate::upstream::{
     ProvingSelection, SecurityLevel,
 };
 use gpu_core::primitives::field::{BF, E4};
-use gpu_trace::witness::circuit_type::CircuitType;
+use gpu_trace::witness::circuit_type::{CircuitType, UnrolledCircuitType};
 
 /// Security levels the GPU prover supports.
 pub const GPU_SUPPORTED_SECURITY_LEVELS: [SecurityLevel; 1] = [SecurityLevel::Sec100];
@@ -68,7 +68,19 @@ pub fn prover_config(
     circuit_type: CircuitType,
     security_level: SecurityLevel,
 ) -> Result<ProverConfig, UnsupportedGpuSecurityLevel> {
+    assert_supported_circuit(circuit_type);
     Ok(config_for_supported_level(circuit_type, security_level))
+}
+
+/// Reject CPU-only circuit types before setup allocation or GPU transfers.
+pub fn assert_supported_circuit(circuit: CircuitType) {
+    assert!(
+        !matches!(
+            circuit,
+            CircuitType::L1Wrap21 | CircuitType::Unrolled(UnrolledCircuitType::Unified22)
+        ),
+        "GPU backend does not support this CPU-only circuit type"
+    );
 }
 
 fn config_for_supported_level(

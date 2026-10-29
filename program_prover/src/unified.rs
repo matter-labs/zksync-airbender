@@ -277,7 +277,6 @@ pub fn prove_unified_execution_with_replayer_in_profile<
     circuit_common::ConfigSelectionError,
 > {
     use prover::definitions::{ProverConfigProfile, ProvingSelection};
-    use prover::gkr::prover_config::example_configs::try_l1_feeder_config_for_2_23;
     let selection = ProvingSelection {
         security_level,
         soundness_mode,
@@ -299,28 +298,8 @@ pub fn prove_unified_execution_with_replayer_in_profile<
             backend,
             gkr_backend,
         ),
-        ProverConfigProfile::L1Feeder => {
-            let config = try_l1_feeder_config_for_2_23(selection)?;
-            // The feeder commits memory+witness together and has no delegations.
-            // Its existing transition driver owns that prepass and transcript order.
-            Ok(
-                crate::unified_transition::prove_unified_transition_with_replayer(
-                    cycles_bound,
-                    binary_image,
-                    text_section,
-                    use_caches,
-                    non_determinism,
-                    ram_bound,
-                    worker,
-                    security_level,
-                    permutation_argument_pow_bits,
-                    &config,
-                    backend,
-                    gkr_backend,
-                ),
-            )
-        }
-        ProverConfigProfile::EvmProductionPacked => Err(
+        // The L1 feeder is proven by the pipeline's `ProofTarget::L1Feeder` route.
+        ProverConfigProfile::L1Feeder | ProverConfigProfile::EvmProductionPacked => Err(
             circuit_common::ConfigSelectionError::UnsupportedProfileOperation {
                 profile,
                 operation: "BabyBear unified execution",
@@ -893,6 +872,7 @@ fn prove_unified_execution_with_replayer_impl<
                 REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
                 trace_len as u32,
                 setup_commitment.get_cap(),
+                prover_config.cap_size,
             ),
         );
 
@@ -1225,7 +1205,7 @@ pub(crate) mod test {
             .spawn(move || {
                 let families_setups: Vec<u32> = risc_v_setups
                     .iter()
-                    .flat_map(|el| MerkleTreeCap::flatten_single(&el.setup_caps).to_vec())
+                    .flat_map(|el| el.flattened_setup_caps().to_vec())
                     .collect();
 
                 let mut it = families_setups.into_iter().chain(responses.into_iter());

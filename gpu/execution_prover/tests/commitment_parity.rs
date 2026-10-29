@@ -70,11 +70,19 @@ where
     B: execution_prover::backend::ExecutionBackend,
 {
     let (bin, text) = load(workload);
-    let handle = prover.add_binary(kind, machine, bin, text, Some(CYCLES_BOUND));
+    let handle = prover.add_binary(
+        kind,
+        machine,
+        bin,
+        text,
+        Some(CYCLES_BOUND),
+        &[execution_prover::ProofProfile::Standard],
+    );
     let commitment = prover.commit_memory(
         0,
         &handle,
         FlatResponsesSource::new_with_reads(workload.non_determinism.to_vec()),
+        execution_prover::ProofProfile::Standard,
     );
     (prover, handle, commitment)
 }
@@ -126,8 +134,10 @@ fn compare_commitments(kind: ExecutionKind, machine: MachineType, workload: &Wor
     let (cpu, cpu_handle, cpu_commitment) = commit(cpu_prover(), kind, machine, workload);
     let (gpu, gpu_handle, gpu_commitment) = commit(gpu_prover(), kind, machine, workload);
 
-    let cpu_artifacts = cpu.program_artifacts(&cpu_handle);
-    let gpu_artifacts = gpu.program_artifacts(&gpu_handle);
+    let cpu_artifacts =
+        cpu.program_artifacts(&cpu_handle, execution_prover::ProofProfile::Standard);
+    let gpu_artifacts =
+        gpu.program_artifacts(&gpu_handle, execution_prover::ProofProfile::Standard);
     assert_eq!(
         cpu_artifacts.riscv_families.keys().collect::<Vec<_>>(),
         gpu_artifacts.riscv_families.keys().collect::<Vec<_>>(),
@@ -198,11 +208,19 @@ fn prove<B: execution_prover::backend::ExecutionBackend>(
     workload: &Workload,
 ) -> execution_prover::ProveResult {
     let (binary, text) = load(workload);
-    let handle = prover.add_binary(kind, machine, binary, text, Some(CYCLES_BOUND));
+    let handle = prover.add_binary(
+        kind,
+        machine,
+        binary,
+        text,
+        Some(CYCLES_BOUND),
+        &[execution_prover::ProofProfile::Standard],
+    );
     prover.commit_memory_and_prove(
         0,
         &handle,
         FlatResponsesSource::new_with_reads(workload.non_determinism.to_vec()),
+        execution_prover::ProofProfile::Standard,
     )
 }
 

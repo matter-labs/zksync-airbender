@@ -261,6 +261,7 @@ fn schedule_phase_one<'a>(
                 inits_and_teardowns,
                 tracing_data,
                 selection,
+                profile: _,
             } = req;
             precomputations
                 .resolved_config
@@ -291,6 +292,7 @@ fn schedule_phase_one<'a>(
                 external_challenges,
                 memory_caps,
                 selection,
+                profile: _,
             } = req;
             precomputations
                 .resolved_config
@@ -309,6 +311,9 @@ fn schedule_phase_one<'a>(
                 security_level,
             };
             (state, inits_and_teardowns, tracing_data)
+        }
+        GpuWorkRequest::L1WrapProof(_) => {
+            panic!("GPU backend does not support L1 wrap proof requests")
         }
         GpuWorkRequest::SetupInitialization(_) => {
             unreachable!("setup initialization returns early above")

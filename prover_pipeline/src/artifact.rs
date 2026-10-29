@@ -1,5 +1,5 @@
 use super::{
-    BlakeMode, ProofCounts, ProofTarget, ProofTimingsMs, ProverBackend, SecurityLevel,
+    BlakeMode, L1Bundle, ProofCounts, ProofTarget, ProofTimingsMs, ProverBackend, SecurityLevel,
     SoundnessMode,
 };
 use full_statement_verifier::program_proof::ProgramProof;
@@ -33,8 +33,16 @@ pub struct ProofArtifact {
     pub program_text_keccak: [u8; 32],
     pub timings_ms: ProofTimingsMs,
     pub proof_counts: ProofCounts,
-    /// Layer end-params history: `[base, unrolled_1, .., bridge, final]`.
+    /// Layer end-params history: `[base, unrolled_1, .., bridge, final,
+    /// feeder_1, .., feeder_k]`, one entry per proven layer.
     pub chain_end_params: Vec<[u32; 8]>,
+    /// Number of L1 feeder layers in `chain_end_params` (0 before the feeder
+    /// stage, `1..=MAX_FEEDER_LAYERS` after it). Validated routing metadata:
+    /// consecutive feeder layers prove the same binary on the same machine,
+    /// so their end params are equal and the VM-authenticated chain hash
+    /// (which deduplicates equal consecutive entries) cannot attest this
+    /// count; verification rejects an isolated length mismatch only.
+    pub feeder_layers: u32,
     /// Recursion-chain state AFTER this artifact's layer.
     pub chain_hash: [u32; 8],
     pub chain_preimage: [u32; 16],
@@ -48,6 +56,7 @@ pub struct ProofArtifact {
     pub blake_bridge: String,
     #[serde(default = "default_blake_tag")]
     pub blake_final: String,
+    pub l1: Option<L1Bundle>,
     pub proof: ProgramProof,
     pub setups: Setups,
 }
@@ -69,8 +78,10 @@ struct ProofArtifactWire {
     program_text_keccak: [u8; 32],
     timings_ms: ProofTimingsMs,
     proof_counts: ProofCounts,
-    /// Layer end-params history: `[base, unrolled_1, .., bridge, final]`.
+    /// Layer end-params history: `[base, unrolled_1, .., bridge, final, feeder_1, ..]`.
     chain_end_params: Vec<[u32; 8]>,
+    #[serde(default)]
+    feeder_layers: u32,
     /// Recursion-chain state AFTER this artifact's layer.
     chain_hash: [u32; 8],
     chain_preimage: [u32; 16],
@@ -84,6 +95,8 @@ struct ProofArtifactWire {
     blake_bridge: String,
     #[serde(default = "default_blake_tag")]
     blake_final: String,
+    #[serde(default)]
+    l1: Option<L1Bundle>,
     proof: ProgramProof,
     setups: Setups,
 }
@@ -136,11 +149,13 @@ impl<'de> Deserialize<'de> for ProofArtifact {
             timings_ms: wire.timings_ms,
             proof_counts: wire.proof_counts,
             chain_end_params: wire.chain_end_params,
+            feeder_layers: wire.feeder_layers,
             chain_hash: wire.chain_hash,
             chain_preimage: wire.chain_preimage,
             blake_unrolled: wire.blake_unrolled,
             blake_bridge: wire.blake_bridge,
             blake_final: wire.blake_final,
+            l1: wire.l1,
             proof: wire.proof,
             setups: wire.setups,
         })
@@ -197,11 +212,13 @@ mod tests {
             timings_ms: ProofTimingsMs::default(),
             proof_counts: ProofCounts::default(),
             chain_end_params: vec![[0; 8]],
+            feeder_layers: 0,
             chain_hash: [0; 8],
             chain_preimage: [0; 16],
             blake_unrolled: default_blake_tag(),
             blake_bridge: default_blake_tag(),
             blake_final: default_blake_tag(),
+            l1: None,
             proof: ProgramProof {
                 riscv_proofs: Default::default(),
                 compiled_riscv_circuits: Default::default(),

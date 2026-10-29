@@ -320,7 +320,10 @@ struct QTerm {
 /// heap, so only nonzero gate constants need an explicit seed.
 /// `gate_constant_terms`: the additive constant of each quadratic relation `(gate slot, value)`,
 /// only for gates whose constant is nonzero (it seeds `GATEVAL[slot]` before the term loops add).
-fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) -> (String, usize) {
+fn emit_layer0_quad_table(
+    terms: &[QTerm],
+    gate_constant_terms: &[(u32, u128)],
+) -> (String, Vec<u8>) {
     use std::collections::BTreeMap;
     // canonical coeff -> (byte width, is_negative, stored value). Small +ve: store as-is.
     // Small -ve (canonical near P): store magnitude P-v, negate in-loop. Else: full 16 B.
@@ -398,17 +401,11 @@ fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) 
             ));
         }
     }
-    // 2. materialize the packed record stream via mstore immediates
-    out.push_str("            // packed term records, written 32 bytes at a time\n");
-    for (i, chunk) in stream.chunks(32).enumerate() {
-        let mut word = [0u8; 32];
-        word[..chunk.len()].copy_from_slice(chunk);
-        let hex: String = word.iter().map(|b| format!("{b:02x}")).collect();
-        out.push_str(&format!(
-            "            mstore(add(GKR_QTABLE_PTR(), {}), 0x{hex})\n",
-            i * 32
-        ));
-    }
+    // 2. copy the packed records from the verified setup data contract.
+    out.push_str(&format!(
+        "            extcodecopy(mload(F1_FRONTIER_PTR), GKR_QTABLE_PTR(), __TEMPLATE_F1_DATA_QTABLE_OFFSET, {})\n",
+        stream.len()
+    ));
     // 3. bucket loops — modulus loaded once from the P constant into a local (cheap DUP in the
     //    shallow loop, no per-op PUSH16), calldata + gateval bases hoisted.
     out.push_str(
@@ -465,7 +462,7 @@ fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) 
         ));
     }
     out.push_str("            }\n");
-    (out, stream.len())
+    (out, stream)
 }
 
 /// Emit the Horner accumulation of a contiguous run of quadratic gates (GATEVAL slots `lo..hi`)
@@ -638,7 +635,7 @@ fn memrel_to_calldata(
 /// Heap-usage facts about the emitted `circuit.yul`, consumed by the generator's heap-layout
 /// allocator (assemble.rs) so every circuit-sized region of the GKR heap is sized from the
 /// circuit instead of a hand-picked slot number.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct CircuitYulStats {
     /// Widest per-layer at-point eval array written to `GKR_CIRCUIT_CLAIMS_PTR` (32-byte slots).
     pub max_claims_slots: usize,
@@ -649,13 +646,14 @@ pub struct CircuitYulStats {
     pub max_absorb_bytes: usize,
     /// Layer-0 quadratic-gate accumulator slots at `GKR_GATEVAL_PTR` (32-byte slots).
     pub gateval_slots: usize,
-    /// Bytes of the packed layer-0 term table materialized at `GKR_QTABLE_PTR`.
-    pub qtable_bytes: usize,
+    /// The packed layer-0 term table materialized at `GKR_QTABLE_PTR` (zero-padded to whole
+    /// 32-byte words).
+    pub qtable: Vec<u8>,
 }
 
 /// Emit the circuit-specific `circuit.yul` (the GKR per-layer sumcheck/gate functions) for a
 /// given circuit artifact, as a String. This is the only circuit-dependent part of the GKR
-/// verifier; `generate_verifier` inlines it into the hand-written gkr.sol template.
+/// verifier; `generate_f1_verifier` inlines it into the hand-written gkr.sol template.
 pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
     emit_circuit_yul_with_stats(circuit).0
 }
@@ -679,12 +677,12 @@ pub fn emit_circuit_yul_with_stats(
     yul_main_output().lock().unwrap().clear();
     let circuit_rounds = {
         assert!(circuit.trace_len.is_power_of_two() && circuit.trace_len > 0);
-        assert_eq!(
-            circuit.trace_len,
-            1 << 22,
-            "we currently expect gkr_compress to go up to 2^22"
+        let rounds = circuit.trace_len.trailing_zeros();
+        assert!(
+            matches!(rounds, 21 | 22),
+            "GKR verifier supports trace logs 21 and 22"
         );
-        circuit.trace_len.trailing_zeros()
+        rounds
     };
     let layer0_group_widths = (
         circuit.memory_layout.total_width,
@@ -2087,11 +2085,6 @@ pub fn emit_circuit_yul_with_stats(
                     });
                     let [lhs_addr_high, rhs_addr_high] = {
                         assert_eq!(
-                            circuit.trace_len,
-                            1 << 22,
-                            "currently we expect gkr_compress to go up to 2^22"
-                        );
-                        assert_eq!(
                             circuit.memory_layout.inits_and_teardowns_word_bits.unwrap(),
                             2,
                             "we expect there to be just 2 empty low bits"
@@ -2301,9 +2294,9 @@ pub fn emit_circuit_yul_with_stats(
             // modulus in a stack local) BEFORE the Horner chunk calls read it. Emitted into the
             // layer body (main output; YUL_BUFFER is drained above so yul_println! targets it).
             if i == 0 && !quad_terms.is_empty() {
-                let (table_yul, qtable_bytes) =
+                let (table_yul, qtable) =
                     emit_layer0_quad_table(&quad_terms, &quad_gate_constant_terms);
-                stats.qtable_bytes = qtable_bytes;
+                stats.qtable = qtable;
                 stats.gateval_slots = quad_slot_counter as usize;
                 yul_println!("{}", table_yul);
             }
@@ -2600,27 +2593,14 @@ pub fn emit_circuit_yul_with_stats(
             // NB: need to inline __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS unfortunately
             eq_scale := 1
             let modulus := mload(P_PTR) // hoisted: DUP per use instead of re-mload every round
+            // E1 (see sumcheck_rounds): (b, c) in, c0..c3 rebuilt and absorbed, claim = K, eq_scale = 1
+            let bit := mload(ptr)
             for {{ let i := 0 }} lt(i, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) {{ i := add(i, 1) }} {{
-                let w0 := calldataload(ptr)
-                let w1 := calldataload(add(ptr, 32))
-                let c0 := shr(128, w0)
-                let c1 := and(w0, MASK)
-                let c2 := shr(128, w1)
-                let c3 := and(w1, MASK)
-                // reject non-canonical coefficient lanes (the absorb takes the raw words)
-                if iszero(lt(c0, modulus)) {{ revert(0, 0) }}
-                if iszero(lt(c1, modulus)) {{ revert(0, 0) }}
-                if iszero(lt(c2, modulus)) {{ revert(0, 0) }}
-                if iszero(lt(c3, modulus)) {{ revert(0, 0) }}
-                let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, modulus)
-                let r := transcript_4to1_dual(w0, w1, modulus) // before-check draw is intentional; see HEURISTICS.md
-                // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-                if mod(add(claim, sub(modulus, g0g1_scaled)), modulus) {{ revert(0, 0) }}
-                claim := add(mulmod(add(mulmod(add(mulmod(c3, r, modulus), c2), r, modulus), c1), r, modulus), c0)
-                let z := mload(add(POINT_PTR(), mul(i, 32)))
-                let zr := mulmod(z, r, modulus)
-                eq_scale := add(add(add(zr, zr), 1), sub(mul(4, modulus), add(z, r)))
-                mstore(add(POINT_PTR(), mul(i, 32)), r)
+                let zp := add(POINT_PTR(), mul(i, 32))
+                let r
+                r, claim := f1_e1_round(bit, mload(zp), claim, modulus)
+                bit := add(bit, 246)
+                mstore(zp, r)
                 ptr := add(ptr, 64)
             }}
             next_ptr := ptr
@@ -2764,7 +2744,7 @@ pub fn emit_circuit_yul_with_stats(
     let _ = DEBUG_ENABLE_DUMMY_CHECKS;
     let out = std::mem::take(&mut *yul_main_output().lock().unwrap());
     assert!(
-        stats.gateval_slots > 0 && stats.qtable_bytes > 0,
+        stats.gateval_slots > 0 && !stats.qtable.is_empty(),
         "layer 0 emitted no table-driven quadratic gates"
     );
     // Modulus representation: the ~124-bit Proth120 P as a Solidity `constant` compiles to a

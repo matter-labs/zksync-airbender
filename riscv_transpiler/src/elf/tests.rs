@@ -2,12 +2,22 @@ use super::*;
 use crate::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
 use crate::ir::FullUnsignedMachineDecoderConfig;
 use crate::vm::{DelegationsCounters, RamPeek, RamWithRomRegion, SimpleTape, State, VM};
-use common_constants::rom::ROM_SECOND_WORD_BITS;
+use common_constants::rom::{L1_WRAP_ROM, REGULAR_ROM, ROM_SECOND_WORD_BITS};
 use field::Mersenne31Field;
 use std::path::PathBuf;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
+}
+
+fn fixture_rom(path: &std::path::Path) -> common_constants::rom::RomGeometry {
+    if path.file_name().and_then(|name| name.to_str())
+        == Some("fsv_unified_recursion_layer_sec_100_l1_feeder_wrap_special_opcodes_extension.elf")
+    {
+        L1_WRAP_ROM
+    } else {
+        REGULAR_ROM
+    }
 }
 
 /// Directories holding the `<stem>.elf` / `<stem>.bin` / `<stem>.text` triples written by the
@@ -74,7 +84,7 @@ fn full_elf_images(mode: ElfReadMode) -> Vec<(PathBuf, ElfImage)> {
     let mut images = Vec::new();
     for path in elf_files() {
         let bytes = std::fs::read(&path).unwrap();
-        match read_elf(&bytes, mode) {
+        match read_elf_with_rom(&bytes, mode, fixture_rom(&path)) {
             Ok(image) => images.push((path, image)),
             Err(err) if is_stripped_text(&err) => println!(
                 "skipped (no .text, built with `objcopy -R .text`): {}",
@@ -244,7 +254,7 @@ fn strict_mode_reports_virtual_init_data() {
     let mut checked = 0;
     for (elf_path, legacy) in full_elf_images(ElfReadMode::Legacy) {
         let bytes = std::fs::read(&elf_path).unwrap();
-        let strict = match read_elf(&bytes, ElfReadMode::Strict) {
+        let strict = match read_elf_with_rom(&bytes, ElfReadMode::Strict, legacy.rom) {
             Ok(image) => image,
             Err(ElfReadError::Layout(msg)) => {
                 // Layouts that keep .rodata inside ROM (examples/scripts/lds) are legacy-only.
@@ -276,7 +286,7 @@ fn strict_mode_reports_virtual_init_data() {
                 continue;
             }
             assert!(section.is_relocated());
-            assert!(section.virtual_address as usize >= ROM_BYTE_SIZE);
+            assert!(section.virtual_address as usize >= strict.rom.byte_size());
             let lma = section.load_address as usize;
             assert_eq!(
                 &flat[lma..lma + section.data.len()],
@@ -288,7 +298,14 @@ fn strict_mode_reports_virtual_init_data() {
         }
 
         let code = strict.init_data_materialization_code();
-        assert_init_code_fills_ram(&code, &strict.init_sections);
+        if strict.rom == L1_WRAP_ROM {
+            assert_init_code_fills_ram::<{ L1_WRAP_ROM.second_word_bits() }>(
+                &code,
+                &strict.init_sections,
+            );
+        } else {
+            assert_init_code_fills_ram::<ROM_SECOND_WORD_BITS>(&code, &strict.init_sections);
+        }
         checked += 1;
     }
     println!("strict mode checked on {checked} ELF files");
@@ -300,11 +317,14 @@ fn strict_mode_reports_virtual_init_data() {
 
 /// Run `code` (RV32I words at address 0) on the VM for exactly `code.len()` cycles and check
 /// that every init section is in RAM afterwards and nothing else changed.
-fn assert_init_code_fills_ram(code: &[u32], init_sections: &[InitDataSection]) {
+fn assert_init_code_fills_ram<const ROM_BITS: usize>(
+    code: &[u32],
+    init_sections: &[InitDataSection],
+) {
     let instructions: Vec<Instruction> =
         preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(code);
     let tape = SimpleTape::new(&instructions);
-    let mut ram = RamWithRomRegion::<ROM_SECOND_WORD_BITS>::from_rom_content(code, 1 << 30);
+    let mut ram = RamWithRomRegion::<ROM_BITS>::from_rom_content(code, 1 << 30);
     let mut state = State::initial_with_counters(DelegationsCounters::default());
     let finished = VM::<DelegationsCounters>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
         &mut state,
@@ -328,7 +348,7 @@ fn assert_init_code_fills_ram(code: &[u32], init_sections: &[InitDataSection]) {
             );
         }
         // Guard words around the section stay zero.
-        if section.virtual_address >= ROM_BYTE_SIZE as u32 + 4 {
+        if section.virtual_address >= (1u32 << (ROM_BITS + 16)) + 4 {
             assert_eq!(ram.peek_word(section.virtual_address - 4), 0);
         }
         assert_eq!(ram.peek_word(section.end_address()), 0);
@@ -380,6 +400,7 @@ fn materialization_code_covers_immediate_edge_cases() {
     };
     let image = ElfImage {
         mode: ElfReadMode::Strict,
+        rom: REGULAR_ROM,
         entry_point: 0,
         text_address: 0,
         text: vec![],
@@ -394,7 +415,7 @@ fn materialization_code_covers_immediate_edge_cases() {
     let non_zero = words.iter().filter(|w| **w != 0).count();
     let windows = (section.data.len() / 4096) + 2;
     assert!(code.len() <= 3 * non_zero + 2 * windows);
-    assert_init_code_fills_ram(&code, &[section]);
+    assert_init_code_fills_ram::<ROM_SECOND_WORD_BITS>(&code, &[section]);
 }
 
 #[test]
@@ -439,7 +460,7 @@ fn rejects_non_elf_input() {
 fn rejects_elf_without_text() {
     for elf_path in elf_files() {
         let bytes = std::fs::read(&elf_path).unwrap();
-        if let Err(err) = read_elf(&bytes, ElfReadMode::Legacy) {
+        if let Err(err) = read_elf_with_rom(&bytes, ElfReadMode::Legacy, fixture_rom(&elf_path)) {
             assert!(is_stripped_text(&err), "{}: {err}", elf_path.display());
         }
     }
@@ -543,4 +564,44 @@ fn legacy_binaries_reject_text_that_is_not_a_prefix() {
         Err(ElfReadError::Layout(_))
     ));
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn wrap_fsv_requires_wrap_rom_geometry() {
+    let path = repo_root().join(
+        "tools/gkr_verifier/full_statement_verifiers/fsv_unified_recursion_layer_sec_100_l1_feeder_wrap_special_opcodes_extension.elf",
+    );
+    let bytes = std::fs::read(path).unwrap();
+    let image = read_elf_with_rom(&bytes, ElfReadMode::Legacy, L1_WRAP_ROM).unwrap();
+    assert_eq!(image.rom, L1_WRAP_ROM);
+    assert_eq!(image.symbols["_rom_size"] as usize, L1_WRAP_ROM.byte_size());
+    assert_eq!(
+        image.flattened_binary.as_ref().unwrap().len(),
+        L1_WRAP_ROM.word_size()
+    );
+    assert_eq!(image.padded_text_words().len(), L1_WRAP_ROM.word_size());
+    let error = read_elf_with_rom(&bytes, ElfReadMode::Legacy, REGULAR_ROM).unwrap_err();
+    assert!(
+        matches!(error, ElfReadError::Layout(ref message) if message.contains("_rom_size") && message.contains("0x80000") && message.contains("0x400000")),
+        "wrong ROM must reject the linker geometry: {error}"
+    );
+}
+
+#[test]
+fn explicit_regular_rom_preserves_fsv_image() {
+    let path = repo_root().join(
+        "tools/gkr_verifier/full_statement_verifiers/fsv_unrolled_base_layer_sec_100_blake2_with_compression.elf",
+    );
+    let bytes = std::fs::read(path).unwrap();
+    for mode in [ElfReadMode::Legacy, ElfReadMode::Strict] {
+        let implicit = read_elf(&bytes, mode).unwrap();
+        let explicit = read_elf_with_rom(&bytes, mode, REGULAR_ROM).unwrap();
+        assert_eq!(implicit.text_bytes(), explicit.text_bytes());
+        assert_eq!(implicit.objcopy_binary(), explicit.objcopy_binary());
+        assert_eq!(implicit.flattened_binary, explicit.flattened_binary);
+        assert_eq!(implicit.padded_text_words(), explicit.padded_text_words());
+        assert_eq!(implicit.init_sections, explicit.init_sections);
+        assert_eq!(implicit.sections, explicit.sections);
+        assert_eq!(implicit.symbols, explicit.symbols);
+    }
 }

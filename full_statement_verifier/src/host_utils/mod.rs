@@ -16,10 +16,10 @@ pub use fsv_execution::{
 
 use crate::program_proof::ProgramProof;
 use crate::recursion_chain::{self, RecursionChain};
+use riscv_transpiler::elf::{read_elf_from_path_with_rom, ElfImage, ElfReadError, ElfReadMode};
 use setups::Setups;
 use std::path::Path;
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
-use verifier_common::prover::definitions::MerkleTreeCap;
 #[cfg(feature = "verifiers")]
 use verifier_common::prover::definitions::{SecurityLevel, SoundnessMode};
 use verifier_common::USE_REDUCED_BLAKE2_ROUNDS;
@@ -52,9 +52,7 @@ pub fn build_unified_stream(setups: &Setups, proof: &ProgramProof, blake: BlakeM
 }
 
 fn flattened_caps(setups: &Setups) -> impl Iterator<Item = &[u32]> {
-    setups
-        .values()
-        .map(|params| MerkleTreeCap::flatten_single(&params.setup_caps))
+    setups.values().map(|params| params.flattened_setup_caps())
 }
 
 /// Failure of a mode-explicit native verifier. Invalid input never selects another mode.
@@ -137,6 +135,77 @@ pub fn try_native_verify_unrolled_in_mode(
     })
 }
 
+
+/// Native verification of an L1 feeder stream (the zero-delegation
+/// feeder statement) at a checked boundary: a verifier error, a structural
+/// panic inside the statement (a nonzero delegation count, a truncated
+/// stream), or trailing words after the statement consumed its input are all
+/// reported as `Err`.
+#[cfg(feature = "verifiers")]
+pub fn native_verify_unified_l1_feeder(stream: Vec<u32>) -> Result<[u32; 16], String> {
+    native_verify_l1_feeder_statement(
+        stream,
+        crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_l1_feeder::<
+            _,
+            verifier_common::errors::DebugErrorCreator,
+            USE_REDUCED_BLAKE2_ROUNDS,
+        >,
+    )
+}
+
+/// [`native_verify_unified_l1_feeder`] over a proof of the 2^23 feeder
+/// profile A.
+#[cfg(feature = "verifiers")]
+pub fn native_verify_unified_l1_feeder_a(stream: Vec<u32>) -> Result<[u32; 16], String> {
+    native_verify_l1_feeder_statement(
+        stream,
+        crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_l1_feeder_a::<
+            _,
+            verifier_common::errors::DebugErrorCreator,
+            USE_REDUCED_BLAKE2_ROUNDS,
+        >,
+    )
+}
+
+#[cfg(feature = "verifiers")]
+fn native_verify_l1_feeder_statement(
+    stream: Vec<u32>,
+    statement: fn(
+        &mut std::vec::IntoIter<u32>,
+    ) -> Result<[u32; 16], verifier_common::errors::VerificationError>,
+) -> Result<[u32; 16], String> {
+    let joined = std::thread::Builder::new()
+        .name("unified l1 feeder verifier".to_string())
+        .stack_size(1 << 27)
+        .spawn(move || {
+            let mut it = stream.into_iter();
+            let output = statement(&mut it)
+                .map_err(|err| format!("unified l1 feeder proof failed to verify: {err:?}"))?;
+            let trailing = it.count();
+            if trailing != 0 {
+                return Err(format!(
+                    "unified l1 feeder stream carries {trailing} trailing words after the statement"
+                ));
+            }
+            Ok(output)
+        })
+        .expect("spawn verifier thread")
+        .join();
+    match joined {
+        Ok(result) => result,
+        Err(payload) => {
+            let reason = payload
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| payload.downcast_ref::<&str>().copied())
+                .unwrap_or("unknown verifier panic");
+            Err(format!(
+                "unified l1 feeder statement rejected the stream: {reason}"
+            ))
+        }
+    }
+}
+
 /// Pessimistic compatibility wrapper for a proof expected to be valid.
 #[cfg(feature = "verifiers")]
 pub fn native_verify_unified(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
@@ -185,6 +254,76 @@ pub fn try_native_verify_unified_in_mode(
 #[must_use]
 pub fn load_program(elf_path: &Path) -> (Vec<u32>, Vec<u32>) {
     riscv_transpiler::elf::load_legacy_program(elf_path)
+}
+
+/// Read the selected FSV ELF with its circuit-owned ROM geometry.
+pub fn read_fsv_image(
+    dir: impl AsRef<Path>,
+    program: FsvProgram,
+    blake: BlakeMode,
+) -> Result<ElfImage, ElfReadError> {
+    let dir = dir.as_ref();
+    let stem = program.file_stem(blake);
+    println!("Trying to load `{}` verifier", stem);
+    let elf_path = dir.join(format!("{stem}.elf"));
+    let exists = match elf_path.try_exists() {
+        Ok(res) => res,
+        Err(err) => {
+            if let Some(err) = err.get_ref() {
+                println!("Failed to probe path `{}`: {}", elf_path.display(), err);
+            } else {
+                println!("Failed to probe path `{}`", elf_path.display());
+            }
+            false
+        }
+    };
+    let selected = if exists {
+        elf_path
+    } else {
+        println!(
+            "Verifier binary `{stem}` is absent at {}, using fallback naming mode",
+            elf_path.display()
+        );
+        assert!(blake == BlakeMode::Compression,
+            "missing variant binary {} — run `cd tools/gkr_verifier && ./dump_recursive_verifiers.sh`", elf_path.display());
+        dir.join(format!("{}.elf", program.base_name()))
+    };
+    read_elf_from_path_with_rom(&selected, ElfReadMode::Legacy, program.rom())
+}
+
+/// C1's geometry-aware loader of an L1 guest (feeder A or wrap): the unpadded ROM image and
+/// text. These guests are not registry rows yet, so the bytes are unpinned; the standard
+/// guests load through [`load_fsv_exact`].
+#[must_use]
+pub fn load_l1_fsv_program(
+    dir: impl AsRef<Path>,
+    program: FsvProgram,
+    blake: BlakeMode,
+) -> (Vec<u32>, Vec<u32>) {
+    assert!(
+        matches!(
+            program,
+            FsvProgram::UnifiedRecursionLayerL1FeederA
+                | FsvProgram::UnifiedRecursionLayerL1FeederWrap
+        ),
+        "{program:?} is a registry guest; load it with load_fsv_exact"
+    );
+    let image = read_fsv_image(dir, program, blake)
+        .unwrap_or_else(|error| panic!("failed to load FSV {}: {error}", program.file_stem(blake)));
+    let bin = image
+        .objcopy_binary_words()
+        .expect("legacy FSV image has a ROM image")
+        .to_vec();
+    let text = image.text;
+    assert!(
+        bin.len() <= program.rom().word_size(),
+        "FSV image exceeds selected ROM"
+    );
+    assert!(
+        text.len() <= program.rom().word_size(),
+        "FSV text exceeds selected ROM"
+    );
+    (bin, text)
 }
 
 fn blake_mode_from_env(vars: &[&str], program: FsvProgram, default: BlakeMode) -> BlakeMode {

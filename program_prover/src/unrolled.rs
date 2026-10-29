@@ -1224,6 +1224,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
                         family_idx as u32,
                         trace_len as u32,
                         setup_commitment.get_cap(),
+                        prover_config.cap_size,
                     ),
                 );
             }
@@ -1253,6 +1254,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
                 family_idx as u32,
                 trace_len as u32,
                 setup_commitment.get_cap(),
+                prover_config.cap_size,
             ),
         );
 
@@ -1394,6 +1396,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
                         family_idx as u32,
                         trace_len as u32,
                         setup_commitment.get_cap(),
+                        prover_config.cap_size,
                     ),
                 );
             }
@@ -1422,6 +1425,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
                 family_idx as u32,
                 trace_len as u32,
                 setup_commitment.get_cap(),
+                prover_config.cap_size,
             ),
         );
 
@@ -2061,7 +2065,7 @@ pub(crate) mod test {
             .spawn(move || {
                 let families_setups: Vec<u32> = risc_v_setups
                     .iter()
-                    .flat_map(|el| MerkleTreeCap::flatten_single(&el.setup_caps).to_vec())
+                    .flat_map(|el| el.flattened_setup_caps().to_vec())
                     .collect();
 
                 let mut it = families_setups.into_iter().chain(responses.into_iter());

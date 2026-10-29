@@ -10,7 +10,7 @@ use cs::witness_placer::graph_description::{
     RawExpression,
 };
 use proc_macro2::*;
-use quote::{ToTokens, quote};
+use quote::{quote, ToTokens};
 
 mod boolean;
 mod field;
@@ -543,25 +543,25 @@ mod test {
         skip_if_ci!();
         use ::field::proth120::Proth120;
 
-        {
-            let prefix = "unified_reduced_machine";
-            let compiled_circuit: GKRCircuitArtifact<Proth120> = deserialize_from_file(&format!(
-                "../cs/compiled_circuits/{}_layout_gkr_proth120.json",
-                prefix
-            ));
-            let compiled_graph: Vec<Vec<RawExpression<Proth120>>> = deserialize_from_file(
-                &format!("../cs/compiled_circuits/{}_ssa_gkr_proth120.json", prefix),
-            );
-            let full_stream =
-                derive_from_gkr_ssa(&compiled_graph, &compiled_circuit, false, "Proth120");
+        let suffix = "proth120_2p21";
+        let prefix = "unified_reduced_machine";
+        let compiled_circuit: GKRCircuitArtifact<Proth120> = deserialize_from_file(&format!(
+            "../cs/compiled_circuits/{}_layout_gkr_{}.json",
+            prefix, suffix
+        ));
+        let compiled_graph: Vec<Vec<RawExpression<Proth120>>> = deserialize_from_file(&format!(
+            "../cs/compiled_circuits/{}_ssa_gkr_{}.json",
+            prefix, suffix
+        ));
+        let full_stream =
+            derive_from_gkr_ssa(&compiled_graph, &compiled_circuit, false, "Proth120");
 
-            write_and_fmt(
-                &format!(
-                    "../prover/compiled_circuits/{}_generated_gkr_proth120.rs",
-                    prefix
-                ),
-                &full_stream,
-            );
-        }
+        write_and_fmt(
+            &format!(
+                "../prover/compiled_circuits/{}_generated_gkr_{}.rs",
+                prefix, suffix
+            ),
+            &full_stream,
+        );
     }
 }

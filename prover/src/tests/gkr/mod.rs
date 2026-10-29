@@ -27,11 +27,6 @@ pub(crate) fn bincode_deserialize_from_file<T: serde::de::DeserializeOwned>(file
     bincode::deserialize_from(src).unwrap()
 }
 
-pub(crate) fn bincode_serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
-    let dst = std::fs::File::create(filename).unwrap();
-    bincode::serialize_into(dst, el).unwrap();
-}
-
 // The orchestration layer (VM capture + per-circuit prove helpers) is exposed
 // under `feature = "test"` so thin downstream harnesses (`experiments_runner`'s
 // fast add/sub proving test) can reuse the exact prove path of the per-family
@@ -46,11 +41,6 @@ mod bigint_eq_result;
 mod constraint_check;
 #[cfg(test)]
 mod family_circuits;
-// Also exposed under `feature = "test"`: the L1 wrap driver in
-// `prover_examples` reuses the Proth120 unified packed-proving pieces
-// (`build_unified_trace_without_precompiles`, the EVM-production config and
-// the Proth120 witness eval fn).
-pub mod large_field;
 #[cfg(test)]
 mod malicious_proofs;
 #[cfg(test)]
@@ -936,7 +926,7 @@ pub mod unified_reduced_machine_proth120 {
     use ::field::proth120::Proth120;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 
-    include!("../../../compiled_circuits/unified_reduced_machine_generated_gkr_proth120.rs");
+    include!("../../../compiled_circuits/unified_reduced_machine_generated_gkr_proth120_2p21.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>, Proth120>,

@@ -21,6 +21,7 @@ pub(crate) use prover::definitions::{
     FinalRegisterValue, GKRExternalChallenges, ProvingSelection, SecurityLevel,
 };
 pub(crate) use prover::gkr::prover::GKRProof;
+pub use prover::gkr::prover::{CommitmentMode, OperationMode};
 pub(crate) use prover::gkr::prover_config::ProverConfig;
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 pub(crate) use prover::transcript::Seed;
@@ -41,6 +42,6 @@ pub(crate) use setups::unrolled_circuits::{
     add_sub_lui_auipc_mop_circuit_setup, inits_and_teardowns_circuit_setup,
     jump_branch_slt_circuit_setup, load_store_subword_only_circuit_setup,
     load_store_word_only_circuit_setup, mul_div_unsigned_circuit_setup, shift_binary_circuit_setup,
-    unified_reduced_machine_circuit_setup,
+    unified_reduced_machine_2_22_circuit_setup, unified_reduced_machine_circuit_setup,
 };
-pub(crate) use setups::{pad_bytecode_for_proving, CircuitSetup};
+pub(crate) use setups::{pad_bytecode_for_proving_with_rom, CircuitSetup};

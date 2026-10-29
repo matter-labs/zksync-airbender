@@ -7,14 +7,15 @@
 //! `fsv_*` verifiers consume, and a verifier that wants to bind a proof to a
 //! *supplied* program (rather than trusting proof-carried metadata) must
 //! recompute the caps from the binary alone. The commitment parameters here
-//! must stay in lockstep with the prover's selected compiled-circuit config:
-//! the same LDE factor, WHIR schedule head and cap size, or the recomputed caps stop
+//! must stay in lockstep with the prover's selected compiled-circuit config
+//! (or explicit L1 profile override): the same LDE factor, WHIR schedule head
+//! and cap size, or the recomputed caps stop
 //! byte-matching proof-time setups.
 
 use super::*;
 use prover::definitions::{SecurityLevel, SoundnessMode};
 use prover::gkr::prover_config::example_configs::ConfigSelectionError;
-use prover::gkr::prover_config::ProverConfig;
+use prover::gkr::prover_config::{ProofProfile, ProverConfig};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
@@ -141,6 +142,60 @@ pub fn compute_unified_program_setups_in_mode<A: GoodAllocator + 'static>(
     ))
 }
 
+/// Pessimistic setups of the unified family under an explicit proof profile.
+pub fn compute_unified_program_setups_for_profile<A: GoodAllocator + 'static>(
+    binary_image: &[u32],
+    text_section: &[u32],
+    use_caches: bool,
+    security_level: SecurityLevel,
+    profile: ProofProfile,
+    worker: &Worker,
+) -> Setups {
+    let unified_setup = match profile {
+        ProofProfile::Standard | ProofProfile::L1FeederA => {
+            unified_reduced_machine_circuit_setup::<A>(
+                binary_image,
+                text_section,
+                use_caches,
+                worker,
+            )
+        }
+        ProofProfile::L1Feeder => unified_reduced_machine_2_22_circuit_setup::<A>(
+            binary_image,
+            text_section,
+            use_caches,
+            worker,
+        ),
+        ProofProfile::L1Wrap => {
+            panic!("ProofProfile::L1Wrap setups are built by unified_reduced_machine_proth120")
+        }
+    };
+    let config = setup_prover_config(profile, unified_setup.prover_config(security_level));
+    assert_eq!(
+        unified_setup.trace_len.ilog2() as usize,
+        config.trace_len_log2
+    );
+    commit_setup_params(
+        core::iter::once((
+            common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
+            config,
+            unified_setup.setup,
+        )),
+        security_level,
+        worker,
+    )
+}
+
+fn setup_prover_config(profile: ProofProfile, circuit_config: &ProverConfig) -> ProverConfig {
+    match profile {
+        ProofProfile::Standard => circuit_config.clone(),
+        ProofProfile::L1Feeder | ProofProfile::L1FeederA => {
+            profile.prover_config(circuit_config.trace_len_log2, circuit_config.security_level)
+        }
+        ProofProfile::L1Wrap => panic!("L1Wrap setups use the Proth120 circuit"),
+    }
+}
+
 /// Commit every setup with ITS circuit's prover config (the geometry the
 /// provers use), keyed by circuit family.
 fn commit_setup_params(
@@ -153,7 +208,6 @@ fn commit_setup_params(
     for (family_idx, prover_config, setup) in circuit_setups {
         assert_eq!(prover_config.security_level, security_level);
         let trace_len = 1usize << prover_config.trace_len_log2;
-        // the commitment interpolates over the (packed) 2^(trace_len_log2 + pack_log2) domain
         let twiddles_size = 1usize << prover_config.whir_message_size_log2();
         let twiddles_for_size = twiddles
             .entry(twiddles_size)
@@ -169,8 +223,46 @@ fn commit_setup_params(
                 family_idx,
                 trace_len as u32,
                 setup_commitment.get_cap(),
+                prover_config.cap_size,
             ),
         );
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use circuit_common::RiscVCycleCircuit;
+
+    #[test]
+    fn standard_setup_keeps_the_circuit_config() {
+        for &level in SecurityLevel::ALL {
+            for config in [
+                <unified_reduced_machine::UnifiedReducedMachineCircuit as RiscVCycleCircuit<BabyBearField, true>>::prover_config(level),
+                <unified_reduced_machine_2_22::UnifiedReducedMachineCircuit2_22 as RiscVCycleCircuit<BabyBearField, true>>::prover_config(level),
+            ] {
+                assert_eq!(setup_prover_config(ProofProfile::Standard, &config), config);
+            }
+        }
+    }
+
+    #[test]
+    fn feeder_setup_overrides_the_circuit_default() {
+        for (profile, expected, standard) in [
+            (
+                ProofProfile::L1Feeder,
+                prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_22(),
+                <unified_reduced_machine_2_22::UnifiedReducedMachineCircuit2_22 as RiscVCycleCircuit<BabyBearField, true>>::prover_config(SecurityLevel::Sec100),
+            ),
+            (
+                ProofProfile::L1FeederA,
+                prover::gkr::prover_config::example_configs::l1_feeder_a_config_for_2_23(),
+                <unified_reduced_machine::UnifiedReducedMachineCircuit as RiscVCycleCircuit<BabyBearField, true>>::prover_config(SecurityLevel::Sec100),
+            ),
+        ] {
+            assert_ne!(standard, expected);
+            assert_eq!(setup_prover_config(profile, &standard), expected);
+        }
+    }
 }
