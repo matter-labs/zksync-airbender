@@ -1,3 +1,5 @@
+import Airbender.Proofs.Reduced.NativeClocks
+import Airbender.Proofs.Reduced.WordExecution
 import Airbender.Proofs.Reduced.ControlExecution
 import Airbender.Proofs.Reduced.StreamMemory
 import Airbender.Proofs.Reduced.TargetInputs
@@ -13830,3 +13832,11 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.addsub_execution_from_shared_history
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.shift_execution_from_shared_history
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.control_execution_from_shared_history
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.word_address_from_shared_history
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.word_transport_from_shared_history
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.word_execution_from_shared_history
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.machineEvents
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.machine_clocks_unique
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.machine_clock_facts
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.machine_event_time
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.machine_event_window

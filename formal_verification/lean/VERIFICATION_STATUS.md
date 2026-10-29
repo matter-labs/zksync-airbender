@@ -160,6 +160,12 @@ now have shared-history execution adapters. Their focused kernel and axiom
 checks passed. These adapters take actual operands and histories from the shared
 transport. The control adapter keeps its native final-PC range explicit.
 The native PC path must derive that range before final target assembly.
+The reduced LW/SW address, native transport and full instruction adapters
+also passed focused kernel checks. They use shared initialized address codes
+and readonly-ROM history. The native clock proofs derive unique aligned row
+clocks, four-tick advancement and exact CPU event windows. Their axiom reports
+use only the three allowed axioms. Global cycle and caller composition remains
+open for the reduced target.
 The ROM-aware code-frame lemmas passed focused kernel and axiom checks.
 Interpreted ROM events refresh the same public word. Fetch transport can use
 that readonly history without the global tracked-RAM lower bound. The worker
