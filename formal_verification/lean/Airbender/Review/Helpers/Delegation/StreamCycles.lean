@@ -1,3 +1,4 @@
+import Airbender.Review.Trace.Modular.ExternalCalls
 import Airbender.Review.Helpers.Delegation.StreamMemory
 import Airbender.Review.Helpers.Delegation.Schedule
 import Airbender.Review.Helpers.Memory.SailHistory
@@ -45,6 +46,20 @@ def RetiresCycle (cells : List Cell) (events : List MemoryAccess)
     Reference.Sail.run (Reference.RiscV.Sail.normalStep clause)
       (retiredState before row.start.word.toBitVec) =
       .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after row.finish.word.toBitVec)
+
+/-- The complete successful reference call at the exact native caller cuts. -/
+def FullCallerCycle [Fact p.Prime] (data : RequestTrace p) (initial finalState : Reference.RiscV.Sail.State)
+    (cells : List Cell) (events : List MemoryAccess) (row : Trace.Row p PooledFamily) : Prop :=
+  ∃ before after,
+    SailHistory cells (events.filter fun event => decide (event.1 ≤ startClock row)) initial before ∧
+    SailHistory cells (events.filter fun event => decide
+      (startClock row < event.1 ∧ event.1 ≤ finishClock row)) before after ∧
+    SailHistory cells (events.filter fun event => decide (finishClock row < event.1)) after finalState ∧
+    ∃ entry ∈ data.program, nativeQuery row.assignment = query entry ∧
+      row.start.word.toBitVec = entry.pc ∧ entry.SourceWith before decoderFields ∧
+      UnifiedReduced.Caller.FullCall entry.data.family before after ∧
+      UnifiedReduced.Caller.FullRetirement entry.data.family
+        (retiredState before row.start.word.toBitVec) (retiredState after row.finish.word.toBitVec)
 
 end Airbender.Delegation.Caller
 

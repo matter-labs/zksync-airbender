@@ -1,3 +1,4 @@
+import Airbender.Proofs.Reduced.CallerCycles
 import Airbender.Proofs.Reduced.CycleDispatch
 import Airbender.Proofs.Reduced.PCBounds
 import Airbender.Proofs.Reduced.StreamCount
@@ -13859,3 +13860,15 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_initial_count
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_terminal_count
 #print axioms Airbender.AddSub.Modular.External.Caller.Proofs.ordinary_cycle_at
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.cycle_workers_singleton
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.caller_cycle_worker_history
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.worker_addresses_distinct
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_round_masks
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.round_worker_call
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_round_worker_call
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.caller_worker_family
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.caller_pc_retirement_raw
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.caller_pc_retirement
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.caller_source_readonly
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_caller_read_disabled
+#print axioms Airbender.AddSub.Modular.External.Caller.Proofs.native_full_caller_cycle_at
