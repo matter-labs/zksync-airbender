@@ -1,8 +1,25 @@
 import Airbender.Review.Helpers.Decoder.UnifiedProgramRows
 import Airbender.Review.Helpers.Memory.TextImage
+import Airbender.Data.Decoder.Setup.AddSub
+import Airbender.Data.Decoder.Setup.JumpBranch
+import Airbender.Data.Decoder.Setup.MulDiv
+import Airbender.Data.Decoder.Setup.ShiftBinop
+import Airbender.Data.Decoder.Setup.Subword
+import Airbender.Data.Decoder.Setup.WordMemory
+import Airbender.Data.Decoder.Setup.Unified
 
 namespace Airbender.Compiler
 open Airbender.Trace Airbender.Trace.NativeDecoder Reference.RiscV.Sail
+
+/-- The masks are fixed metadata of the six compiled unrolled circuits. Their
+program-dependent row contents are supplied separately below. -/
+def unrolledNativeMaskColumns : PooledFamily → Array Bool
+  | .addSub => addSubSetup.columnsMask
+  | .jumpBranchSlt => jumpBranchSetup.columnsMask
+  | .mulDiv => mulDivSetup.columnsMask
+  | .shiftBinop => shiftBinopSetup.columnsMask
+  | .wordMemory => wordMemorySetup.columnsMask
+  | .subwordMemory => subwordSetup.columnsMask
 
 /-- Public, program-dependent decoder setup for either unrolled machine.
 `columns` is the independently supplied setup column data; its equality to
@@ -16,6 +33,7 @@ structure UnrolledProgramSetup (config : ProgramRows.Config)
   size : text.length ≤ ROM.limit / 4
   fits : text.length ≤ capacity
   groups : ProgramRows.WellFormedDelegationText config text
+  maskMatches : ∀ family, (masks family).columns = unrolledNativeMaskColumns family
   decoderRows : ∀ family,
     columns family = ProgramRows.nativeDecoderRows config initial text capacity
       fits family (masks family)
@@ -30,6 +48,7 @@ structure UnifiedProgramSetup (initial : State) (text : List (BitVec 32))
   size : text.length ≤ ROM.limit / 4
   fits : text.length ≤ capacity
   groups : UnifiedProgramRows.WellFormedDelegationText text
+  maskMatches : mask.columns = unifiedSetup.columnsMask
   decoderRows : columns = UnifiedProgramRows.nativeDecoderRows initial text
     capacity fits mask
 
