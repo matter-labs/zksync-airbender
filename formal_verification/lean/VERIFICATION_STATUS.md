@@ -48,8 +48,10 @@ For theta/rho and chi5, an explicit public controller-table soundness premise
 now yields one-hot iteration flags or a bounded row index. Native fixed-table
 lookups then give positive, nonwrapping distances and strict order for all
 groups in both cache modes. Proving that premise from the captured fixed setup,
-connecting every physical port to its group, and complete memory effects remain
-open.
+complete memory effects remain open. All theta/rho and chi5 physical ports now
+have kernel-checked group ownership in both cache modes. A common theorem proves
+strict read-before-write order for all six capture families, given bounded
+logical read and invocation clocks and the explicit controller premise.
 
 Both cached and uncached native captures remain required. The checker migration
 must qualify all 22 capture configurations.

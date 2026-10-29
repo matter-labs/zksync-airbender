@@ -47,8 +47,10 @@ The [controller lookup proofs](../../../../Proofs/Keccak/SplitControlLookup.lean
 derive positive grouped distances and strict order for theta/rho and chi5 in
 both cache modes from the imported lookup queries, bounded read clocks and the
 explicit public [controller-table premise](SplitNative.lean). The fixed setup
-certificate still has to discharge that premise; physical-port grouping and
-the resulting complete RAM histories remain open.
+certificate still has to discharge that premise. The
+[physical-port proof](../../../../Proofs/Keccak/SplitPortOrder.lean) checks each
+theta/rho and chi5 port's group membership and proves strict read-before-write
+order for all six worker capture families. Complete RAM histories remain open.
 Under the [ValidDelegationUse](../../UnifiedReduced/DelegationUse.lean) contract, special5 calls are
 excluded; these lemmas therefore do not establish blessed Keccak execution.
 Split worker modeling and integration are required open work. See
