@@ -438,7 +438,7 @@
     "cs/src/witness_placer/mod.rs": "017d763e74acf01dc208c663de7355cec70e66d243d92ac1f6465e0b803f2dc5",
     "cs/src/witness_placer/scalar_witness_type_set.rs": "38da44cb3584a8f86e77e8032e89c345fe291d3a4b80a180f05b5b7dabc31d7d",
     "execution_prover/Cargo.toml": "349976801499e72943516a751cd1b84d8a12f291c07c316022e6b60c9526c52c",
-    "execution_prover/examples/export_setup_json.rs": "532997a8ba4a2cd800da2286b947a3c43b1a45e07d3b164b65e1c75a64731e84",
+    "execution_prover/examples/export_setup_json.rs": "ea43e8ba805cd7abbc82851aa8ec051cb5690284749a7780fcfaad9f4ccdd6d8",
     "execution_prover/src/backend.rs": "04f1e3f89d6fd78e346925b936d4162a785e1fb9df4ba5ff250bd6e35a525fea",
     "execution_prover/src/config.rs": "fb980703982c1e8a8a594ea9fa9e0991edb4c5689acd473c62ee8129ff564f27",
     "execution_prover/src/lib.rs": "22f1f41d583d6559f4949307aa29535bcbcb42267ff73ef4a3e551481ccdf3d4",
