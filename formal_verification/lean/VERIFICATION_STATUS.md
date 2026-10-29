@@ -14,7 +14,7 @@ execution and logical lookup/RAM composition are established narrower results.
 
 | Setup machine | Current target status |
 | --- | --- |
-| Unrolled full unsigned | Open: program-parametric native setup, caller/worker and initialization composition, and functional soundness of the blessed split Keccak workers. Their compiled equations, fixed lookups, timestamp queries and public call schedule are imported; complete setup and worker effects are not proved. Special5 calls require an explicit public exclusion until their intended sequence is specified. |
+| Unrolled full unsigned | Open: native soundness for the combined full unsigned stream relation, program-parametric native setup, caller/worker and initialization composition, and functional soundness of the blessed split Keccak workers. The relation, public-text registries and all-stream supported-use contract now include the three split calls. Their independent micro-call reference fixes the touched lanes, delayed Iota, Theta/Rho, Chi and full Sail frame. Special5 calls retain an explicit public exclusion. |
 | Unrolled reduced | Open: program-parametric native setup, BLAKE2 extended-round caller/worker composition, and stream-aware initialization. The four-family stream/caller relation, its pooled inclusion, and a public all-stream use contract are present; native soundness is not. |
 | Unified | Open: program-parametric native setup, native soundness for the combined stream/modular/caller relation, and its initialization adapter. Special5 calls require an explicit public exclusion. |
 
@@ -22,6 +22,17 @@ These are required target scopes, not proved theorems. The corresponding Lean
 `Prop` declarations and complete circuit acceptance interfaces are still being
 designed. Exact lookup matching and state/RAM permutations remain explicit
 logical assumptions in all three targets.
+
+The full unsigned relation now combines the six CPU families, modular MOPs,
+nondeterminism reads, bigint, BLAKE2 extended-round and the three split Keccak
+calls in one stream execution. Its caller registries are functions of public
+text, with a proved generic public-byte/source lemma and inclusion of the
+existing ordinary/caller steps. The new split micro-call reference uses the
+blessed control schedule, the inverse-Pi physical slot map and the existing
+Keccak round constants. Kernel checks establish distinct touched slots for all
+361 calls and the final round's identity slot map. Native worker-to-reference
+soundness, complete 361-call functional composition and registry disjointness
+remain open; these reference checks do not establish native circuit coverage.
 
 The split-worker native interface now selects all six exact compiled
 constraint/lookup/timestamp imports, invocation columns and memory ports by
