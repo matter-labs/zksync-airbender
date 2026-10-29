@@ -25,7 +25,12 @@ lookups and timestamp queries: [column parity](../../../Circuits/Keccak/SplitCol
 grouped timestamp metadata, invocation columns and the native memory ports bound
 to each checked group. The [split native interface](SplitNative.lean) now states
 equations, participation and exact memory-token matching for all six captures.
-Complete setup provenance and worker-effect proofs remain open.
+The [split request interface](SplitRequests.lean) matches full-width native CSR
+calls to worker invocation clocks under an explicit virtual-token permutation.
+[Request-clock proofs](../../../../Proofs/Keccak/SplitRequests.lean) derive
+one-to-one nonzero fulfillment, clock bounds and no low-limb rollover from
+machine constraints, state matching and the public initial clock. Complete
+setup provenance, public caller binding and worker-effect proofs remain open.
 Under the [ValidDelegationUse](../../UnifiedReduced/DelegationUse.lean) contract, special5 calls are
 excluded; these lemmas therefore do not establish blessed Keccak execution.
 Split worker modeling and integration are required open work. See
