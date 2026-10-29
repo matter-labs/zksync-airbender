@@ -149,6 +149,12 @@ Its axiom report lists only `propext`, `Classical.choice` and `Quot.sound`.
 The check used the retained dependency cache. Full environment auditing and
 transitive kernel replay remain pending. All 12,457 pre-rebase audit roots
 remain in the explicit inventory. Work now proceeds to UnrolledReduced.
+Its public ordinary and caller images and standalone initialization adapter
+passed focused kernel and axiom checks. Its shared stream/caller memory theorem
+also passed. Native matching derives clocks, zero-register reads, canonical
+word bounds, worker operations and one actual Sail memory history. The round
+controller contract remains explicit at this intermediate memory interface.
+The reduced target must derive it from public supported use before completion.
 The ROM-aware code-frame lemmas passed focused kernel and axiom checks.
 Interpreted ROM events refresh the same public word. Fetch transport can use
 that readonly history without the global tracked-RAM lower bound. The worker
