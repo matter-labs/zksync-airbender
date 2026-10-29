@@ -43,14 +43,20 @@ Setup freshness passed. All 12 native generators ran. All 16 fresh setup JSONs
 matched. Native dep-info covered 551 inputs. The refreshed manifest covers 731
 source files.
 
+The compiler and lookup provenance checks passed after regeneration. The
+unified table and decoder setup scaffold checks also passed. The decoder
+oracle rebuilt with the current sources on Lean 4.31.0.
+
 The changed unified, bigint and initialization imports passed focused builds.
 The four changed split imports passed in both cache modes. The split group
 clock, derived-borrow, control-bound, physical-port and memory-order proofs
 passed kernel elaboration on the new layouts. The split import test module
 also built. All 22 production-program decoder comparisons passed in both cache
-modes. The combined run reached its 900-second limit during the small-program
-matrix. No decoder mismatch occurred. Its guard left no owned process running.
-The remaining small-program cases and unified/bigint proof repairs are pending.
+modes with the current oracle. All 68 small-program comparisons also passed.
+These cover both cache modes for two ordinary programs, an extended-round
+caller and the blessed split Keccak caller. The small matrix used an optimized
+exporter build. It changed no Rust source or dependency version.
+Unified proof repairs and the bigint memory proof are pending.
 Earlier build results apply to the old base.
 Unified's current column-role inventory, dispatch bound and ordinary PC
 increment passed focused kernel builds. Bigint's current column-role inventory,
