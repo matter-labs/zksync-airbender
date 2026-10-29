@@ -1,5 +1,29 @@
+use crate::{CommitmentMode, ExecutionKind, ProofProfile};
+use prover::definitions::SecurityLevel;
 pub use prover::definitions::SoundnessMode;
 use riscv_transpiler::jit::JitRunnerRam;
+
+/// Unified executions take their mode from the selected circuit configuration.
+/// Per-family unrolled executions only support separate commitments.
+pub fn execution_commitment_mode(
+    kind: ExecutionKind,
+    profile: ProofProfile,
+    security_level: SecurityLevel,
+) -> CommitmentMode {
+    match kind.unified_circuit() {
+        Some(circuit) => {
+            match profile {
+                ProofProfile::Standard => circuit.prover_config(security_level),
+                l1 => l1.prover_config(circuit.get_domain_size_log2() as usize, security_level),
+            }
+            .commitment_mode
+        }
+        None => {
+            assert_eq!(profile, ProofProfile::Standard);
+            CommitmentMode::SeparateMemoryAndWitness
+        }
+    }
+}
 
 pub trait BackendConfiguration: Copy + Send + Sync + 'static + Sized {
     fn execution_defaults(soundness_mode: SoundnessMode) -> ExecutionProverConfiguration<Self>;

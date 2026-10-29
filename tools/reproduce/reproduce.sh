@@ -56,6 +56,8 @@ cd "$REPO_ROOT/tools/gkr_verifier"
 # Full-statement verifiers in both soundness modes and every recursive Blake variant.
 if [ "$FULL_STATEMENT_VERIFIERS" = 1 ]; then
     ./dump_recursive_verifiers.sh
+    # Build the independent 512 KiB-ROM L1 wrap guest.
+    bash ../gkr_verifier_l1_wrap/dump_bin.sh
 fi
 
 # Standalone per-circuit verifiers (both soundness modes): every binary under src/bin/circuit_verifiers/.

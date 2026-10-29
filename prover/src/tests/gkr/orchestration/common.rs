@@ -149,13 +149,16 @@ impl ProgramConfig {
 
 /// Output of [`run_vm_and_capture`]: the binary buffers, the snapshotter the
 /// downstream proves replay against, and end-of-execution state.
-pub struct VmRunOutput<C: Counters + Copy + Default> {
+pub struct VmRunOutput<
+    C: Counters + Copy + Default,
+    const ROM_SECOND_WORD_BITS: usize = { common_constants::ROM_SECOND_WORD_BITS },
+> {
     pub binary: Vec<u32>,
     pub text_section: Vec<u32>,
     pub instructions: Vec<Instruction>,
     pub tape: SimpleTape,
-    pub ram: RamWithRomRegion<{ common_constants::ROM_SECOND_WORD_BITS }>,
-    pub snapshotter: SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
+    pub ram: RamWithRomRegion<ROM_SECOND_WORD_BITS>,
+    pub snapshotter: SimpleSnapshotter<C, ROM_SECOND_WORD_BITS>,
     pub final_state: State<C>,
     pub counters: C,
     pub shuffle_ram_touched_addresses: Vec<Vec<(u32, (TimestampScalar, u32)), Global>, Global>,
@@ -166,7 +169,9 @@ pub struct VmRunOutput<C: Counters + Copy + Default> {
     pub ram_bound_bytes: usize,
 }
 
-impl<C: Counters + Copy + Default> VmRunOutput<C> {
+impl<C: Counters + Copy + Default, const ROM_SECOND_WORD_BITS: usize>
+    VmRunOutput<C, ROM_SECOND_WORD_BITS>
+{
     /// Final program counter, derived from `final_state` (previously a denormalized field).
     pub fn final_pc(&self) -> u32 {
         self.final_state.pc
@@ -203,55 +208,41 @@ where
     C: Counters + Copy + Default + std::fmt::Debug,
     D: riscv_transpiler::ir::DecodingOptions,
 {
-    println!("Using {} program", config.program);
-    let (binary, text_section) = config.program.load_unpadded();
-    run_words_and_capture::<C, D>(
-        binary,
-        text_section,
-        &config.non_determinism_reads,
-        config.cycles_bound,
-        config.ram_bound_bytes,
-        worker,
-    )
+    run_vm_and_capture_with_rom::<C, D, { common_constants::ROM_SECOND_WORD_BITS }>(config, worker)
 }
 
-/// [`run_vm_and_capture`] of a program given as its words: the unpadded ROM image and text
-/// section, as [`ProgramSource::load_unpadded`](riscv_transpiler::elf::ProgramSource::load_unpadded)
-/// returns them.
-pub fn run_words_and_capture<C, D>(
-    binary: Vec<u32>,
-    text_section: Vec<u32>,
-    non_determinism_reads: &[u32],
-    cycles_bound: usize,
-    ram_bound_bytes: usize,
+/// Capture a test program with an explicit ROM geometry for the active wrap.
+pub fn run_vm_and_capture_with_rom<C, D, const ROM_SECOND_WORD_BITS: usize>(
+    config: &ProgramConfig,
     worker: &Worker,
-) -> VmRunOutput<C>
+) -> VmRunOutput<C, ROM_SECOND_WORD_BITS>
 where
     C: Counters + Copy + Default + std::fmt::Debug,
     D: riscv_transpiler::ir::DecodingOptions,
 {
+    println!("Using {} program", config.program);
+
+    let (binary, text_section) = config.program.load_unpadded();
+
     let instructions: Vec<Instruction> = preprocess_bytecode::<D, true>(&text_section);
     let tape = SimpleTape::new(&instructions);
 
-    let mut ram = RamWithRomRegion::<{ common_constants::ROM_SECOND_WORD_BITS }>::from_rom_content(
-        &binary,
-        ram_bound_bytes,
-    );
+    let mut ram =
+        RamWithRomRegion::<ROM_SECOND_WORD_BITS>::from_rom_content(&binary, config.ram_bound_bytes);
 
     let mut state = State::initial_with_counters(C::default());
-    let mut snapshotter =
-        SimpleSnapshotter::<C, { common_constants::ROM_SECOND_WORD_BITS }>::new_with_cycle_limit(
-            cycles_bound,
-            state,
-        );
-    let mut non_determinism = QuasiUARTSource::new_with_reads(non_determinism_reads.to_vec());
+    let mut snapshotter = SimpleSnapshotter::<C, ROM_SECOND_WORD_BITS>::new_with_cycle_limit(
+        config.cycles_bound,
+        state,
+    );
+    let mut non_determinism = QuasiUARTSource::new_with_reads(config.non_determinism_reads.clone());
 
     let is_program_finished = VM::<C>::run_basic_unrolled::<_, _, _, BabyBearField>(
         &mut state,
         &mut ram,
         &mut snapshotter,
         &tape,
-        cycles_bound,
+        config.cycles_bound,
         &mut non_determinism,
     );
     assert!(is_program_finished, "program did not reach looping state");
@@ -285,8 +276,8 @@ where
         counters,
         shuffle_ram_touched_addresses,
         total_unique_teardowns,
-        cycles_bound,
-        ram_bound_bytes,
+        cycles_bound: config.cycles_bound,
+        ram_bound_bytes: config.ram_bound_bytes,
     }
 }
 

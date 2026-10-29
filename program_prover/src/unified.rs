@@ -156,8 +156,8 @@ pub fn prove_unified_execution_with_replayer_with_unified_config<
 /// inits-and-teardowns, alongside the delegation circuits. It is the unified-mode analogue of
 /// [`crate::unrolled::prove_unrolled_execution_with_replayer_in_mode`]: the same Fiat-Shamir flow
 /// (commit memory trees -> derive challenges -> prove), and it asserts that the global permutation
-/// grand-product closes to ONE. `L1Feeder` proves with the certified L1 feeder config through the
-/// transition driver.
+/// grand-product closes to ONE. `L1Feeder` and `EvmProductionPacked` are refused: the L1 feeder
+/// is proven by the pipeline's `ProofTarget::L1Feeder` route.
 ///
 /// The caller chooses the compute backends: the FFT/tree [`Backend`] (whose
 /// [`Backend::TwiddleSet`]s are built here, once per WHIR message length) and the
@@ -190,7 +190,6 @@ pub fn prove_unified_execution_with_replayer_in_profile<
     BTreeMap<u32, UnrolledCircuitSetupParams>,
 ) {
     use prover::definitions::ProverConfigProfile;
-    use prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23;
     profile.assert_supports(soundness_mode);
     match profile {
         ProverConfigProfile::Standard => prove_unified_execution_with_replayer_impl::<B, GB>(
@@ -208,30 +207,8 @@ pub fn prove_unified_execution_with_replayer_in_profile<
             backend,
             gkr_backend,
         ),
-        ProverConfigProfile::L1Feeder => {
-            let config = l1_feeder_config_for_2_23();
-            assert_eq!(
-                config.security_level, security_level,
-                "the certified L1 feeder config must match the requested security level"
-            );
-            // The feeder commits memory+witness together and has no delegations.
-            // Its existing transition driver owns that prepass and transcript order.
-            crate::unified_transition::prove_unified_transition_with_replayer(
-                cycles_bound,
-                binary_image,
-                text_section,
-                use_caches,
-                non_determinism,
-                ram_bound,
-                worker,
-                security_level,
-                permutation_argument_pow_bits,
-                &config,
-                backend,
-                gkr_backend,
-            )
-        }
-        ProverConfigProfile::EvmProductionPacked => {
+        // The L1 feeder is proven by the pipeline's `ProofTarget::L1Feeder` route.
+        ProverConfigProfile::L1Feeder | ProverConfigProfile::EvmProductionPacked => {
             panic!("BabyBear unified execution cannot use {profile:?}")
         }
     }
@@ -790,6 +767,7 @@ fn prove_unified_execution_with_replayer_impl<
                 REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
                 trace_len as u32,
                 setup_commitment.get_cap(),
+                prover_config.cap_size,
             ),
         );
 

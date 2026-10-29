@@ -129,6 +129,7 @@ pub enum WitnessGenerationStrategy {
 
 const fn production_witness_strategy(circuit_type: CircuitType) -> WitnessGenerationStrategy {
     match circuit_type {
+        CircuitType::L1Wrap21 => panic!("GPU backend does not support L1 wrap circuits"),
         CircuitType::Delegation(circuit_type) => match circuit_type {
             DelegationCircuitType::BigIntWithControl => WitnessGenerationStrategy::Split,
             DelegationCircuitType::Blake2WithCompression => WitnessGenerationStrategy::Fused,
@@ -139,6 +140,9 @@ const fn production_witness_strategy(circuit_type: CircuitType) -> WitnessGenera
             DelegationCircuitType::KeccakChi5 => WitnessGenerationStrategy::Fused,
         },
         CircuitType::Unrolled(circuit_type) => match circuit_type {
+            UnrolledCircuitType::Unified22 => {
+                panic!("GPU backend does not support the CPU-only Unified22 circuit")
+            }
             UnrolledCircuitType::InitsAndTeardowns => WitnessGenerationStrategy::Split,
             UnrolledCircuitType::Memory(circuit_type) => match circuit_type {
                 UnrolledMemoryCircuitType::LoadStoreSubwordOnly => WitnessGenerationStrategy::Fused,

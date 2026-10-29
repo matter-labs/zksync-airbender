@@ -426,3 +426,131 @@ fn test_sumcheck_loop_multiple_gates() {
     assert_eq!(layer_0_claims.get(&addr_prod_a).unwrap(), &expected_a);
     assert_eq!(layer_0_claims.get(&addr_prod_b).unwrap(), &expected_b);
 }
+
+/// `windowed_same_size_schedule(21)` (the 2^21 L1 wrap's same-size schedule)
+/// binds all 21 variables in seven window passes and ends in a Tail that binds
+/// none. Over Proth120 it must reproduce the naive schedule's transcript,
+/// claims, claim points and round messages.
+#[test]
+fn proth120_2p21_windowed_schedule_transcript() {
+    windowed_schedule_matches_naive_over_proth120(21);
+}
+
+fn windowed_schedule_matches_naive_over_proth120(folding_steps: usize) {
+    use crate::gkr::prover::gkr_backend::{GKRBackend, NaiveGKRBackend};
+    use field::Proth120;
+    use transcript::Keccak256Transcript;
+
+    type P = Proth120;
+    let poly_size = 1 << folding_steps;
+
+    let worker = Worker::new_with_num_threads(8);
+    use rand::{RngCore, SeedableRng};
+    let mut rng = rand::rngs::StdRng::seed_from_u64(0x5eed);
+    let mut poly = |size: usize| -> Vec<P> {
+        (0..size)
+            .map(|_| P::from_u32_with_reduction(rng.next_u32()))
+            .collect()
+    };
+    let a = poly(poly_size);
+    let b = poly(poly_size);
+    let output = compute_product::<P, P>(&a, &b);
+    let addr_a = GKRAddress::InnerLayer {
+        layer: 0,
+        offset: 0,
+    };
+    let addr_b = GKRAddress::InnerLayer {
+        layer: 0,
+        offset: 1,
+    };
+    let addr_out = GKRAddress::InnerLayer {
+        layer: 1,
+        offset: 0,
+    };
+    let layer = GKRLayerDescription {
+        layer: 0,
+        gates: vec![GateArtifacts {
+            output_layer: 1,
+            enforced_relation: GKRRelation::TrivialProduct {
+                input: [addr_a, addr_b],
+                output: addr_out,
+            },
+        }],
+        gates_with_external_connections: vec![],
+        cached_relations: BTreeMap::new(),
+        intermediate_layer_width: None,
+    };
+    let prev_challenges: Vec<P> = poly(folding_steps);
+    let eq_precomputed = make_eq_poly_in_full_lsb::<P>(&prev_challenges, &worker);
+    let output_claim =
+        evaluate_with_precomputed_eq_ext::<P>(&output, eq_precomputed.last().unwrap());
+
+    let run = |schedule: Vec<prover_config::SumcheckStep>, threads: usize| {
+        let worker = Worker::new_with_num_threads(threads);
+        let mut storage = setup_storage::<P, P>(
+            vec![(addr_a, a.clone()), (addr_b, b.clone())],
+            vec![(addr_out, output.clone())],
+        );
+        let mut claims_storage = BTreeMap::from([(1, BTreeMap::from([(addr_out, output_claim)]))]);
+        let mut claim_point_entries = BTreeMap::from([(
+            1,
+            prev_challenges
+                .iter()
+                .map(|point| crate::gkr::prover::EvaluationPointEntry::Coordinate { point: *point })
+                .collect(),
+        )]);
+        let mut config = test_prover_config();
+        config.trace_len_log2 = folding_steps;
+        config.same_size_sumcheck_schedule = schedule;
+        let mut batching_challenge = P::from_u32_with_reduction(0xff);
+        let mut seed = Keccak256Transcript::commit_initial_u32(&[0x5eed]);
+        let proof_values = NaiveGKRBackend
+            .evaluate_same_size_sumcheck_for_layer::<Keccak256Transcript>(
+                0,
+                &layer,
+                &mut claim_point_entries,
+                &mut claims_storage,
+                &mut storage,
+                &mut batching_challenge,
+                poly_size,
+                P::from_u32_with_reduction(0xff),
+                P::from_u32_with_reduction(42),
+                &[],
+                0,
+                &GKRExternalChallenges::default(),
+                &config,
+                &mut seed,
+                &crate::allocation_pool::GenericAllocationPool::proxy(),
+                &worker,
+            );
+        (
+            seed,
+            batching_challenge,
+            claims_storage[&0].clone(),
+            format!("{:?}", claim_point_entries[&0]),
+            serde_json::to_string(&proof_values).unwrap(),
+        )
+    };
+
+    let windowed = prover_config::windowed_same_size_schedule(folding_steps);
+    assert_eq!(windowed.last(), Some(&prover_config::SumcheckStep::Tail));
+    // Naive folds reuse one in-place buffer; parallel chunks can overwrite
+    // unread source values. Use a serial reference and exercise windowed with
+    // multiple workers until the independent naive-fold race is fixed.
+    let naive = run(prover_config::naive_same_size_schedule(), 1);
+    let windowed = run(windowed, 8);
+    assert_eq!(
+        naive.4, windowed.4,
+        "round messages, {folding_steps} variables"
+    );
+    assert_eq!(
+        naive.3, windowed.3,
+        "claim point, {folding_steps} variables"
+    );
+    assert_eq!(naive.2, windowed.2, "claims, {folding_steps} variables");
+    assert_eq!(
+        naive.1, windowed.1,
+        "batch challenge, {folding_steps} variables"
+    );
+    assert_eq!(naive.0, windowed.0, "seed, {folding_steps} variables");
+}

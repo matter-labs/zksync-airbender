@@ -14,7 +14,11 @@ fn concurrent_batches_wait_for_cached_resources() {
     let handle = prover.add_binary_variants(
         program.clone(),
         program,
-        &[(ExecutionKind::Unrolled, MachineType::FullUnsigned)],
+        &[(
+            ExecutionKind::Unrolled,
+            MachineType::FullUnsigned,
+            &[crate::ProofProfile::Standard],
+        )],
         Some(cycles),
     )[0];
     prover.finalize_setup();
@@ -25,11 +29,120 @@ fn concurrent_batches_wait_for_cached_resources() {
             let prover = &prover;
             let handle = &handle;
             scope.spawn(move || {
-                let commitment =
-                    prover.commit_memory(batch_id, handle, QuasiUARTSource::new_with_reads(vec![]));
+                let commitment = prover.commit_memory(
+                    batch_id,
+                    handle,
+                    QuasiUARTSource::new_with_reads(vec![]),
+                    crate::ProofProfile::Standard,
+                );
                 assert_eq!(commitment.final_timestamp, expected_final_timestamp);
             });
         }
     });
     assert!(REQUESTS.load(Ordering::SeqCst) > 0);
+}
+
+fn unified_prover(
+    execution_kind: ExecutionKind,
+    profiles: &[crate::ProofProfile],
+) -> (ExecutionProver<TestBackend>, crate::BinaryHandle) {
+    let mut prover = ExecutionProver::<TestBackend>::new();
+    let program = vec![0x0001_2083, 0xffdf_f06f];
+    let handle = prover.add_binary_variants(
+        program.clone(),
+        program,
+        &[(execution_kind, MachineType::Reduced, profiles)],
+        Some(32),
+    )[0];
+    (prover, handle)
+}
+
+/// Standard and A share a 2^23 handle; C uses its own 2^22 circuit.
+#[test]
+fn unified_profiles_reach_commitment_and_proof_requests() {
+    use crate::ProofProfile::{L1Feeder, L1FeederA, Standard};
+    use execution_prover_model::circuit_type::UnrolledCircuitType;
+    let (mut prover, handle) = unified_prover(ExecutionKind::Unified, &[L1FeederA, Standard]);
+    let program = vec![0x0001_2083, 0xffdf_f06f];
+    let feeder = prover.add_binary_variants(
+        program.clone(),
+        program,
+        &[(ExecutionKind::Unified22, MachineType::Reduced, &[L1Feeder])],
+        Some(32),
+    )[0];
+    prover.finalize_setup();
+    for (batch, handle, profile, circuit) in [
+        (8012, handle, Standard, UnrolledCircuitType::Unified),
+        (8013, handle, L1FeederA, UnrolledCircuitType::Unified),
+        (8014, feeder, L1Feeder, UnrolledCircuitType::Unified22),
+    ] {
+        let reads = || QuasiUARTSource::new_with_reads(vec![]);
+        let ticket = prover.commit_memory(batch, &handle, reads(), profile);
+        assert_eq!(ticket.profile, profile);
+        prover.prove(batch, ticket, reads());
+        let recorded = PROFILES.lock().unwrap();
+        for proving in [false, true] {
+            assert!(recorded.iter().any(|&(b, c, p, f)| b == batch
+                && c == CircuitType::Unrolled(circuit)
+                && p == proving
+                && f == profile));
+        }
+        assert!(recorded
+            .iter()
+            .filter(|&&(b, ..)| b == batch)
+            .all(|&(_, c, _, f)| match c {
+                c if c == CircuitType::Unrolled(circuit) => f == profile,
+                CircuitType::Delegation(_) => f == Standard,
+                _ => false,
+            }));
+    }
+}
+
+#[test]
+fn unsupported_registration_profiles_are_rejected() {
+    use crate::ProofProfile::{L1Feeder, L1FeederA, L1Wrap, Standard};
+    for (kind, profiles) in [
+        (ExecutionKind::Unified22, vec![L1Feeder, Standard]),
+        (ExecutionKind::Unified, vec![Standard, L1Feeder]),
+        (ExecutionKind::Unified22, vec![L1Feeder, L1FeederA]),
+        (ExecutionKind::L1Wrap21, vec![Standard]),
+        (ExecutionKind::Unified, vec![L1Wrap]),
+        (ExecutionKind::Unrolled, vec![L1Feeder]),
+        (ExecutionKind::Unrolled, vec![L1FeederA]),
+    ] {
+        assert!(
+            std::panic::catch_unwind(|| unified_prover(kind, &profiles)).is_err(),
+            "{kind:?} {profiles:?}"
+        );
+    }
+}
+
+#[test]
+#[should_panic(expected = "ProofProfile::L1Feeder was not declared for this binary")]
+fn undeclared_profile_is_rejected() {
+    let (mut prover, handle) =
+        unified_prover(ExecutionKind::Unified, &[crate::ProofProfile::Standard]);
+    prover.finalize_setup();
+    prover.commit_memory(
+        1,
+        &handle,
+        QuasiUARTSource::new_with_reads(vec![]),
+        crate::ProofProfile::L1Feeder,
+    );
+}
+
+/// A regular-ROM-padded image cannot be registered for the 512 KiB wrap ROM.
+#[test]
+#[should_panic(expected = "bytecode exceeds selected ROM")]
+fn wrap_image_over_512kib_is_rejected() {
+    ExecutionProver::<TestBackend>::new().add_binary_variants(
+        vec![0; 1 << 20],
+        vec![0; 1 << 20],
+        &[(
+            ExecutionKind::L1Wrap21,
+            MachineType::Reduced,
+            &[crate::ProofProfile::L1Wrap],
+        )],
+        Some(32),
+    );
 }

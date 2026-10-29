@@ -194,8 +194,12 @@ fn prove_on_gpu(
     text_section: Vec<u32>,
     reads: Vec<u32>,
 ) -> (crate::upstream::ProgramProof, crate::upstream::Setups) {
-    let handle =
-        prover.add_binary_variants(binary_image, text_section, &[(kind, machine)], None)[0];
+    let handle = prover.add_binary_variants(
+        binary_image,
+        text_section,
+        &[(kind, machine, &[execution_prover::ProofProfile::Standard])],
+        None,
+    )[0];
     prover.finalize_setup();
     prove_registered_on_gpu(prover, &handle, reads)
 }
@@ -206,9 +210,13 @@ fn prove_registered_on_gpu(
     handle: &gpu_execution_prover::BinaryHandle,
     reads: Vec<u32>,
 ) -> (crate::upstream::ProgramProof, crate::upstream::Setups) {
-    let result =
-        prover.commit_memory_and_prove(0, handle, FlatResponsesSource::new_with_reads(reads));
-    let artifacts = prover.program_artifacts(handle);
+    let result = prover.commit_memory_and_prove(
+        0,
+        handle,
+        FlatResponsesSource::new_with_reads(reads),
+        execution_prover::ProofProfile::Standard,
+    );
+    let artifacts = prover.program_artifacts(handle, execution_prover::ProofProfile::Standard);
     assemble_program_proof(&artifacts, result)
 }
 
@@ -772,7 +780,11 @@ fn test_program_prover_recursion_layer_verify() {
     let base = prover.add_binary_variants(
         binary_image,
         text_section,
-        &[(ExecutionKind::Unrolled, MachineType::FullUnsigned)],
+        &[(
+            ExecutionKind::Unrolled,
+            MachineType::FullUnsigned,
+            &[execution_prover::ProofProfile::Standard],
+        )],
         None,
     )[0];
     let (fsv_binary, fsv_text) = ProgramSource::elf(
@@ -783,7 +795,11 @@ fn test_program_prover_recursion_layer_verify() {
     let verifier = prover.add_binary_variants(
         fsv_binary,
         fsv_text,
-        &[(ExecutionKind::Unrolled, MachineType::Reduced)],
+        &[(
+            ExecutionKind::Unrolled,
+            MachineType::Reduced,
+            &[execution_prover::ProofProfile::Standard],
+        )],
         None,
     )[0];
     prover.finalize_setup();
@@ -963,7 +979,11 @@ fn test_generate_sec100_cost_model_fixtures() {
     let guest = prover.add_binary_variants(
         base_binary,
         base_text,
-        &[(ExecutionKind::Unrolled, MachineType::FullUnsigned)],
+        &[(
+            ExecutionKind::Unrolled,
+            MachineType::FullUnsigned,
+            &[execution_prover::ProofProfile::Standard],
+        )],
         None,
     )[0];
     let mut add_verifier = |program| {
@@ -974,7 +994,11 @@ fn test_generate_sec100_cost_model_fixtures() {
         prover.add_binary_variants(
             guest.bin().to_vec(),
             guest.text().to_vec(),
-            &[(ExecutionKind::Unrolled, MachineType::Reduced)],
+            &[(
+                ExecutionKind::Unrolled,
+                MachineType::Reduced,
+                &[execution_prover::ProofProfile::Standard],
+            )],
             None,
         )[0]
     };
@@ -1216,7 +1240,11 @@ fn run_gpu_recursive_pipeline(
     let base_handle = prover.add_binary_variants(
         base_binary_image,
         base_text_section,
-        &[(ExecutionKind::Unrolled, MachineType::FullUnsigned)],
+        &[(
+            ExecutionKind::Unrolled,
+            MachineType::FullUnsigned,
+            &[execution_prover::ProofProfile::Standard],
+        )],
         None,
     )[0];
     let fsv_dir = artifact_root().join("tools/gkr_verifier/full_statement_verifiers");
@@ -1237,7 +1265,11 @@ fn run_gpu_recursive_pipeline(
         prover.add_binary_variants(
             guest.bin().to_vec(),
             guest.text().to_vec(),
-            &[(kind, MachineType::Reduced)],
+            &[(
+                kind,
+                MachineType::Reduced,
+                &[execution_prover::ProofProfile::Standard],
+            )],
             None,
         )[0]
     };

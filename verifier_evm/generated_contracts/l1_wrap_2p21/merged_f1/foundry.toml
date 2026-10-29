@@ -1,0 +1,15 @@
+# F1 verifier and its cryptographic controls.
+[profile.default]
+solc_version = "0.8.36"
+auto_detect_solc = false
+evm_version = "osaka"
+src = "src"
+out = "out"
+via_ir = true
+optimizer = true
+optimizer_runs = 1
+fs_permissions = [
+    { access = "read", path = "../../../debug_data/l1_wrap_2p21" },
+    { access = "read", path = "./out" },
+    { access = "read", path = "../negative" },
+]

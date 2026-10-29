@@ -1,4 +1,4 @@
-use super::{ProofCounts, ProofTarget, ProofTimingsMs, SecurityLevel, SoundnessMode};
+use super::{L1Bundle, ProofCounts, ProofTarget, ProofTimingsMs, SecurityLevel, SoundnessMode};
 use full_statement_verifier::program_proof::ProgramProof;
 use serde::{Deserialize, Serialize};
 use setups::Setups;
@@ -26,8 +26,17 @@ pub struct ProofArtifact {
     #[serde(skip)]
     pub timings_ms: ProofTimingsMs,
     pub proof_counts: ProofCounts,
-    /// Layer end-params history: `[base, unrolled_1, .., bridge, final]`.
+    /// Layer end-params history: `[base, unrolled_1, .., bridge, final,
+    /// feeder_1, .., feeder_k]`, one entry per proven layer.
     pub chain_end_params: Vec<[u32; 8]>,
+    /// Number of L1 feeder layers in `chain_end_params` (0 before the feeder
+    /// stage, `1..=MAX_FEEDER_LAYERS` after it). Validated routing metadata:
+    /// consecutive feeder layers prove the same binary on the same machine,
+    /// so their end params are equal and the VM-authenticated chain hash
+    /// (which deduplicates equal consecutive entries) cannot attest this
+    /// count; verification rejects an isolated length mismatch only.
+    #[serde(default)]
+    pub feeder_layers: u32,
     /// Recursion-chain state AFTER this artifact's layer.
     pub chain_hash: [u32; 8],
     pub chain_preimage: [u32; 16],
@@ -38,6 +47,8 @@ pub struct ProofArtifact {
     pub blake_unrolled: String,
     pub blake_bridge: String,
     pub blake_final: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub l1: Option<L1Bundle>,
     pub proof: ProgramProof,
     pub setups: Setups,
 }
@@ -87,6 +98,8 @@ mod tests {
             timings_ms: ProofTimingsMs::default(),
             proof_counts: ProofCounts::default(),
             chain_end_params: vec![[0; 8]],
+            feeder_layers: 0,
+            l1: None,
             chain_hash: [0; 8],
             chain_preimage: [0; 16],
             blake_unrolled: BlakeMode::Compression.tag().to_owned(),

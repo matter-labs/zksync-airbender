@@ -94,7 +94,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             .map(|(circuit_type, setup)| {
                 (
                     circuit_type,
-                    backend.prepare(circuit_type, setup, soundness_mode),
+                    backend.prepare(
+                        circuit_type,
+                        setup,
+                        soundness_mode,
+                        &[ProofProfile::Standard],
+                    ),
                 )
             })
             .collect();
@@ -148,6 +153,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             "PROVER finalized setup in {:?} (host buffer pool: {pool_wait:?}, setup initialization: {setup_wait:?})",
             start.elapsed()
         );
+    }
+
+    #[doc(hidden)]
+    pub fn backend(&self) -> &B {
+        &self.backend
     }
 
     pub(super) fn free_inits_and_teardowns(

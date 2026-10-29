@@ -6,6 +6,7 @@ use execution_prover::messages::{
     WorkResult,
 };
 use execution_prover::setup::build_delegation_setup;
+use execution_prover::ProofProfile;
 use execution_prover_model::allocator::CpuTraceAllocator;
 use execution_prover_model::circuit_type::{CircuitType, DelegationCircuitType};
 use execution_prover_model::trace::{
@@ -50,6 +51,7 @@ fn prove(
         circuit_type,
         build_delegation_setup(DELEGATION, &worker),
         SoundnessMode::DEFAULT,
+        &[ProofProfile::Standard],
     );
     jobs.execute::<CpuTraceAllocator>(
         WorkRequest::SetupInitialization(SetupInitializationRequest {
@@ -68,6 +70,7 @@ fn prove(
             precomputations: precomputations.clone(),
             inits_and_teardowns: None,
             tracing_data: Some(empty_trace()),
+            profile: ProofProfile::Standard,
         }),
         &worker,
     ) else {
@@ -83,6 +86,7 @@ fn prove(
             tracing_data: Some(empty_trace()),
             external_challenges: challenges(),
             memory_caps: memory_caps(committed.merkle_tree_caps),
+            profile: ProofProfile::Standard,
         }),
         &worker,
     ) else {
