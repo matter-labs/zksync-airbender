@@ -112,7 +112,10 @@ Ordinary arithmetic, TRIADD and XOR/rotate now retire in the stream registry's
 shared native history. Their adapters passed focused kernel and axiom checks.
 Control, comparison, binary, shift and RAM cycle adapters also passed focused
 kernel and axiom checks. All instruction classes now have native cycle proofs
-for the combined registry. Unified still needs cycle composition with stream
+for the combined registry. The native read bit matches public metadata.
+Ordinary, custom, modular and caller rows consume no stream words. These
+selector proofs passed focused kernel and axiom checks.
+Unified still needs cycle composition with stream
 positions, supported worker controls from
 stream reachability, and the native worker ROM adapter. The target remains open.
 All nine ordinary worker and CPU memory-port inventories passed focused
