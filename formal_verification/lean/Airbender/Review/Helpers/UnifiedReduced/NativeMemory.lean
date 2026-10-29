@@ -17,6 +17,29 @@ structure NativeMemoryInputs [Fact p.Prime] (data : RequestTrace p)
   setup : data.machine.rom = Setup.table before
   tables : data.workers.setup = Delegation.modeledSetup Keccak.Controller.rows
 
+/-- The same public memory boundary with an explicit decoder registry. -/
+structure NativeMemoryInputsWith [Fact p.Prime]
+    (projection : SailRV32.instruction → Option (DecoderData UnifiedFamily))
+    (data : RequestTrace p) (program : List UnifiedReduced.ProgramEntry)
+    (before : Reference.RiscV.Sail.State)
+    (callerAddresses ordinaryAddresses : List (BitVec 32)) (cells : List Cell) : Prop where
+  publicProgram : RequestInputs data before callerAddresses
+  ordinaryProgram : programImageRunWith projection before ordinaryAddresses = some program
+  initialization : initialImage before cells = some data.machine.initialMemory
+  distinct : (cells.map Cell.addressCode).Nodup
+  aligned : ∀ cell ∈ cells, cell.Aligned
+  setup : data.machine.rom = Setup.table before
+  tables : data.workers.setup = Delegation.modeledSetup Keccak.Controller.rows
+
+/-- Keep the existing mixed-registry boundary as an exact specialization. -/
+def NativeMemoryInputs.toWith [Fact p.Prime] {data : RequestTrace p}
+    {program : List UnifiedReduced.ProgramEntry} {before : Reference.RiscV.Sail.State}
+    {ca oa : List (BitVec 32)} {cells : List Cell}
+    (inputs : NativeMemoryInputs data program before ca oa cells) :
+    NativeMemoryInputsWith Mixed.decoderFields data program before ca oa cells :=
+  ⟨inputs.publicProgram, inputs.ordinaryProgram, inputs.initialization,
+    inputs.distinct, inputs.aligned, inputs.setup, inputs.tables⟩
+
 /-- Lower-level private-witness contracts for every actual hash worker.
 They constrain controller/pointer reads; the verifier
 cannot check them from public inputs alone. They supply controller membership
