@@ -9,13 +9,13 @@ theorem timestamp_count {p : Nat} [Fact p.Prime] :
 
 theorem clock_columns : importedConstraintsTraceColumns =
     (⟨4, #v[0, 1], #v[30, 31], #v[2, 3], #v[32, 33],
-      #[⟨0, #v[34, 35], 131⟩, ⟨1, #v[40, 41], 132⟩, ⟨2, #v[46, 47], 133⟩]⟩ :
+      #[⟨0, #v[34, 35], 123, none⟩, ⟨1, #v[40, 41], 124, none⟩, ⟨2, #v[46, 47], 125, none⟩]⟩ :
       Trace.TraceColumns) := rfl
 
 theorem memory_ports : importedConstraintsMemoryPorts =
-    (#[⟨⟨0, #v[34, 35], 131⟩, .register 5, #v[36, 37], none⟩,
-       ⟨⟨1, #v[40, 41], 132⟩, .mixed 28 false #v[38, 39], #v[42, 43], none⟩,
-       ⟨⟨2, #v[46, 47], 133⟩, .mixed 29 false #v[44, 45], #v[48, 49], some #v[50, 51]⟩] :
+    (#[⟨⟨0, #v[34, 35], 123, none⟩, .register 5, #v[36, 37], none⟩,
+       ⟨⟨1, #v[40, 41], 124, none⟩, .mixed 28 false #v[38, 39], #v[42, 43], none⟩,
+       ⟨⟨2, #v[46, 47], 125, none⟩, .mixed 29 false #v[44, 45], #v[48, 49], some #v[50, 51]⟩] :
       Array Trace.MemoryPort) := rfl
 
 theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
@@ -28,7 +28,7 @@ theorem decoder_columns : importedConstraintsDecoderColumns =
       Trace.DecoderColumns) := rfl
 
 theorem constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 10)) :
-    (FlatOperation.constraints (importedConstraints setup)).length = 129 := rfl
+    (FlatOperation.constraints (importedConstraints setup)).length = 120 := rfl
 
 theorem lookup_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 10)) :
     (FlatOperation.lookups (importedConstraints setup)).length = 18 := rfl
@@ -74,17 +74,22 @@ theorem variable_roles :
     importedConstraintsVariableNames.lookup 54 = some "shared scratch bool[2]" ∧
     importedConstraintsVariableNames.lookup 55 = some "shared scratch bool[3]" ∧
     importedConstraintsVariableNames.lookup 56 = some "shared scratch bool[4]" ∧
-    importedConstraintsVariableNames.lookup 83 = some "is_jal_or_jalr_writes_rd" ∧
-    importedConstraintsVariableNames.lookup 84 = some "is_slt_writes_rd" ∧
-    importedConstraintsVariableNames.lookup 85 = some "gate_fam2_rd_zero" ∧
-    importedConstraintsVariableNames.lookup 87 = some "gate_fam4_rom_read" ∧
-    importedConstraintsVariableNames.lookup 128 = some "unified pc-bump carry" ∧
-    importedConstraintsVariableNames.lookup 129 = some "unified pc-bump gate" ∧
-    importedConstraintsVariableNames.lookup 130 = some "unified family-dispatch one-hot" ∧
-    importedConstraintsVariableNames.lookup 131 = some "query 0, interim ts borrow" ∧
-    importedConstraintsVariableNames.lookup 132 = some "query 1, interim ts borrow" ∧
-    importedConstraintsVariableNames.lookup 133 = some "query 2, interim ts borrow" := by
+    importedConstraintsVariableNames.lookup 64 = some "shared scratch var[7]" ∧
+    importedConstraintsVariableNames.lookup 74 = some "shared scratch var[17]" ∧
+    importedConstraintsVariableNames.lookup 75 = some "shared scratch var[18]" ∧
+    importedConstraintsVariableNames.lookup 78 = some "MULMOD intermediate value" ∧
+    importedConstraintsVariableNames.lookup 79 = some "should jump if BRANCH opcode" ∧
+    importedConstraintsVariableNames.lookup 80 = some "rom residue" ∧
+    importedConstraintsVariableNames.lookup 81 = some "gate_fam4_rom_read" ∧
+    importedConstraintsVariableNames.lookup 122 = some "unified pc-bump carry" ∧
+    importedConstraintsVariableNames.lookup 123 = some "query 0, interim ts borrow" ∧
+    importedConstraintsVariableNames.lookup 124 = some "query 1, interim ts borrow" ∧
+    importedConstraintsVariableNames.lookup 125 = some "query 2, interim ts borrow" ∧
+    Variables.pcGate (p := babyBearModulus) =
+      (fun w => w 4 - (w 21 + w 22 + w 23 + w 24)) ∧
+    Variables.familyDispatch (p := babyBearModulus) =
+      (fun w => (Variables.dispatchColumns.toList.map w).sum) := by
   repeat' apply And.intro
-  all_goals decide
+  all_goals first | rfl | decide
 
 end Airbender.UnifiedReduced
