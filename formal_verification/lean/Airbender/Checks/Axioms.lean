@@ -1,6 +1,9 @@
 import Airbender.Proofs.UnifiedReduced.StreamInitialization
 import Airbender.Proofs.UnifiedReduced.ExternalInput
 import Airbender.Proofs.UnifiedReduced.StreamDecoder
+import Airbender.Proofs.UnifiedReduced.StreamPrefix
+import Airbender.Proofs.UnifiedReduced.StreamMemory
+import Airbender.Proofs.Trace.IndexedCycleComposition
 import Airbender.Proofs.GKRProtocol.LogicalLookupSegments
 import Airbender.Review.Compiler.Theorems
 import Tests.GKRMemoryFrames
@@ -13661,3 +13664,14 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.ordinary_zero_preserving_of_program
 #print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.mixed_zero_rules_of_program
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_zero_rules_of_preserving
+#print axioms Airbender.Trace.ExternalStream.Proofs.index_before
+#print axioms Airbender.Trace.ExternalStream.Proofs.ports_before
+#print axioms Airbender.Trace.ExternalStream.Proofs.count_before
+#print axioms Airbender.UnifiedReduced.Caller.NativeMemoryInputs.toWith
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.supported_prefix_inputs
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.supported_prefix_stream_ports
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.supported_prefix_read_count
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_write_rules_of_tables
+#print axioms Airbender.UnifiedReduced.Caller.Stream.Proofs.memory_effects
+#print axioms Airbender.Trace.Proofs.compose_rebased_cuts_with_count
+#print axioms Airbender.Trace.Proofs.compose_cuts_with_count

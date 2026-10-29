@@ -5,6 +5,41 @@ import Airbender.Proofs.Trace.RowHistory
 
 namespace Airbender.Trace.ExternalStream.Proofs
 
+/-- Removing rows at or after a cut preserves every earlier stream index. -/
+theorem index_before {Row : Type} (clock : Row → Nat) (read : Row → Bool)
+    (rows : List Row) (cut : Nat) (row : Row) (bound : clock row ≤ cut) :
+    ExternalStream.index clock read
+      (rows.filter fun earlier => decide (clock earlier < cut)) row =
+      ExternalStream.index clock read rows row := by
+  unfold ExternalStream.index
+  rw [List.filter_filter]
+  congr 1
+  apply List.filter_congr
+  intro earlier _
+  by_cases preceding : clock earlier < clock row
+  · simp [preceding, Nat.lt_of_lt_of_le preceding bound]
+  · simp [preceding]
+
+/-- A native prefix uses the same supplied stream slots as the full trace. -/
+theorem ports_before {Row : Type} (clock : Row → Nat) (read : Row → Bool)
+    (response : Row → BitVec 32) (rows : List Row) (cut : Nat)
+    {stream : List (BitVec 32)}
+    (ports : ExternalStream.Ports clock read response rows stream) :
+    ExternalStream.Ports clock read response
+      (rows.filter fun earlier => decide (clock earlier < cut)) stream := by
+  intro row member selected
+  obtain ⟨present, earlier⟩ := List.mem_filter.mp member
+  rw [index_before clock read rows cut row (Nat.le_of_lt (of_decide_eq_true earlier))]
+  exact ports row present selected
+
+/-- Prefix consumption equals the next row's index in the full native trace. -/
+theorem count_before {Row : Type} (clock : Row → Nat) (read : Row → Bool)
+    (rows : List Row) (row : Row) :
+    ExternalStream.count read (rows.filter fun earlier => decide (clock earlier < clock row)) =
+      ExternalStream.index clock read rows row := by
+  unfold ExternalStream.count ExternalStream.index
+  rw [List.filter_filter]
+
 variable {Row : Type} (read : Row → Bool) (response : Row → BitVec 32)
 
 private theorem consumed_cons (row : Row) (rest : List Row) :

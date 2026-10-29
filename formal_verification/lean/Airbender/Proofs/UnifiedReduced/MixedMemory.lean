@@ -131,14 +131,16 @@ theorem mixed_zero_rules [Fact p.Prime] (hp : FieldCapacity.ClockNoWrap p timest
     (requests : RequestBinding data before) : Transfer.CellWriteRules (mixedData data) (Cell.register 0).addressCode 0 :=
   mixed_zero_rules_of_program hp inverse accepted inputs.publicProgram inputs.ordinaryProgram requests
 
-theorem mixed_write_rules [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+theorem mixed_write_rules_of_tables [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
     (rotationInverse : SerializedInverse.Scale64 p)
-    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
-    {ca oa : List (BitVec 32)} {cells : List Cell}
-    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells) :
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry}
+    (accepted : MixedMemoryAccepted data program)
+    (tables : data.workers.setup = Delegation.modeledSetup Keccak.Controller.rows)
+    (rounds : ∀ row ∈ data.workers.rows, row.family = .blakeRound →
+      ∃ round, Blake2Round.Memory.RoundMask row.assignment round) :
     Transfer.WriteRules (mixedData data) := by
   have workerRules := Delegation.Proofs.operation_rules_of_queries hp rotationInverse
-    accepted.workerConstraints inputs.tables inputs.rounds (by
+    accepted.workerConstraints tables rounds (by
       intro row member family
       have active := accepted.workerActive row member
       rwa [Delegation.Row.columns, family] at active)
@@ -163,6 +165,14 @@ theorem mixed_write_rules [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity 
       simp only [Delegation.Row.writeToken, Delegation.Proofs.port_offset row sourceMember,
         Delegation.Proofs.port_offset row (by simpa using portMember)]
     rw [same]
+
+theorem mixed_write_rules [Fact p.Prime] (hp : FieldCapacity.NativeHashCapacity p)
+    (rotationInverse : SerializedInverse.Scale64 p)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells) :
+    Transfer.WriteRules (mixedData data) :=
+  mixed_write_rules_of_tables hp rotationInverse accepted inputs.tables inputs.rounds
 
 theorem mixed_memory_effects
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry} {before : State}

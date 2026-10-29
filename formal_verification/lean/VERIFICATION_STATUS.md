@@ -94,6 +94,13 @@ and initialization supply all ordinary execution inputs. The combined registry s
 ordinary, modular, external and worker rows. These proofs passed focused
 kernel checks. Their axioms stay within the three allowed axioms. Exact
 request and RAM matching remain explicit.
+Native prefixes retain the same stream slots and public memory inputs.
+The combined registry now supplies one machine and worker memory history.
+This conditional history keeps the round-mask contract explicit.
+Indexed cut composition carries the stream position through each cycle.
+These proofs passed focused kernel and axiom checks.
+Unified still needs combined row retirement, supported worker controls from
+stream reachability, and the native worker ROM adapter. The target remains open.
 All nine ordinary worker and CPU memory-port inventories passed focused
 checks. Their timestamp records use an explicit absent borrow subtrahend.
 The focused circuit and proof group passed all 288 module checks.
