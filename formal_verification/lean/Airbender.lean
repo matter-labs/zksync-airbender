@@ -29,6 +29,7 @@ import Airbender.Proofs.Keccak.SplitCallerBridge
 import Airbender.Proofs.Keccak.SplitArtifactChecks
 import Airbender.Review.Trace.UnifiedReduced.ModularExecution
 import Airbender.Proofs.UnifiedReduced.StreamCalls
+import Airbender.Proofs.UnifiedReduced.FullStreamInclusion
 import Airbender.Review.Helpers.Memory.ProgramImage
 import Airbender.Proofs.GKRProtocol.ProgramRows
 import Airbender.Proofs.GKRProtocol.PublicProgramSetup
