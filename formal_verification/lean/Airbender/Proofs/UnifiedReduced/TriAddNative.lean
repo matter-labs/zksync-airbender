@@ -38,8 +38,8 @@ theorem triadd_old_read [Fact p.Prime] (hp : FieldCapacity.NoWrap p limbBase)
     run (SailRV32.Functions.rX_bits (.Regidx entry.data.rd)) before =
       .ok (TriAdd.oldDestination w).toBitVec before := by
   have indices := native_query_indices hp query
-  have low := Verification.assertion_of_holds h ⟨31, by rw [constraint_count]; decide⟩
-  have high := Verification.assertion_of_holds h ⟨32, by rw [constraint_count]; decide⟩
+  have low := Verification.assertion_of_holds h ⟨28, by rw [constraint_count]; decide⟩
+  have high := Verification.assertion_of_holds h ⟨29, by rw [constraint_count]; decide⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment, noStore] at low high
   have location : w 44 = w 7 := by linear_combination low

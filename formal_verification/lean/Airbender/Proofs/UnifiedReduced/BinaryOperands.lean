@@ -17,16 +17,16 @@ theorem binary_sign_byte [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (load : w 28 = 0) :
     (w 9).val < 256 ∧ (w 57).val = if (w 9).val < 128 then 0 else 255 := by
-  have gate := Verification.assertion_of_holds holds ⟨42, by rw [constraint_count]; decide⟩
+  have gate := Verification.assertion_of_holds holds ⟨39, by rw [constraint_count]; decide⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, load] at gate
-  have t := Verification.assertion_of_holds holds ⟨48, by rw [constraint_count]; decide⟩
-  have a := Verification.assertion_of_holds holds ⟨49, by rw [constraint_count]; decide⟩
-  have b := Verification.assertion_of_holds holds ⟨50, by rw [constraint_count]; decide⟩
+  have t := Verification.assertion_of_holds holds ⟨45, by rw [constraint_count]; decide⟩
+  have a := Verification.assertion_of_holds holds ⟨46, by rw [constraint_count]; decide⟩
+  have b := Verification.assertion_of_holds holds ⟨47, by rw [constraint_count]; decide⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
     selected.1, selected.2, other.1, other.2.1, other.2.2.1, other.2.2.2, gate] at t a b
-  have tag : w 88 = 3 := by linear_combination t
-  have key : w 89 = w 9 := by linear_combination a
-  have value : w 90 = w 57 := by linear_combination b
+  have tag : w 82 = 3 := by linear_combination t
+  have key : w 83 = w 9 := by linear_combination a
+  have value : w 84 = w 57 := by linear_combination b
   have query := Verification.lookup_of_holds holds ⟨13, by rw [lookup_count]; decide⟩
   have standard := Setup.Proofs.ordinary_lookup (by omega : 55 ≤ p) query 3 (Or.inl rfl)
     (by simpa [Expression.eval, Verification.environment] using tag)

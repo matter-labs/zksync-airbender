@@ -24,7 +24,7 @@ theorem custom_row_zero_preserving [Fact p.Prime] (hp : FieldCapacity.NoWrap p 5
   · have address : (w 29).val = 0 ∧ (w 44).val = 0 ∧ (w 45).val = 0 := by
       simpa [MemoryAddress.code, pairCode, Cell.addressCode, Nat.pair_eq_pair] using zero
     have noRAM : w 29 = 0 := by simpa using address.1
-    have location := Verification.assertion_of_holds h ⟨31, by rw [constraint_count]; decide⟩
+    have location := Verification.assertion_of_holds h ⟨28, by rw [constraint_count]; decide⟩
     simp [importedConstraints, FlatOperation.constraints, Expression.eval,
       Verification.environment, noRAM] at location
     have targetZero : w 7 = 0 := by

@@ -18,7 +18,7 @@ theorem selectors [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
     (w 21 = 0 ∧ w 22 = 0) ∧
     (w 23 = if branch then 0 else 1) ∧ (w 24 = if branch then 1 else 0) ∧
     (w 25 = if branch then 1 else 0) ∧
-    (w 26 = 0 ∧ w 27 = 0) ∧ w 28 = 0 ∧ w 29 = 0 ∧ w 87 = 0 := by
+    (w 26 = 0 ∧ w 27 = 0) ∧ w 28 = 0 ∧ w 29 = 0 ∧ w 81 = 0 := by
   have flags := UnifiedReduced.Proofs.decoder_selectors hp holds
     (UnifiedReduced.Proofs.decoder_field_bounds fields).2.1 query
   have a := flags 10; have b := flags 11; have c := flags 12; have d := flags 13
@@ -26,7 +26,7 @@ theorem selectors [Fact p.Prime] (hp : FieldCapacity.NoWrap p 524288)
   cases branch <;> simp [mask, importedConstraintsDecoderColumns, Nat.testBit,
     Nat.shiftRight_eq_div_pow] at a b c d e f g h i ⊢
   all_goals refine ⟨⟨a, b⟩, c, d, e, ⟨f, g⟩, h, i, ?_⟩
-  all_goals have gate := Verification.assertion_of_holds holds ⟨42, by rw [constraint_count]; decide⟩
+  all_goals have gate := Verification.assertion_of_holds holds ⟨39, by rw [constraint_count]; decide⟩
   all_goals simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment, h] using gate
 

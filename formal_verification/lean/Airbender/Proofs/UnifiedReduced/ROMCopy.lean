@@ -52,7 +52,7 @@ theorem row_word_copy [Fact p.Prime] (hp : FieldCapacity.NativeRomCapacity p)
         · exact False.elim (rom one)
       have copied := Proofs.word_memory_copy false holds load storeFlag flag
       simp [row, load, flag, copied.1, copied.2]
-  · have readonly := Verification.assertion_of_holds holds ⟨40, by rw [constraint_count]; decide⟩
+  · have readonly := Verification.assertion_of_holds holds ⟨38, by rw [constraint_count]; decide⟩
     have flag : w 54 = 0 := by
       simpa [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
         storeFlag] using readonly

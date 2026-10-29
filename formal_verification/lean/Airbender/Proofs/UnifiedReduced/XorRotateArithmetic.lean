@@ -42,8 +42,8 @@ theorem xorrot_destination [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     exact ((rotatedByte32 (left ^^^ right) kind i).extractLsb' (8 * j.val) 8).isLt
   let pairs (limb : Fin 2) (i : Fin 4) (j : Fin 2) : ZMod p :=
     parts i ⟨(j.val + 2 * limb.val + 4 - i.val) % 4, Nat.mod_lt _ (by decide)⟩
-  have low := Verification.assertion_of_holds holds ⟨27, by rw [constraint_count]; decide⟩
-  have high := Verification.assertion_of_holds holds ⟨28, by rw [constraint_count]; decide⟩
+  have low := Verification.assertion_of_holds holds ⟨24, by rw [constraint_count]; decide⟩
+  have high := Verification.assertion_of_holds holds ⟨25, by rw [constraint_count]; decide⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
     selected.1, selected.2] at low high
   have lo := sum_byte_pairs hp (pairs 0) (w 50) (fun i j => small i _)

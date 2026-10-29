@@ -42,8 +42,8 @@ theorem binary_destination [Fact p.Prime] (hp : FieldCapacity.NoWrap p 65536)
   have z67 := zero ⟨2, by decide⟩ ⟨0, by decide⟩; have z68 := zero ⟨2, by decide⟩ ⟨1, by decide⟩; have z69 := zero ⟨2, by decide⟩ ⟨2, by decide⟩
   have z71 := zero ⟨3, by decide⟩ ⟨0, by decide⟩; have z72 := zero ⟨3, by decide⟩ ⟨1, by decide⟩; have z73 := zero ⟨3, by decide⟩ ⟨2, by decide⟩
   norm_num only at z59 z60 z61 z63 z64 z65 z67 z68 z69 z71 z72 z73
-  have low := Verification.assertion_of_holds holds ⟨27, by rw [constraint_count]; decide⟩
-  have high := Verification.assertion_of_holds holds ⟨28, by rw [constraint_count]; decide⟩
+  have low := Verification.assertion_of_holds holds ⟨24, by rw [constraint_count]; decide⟩
+  have high := Verification.assertion_of_holds holds ⟨25, by rw [constraint_count]; decide⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
     selected.1, selected.2, z59, z65, z68, z69, z71, z72] at low
   simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,

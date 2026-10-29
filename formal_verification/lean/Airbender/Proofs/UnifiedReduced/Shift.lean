@@ -13,11 +13,11 @@ set_option maxHeartbeats 1600000
 private theorem shift_wiring [Fact p.Prime] {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 26 = 1 ∧ w 27 = 0) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
-    (i : Fin 4) : w (92 + 9 * i.val) = 9 ∧ ∀ j : Fin 8, w (93 + 9 * i.val + j.val) =
+    (i : Fin 4) : w (86 + 9 * i.val) = 9 ∧ ∀ j : Fin 8, w (87 + 9 * i.val + j.val) =
       (#v[(i.val : ZMod p), leftByte w i, w 57 + w 8, w 10,
         w (58 + 4 * i.val), w (59 + 4 * i.val), w (60 + 4 * i.val), w (61 + 4 * i.val)] : Vector (ZMod p) 8)[j] := by
   have h (j : Fin 9) := Verification.assertion_of_holds holds
-    ⟨52 + 9 * i.val + j.val, by rw [constraint_count]; have := i.isLt; have := j.isLt; omega⟩
+    ⟨49 + 9 * i.val + j.val, by rw [constraint_count]; have := i.isLt; have := j.isLt; omega⟩
   constructor
   · have t := h 0
     fin_cases i
@@ -87,16 +87,16 @@ theorem shift_amount [Fact p.Prime] (hp : FieldCapacity.NoWrap p 256)
     (selected : w 26 = 1 ∧ w 27 = 0) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (load : w 28 = 0) :
     (w 76).val < 256 ∧ (-7864320 * (w 42 - w 76)).val < 256 ∧ (w 57).val = (w 76).val % 32 := by
-  have gate := Verification.assertion_of_holds holds ⟨42, by rw [constraint_count]; decide⟩
+  have gate := Verification.assertion_of_holds holds ⟨39, by rw [constraint_count]; decide⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, load] at gate
-  have h (i : Fin 4) := Verification.assertion_of_holds holds ⟨48 + i.val, by rw [constraint_count]; have := i.isLt; omega⟩
+  have h (i : Fin 4) := Verification.assertion_of_holds holds ⟨45 + i.val, by rw [constraint_count]; have := i.isLt; omega⟩
   have t := h 0; have a := h 1; have b := h 2; have c := h 3
   simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
     selected.1, selected.2, other.1, other.2.1, other.2.2.1, other.2.2.2, gate] at t a b c
-  have tag : w 88 = 8 := by linear_combination t
-  have first : w 89 = w 76 := by linear_combination a
-  have second : w 90 = -7864320 * (w 42 - w 76) := by linear_combination b
-  have amount : w 91 = w 57 := by linear_combination c
+  have tag : w 82 = 8 := by linear_combination t
+  have first : w 83 = w 76 := by linear_combination a
+  have second : w 84 = -7864320 * (w 42 - w 76) := by linear_combination b
+  have amount : w 85 = w 57 := by linear_combination c
   have query := Verification.lookup_of_holds holds ⟨13, by rw [lookup_count]; decide⟩
   have standard := Setup.Proofs.ordinary_lookup (by omega : 55 ≤ p) query 8 (Or.inr (Or.inl rfl))
     (by simpa [Expression.eval, Verification.environment] using tag)
@@ -118,8 +118,8 @@ theorem shift_destination [Fact p.Prime] (hp : FieldCapacity.NoWrap p 262144)
     rw [bytes i j]
     exact ((Verification.shiftByteContribution i.val (leftByte w i).val
       (w 57 + w 8).val (w 10).val).extractLsb' (8 * j.val) 8).isLt
-  have low := Verification.assertion_of_holds holds ⟨27, by rw [constraint_count]; decide⟩
-  have high := Verification.assertion_of_holds holds ⟨28, by rw [constraint_count]; decide⟩
+  have low := Verification.assertion_of_holds holds ⟨24, by rw [constraint_count]; decide⟩
+  have high := Verification.assertion_of_holds holds ⟨25, by rw [constraint_count]; decide⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
     selected.1, selected.2] at low high
   have lo := Verification.sum_byte_pairs hp (fun i j => w (58 + 4 * i.val + j.val)) (w 50)
