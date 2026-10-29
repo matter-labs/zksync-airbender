@@ -1,5 +1,6 @@
 import Airbender.Review.Trace.Workers.Keccak.SplitRequests
 import Airbender.Proofs.Delegation.RequestTrace
+import Airbender.Proofs.Trace.Program
 
 namespace Airbender.Keccak.Split.Native.Proofs
 open Airbender.Trace Airbender.Delegation Airbender.Arithmetic
@@ -12,6 +13,38 @@ theorem caller_member [Fact p.Prime] {data : RequestTrace p}
   have family : row.family = .addSub := by
     cases equal : row.family <;> simp_all [RequestTrace.callers]
   exact ⟨present, family⟩
+
+/-- Exact native decoder matching and the public Sail image identify the
+original split CSR instruction, including its complete virtual address. -/
+theorem public_source [Fact p.Prime]
+    {data : RequestTrace p} (accepted : RequestChecks data)
+    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    (inputs : RequestInputs data before addresses)
+    {row : Airbender.Trace.Row p PooledFamily} (member : row ∈ data.callers) :
+    ∃ entry ∈ data.program,
+      entry.SourceWith before Split.Caller.decoderFields ∧
+      Delegation.Caller.nativeQuery row.assignment = Split.Caller.query entry := by
+  have decoded := accepted.decoded row member
+  change ∃ index : Fin data.program.length,
+    Delegation.Caller.nativeQuery row.assignment = Split.Caller.query (data.program.get index)
+    at decoded
+  obtain ⟨index, equal⟩ := decoded
+  exact ⟨data.program.get index, List.get_mem _ _,
+    Airbender.Trace.Proofs.run_program_sources inputs.image _ (List.get_mem _ _), equal⟩
+
+/-- A full-width native decoder query cannot alias a different split CSR in
+any field large enough for the project's sixteen-bit decoder limbs. -/
+theorem caller_csr_of_query [Fact p.Prime]
+    (hp : FieldCapacity.NoWrap p 65536)
+    {w : Nat → ZMod p} {entry : Split.Caller.ProgramEntry}
+    (equal : Delegation.Caller.nativeQuery w = Split.Caller.query entry) :
+    (Requests.caller w).csr = entry.data.family.csr := by
+  have key := congrArg (fun values : Vector (ZMod p) 9 => values[3]) equal
+  change w AddSub.importedConstraintsDecoderColumns.rs2 =
+    (entry.data.family.csr : ZMod p) at key
+  change (w AddSub.importedConstraintsDecoderColumns.rs2).val = entry.data.family.csr
+  rw [key, ZMod.val_natCast_of_lt]
+  cases entry.data.family <;> norm_num [Split.Kind.csr] at hp ⊢ <;> omega
 
 /-- Native state clocks are unique, so the issued split CSR timestamps are
 unique even when the physical worker rows are presented out of order. -/
@@ -105,5 +138,33 @@ theorem unique_issued_worker [Fact p.Prime]
   exact List.inj_on_of_nodup_map issuedUnique included chosen
     ((congrArg Requests.Request.time otherMatch.2).trans
       (congrArg Requests.Request.time same).symm)
+
+private theorem split_csr_injective : Function.Injective Split.Kind.csr := by
+  intro first last equal
+  cases first <;> cases last <;> simp_all [Split.Kind.csr]
+
+/-- Public Sail decoding fixes the worker kind of a matched split invocation.
+Neither the native caller nor the worker witness can swap parity, theta/rho or
+chi5 while retaining the full-width virtual CSR request. -/
+theorem public_caller_worker_kind [Fact p.Prime]
+    (hp : FieldCapacity.NoWrap p 65536)
+    {data : RequestTrace p} (accepted : RequestChecks data)
+    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    (inputs : RequestInputs data before addresses)
+    (binding : RequestClockBinding data)
+    {row : Airbender.Trace.Row p PooledFamily} (member : row ∈ data.callers) :
+    ∃ entry ∈ data.program, entry.SourceWith before Split.Caller.decoderFields ∧
+      ∃ worker ∈ data.workers.rows,
+        worker.kind = entry.data.family ∧
+        worker.fulfillment data.workers.cached = Requests.caller row.assignment := by
+  obtain ⟨entry, entryMember, source, query⟩ := public_source accepted inputs member
+  obtain ⟨worker, ⟨workerMember, same⟩, _⟩ := unique_issued_worker binding member
+  have csr : worker.kind.csr = entry.data.family.csr := by
+    calc
+      worker.kind.csr = (worker.fulfillment data.workers.cached).csr := rfl
+      _ = (Requests.caller row.assignment).csr := congrArg Requests.Request.csr same
+      _ = entry.data.family.csr := caller_csr_of_query hp query
+  exact ⟨entry, entryMember, source, worker, workerMember,
+    split_csr_injective csr, same⟩
 
 end Airbender.Keccak.Split.Native.Proofs
