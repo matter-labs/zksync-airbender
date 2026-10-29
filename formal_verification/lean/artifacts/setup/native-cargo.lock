@@ -602,6 +602,7 @@ dependencies = [
  "cs",
  "fft",
  "field",
+ "prover",
  "serde",
  "serde_json",
  "witness_eval_generator",

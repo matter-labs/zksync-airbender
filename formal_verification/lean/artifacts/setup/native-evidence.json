@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "inspection_date": "2026-10-22",
-  "inspected_checkout": "9683fe67d16aabadd31140a062082e79c7bccf43",
+  "inspection_date": "2026-10-29",
+  "inspected_checkout": "95a08fbdc3105e467d656f40fe8a9b213246b7e0",
   "scope": "Current source reinspection and drift guard only; historical findings remain historical, not claims of current Rust rejection. No Rust production source was modified. Initial PC/clock constants are also in setup source coverage.",
   "sources": {
     "full_statement_verifier/src/unrolled_proof_statement.rs": {
@@ -49,8 +49,8 @@
       "changed_since_cited_inspection": true
     },
     "prover/src/definitions/mod.rs": {
-      "sha256": "0f82eb46c929e2dbd97fc6ff7a7a05b9fd4e788ee4be07e5ac2a7ee6f638d313",
-      "git_blob": "5b568c4b8a7d5698bd633e3654c35fc223e9face",
+      "sha256": "84ed45bd8e713d35c029c2baa5c246ba54f3852c43f12044ef4c1bdcf92ade58",
+      "git_blob": "24fa4b41c08443d86ca70371823c0b2be545009b",
       "inspected_spans": [
         [
           8,
@@ -115,20 +115,20 @@
       "changed_since_cited_inspection": true
     },
     "cs/src/gkr_compiler/family_circuit.rs": {
-      "sha256": "4ab8ec11a6f9b93fc339a209c1b58295ff8f719b4b4aec74c32a586a3cab631b",
-      "git_blob": "708f69088d9875ad6941099950b0bbab5933a6ba",
+      "sha256": "e015f0958cbc1a65d6d39086494679bdce0e3396ceeeef0a680950898a10b9c4",
+      "git_blob": "16a4f657eea234ea1c1a8f0375be34a74c18f187",
       "inspected_spans": [
         [
           154,
-          158
+          160
         ],
         [
-          529,
-          550
+          531,
+          551
         ],
         [
-          602,
-          610
+          614,
+          624
         ]
       ],
       "observation": "Native execute gates the decoder lookup and feeds raw PC/clock plus architectural RAM sets into the memory grand-product compiler. Copied execute gates final products; sampled-product equality is not deterministic tuple matching.",
@@ -167,8 +167,8 @@
       "changed_since_cited_inspection": false
     },
     "verifier/src/generated/add_sub_lui_auipc_mop/sec_100/gkr.rs": {
-      "sha256": "47f96d7c0d7ed9a9b2a9fb1d976c766505bd005f26910814810b320008dadaec",
-      "git_blob": "1c4cc94c026b22f7a41765126881e8d554653cd3",
+      "sha256": "281dda95c94831523e6ef63e01a5b6ba8c009c5ec3f7c01e0bd78eae9c528d6b",
+      "git_blob": "c85e0f643bf6e95c5c2db61363f85ad4715639c0",
       "inspected_spans": [
         [
           1236,
