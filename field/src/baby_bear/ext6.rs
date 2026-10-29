@@ -98,7 +98,7 @@ impl BabyBearExt6 {
 impl core::cmp::PartialEq for BabyBearExt6 {
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn eq(&self, other: &Self) -> bool {
-        self.c0 == other.c0 && self.c1 == other.c1
+        self.c0 == other.c0 && self.c1 == other.c1 && self.c2 == other.c2
     }
 }
 
