@@ -211,11 +211,12 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     elabCommand (← `(def $columnsName : Airbender.Trace.TraceColumns :=
       ⟨$(quote columns.execute), $(← pairSyntax columns.initialPC), $(← pairSyntax columns.finalPC),
         $(← pairSyntax columns.initialTime), $(← pairSyntax columns.finalTime), #[$[$portTerms],*]⟩))
-  if traceMetadata.isSome || delegationMetadata.isSome then
+  if traceMetadata.isSome || delegationMetadata.isSome || splitMetadata.isSome then
     let pairSyntax := fun (columns : Vector Nat 2) => do
       let terms := columns.toArray.map quote
       `(#v[$[$terms],*])
-    let ports ← match (if delegationMetadata.isSome then c.delegationPorts else c.memoryPorts) with
+    let ports ← match (if splitMetadata.isSome then c.splitMemoryPorts
+      else if delegationMetadata.isSome then c.delegationPorts else c.memoryPorts) with
       | .ok ports => pure ports
       | .error e => throwError "memory metadata import failed: {e}"
     let wordSyntax := fun (word : Airbender.Trace.WordColumns) => do

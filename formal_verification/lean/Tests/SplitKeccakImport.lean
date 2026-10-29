@@ -71,6 +71,29 @@ def run : IO Unit := do
   require (thetaGroups.size == 4 && chiGroups.size == 6 &&
     thetaCachedGroups.size == 4 && chiCachedGroups.size == 6)
     "split timestamp group counts changed"
+  let parityPorts ← match parity.delegationPorts with
+    | .ok ports => pure ports
+    | .error reason => throw (IO.userError s!"column parity memory ports rejected: {reason}")
+  let .ok thetaPorts := theta.splitMemoryPorts |
+    throw (IO.userError "theta/rho memory ports rejected")
+  let .ok chiPorts := chi.splitMemoryPorts |
+    throw (IO.userError "chi5 memory ports rejected")
+  let .ok parityCachedPorts := parityCached.delegationPorts |
+    throw (IO.userError "cached column parity memory ports rejected")
+  let .ok thetaCachedPorts := thetaCached.splitMemoryPorts |
+    throw (IO.userError "cached theta/rho memory ports rejected")
+  let .ok chiCachedPorts := chiCached.splitMemoryPorts |
+    throw (IO.userError "cached chi5 memory ports rejected")
+  require (parityPorts.size == 14 && thetaPorts.size == 16 && chiPorts.size == 12 &&
+    parityCachedPorts.size == 14 && thetaCachedPorts.size == 16 && chiCachedPorts.size == 12)
+    "split memory port counts changed"
+  require (decide (parityPorts = ColumnParity.importedConstraintsMemoryPorts) &&
+    decide (thetaPorts = ThetaRho.importedConstraintsMemoryPorts) &&
+    decide (chiPorts = Chi5.importedConstraintsMemoryPorts) &&
+    decide (parityCachedPorts = ColumnParityCached.importedConstraintsMemoryPorts) &&
+    decide (thetaCachedPorts = ThetaRhoCached.importedConstraintsMemoryPorts) &&
+    decide (chiCachedPorts = Chi5Cached.importedConstraintsMemoryPorts))
+    "split memory port import differs from source parser"
   let wrongTheta : Airbender.Circuit :=
     {theta with generic_lookup_tables_width := 8}
   require (rejected wrongTheta.keccakThetaRhoQueries)
@@ -80,6 +103,8 @@ def run : IO Unit := do
       {chi.aux_layout_data with relative_timestamp_groups := some #[]}}
   require (rejected missingGroups.splitTimestampGroups)
     "missing chi5 timestamp groups accepted"
+  require (rejected missingGroups.splitMemoryPorts)
+    "missing chi5 memory-port groups accepted"
   let extraGroups := theta.aux_layout_data.relative_timestamp_groups.map fun groups =>
     match groups[0]? with
     | some group => groups.push {group with members := #[]}
@@ -89,6 +114,8 @@ def run : IO Unit := do
       {theta.aux_layout_data with relative_timestamp_groups := extraGroups}}
   require (rejected extraEmptyGroup.splitTimestampGroups)
     "empty theta/rho timestamp group accepted"
+  require (rejected extraEmptyGroup.splitMemoryPorts)
+    "empty theta/rho memory-port group accepted"
 
 #eval run
 
