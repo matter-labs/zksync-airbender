@@ -33,6 +33,8 @@ const SUBWARP_WARPS_PER_BLOCK: u32 = 8;
 /// The block family (one block of `M` threads per coset) transforms 16 BF
 /// columns (four E4 slots) per step: one Blake2s block per leaf.
 const BLOCK_TILE_COLUMNS: usize = 16;
+/// No dynamic-shared-memory opt-in is configured for these kernels.
+const DEFAULT_DYNAMIC_SMEM_BYTES: usize = 48 << 10;
 
 const _: () = assert!(PARTIAL_TREE_REDUCTION_LAYERS == WARP_SIZE.trailing_zeros());
 
@@ -174,29 +176,25 @@ enum Family {
     Block,
 }
 
-/// Fused small-oracle shapes used by the Sec100 recursive schedules.
-const VALIDATED_SHAPES: [(u32, u32, Family); 10] = [
-    (13, 5, Family::Block),
-    (12, 5, Family::Block),
-    (11, 5, Family::Block),
-    (10, 5, Family::Block),
-    (9, 4, Family::Block),
-    (8, 4, Family::Subwarp),
-    (7, 4, Family::Subwarp),
-    (6, 5, Family::Subwarp),
-    (5, 4, Family::Subwarp),
-    (4, 3, Family::Subwarp),
-];
-
 fn family(log_n: u32, log_v: u32) -> Option<Family> {
-    VALIDATED_SHAPES
-        .iter()
-        .find(|(n, v, _)| *n == log_n && *v == log_v)
-        .map(|(_, _, family)| *family)
+    // Every fused oracle keeps coefficients for its 256-thread in-domain
+    // reader, even when its commit/query kernels could hash a wider leaf.
+    if log_v > 8 {
+        return None;
+    }
+    let log_m = log_n.checked_sub(log_v)?;
+    if log_m <= 4 && subwarp_commit_smem_bytes(log_n) <= DEFAULT_DYNAMIC_SMEM_BYTES {
+        Some(Family::Subwarp)
+    } else if (5..=8).contains(&log_m) && log_v >= 2 {
+        // One thread per residue row, at most 256 threads; four E4 slots
+        // form each Blake block. The existing shared tile fits in 48 KiB.
+        Some(Family::Block)
+    } else {
+        None
+    }
 }
 
-/// Whether the fused kernels cover a recursive oracle of `2^log_n` monomial
-/// coefficients committed with `2^log_v` values per leaf.
+/// Whether the complete fused commit/query/in-domain route covers the oracle.
 pub(crate) fn supported(log_n: u32, log_v: u32) -> bool {
     family(log_n, log_v).is_some()
 }
@@ -215,7 +213,9 @@ fn shape(
     params: &WhirLeafTransformParams,
 ) -> Shape {
     let family = family(log_n, log_v).unwrap_or_else(|| {
-        panic!("fused residue commit does not support log_n {log_n}, log_v {log_v}")
+        panic!("no existing fused recursive WHIR route for log_n={log_n}, log_v={log_v}: \
+            Subwarp requires residue log <=4 and dynamic shared memory <=48 KiB; \
+            Block requires 32..=256 residue threads and V>=4; the in-domain reader requires log_v<=8")
     });
     assert!(log_c >= 1, "recursive WHIR oracles require LDE factor > 1");
     let log_m = log_n - log_v;
@@ -246,6 +246,12 @@ fn subwarp_smem_bytes(log_n: u32) -> usize {
     (4usize << log_n) * core::mem::size_of::<BF>()
 }
 
+fn subwarp_commit_smem_bytes(log_n: u32) -> usize {
+    // Coefficients and reduction digests reuse the same storage after a barrier.
+    subwarp_smem_bytes(log_n)
+        .max(2 * STATE_SIZE * (SUBWARP_WARPS_PER_BLOCK * WARP_SIZE) as usize * size_of::<u32>())
+}
+
 fn block_smem_bytes(log_m: u32) -> usize {
     let m = 1usize << log_m;
     (BLOCK_TILE_COLUMNS * m + m + m / 2) * core::mem::size_of::<BF>()
@@ -271,10 +277,7 @@ pub(crate) fn commit(
             let block_dim = SUBWARP_WARPS_PER_BLOCK * WARP_SIZE;
             let grid_dim = (subtrees_count as u32).div_ceil(SUBWARP_WARPS_PER_BLOCK);
             let mut config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-            config.dynamic_smem_bytes = subwarp_smem_bytes(log_n);
-            config.dynamic_smem_bytes = config
-                .dynamic_smem_bytes
-                .max(2 * STATE_SIZE * block_dim as usize * core::mem::size_of::<u32>());
+            config.dynamic_smem_bytes = subwarp_commit_smem_bytes(log_n);
             let args = WhirResidueCommitSubwarpArguments::new(
                 coeffs.as_ptr(),
                 boundary_roots.as_mut_ptr() as *mut u32,
@@ -413,7 +416,34 @@ mod cpu_tests {
         assert!(supported(7, 4));
         assert!(supported(6, 5));
         assert!(supported(5, 4));
-        assert!(!supported(5, 3));
+        assert!(supported(5, 3));
         assert!(!supported(6, 1));
+        for (n, v, expected) in [
+            (13, 5, Family::Block),
+            (12, 5, Family::Block),
+            (11, 5, Family::Block),
+            (10, 5, Family::Block),
+            (9, 4, Family::Block),
+            (8, 4, Family::Subwarp),
+            (7, 4, Family::Subwarp),
+            (6, 5, Family::Subwarp),
+            (5, 4, Family::Subwarp),
+            (4, 3, Family::Subwarp),
+        ] {
+            assert_eq!(family(n, v), Some(expected));
+        }
+        assert_eq!(subwarp_commit_smem_bytes(11), 32 << 10);
+        assert_eq!(subwarp_commit_smem_bytes(12), 64 << 10);
+        assert_eq!(family(11, 7), Some(Family::Subwarp));
+        assert_eq!(family(12, 8), None);
+        assert_eq!(family(13, 8), Some(Family::Block));
+        assert_eq!(family(14, 9), None); // Retained reader, not fused.
+        assert_eq!(family(10, 2), Some(Family::Block));
+        assert_eq!(block_smem_bytes(8), 17_920);
+        assert_eq!(family(11, 2), None); // More than 256 residue threads.
+        assert_eq!(family(4, 5), None);
+        assert_eq!(family(3, 3), Some(Family::Subwarp)); // Constant slots.
+        assert_eq!(family(2, 0), Some(Family::Subwarp)); // Four-word hash tail.
+        assert_eq!(family(3, 1), Some(Family::Subwarp)); // Eight-word hash tail.
     }
 }

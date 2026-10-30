@@ -97,7 +97,11 @@ fn assert_recursive_commitment_matches_live_cpu(
         );
 
         let total_leaves = trace_len * lde_factor / values_per_leaf;
-        let folded_indexes: Vec<_> = if log_trace_len == 22 {
+        // Preserve every old normal case's exhaustive count and the old
+        // ignored large-domain edge sample. Larger new domains cannot fit
+        // exhaustive paths into the helper's 128 MiB host pool.
+        const MAX_EXHAUSTIVE_LEAVES: usize = 1 << 15;
+        let folded_indexes: Vec<_> = if total_leaves > MAX_EXHAUSTIVE_LEAVES {
             let rows = trace_len / values_per_leaf;
             (0..lde_factor)
                 .flat_map(|coset| {
@@ -194,7 +198,7 @@ fn assert_recursive_commitment_matches_live_cpu(
                 );
             }
         }
-        eprintln!("recursive CPU parity: {shape}, queries={queries_count}, in_domain_reads=2");
+        eprintln!("recursive CPU parity: {shape}, queries={queries_count}, in_domain_reads=2, L2_bytes={}", context.get_device_properties().l2_cache_size_bytes);
     }
     assert_eq!(
         context.get_used_mem_current(),
@@ -255,4 +259,31 @@ fn recursive_whir_retained_shapes_match_live_cpu() {
 #[ignore = "full default virtual intermediate domain with independent CPU commitment"]
 fn recursive_whir_retained_22_6_matches_live_cpu() {
     assert_recursive_commitment_matches_live_cpu(22, 32, 64, 16);
+}
+
+macro_rules! existing_recursive_route_cases {
+    ($($name:ident: ($n:expr, $lde:expr, $values:expr, $cap:expr)),* $(,)?) => { $(
+        #[test]
+        #[cfg(not(no_cuda))]
+        fn $name() {
+            assert_recursive_commitment_matches_live_cpu($n, $lde, $values, $cap);
+        }
+    )* };
+}
+existing_recursive_route_cases! {
+    recursive_whir_route_r1_subwarp_matches_live_cpu: (10, 64, 64, 16),
+    recursive_whir_route_r2_block_matches_live_cpu: (10, 16, 16, 16),
+    recursive_whir_route_r3_retained_matches_live_cpu: (14, 2, 16, 16),
+    recursive_whir_route_r4_retained_matches_live_cpu: (14, 2, 32, 16),
+    recursive_whir_subwarp_max_coefficients_match_live_cpu: (11, 2, 128, 1),
+    recursive_whir_block_max_rows_min_slots_match_live_cpu: (10, 2, 4, 1),
+    recursive_whir_retained_leaf9_matches_live_cpu: (14, 2, 512, 1),
+    recursive_whir_retained_leaf13_matches_live_cpu: (18, 2, 8192, 1),
+    recursive_whir_subwarp_horner_r2_matches_live_cpu: (5, 8, 8, 1),
+    recursive_whir_subwarp_one_slot_matches_live_cpu: (2, 32, 1, 1),
+    recursive_whir_subwarp_two_slots_match_live_cpu: (3, 8, 2, 1),
+    recursive_whir_subwarp_constant_slots_match_live_cpu: (3, 32, 8, 1),
+    recursive_whir_block_reader_ceiling_matches_live_cpu: (13, 2, 256, 1),
+    recursive_whir_retained_tiled_residue19_matches_live_cpu: (20, 8, 2, 1),
+    recursive_whir_retained_staging_residue20_matches_live_cpu: (21, 2, 2, 1),
 }

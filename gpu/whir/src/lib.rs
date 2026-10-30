@@ -47,6 +47,14 @@ const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 const LOG_SRC_COLS_PER_COSET: u32 = EXT4_DEGREE.trailing_zeros();
 const _: () = assert!(EXT4_DEGREE.is_power_of_two());
 
+// The retained route calls gpu_ntt's compact/intermediate forward LDE, then
+// its generated 21..=24 three-pass or 23..=24 two-pass dispatch (strategy.rs /
+// forward.rs); the compact two-pass range ends at 20.
+const MAX_RETAINED_RESIDUE_NTT_LOG: u32 = 24;
+// oracle_commit.rs fixes staging at 32 MiB = 2^20 digests and stages complete
+// cosets. Its max_cosets_per_stage division must fit at least one coset.
+const MAX_RETAINED_STAGED_RESIDUE_LOG: u32 = 20;
+
 /// Where the WHIR oracle's unified Merkle cap should land after its per-coset
 /// trees are committed.
 ///
@@ -99,11 +107,34 @@ fn admit_baby_bear_recursive_oracle_shape(
         "recursive BabyBear WHIR domain exceeds context twiddle capacity"
     );
     let fused = fused_commit::supported(log_n, log_v);
+    if fused {
+        return true;
+    }
     assert!(
-        fused || matches!((log_n, log_v), (14..=23, 5) | (22, 6)),
-        "unsupported recursive WHIR coefficient shape: log_n={log_n}, log_v={log_v}"
+        log_residue <= MAX_RETAINED_RESIDUE_NTT_LOG,
+        "recursive WHIR residue log {log_residue} exceeds generated forward NTT dispatch \
+         (maximum {MAX_RETAINED_RESIDUE_NTT_LOG})"
     );
-    fused
+    assert!(
+        log_residue >= PARTIAL_TREE_REDUCTION_LAYERS,
+        "no existing recursive WHIR route for log_n={log_n}, log_v={log_v}, residue_log={log_residue}: \
+         Subwarp requires max(coefficient bytes {}, hash scratch) <=49152 bytes; \
+         Block requires 32..=256 residue threads and V>=4; fused in-domain leaves require log_v<=8; \
+         retained hashing requires at least 32 leaves per coset",
+        (EXT4_DEGREE * size_of::<BF>()) << log_n,
+    );
+    let columns_per_leaf = EXT4_DEGREE << log_v;
+    assert!(
+        columns_per_leaf <= u16::MAX as usize,
+        "recursive WHIR retained leaf requires {columns_per_leaf} BF columns, exceeding CUDA grid-Y \
+         limit 65535 (log_v={log_v})"
+    );
+    assert!(
+        log_residue <= MAX_RETAINED_STAGED_RESIDUE_LOG,
+        "recursive WHIR residue log {log_residue} exceeds the fixed 32 MiB staging buffer \
+         (2^{MAX_RETAINED_STAGED_RESIDUE_LOG} digests): a complete coset must fit before hashing"
+    );
+    false
 }
 
 /// Check the full target schedule against the instantiated BabyBear backend
@@ -614,6 +645,84 @@ mod cpu_recursive_shapes {
     use super::admit_baby_bear_recursive_oracle_shape as admit;
 
     #[test]
+    fn cpu_recursive_shape_selection_uses_existing_routes() {
+        // Tuple notation matches the ordinary constructor: polynomial log,
+        // LDE factor, E4 slots per leaf, cap nodes, expected fused route.
+        for (n, lde, values, cap, fused) in [
+            (10, 64usize, 64usize, 16usize, true),
+            (10, 16, 16, 16, true),
+            (14, 2, 16, 16, false),
+            (14, 2, 32, 16, false),
+            (11, 2, 128, 1, true),
+            (10, 2, 4, 1, true),
+            (14, 2, 512, 1, false),
+            (18, 2, 8192, 1, false),
+            (5, 8, 8, 1, true),
+            (2, 32, 1, 1, true),
+            (3, 8, 2, 1, true),
+            (3, 32, 8, 1, true),
+            (13, 2, 256, 1, true),
+            (20, 8, 2, 1, false),
+            (21, 2, 2, 1, false),
+        ] {
+            assert_eq!(
+                admit(n, values.ilog2(), lde.ilog2(), cap.ilog2(), 27),
+                fused,
+                "route for ({n},{lde},{values},{cap})",
+            );
+        }
+        // Preserve every previously admitted fused/retained family.
+        for (n, v) in [
+            (13u32, 5u32),
+            (12, 5),
+            (11, 5),
+            (10, 5),
+            (9, 4),
+            (8, 4),
+            (7, 4),
+            (6, 5),
+            (5, 4),
+            (4, 3),
+        ] {
+            let c = 5u32.saturating_sub(n - v) + 1;
+            assert!(admit(n, v, c, 0, 27));
+        }
+        for n in 14..=23 {
+            assert!(!admit(n, 5, 1, 0, 27));
+        }
+        assert!(!admit(22, 6, 5, 4, 27));
+        for (n, v, c, cap) in [(21, 6, 5, 4), (23, 6, 4, 4), (22, 7, 5, 4)] {
+            assert!(!admit(n, v, c, cap, 27));
+        }
+        for (n, lde, values, cap, reason) in [
+            (
+                12,
+                2usize,
+                256usize,
+                1usize,
+                "existing recursive WHIR route",
+            ),
+            (10, 16, 512, 1, "existing recursive WHIR route"),
+            (19, 2, 16384, 1, "CUDA grid-Y"),
+            (22, 2, 2, 1, "32 MiB"),
+            (25, 2, 1, 1, "generated forward NTT"),
+        ] {
+            let error =
+                std::panic::catch_unwind(|| admit(n, values.ilog2(), lde.ilog2(), cap.ilog2(), 27))
+                    .expect_err("no complete existing route should reject before allocation");
+            let message = error
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| error.downcast_ref::<&str>().copied())
+                .unwrap();
+            assert!(
+                message.contains(reason),
+                "{message:?} should name {reason:?}"
+            );
+        }
+    }
+
+    #[test]
     fn cpu_partial_tree_depth_five_is_supported() {
         assert!(admit(9, 4, 1, 0, 27)); // Six path levels: existing control.
         assert!(admit(9, 4, 1, 1, 27)); // Exactly five path levels.
@@ -720,11 +829,8 @@ mod cpu_recursive_shapes {
     }
 
     #[test]
-    fn cpu_leaf64_rejects_unqualified_shapes_and_bounds() {
+    fn cpu_recursive_geometry_preserves_domain_and_capacity_bounds() {
         for (n, v, lde, cap, capacity) in [
-            (21, 6, 5, 4, 27),
-            (23, 6, 4, 4, 27),
-            (22, 7, 5, 4, 27),
             (22, 6, 5, 4, 26),
             (22, 6, 6, 4, 28),
             (22, 6, 5, 17, 27),
