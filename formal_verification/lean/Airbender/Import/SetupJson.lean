@@ -248,4 +248,109 @@ theorem parse_of_run {input : List Char} {state : State} {json : Json}
   rw [checked]
   exact finished
 
+/-- A JSON number starts with one of these eleven characters. -/
+inductive NumberHead where
+  | minus | zero | one | two | three | four | five | six | seven | eight | nine
+
+def NumberHead.char : NumberHead → Char
+  | .minus => '-' | .zero => '0' | .one => '1' | .two => '2' | .three => '3'
+  | .four => '4' | .five => '5' | .six => '6' | .seven => '7' | .eight => '8' | .nine => '9'
+
+/-- The delimiters used by array and object source composition. -/
+inductive SourceDelimiter where
+  | comma | array | object
+
+abbrev SourceDelimiter.char : SourceDelimiter → Char
+  | .comma => ',' | .array => ']' | .object => '}'
+
+def numberCharacter (c : Char) : Bool :=
+  digit c || c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E'
+
+/-- Use the same number decoder as the incremental parser. -/
+def numberToken (input : List Char) : Except String (JsonNumber × List Char) := number input
+
+def acceptedSourceValue (frames : List Frame) (result : Option Json) (value : Json) : Except String State :=
+  match frames with
+  | [] => .ok {frames := [], phase := .done, result := some value}
+  | .array entries :: frames =>
+    .ok {frames := .array (value :: entries) :: frames, phase := .delimiter, result}
+  | .object entries (some key) :: frames =>
+    .ok {frames := .object ((key, value) :: entries) none :: frames, phase := .delimiter, result}
+  | .object _ none :: _ => .error "JSON object has no key"
+
+private theorem numeric_step (frames : List Frame) (result : Option Json) (earlier : List Char)
+    (c : Char) (valid : numberCharacter c = true) :
+    step {frames, phase := .number earlier, result} c =
+      .ok {frames, phase := .number (c :: earlier), result} := by
+  change (if numberCharacter c then _ else _) = _
+  rw [valid]
+  rfl
+
+private theorem numeric_first_step (head : NumberHead) (frames : List Frame)
+    (result : Option Json) (allow : Bool) :
+    step {frames, phase := .value allow, result} head.char =
+      .ok {frames, phase := .number [head.char], result} := by
+  cases head <;> rfl
+
+private theorem run_cons_numeric (state : Except String State) (c : Char) (rest : List Char) :
+    run state (c :: rest) = run (state >>= fun state => step state c) rest := rfl
+
+private theorem numeric_tail (chars : List Char) (valid : ∀ c ∈ chars, numberCharacter c = true)
+    (frames : List Frame) (result : Option Json) (earlier : List Char) :
+    run (.ok {frames, phase := .number earlier, result}) chars =
+      .ok {frames, phase := .number (chars.reverse ++ earlier), result} := by
+  induction chars generalizing earlier with
+  | nil => rfl
+  | cons c rest ih =>
+    rw [run_cons_numeric]
+    change run (step {frames, phase := .number earlier, result} c) rest = _
+    rw [numeric_step frames result earlier c (valid c (by simp))]
+    simpa only [List.reverse_cons, List.append_assoc, List.singleton_append] using
+      ih (fun x member => valid x (by simp only [List.mem_cons]; exact Or.inr member)) (c :: earlier)
+
+private theorem numeric_complete (chars : List Char) (value : JsonNumber)
+    (decoded : numberToken chars = .ok (value, [])) (frames : List Frame) (result : Option Json) :
+    completeNumber {frames, phase := .number chars.reverse, result} chars.reverse =
+      acceptedSourceValue frames result (.num value) := by
+  change number chars = .ok (value, []) at decoded
+  unfold completeNumber
+  rw [List.reverse_reverse, decoded]
+  cases frames with
+  | nil => rfl
+  | cons frame frames =>
+    cases frame with
+    | array previous => rfl
+    | object previous key => cases key <;> rfl
+
+private theorem numeric_end_step (chars : List Char) (value : JsonNumber)
+    (decoded : numberToken chars = .ok (value, [])) (frames : List Frame)
+    (result : Option Json) (ending : SourceDelimiter) :
+    run (.ok {frames, phase := .number chars.reverse, result}) [ending.char] =
+      run (acceptedSourceValue frames result (.num value)) [ending.char] := by
+  have invalid : numberCharacter ending.char = false := by cases ending <;> rfl
+  change (if numberCharacter ending.char then _ else _) = _
+  rw [invalid]
+  change (do let state ← completeNumber {frames, phase := .number chars.reverse, result} chars.reverse
+             structural state ending.char) = _
+  rw [numeric_complete chars value decoded frames result]
+  cases frames with
+  | nil => rfl
+  | cons frame frames =>
+    cases frame with
+    | array previous => rfl
+    | object previous key => cases key <;> rfl
+
+/-- A checked token has the same value in every parser context. -/
+theorem run_number_token (head : NumberHead) (tail : List Char) (value : JsonNumber)
+    (valid : ∀ c ∈ tail, numberCharacter c = true)
+    (decoded : numberToken (head.char :: tail) = .ok (value, []))
+    (frames : List Frame) (result : Option Json) (allow : Bool) (ending : SourceDelimiter) :
+    run (.ok {frames, phase := .value allow, result}) ((head.char :: tail) ++ [ending.char]) =
+      run (acceptedSourceValue frames result (.num value)) [ending.char] := by
+  rw [List.cons_append, run_cons_numeric]
+  change run (step {frames, phase := .value allow, result} head.char) (tail ++ [ending.char]) = _
+  rw [numeric_first_step, run_append, numeric_tail tail valid]
+  simpa only [List.reverse_cons] using
+    numeric_end_step (head.char :: tail) value decoded frames result ending
+
 end Airbender.Import.SetupJson
