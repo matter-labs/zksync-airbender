@@ -508,3 +508,21 @@ fixed-table arithmetic facts, each worker's actual functional read/write
 effect, and the combined native history with supported-use induction. The
 `FixedSetup` source bridge also remains open. The full unsigned target and
 final lengthy validation remain pending.
+
+### Native chi5 lookup arithmetic obligation
+
+The retained chi5 generic table now proves exact nibble arithmetic.
+A tagged native lookup derives all five input bounds and output bounds.
+Each actual output equals chi of its actual cyclic input fields. The proofs
+cover every arithmetic row. They add no operand or expected-result premise.
+
+The importer stores small shared literal leaves for the large native prefix.
+It checks every parsed value before it emits the index view. The full-column
+runtime regression passed after emission. It compares every value, including
+physical padding. The controller proofs also passed with this representation.
+The input bindings, output bindings and arithmetic identities use kernel proofs.
+The final focused checks list only the three allowed axioms for all 29 new roots.
+The explicit inventory now contains 12,798 roots. All prior roots remain present.
+
+Native worker retirement and combined memory execution remain open. The
+`FixedSetup` source bridge remains open. Full validation remains pending.
