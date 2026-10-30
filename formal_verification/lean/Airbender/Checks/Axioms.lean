@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.SplitChiReferenceEffect
 import Airbender.Proofs.Keccak.SplitChiLaneOperation
 import Airbender.Proofs.Keccak.SplitChiNativeLookup
 import Airbender.Proofs.Keccak.SplitChiLookup
@@ -14077,3 +14078,27 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Proofs.chi5LaneValue
 #print axioms Airbender.Keccak.Split.Native.Proofs.chi5_lane_bound
 #print axioms Airbender.Keccak.Split.Native.Proofs.chi5_native_lane_operation
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5ControllerIndex
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5_controller_schedule
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5_generic_controller_schedule
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5ControllerQuery
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_controller_table
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_controller_arity
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5ControllerRow
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_controller_query_shape
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_native_controller_schedule
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5LanePort
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5Pointer
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_lane_port_values
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_lane_port_address
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5ControlPort
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_control_high_limbs
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_control_port_columns
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_control_port_codes
+#print axioms Airbender.Keccak.Split.Native.Proofs.split_control_limb_bounds
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_native_memory_effect
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5PointerPort
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_pointer_port
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_ports_enumeration
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5ReferenceLanes
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_native_reference_result

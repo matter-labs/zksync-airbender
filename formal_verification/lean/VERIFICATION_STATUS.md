@@ -553,3 +553,23 @@ previous roots remain present. The final bounded group passed and left no owned
 process running. Native control and memory retirement remain open. The fixed
 setup source bridge and the full unsigned target remain open. Full validation
 remains pending.
+
+### Native chi5 control and memory-effect obligation
+
+The actual chi5 controller lookup now selects the original blessed call.
+The proof binds its control transition and all five physical slots. Native
+constraints force both control-register high limbs to zero. Exact token codes
+retain these values. Port enumeration covers both registers and every lane
+half. Both pointer limbs stay explicit in every raw RAM address.
+
+The native outputs equal the original split reference result. These facts hold
+for both cache modes. They add no operand, schedule or expected-output premise.
+They do not yet prove Sail retirement or the complete mixed memory history.
+
+Twenty-four new roots passed focused kernel and axiom checks. They use only the
+three allowed axioms. The explicit inventory now contains 12,842 roots. All
+previous roots remain present. The final bounded check passed and left no owned
+process running. An explicit vector-index bound avoids the earlier memory-cap
+failure. Resource limits stay unchanged. The fixed setup source bridge, other
+split arithmetic workers and the full unsigned target remain open. Full
+validation remains pending.
