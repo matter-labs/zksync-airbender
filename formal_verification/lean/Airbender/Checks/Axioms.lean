@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.SplitParityControllerLookup
 import Airbender.Proofs.Keccak.SplitChiCallExecution
 import Airbender.Proofs.Keccak.SplitChiLaneHalves
 import Airbender.Proofs.Keccak.SplitChiReferenceEffect
@@ -14120,3 +14121,10 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Proofs.chi5_call_write_projection
 #print axioms Airbender.Keccak.Split.Native.Proofs.chi5_call_ports_present
 #print axioms Airbender.Keccak.Split.Native.Proofs.chi5_call_executes
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.columnParityControllerIndex
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_controller_schedule
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_controller_slots
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_controller_execute
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_controller_source
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_controller_table_sound
+#print axioms Airbender.Keccak.Split.Call.Proofs.slots_normalized

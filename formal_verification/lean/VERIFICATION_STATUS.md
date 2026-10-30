@@ -606,3 +606,20 @@ roots remain present. Both cache modes passed the last bounded check. It left
 no owned process running. The fixed setup source bridge, column-parity and
 theta/rho call effects, and the full unsigned integration remain open. Full
 validation remains pending.
+
+### Native column-parity controller obligation
+
+The retained parity controller now proves the original control transitions.
+It selects the iota round only for iteration zero. It includes the final call
+in round twenty-four. The separate slot table retains all six original physical
+slots and the native execute-key offset. The leading padding row stays explicit.
+The importer compares every selected value with the complete native source.
+The kernel proves the emitted row properties and static-table soundness.
+
+Seven new roots passed focused kernel and axiom checks. They use only the three
+allowed axioms. The explicit inventory now contains 12,865 roots. All previous
+roots remain present. The proof reuses the established kernel-checked slot cache.
+The last bounded group passed and left no owned process running. Resource caps
+stay unchanged. Parity arithmetic and call execution remain open. The fixed
+setup source bridge, theta/rho call effect and full unsigned integration remain
+open. Full validation remains pending.
