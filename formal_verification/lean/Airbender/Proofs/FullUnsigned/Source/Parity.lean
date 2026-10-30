@@ -1,0 +1,4 @@
+import Airbender.Data.Setup.Source.Parity
+import Airbender.Proofs.FullUnsigned.SetupSourceCertificate
+
+certify_source_bank Airbender.Setup.SourceCaptureParityProofs using Airbender.Setup.SourceCaptureParity

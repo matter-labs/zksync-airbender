@@ -1,3 +1,7 @@
+import Tests.SetupSourceBank
+import Airbender.Proofs.FullUnsigned.Source.Parity
+import Airbender.Proofs.FullUnsigned.Source.Theta
+import Airbender.Proofs.FullUnsigned.Source.Chi
 import Airbender.Import.SetupJson
 import Tests.SetupJson
 import Tests.SetupSourceArrays
@@ -14869,3 +14873,67 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Tests.SetupSourceNodes.boolean_values_source
 #print axioms Tests.SetupSourceNodes.node_array_source
 #print axioms Tests.SetupSourceNodes.node_object_source
+
+#print axioms Airbender.Setup.SourceBank.Description
+#print axioms Airbender.Setup.SourceBank.Bank
+#print axioms Airbender.Setup.SourceBank.Bank.get
+#print axioms Airbender.Setup.SourceBank.sharedArrayNode
+#print axioms Airbender.Setup.SourceBank.sharedObjectNode
+#print axioms Airbender.Setup.SourceBank.evaluate
+#print axioms Airbender.Setup.SourceBank.sharedArrayNode_eq
+#print axioms Airbender.Setup.SourceBank.sharedObjectNode_eq
+#print axioms Airbender.Setup.SourceBank.evaluate_source
+#print axioms Airbender.Setup.SourceBank.evaluate_object_eager
+#print axioms Tests.SetupSourceBank.strings_checked
+#print axioms Tests.SetupSourceBank.numbers_checked
+#print axioms Tests.SetupSourceBank.branch_lookup
+#print axioms Tests.SetupSourceBank.default_lookup
+#print axioms Tests.SetupSourceBank.root_source
+#print axioms Tests.SetupSourceBank.root_value
+#print axioms Tests.SetupSourceBank.root_bytes
+#print axioms Tests.SetupSourceBank.root_parsed
+#print axioms Tests.SetupSourceBank.zero_depth
+#print axioms Tests.SetupSourceBank.bounded_cycle_source
+#print axioms Tests.SetupSourceBank.wrong_number_rejected
+#print axioms Airbender.Setup.SourceCaptureParity.text
+#print axioms Airbender.Setup.SourceCaptureParity.token
+#print axioms Airbender.Setup.SourceCaptureParity.strings
+#print axioms Airbender.Setup.SourceCaptureParity.tokens
+#print axioms Airbender.Setup.SourceCaptureParity.bank
+#print axioms Airbender.Setup.SourceCaptureParity.fuel
+#print axioms Airbender.Setup.SourceCaptureParity.rootIndex
+#print axioms Airbender.Setup.SourceCaptureParity.rootEntries
+#print axioms Airbender.Setup.SourceCaptureParity.root
+#print axioms Airbender.Setup.SourceCaptureParity.source
+#print axioms Airbender.Setup.SourceCaptureParity.byteLength
+#print axioms Airbender.Setup.SourceCaptureParity.sourceSha256
+#print axioms Airbender.Setup.SourceCaptureParityProofs.root_eager
+#print axioms Airbender.Setup.SourceCaptureParityProofs.parsed
+#print axioms Airbender.Setup.SourceCaptureTheta.text
+#print axioms Airbender.Setup.SourceCaptureTheta.token
+#print axioms Airbender.Setup.SourceCaptureTheta.strings
+#print axioms Airbender.Setup.SourceCaptureTheta.tokens
+#print axioms Airbender.Setup.SourceCaptureTheta.bank
+#print axioms Airbender.Setup.SourceCaptureTheta.fuel
+#print axioms Airbender.Setup.SourceCaptureTheta.rootIndex
+#print axioms Airbender.Setup.SourceCaptureTheta.rootEntries
+#print axioms Airbender.Setup.SourceCaptureTheta.root
+#print axioms Airbender.Setup.SourceCaptureTheta.source
+#print axioms Airbender.Setup.SourceCaptureTheta.byteLength
+#print axioms Airbender.Setup.SourceCaptureTheta.sourceSha256
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.root_eager
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.parsed
+#print axioms Airbender.Setup.SourceCaptureChi.text
+#print axioms Airbender.Setup.SourceCaptureChi.token
+#print axioms Airbender.Setup.SourceCaptureChi.strings
+#print axioms Airbender.Setup.SourceCaptureChi.tokens
+#print axioms Airbender.Setup.SourceCaptureChi.bank
+#print axioms Airbender.Setup.SourceCaptureChi.fuel
+#print axioms Airbender.Setup.SourceCaptureChi.rootIndex
+#print axioms Airbender.Setup.SourceCaptureChi.rootEntries
+#print axioms Airbender.Setup.SourceCaptureChi.root
+#print axioms Airbender.Setup.SourceCaptureChi.source
+#print axioms Airbender.Setup.SourceCaptureChi.byteLength
+#print axioms Airbender.Setup.SourceCaptureChi.sourceSha256
+#print axioms Airbender.Setup.SourceCaptureChiProofs.root_eager
+#print axioms Airbender.Setup.SourceCaptureChiProofs.parsed

@@ -98,8 +98,20 @@ sources. A string check supplies both value and key parsing. Node proofs
 compose those facts with checked numbers, booleans, null values, arrays and
 objects. The unescaped string guard passes the runtime scan of the three
 retained sources. Kernel controls also reject unsupported raw escape and
-control characters. The captured source certificates and their physical row
-matching remain open.
+control characters. The physical source-to-table certificates remain open.
+
+The shared table interpreter now proves source parsing for all three retained
+split captures. The generated representation keeps each key, value and field
+order. Its equality proofs preserve the earlier source-node values. Each
+child now evaluates once. This removes repeated work during byte checks.
+
+The generator freshness check passes. Exact byte comparisons also pass for
+parity, theta/rho and chi5. These comparisons check imported values. The kernel
+checks the parser theorem for each represented source. It does not use the
+runtime comparison as a proof. The original target statements stay unchanged.
+All three physical source-to-table certificates remain open. They must decode
+the columns and match every physical row, including padding, to the canonical
+tables.
 
 ## Finding status versus conditional proof coverage
 

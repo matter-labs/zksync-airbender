@@ -1888,3 +1888,39 @@ shared source nodes and prove physical row matching next. Design items 2 and
 3 follow the machine targets. The packed-checker pilot stays unchanged. Full
 frontend validation, environment audit, baseline refresh, transitive replay
 and Linux qualification did not run.
+
+
+### Full unsigned captured-source parsing obligation
+
+The shared table interpreter now proves source parsing for parity, theta/rho
+and chi5. Its soundness theorem covers every table and depth. The theorem
+uses the proved string and number checks. The object adapter supplies complete
+source consumption. Equality proofs retain every byte and JSON value when
+array and object children share their evaluation.
+
+The generator retains all keys, values and field order from each source. Its
+freshness check passes for all six generated modules. Exact byte comparisons
+pass for all 11,980,612 retained source bytes. These comparisons are importer
+checks. The kernel proves parsing for each represented source. Runtime code
+does not supply a theorem proof. The full validation driver now requires both
+generation freshness and exact byte identity.
+
+The focused source group passed 21 checks. It includes all three data imports,
+all three parser certificates, the interpreter, the proof generator and its
+controls. Eleven new kernel controls pass. They cover field order, array
+contents, negative numbers, Unicode, lookup branches, default entries, bounded
+cycles and the zero-depth result. They reject an incorrect numeric value.
+
+All 63 new roots passed direct axiom checks. They use only the three allowed
+axioms. The explicit inventory now has 13,531 roots. It retains all 13,468
+previous roots. The final combined group used 168 seconds and 879 MiB of
+physical memory. The separate theta data import used at most 1,701 MiB.
+All guards left no owned process running. Resource limits stay unchanged.
+
+The three `FixedSetupRows` certificates remain open. The next step must decode
+the retained columns and match every physical row to the original canonical
+tables. Padding stays in the physical domain. No target statement or existing
+premise changed. The packed-checker pilot stays unchanged.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
