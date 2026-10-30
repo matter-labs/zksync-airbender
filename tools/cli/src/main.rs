@@ -597,3 +597,64 @@ fn run_binary_with_decoder<D: DecodingOptions>(
 
     (state.registers.map(|register| register.value), finished)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Needs real `RecursionUnified` artifacts made by this revision (tens of MB
+    /// each, so not committed), e.g.
+    /// `AB_AGG_PROOFS=proof_1.json,proof_2.json cargo test --release -p cli -- --ignored aggregation_guest`
+    #[test]
+    #[ignore = "needs RecursionUnified proof artifacts listed in AB_AGG_PROOFS"]
+    fn aggregation_guest_verifies_and_folds() {
+        let paths: Vec<String> = std::env::var("AB_AGG_PROOFS")
+            .expect("AB_AGG_PROOFS: comma-separated proof artifact paths")
+            .split(',')
+            .map(str::to_owned)
+            .collect();
+        assert!(paths.len() >= 2, "the negative case corrupts proof 2");
+
+        // Deserializing artifacts and the VM need more than the default test-thread stack.
+        std::thread::Builder::new()
+            .stack_size(1 << 30)
+            .spawn(move || {
+                let input = build_aggregation_input(&paths);
+                let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../gkr_verifier");
+                let (_, bin) = read_binary(&dir.join("fsv_aggregate_unified_sec_100.bin"));
+                let (_, text) = read_binary(&dir.join("fsv_aggregate_unified_sec_100.text"));
+                // one unified-proof verification is ~3.5M cycles
+                let cycles = 10_000_000 * paths.len();
+                let run = |words: Vec<u32>| {
+                    run_binary_with_decoder::<FullUnsignedMachineDecoderConfig>(
+                        &bin, &text, cycles, words,
+                    )
+                };
+
+                let (registers, finished) = run(input.words.clone());
+                assert!(finished, "the aggregation guest must finish");
+                assert_eq!(registers[10..18], input.expected_output);
+                assert_eq!(registers[18..26], [0u32; 8]);
+
+                // Flip one word in the middle of proof 2's ND stream: the guest must not
+                // finish successfully (it aborts, which the VM reports as a panic).
+                let mut corrupted = input.words;
+                let start = input.proof_offsets[1];
+                let end = input
+                    .proof_offsets
+                    .get(2)
+                    .copied()
+                    .unwrap_or(corrupted.len());
+                corrupted[(start + end) / 2] ^= 1;
+                let outcome =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(corrupted)));
+                assert!(
+                    !matches!(outcome, Ok((_, true))),
+                    "a corrupted proof 2 must not verify"
+                );
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+}
