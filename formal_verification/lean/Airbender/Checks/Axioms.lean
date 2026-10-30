@@ -1026,6 +1026,14 @@ import Airbender.Proofs.Keccak.SplitThetaCallExecution
 import Airbender.Proofs.Keccak.SplitNativeSetup
 import Airbender.Proofs.Keccak.SplitNativeCallExecution
 import Airbender.Proofs.Keccak.SplitNativePool
+import Airbender.Proofs.Keccak.SplitCallDestinations
+import Airbender.Proofs.Keccak.SplitCallValues
+import Airbender.Proofs.Keccak.SplitCallMemoryProjection
+import Airbender.Proofs.Keccak.SplitNativeMemoryProjection
+import Airbender.Proofs.Keccak.SplitPhysicalSnapshot
+import Airbender.Proofs.Keccak.SplitPhysicalStep
+import Airbender.Proofs.Keccak.SplitNativePhysicalStep
+import Airbender.Proofs.Keccak.SplitNativePermutation
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 
@@ -14538,3 +14546,24 @@ import Airbender.Proofs.Keccak.SplitNativePool
 #print axioms Airbender.Keccak.Split.Native.Proofs.fixed_control_setup_facts
 #print axioms Airbender.Keccak.Split.Native.Proofs.native_call_executes
 #print axioms Airbender.Keccak.Split.Native.Proofs.fixed_memory_history
+
+#print axioms Airbender.Keccak.Split.Call.Proofs.lane_address_value
+#print axioms Airbender.Keccak.Split.Call.Proofs.lane_cell_injective
+#print axioms Airbender.Keccak.Split.Call.Proofs.lane_cell_aligned
+#print axioms Airbender.Keccak.Split.Call.Proofs.writes_distinct
+#print axioms Airbender.Keccak.Split.Call.Proofs.writes_aligned
+#print axioms Airbender.Keccak.Split.Call.Proofs.round_constant_bound
+#print axioms Airbender.Keccak.Split.Call.Proofs.result_live_congr
+#print axioms Airbender.Keccak.Split.Call.Proofs.result_lane_bound
+#print axioms Airbender.Keccak.Split.Call.Proofs.writes_live_congr
+#print axioms Airbender.Keccak.Split.Call.Proofs.arguments_index_injective
+#print axioms Airbender.Keccak.Split.Call.Proofs.written_lane_member
+#print axioms Airbender.Keccak.Split.Call.Proofs.written_lane_reads
+#print axioms Airbender.Keccak.Split.Call.Proofs.unwritten_lane_frame
+#print axioms Airbender.Keccak.Split.Native.Proofs.native_call_memory_projection
+#print axioms Airbender.Keccak.Split.Call.Proofs.PhysicalSnapshot
+#print axioms Airbender.Keccak.Split.Call.Proofs.lane_eq_of_halves
+#print axioms Airbender.Keccak.Split.Call.Proofs.active_slot_bound
+#print axioms Airbender.Keccak.Split.Call.Proofs.physical_step_of_words
+#print axioms Airbender.Keccak.Split.Native.Proofs.native_physical_step
+#print axioms Airbender.Keccak.Split.Native.Proofs.native_permutation_of_initialized_chain
