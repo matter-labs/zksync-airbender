@@ -2070,3 +2070,27 @@ follow the machine targets.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned chi5 source input and tag obligations
+
+The five chi5 source input columns now match the original canonical columns.
+The proof covers all 1,048,576 arithmetic rows. It uses the retained periodic
+and constant blocks. The largest selected input prefix has 256 blocks.
+Generic prefix and block-selection rules avoid expansion of the row domain.
+The complete retained tag column also equals the original canonical column.
+
+The focused group passed three module checks in six seconds. It used 658 MiB
+of physical memory. Eight new roots passed direct axiom checks. They use only
+the three allowed axioms. The inventory now has 14,189 roots. It retains all
+14,181 previous roots. The source artifacts did not change. The previous
+source generation and byte-identity checks still apply.
+
+Chi5 still needs five output column correspondences and its controller rows.
+The parity and theta/rho real-row predicates also remain open. Bind the equal
+byte representation at the original source interface when these proofs are
+complete. The packed-checker pilot stays unchanged. Design items 2 and 3
+still follow the machine targets.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.

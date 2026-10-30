@@ -1,3 +1,4 @@
+import Airbender.Proofs.FullUnsigned.ChiSourceInputs
 import Airbender.Proofs.FullUnsigned.PaddingMembership
 import Airbender.Proofs.FullUnsigned.ChiSourceDomain
 import Airbender.Proofs.FullUnsigned.TaggedSetupInterpretation
@@ -15599,3 +15600,12 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.MachineTargets.Proofs.parity_source_rows_of_real_range
 #print axioms Airbender.Compiler.MachineTargets.Proofs.theta_source_rows_of_real_range
 #print axioms Airbender.Compiler.MachineTargets.Proofs.chi_source_rows_of_real_range
+
+#print axioms Airbender.Setup.Proofs.getFromBlocks_append_left
+#print axioms Airbender.Setup.Proofs.getFromBlocks_take
+#print axioms Airbender.Setup.Proofs.uniform65536_get
+#print axioms Airbender.Setup.Proofs.constant_affine_get
+#print axioms Airbender.Setup.SourceCaptureChiProofs.source_input_get
+#print axioms Airbender.Setup.SourceCaptureChiProofs.source_inputs_match
+#print axioms Airbender.Setup.SourceCaptureChiProofs.source_tag_column
+#print axioms Airbender.Setup.SourceCaptureChiProofs.source_tag_matches
