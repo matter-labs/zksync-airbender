@@ -2,7 +2,7 @@
 
 Generic Nsight Systems methodology for any `gpu/` crate. Start from
 [`profiling.md`](./profiling.md) for the parameter conventions; supply
-`$TEST_BINARY` and `$NVTX_RANGE` from your crate's profiling doc, and invoke
+`$TEST_BINARY` and `$NVTX_RANGE` (`<range>@<domain>`) from your crate's profiling doc, and invoke
 `$TEST_BINARY` with the libtest args that select + run the work to profile.
 
 Prefer capturing an existing NVTX range instead of profiling the whole process:
