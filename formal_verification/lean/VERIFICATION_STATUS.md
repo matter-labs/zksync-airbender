@@ -526,3 +526,15 @@ The explicit inventory now contains 12,798 roots. All prior roots remain present
 
 Native worker retirement and combined memory execution remain open. The
 `FixedSetup` source bridge remains open. Full validation remains pending.
+
+### Native chi5 arithmetic-query obligation
+
+Both compiled cache modes now derive all sixteen arithmetic lookup results.
+The proof uses their actual imported query entries and retained generic table.
+It derives input bounds, output bounds and the exact cyclic chi operation.
+The native constant tags need no execute or operand premise at this layer.
+
+Eight new roots passed focused kernel and axiom checks. They use only the
+three allowed axioms. The explicit inventory now contains 12,806 roots. All
+previous roots remain present. Lane packing, worker retirement and combined
+memory execution remain open. Full validation remains pending.
