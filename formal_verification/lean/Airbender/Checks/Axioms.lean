@@ -1,3 +1,4 @@
+import Airbender.Proofs.FullUnsigned.SplitRetirement
 import Airbender.Proofs.Keccak.SplitNativeInputObservations
 import Airbender.Proofs.FullUnsigned.CallHistory
 import Airbender.Proofs.FullUnsigned.EventGroups
@@ -14629,3 +14630,8 @@ import Airbender.Proofs.Keccak.SplitNativeWriteRules
 #print axioms Airbender.Keccak.Split.Native.Proofs.native_call_addresses_distinct
 #print axioms Airbender.Keccak.Split.Native.Proofs.native_call_input_observations
 #print axioms Airbender.Keccak.Split.Native.Proofs.native_call_executes_of_history
+
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_split_memory_call
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_split_caller_source
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_split_pc_binding
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_split_caller_retirement

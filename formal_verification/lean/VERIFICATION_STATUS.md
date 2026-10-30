@@ -1263,3 +1263,35 @@ integration and the formal setup source bridge remain open. Design items 2
 and 3 follow the machine targets. The packed-checker pilot stays unchanged.
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+### Full unsigned native split caller-retirement obligation
+
+`unrolled_full_split_memory_call` connects each actual split caller window
+to the original complete memory-call relation. The combined pool supplies
+all raw read bounds. Its prefix history supplies readable cells at the call.
+Supported public arguments remain explicit at this extracted boundary.
+
+`unrolled_full_split_caller_source` identifies the public split instruction,
+its full PC and its actual worker kind. The proof uses exact decoder lookup
+and the complete request CSR. Standard worker CSRs cannot alias a split CSR.
+`unrolled_full_split_pc_binding` derives canonical PC limbs, the four-byte
+advance and original Sail PC retirement from the imported ADD/SUB equations.
+
+`unrolled_full_split_caller_retirement` combines native memory execution with
+that PC retirement. It executes the original complete split call between the
+actual caller boundaries, with the native start and final PCs. PC preparation
+preserves all supported call arguments and tracked cell reads. No native
+effect, input observation or retirement result is a premise.
+
+All four new modules passed focused kernel checks. All four new roots passed
+direct axiom checks. They use only the three allowed axioms. The explicit
+inventory now contains 13,294 roots. All 13,290 previous roots remain present.
+The final bounded group used 534 MiB of physical memory and left no owned
+process running. Resource limits stay unchanged.
+
+The full path proof must still derive supported public arguments at each
+reachable boundary and connect ordinary and standard worker cycles.
+Initialization integration and the formal setup source bridge remain open.
+Design items 2 and 3 follow the machine targets. The packed-checker pilot
+stays unchanged. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.
