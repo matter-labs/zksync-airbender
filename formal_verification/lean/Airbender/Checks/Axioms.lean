@@ -1,3 +1,4 @@
+import Airbender.Proofs.FullUnsigned.ChiSourceOuterOutputs
 import Airbender.Proofs.FullUnsigned.ChiSourceController
 import Airbender.Proofs.FullUnsigned.ChiSourceInputs
 import Airbender.Proofs.FullUnsigned.PaddingMembership
@@ -15652,3 +15653,8 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Setup.SourceCaptureChiProofs.source_controller_get
 #print axioms Airbender.Setup.SourceCaptureChiProofs.source_controller_rows
 #print axioms Airbender.Compiler.MachineTargets.Proofs.chi_source_controller_member
+
+#print axioms Airbender.Setup.SourceCaptureChiProofs.source_output3_get
+#print axioms Airbender.Setup.SourceCaptureChiProofs.source_output4_get
+#print axioms Airbender.Setup.SourceCaptureChiProofs.source_output3_matches
+#print axioms Airbender.Setup.SourceCaptureChiProofs.source_output4_matches
