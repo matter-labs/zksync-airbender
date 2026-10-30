@@ -1,3 +1,5 @@
+import Airbender.Proofs.Keccak.SplitParityNativeQueries
+import Tests.SetupParityGeneric
 import Airbender.Proofs.Keccak.SplitXor5Lookup
 import Airbender.Proofs.Keccak.SplitParitySlotLookup
 import Airbender.Proofs.Keccak.SplitParityIotaLookup
@@ -14158,3 +14160,23 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.xor5_source
 #print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.xor5_row_operation
 #print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.xor5_table_sound
+#print axioms Airbender.Keccak.Split.Native.Fixed.columnParityGenericLength
+#print axioms Airbender.Keccak.Split.Native.Fixed.columnParityGenericRow
+#print axioms Airbender.Keccak.Split.Native.Fixed.columnParityGenericTable
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_generic_member
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_iota_table_tag
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_slot_table_tag
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_control_table_tag
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_generic_bindings
+#print axioms Airbender.Keccak.Split.Native.Proofs.columnParityFixedTable
+#print axioms Airbender.Keccak.Split.Native.Proofs.columnParityQuery
+#print axioms Airbender.Keccak.Split.Native.Proofs.column_parity_query_table
+#print axioms Airbender.Keccak.Split.Native.Proofs.column_parity_query_arity
+#print axioms Airbender.Keccak.Split.Native.Proofs.columnParityQueryEntry
+#print axioms Airbender.Keccak.Split.Native.Proofs.column_parity_query_shape
+#print axioms Airbender.Keccak.Split.Native.Proofs.columnParityQueryTag
+#print axioms Airbender.Keccak.Split.Native.Proofs.column_parity_query_tag
+#print axioms Airbender.Keccak.Split.Native.Proofs.column_parity_native_query
+#print axioms Airbender.Keccak.Split.Native.Proofs.column_parity_native_iota_queries
+#print axioms Airbender.Keccak.Split.Native.Proofs.column_parity_native_xor5_queries
+#print axioms Tests.SetupParityGeneric.matchesSource

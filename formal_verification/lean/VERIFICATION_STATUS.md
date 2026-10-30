@@ -656,3 +656,21 @@ process running. The packed-checker pilot stays unchanged. Native parity query
 binding and call execution, theta/rho call execution, the fixed setup source
 bridge and full unsigned integration remain open. Full validation remains
 pending.
+
+### Native parity generic-setup and query obligations
+
+The complete parity setup view now retains all four native regions and physical
+zero padding. A streaming regression reads the current source file. It compares
+all 33,554,432 physical cells. It also checks every retained view's source bytes.
+The regression passed. Kernel proofs select the exact region from each native
+query discriminator. Both native cache modes now enforce all twenty-two actual
+generic queries. The four byte-iota queries prove their exact byte operation.
+The sixteen parity queries prove their exact five-input nibble operation.
+
+Twenty new roots passed focused kernel and axiom checks. They use only the
+three allowed axioms. The explicit inventory now contains 12,912 roots. All
+previous roots remain present. The final bounded checks passed and left no owned
+process running. The source comparison is a runtime fidelity check. It does not
+close the formal JSON source bridge. Native parity lane effects and Sail call
+execution, theta/rho call execution, the source bridge and full unsigned
+integration remain open. Full validation remains pending.
