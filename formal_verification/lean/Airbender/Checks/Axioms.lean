@@ -1023,6 +1023,9 @@ import Airbender.Proofs.Keccak.SplitThetaCallAddresses
 import Airbender.Proofs.Keccak.SplitThetaLaneHalves
 import Airbender.Proofs.Keccak.SplitThetaWriteProjection
 import Airbender.Proofs.Keccak.SplitThetaCallExecution
+import Airbender.Proofs.Keccak.SplitNativeSetup
+import Airbender.Proofs.Keccak.SplitNativeCallExecution
+import Airbender.Proofs.Keccak.SplitNativePool
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 
@@ -14530,3 +14533,8 @@ import Airbender.Proofs.Keccak.SplitThetaCallExecution
 #print axioms Airbender.Keccak.Split.Native.Proofs.theta_call_write_projection
 #print axioms Airbender.Keccak.Split.Native.Proofs.theta_call_ports_present
 #print axioms Airbender.Keccak.Split.Native.Proofs.theta_call_executes
+
+#print axioms Airbender.Keccak.Split.Native.Proofs.fixedSetup
+#print axioms Airbender.Keccak.Split.Native.Proofs.fixed_control_setup_facts
+#print axioms Airbender.Keccak.Split.Native.Proofs.native_call_executes
+#print axioms Airbender.Keccak.Split.Native.Proofs.fixed_memory_history
