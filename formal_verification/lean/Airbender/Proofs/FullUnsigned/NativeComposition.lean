@@ -15,7 +15,7 @@ variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 /-- Native ordinary, standard and split cycles share one indexed full transition.
 Only input contracts remain: no native call or instruction result is a premise. -/
-theorem unrolled_full_cycle_transition
+theorem unrolled_full_cycle_transition_of_selected_inputs
     {initial finalState : State}
     (bundles : List UnifiedReduced.Caller.DelegationUse.Bundle) (splitBundles : List Keccak.Split.Bundle) {text : List (BitVec 32)} {capacity : Nat}
     {masks : PooledFamily → NativeDecoder.ProgramRows.Mask}
@@ -60,7 +60,8 @@ theorem unrolled_full_cycle_transition
       ∃ command, ExternalBoundary.BigintABI.Binding worker.assignment command)
     (controls : ∀ w, (⟨.blakeRound, w⟩ : Delegation.Row babyBearModulus) ∈ workers.rows →
       ExternalBoundary.HashABI.RoundControl w)
-    (splitInputs : ∀ row ∈ trace.rows, ∀ worker ∈ splitWorkers.rows,
+    (splitInputs : ∀ row ∈ trace.rows, row.family = .addSub → Delegation.Requests.Selected row.assignment →
+      ∀ worker ∈ splitWorkers.rows,
       worker.fulfillment splitWorkers.cached = Delegation.Requests.caller row.assignment →
       ∀ before, SailHistory cells (events.filter fun event => decide (event.1 ≤ row.clock)) initial before →
         ∃ index : Fin 361, Keccak.Split.ArgumentsAt index.val before)
@@ -127,7 +128,7 @@ theorem unrolled_full_cycle_transition
         unrolled_full_split_caller_cycle setup lookup accepted excluded initialPC workerFamilies equations
           fixedEquations active initialClock initialAligned inputs (fun edge present => (bounds edge present).1)
           row member caller.1 caller.2 worker present matched permutation ordered history readonly aligned
-      obtain ⟨index, arguments⟩ := splitInputs row member worker present matched before past
+      obtain ⟨index, arguments⟩ := splitInputs row member caller.1 caller.2 worker present matched before past
       obtain ⟨raw, retired⟩ := executes index arguments
       refine ⟨before, after, past, history_prefix_of_window ordered orderedClocks past current,
         Or.inr ⟨sameCount.symm, entry, included, entry_source_retired_state source _, ?_, sameKind ▸ retired⟩, ?_⟩
@@ -166,5 +167,74 @@ theorem unrolled_full_cycle_transition
       exact selected
     exact ⟨before, after, past, history_prefix_of_window ordered orderedClocks past current,
       Or.inl (Or.inl step), fun read => Or.inl (Or.inl (ExternalStream.Proofs.step_of_rebased_with_clause read step))⟩
+
+
+/-- The existing execution interface keeps its original public statement. -/
+theorem unrolled_full_cycle_transition
+    {initial finalState : State}
+    (bundles : List UnifiedReduced.Caller.DelegationUse.Bundle) (splitBundles : List Keccak.Split.Bundle) {text : List (BitVec 32)} {capacity : Nat}
+    {masks : PooledFamily → NativeDecoder.ProgramRows.Mask}
+    {columns : PooledFamily → List (List (ZMod babyBearModulus))}
+    {trace : PooledTrace babyBearModulus} {workers : Delegation.MemoryData babyBearModulus}
+    {splitWorkers : Keccak.Split.Native.MemoryData babyBearModulus}
+    (setup : UnrolledProgramSetup .fullUnsigned initial text capacity masks columns)
+    (lookup : UnrolledDecoderExactLookup trace masks columns)
+    (accepted : UnrolledAcceptance trace workers splitWorkers.steps
+      (splitWorkers.rows.map (Keccak.Split.Native.Row.fulfillment splitWorkers.cached)))
+    (excluded : FullUnsigned.NoSpecial5Call initial text)
+    (initialPC : trace.initial.word.lo < limbBase)
+    (closure : VerifierBoundary.BootClosure trace.initial
+      (trace.rows.map Row.start) (trace.rows.map Row.finish))
+    (equations : Keccak.Split.Native.EquationsHold splitWorkers.cached splitWorkers.setup splitWorkers.rows)
+    (fixedEquations : Keccak.Split.Native.EquationsHold
+      splitWorkers.cached Keccak.Split.Native.Proofs.fixedSetup splitWorkers.rows)
+    (active : ∀ row ∈ splitWorkers.rows, row.assignment (row.columns splitWorkers.cached).execute = 1)
+    (initialClock : (timeOfPair trace.initial.timestamp).Bounded)
+    (initialAligned : (timeOfPair trace.initial.timestamp).value % 4 = 0)
+    {cells : List Cell} {physicalImage : List (MemoryToken babyBearModulus)}
+    (image : initialImage initial cells = some physicalImage)
+    (wordSetup : trace.rom.wordMemory = ROM.table cells physicalImage)
+    (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable (ROM.words initial))
+    (aligned : ∀ cell ∈ cells, cell.Aligned)
+    (profile : PooledPublicInputs initial cells
+      (NativeDecoder.ProgramRows.programOf .fullUnsigned initial text))
+    {events : List MemoryAccess}
+    (permutation : events.Perm ((unrolledFullMemoryData trace workers splitWorkers).steps.map transferEvent))
+    (ordered : events.Pairwise (fun a b => b.1 ≤ a.1))
+    (history : SailHistory cells events initial finalState)
+    (readonly : ∀ event ∈ events, ∀ pc : BitVec 32, pc.toNat < ROM.limit →
+      event.2.1 = (Cell.ram pc).addressCode → event.2.2.1 = event.2.2.2)
+    (facts : Transfer.Facts (unrolledFullMemoryData trace workers splitWorkers))
+    (inputs : Transfer.NativeInputs (unrolledFullMemoryData trace workers splitWorkers) initial cells)
+    (workerSetup : workers.setup = Delegation.modeledSetup Keccak.Controller.rows)
+    (workerFamilies : ∀ worker ∈ workers.rows, FullUnsigned.standardCall worker.family)
+    (bounds : ∀ edge ∈ (unrolledFullMemoryData trace workers splitWorkers).steps,
+      edge.1.word.Bounded ∧ edge.2.word.Bounded)
+    (ram : ExternalBoundary.WorkerRAM.Binding workers.rows)
+    (commands : ∀ worker ∈ workers.rows, worker.family = .bigint →
+      ∃ command, ExternalBoundary.BigintABI.Binding worker.assignment command)
+    (controls : ∀ w, (⟨.blakeRound, w⟩ : Delegation.Row babyBearModulus) ∈ workers.rows →
+      ExternalBoundary.HashABI.RoundControl w)
+    (splitInputs : ∀ row ∈ trace.rows, ∀ worker ∈ splitWorkers.rows,
+      worker.fulfillment splitWorkers.cached = Delegation.Requests.caller row.assignment →
+      ∀ before, SailHistory cells (events.filter fun event => decide (event.1 ≤ row.clock)) initial before →
+        ∃ index : Fin 361, Keccak.Split.ArgumentsAt index.val before)
+    (stream : List (BitVec 32)) (ports : NonDeterminism.Pooled.StreamPorts trace stream)
+    {row : Trace.Row babyBearModulus PooledFamily} (member : row ∈ trace.rows) :
+    let program := FullUnsigned.Program.ofText initial text bundles splitBundles
+    ∃ before after,
+      CutState cells events initial (timeOfPair row.start.timestamp).value before ∧
+      CutState cells events initial (timeOfPair row.finish.timestamp).value after ∧
+      FullUnsigned.Step stream program
+        (retiredState before row.start.word.toBitVec, countAt trace row.clock)
+        (retiredState after row.finish.word.toBitVec, countAt trace (timeOfPair row.finish.timestamp).value) ∧
+      (run (SailRV32.Functions.get_arch_pc ()) before = .ok row.start.word.toBitVec before →
+        FullUnsigned.Step stream program (before, countAt trace row.clock)
+          (retiredState after row.finish.word.toBitVec, countAt trace (timeOfPair row.finish.timestamp).value)) := by
+  exact unrolled_full_cycle_transition_of_selected_inputs bundles splitBundles setup lookup accepted excluded initialPC closure
+    equations fixedEquations active initialClock initialAligned image wordSetup subwordSetup aligned profile
+    permutation ordered history readonly facts inputs workerSetup workerFamilies bounds ram commands controls
+    (fun row included _family _selected worker present matched before past =>
+      splitInputs row included worker present matched before past) stream ports member
 
 end Airbender.Compiler.MachineTargets.Proofs
