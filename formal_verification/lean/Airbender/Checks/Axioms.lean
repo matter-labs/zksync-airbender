@@ -1,6 +1,7 @@
 import Airbender.Import.SetupJson
 import Tests.SetupJson
 import Tests.SetupSourceArrays
+import Tests.SetupSourceNumbers
 import Airbender.Proofs.Keccak.SplitSetupTransport
 import Airbender.Review.Compiler.SetupSource
 import Airbender.Proofs.FullUnsigned.SetupInterpretation
@@ -14797,3 +14798,33 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Tests.SetupSourceArrays.dense_decoded
 #print axioms Tests.SetupSourceArrays.periodic_source
 #print axioms Tests.SetupSourceArrays.periodic_decoded
+
+#print axioms Airbender.Import.SetupJson.NumberHead
+#print axioms Airbender.Import.SetupJson.NumberHead.char
+#print axioms Airbender.Import.SetupJson.SourceDelimiter
+#print axioms Airbender.Import.SetupJson.SourceDelimiter.char
+#print axioms Airbender.Import.SetupJson.numberCharacter
+#print axioms Airbender.Import.SetupJson.numberToken
+#print axioms Airbender.Import.SetupJson.acceptedSourceValue
+#print axioms Airbender.Import.SetupJson.run_number_token
+#print axioms Airbender.Setup.SourceData.NumberToken
+#print axioms Airbender.Setup.SourceData.NumberToken.bytes
+#print axioms Airbender.Setup.SourceData.objectContents
+#print axioms Airbender.Setup.SourceData.objectBytes
+#print axioms Airbender.Setup.SourceProofs.FollowingSource
+#print axioms Airbender.Setup.SourceProofs.following_of_eager
+#print axioms Airbender.Setup.SourceProofs.check_number_token
+#print axioms Airbender.Setup.SourceProofs.check_number_token_sound
+#print axioms Airbender.Setup.SourceProofs.eager_array_of_following_family
+#print axioms Airbender.Setup.SourceProofs.KeySource
+#print axioms Airbender.Setup.SourceProofs.eager_object_family
+#print axioms Tests.SetupSourceNumbers.positive_checked
+#print axioms Tests.SetupSourceNumbers.negative_checked
+#print axioms Tests.SetupSourceNumbers.exponent_checked
+#print axioms Tests.SetupSourceNumbers.incomplete_rejected
+#print axioms Tests.SetupSourceNumbers.trailing_character_rejected
+#print axioms Tests.SetupSourceNumbers.wrong_value_rejected
+#print axioms Tests.SetupSourceNumbers.leading_zero_rejected
+#print axioms Tests.SetupSourceNumbers.number_array_source
+#print axioms Tests.SetupSourceNumbers.key_source
+#print axioms Tests.SetupSourceNumbers.number_object_source

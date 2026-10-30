@@ -1825,3 +1825,35 @@ certificates remain open. Generate their shared block libraries next. Design
 items 2 and 3 follow the machine targets. The packed-checker pilot stays
 unchanged. Full frontend validation, environment audit, baseline refresh,
 transitive replay and Linux qualification did not run.
+
+
+### Full unsigned number-token source obligation
+
+`check_number_token` checks each distinct number spelling. Its soundness
+theorem proves the exact value in every array and object context. The check
+requires full token consumption and exact JSON number equality. Array and
+object composition now use these facts. The shared block generator can reuse
+number certificates inside different RLE objects.
+
+Focused checks passed for the importer, source composition rules and their
+users. All 18 retained setup-directory JSON differential checks still pass.
+All ten new kernel controls pass. They cover signed numbers, exponents,
+repeated values and duplicate-key order. They reject incomplete tokens,
+trailing characters, wrong values and leading zeros.
+
+All 29 new roots passed direct axiom checks. They use only the three allowed
+axioms. The explicit inventory now contains 13,429 roots. All 13,400 previous
+roots remain present. The bounded focused groups used at most 713 MiB of
+physical memory. They left no owned process running. Resource limits stay
+unchanged.
+
+The separate parity library experiment also passed. It proves source and
+decoder facts for all 283 distinct blocks. These blocks occur 107,052 times.
+The experiment used 294 seconds and 1,819 MiB of physical memory. It remains
+outside the branch. Number-token reuse now supplies a smaller composition
+method for the larger source libraries. The three production source-table
+certificates remain open. No target or existing premise changed.
+
+Design items 2 and 3 follow the machine targets. The packed-checker pilot
+stays unchanged. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.

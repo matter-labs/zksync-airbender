@@ -85,6 +85,14 @@ controls cover affine, dense and periodic encodings. They reject changed
 values and missing separators. The three production source certificates
 remain open.
 
+The number-token composition obligation is also proved. A Boolean checker
+requires full consumption and exact JSON number equality. Its soundness
+theorem covers every parser context. Array and object rules reuse the result.
+Kernel controls include signed values, exponents, duplicate keys and malformed
+tokens. Captured source bytes, imported values and target premises stay
+unchanged. Complete the three source-table certificates before claiming the
+full target.
+
 ## Finding status versus conditional proof coverage
 
 **An assumption can close a conditional proof obligation while the finding stays
