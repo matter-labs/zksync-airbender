@@ -65,10 +65,17 @@ No new assumption closes them. Full native execution, public supported-use
 induction and the initialization adapter are kernel checked behind this
 explicit source obligation.
 
-Direct evaluation of a complete source exceeds the fixed memory cap. The
-failed monolithic decoder probes stay outside the branch. A separate block
-certificate generator remains experimental. The total decoder now permits
-small kernel checks with abstract earlier parser data. The retained artifacts
+The parsed-field transport proof now preserves the exact columns and physical
+domain length. It uses a successful parse as its premise. It keeps artifact
+validation in that premise. A source-row certificate can use these fields
+without evaluating unrelated circuit data.
+
+Direct monolithic evaluation exceeds the fixed memory cap. A separate block
+generator proved parsing for all 909,925 theta/rho source bytes in 238 seconds.
+The experiment used 1,308 MiB of physical memory. Its source uses a character
+block representation of the same bytes. The generator remains outside the
+branch. It does not prove the three source-to-table certificates. Repeated
+RLE blocks offer a smaller certificate representation. The retained artifacts
 and imported values stay unchanged.
 
 ## Finding status versus conditional proof coverage

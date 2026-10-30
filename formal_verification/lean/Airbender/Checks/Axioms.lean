@@ -3,6 +3,7 @@ import Tests.SetupJson
 import Airbender.Proofs.Keccak.SplitSetupTransport
 import Airbender.Review.Compiler.SetupSource
 import Airbender.Proofs.FullUnsigned.SetupInterpretation
+import Airbender.Proofs.FullUnsigned.SetupFields
 import Airbender.Proofs.FullUnsigned.SplitRetirement
 import Airbender.Proofs.Keccak.SplitNativeInputObservations
 import Airbender.Proofs.FullUnsigned.CallHistory
@@ -14765,3 +14766,9 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Tests.SetupJson.duplicate_key_kernel
 #print axioms Tests.SetupJson.malformed_kernel
 #print axioms Tests.SetupJson.symbolic_array_block
+
+#print axioms Airbender.Setup.columns_of_fromJson
+#print axioms Airbender.Setup.trace_len_of_fromJson
+#print axioms Airbender.Setup.fromJson_of_parse
+#print axioms Airbender.Setup.fields_of_parse
+#print axioms Airbender.Compiler.MachineTargets.Proofs.fixed_setup_rows_of_decoded_columns
