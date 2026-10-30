@@ -248,8 +248,34 @@ elab "import_setup_table " name:ident " from " path:str " native_table_id " id:n
   unless !columns.isEmpty do throwError "table import requires at least one column"
   emitData name region.length region.offset columns source
 
+/-- Select retained base-sixteen digits without changing their values. -/
+def digitIndex (positions : Array Nat) (index : Nat) : Nat :=
+  positions.zipIdx.foldl (fun packed (position, rank) =>
+    packed + (index / 16 ^ position % 16) * 16 ^ rank) 0
+
+private def digitExpansion (positions : Array Nat) (index : Nat) : Nat :=
+  positions.zipIdx.foldl (fun expanded (position, rank) =>
+    expanded + (index / 16 ^ rank % 16) * 16 ^ position) 0
+
+-- Accept an index view only after checking every parsed value.
+private def findDigitView (values : Array Nat) : Option (Array Nat × Array Nat) := Id.run do
+  if values.size != 1048576 then return none
+  for width in [1, 2, 3] do
+    for mask in [1:32] do
+      let positions := ((List.range 5).filter fun position => mask.testBit position).toArray
+      if positions.size != width then continue
+      let pattern := (Array.range (16 ^ width)).map fun index =>
+        (values[digitExpansion positions index]?).getD 0
+      let mut agrees := true
+      for index in [:values.size] do
+        if values[index]! != (pattern[digitIndex positions index]?).getD 0 then
+          agrees := false
+          break
+      if agrees then return some (positions, pattern)
+  return none
+
 private def compactColumnPrefix (column : Column) (length : Nat) : Column := Id.run do
-  if length < 1048576 || column.blocks.size ≤ 1024 then return column
+  if length < 1048576 || column.blocks.size ≤ 16 then return column
   let mut prefixBlocks : Array Block := #[]
   let mut rest : Array Block := #[]
   let mut position := 0
@@ -262,6 +288,7 @@ private def compactColumnPrefix (column : Column) (length : Nat) : Column := Id.
   let values := prefixBlocks.flatMap fun block =>
     (Array.range block.length).map fun index => (block.get? index).getD 0
   if values.size != length then return column
+  if (findDigitView values).isSome then return ⟨#[.dense values] ++ rest⟩
   for period in #[16, 256, 4096, 65536] do
     if period < length && length % period == 0 then
       let pattern := values.extract 0 period
@@ -301,8 +328,49 @@ def SizedBlock.periodic {size : Nat} (repetitions : Nat) (stride : Int) (values 
 @[simp] theorem SizedBlock.block_length {size : Nat} (value : SizedBlock size) :
     value.block.length = size := value.length_eq
 
-private def sharedBlockSyntax (block : Block) : CommandElabM (TSyntax `term) := do
+private def sharedBlockSyntax (name : TSyntax `ident) (block : Block) : CommandElabM (TSyntax `term) := do
   let valuesSyntax (values : Array Nat) : CommandElabM (TSyntax `term) := do
+    if let some (positions, pattern) := findDigitView values then
+      let positionsName := mkIdent (name.getId.appendAfter "Positions")
+      let patternName := mkIdent (name.getId.appendAfter "Pattern")
+      let positionArray ← arraySyntax (positions.map quote)
+      elabCommand (← `(def $positionsName : Array Nat := $positionArray))
+      if pattern.size == 4096 then
+        let mut rowNames : Array (TSyntax `term) := #[]
+        let mut rowValueNames : Array (TSyntax `term) := #[]
+        for row in [:16] do
+          let rowName := mkIdent (patternName.getId.appendAfter s!"Row{row}")
+          let rowValueName := mkIdent (rowName.getId.appendAfter "Value")
+          let cellIndex := mkIdent `cellIndex
+          let mut rowBody : TSyntax `term ← `(0)
+          for reverse in [:16] do
+            let cell := 15 - reverse
+            let first := 256 * row + 16 * cell
+            let literal ← arraySyntax ((pattern.extract first (first + 16)).map quote)
+            rowBody ← `(if $cellIndex / 16 = $(quote cell) then
+              ($literal[$cellIndex % 16]?).getD 0 else $rowBody)
+          elabCommand (← `(def $rowValueName ($cellIndex:ident : Nat) : Nat := $rowBody))
+          elabCommand (← `(def $rowName : Vector Nat 256 :=
+            Vector.ofFn (fun index : Fin 256 => $rowValueName index.val)))
+          rowNames := rowNames.push (← `(($rowName : Vector Nat 256)))
+          rowValueNames := rowValueNames.push (← `(($rowValueName : Nat → Nat)))
+        let rowsName := mkIdent (patternName.getId.appendAfter "Rows")
+        let valueName := mkIdent (patternName.getId.appendAfter "Value")
+        let patternIndex := mkIdent `patternIndex
+        let mut patternBody : TSyntax `term ← `(0)
+        for reverse in [:16] do
+          let row := 15 - reverse
+          let selected := rowValueNames[row]!
+          patternBody ← `(if ($patternIndex).val / 256 = $(quote row) then
+            $selected (($patternIndex).val % 256) else $patternBody)
+        elabCommand (← `(def $rowsName : Vector (Vector Nat 256) 16 := #v[$[$rowNames],*]))
+        elabCommand (← `(def $valueName ($patternIndex:ident : Fin 4096) : Nat := $patternBody))
+        elabCommand (← `(def $patternName : Vector Nat 4096 := Vector.ofFn $valueName))
+      else
+        let patternArray ← arraySyntax (pattern.map quote)
+        elabCommand (← `(def $patternName : Vector Nat $(quote pattern.size) := ⟨$patternArray, by simp⟩))
+      return ← `(Vector.ofFn (fun index : Fin $(quote values.size) =>
+        (($patternName).toArray[Airbender.Setup.digitIndex $positionsName index.val]?).getD 0))
     if let some first := values[0]? then
       let run := (values.toList.takeWhile (· == first)).length
       if 1 < run && run < values.size && values.size % run == 0 then
@@ -364,7 +432,7 @@ elab "import_setup_generic_columns " name:ident " from " path:str " native_table
           pure value
         else do
           let blockName := mkIdent (name.getId.appendAfter s!"Block{shared.size}")
-          let literal ← sharedBlockSyntax block
+          let literal ← sharedBlockSyntax blockName block
           elabCommand (← `(def $blockName : Airbender.Setup.SizedBlock $(quote block.length) := $literal))
           let value ← `(($blockName).block)
           shared := shared.insert key (block, value)

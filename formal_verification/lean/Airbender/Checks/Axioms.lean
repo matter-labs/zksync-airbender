@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.SplitChiLookup
 import Airbender.Proofs.Keccak.SplitPermutation
 import Airbender.Proofs.FullUnsigned.Requests
 import Airbender.Proofs.FullUnsigned.PublicRows
@@ -14025,3 +14026,32 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Call.Proofs.logicalLanes
 #print axioms Airbender.Keccak.Split.Call.Proofs.transposeLane
 #print axioms Airbender.Keccak.Split.Call.Proofs.assembledRound
+#print axioms Airbender.Setup.digitIndex
+#print axioms Airbender.Setup.Proofs.dense_ofFn_get
+#print axioms Airbender.Setup.Proofs.column_dense_ofFn_get
+#print axioms Airbender.Setup.Proofs.column_periodic_ofFn_get
+#print axioms Airbender.Setup.Proofs.digitIndex_singleton
+#print axioms Airbender.Setup.Proofs.digitIndex_three
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.ChiPattern0Part0.spec
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.ChiPattern0Part1.spec
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.ChiPattern0Part2.spec
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.ChiPattern0Part3.spec
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.ChiPattern3Part0.spec
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.ChiPattern3Part1.spec
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.ChiPattern3Part2.spec
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.ChiPattern3Part3.spec
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.ChiPattern4Part0.spec
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.ChiPattern4Part1.spec
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.ChiPattern4Part2.spec
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.ChiPattern4Part3.spec
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5Pattern
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5Positions
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5InputPattern
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5_output_patterns
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5_output_get
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5_input_get
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5_pattern_evaluation
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5_output_value
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5_native_column_operation
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5_arithmetic_field_tag_region
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5_generic_lookup_sound

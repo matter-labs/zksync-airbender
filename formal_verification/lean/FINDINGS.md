@@ -1005,6 +1005,8 @@ They have no native worker soundness or composed machine execution proof.
 The [pure split reference composition](Airbender/Proofs/Keccak/SplitPermutation.lean)
 now proves the original Keccak permutation for all 361 reference calls.
 It includes the final delayed iota. It does not prove native worker effects.
+The retained chi5 lookup now derives nibble bounds and exact chi from its
+actual input fields. Its native circuit retirement and memory proof remain open.
 Shared state layout does not supply a refinement between the native protocols.
 The [split schedule](Airbender/Review/Trace/Workers/Keccak/SplitSchedule.lean)
 now states the exact public 361-call order and control transition;
