@@ -1064,3 +1064,33 @@ and initialization connection. The formal setup source bridge remains open.
 Design items 2 and 3 follow the machine targets. The packed-checker pilot
 stays unchanged. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+### Full unsigned combined-history raw write-rule obligation
+
+`unrolled_full_ordinary_source` obtains the exact public instruction for each
+non-caller row. `unrolled_full_cpu_write_rule` proves raw write bounds for all
+six CPU families inside an arbitrary ambient history. Both caller classes
+use the imported zero-destination equations. Ordinary rows use their original
+instruction and physical ROM image. The proof does not equate the physical
+ROM image with the verifier's native zero seed.
+
+`unrolled_full_memory_write_rules` combines CPU, standard worker and split
+worker rules in the same architectural pool. Chronological induction supplies
+each row's read bounds. The proof keeps standard round masks and the split
+equations under the complete retained tables explicit. Supported public use
+must derive the round masks. The formal source bridge must transfer the
+accepted split equations to those retained tables. These supporting premises
+do not change the full unsigned target.
+
+Both new modules passed focused kernel checks. All three new roots passed
+direct axiom checks. They use only the three allowed axioms. The explicit
+inventory now contains 13,261 roots. All 13,258 previous roots remain present.
+The final bounded group used 530 MiB of physical memory and left no owned
+process running. Resource limits stay unchanged.
+
+The combined history still needs zero-register preservation, path execution
+and its initialization connection. The public round-control and formal setup
+source obligations remain open. Design items 2 and 3 follow the machine
+targets. The packed-checker pilot stays unchanged. Full frontend validation,
+environment audit, baseline refresh, transitive replay and Linux qualification
+did not run.
