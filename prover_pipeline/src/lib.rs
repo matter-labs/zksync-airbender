@@ -21,9 +21,12 @@
 
 mod artifact;
 mod guests;
+mod recursion_progress;
 pub use artifact::{ProofArtifact, ARTIFACT_SCHEMA_VERSION};
 use guests::{fsv_input, unrolled_verifier_cost, FsvPrograms};
 pub use prover::definitions::SoundnessMode;
+use recursion_progress::{drive_final_rounds, finish_operation, FinalRoundSummary};
+pub use recursion_progress::{FinalProofShape, PipelineError};
 
 use clap::ValueEnum;
 use execution_prover::BinaryHandle;
@@ -399,7 +402,7 @@ fn advance_to_target(
     mut state: RecursionState,
     target: ProofTarget,
     batch_id: u64,
-) -> Result<RecursionState, String> {
+) -> Result<RecursionState, PipelineError> {
     if target == ProofTarget::Base {
         return Ok(state);
     }
@@ -492,45 +495,56 @@ fn advance_to_target(
     let final_mode = fsv.final_blake;
     let final_guest = fsv.get(FsvProgram::UnifiedRecursionLayer, SetupMachine::Unified)?;
 
-    let mut proof = bridge_proof;
-    let mut setups = bridge_setups;
     let mut rounds = 0usize;
-    loop {
-        let nd_words = fsv_input(
-            final_guest,
-            &setups,
-            &proof,
-            &format!("batch-{batch_id}-unified-{rounds}"),
-        )?;
-        let start = Instant::now();
-        let (mut new_proof, new_setups) = backend.prove(ProveRequest {
-            batch_id,
-            bin: final_guest.bin(),
-            text: final_guest.text(),
-            kind: ExecutionKind::Unified,
-            machine: MachineType::Reduced,
-            nd_words,
-        })?;
-        state.timings.unified_recursion_ms.push(elapsed_ms(start));
-        new_proof.set_recursion_chain(&chain);
-        let end_params = compute_end_params(&new_setups, new_proof.final_pc);
-        chain.extend(&end_params);
-        // One chain entry per distinct-program layer: verification models the
-        // tail as exactly one final layer.
-        if state.chain_end_params.last() != Some(&end_params) {
-            state.chain_end_params.push(end_params);
-        }
-        rounds += 1;
-        log::debug!(
-            "unified recursion round {rounds} proved ({} cycles)",
-            new_proof.executed_cycles()
-        );
-        proof = new_proof;
-        setups = new_setups;
-        if unified_recursion_has_converged(&proof, final_mode) {
-            break;
-        }
-    }
+    let (proof, setups) = drive_final_rounds(
+        (bridge_proof, bridge_setups),
+        final_mode,
+        |(proof, setups), round| {
+            let nd_words = fsv_input(
+                final_guest,
+                &setups,
+                &proof,
+                &format!("batch-{batch_id}-unified-{rounds}"),
+            )?;
+            let start = Instant::now();
+            let (mut new_proof, new_setups) = backend.prove(ProveRequest {
+                batch_id,
+                bin: final_guest.bin(),
+                text: final_guest.text(),
+                kind: ExecutionKind::Unified,
+                machine: MachineType::Reduced,
+                nd_words,
+            })?;
+            state.timings.unified_recursion_ms.push(elapsed_ms(start));
+            new_proof.set_recursion_chain(&chain);
+            let end_params = compute_end_params(&new_setups, new_proof.final_pc);
+            chain.extend(&end_params);
+            // One chain entry per distinct-program layer: verification models the
+            // tail as exactly one final layer.
+            if state.chain_end_params.last() != Some(&end_params) {
+                state.chain_end_params.push(end_params);
+            }
+            rounds = round + 1;
+            log::debug!(
+                "unified recursion round {rounds} proved ({} cycles)",
+                new_proof.executed_cycles()
+            );
+            Ok((new_proof, new_setups))
+        },
+        |(proof, setups)| FinalRoundSummary {
+            shape: FinalProofShape {
+                unified_chunks: proof.riscv_proofs.values().map(Vec::len).sum(),
+                delegation_proofs: proof.delegation_proofs.values().map(Vec::len).sum(),
+            },
+            converged: unified_recursion_has_converged(proof, final_mode),
+            executed_cycles: proof.executed_cycles(),
+            unified_chunk_capacity: setups
+                .values()
+                .map(|params| u64::from(params.capacity))
+                .min()
+                .unwrap_or(0),
+        },
+    )?;
     log::info!(
         "unified recursion converged after {rounds} round(s) ({} cycles)",
         proof.executed_cycles()
@@ -571,10 +585,18 @@ impl BackendImpl {
     }
 }
 
+fn pipeline_backend(backend: &mut Option<BackendImpl>) -> Result<&mut dyn ProveBackend, String> {
+    backend.as_mut().map(BackendImpl::as_dyn).ok_or_else(|| {
+        "PipelineBackendStopped: create a new prover after a failed operation".to_owned()
+    })
+}
+
+/// A proving session. Any proving or continuation error shuts down its backend;
+/// create a new session to retry, including after an input-validation error.
 pub struct ProgramProver {
     source: ProgramSource,
     config: ProgramProverConfig,
-    backend: BackendImpl,
+    backend: Option<BackendImpl>,
     fsv: FsvPrograms,
 }
 
@@ -609,7 +631,7 @@ impl ProgramProver {
             source,
             fsv,
             config,
-            backend,
+            backend: Some(backend),
         };
         prover.register_pipeline_binaries()?;
         Ok(prover)
@@ -628,7 +650,7 @@ impl ProgramProver {
         let loaded = load_program(&self.source)?;
         let fsv = &self.fsv;
         let target = self.config.target;
-        let backend = self.backend.as_dyn();
+        let backend = pipeline_backend(&mut self.backend)?;
         backend.try_register(
             ExecutionKind::Unrolled,
             MachineType::FullUnsigned,
@@ -691,7 +713,7 @@ impl ProgramProver {
         let loaded = load_and_validate_program(&self.source, artifact)?;
         validate_artifact_chain(artifact)?;
         let fsv = &self.fsv;
-        let backend = self.backend.as_dyn();
+        let backend = pipeline_backend(&mut self.backend)?;
         let expected = expected_chain_end_params(
             artifact.target,
             artifact.chain_end_params.len(),
@@ -721,16 +743,37 @@ impl ProgramProver {
         verify_against_chain(artifact, &expected, self.config.soundness_mode)
     }
 
+    /// String-error compatibility entry point; failures shut down the session's backend.
     pub fn prove_words(
         &mut self,
         batch_id: u64,
         input_words: Vec<u32>,
     ) -> Result<ProofArtifact, String> {
+        self.prove_words_typed(batch_id, input_words)
+            .map_err(|error| error.to_string())
+    }
+
+    /// Typed proving entry point. A failed operation shuts down the backend before returning.
+    pub fn prove_words_typed(
+        &mut self,
+        batch_id: u64,
+        input_words: Vec<u32>,
+    ) -> Result<ProofArtifact, PipelineError> {
+        pipeline_backend(&mut self.backend)?;
+        let result = self.prove_words_inner(batch_id, input_words);
+        finish_operation(&mut self.backend, result)
+    }
+
+    fn prove_words_inner(
+        &mut self,
+        batch_id: u64,
+        input_words: Vec<u32>,
+    ) -> Result<ProofArtifact, PipelineError> {
         let loaded = load_program(&self.source)?;
 
         // Base layer: the user program, unrolled, full-unsigned ISA.
         let start = Instant::now();
-        let (proof, setups) = self.backend.as_dyn().prove(ProveRequest {
+        let (proof, setups) = pipeline_backend(&mut self.backend)?.prove(ProveRequest {
             batch_id,
             bin: &loaded.bin_u32,
             text: &loaded.text_u32,
@@ -758,7 +801,7 @@ impl ProgramProver {
         };
 
         let state = advance_to_target(
-            self.backend.as_dyn(),
+            pipeline_backend(&mut self.backend)?,
             &self.fsv,
             state,
             self.config.target,
@@ -774,7 +817,26 @@ impl ProgramProver {
         ))
     }
 
+    /// String-error compatibility entry point; failures shut down the session's backend.
     pub fn continue_artifact(&mut self, artifact: ProofArtifact) -> Result<ProofArtifact, String> {
+        self.continue_artifact_typed(artifact)
+            .map_err(|error| error.to_string())
+    }
+
+    /// Typed continuation entry point. A failed operation shuts down the backend before returning.
+    pub fn continue_artifact_typed(
+        &mut self,
+        artifact: ProofArtifact,
+    ) -> Result<ProofArtifact, PipelineError> {
+        pipeline_backend(&mut self.backend)?;
+        let result = self.continue_artifact_inner(artifact);
+        finish_operation(&mut self.backend, result)
+    }
+
+    fn continue_artifact_inner(
+        &mut self,
+        artifact: ProofArtifact,
+    ) -> Result<ProofArtifact, PipelineError> {
         artifact.validate_expected_mode(self.config.soundness_mode)?;
         validate_continuation_request(&artifact, self.config.target)?;
         // A serialized checkpoint is untrusted even when its mode label matches.
@@ -796,7 +858,7 @@ impl ProgramProver {
         };
 
         let state = advance_to_target(
-            self.backend.as_dyn(),
+            pipeline_backend(&mut self.backend)?,
             &self.fsv,
             state,
             self.config.target,
