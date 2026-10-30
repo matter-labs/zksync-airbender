@@ -10,7 +10,7 @@ private theorem control_key_small : ∀ index : Fin 361,
     controlAt index.val + 2048 < babyBearModulus := by
   decide +kernel
 
-/-- Exact native slot-table membership binds all six original physical lanes. -/
+/-- Exact native slot-table membership binds all seven original physical lanes. -/
 theorem theta_rho_slot_table_sound [Fact babyBearModulus.Prime]
     (row : Vector (ZMod babyBearModulus) 9)
     (sound : (thetaRhoSlots.table "Airbender.SplitThetaRhoSlots").toRaw.Soundness #[] row)

@@ -854,3 +854,23 @@ remain open. The formal setup source bridge and full unsigned integration
 remain open. The combined history must supply the initialized read bounds.
 Design items 2 and 3 follow the machine targets. The packed-checker pilot stays
 unchanged. Full validation remains pending.
+
+### Native theta/rho controller, slot and rho-selection obligation
+
+Active native constraints now select the original theta/rho call and all five
+exact column flags. Both actual controller queries bind all seven original
+physical slots. The slot key retains the complete control word and execute
+flag. The native byte shift equals the selected original rho offset modulo
+eight. Both cache modes pass. The proof adds no expected-result premise.
+
+The new module and affected consumers passed focused kernel checks. All eight
+new roots passed direct axiom checks. They use only the three allowed axioms.
+The explicit inventory now contains 13,166 roots. All 13,158 previous roots
+remain present. The last bounded group used 601 MiB of physical memory and
+left no owned process running. The slot theorem's comment now gives its actual
+seven-lane scope. Its public statement stays unchanged.
+
+Native theta/rho write-lane equations, complete lane effects and Sail call
+execution remain open. The formal setup source bridge and full unsigned
+integration remain open. Design items 2 and 3 follow the machine targets. The
+packed-checker pilot stays unchanged. Full validation remains pending.
