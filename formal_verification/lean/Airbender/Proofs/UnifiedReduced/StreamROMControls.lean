@@ -15,15 +15,12 @@ private theorem word_eq_of_bits {one two : Word} (first : one.Bounded) (second :
   simpa only [Word.toBitVec_toNat first, Word.toBitVec_toNat second] using congrArg BitVec.toNat same
 
 
-/-- Public stream reachability transports wrapper arguments to native controls. -/
-theorem supported_worker_and_ram_of_reference [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    {program : DelegationUse.Program} {initial state : State}
-    (stream : List (BitVec 32)) (position : Nat)
-    (valid : Stream.ValidDelegationUse program initial)
-    (reachable : Stream.Reachable stream program initial (state, position))
-    {entry : Delegation.Caller.ProgramEntry} (registered : entry ∈ program.callers)
-    (pc : DelegationUse.AtPC state entry.pc)
-    {worker : Delegation.Row babyBearModulus} (family : worker.family = entry.data.family)
+/-- Bounded actual register arguments determine native worker controls and RAM domains. -/
+theorem supported_worker_and_ram_of_arguments [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    {initial state : State} {worker : Delegation.Row babyBearModulus}
+    (bundle : DelegationUse.Bundle) (index : Fin bundle.kind.calls)
+    (arguments : DelegationUse.ArgumentsAt bundle index.val state)
+    (family : worker.family = bundle.kind.family)
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment worker.assignment)
       (worker.constraints (Delegation.modeledSetup Keccak.Controller.rows)))
     (active : worker.assignment worker.columns.execute = 1)
@@ -36,9 +33,7 @@ theorem supported_worker_and_ram_of_reference [_root_.Sail.ArchSem.MemoryPlatfor
     SupportedWorker worker ∧ ∀ port ∈ worker.ports,
       ∃ location : ExternalBoundary.WorkerRAM.Location,
         port.address.code worker.assignment = location.cell.addressCode := by
-  obtain ⟨bundle, bundled, index, codePosition, kind⟩ := valid.shapes.coverage entry registered
-  obtain ⟨left, right, control, readLeft, readRight, readControl, pointers, controller⟩ :=
-    valid.arguments stream (state, position) reachable bundle bundled index (codePosition ▸ pc)
+  obtain ⟨left, right, control, readLeft, readRight, readControl, pointers, controller⟩ := arguments
   have registerIdentity {port : MemoryPort} {index : BitVec 5}
       (address : port.address.code worker.assignment = (Cell.register index).addressCode) :
       Trace.ROMView.token initial (readToken worker.assignment port) =
@@ -68,7 +63,6 @@ theorem supported_worker_and_ram_of_reference [_root_.Sail.ArchSem.MemoryPlatfor
       (first : DelegationUse.ReadRegister state index one)
       (second : DelegationUse.ReadRegister state index two) : one = two :=
     (EStateM.Result.ok.inj (first.symm.trans second)).1
-  have family : worker.family = bundle.kind.family := family.trans kind
   cases worker with
   | mk native w =>
     cases shape : bundle.kind with
@@ -170,5 +164,31 @@ theorem supported_worker_and_ram_of_reference [_root_.Sail.ArchSem.MemoryPlatfor
           (by simpa only [leftValue, rightValue] using And.intro pointers.1 pointers.2.1)
           (by simpa only [leftValue, rightValue, shape] using pointers.2.2.2)
           located
+
+
+/-- Public stream reachability supplies the same complete native input contract. -/
+theorem supported_worker_and_ram_of_reference [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    {program : DelegationUse.Program} {initial state : State}
+    (stream : List (BitVec 32)) (position : Nat)
+    (valid : Stream.ValidDelegationUse program initial)
+    (reachable : Stream.Reachable stream program initial (state, position))
+    {entry : Delegation.Caller.ProgramEntry} (registered : entry ∈ program.callers)
+    (pc : DelegationUse.AtPC state entry.pc)
+    {worker : Delegation.Row babyBearModulus} (family : worker.family = entry.data.family)
+    (core : FlatOperation.ConstraintsHoldFlat (Verification.environment worker.assignment)
+      (worker.constraints (Delegation.modeledSetup Keccak.Controller.rows)))
+    (active : worker.assignment worker.columns.execute = 1)
+    (bounds : ∀ port ∈ worker.ports,
+      (Trace.ROMView.token initial (readToken worker.assignment port)).word.Bounded)
+    (observed : ∀ port ∈ worker.ports, ∃ cell : Cell,
+      cell.addressCode = port.address.code worker.assignment ∧
+        cell.read state = .ok
+          (Trace.ROMView.token initial (readToken worker.assignment port)).word.toBitVec state) :
+    SupportedWorker worker ∧ ∀ port ∈ worker.ports,
+      ∃ location : ExternalBoundary.WorkerRAM.Location,
+        port.address.code worker.assignment = location.cell.addressCode := by
+  obtain ⟨bundle, bundled, index, codePosition, kind⟩ := valid.shapes.coverage entry registered
+  have arguments := valid.arguments stream (state, position) reachable bundle bundled index (codePosition ▸ pc)
+  exact supported_worker_and_ram_of_arguments bundle index arguments (family.trans kind) core active bounds observed
 
 end Airbender.UnifiedReduced.Caller.Stream.Proofs
