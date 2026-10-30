@@ -7,6 +7,7 @@ use setups::Setups;
 use std::path::Path;
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 use verifier_common::prover::definitions::MerkleTreeCap;
+#[cfg(feature = "verifiers")]
 use verifier_common::prover::definitions::{SecurityLevel, SoundnessMode};
 use verifier_common::USE_REDUCED_BLAKE2_ROUNDS;
 
