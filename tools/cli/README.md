@@ -121,6 +121,39 @@ cargo run --release -p cli -- verify \
   --bin examples/basic_fibonacci/app.bin
 ```
 
+## Soundness Mode
+
+`prove`, `prove-batch`, `continue-proof` and `verify` take
+`--soundness-mode pessimistic-conjecture|ethproofs-soundcalc`; the default is
+`pessimistic-conjecture`, so existing invocations keep their meaning.
+
+- `prove`, `prove-batch`: the soundness accounting of every proof layer and of
+  its verifier. Each artifact records it (`soundness_mode`), and so does the
+  batch summary. A mode the backend cannot prove is rejected before any input
+  is read.
+- `continue-proof`: the expected mode of the input artifact, also used for the
+  new layers. An artifact in another mode is rejected before proving; there is
+  no conversion. Continue an `ethproofs-soundcalc` artifact with
+  `--soundness-mode ethproofs-soundcalc`.
+- `verify`: the expected mode. The artifact's recorded mode must equal it, and
+  the proof is checked with this mode's verifiers and verifier guests; the
+  artifact cannot choose them. Artifacts from before the mode was recorded
+  verify only as `pessimistic-conjecture`.
+- `run`: no proof, no mode.
+
+`ethproofs-soundcalc` proving is not enabled yet: the prover rejects it before
+reading inputs. The standalone L1 compression program
+(`cargo run --release -p program_prover --features l1 --bin l1_compression`)
+takes the same flag and rejects `ethproofs-soundcalc` before reading its input:
+the L1 feeder/wrap/EVM profile exists only in `pessimistic-conjecture`.
+
+```bash
+cargo run --release -p cli -- verify \
+  --proof output/proof.json \
+  --bin examples/basic_fibonacci/app.bin \
+  --soundness-mode pessimistic-conjecture
+```
+
 ## Prove Batch
 
 ```bash
@@ -157,6 +190,7 @@ cargo run --release -p cli -- run --bin examples/basic_fibonacci/app.bin --expec
 
 - `schema_version`
 - `security_level`
+- `soundness_mode`
 - `target`
 - `backend`
 - `batch_id`
