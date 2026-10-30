@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.SplitXor5Lookup
 import Airbender.Proofs.Keccak.SplitParitySlotLookup
 import Airbender.Proofs.Keccak.SplitParityIotaLookup
 import Airbender.Proofs.Keccak.SplitParityControllerLookup
@@ -14138,3 +14139,22 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_iota_reference
 #print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_iota_field_row
 #print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_iota_table_sound
+#print axioms Airbender.Setup.LiteralTree.Column.entry
+#print axioms Airbender.Setup.LiteralTree.Column.evaluate
+#print axioms Airbender.Setup.LiteralTree.Column.value
+#print axioms Airbender.Setup.LiteralTree.Region.row
+#print axioms Airbender.Setup.LiteralTree.Region.table
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.xor5KeyEntry
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.xor5_key_shapes
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.xor5_key_entries
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.xor5_output_shape
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.xor5_output_entries
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.xor5_key_entry
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.xor5_key_values
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.xor5_output_entry
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.xor5_output_value
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.xor5_fixed_entries
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.xor5_fixed_values
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.xor5_source
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.xor5_row_operation
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.xor5_table_sound

@@ -143,6 +143,13 @@ into Clean's original constraints and actual imported table data. Imported rows
 are not replaced with handwritten mathematical recipes. Small semantic adapters
 and checked characterizations connect those rows to their consumers.
 
+The [shared literal importer](Airbender/Import/SetupLiteralTree.lean) retains
+complete physical setup rows as literal nodes. It compares every decoded value
+with the parsed source. It selects shared nodes by literal equality. It does
+not infer an expected arithmetic formula. Kernel proofs check the node values
+and derive the operation on all rows. The JSON source-to-data bridge remains
+a separate open obligation. The packed-checker pilot stays unchanged.
+
 Sail generation uses the pinned upstream compiler and selected original roots.
 The normal four-byte nextPC assignment is extracted verbatim from the normal
 F_Base path, then composed with execution and tick_pc. Translation, pruning,
