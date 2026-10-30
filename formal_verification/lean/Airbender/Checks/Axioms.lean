@@ -1,5 +1,6 @@
 import Airbender.Import.SetupJson
 import Tests.SetupJson
+import Tests.SetupSourceArrays
 import Airbender.Proofs.Keccak.SplitSetupTransport
 import Airbender.Review.Compiler.SetupSource
 import Airbender.Proofs.FullUnsigned.SetupInterpretation
@@ -14772,3 +14773,27 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Setup.fromJson_of_parse
 #print axioms Airbender.Setup.fields_of_parse
 #print axioms Airbender.Compiler.MachineTargets.Proofs.fixed_setup_rows_of_decoded_columns
+
+#print axioms Airbender.Setup.SourceData.contents
+#print axioms Airbender.Setup.SourceData.arrayBytes
+#print axioms Airbender.Setup.SourceData.blocksObjectBytes
+#print axioms Airbender.Setup.SourceData.blockJson
+#print axioms Airbender.Setup.SourceData.Atom
+#print axioms Airbender.Setup.SourceData.Atom.value
+#print axioms Airbender.Setup.SourceProofs.EagerSource
+#print axioms Airbender.Setup.SourceProofs.parse_of_eager
+#print axioms Airbender.Setup.SourceProofs.eager_array_family
+#print axioms Airbender.Setup.SourceProofs.eager_blocks_object_family
+#print axioms Airbender.Setup.SourceProofs.decode_array_family
+#print axioms Airbender.Setup.SourceProofs.decode_blocks_object_family
+#print axioms Tests.SetupSourceArrays.affine_source
+#print axioms Tests.SetupSourceArrays.affine_decoded
+#print axioms Tests.SetupSourceArrays.repeated_array
+#print axioms Tests.SetupSourceArrays.repeated_column
+#print axioms Tests.SetupSourceArrays.missing_comma_rejected
+#print axioms Tests.SetupSourceArrays.changed_value_rejected
+#print axioms Tests.SetupSourceArrays.repeated_column_source
+#print axioms Tests.SetupSourceArrays.dense_source
+#print axioms Tests.SetupSourceArrays.dense_decoded
+#print axioms Tests.SetupSourceArrays.periodic_source
+#print axioms Tests.SetupSourceArrays.periodic_decoded

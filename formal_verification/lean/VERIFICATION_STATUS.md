@@ -11,7 +11,7 @@ request and RAM matching remain explicit. The final full validation is pending.
 
 | Setup machine | Current target status |
 | --- | --- |
-| Unrolled full unsigned | Open. The standalone initialization inputs and public ordinary, standard caller and split caller images are proved. The public decoder now classifies every native row across all six families and both caller registries. Connect the combined native path. Prove standard worker supported use, split worker functions and the complete blessed split sequence. The target excludes special5 calls. |
+| Unrolled full unsigned | Open. Native execution, public supported-use induction and initialization are kernel checked. Complete three `FixedSetupRows` certificates: parity, theta/rho and chi5. Each must cover every parsed physical row, including padding. The target excludes special5 calls. |
 | Unrolled reduced | Proved by `MachineTargets.Proofs.unrolled_reduced_soundness`. The theorem has exactly the `UnrolledReduced` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. |
 | Unified | Proved by `MachineTargets.Proofs.unified_soundness`. The theorem has exactly the `Unified` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. The target excludes special5 calls. |
 
@@ -1803,3 +1803,25 @@ certificate cost.
 Design items 2 and 3 follow the machine targets. The packed-checker pilot
 stays unchanged. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+
+### Full unsigned source-array composition obligation
+
+The source composition rules now reuse a checked block at every occurrence.
+`eager_array_family` preserves its exact byte order. The column-object rule
+preserves the native object format. The decoder rules preserve every block
+and its order. `parse_of_eager` gives the exact JSON parse result.
+
+Focused checks passed for all three new modules. All 11 kernel controls pass.
+They cover affine, dense and periodic blocks, negative stride, repeated array
+entries and column objects. They reject a changed value and a missing comma.
+All 23 new roots passed direct axiom checks. They use only the three allowed
+axioms. The explicit inventory now contains 13,400 roots. All 13,377 previous
+roots remain present. The bounded group used 293 MiB of physical memory and
+left no owned process running. Resource limits stay unchanged.
+
+The production sources and captures have not changed. The three source-table
+certificates remain open. Generate their shared block libraries next. Design
+items 2 and 3 follow the machine targets. The packed-checker pilot stays
+unchanged. Full frontend validation, environment audit, baseline refresh,
+transitive replay and Linux qualification did not run.
