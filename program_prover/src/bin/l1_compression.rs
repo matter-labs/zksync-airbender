@@ -68,14 +68,14 @@ struct Args {
 }
 
 const USAGE: &str = "usage: l1_compression --proof <file> --setups <file> \
-    [--fsv-dir <dir=tools/gkr_verifier>] \
+    [--fsv-dir <dir=tools/gkr_verifier/full_statement_verifiers>] \
     [--circuit <file=cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json>] \
     [--out-dir <dir=.>] [--threads <n=all cores>] [--no-caches] [--feeder-recompute]";
 
 fn parse_args() -> Args {
     let mut proof = None;
     let mut setups = None;
-    let mut fsv_dir = PathBuf::from("tools/gkr_verifier");
+    let mut fsv_dir = PathBuf::from("tools/gkr_verifier/full_statement_verifiers");
     let mut circuit =
         PathBuf::from("cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json");
     let mut out_dir = PathBuf::from(".");

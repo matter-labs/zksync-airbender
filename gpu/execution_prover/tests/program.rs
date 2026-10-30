@@ -817,7 +817,7 @@ fn test_generate_sec100_cost_model_fixtures() {
         base_text,
         None,
     );
-    let fsv_dir = artifact_root().join("tools/gkr_verifier");
+    let fsv_dir = artifact_root().join("tools/gkr_verifier/full_statement_verifiers");
     let (binary, text) = load_fsv_program(
         &fsv_dir,
         FsvProgram::UnrolledBaseLayer,
@@ -1091,7 +1091,7 @@ fn run_gpu_recursive_pipeline(
     // (RECURSION_UNROLLED_BLAKE / RECURSION_BRIDGE_BLAKE /
     // RECURSION_FINAL_BLAKE). Defaults are blake2_with_compression; the
     // g-function variants can't run here (the JIT lacks that delegation).
-    let fsv_dir = artifact_root().join("tools/gkr_verifier");
+    let fsv_dir = artifact_root().join("tools/gkr_verifier/full_statement_verifiers");
     let unrolled_blake = unrolled_blake_mode();
     let bridge_blake = bridge_blake_mode();
     let final_blake = final_blake_mode();
