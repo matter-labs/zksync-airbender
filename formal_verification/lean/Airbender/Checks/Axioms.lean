@@ -1065,6 +1065,8 @@ import Airbender.Proofs.FullUnsigned.BootExecution
 import Airbender.Proofs.FullUnsigned.PrefixMemory
 import Airbender.Proofs.FullUnsigned.PrefixRequests
 import Airbender.Proofs.FullUnsigned.PrefixAcceptance
+import Airbender.Proofs.FullUnsigned.PrefixFrontier
+import Airbender.Proofs.FullUnsigned.PrefixBoot
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 
@@ -14698,3 +14700,7 @@ import Airbender.Proofs.FullUnsigned.PrefixAcceptance
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_prefix_steps
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_prefix_requests
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_prefix_accepted
+
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_prefix_worker_read
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_prefix_boot
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_boot_execution_and_bounds
