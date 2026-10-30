@@ -1,3 +1,4 @@
+import Airbender.Proofs.FullUnsigned.MemoryFacts
 import Airbender.Proofs.Keccak.SplitThetaOutputEquations
 import Airbender.Proofs.Keccak.SplitThetaControllerQuery
 import Airbender.Proofs.Keccak.SplitThetaDOperation
@@ -14575,3 +14576,10 @@ import Airbender.Proofs.Keccak.SplitNativeWriteRules
 #print axioms Airbender.Keccak.Split.Native.Proofs.chi5_write_words_bounded
 #print axioms Airbender.Keccak.Split.Native.Proofs.native_write_words_bounded
 #print axioms Airbender.Keccak.Split.Native.Proofs.native_write_rule
+
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_request_times_unique
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_request_clock_bounds
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolledFullMemoryData
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_write_clocks
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_memory_clocks
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_memory_facts
