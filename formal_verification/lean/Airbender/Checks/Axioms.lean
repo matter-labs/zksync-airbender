@@ -1056,6 +1056,8 @@ import Airbender.Proofs.FullUnsigned.StandardCalls
 import Airbender.Proofs.FullUnsigned.StandardSource
 import Airbender.Proofs.FullUnsigned.StandardPC
 import Airbender.Proofs.FullUnsigned.StandardCycles
+import Airbender.Proofs.FullUnsigned.SplitCycles
+import Airbender.Proofs.FullUnsigned.EventInterval
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 
@@ -14668,3 +14670,6 @@ import Airbender.Proofs.FullUnsigned.StandardCycles
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_standard_caller_source
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_standard_pc_binding
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_standard_caller_cycle
+
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_split_caller_cycle
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_event_interval

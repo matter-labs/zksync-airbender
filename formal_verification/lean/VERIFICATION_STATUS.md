@@ -1428,3 +1428,29 @@ initialization integration and the formal setup source bridge remain open.
 Design items 2 and 3 follow the machine targets. The packed-checker pilot
 stays unchanged. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+### Full unsigned split-cycle and event-boundary obligations
+
+`unrolled_full_split_caller_cycle` connects each split worker to its full
+actual caller window. It retains the public source at that cut, the complete
+native memory-call relation and original Sail retirement. Supported control
+and pointer arguments remain explicit at the extracted boundary. Both cache
+modes retain all actual native ports.
+
+`unrolled_full_event_interval` places every CPU and worker event between
+the native initial and terminal clocks. The complete combined request
+permutation supplies each worker's slot. No separate worker schedule is
+assumed. These results close the local split-cycle and event-boundary
+obligations for full path composition.
+
+Both modules and roots passed focused kernel and direct axiom checks. They
+use only the three allowed axioms. The explicit inventory now contains
+13,313 roots. All 13,311 previous roots remain present. The bounded group
+used 537 MiB of physical memory and left no owned process running. Resource
+limits stay unchanged.
+
+Full path composition, supported-use derivation, native ROM interpretation,
+initialization integration and the formal setup source bridge remain open.
+Design items 2 and 3 follow the machine targets. The packed-checker pilot
+stays unchanged. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.
