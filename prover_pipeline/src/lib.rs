@@ -20,16 +20,18 @@
 //!     proof converges to one unified + one delegation proof
 
 mod artifact;
+mod guests;
 pub use artifact::{ProofArtifact, ARTIFACT_SCHEMA_VERSION};
+use guests::{fsv_input, unrolled_verifier_cost, FsvPrograms};
 pub use prover::definitions::SoundnessMode;
 
 use clap::ValueEnum;
 use execution_prover::BinaryHandle;
 use full_statement_verifier::host_utils::{
     bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
-    final_blake_mode, fsv_digest, load_fsv_exact, load_fsv_program,
-    try_native_verify_unified_in_mode, try_native_verify_unrolled_in_mode, unified_switch_cycles,
-    unrolled_blake_mode, FsvRecursionChain,
+    final_blake_mode, fsv_digest, load_fsv_exact, try_native_verify_unified_in_mode,
+    try_native_verify_unrolled_in_mode, unified_switch_cycles, unrolled_blake_mode,
+    FsvRecursionChain,
 };
 use full_statement_verifier::program_proof::ProgramProof;
 use riscv_transpiler::vm::FlatResponsesSource;
@@ -406,43 +408,34 @@ fn advance_to_target(
     let switch_cycles = unified_switch_cycles();
 
     // === Unrolled recursion layers. ===
-    let unrolled_blake = fsv.unrolled_blake;
-
     loop {
-        let (program, bin, text) = if state.input_is_base {
-            (
-                FsvProgram::UnrolledBaseLayer,
-                &fsv.unrolled_base.0,
-                &fsv.unrolled_base.1,
-            )
+        let program = if state.input_is_base {
+            FsvProgram::UnrolledBaseLayer
         } else {
-            (
-                FsvProgram::UnrolledRecursionLayer,
-                &fsv.unrolled_recursion.0,
-                &fsv.unrolled_recursion.1,
-            )
+            FsvProgram::UnrolledRecursionLayer
         };
-        let estimated = full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles(
-            &state.proof,
-            program,
-            unrolled_blake,
-        )
-        .map_err(|e| format!("cannot estimate verifier cycles: {e}"))?;
+        let guest = fsv.get(program, SetupMachine::UnrolledReduced)?;
+        let label = format!("batch-{batch_id}-unrolled-{}", state.chain_end_params.len());
+        let cost = unrolled_verifier_cost(guest, &state.setups, &state.proof, &label)?;
         log::debug!(
-            "estimated verifier cost {estimated} cycles vs switch threshold {switch_cycles}"
+            "selected verifier cost {} cycles vs switch threshold {switch_cycles}",
+            cost.cycles
         );
-        if estimated < switch_cycles {
+        if cost.cycles < switch_cycles {
             break;
         }
-
+        let nd_words = match cost.measured_input {
+            Some(words) => words,
+            None => fsv_input(guest, &state.setups, &state.proof, &label)?,
+        };
         let start = Instant::now();
         let (mut new_proof, new_setups) = backend.prove(ProveRequest {
             batch_id,
-            bin,
-            text,
+            bin: guest.bin(),
+            text: guest.text(),
             kind: ExecutionKind::Unrolled,
             machine: MachineType::Reduced,
-            nd_words: build_unrolled_stream(&state.setups, &state.proof, unrolled_blake),
+            nd_words,
         })?;
         state.timings.unrolled_recursion_ms.push(elapsed_ms(start));
         new_proof.set_recursion_chain(&chain);
@@ -464,20 +457,26 @@ fn advance_to_target(
     }
 
     // === Bridge: the unrolled verifier proved in UNIFIED machine mode. ===
-    let (bridge_bin, bridge_text) = if state.input_is_base {
-        &fsv.bridge_base
+    let bridge_program = if state.input_is_base {
+        FsvProgram::UnrolledBaseLayer
     } else {
-        &fsv.bridge_recursion
+        FsvProgram::UnrolledRecursionLayer
     };
-
+    let bridge = fsv.get(bridge_program, SetupMachine::Unified)?;
+    let nd_words = fsv_input(
+        bridge,
+        &state.setups,
+        &state.proof,
+        &format!("batch-{batch_id}-bridge"),
+    )?;
     let start = Instant::now();
     let (mut bridge_proof, bridge_setups) = backend.prove(ProveRequest {
         batch_id,
-        bin: bridge_bin,
-        text: bridge_text,
+        bin: bridge.bin(),
+        text: bridge.text(),
         kind: ExecutionKind::Unified,
         machine: MachineType::Reduced,
-        nd_words: build_unrolled_stream(&state.setups, &state.proof, fsv.bridge_blake),
+        nd_words,
     })?;
     state.timings.unified_recursion_ms.push(elapsed_ms(start));
     bridge_proof.set_recursion_chain(&chain);
@@ -491,20 +490,26 @@ fn advance_to_target(
 
     // === Final: fsv_unified_recursion_layer in unified mode, repeated until convergence. ===
     let final_mode = fsv.final_blake;
-    let (final_bin, final_text) = &fsv.unified;
+    let final_guest = fsv.get(FsvProgram::UnifiedRecursionLayer, SetupMachine::Unified)?;
 
     let mut proof = bridge_proof;
     let mut setups = bridge_setups;
     let mut rounds = 0usize;
     loop {
+        let nd_words = fsv_input(
+            final_guest,
+            &setups,
+            &proof,
+            &format!("batch-{batch_id}-unified-{rounds}"),
+        )?;
         let start = Instant::now();
         let (mut new_proof, new_setups) = backend.prove(ProveRequest {
             batch_id,
-            bin: final_bin,
-            text: final_text,
+            bin: final_guest.bin(),
+            text: final_guest.text(),
             kind: ExecutionKind::Unified,
             machine: MachineType::Reduced,
-            nd_words: build_unified_stream(&setups, &proof, final_mode),
+            nd_words,
         })?;
         state.timings.unified_recursion_ms.push(elapsed_ms(start));
         new_proof.set_recursion_chain(&chain);
@@ -566,66 +571,6 @@ impl BackendImpl {
     }
 }
 
-type ProgramWords = (Vec<u32>, Vec<u32>);
-
-/// The fsv verifier programs the pipeline runs and the Blake modes they were loaded for,
-/// read once per prover. Programs the target never runs stay empty.
-struct FsvPrograms {
-    unrolled_blake: BlakeMode,
-    bridge_blake: BlakeMode,
-    final_blake: BlakeMode,
-    unrolled_base: ProgramWords,
-    unrolled_recursion: ProgramWords,
-    bridge_base: ProgramWords,
-    bridge_recursion: ProgramWords,
-    unified: ProgramWords,
-}
-
-impl FsvPrograms {
-    fn load(target: ProofTarget) -> Self {
-        let dir = fsv_dir();
-        let unrolled_blake = unrolled_blake_mode();
-        let bridge_blake = bridge_blake_mode();
-        let final_blake = final_blake_mode();
-        let recursion = target != ProofTarget::Base;
-        let unified = target == ProofTarget::RecursionUnified;
-        let load = |needed: bool, program: FsvProgram, blake: BlakeMode| {
-            if needed {
-                load_fsv_program(&dir, program, blake)
-            } else {
-                ProgramWords::default()
-            }
-        };
-        Self {
-            unrolled_base: load(recursion, FsvProgram::UnrolledBaseLayer, unrolled_blake),
-            unrolled_recursion: load(
-                recursion,
-                FsvProgram::UnrolledRecursionLayer,
-                unrolled_blake,
-            ),
-            bridge_base: load(unified, FsvProgram::UnrolledBaseLayer, bridge_blake),
-            bridge_recursion: load(unified, FsvProgram::UnrolledRecursionLayer, bridge_blake),
-            unified: load(unified, FsvProgram::UnifiedRecursionLayer, final_blake),
-            unrolled_blake,
-            bridge_blake,
-            final_blake,
-        }
-    }
-
-    fn get(&self, program: FsvProgram, setup_machine: SetupMachine) -> &ProgramWords {
-        match (program, setup_machine) {
-            (FsvProgram::UnrolledBaseLayer, SetupMachine::UnrolledReduced) => &self.unrolled_base,
-            (FsvProgram::UnrolledRecursionLayer, SetupMachine::UnrolledReduced) => {
-                &self.unrolled_recursion
-            }
-            (FsvProgram::UnrolledBaseLayer, SetupMachine::Unified) => &self.bridge_base,
-            (FsvProgram::UnrolledRecursionLayer, SetupMachine::Unified) => &self.bridge_recursion,
-            (FsvProgram::UnifiedRecursionLayer, SetupMachine::Unified) => &self.unified,
-            other => unreachable!("the recursion chain never runs {other:?}"),
-        }
-    }
-}
-
 pub struct ProgramProver {
     source: ProgramSource,
     config: ProgramProverConfig,
@@ -640,11 +585,10 @@ impl ProgramProver {
         {
             return Err("UnsupportedBackendSoundnessMode: GPU EthproofsSoundnessCalc requires internal folding-PoW and OOD-PoW".to_string());
         }
-        // Until S4 supplies matching guests, tagged artifacts and native verification,
-        // allowing this would create ethproofs proofs inside pessimistic v3 artifacts.
-        if config.soundness_mode != prover::definitions::SoundnessMode::PessimisticConjecture {
-            return Err("UnsupportedPipelineSoundnessMode: EthproofsSoundnessCalc requires mode-aware FSV guests, artifacts and verification".to_string());
-        }
+        let fsv = FsvPrograms::load(config.target, config.selection())?;
+        assert_eq!(fsv.selection, config.selection());
+        // Resolve source errors before creating the backend's worker pools and buffers.
+        load_program(&source)?;
         let backend = match config.backend {
             ProverBackend::Cpu => BackendImpl::Cpu(PipelineBackend::new(&config)?),
             ProverBackend::Gpu => {
@@ -663,7 +607,7 @@ impl ProgramProver {
         };
         let mut prover = Self {
             source,
-            fsv: FsvPrograms::load(config.target),
+            fsv,
             config,
             backend,
         };
@@ -694,24 +638,33 @@ impl ProgramProver {
         )?;
         let mut count = 1;
         if target != ProofTarget::Base {
-            for (bin, text) in [&fsv.unrolled_base, &fsv.unrolled_recursion] {
+            for program in [
+                FsvProgram::UnrolledBaseLayer,
+                FsvProgram::UnrolledRecursionLayer,
+            ] {
+                let guest = fsv.get(program, SetupMachine::UnrolledReduced)?;
                 backend.try_register(
                     ExecutionKind::Unrolled,
                     MachineType::Reduced,
-                    bin,
-                    text,
+                    guest.bin(),
+                    guest.text(),
                     None,
                 )?;
                 count += 1;
             }
         }
         if target == ProofTarget::RecursionUnified {
-            for (bin, text) in [&fsv.bridge_base, &fsv.bridge_recursion, &fsv.unified] {
+            for program in [
+                FsvProgram::UnrolledBaseLayer,
+                FsvProgram::UnrolledRecursionLayer,
+                FsvProgram::UnifiedRecursionLayer,
+            ] {
+                let guest = fsv.get(program, SetupMachine::Unified)?;
                 backend.try_register(
                     ExecutionKind::Unified,
                     MachineType::Reduced,
-                    bin,
-                    text,
+                    guest.bin(),
+                    guest.text(),
                     None,
                 )?;
                 count += 1;
@@ -750,15 +703,15 @@ impl ProgramProver {
                     ChainProgram::User => (
                         ExecutionKind::Unrolled,
                         MachineType::FullUnsigned,
-                        (&loaded.bin_u32, &loaded.text_u32),
+                        (loaded.bin_u32.as_slice(), loaded.text_u32.as_slice()),
                     ),
                     ChainProgram::Fsv(program, _, setup_machine) => {
-                        let (bin, text) = fsv.get(program, setup_machine);
+                        let guest = fsv.get(program, setup_machine)?;
                         let kind = match setup_machine {
                             SetupMachine::Unified => ExecutionKind::Unified,
                             _ => ExecutionKind::Unrolled,
                         };
-                        (kind, MachineType::Reduced, (bin, text))
+                        (kind, MachineType::Reduced, (guest.bin(), guest.text()))
                     }
                 };
                 let setups = backend.setups(kind, machine, bin, text);
@@ -1652,8 +1605,9 @@ mod soundness_selection_tests {
     }
 
     #[test]
-    fn cpu_ethproofs_pipeline_rejection_precedes_source_loading() {
+    fn cpu_ethproofs_source_error_precedes_backend_construction() {
         let config = ProgramProverConfig {
+            target: ProofTarget::Base,
             backend: ProverBackend::Cpu,
             soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
             ..ProgramProverConfig::default()
@@ -1665,7 +1619,7 @@ mod soundness_selection_tests {
             Err(error) => error,
             Ok(_) => panic!("CPU ethproofs pipeline unexpectedly initialized"),
         };
-        assert!(error.contains("UnsupportedPipelineSoundnessMode"));
+        assert!(error.starts_with("failed to load program"), "{error}");
     }
 
     #[test]

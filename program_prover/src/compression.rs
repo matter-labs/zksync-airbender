@@ -344,15 +344,9 @@ mod diagnostics {
     use riscv_transpiler::vm::{Counters, DelegationsAndUnifiedCounters};
 
     fn deserialize_compressed_from_file<T: serde::de::DeserializeOwned>(path: &str) -> T {
-        use flate2::read::ZlibDecoder;
-        use std::io::Read;
-        let mut src = std::fs::File::open(path).unwrap_or_else(|e| panic!("open {path}: {e}"));
-        let mut buffer = vec![];
-        src.read_to_end(&mut buffer).unwrap();
-        let mut decoder = ZlibDecoder::new(&buffer[..]);
-        let mut unpacked: Vec<u8> = vec![];
-        decoder.read_to_end(&mut unpacked).unwrap();
-        bincode::deserialize_from(&unpacked[..]).unwrap()
+        full_statement_verifier::host_utils::fixture_codec::decode(
+            &std::fs::read(path).unwrap_or_else(|error| panic!("read {path}: {error}")),
+        )
     }
 
     /// Diagnostic: replay the stage-1 (standard special-opcodes fsv over the
@@ -376,10 +370,10 @@ mod diagnostics {
 
         let tags = "blake2_with_compression_blake2_with_compression_blake2_with_compression";
         let proof: ProgramProof = deserialize_compressed_from_file(&format!(
-            "../circuit_defs/prover_examples/final_layer_0_proof_{tags}.bin"
+            "../circuit_defs/prover_examples/final_layer_0_proof_{tags}.json.zlib"
         ));
         let setups: Setups = deserialize_compressed_from_file(&format!(
-            "../circuit_defs/prover_examples/final_layer_0_setups_{tags}.bin"
+            "../circuit_defs/prover_examples/final_layer_0_setups_{tags}.json.zlib"
         ));
         let stream = build_unified_stream(&setups, &proof, BlakeMode::BlakeSpecialOpcodes);
         let (bin, text) = load_fsv_program(

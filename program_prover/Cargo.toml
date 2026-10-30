@@ -20,8 +20,8 @@ circuit_common = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
 bincode = { version = "1.3" }
-# Only for the `l1` compression path (reads the zlib-compressed bincode caches
-# the prover_examples recursion tests write).
+# L1 compression dependency. Recursion checkpoints use zlib-compressed JSON
+# through full_statement_verifier::host_utils::fixture_codec.
 flate2 = { version = "*", optional = true }
 verifier_common = { workspace = true, default-features = false }
 full_statement_verifier = { workspace = true, default-features = false, features = ["proof_utils", "host_utils"]}

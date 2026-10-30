@@ -164,13 +164,24 @@ fn a_unified_execution_proves_and_natively_verifies() {
 
 /// First Task S resource gate: one standard ethproofs CPU base proof, followed
 /// by verification with the explicitly selected schedule. The optional private
-/// checkpoint is versioned and includes selection; it is not a pipeline v3 artifact.
+/// JSON bundle is versioned and includes selection; it is not a pipeline v3 artifact.
 #[test]
 #[ignore = "production circuit dimensions: measure time/RSS before scheduling recursion"]
 fn ethproofs_base_measurement() {
-    use prover::definitions::{ProvingSelection, SoundnessMode};
+    selected_base_measurement(prover::definitions::SoundnessMode::EthproofsSoundnessCalc);
+}
+
+/// Pessimistic counterpart with exactly the same inputs and execution configuration.
+#[test]
+#[ignore = "production circuit dimensions: measure time/RSS on the same workload as ethproofs"]
+fn pessimistic_base_measurement() {
+    selected_base_measurement(prover::definitions::SoundnessMode::PessimisticConjecture);
+}
+
+fn selected_base_measurement(soundness_mode: prover::definitions::SoundnessMode) {
+    use prover::definitions::ProvingSelection;
     let selection = ProvingSelection {
-        soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
+        soundness_mode,
         ..ProvingSelection::default()
     };
     let (proof, setups) = {
@@ -211,12 +222,15 @@ fn ethproofs_base_measurement() {
         true,
         selection.soundness_mode,
     );
-    assert_ne!(output, [0u32; 16], "ethproofs base proof must verify");
+    assert_ne!(output, [0u32; 16], "selected base proof must verify");
     if let Ok(checkpoint) = std::env::var("TASK_S_BASE_PROOF_OUT") {
-        program_prover::bincode_serialize_to_file(
-            &(1_u32, selection, &proof, &setups),
-            &checkpoint,
-        );
+        program_prover::bundle::write_program_proof_bundle(
+            std::path::Path::new(&checkpoint),
+            selection,
+            &proof,
+            &setups,
+        )
+        .expect("write the mode-tagged JSON measurement bundle");
     }
     println!("Task S CPU base measurement: {selection:?}, {proof_count} RISC-V proof chunks, native verification succeeded");
 }
