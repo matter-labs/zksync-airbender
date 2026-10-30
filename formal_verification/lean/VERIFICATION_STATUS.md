@@ -2251,3 +2251,30 @@ is not yet proved. Design items 2 and 3 follow the machine targets.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned theta/rho byte-XOR source obligation
+
+The complete byte-XOR source region is closed. All 65,536 rows match the
+original native literal-tree reference in all nine fields. Direct block
+rules prove both byte keys, the five zero fields and the tag. The output
+proof checks every physical source block. It preserves the complete XOR
+operation. The membership wrapper keeps parsing and all row values explicit.
+
+One combined output check exceeded the physical memory cap. The final
+proof uses 32 bounded checks with the same proved Boolean checker. Each
+check covers at most 2,048 rows. An append theorem preserves their absolute
+row offsets. The output module passed in 73 seconds. It used 1,605 MiB of
+physical memory. The membership wrapper passed in four seconds. It used
+418 MiB. Each guard cleaned all owned children. No limit increased. No
+native source artifact, table or packed-checker pilot changed. All 12 new
+roots passed direct axiom checks. They use only the three allowed axioms.
+The inventory now has 14,316 roots. It retains all 14,304 previous roots.
+
+Theta/rho now needs only its split-XOR arithmetic source region. Parity
+real-row membership remains open. The original source strings still need
+their byte-equal bindings. FullUnsigned is not yet proved. Design items 2
+and 3 follow the machine targets.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
