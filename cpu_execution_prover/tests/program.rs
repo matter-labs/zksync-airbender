@@ -161,3 +161,62 @@ fn a_unified_execution_proves_and_natively_verifies() {
         "native verification produced an empty output"
     );
 }
+
+/// First Task S resource gate: one standard ethproofs CPU base proof, followed
+/// by verification with the explicitly selected schedule. The optional private
+/// checkpoint is versioned and includes selection; it is not a pipeline v3 artifact.
+#[test]
+#[ignore = "production circuit dimensions: measure time/RSS before scheduling recursion"]
+fn ethproofs_base_measurement() {
+    use prover::definitions::{ProvingSelection, SoundnessMode};
+    let selection = ProvingSelection {
+        soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
+        ..ProvingSelection::default()
+    };
+    let (proof, setups) = {
+        let mut prover = CpuExecutionProver::try_with_configuration(
+            CpuExecutionProverConfiguration::for_selection(selection),
+        )
+        .expect("CPU must support the selected ethproofs schedule");
+        assert_eq!(prover.selection(), selection);
+        let (binary, text) = workload("basic_fibonacci", "app");
+        let handle = prover
+            .try_add_binary(
+                ExecutionKind::Unrolled,
+                MachineType::FullUnsigned,
+                binary,
+                text,
+                None,
+            )
+            .expect("basic Fibonacci configs must resolve in ethproofs mode");
+        let result = prover.commit_memory_and_prove(
+            1,
+            &handle,
+            QuasiUARTSource::new_with_reads(vec![15, 1]),
+        );
+        program_prover::assemble_program_proof(&prover.program_artifacts(&handle), result)
+    };
+    let proof_count: usize = proof.riscv_proofs.values().map(Vec::len).sum();
+    assert!(
+        proof_count > 0,
+        "measurement must produce actual base proofs"
+    );
+    let stream = full_statement_verifier::host_utils::build_unrolled_stream(
+        &setups,
+        &proof,
+        verifier_common::BLAKE_MODE,
+    );
+    let output = full_statement_verifier::host_utils::native_verify_unrolled_in_mode(
+        stream,
+        true,
+        selection.soundness_mode,
+    );
+    assert_ne!(output, [0u32; 16], "ethproofs base proof must verify");
+    if let Ok(checkpoint) = std::env::var("TASK_S_BASE_PROOF_OUT") {
+        program_prover::bincode_serialize_to_file(
+            &(1_u32, selection, &proof, &setups),
+            &checkpoint,
+        );
+    }
+    println!("Task S CPU base measurement: {selection:?}, {proof_count} RISC-V proof chunks, native verification succeeded");
+}

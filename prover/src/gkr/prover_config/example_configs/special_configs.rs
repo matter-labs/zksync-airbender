@@ -1,10 +1,50 @@
 //! Hand-tuned configs outside the per-circuit ladders: the L1-feeder schedule
 //! of the last BabyBear recursion layer and the EVM-production Proth120
-//! config. Both are [`SoundnessMode::PessimisticConjecture`] accountings; no
-//! `ethereum/soundcalc`-certified twin has been designed for either (see
+//! config. Both are [`SoundnessMode::PessimisticConjecture`] accountings.
+//! Ethproofs L1 feeder/wrap/EVM implementation is deferred product scope;
+//! mode-aware entry points reject that combination explicitly (see
 //! `soundcalc/README.md`).
 
 use super::*;
+
+impl ProverConfigProfile {
+    /// Validate the named profile before loading artifacts or constructing a prover.
+    pub fn validate_selection(
+        self,
+        selection: ProvingSelection,
+    ) -> Result<(), ConfigSelectionError> {
+        if self != Self::Standard
+            && selection.soundness_mode != SoundnessMode::PessimisticConjecture
+        {
+            return Err(ConfigSelectionError::UnsupportedSpecialConfigMode {
+                profile: self,
+                mode: selection.soundness_mode,
+            });
+        }
+        Ok(())
+    }
+}
+
+pub fn try_l1_feeder_config_for_2_23(
+    selection: ProvingSelection,
+) -> Result<ProverConfig, ConfigSelectionError> {
+    ProverConfigProfile::L1Feeder.validate_selection(selection)?;
+    let config = l1_feeder_config_for_2_23();
+    assert_eq!(
+        config.security_level, selection.security_level,
+        "the certified L1 feeder config must match the requested security level"
+    );
+    Ok(config)
+}
+
+pub fn try_evm_production_packed_prover_config(
+    selection: ProvingSelection,
+) -> Result<ProverConfig, ConfigSelectionError> {
+    ProverConfigProfile::EvmProductionPacked.validate_selection(selection)?;
+    Ok(evm_production_packed_prover_config(
+        selection.security_level,
+    ))
+}
 
 /// The "L1 feeder" configuration for the 2^23 unified circuit: identical to
 /// the standard [`config_for_100_bits_under_pessimistic_conjecture`] 2^23
@@ -108,5 +148,50 @@ pub fn evm_production_packed_prover_config(level: SecurityLevel) -> ProverConfig
             &[1 << 7, 1 << 11, 1 << 15, 1 << 19, 1 << 23],
             &[30, 30, 27, 25, 21, 24],
         ),
+    }
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::*;
+
+    #[test]
+    fn special_profiles_reject_ethproofs() {
+        let selection = ProvingSelection {
+            soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
+            ..ProvingSelection::default()
+        };
+        for profile in [
+            ProverConfigProfile::L1Feeder,
+            ProverConfigProfile::EvmProductionPacked,
+        ] {
+            let error = profile.validate_selection(selection).unwrap_err();
+            assert!(error.to_string().contains("ethproofs soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope)"));
+            assert_eq!(
+                profile.validate_selection(selection),
+                Err(ConfigSelectionError::UnsupportedSpecialConfigMode {
+                    profile,
+                    mode: selection.soundness_mode,
+                })
+            );
+        }
+        assert!(ProverConfigProfile::Standard
+            .validate_selection(selection)
+            .is_ok());
+        assert!(try_l1_feeder_config_for_2_23(selection).is_err());
+        assert!(try_evm_production_packed_prover_config(selection).is_err());
+    }
+
+    #[test]
+    fn pessimistic_special_profile_configs_are_identical() {
+        let selection = ProvingSelection::default();
+        assert_eq!(
+            try_l1_feeder_config_for_2_23(selection).unwrap(),
+            l1_feeder_config_for_2_23()
+        );
+        assert_eq!(
+            try_evm_production_packed_prover_config(selection).unwrap(),
+            evm_production_packed_prover_config(selection.security_level)
+        );
     }
 }

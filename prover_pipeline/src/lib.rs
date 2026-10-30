@@ -1073,11 +1073,14 @@ fn recompute_program_setups(
     bin: &[u32],
     text: &[u32],
     machine: SetupMachine,
+    selection: prover::definitions::ProvingSelection,
     worker: &worker::Worker,
-) -> Setups {
+) -> Result<Setups, String> {
     use riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly as FullUnsignedConfig;
     use riscv_transpiler::cycle::ReducedMachineWithDelegation as ReducedConfig;
-    use setups::program_setups::{compute_unified_program_setups, compute_unrolled_program_setups};
+    use setups::program_setups::{
+        compute_unified_program_setups_in_mode, compute_unrolled_program_setups_in_mode,
+    };
 
     let mut padded_bin = bin.to_vec();
     let mut padded_text = text.to_vec();
@@ -1085,38 +1088,50 @@ fn recompute_program_setups(
     setups::pad_bytecode_for_proving(&mut padded_text);
 
     let use_caches = true;
-    let security_level = COMPILED_SECURITY_LEVEL.to_prover();
+    let security_level = selection.security_level;
     match machine {
         SetupMachine::UnrolledFullUnsigned => {
-            compute_unrolled_program_setups::<FullUnsignedConfig, Global>(
+            compute_unrolled_program_setups_in_mode::<FullUnsignedConfig, Global>(
                 &padded_bin,
                 &padded_text,
                 use_caches,
                 security_level,
+                selection.soundness_mode,
                 worker,
             )
         }
-        SetupMachine::UnrolledReduced => compute_unrolled_program_setups::<ReducedConfig, Global>(
+        SetupMachine::UnrolledReduced => {
+            compute_unrolled_program_setups_in_mode::<ReducedConfig, Global>(
+                &padded_bin,
+                &padded_text,
+                use_caches,
+                security_level,
+                selection.soundness_mode,
+                worker,
+            )
+        }
+        SetupMachine::Unified => compute_unified_program_setups_in_mode::<Global>(
             &padded_bin,
             &padded_text,
             use_caches,
             security_level,
-            worker,
-        ),
-        SetupMachine::Unified => compute_unified_program_setups::<Global>(
-            &padded_bin,
-            &padded_text,
-            use_caches,
-            security_level,
+            selection.soundness_mode,
             worker,
         ),
     }
+    .map_err(|error| error.to_string())
 }
 
-type TrustedEndParamsKey = (SetupMachine, [u8; 32]);
+/// Keep selection/profile identity even when current base caps coincide across modes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct TrustedEndParamsKey {
+    machine: SetupMachine,
+    selection: prover::definitions::ProvingSelection,
+    profile: prover::definitions::ProverConfigProfile,
+    program_hash: [u8; 32],
+}
 
-/// In-process cache of trusted `end_params`, keyed by setup machine and binary
-/// keccak.
+/// Trusted standard end params keyed by machine, selection, profile and exact binary/text identity.
 fn trusted_end_params_cache(
 ) -> &'static std::sync::Mutex<std::collections::HashMap<TrustedEndParamsKey, [u32; 8]>> {
     static CACHE: std::sync::OnceLock<
@@ -1125,12 +1140,25 @@ fn trusted_end_params_cache(
     CACHE.get_or_init(Default::default)
 }
 
-fn trusted_end_params_key(machine: SetupMachine, bin: &[u32], text: &[u32]) -> TrustedEndParamsKey {
+fn trusted_end_params_key(
+    machine: SetupMachine,
+    bin: &[u32],
+    text: &[u32],
+    selection: prover::definitions::ProvingSelection,
+    profile: prover::definitions::ProverConfigProfile,
+) -> TrustedEndParamsKey {
     let mut hasher = Keccak256::new();
+    hasher.update((bin.len() as u64).to_le_bytes());
+    hasher.update((text.len() as u64).to_le_bytes());
     for word in bin.iter().chain(text.iter()) {
         hasher.update(word.to_le_bytes());
     }
-    (machine, hasher.finalize().into())
+    TrustedEndParamsKey {
+        machine,
+        selection,
+        profile,
+        program_hash: hasher.finalize().into(),
+    }
 }
 
 /// Trusted `end_params` of `(binary, machine)`: recomputed setups (cached by
@@ -1143,14 +1171,40 @@ fn trusted_end_params(
     machine: SetupMachine,
     worker: &worker::Worker,
 ) -> Result<[u32; 8], String> {
-    let key = trusted_end_params_key(machine, bin, text);
+    trusted_end_params_in_mode(
+        bin,
+        text,
+        machine,
+        prover::definitions::ProvingSelection {
+            security_level: COMPILED_SECURITY_LEVEL.to_prover(),
+            soundness_mode: prover::definitions::SoundnessMode::PessimisticConjecture,
+        },
+        worker,
+    )
+}
+
+/// Mode-explicit standard setup reconstruction. Special-profile setups need their own producer.
+fn trusted_end_params_in_mode(
+    bin: &[u32],
+    text: &[u32],
+    machine: SetupMachine,
+    selection: prover::definitions::ProvingSelection,
+    worker: &worker::Worker,
+) -> Result<[u32; 8], String> {
+    let key = trusted_end_params_key(
+        machine,
+        bin,
+        text,
+        selection,
+        prover::definitions::ProverConfigProfile::Standard,
+    );
     let cache = trusted_end_params_cache();
     if let Some(end_params) = cache.lock().unwrap().get(&key) {
         return Ok(*end_params);
     }
 
     let start = Instant::now();
-    let setups = recompute_program_setups(bin, text, machine, worker);
+    let setups = recompute_program_setups(bin, text, machine, selection, worker)?;
     let exit_pc = find_binary_exit_point(bin)?;
     let end_params = compute_end_params(&setups, exit_pc);
     log::info!("recomputed {machine:?} setups in {} ms", elapsed_ms(start));
@@ -1665,5 +1719,63 @@ mod soundness_selection_tests {
         assert!(error.contains("UnsupportedBackendSoundnessMode"));
         assert!(error.contains("internal folding-PoW"));
         assert!(error.contains("OOD-PoW"));
+    }
+}
+
+#[cfg(test)]
+mod trusted_selection_tests {
+    use super::*;
+    use prover::definitions::{ProverConfigProfile, ProvingSelection, SoundnessMode};
+
+    #[test]
+    fn trusted_end_params_cache_isolates_mode_and_profile() {
+        let mut cache = trusted_end_params_cache().lock().unwrap();
+        let mut keys = Vec::new();
+        for &soundness_mode in SoundnessMode::ALL {
+            for profile in [
+                ProverConfigProfile::Standard,
+                ProverConfigProfile::L1Feeder,
+                ProverConfigProfile::EvmProductionPacked,
+            ] {
+                let key = trusted_end_params_key(
+                    SetupMachine::Unified,
+                    &[0x5320_0001, 0x5320_0002],
+                    &[0x5320_0003],
+                    ProvingSelection {
+                        soundness_mode,
+                        ..ProvingSelection::default()
+                    },
+                    profile,
+                );
+                assert!(!keys.contains(&key));
+                let value = [keys.len() as u32; 8];
+                assert!(cache.insert(key, value).is_none());
+                keys.push(key);
+            }
+        }
+        for (i, key) in keys.iter().enumerate() {
+            assert_eq!(cache.remove(key), Some([i as u32; 8]));
+        }
+    }
+
+    #[test]
+    fn trusted_end_params_key_preserves_binary_text_boundary() {
+        let selection = ProvingSelection::default();
+        let a = trusted_end_params_key(
+            SetupMachine::Unified,
+            &[1, 2],
+            &[3],
+            selection,
+            ProverConfigProfile::Standard,
+        );
+        let b = trusted_end_params_key(
+            SetupMachine::Unified,
+            &[1],
+            &[2, 3],
+            selection,
+            ProverConfigProfile::Standard,
+        );
+        assert_ne!(a, b);
+        assert_eq!(a.selection.security_level, selection.security_level);
     }
 }

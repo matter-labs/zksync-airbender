@@ -319,6 +319,9 @@ pub fn replay_delegation_circuit<
     buffers
 }
 
+/// Pessimistic compatibility entry point. Use [`prove_unrolled_execution_with_replayer_in_mode`]
+/// for an explicit mode.
+///
 /// The caller chooses the compute backends: the FFT/tree [`Backend`] (whose
 /// [`Backend::TwiddleSet`]s are built here, once per WHIR message length) and the
 /// [`GKRBackend`] sumcheck engine. Proof bytes are backend-independent; pass
@@ -349,6 +352,53 @@ pub fn prove_unrolled_execution_with_replayer<
     full_statement_verifier::program_proof::ProgramProof,
     BTreeMap<u32, UnrolledCircuitSetupParams>,
 ) {
+    prove_unrolled_execution_with_replayer_in_mode::<C, A, B, GB>(
+        cycles_bound,
+        binary_image,
+        text_section,
+        use_caches,
+        non_determinism,
+        ram_bound,
+        worker,
+        security_level,
+        prover::definitions::SoundnessMode::PessimisticConjecture,
+        permutation_argument_pow_bits,
+        backend,
+        gkr_backend,
+    )
+    .unwrap_or_else(|error| panic!("{error}"))
+}
+
+/// Prove every RISC-V, delegation and init/teardown circuit under one explicit mode.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Keep the replay and proving inputs explicit at the orchestration boundary."
+)]
+pub fn prove_unrolled_execution_with_replayer_in_mode<
+    C: MachineConfig,
+    A: GoodAllocator,
+    B: Backend<BabyBearField, BabyBearExt4>,
+    GB: GKRBackend<BabyBearField, BabyBearExt4>,
+>(
+    cycles_bound: usize,
+    binary_image: &[u32],
+    text_section: &[u32],
+    use_caches: bool,
+    non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
+    ram_bound: usize,
+    worker: &worker::Worker,
+    security_level: SecurityLevel,
+    soundness_mode: prover::definitions::SoundnessMode,
+    permutation_argument_pow_bits: u32,
+    backend: &B,
+    gkr_backend: &GB,
+) -> Result<
+    (
+        full_statement_verifier::program_proof::ProgramProof,
+        BTreeMap<u32, UnrolledCircuitSetupParams>,
+    ),
+    circuit_common::ConfigSelectionError,
+> {
     let mut program_proof = full_statement_verifier::program_proof::ProgramProof {
         riscv_proofs: BTreeMap::new(),
         compiled_riscv_circuits: BTreeMap::new(),
@@ -698,7 +748,7 @@ pub fn prove_unrolled_execution_with_replayer<
     let inits_and_teardowns = ram.collect_inits_and_teardowns_sets::<BabyBearField, _>(
         worker,
         inits_and_teardowns_setup
-            .prover_config(security_level)
+            .try_prover_config_in_mode(security_level, soundness_mode)?
             .trace_len_log2,
         setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS,
         None,
@@ -730,7 +780,7 @@ pub fn prove_unrolled_execution_with_replayer<
         else {
             unreachable!()
         };
-        let prover_config = setup.prover_config(security_level).clone();
+        let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
         let message_len = 1usize << prover_config.whir_message_size_log2();
         let twiddles_for_size = twiddles
             .entry(message_len)
@@ -772,7 +822,7 @@ pub fn prove_unrolled_execution_with_replayer<
         else {
             unreachable!()
         };
-        let prover_config = setup.prover_config(security_level).clone();
+        let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
         let message_len = 1usize << prover_config.whir_message_size_log2();
         let twiddles_for_size = twiddles
             .entry(message_len)
@@ -804,9 +854,8 @@ pub fn prove_unrolled_execution_with_replayer<
     // and inits and teardowns
     let mut inits_and_teardown_trees_and_top_bits = vec![];
     {
-        let prover_config = inits_and_teardowns_setup
-            .prover_config(security_level)
-            .clone();
+        let prover_config =
+            inits_and_teardowns_setup.try_prover_config_in_mode(security_level, soundness_mode)?;
         let message_len = 1usize << prover_config.whir_message_size_log2();
         let twiddles_for_size = twiddles
             .entry(message_len)
@@ -842,7 +891,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let delegation_circuits = &blake_circuits;
         let setup = &blake_round_function_setup;
         if !delegation_circuits.is_empty() {
-            let prover_config = setup.prover_config(security_level).clone();
+            let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
             let message_len = 1usize << prover_config.whir_message_size_log2();
             let twiddles_for_size = twiddles
                 .entry(message_len)
@@ -884,7 +933,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let delegation_circuits = &bigint_circuits;
         let setup = &bigint_setup;
         if !delegation_circuits.is_empty() {
-            let prover_config = setup.prover_config(security_level).clone();
+            let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
             let message_len = 1usize << prover_config.whir_message_size_log2();
             let twiddles_for_size = twiddles
                 .entry(message_len)
@@ -926,7 +975,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let delegation_circuits = &keccak_special5_circuits;
         let setup = &keccak_special5_setup;
         if !delegation_circuits.is_empty() {
-            let prover_config = setup.prover_config(security_level).clone();
+            let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
             let message_len = 1usize << prover_config.whir_message_size_log2();
             let twiddles_for_size = twiddles
                 .entry(message_len)
@@ -969,7 +1018,8 @@ pub fn prove_unrolled_execution_with_replayer<
             let delegation_circuits = &$traces;
             let setup = &$setup;
             if !delegation_circuits.is_empty() {
-                let prover_config = setup.prover_config(security_level).clone();
+                let prover_config =
+                    setup.try_prover_config_in_mode(security_level, soundness_mode)?;
                 let message_len = 1usize << prover_config.whir_message_size_log2();
                 let twiddles_for_size = twiddles
                     .entry(message_len)
@@ -1156,7 +1206,8 @@ pub fn prove_unrolled_execution_with_replayer<
 
                 // dump setup if it's present for existing machine
                 let trace_len = setup.trace_len;
-                let prover_config = setup.prover_config(security_level).clone();
+                let prover_config =
+                    setup.try_prover_config_in_mode(security_level, soundness_mode)?;
                 let message_len = 1usize << prover_config.whir_message_size_log2();
                 let twiddles_for_size = twiddles
                     .entry(message_len)
@@ -1185,7 +1236,7 @@ pub fn prove_unrolled_execution_with_replayer<
 
         let setup = &setups[&family_idx];
         let trace_len = setup.trace_len;
-        let prover_config = setup.prover_config(security_level).clone();
+        let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
         let message_len = 1usize << prover_config.whir_message_size_log2();
         let twiddles_for_size = twiddles
             .entry(message_len)
@@ -1325,7 +1376,8 @@ pub fn prove_unrolled_execution_with_replayer<
                 main_proofs.insert(family_idx, vec![]);
 
                 let trace_len = setup.trace_len;
-                let prover_config = setup.prover_config(security_level).clone();
+                let prover_config =
+                    setup.try_prover_config_in_mode(security_level, soundness_mode)?;
                 let message_len = 1usize << prover_config.whir_message_size_log2();
                 let twiddles_for_size = twiddles
                     .entry(message_len)
@@ -1353,7 +1405,7 @@ pub fn prove_unrolled_execution_with_replayer<
 
         let setup = &setups[&family_idx];
         let trace_len = setup.trace_len;
-        let prover_config = setup.prover_config(security_level).clone();
+        let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
         let message_len = 1usize << prover_config.whir_message_size_log2();
         let twiddles_for_size = twiddles
             .entry(message_len)
@@ -1490,7 +1542,7 @@ pub fn prove_unrolled_execution_with_replayer<
     {
         let setup = &inits_and_teardowns_setup;
         let trace_len = setup.trace_len;
-        let prover_config = setup.prover_config(security_level).clone();
+        let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
         let message_len = 1usize << prover_config.whir_message_size_log2();
         let twiddles_for_size = twiddles
             .entry(message_len)
@@ -1576,7 +1628,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let setup = &blake_round_function_setup;
         let witness_eval_fn = setups::blake2_with_compression_witness_eval_fn;
         if !delegation_circuits.is_empty() {
-            let prover_config = setup.prover_config(security_level).clone();
+            let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                     &delegation_circuits[..],
@@ -1611,7 +1663,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let setup = &bigint_setup;
         let witness_eval_fn = setups::bigint_witness_eval_fn;
         if !delegation_circuits.is_empty() {
-            let prover_config = setup.prover_config(security_level).clone();
+            let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                     &delegation_circuits[..],
@@ -1646,7 +1698,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let setup = &keccak_special5_setup;
         let witness_eval_fn = setups::keccak_special5_witness_eval_fn;
         if !delegation_circuits.is_empty() {
-            let prover_config = setup.prover_config(security_level).clone();
+            let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                     &delegation_circuits[..],
@@ -1681,7 +1733,8 @@ pub fn prove_unrolled_execution_with_replayer<
             let setup = &$setup;
             let witness_eval_fn = $witness_eval_fn;
             if !delegation_circuits.is_empty() {
-                let prover_config = setup.prover_config(security_level).clone();
+                let prover_config =
+                    setup.try_prover_config_in_mode(security_level, soundness_mode)?;
                 let (proofs, per_tree_set) =
                     prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                         &delegation_circuits[..],
@@ -1759,7 +1812,7 @@ pub fn prove_unrolled_execution_with_replayer<
 
     assert_eq!(permutation_argument_accumulator, BabyBearExt4::ONE);
 
-    (program_proof, risc_v_setup_params)
+    Ok((program_proof, risc_v_setup_params))
 }
 
 #[expect(

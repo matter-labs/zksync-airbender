@@ -56,11 +56,18 @@ unique-decoding analysis would need. Copy a new block into
 `ethproofs_soundcalc.rs` as an `EthproofsSoundcalcEntry` together with the
 reasons for the regime choices.
 
-Not designed in this mode: the L1-feeder 2^23 schedule (base LDE 16) and the
+Not implemented in this mode: the L1-feeder 2^23 schedule (base LDE 16) and the
 EVM Proth120 2^26 packed config (`assess_current_configs.py` evaluates both;
 Proth120 with 2^31 domains caps the Johnson-bound fold term near 48–57 bits, so
 a 100-bit schedule there needs smaller domains and ~75 unique-decoding queries
 per round).
+
+Ethproofs support for the L1 feeder/wrap/EVM profile is **deferred product scope**.
+Runtime selection rejects that combination early with
+`ethproofs soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope)`.
+The existing pessimistic profiles remain available; no fallback or mixed-mode
+chain is used for the deferred combination. The component analysis above does
+not assert mathematical impossibility or a whole-chain security conclusion.
 
 ## Rebalancing the pessimistic ladders' late rounds (`late_round_rebalance.py`)
 

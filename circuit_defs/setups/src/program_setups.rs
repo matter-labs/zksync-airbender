@@ -7,13 +7,13 @@
 //! `fsv_*` verifiers consume, and a verifier that wants to bind a proof to a
 //! *supplied* program (rather than trusting proof-carried metadata) must
 //! recompute the caps from the binary alone. The commitment parameters here
-//! must stay in lockstep with what the provers use — same
-//! `config_for_security_level_under_pessimistic_conjecture`, LDE factor,
-//! WHIR schedule head, and cap size — or the recomputed caps stop
+//! must stay in lockstep with the prover's selected compiled-circuit config:
+//! the same LDE factor, WHIR schedule head and cap size, or the recomputed caps stop
 //! byte-matching proof-time setups.
 
 use super::*;
-use prover::definitions::SecurityLevel;
+use prover::definitions::{SecurityLevel, SoundnessMode};
+use prover::gkr::prover_config::example_configs::ConfigSelectionError;
 use prover::gkr::prover_config::ProverConfig;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -46,7 +46,7 @@ pub fn find_binary_exit_point(binary: &[u32]) -> u32 {
     final_pc as u32
 }
 
-/// `Setups` map for an UNROLLED execution of `(binary, text)` on machine `C`:
+/// Pessimistic compatibility wrapper: `Setups` for an UNROLLED execution of `(binary, text)` on machine `C`:
 /// one entry per circuit family of the machine, with the setup cap committed
 /// exactly like the provers do. Inputs must already be padded for proving
 /// (`pad_bytecode_for_proving` / `read_and_pad_binary`).
@@ -57,26 +57,47 @@ pub fn compute_unrolled_program_setups<C: MachineConfig, A: GoodAllocator + 'sta
     security_level: SecurityLevel,
     worker: &Worker,
 ) -> Setups {
+    compute_unrolled_program_setups_in_mode::<C, A>(
+        binary_image,
+        text_section,
+        use_caches,
+        security_level,
+        SoundnessMode::PessimisticConjecture,
+        worker,
+    )
+    .unwrap_or_else(|error| panic!("{error}"))
+}
+
+/// Mode-explicit setup reconstruction from each family's actual compiled columns.
+pub fn compute_unrolled_program_setups_in_mode<C: MachineConfig, A: GoodAllocator + 'static>(
+    binary_image: &[u32],
+    text_section: &[u32],
+    use_caches: bool,
+    security_level: SecurityLevel,
+    soundness_mode: SoundnessMode,
+    worker: &Worker,
+) -> Result<Setups, ConfigSelectionError> {
     let per_family = get_unrolled_circuits_setups_for_machine_type::<C, A>(
         binary_image,
         text_section,
         use_caches,
         worker,
     );
-    commit_setup_params(
-        per_family.into_iter().map(|(family_idx, setup)| {
-            (
-                family_idx as u32,
-                setup.prover_config(security_level).clone(),
-                setup.setup,
-            )
-        }),
+    let configs_and_setups = per_family
+        .into_iter()
+        .map(|(family_idx, setup)| {
+            let config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+            Ok((family_idx as u32, config, setup.setup))
+        })
+        .collect::<Result<Vec<_>, ConfigSelectionError>>()?;
+    Ok(commit_setup_params(
+        configs_and_setups.into_iter(),
         security_level,
         worker,
-    )
+    ))
 }
 
-/// `Setups` map for a UNIFIED (reduced-machine) execution of `(binary, text)`:
+/// Pessimistic compatibility wrapper: `Setups` for a UNIFIED (reduced-machine) execution of `(binary, text)`:
 /// the single unified-family entry, committed exactly like the provers do.
 /// Inputs must already be padded for proving.
 pub fn compute_unified_program_setups<A: GoodAllocator + 'static>(
@@ -86,17 +107,38 @@ pub fn compute_unified_program_setups<A: GoodAllocator + 'static>(
     security_level: SecurityLevel,
     worker: &Worker,
 ) -> Setups {
+    compute_unified_program_setups_in_mode::<A>(
+        binary_image,
+        text_section,
+        use_caches,
+        security_level,
+        SoundnessMode::PessimisticConjecture,
+        worker,
+    )
+    .unwrap_or_else(|error| panic!("{error}"))
+}
+
+/// Mode-explicit unified setup reconstruction from actual compiled columns.
+pub fn compute_unified_program_setups_in_mode<A: GoodAllocator + 'static>(
+    binary_image: &[u32],
+    text_section: &[u32],
+    use_caches: bool,
+    security_level: SecurityLevel,
+    soundness_mode: SoundnessMode,
+    worker: &Worker,
+) -> Result<Setups, ConfigSelectionError> {
     let unified_setup =
         unified_reduced_machine_circuit_setup::<A>(binary_image, text_section, use_caches, worker);
-    commit_setup_params(
+    let config = unified_setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+    Ok(commit_setup_params(
         core::iter::once((
             common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
-            unified_setup.prover_config(security_level).clone(),
+            config,
             unified_setup.setup,
         )),
         security_level,
         worker,
-    )
+    ))
 }
 
 /// Commit every setup with ITS circuit's prover config (the geometry the

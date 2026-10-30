@@ -94,6 +94,14 @@ pub struct ProvingSelection {
     pub soundness_mode: SoundnessMode,
 }
 
+/// Provenance of a named configuration; special profiles have separate soundness analyses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ProverConfigProfile {
+    Standard,
+    L1Feeder,
+    EvmProductionPacked,
+}
+
 impl Default for ProvingSelection {
     fn default() -> Self {
         Self {

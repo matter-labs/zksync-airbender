@@ -43,6 +43,14 @@ pub use crate::definitions::SoundnessMode;
 /// A requested circuit shape has no certified configuration. No schedule is interpolated.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConfigSelectionError {
+    UnsupportedSpecialConfigMode {
+        profile: ProverConfigProfile,
+        mode: SoundnessMode,
+    },
+    UnsupportedProfileOperation {
+        profile: ProverConfigProfile,
+        operation: &'static str,
+    },
     MissingSchedule {
         mode: SoundnessMode,
         level: SecurityLevel,
@@ -62,6 +70,15 @@ pub enum ConfigSelectionError {
 impl core::fmt::Display for ConfigSelectionError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
+            Self::UnsupportedSpecialConfigMode { profile, mode } => {
+                let name = match mode {
+                    SoundnessMode::PessimisticConjecture => "pessimistic-conjecture",
+                    SoundnessMode::EthproofsSoundnessCalc => "ethproofs",
+                };
+                write!(f, "UnsupportedSpecialConfigMode: {name} soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope); requested {profile:?}")
+            },
+            Self::UnsupportedProfileOperation { profile, operation } => write!(f,
+                "UnsupportedProfileOperation: {operation} cannot use {profile:?}"),
             Self::MissingSchedule { mode, level, input } => write!(
                 f, "no {mode:?} WHIR schedule for {level:?}, input {input:?}"
             ),
