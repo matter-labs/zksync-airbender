@@ -1775,3 +1775,31 @@ checks pass. No full-source certificate is claimed by the decoder change.
 Design items 2 and 3 follow the machine targets. The packed-checker pilot
 stays unchanged. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+
+### Full unsigned parsed-field transport obligation
+
+`SetupFields` proves that a successful setup parse preserves the complete
+column field and the physical domain length. The proof retains the artifact
+validation premise. `fixed_setup_rows_of_decoded_columns` connects these
+fields to the original `FixedSetupRows` predicate. It includes physical padding.
+It does not require a second evaluation of unrelated circuit fields.
+
+The new module passed focused kernel checks. All five new roots passed direct
+axiom checks. They use only the three allowed axioms. The explicit inventory
+now contains 13,377 roots. All 13,372 previous roots remain present. The bounded
+focused group used 399 MiB of physical memory and left no owned process
+running. Resource limits stay unchanged.
+
+The separate source-block experiment proved complete theta/rho JSON parsing.
+It covered 909,925 bytes in 238 seconds and used 1,308 MiB of physical memory.
+It used a character block representation of the same source bytes. This
+experiment remains outside the branch. It does not close the three source
+table certificates. Those certificates remain open. The parity source has
+107,052 RLE block entries but only 283 distinct blocks. The chi5 source has
+63,011 entries but only 539 distinct blocks. Reuse these blocks to reduce
+certificate cost.
+
+Design items 2 and 3 follow the machine targets. The packed-checker pilot
+stays unchanged. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.
