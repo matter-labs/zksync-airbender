@@ -1,3 +1,4 @@
+import Airbender.Proofs.FullUnsigned.ChiSourceMiddleOutput
 import Airbender.Proofs.FullUnsigned.ChiSourceOuterOutputs
 import Airbender.Proofs.FullUnsigned.ChiSourceController
 import Airbender.Proofs.FullUnsigned.ChiSourceInputs
@@ -15658,3 +15659,10 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Setup.SourceCaptureChiProofs.source_output4_get
 #print axioms Airbender.Setup.SourceCaptureChiProofs.source_output3_matches
 #print axioms Airbender.Setup.SourceCaptureChiProofs.source_output4_matches
+
+#print axioms Airbender.Setup.Proofs.ChunkBlock.expand_length
+#print axioms Airbender.Setup.Proofs.ChunkBlock.expand_get
+#print axioms Airbender.Setup.Proofs.getFromBlocks_expand
+#print axioms Airbender.Setup.Proofs.checkBlockRows_sound
+#print axioms Airbender.Setup.SourceCaptureChiProofs.source_output2_get
+#print axioms Airbender.Setup.SourceCaptureChiProofs.source_output2_matches

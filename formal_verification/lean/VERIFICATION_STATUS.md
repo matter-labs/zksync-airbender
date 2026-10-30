@@ -2152,3 +2152,27 @@ checker pilot stays unchanged. Design items 2 and 3 still follow the targets.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned chi5 middle output obligation
+
+Chi5 source output field two now matches its original canonical column.
+The proof covers all 1,048,576 arithmetic rows. A general chunk rule proves
+that each stored value covers 256 physical rows. The kernel checks the
+40 source templates. It then checks all 4,096 distinct chunk positions.
+The rule supports both positive and negative periodic strides.
+
+An array-function representation exceeded the physical memory cap. The
+final proof constructs the same arrays with repeated lists. The focused
+check passed in nine seconds. It used 553 MiB of physical memory. No limit
+increased. The guard cleaned all owned children. No source artifact, native
+table or packed-checker pilot changed. Six new roots passed direct axiom
+checks. They use only the three allowed axioms. The inventory now has
+14,240 roots. It retains all 14,234 previous roots.
+
+Two chi5 arithmetic output correspondences remain. The parity and theta/rho
+real-row predicates also remain open. The original source interface still
+needs its binding. Design items 2 and 3 follow the machine targets.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
