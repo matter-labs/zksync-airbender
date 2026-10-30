@@ -742,9 +742,11 @@ recomputed_tests! {
     packed_base_cpu_parity_retained_k0: (0, true), packed_base_cpu_parity_retained_k1: (1, true),
     packed_base_cpu_parity_retained_k2: (2, true), packed_base_cpu_parity_retained_k3: (3, true),
     packed_base_cpu_parity_retained_k4: (4, true),
+    packed_base_cpu_parity_retained_k5: (5, true),
     packed_base_cpu_parity_recompute_k0: (0, false), packed_base_cpu_parity_recompute_k1: (1, false),
     packed_base_cpu_parity_recompute_k2: (2, false), packed_base_cpu_parity_recompute_k3: (3, false),
     packed_base_cpu_parity_recompute_k4: (4, false),
+    packed_base_cpu_parity_recompute_k5: (5, false),
 }
 
 fn production_target(trace_log: usize, k: usize, widths: [usize; 3], role: BaseOracleRole) {
@@ -948,6 +950,7 @@ materialized_tests! {
     packed_base_cpu_parity_all_cosets_k2: 2,
     packed_base_cpu_parity_all_cosets_k3: 3,
     packed_base_cpu_parity_all_cosets_k4: 4,
+    packed_base_cpu_parity_all_cosets_k5: 5,
 }
 
 #[test]

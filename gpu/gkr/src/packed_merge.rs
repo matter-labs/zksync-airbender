@@ -12,6 +12,7 @@ cuda_kernel_declaration!(ab_gkr_merge_claims_e4_kernel(claims: *const E4, count:
 
 /// Fold adjacent claims with coordinate zero first, zero-padding the last group.
 /// k=0 aliases the original claims at the caller and never reaches this launcher.
+/// A group fits one warp for k<=5; larger groups need a cross-warp reduction.
 pub fn launch_merge_claims_e4(
     claims: &DeviceSlice<E4>,
     coordinates: &DeviceSlice<E4>,
@@ -20,8 +21,8 @@ pub fn launch_merge_claims_e4(
     context: &ProverContext,
 ) -> CudaResult<()> {
     assert!(
-        (1..=4).contains(&pack_log2),
-        "unsupported E4 packing factor"
+        (1..=5).contains(&pack_log2),
+        "E4 claim merging requires pack_log2 in 1..=5; larger groups need a cross-warp reduction"
     );
     assert_eq!(coordinates.len(), pack_log2 as usize);
     assert_eq!(merged.len(), claims.len().div_ceil(1usize << pack_log2));

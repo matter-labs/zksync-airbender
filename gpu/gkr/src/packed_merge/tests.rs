@@ -11,7 +11,7 @@ pub(crate) fn numeric_values() -> Vec<u32> {
     (0..67).map(|i| 11 + 7 * i + i * i).collect()
 }
 
-pub(crate) const NUMERIC_COORDINATES: [u32; 4] = [3, 5, 7, 11];
+pub(crate) const NUMERIC_COORDINATES: [u32; 5] = [3, 5, 7, 11, 13];
 
 fn upload<T: Copy>(data: &[T], context: &ProverContext) -> DeviceAllocation<T> {
     let mut out = context
@@ -38,12 +38,13 @@ fn packed_handoff_cpu_parity_e4_merge_golden_vectors() {
             }))
         })
         .collect();
-    let extension_coordinates = std::array::from_fn::<_, 4, _>(|i| extension_values[60 + i]);
+    let extension_coordinates = std::array::from_fn::<_, 5, _>(|i| extension_values[60 + i]);
+    let mut comparisons = 0;
     for (values, coordinates) in [
         (&scalar_values, scalar_coordinates),
         (&extension_values, extension_coordinates),
     ] {
-        for k in 1..=4 {
+        for k in 1..=5 {
             let pack = 1usize << k;
             let d_coordinates = upload(&coordinates[..k as usize], &context);
             for count in [0, 1, pack - 1, pack, pack + 1, 2 * pack + 1] {
@@ -70,7 +71,18 @@ fn packed_handoff_cpu_parity_e4_merge_golden_vectors() {
                     &expected,
                     "k={k}, count={count}"
                 );
+                comparisons += 1;
             }
         }
+    }
+    assert_eq!(comparisons, 60);
+    eprintln!("packed merge: {comparisons} CPU comparisons (2 families x 5 factors x 6 counts)");
+    let empty = upload::<E4>(&[], &context);
+    for k in [0, 6] {
+        let mut output = upload::<E4>(&[], &context);
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            launch_merge_claims_e4(&empty, &empty, k, &mut output, &context)
+        }))
+        .is_err());
     }
 }

@@ -5,7 +5,8 @@ namespace airbender::gkr::ops {
 // Consecutive claims are the high-coordinate slots of one packed polynomial.
 // Each warp owns a group; unused lanes and incomplete tail slots stay zero.
 EXTERN __global__ void ab_gkr_merge_claims_e4_kernel(const e4 *claims, u32 count, const e4 *coordinates, u32 pack_log2, e4 *merged) {
-  if (pack_log2 < 1 || pack_log2 > 4)
+  // k=0 bypasses this kernel; k>=6 needs a cross-warp exchange/reduction.
+  if (pack_log2 < 1 || pack_log2 > 5)
     __trap();
   const u32 width = 1u << pack_log2;
   const u32 group = (blockIdx.x * blockDim.x + threadIdx.x) / 32;
