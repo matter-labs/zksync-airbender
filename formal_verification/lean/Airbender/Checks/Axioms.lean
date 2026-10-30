@@ -1,3 +1,4 @@
+import Airbender.Proofs.FullUnsigned.ThetaSourceSplitKeys
 import Airbender.Proofs.FullUnsigned.ThetaSourceXorMembership
 import Airbender.Proofs.FullUnsigned.ThetaSourceControlSlots
 import Airbender.Proofs.FullUnsigned.ChiSourceMembership
@@ -15751,3 +15752,11 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Setup.SourceCaptureThetaProofs.source_xor_columns_match
 #print axioms Airbender.Setup.SourceCaptureThetaProofs.source_xor_rows
 #print axioms Airbender.Compiler.MachineTargets.Proofs.theta_source_xor_member
+
+#print axioms Airbender.Setup.Proofs.getFromBlocks_window
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_first_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_second_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_shift_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_padding_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_tag_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_keys_match
