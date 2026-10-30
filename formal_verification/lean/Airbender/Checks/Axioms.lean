@@ -1,3 +1,4 @@
+import Airbender.Proofs.FullUnsigned.ChiSourceDomain
 import Airbender.Proofs.FullUnsigned.TaggedSetupInterpretation
 import Airbender.Proofs.Keccak.SplitChiTagDomain
 import Airbender.Proofs.FullUnsigned.CapturedSetup
@@ -15470,3 +15471,7 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Keccak.Split.Native.Proofs.chi5_reference_excludes_zero
 #print axioms Airbender.Compiler.MachineTargets.Proofs.fixed_setup_lookup_of_guarded_source_rows
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_soundness_of_guarded_source_rows
+
+#print axioms Airbender.Compiler.MachineTargets.Proofs.chi_source_query_index
+#print axioms Airbender.Compiler.MachineTargets.Proofs.chi_queried_rows_of_real
+#print axioms Airbender.Compiler.MachineTargets.Proofs.chi_source_rows_of_real

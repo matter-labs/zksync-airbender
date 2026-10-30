@@ -2014,3 +2014,21 @@ pilot stays unchanged.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned chi5 padding exclusion obligation
+
+The kernel now proves that native query tags exclude every chi5 padding
+index. The proof uses the exact decoded source tag column. Its adapter
+requires canonical membership only for the 1,048,697 real source rows.
+The original parsed-source premise supplies the remaining fields. The proof
+adds no validation or padding assumption. Real-row membership stays open.
+
+The focused module and its three new roots pass. They use only the three
+allowed axioms. The inventory now has 14,059 roots. It retains all 14,056
+previous roots. The bounded module check used 411 MiB of physical memory.
+No guard left an owned process running. The packed-checker pilot stays
+unchanged. Design items 2 and 3 still follow the machine targets.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
