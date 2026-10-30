@@ -1681,3 +1681,35 @@ from public supported use. The formal setup source bridge also remains open.
 Design items 2 and 3 follow the machine targets. The packed-checker pilot
 stays unchanged. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+### Full unsigned supported-use induction obligation
+
+`unrolled_full_supported_native_inputs` now derives every standard and split
+worker input contract from public full-reference supported use. The proof
+uses strong induction on the actual caller clock. Each earlier accepted
+prefix executes from the original boot state. Its actual terminal frontier
+supplies the current worker's bounded register reads.
+
+Native request clocks prove that each earlier worker belongs to a smaller
+caller clock. Exact prefix and suffix matching identify every current read
+token. Public reachable arguments then give commands, round controls, split
+input facts and all worker RAM domains. No native input contract, operation
+result or completed reference trace is a premise of this induction.
+
+`unrolled_full_supported_execution` composes those inputs with complete native
+boot execution. `unrolled_full_soundness_of_setup_interpretation` connects the
+original target and actual standalone initialization interface to that proof.
+The wrapper exposes one open importer obligation: parsed fixed JSON must
+imply the canonical setup interpretation. The target statement stays unchanged.
+
+All changed modules and five new roots passed focused kernel and direct
+axiom checks. They use only the three allowed axioms. The explicit inventory
+now contains 13,348 roots. All 13,343 previous roots remain present. The
+bounded group used 554 MiB of physical memory and left no owned process
+running. Resource limits stay unchanged.
+
+The formal setup source bridge remains open. Complete that bridge before
+claiming the full target. Design items 2 and 3 follow the machine targets.
+The packed-checker pilot stays unchanged. Full frontend validation,
+environment audit, baseline refresh, transitive replay and Linux qualification
+did not run.

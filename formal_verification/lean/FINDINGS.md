@@ -55,6 +55,10 @@ The imported table facts need a proved source-to-data bridge. A runtime parse
 check cannot close this kernel obligation. Keep the target premise and axiom
 policy unchanged. This binding gap does not establish a circuit failure.
 
+Kernel checks now cover full native execution and public supported-use
+induction. The target wrapper exposes one source-interpretation function.
+This function must connect parsed fixed JSON to the canonical tables.
+
 ## Finding status versus conditional proof coverage
 
 **An assumption can close a conditional proof obligation while the finding stays
