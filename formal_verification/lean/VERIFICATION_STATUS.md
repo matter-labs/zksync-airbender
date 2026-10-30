@@ -1320,3 +1320,27 @@ boundary. Initialization integration and the formal setup source bridge
 remain open. Design items 2 and 3 follow the machine targets. The packed
 checker pilot stays unchanged. Full frontend validation, environment audit,
 baseline refresh, transitive replay and Linux qualification did not run.
+
+### Full unsigned subword execution obligation
+
+`unrolled_full_subword_execution` executes all six original Sail subword
+load and store forms at their actual shared-history boundaries. The public
+registry supplies the source and full decoder query. The native history
+supplies each initialized port address. Common read bounds and native
+equations supply the effective address, containing word and byte offset.
+
+The proof handles RAM and ROM. The same readonly prefix preserves public
+ROM bytes. Those bytes give each ROM lookup its original Sail meaning.
+The physical image stays separate from the verifier's raw boot seed.
+
+The new module passed its focused kernel check. The new root passed its
+direct axiom check. It uses only the three allowed axioms. The explicit
+inventory now contains 13,297 roots. All 13,296 previous roots remain
+present. The bounded group used 554 MiB of physical memory and left no
+owned process running. Resource limits stay unchanged.
+
+Full unsigned composition, supported-use derivation, initialization
+integration and the formal setup source bridge remain open. Design items
+2 and 3 follow the machine targets. The packed-checker pilot stays unchanged.
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
