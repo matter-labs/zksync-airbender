@@ -1,3 +1,4 @@
+import Airbender.Proofs.FullUnsigned.PublicRows
 import Tests.SetupGenericColumns
 import Airbender.Proofs.Keccak.SplitControlBinding
 import Airbender.Proofs.Keccak.SplitInvocation
@@ -13969,3 +13970,9 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.generic_control_setup_facts
 #print axioms Airbender.Keccak.Split.Native.Proofs.native_requests_match
 #print axioms Airbender.Keccak.Split.Native.Proofs.native_worker_caller
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_mask_query
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_dropped_funct3
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_native_query_pc_low
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_csr_cases
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_public_caller
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_native_row_classification
