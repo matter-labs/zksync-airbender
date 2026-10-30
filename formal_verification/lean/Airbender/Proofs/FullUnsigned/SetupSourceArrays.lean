@@ -361,4 +361,76 @@ theorem eager_object_family {α : Type}
     object_following_contents keyBytes bytes key value keyChecked checked entries [] frames result true
       (by intro _; rfl)
 
+
+/-- The source encoder accepts string characters that need no escape. -/
+def check_string (value : String) : Bool := value.toList.all unescapedCharacter
+
+/-- One checked string supplies both a JSON value and an object key. -/
+theorem check_string_sound (value : String) (checked : check_string value = true) :
+    EagerSource (SourceData.stringBytes value) (.str value) ∧
+      KeySource (SourceData.stringBytes value) value := by
+  have valid := List.all_eq_true.mp checked
+  constructor
+  · intro frames result allow
+    simpa only [SourceData.stringBytes, String.ofList_toList, beginning, accepted_eq_source] using
+      run_unescaped_string value.toList valid frames result allow
+  · intro earlier frames result allow
+    simpa only [SourceData.stringBytes, String.ofList_toList, beginning] using
+      run_unescaped_key value.toList valid earlier frames result allow
+
+theorem null_source : EagerSource SourceData.nullBytes .null := by
+  intro frames result allow
+  cases frames with
+  | nil => setup_source_rfl
+  | cons frame frames =>
+    cases frame with
+    | array previous => setup_source_rfl
+    | object previous key => cases key <;> setup_source_rfl
+
+theorem boolean_source (value : Bool) : EagerSource (SourceData.booleanBytes value) (.bool value) := by
+  cases value <;> intro frames result allow
+  all_goals
+    cases frames with
+    | nil => setup_source_rfl
+    | cons frame frames =>
+      cases frame with
+      | array previous => setup_source_rfl
+      | object previous key => cases key <;> setup_source_rfl
+
+/-- A node certificate can be reused at every occurrence of that node. -/
+def NodeSource (node : SourceData.Node) : Prop := FollowingSource node.bytes node.value
+
+theorem number_node_source (token : SourceData.NumberToken) (checked : check_number_token token = true) :
+    NodeSource (SourceData.numberNode token) := check_number_token_sound token checked
+
+theorem string_node_source (value : String) (checked : check_string value = true) :
+    NodeSource (SourceData.stringNode value) := following_of_eager (check_string_sound value checked).1
+
+theorem boolean_node_source (value : Bool) : NodeSource (SourceData.booleanNode value) :=
+  following_of_eager (boolean_source value)
+
+theorem null_node_source : NodeSource SourceData.nullNode := following_of_eager null_source
+
+theorem array_node_source {α : Type} (child : α → SourceData.Node)
+    (checked : ∀ index, NodeSource (child index)) (entries : List α) :
+    NodeSource (SourceData.arrayNode child entries) := by
+  exact following_of_eager (eager_array_of_following_family (fun index => (child index).bytes)
+    (fun index => (child index).value) checked entries)
+
+/-- Object nodes retain their key order and complete the enclosing value. -/
+theorem object_node_eager {α : Type} (key : α → String) (child : α → SourceData.Node)
+    (keyChecked : ∀ index, check_string (key index) = true)
+    (checked : ∀ index, NodeSource (child index)) (entries : List α) :
+    EagerSource (SourceData.objectNode key child entries).bytes
+      (SourceData.objectNode key child entries).value := by
+  exact eager_object_family (fun index => SourceData.stringBytes (key index))
+    (fun index => (child index).bytes) key (fun index => (child index).value)
+    (fun index => (check_string_sound (key index) (keyChecked index)).2) checked entries
+
+theorem object_node_source {α : Type} (key : α → String) (child : α → SourceData.Node)
+    (keyChecked : ∀ index, check_string (key index) = true)
+    (checked : ∀ index, NodeSource (child index)) (entries : List α) :
+    NodeSource (SourceData.objectNode key child entries) := by
+  exact following_of_eager (object_node_eager key child keyChecked checked entries)
+
 end Airbender.Setup.SourceProofs
