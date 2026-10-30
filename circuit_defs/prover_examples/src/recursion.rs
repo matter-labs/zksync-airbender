@@ -22,8 +22,9 @@
 //! `RECURSION_UNROLLED_BLAKE` / `RECURSION_BRIDGE_BLAKE` / `RECURSION_FINAL_BLAKE`
 //! (see `full_statement_verifier::host_utils` for the selection rules). Build
 //! the matching binaries with `tools/gkr_verifier/dump_recursive_verifiers.sh`.
-//! Intermediate proofs/setups are cached to disk, keyed by the active blake
-//! variants so different options don't overwrite each other.
+//! Intermediate proofs/setups are cached to disk as zlib-compressed JSON
+//! (`*.json.zlib`), keyed by the active blake variants so different options
+//! don't overwrite each other.
 //!
 //! The protocol pieces (recursion hash chain, `end_params` hashing, nd-stream
 //! layout, binary registry) live in `full_statement_verifier::recursion_chain`,
@@ -152,11 +153,11 @@ mod tests {
 
         println!("=== Stage 1: proving zksync_os base layer ===");
         let (base_proof, base_setups) =
-            if let Ok(base_proof) = try_deserialize_compressed_from_file("base_proofs.bin") {
+            if let Ok(base_proof) = try_deserialize_compressed_from_file("base_proofs.json.zlib") {
                 println!("Using existing files for base layer");
                 (
                     base_proof,
-                    try_deserialize_compressed_from_file("base_setups.bin").unwrap(),
+                    try_deserialize_compressed_from_file("base_setups.json.zlib").unwrap(),
                 )
             } else {
                 let (base_proof, base_setups) = prove_unrolled_execution_with_replayer::<
@@ -178,8 +179,8 @@ mod tests {
                     &DefaultBabyBearGKRBackend::default(),
                 );
                 println!("Base proofs are done");
-                serialize_compressed_to_file(&base_proof, "base_proofs.bin");
-                serialize_compressed_to_file(&base_setups, "base_setups.bin");
+                serialize_compressed_to_file(&base_proof, "base_proofs.json.zlib");
+                serialize_compressed_to_file(&base_setups, "base_setups.json.zlib");
 
                 (base_proof, base_setups)
             };
@@ -229,11 +230,11 @@ mod tests {
 
             // Resume from a previously-proven unrolled layer if present.
             if let Ok(cached_proof) = try_deserialize_compressed_from_file::<ProgramProof>(
-                &format!("recursion_layer_{}_proof_{}.bin", layer, u_tag),
+                &format!("recursion_layer_{}_proof_{}.json.zlib", layer, u_tag),
             ) {
                 println!("Using existing files for unrolled layer {layer}");
                 let cached_setups: Setups = try_deserialize_compressed_from_file(&format!(
-                    "recursion_layer_{layer}_setups_{u_tag}.bin"
+                    "recursion_layer_{layer}_setups_{u_tag}.json.zlib"
                 ))
                 .unwrap();
                 total_cycles += cached_proof.executed_cycles();
@@ -301,11 +302,11 @@ mod tests {
             new_proof.set_recursion_chain(&chain);
             serialize_compressed_to_file(
                 &new_proof,
-                &format!("recursion_layer_{layer}_proof_{u_tag}.bin"),
+                &format!("recursion_layer_{layer}_proof_{u_tag}.json.zlib"),
             );
             serialize_compressed_to_file(
                 &new_setups,
-                &format!("recursion_layer_{layer}_setups_{u_tag}.bin"),
+                &format!("recursion_layer_{layer}_setups_{u_tag}.json.zlib"),
             );
 
             let round_cycles = new_proof.executed_cycles();
@@ -344,13 +345,13 @@ mod tests {
         );
         let (bridge_proof, bridge_setups) = if let Ok(bridge_proof) =
             try_deserialize_compressed_from_file::<ProgramProof>(&format!(
-                "bridge_proof_{u_tag}_{bridge_tag}.bin"
+                "bridge_proof_{u_tag}_{bridge_tag}.json.zlib"
             )) {
             println!("Using existing files for bridge layer");
             (
                 bridge_proof,
                 try_deserialize_compressed_from_file(&format!(
-                    "bridge_setups_{u_tag}_{bridge_tag}.bin"
+                    "bridge_setups_{u_tag}_{bridge_tag}.json.zlib"
                 ))
                 .unwrap(),
             )
@@ -376,11 +377,11 @@ mod tests {
 
             serialize_compressed_to_file(
                 &bridge_proof,
-                &format!("bridge_proof_{u_tag}_{bridge_tag}.bin"),
+                &format!("bridge_proof_{u_tag}_{bridge_tag}.json.zlib"),
             );
             serialize_compressed_to_file(
                 &bridge_setups,
-                &format!("bridge_setups_{u_tag}_{bridge_tag}.bin"),
+                &format!("bridge_setups_{u_tag}_{bridge_tag}.json.zlib"),
             );
 
             (bridge_proof, bridge_setups)
@@ -447,10 +448,12 @@ mod tests {
                 measured.div_ceil(1 << 23)
             );
 
-            let proof_file =
-                format!("final_layer_{final_layer}_proof_{u_tag}_{bridge_tag}_{final_tag}.bin");
-            let setups_file =
-                format!("final_layer_{final_layer}_setups_{u_tag}_{bridge_tag}_{final_tag}.bin");
+            let proof_file = format!(
+                "final_layer_{final_layer}_proof_{u_tag}_{bridge_tag}_{final_tag}.json.zlib"
+            );
+            let setups_file = format!(
+                "final_layer_{final_layer}_setups_{u_tag}_{bridge_tag}_{final_tag}.json.zlib"
+            );
             let (new_proof, new_setups) = if let Ok(cached_proof) =
                 try_deserialize_compressed_from_file::<ProgramProof>(&proof_file)
             {
@@ -548,11 +551,11 @@ mod tests {
         let bridge_tag = bridge_blake_mode().tag();
         let final_tag = final_blake_mode().tag();
         let proof: ProgramProof = try_deserialize_compressed_from_file(&format!(
-            "final_layer_0_proof_{u_tag}_{bridge_tag}_{final_tag}.bin"
+            "final_layer_0_proof_{u_tag}_{bridge_tag}_{final_tag}.json.zlib"
         ))
         .expect("run test_recursive_proving_pipeline_zksync_os first");
         let setups: Setups = try_deserialize_compressed_from_file(&format!(
-            "final_layer_0_setups_{u_tag}_{bridge_tag}_{final_tag}.bin"
+            "final_layer_0_setups_{u_tag}_{bridge_tag}_{final_tag}.json.zlib"
         ))
         .unwrap();
 
@@ -606,33 +609,34 @@ mod tests {
 
         // Converged pipeline artifacts.
         let mut proof: ProgramProof = try_deserialize_compressed_from_file(&format!(
-            "final_layer_0_proof_{u_tag}_{bridge_tag}_{final_tag}.bin"
+            "final_layer_0_proof_{u_tag}_{bridge_tag}_{final_tag}.json.zlib"
         ))
         .expect("run test_recursive_proving_pipeline_zksync_os first");
         let mut setups: Setups = try_deserialize_compressed_from_file(&format!(
-            "final_layer_0_setups_{u_tag}_{bridge_tag}_{final_tag}.bin"
+            "final_layer_0_setups_{u_tag}_{bridge_tag}_{final_tag}.json.zlib"
         ))
         .unwrap();
 
         // Reconstruct the recursion chain exactly as the pipeline left it:
         // begin at the base layer, extend through every cached stage.
         let base_proof: ProgramProof =
-            try_deserialize_compressed_from_file("base_proofs.bin").unwrap();
-        let base_setups: Setups = try_deserialize_compressed_from_file("base_setups.bin").unwrap();
+            try_deserialize_compressed_from_file("base_proofs.json.zlib").unwrap();
+        let base_setups: Setups =
+            try_deserialize_compressed_from_file("base_setups.json.zlib").unwrap();
         let mut chain =
             FsvRecursionChain::begin(&compute_end_params(&base_setups, base_proof.final_pc));
         for (p_file, s_file) in [
             (
-                format!("recursion_layer_0_proof_{u_tag}.bin"),
-                format!("recursion_layer_0_setups_{u_tag}.bin"),
+                format!("recursion_layer_0_proof_{u_tag}.json.zlib"),
+                format!("recursion_layer_0_setups_{u_tag}.json.zlib"),
             ),
             (
-                format!("bridge_proof_{u_tag}_{bridge_tag}.bin"),
-                format!("bridge_setups_{u_tag}_{bridge_tag}.bin"),
+                format!("bridge_proof_{u_tag}_{bridge_tag}.json.zlib"),
+                format!("bridge_setups_{u_tag}_{bridge_tag}.json.zlib"),
             ),
             (
-                format!("final_layer_0_proof_{u_tag}_{bridge_tag}_{final_tag}.bin"),
-                format!("final_layer_0_setups_{u_tag}_{bridge_tag}_{final_tag}.bin"),
+                format!("final_layer_0_proof_{u_tag}_{bridge_tag}_{final_tag}.json.zlib"),
+                format!("final_layer_0_setups_{u_tag}_{bridge_tag}_{final_tag}.json.zlib"),
             ),
         ] {
             let p: ProgramProof = try_deserialize_compressed_from_file(&p_file).unwrap();
@@ -669,8 +673,9 @@ mod tests {
                 return;
             }
 
-            let p_file = format!("spec_layer_{k}_proof_{u_tag}_{bridge_tag}_{final_tag}.bin");
-            let s_file = format!("spec_layer_{k}_setups_{u_tag}_{bridge_tag}_{final_tag}.bin");
+            let p_file = format!("spec_layer_{k}_proof_{u_tag}_{bridge_tag}_{final_tag}.json.zlib");
+            let s_file =
+                format!("spec_layer_{k}_setups_{u_tag}_{bridge_tag}_{final_tag}.json.zlib");
             let (new_proof, new_setups) =
                 if let Ok(cached) = try_deserialize_compressed_from_file::<ProgramProof>(&p_file) {
                     println!("Using existing files for spec layer {k}");
@@ -772,30 +777,31 @@ mod tests {
         // Input: the converged pipeline proof (1 unified chunk + 1 blake
         // proof, standard schedule, separate commitment).
         let mut proof: ProgramProof =
-            try_deserialize_compressed_from_file(&format!("final_layer_0_proof_{tags}.bin"))
+            try_deserialize_compressed_from_file(&format!("final_layer_0_proof_{tags}.json.zlib"))
                 .expect("run test_recursive_proving_pipeline_zksync_os first");
         let mut setups: Setups =
-            try_deserialize_compressed_from_file(&format!("final_layer_0_setups_{tags}.bin"))
+            try_deserialize_compressed_from_file(&format!("final_layer_0_setups_{tags}.json.zlib"))
                 .unwrap();
 
         // Reconstruct the recursion chain through every cached stage.
         let base_proof: ProgramProof =
-            try_deserialize_compressed_from_file("base_proofs.bin").unwrap();
-        let base_setups: Setups = try_deserialize_compressed_from_file("base_setups.bin").unwrap();
+            try_deserialize_compressed_from_file("base_proofs.json.zlib").unwrap();
+        let base_setups: Setups =
+            try_deserialize_compressed_from_file("base_setups.json.zlib").unwrap();
         let mut chain =
             FsvRecursionChain::begin(&compute_end_params(&base_setups, base_proof.final_pc));
         for (p_file, s_file) in [
             (
-                format!("recursion_layer_0_proof_{u_tag}.bin"),
-                format!("recursion_layer_0_setups_{u_tag}.bin"),
+                format!("recursion_layer_0_proof_{u_tag}.json.zlib"),
+                format!("recursion_layer_0_setups_{u_tag}.json.zlib"),
             ),
             (
-                format!("bridge_proof_{u_tag}_{bridge_tag}.bin"),
-                format!("bridge_setups_{u_tag}_{bridge_tag}.bin"),
+                format!("bridge_proof_{u_tag}_{bridge_tag}.json.zlib"),
+                format!("bridge_setups_{u_tag}_{bridge_tag}.json.zlib"),
             ),
             (
-                format!("final_layer_0_proof_{tags}.bin"),
-                format!("final_layer_0_setups_{tags}.bin"),
+                format!("final_layer_0_proof_{tags}.json.zlib"),
+                format!("final_layer_0_setups_{tags}.json.zlib"),
             ),
         ] {
             let p: ProgramProof = try_deserialize_compressed_from_file(&p_file).unwrap();
@@ -835,8 +841,8 @@ mod tests {
                 (&feeder_bin, &feeder_text)
             };
 
-            let p_file = format!("feeder_layer_{k}_proof_{tags}.bin");
-            let s_file = format!("feeder_layer_{k}_setups_{tags}.bin");
+            let p_file = format!("feeder_layer_{k}_proof_{tags}.json.zlib");
+            let s_file = format!("feeder_layer_{k}_setups_{tags}.json.zlib");
             let (new_proof, new_setups) =
                 if let Ok(cached) = try_deserialize_compressed_from_file::<ProgramProof>(&p_file) {
                     println!("Using existing files for feeder layer {k}");
@@ -936,11 +942,12 @@ mod tests {
         let tags = format!("{u_tag}_{bridge_tag}_{final_tag}");
 
         let proof: ProgramProof =
-            try_deserialize_compressed_from_file(&format!("feeder_layer_1_proof_{tags}.bin"))
+            try_deserialize_compressed_from_file(&format!("feeder_layer_1_proof_{tags}.json.zlib"))
                 .expect("run test_l1_feeder_high_lde_research first");
-        let setups: Setups =
-            try_deserialize_compressed_from_file(&format!("feeder_layer_1_setups_{tags}.bin"))
-                .unwrap();
+        let setups: Setups = try_deserialize_compressed_from_file(&format!(
+            "feeder_layer_1_setups_{tags}.json.zlib"
+        ))
+        .unwrap();
         let stream = build_unified_stream(
             &setups,
             &proof,
@@ -986,11 +993,12 @@ mod tests {
         let final_tag = final_blake_mode().tag();
         let tags = format!("{u_tag}_{bridge_tag}_{final_tag}");
         let proof: ProgramProof =
-            try_deserialize_compressed_from_file(&format!("feeder_layer_0_proof_{tags}.bin"))
+            try_deserialize_compressed_from_file(&format!("feeder_layer_0_proof_{tags}.json.zlib"))
                 .expect("run test_l1_feeder_high_lde_research first");
-        let setups: Setups =
-            try_deserialize_compressed_from_file(&format!("feeder_layer_0_setups_{tags}.bin"))
-                .unwrap();
+        let setups: Setups = try_deserialize_compressed_from_file(&format!(
+            "feeder_layer_0_setups_{tags}.json.zlib"
+        ))
+        .unwrap();
         let stream = build_unified_stream(&setups, &proof, verifier_common::BLAKE_MODE);
         let result = std::thread::Builder::new()
             .name("feeder verifier".to_string())
@@ -1028,39 +1036,29 @@ mod tests {
     }
 }
 
+/// The proof caches are zlib-compressed JSON (`*.json.zlib`). Bincode cannot round-trip
+/// `ProgramProof`: several proof and circuit types decode through JSON-only compatibility
+/// layouts or skip fields on write. The bincode caches of earlier revisions (`*.bin`) are
+/// never read.
 #[cfg(test)]
 mod scripts {
-    use std::io::Read;
-    use std::io::Write;
+    use full_statement_verifier::host_utils::fixture_codec;
 
+    /// `Err` when the cache file is absent; a present but undecodable file panics.
     #[allow(dead_code)]
     pub(super) fn try_deserialize_compressed_from_file<T: serde::de::DeserializeOwned>(
         filename: &str,
     ) -> Result<T, ()> {
-        use flate2::read::ZlibDecoder;
-
-        let mut src = std::fs::File::open(filename).map_err(|_| ())?;
-        let mut buffer = vec![];
-        src.read_to_end(&mut buffer).map_err(|_| ())?;
-
-        let mut decoder = ZlibDecoder::new(&buffer[..]);
-        let mut unpacked: Vec<u8> = vec![];
-        decoder.read_to_end(&mut unpacked).map_err(|_| ())?;
-
-        Ok(bincode::deserialize_from(&unpacked[..]).unwrap())
+        let bytes = std::fs::read(filename).map_err(|_| ())?;
+        Ok(fixture_codec::decode(&bytes))
     }
 
     #[allow(dead_code)]
     pub(super) fn serialize_compressed_to_file<T: serde::Serialize>(el: &T, filename: &str) {
-        use flate2::write::ZlibEncoder;
-        use flate2::Compression;
-        let mut buffer = vec![];
-        bincode::serialize_into(&mut buffer, el).unwrap();
-
         let dst = std::fs::File::create(filename).unwrap();
-        let mut e = ZlibEncoder::new(dst, Compression::default());
-        e.write_all(&buffer).expect("must compress");
-        let _ = e.finish();
+        fixture_codec::encode(el, std::io::BufWriter::new(dst))
+            .into_inner()
+            .expect("flush cache file");
     }
 
     #[test]
@@ -1070,6 +1068,6 @@ mod scripts {
 
         let file_name = "recursion_layer_0_setups";
         let data: T = program_prover::deserialize_from_file(&format!("{file_name}.json"));
-        serialize_compressed_to_file(&data, &format!("{file_name}.bin"));
+        serialize_compressed_to_file(&data, &format!("{file_name}.json.zlib"));
     }
 }

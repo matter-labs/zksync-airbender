@@ -2032,9 +2032,9 @@ pub(crate) mod test {
             &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
         );
 
-        bincode_serialize_to_file(&program_proof, "tmp_proof.bin");
+        crate::serialize_to_file(&program_proof, "tmp_proof.json");
         let setups: Vec<_> = setups.into_values().collect();
-        bincode_serialize_to_file(&setups, "tmp_setup.bin");
+        crate::serialize_to_file(&setups, "tmp_setup.json");
     }
 
     #[cfg(feature = "verifiers")]
@@ -2043,15 +2043,15 @@ pub(crate) mod test {
     #[serial_test::serial(prover_examples_proof_artifacts)]
     fn test_verify_simple_fib() {
         skip_if_ci!();
-        use crate::bincode_deserialize_from_file;
+        use crate::deserialize_from_file;
         use full_statement_verifier::program_proof::ProgramProof;
         use full_statement_verifier::unrolled_circuit_params::NUM_BASE_LAYER_CIRCUITS;
         use setups::*;
         use verifier_common::errors::DebugErrorCreator;
 
-        let program_proof: ProgramProof = bincode_deserialize_from_file("tmp_proof.bin");
+        let program_proof: ProgramProof = deserialize_from_file("tmp_proof.json");
         let risc_v_setups: Vec<UnrolledCircuitSetupParams> =
-            bincode_deserialize_from_file("tmp_setup.bin");
+            deserialize_from_file("tmp_setup.json");
         assert_eq!(risc_v_setups.len(), NUM_BASE_LAYER_CIRCUITS);
 
         let responses = program_proof.flatten_for_verification(verifier_common::BLAKE_MODE);
@@ -2087,14 +2087,14 @@ pub(crate) mod test {
     #[serial_test::serial(prover_examples_proof_artifacts)]
     fn test_verify_individual_proof() {
         skip_if_ci!();
-        use crate::bincode_deserialize_from_file;
+        use crate::deserialize_from_file;
         use full_statement_verifier::program_proof::ProgramProof;
 
         use verifier_common::errors::DebugErrorCreator;
         let circuit_family = 3;
         let verifier_idx = 2;
 
-        let program_proof: ProgramProof = bincode_deserialize_from_file("tmp_proof.bin");
+        let program_proof: ProgramProof = deserialize_from_file("tmp_proof.json");
         let proof = &program_proof.riscv_proofs[&circuit_family][0];
         let compiled_circuit = &program_proof.compiled_riscv_circuits[&circuit_family];
         let responses = ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(

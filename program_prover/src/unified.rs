@@ -1164,7 +1164,7 @@ pub(crate) mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
-    use crate::bincode_serialize_to_file;
+    use crate::serialize_to_file;
     use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
     use std::path::Path;
 
@@ -1197,9 +1197,9 @@ pub(crate) mod test {
             &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
         );
 
-        bincode_serialize_to_file(&program_proof, "tmp_unified_proof.bin");
+        serialize_to_file(&program_proof, "tmp_unified_proof.json");
         let setups: Vec<_> = setups.into_values().collect();
-        bincode_serialize_to_file(&setups, "tmp_unified_setup.bin");
+        serialize_to_file(&setups, "tmp_unified_setup.json");
     }
 
     #[cfg(feature = "verifiers")]
@@ -1208,14 +1208,14 @@ pub(crate) mod test {
     #[serial_test::serial(prover_examples_proof_artifacts)]
     fn test_verify_unified_simple_fib() {
         skip_if_ci!();
-        use crate::bincode_deserialize_from_file;
+        use crate::deserialize_from_file;
         use full_statement_verifier::program_proof::ProgramProof;
         use setups::*;
         use verifier_common::errors::DebugErrorCreator;
 
-        let program_proof: ProgramProof = bincode_deserialize_from_file("tmp_unified_proof.bin");
+        let program_proof: ProgramProof = deserialize_from_file("tmp_unified_proof.json");
         let risc_v_setups: Vec<UnrolledCircuitSetupParams> =
-            bincode_deserialize_from_file("tmp_unified_setup.bin");
+            deserialize_from_file("tmp_unified_setup.json");
         assert_eq!(risc_v_setups.len(), 1);
 
         let responses = program_proof.flatten_unified_for_verification(verifier_common::BLAKE_MODE);

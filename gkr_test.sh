@@ -296,10 +296,10 @@ run_recursion() {
   case "$from" in circuits|generator|binaries) cstage="base" ;; esac
   # clears the named stage AND everything downstream (explicit cascade; no bash-4 `;&`)
   clear_caches() {
-    local base="$pe/base_proofs.bin $pe/base_setups.bin"
-    local unrolled="$pe/recursion_layer_*.bin"
-    local bridge="$pe/bridge_proof*.bin $pe/bridge_setups*.bin"
-    local final="$pe/final_proof*.bin $pe/final_setups*.bin"
+    local base="$pe/base_proofs.json.zlib $pe/base_setups.json.zlib"
+    local unrolled="$pe/recursion_layer_*.json.zlib"
+    local bridge="$pe/bridge_proof*.json.zlib $pe/bridge_setups*.json.zlib"
+    local final="$pe/final_layer_*.json.zlib"
     case "$1" in
       base)     $runner "rm -f $base $unrolled $bridge $final" ;;
       unrolled) $runner "rm -f $unrolled $bridge $final" ;;
