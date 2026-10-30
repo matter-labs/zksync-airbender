@@ -1,3 +1,4 @@
+import Airbender.Proofs.FullUnsigned.ChiSourceMembership
 import Airbender.Proofs.FullUnsigned.ChiSourceLowOutput
 import Airbender.Proofs.FullUnsigned.ChiSourceCycle1
 import Airbender.Proofs.FullUnsigned.ChiSourceMiddleOutput
@@ -15692,3 +15693,16 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Setup.Proofs.checked_cycle_rows
 #print axioms Airbender.Setup.SourceCaptureChiProofs.source_output0_get
 #print axioms Airbender.Setup.SourceCaptureChiProofs.source_output0_matches
+
+#print axioms Airbender.Setup.Proofs.ChunkBlock.expandBy
+#print axioms Airbender.Setup.Proofs.ChunkBlock.expandBy_length
+#print axioms Airbender.Setup.Proofs.ChunkBlock.expandBy_get
+#print axioms Airbender.Setup.Proofs.expanded_blocks_length
+#print axioms Airbender.Setup.Proofs.getFromBlocks_expandBy
+#print axioms Airbender.Setup.SourceCaptureChiProofs.source_output1_get
+#print axioms Airbender.Setup.SourceCaptureChiProofs.source_output1_matches
+#print axioms Airbender.Setup.SourceCaptureChiProofs.source_arithmetic_columns
+#print axioms Airbender.Setup.SourceCaptureChiProofs.source_arithmetic_rows
+#print axioms Airbender.Compiler.MachineTargets.Proofs.chi_source_arithmetic_member
+#print axioms Airbender.Compiler.MachineTargets.Proofs.split_chi_real_rows
+#print axioms Airbender.Compiler.MachineTargets.Proofs.chi_source_rows

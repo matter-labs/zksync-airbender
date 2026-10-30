@@ -2202,3 +2202,29 @@ needs its binding. Design items 2 and 3 follow the machine targets.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned chi5 source-row obligation
+
+The complete chi5 real-row obligation is closed. All 1,048,576 arithmetic
+rows match the original canonical table in all 11 fields. All 121 controller
+rows also have canonical membership. The final arithmetic output uses
+16-row chunks. Its 53 templates and its short repeated cycles have kernel
+proofs. The general chunk rule now supports any positive scale. The earlier
+256-row rule and its public statements stay intact.
+
+The final output check passed in ten seconds. It used 1,082 MiB of physical
+memory. The combined membership module passed in four seconds. It used
+412 MiB. Each guard cleaned all owned children. The closed real-row theorem
+now supplies guarded source membership. The native tags still exclude the
+physical zero padding. No parse, row-value or lookup premise changed. No
+native source artifact, table or packed-checker pilot changed. All 12 new
+roots passed direct axiom checks. They use only the three allowed axioms.
+The inventory now has 14,275 roots. It retains all 14,263 previous roots.
+
+Parity and theta/rho real-row membership remain open. The original source
+strings still need their byte-equal bindings. FullUnsigned is not yet proved.
+Design items 2 and 3 follow the machine targets.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
