@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.SplitChiCallExecution
 import Airbender.Proofs.Keccak.SplitChiLaneHalves
 import Airbender.Proofs.Keccak.SplitChiReferenceEffect
 import Airbender.Proofs.Keccak.SplitChiLaneOperation
@@ -14115,3 +14116,7 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Proofs.chi5_call_lane_address
 #print axioms Airbender.Keccak.Split.Native.Proofs.chi5_four_limb_halves
 #print axioms Airbender.Keccak.Split.Native.Proofs.chi5_lane_port_half
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_register_output_words
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_call_write_projection
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_call_ports_present
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_call_executes

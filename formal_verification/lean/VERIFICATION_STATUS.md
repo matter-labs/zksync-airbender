@@ -589,3 +589,20 @@ previous roots remain present. The last bounded group passed and left no owned
 process running. Sail write execution and the combined native history remain
 open. The fixed setup source bridge and the full unsigned target remain open.
 Full validation remains pending.
+
+### Native chi5 Sail call-execution obligation
+
+The actual native chi5 history now executes the original complete split call.
+The proof projects the complete write list to the original reference writes.
+It includes both registers, all lane halves and the Sail frame. Actual reads
+recover every input lane. The imported equations prove each output lane.
+The proof uses the explicit supported reference ABI, initialized pointer bound,
+actual per-port observations and exact history permutation. The full mixed
+history must still supply these intermediate facts.
+
+Four new roots passed focused kernel and axiom checks. They use only the three
+allowed axioms. The explicit inventory now contains 12,858 roots. All previous
+roots remain present. Both cache modes passed the last bounded check. It left
+no owned process running. The fixed setup source bridge, column-parity and
+theta/rho call effects, and the full unsigned integration remain open. Full
+validation remains pending.
