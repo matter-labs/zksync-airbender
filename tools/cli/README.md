@@ -156,8 +156,9 @@ In `ethproofs-soundcalc`, recursion chooses between unrolled and unified layers
 from the measured cycle count of the selected verifier guest, not from the
 pessimistic census, and requires the guest's output to equal the native
 verifier's. Set `FSV_EXECUTION_LEDGER=<path>` to append one JSON line per such
-guest execution: unrolled cost probes (`batch-<id>-unrolled-<layers>`), bridge
-inputs (`batch-<id>-bridge`) and final rounds (`batch-<id>-unified-<round>`).
+guest execution: unrolled cost probes (`batch-<id>-unrolled-<chain length>`,
+the number of chain layers so far), bridge inputs (`batch-<id>-bridge`) and
+final rounds (`batch-<id>-unified-<round>`, from 0).
 Each row records the guest's descriptor, its pinned ROM digest, the input
 stream's digest and length, and the cycles and returned words or the failure.
 A row records the execution only: a cost probe below the switch threshold is
