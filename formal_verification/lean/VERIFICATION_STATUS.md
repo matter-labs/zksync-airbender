@@ -832,3 +832,25 @@ Native theta/rho rotation, write-lane effects and Sail call execution remain
 open. The formal setup source bridge and full unsigned integration remain
 open. Design items 2 and 3 follow the machine targets. The packed-checker pilot
 stays unchanged. Full validation remains pending.
+
+### Native theta/rho next-parity rotation and D-lane obligation
+
+Native constraints now prove the original one-bit next-parity rotation.
+The complete D lane equals the previous parity lane XOR that rotation.
+`theta_d_native_reference` states this complete native relation. Both cache
+modes use the current native equations. The proof uses the four initialized
+read limb bounds for the next parity lane. It derives every top bit and carry
+from native Boolean assertions and the actual byte-query expressions. No
+top-bit value or D result is an input premise.
+
+Both new modules passed focused kernel checks. All 18 new roots passed direct
+axiom checks. They use only the three allowed axioms. The explicit inventory
+now contains 13,158 roots. All 13,140 previous roots remain present. The last
+bounded group used 445 MiB of physical memory and left no owned process
+running. Resource limits stay unchanged.
+
+Native theta/rho selected rotations, write-lane effects and Sail call execution
+remain open. The formal setup source bridge and full unsigned integration
+remain open. The combined history must supply the initialized read bounds.
+Design items 2 and 3 follow the machine targets. The packed-checker pilot stays
+unchanged. Full validation remains pending.
