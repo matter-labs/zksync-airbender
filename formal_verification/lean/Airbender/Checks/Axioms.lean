@@ -1,3 +1,4 @@
+import Airbender.Proofs.FullUnsigned.EventGroups
 import Airbender.Proofs.FullUnsigned.CPUWindows
 import Airbender.Proofs.FullUnsigned.RequestSchedule
 import Airbender.Proofs.FullUnsigned.MemoryHistory
@@ -14607,3 +14608,6 @@ import Airbender.Proofs.Keccak.SplitNativeWriteRules
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_split_event_window
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_cpu_event_time
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_cpu_event_window
+
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_instruction_events
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_ordinary_events
