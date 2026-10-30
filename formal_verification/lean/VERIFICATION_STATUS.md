@@ -440,8 +440,9 @@ The complete full unsigned execution proof remains open.
 
 The complete theta/rho and chi5 imports now supply their controller facts.
 The row proofs select the exact controller regions from the native field tags.
-The proofs keep every physical column and all padding. They use certified
-block lengths to skip the large table prefixes. The runtime regression compares every parsed theta/rho block and value.
+The imports keep every physical column. They retain padding inside the
+generic table extent. They omit the physical padding after that extent.
+The proofs use certified block lengths to skip the large table prefixes. The runtime regression compares every parsed theta/rho block and value.
 It also checks the complete table extent and native region data. A kernel
 proof checks the exact source bytes. All checks passed. The fifteen new
 audit roots use only the three allowed axioms. All old roots remain present.
@@ -487,3 +488,23 @@ Six new roots passed focused kernel and axiom checks. They use only the three
 allowed axioms. The explicit inventory now contains 12,728 roots. All previous
 roots remain present. Split functional effects, supported-use execution and
 the setup-source bridge remain open. Full validation remains pending.
+
+### Blessed split reference-composition obligation
+
+The original split reference now produces the original Keccak permutation.
+The proof composes all 361 calls. It checks all 24 parity, theta/rho and chi
+phases. It includes the final delayed iota and the return to the original
+physical lane layout. A kernel proof checks the finite index cache. The cache
+changes no operation, reference or public theorem statement.
+
+All 41 new roots passed focused kernel and axiom checks. They use only the
+three allowed axioms. The explicit inventory now contains 12,769 roots. All
+previous roots remain present. The last bounded group passed. It left no owned
+process running. Earlier attempts found reduction limits or reached the memory
+cap. Smaller proof units passed under the unchanged resource limits.
+
+Native split circuit soundness remains open. The next obligations are the
+fixed-table arithmetic facts, each worker's actual functional read/write
+effect, and the combined native history with supported-use induction. The
+`FixedSetup` source bridge also remains open. The full unsigned target and
+final lengthy validation remain pending.
