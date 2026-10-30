@@ -1012,6 +1012,17 @@ import Airbender.Proofs.Keccak.SplitThetaOutputBytes
 import Airbender.Proofs.Keccak.SplitThetaOutputPacking
 import Airbender.Proofs.Keccak.SplitThetaLaneOperation
 import Airbender.Proofs.Keccak.SplitThetaReferenceEffect
+import Airbender.Proofs.Keccak.SplitThetaPortBindings
+import Airbender.Proofs.Keccak.SplitThetaControlColumns
+import Airbender.Proofs.Keccak.SplitThetaControlConstraints
+import Airbender.Proofs.Keccak.SplitThetaRegisters
+import Airbender.Proofs.Keccak.SplitThetaPortEnumeration
+import Airbender.Proofs.Keccak.SplitThetaCallControl
+import Airbender.Proofs.Keccak.SplitThetaCallPointer
+import Airbender.Proofs.Keccak.SplitThetaCallAddresses
+import Airbender.Proofs.Keccak.SplitThetaLaneHalves
+import Airbender.Proofs.Keccak.SplitThetaWriteProjection
+import Airbender.Proofs.Keccak.SplitThetaCallExecution
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 
@@ -14491,3 +14502,31 @@ import Airbender.Proofs.Keccak.SplitThetaReferenceEffect
 #print axioms Airbender.Keccak.Split.Native.Proofs.thetaReferenceLanes
 #print axioms Airbender.Keccak.Split.Native.Proofs.theta_native_reference_result
 #print axioms Airbender.Keccak.Split.Native.Proofs.theta_native_reference_schedule
+
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaLanePort
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaPointer
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_lane_port_values
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_lane_port_address
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaControlPort
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_control_port_columns
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_control_high_limbs
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_control_port_codes
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaPointerPort
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_pointer_port
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_ports_enumeration
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_control_port_address
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_call_control_binding
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_pointer_word
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_call_pointer_binding
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_pointer_lane_room
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_call_lane_address
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_read_word
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_read_limb_bounds
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_read_lane_bound
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_lane_port_half
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_all_write_limb_bounds
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_written_port_half
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_register_output_words
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_call_write_projection
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_call_ports_present
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_call_executes

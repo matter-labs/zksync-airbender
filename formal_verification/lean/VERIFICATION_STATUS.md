@@ -921,3 +921,28 @@ The combined history must supply the initialized read bounds. The formal setup
 source bridge remains open. Design items 2 and 3 follow the machine targets.
 The packed-checker pilot stays unchanged. Full frontend validation, environment
 audit, baseline refresh, transitive replay and Linux qualification did not run.
+
+### Native theta/rho Sail call obligation
+
+`theta_call_executes` now proves the original complete theta/rho call from the
+actual native memory ports. Both cache modes pass. The proof binds the exact
+control word, pointer, seven physical slots and fourteen lane halves. It binds
+every actual write to the original call write list.
+
+The proof keeps initialized read bounds, exact read observations and the exact
+event permutation explicit. Those read bounds supply the next-parity carry
+proof. Native constraints bound state writes. Readonly parity refreshes retain
+their initialized values. No result value or lane-effect premise is an input.
+Production circuits and Rust stay unchanged.
+
+All eleven new modules passed focused kernel checks. All 27 new roots passed
+direct axiom checks. They use only the three allowed axioms. The explicit
+inventory now contains 13,223 roots. All 13,196 previous roots remain present.
+The bounded group used 514 MiB of physical memory and left no owned process
+running. Resource limits stay unchanged.
+
+The combined native split-call chain and full unsigned integration remain open.
+The formal setup source bridge remains open. Design items 2 and 3 follow the
+machine targets. The packed-checker pilot stays unchanged. Full frontend
+validation, environment audit, baseline refresh, transitive replay and Linux
+qualification did not run.
