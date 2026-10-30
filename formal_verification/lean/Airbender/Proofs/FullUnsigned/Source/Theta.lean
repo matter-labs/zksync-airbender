@@ -1,4 +1,6 @@
-import Airbender.Data.Setup.Source.Theta
+import Airbender.Data.Setup.Source.ThetaRLE
 import Airbender.Proofs.FullUnsigned.SetupSourceCertificate
 
+set_option Elab.async false
 certify_source_bank Airbender.Setup.SourceCaptureThetaProofs using Airbender.Setup.SourceCaptureTheta
+certify_source_rle Airbender.Setup.SourceCaptureThetaProofs using Airbender.Setup.SourceCaptureTheta

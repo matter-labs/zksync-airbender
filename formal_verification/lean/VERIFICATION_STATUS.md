@@ -1952,3 +1952,40 @@ existing premise changed. The packed-checker pilot stays unchanged.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned captured column binding obligation
+
+The three captured column bindings are proved. The kernel checks 283 distinct
+parity blocks, 2,100 theta/rho blocks and 539 chi5 blocks. Each certificate
+returns the exact retained column array and trace length. It preserves all
+8, 9 and 11 columns. Large payload arrays use a shared scalar dictionary and
+a general array equality proof. The proof preserves all entries and their
+order. Header proofs use that array fact without unfolding the large payload.
+
+Source data and RLE metadata now use separate modules. Declaration checks run
+synchronously. The resource limits stay unchanged. Earlier combined imports
+and direct checks of a 1,024-value payload exceeded the memory cap. The final
+representation and proof rules passed. The theta group used 157 seconds and
+1,954 MiB of physical memory. The final combined group passed 28 checks in
+71 seconds and used 880 MiB. No guard left an owned process running.
+
+Generation freshness passes for all nine generated modules. Exact byte
+comparisons pass for all three original artifacts. The kernel rejects a
+changed retained block binding with unchanged source bytes. Three dictionary
+controls also pass. One control covers a 1,024-entry array through the general
+rule. All 495 new roots pass direct axiom checks. They use only the three
+allowed axioms. The inventory now has 14,047 roots. It retains all 13,552
+previous roots.
+
+Review now names the remaining predicates: `SplitParityPhysicalRows`,
+`SplitThetaPhysicalRows` and `SplitChiPhysicalRows`. Each requires every
+physical row to belong to the original canonical table. Padding stays in the
+domain. The conditional source adapters passed kernel checks. The original
+target setup-source references stay unchanged. Bind the equal byte
+representation at that interface when the row certificates are complete.
+The three `FixedSetupRows` certificates remain open. The packed-checker pilot
+stays unchanged. Design items 2 and 3 still follow the machine targets.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.

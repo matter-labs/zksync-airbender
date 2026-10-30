@@ -1,4 +1,6 @@
-import Airbender.Data.Setup.Source.Parity
+import Airbender.Data.Setup.Source.ParityRLE
 import Airbender.Proofs.FullUnsigned.SetupSourceCertificate
 
+set_option Elab.async false
 certify_source_bank Airbender.Setup.SourceCaptureParityProofs using Airbender.Setup.SourceCaptureParity
+certify_source_rle Airbender.Setup.SourceCaptureParityProofs using Airbender.Setup.SourceCaptureParity
