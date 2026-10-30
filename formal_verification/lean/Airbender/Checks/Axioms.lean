@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.SplitParityCallExecution
 import Airbender.Proofs.Keccak.SplitParityReferenceEffect
 import Airbender.Proofs.Keccak.SplitParityNativeQueries
 import Tests.SetupParityGeneric
@@ -14234,3 +14235,29 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Proofs.parity_native_first_lane
 #print axioms Airbender.Keccak.Split.Native.Proofs.parity_native_reference_result
 #print axioms Airbender.Keccak.Split.Native.Proofs.parity_native_reference_schedule
+
+#print axioms Airbender.Keccak.Split.Native.Proofs.parityLanePort
+#print axioms Airbender.Keccak.Split.Native.Proofs.parityPointer
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_lane_port_values
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_lane_port_address
+#print axioms Airbender.Keccak.Split.Native.Proofs.parityControlPort
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_control_port_columns
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_control_port_codes
+#print axioms Airbender.Keccak.Split.Native.Proofs.parityPointerPort
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_pointer_port
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_ports_enumeration
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_control_port_address
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_call_control_binding
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_pointer_word
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_call_pointer_binding
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_pointer_lane_room
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_call_lane_address
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_read_word
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_read_limb_bounds
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_read_lane_bound
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_lane_port_half
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_written_port_half
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_register_output_words
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_call_write_projection
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_call_ports_present
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_call_executes
