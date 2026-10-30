@@ -152,6 +152,10 @@ canonical tables. Native chi5 tags exclude its padding. No target premise
 changed. The remaining real-row obligations are `SplitParityRealRows`,
 `SplitThetaRealRows` and `SplitChiRealRows`. Their adapters preserve the full
 parsed row and original canonical table. The three real-row proofs remain open.
+The five chi5 arithmetic input columns now match the original canonical
+columns on every row. Its complete tag column also matches. The kernel checks
+these correspondences from the retained source blocks. Chi5 output columns
+and controller rows remain open.
 
 ## Finding status versus conditional proof coverage
 
