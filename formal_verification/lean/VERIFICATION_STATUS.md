@@ -473,3 +473,17 @@ Six new roots passed focused kernel and axiom checks. They use only the three
 allowed axioms. The inventory now contains 12,722 roots. All prior roots remain
 present. This closes the target's public row-classification obligation.
 The combined native execution and remaining split obligations stay open.
+
+### Full unsigned split request-channel obligation
+
+The full target's combined request permutation now supplies the split channel.
+Filtering uses the complete CSR address. Standard worker requests cannot enter
+this channel. Public decoder lookup supplies the split caller registry.
+The public text image and initial PC boundary supply its input conditions.
+Every active split worker has an actual caller with the same CSR and raw clock.
+The proof adds no request-matching or witness-schedule premise.
+
+Six new roots passed focused kernel and axiom checks. They use only the three
+allowed axioms. The explicit inventory now contains 12,728 roots. All previous
+roots remain present. Split functional effects, supported-use execution and
+the setup-source bridge remain open. Full validation remains pending.
