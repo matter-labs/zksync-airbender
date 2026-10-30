@@ -44,6 +44,17 @@ An **unresolved binding** identifies a condition not yet connected to general
 acceptance. A **profile difference** is intentional semantic scope. These labels
 are not interchangeable with a full verifier or cryptographic exploit.
 
+## Kernel fixed-setup provenance
+
+The full unsigned target has an unresolved fixed-setup binding. `FixedSetup`
+describes parsed JSON. `Setup.parse` calls `Lean.Json.parse`. Its `anyCore`
+worker is opaque in the kernel. A focused probe confirms that even an empty
+JSON object does not reduce through this parser in a kernel proof.
+
+The imported table facts need a proved source-to-data bridge. A runtime parse
+check cannot close this kernel obligation. Keep the target premise and axiom
+policy unchanged. This binding gap does not establish a circuit failure.
+
 ## Finding status versus conditional proof coverage
 
 **An assumption can close a conditional proof obligation while the finding stays

@@ -12,7 +12,7 @@ request and RAM matching remain explicit. The final full validation is pending.
 | Setup machine | Current target status |
 | --- | --- |
 | Unrolled full unsigned | Open. The standalone initialization inputs and public ordinary, standard caller and split caller images are proved. Connect the combined native path and public acceptance. Prove standard worker supported use, split worker functions and the complete blessed split sequence. The target excludes special5 calls. |
-| Unrolled reduced | Open. Standalone initialization, shared native history, instruction cycles and complete round caller cycles are proved. The native path interprets public ROM bytes and derives worker controls and RAM locations from public supported use. Bind public decoder lookup to native acceptance. |
+| Unrolled reduced | Proved by `MachineTargets.Proofs.unrolled_reduced_soundness`. The theorem has exactly the `UnrolledReduced` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. |
 | Unified | Proved by `MachineTargets.Proofs.unified_soundness`. The theorem has exactly the `Unified` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. The target excludes special5 calls. |
 
 [The three target definitions](Airbender/Review/Compiler/MachineTargets.lean)
@@ -435,3 +435,19 @@ cache modes. An active worker cannot use invocation zero. The proof uses the
 actual imported initial timestamp lookup. It adds no schedule or positive-clock
 premise. Exact request matching can therefore account for every active worker.
 The complete full unsigned execution proof remains open.
+
+### Split generic controller binding obligation
+
+The complete theta/rho and chi5 imports now supply their controller facts.
+The row proofs select the exact controller regions from the native field tags.
+The proofs keep every physical column and all padding. They use certified
+block lengths to skip the large table prefixes. The runtime regression compares every parsed theta/rho block and value.
+It also checks the complete table extent and native region data. A kernel
+proof checks the exact source bytes. All checks passed. The fifteen new
+audit roots use only the three allowed axioms. All old roots remain present.
+The explicit inventory now contains 12,714 roots.
+
+The source-to-data bridge in `FixedSetup` remains open. Its JSON parser has an
+opaque kernel worker. The imported table proofs do not close this bridge.
+The split worker functions and the complete blessed sequence also remain open.
+Full validation remains pending.

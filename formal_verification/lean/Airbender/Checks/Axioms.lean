@@ -1,3 +1,5 @@
+import Tests.SetupGenericColumns
+import Airbender.Proofs.Keccak.SplitControlBinding
 import Airbender.Proofs.Keccak.SplitInvocation
 import Airbender.Proofs.FullUnsigned.TargetInputs
 import Airbender.Proofs.Reduced.PublicBinding
@@ -13950,3 +13952,18 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_split_caller_image
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_initialization_inputs
 #print axioms Airbender.Keccak.Split.Native.Proofs.active_invocation_live
+#print axioms Airbender.Setup.SizedBlock.affine
+#print axioms Airbender.Setup.SizedBlock.dense
+#print axioms Airbender.Setup.SizedBlock.periodic
+#print axioms Airbender.Setup.SizedBlock.block_length
+#print axioms Airbender.Setup.Proofs.getFromBlocks_append
+#print axioms Airbender.Setup.Proofs.column_append_shift
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.theta_rho_generic_source
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5_generic_source
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.theta_rho_controller_rows_equal
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5_controller_rows_equal
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.theta_rho_controller_field_tag_region
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5_controller_field_tag_region
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.theta_rho_generic_controller_sound
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5_generic_controller_sound
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.generic_control_setup_facts
