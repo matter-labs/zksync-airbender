@@ -1047,6 +1047,7 @@ import Airbender.Proofs.Keccak.SplitNativeWordBounds
 import Airbender.Proofs.Keccak.SplitNativeWriteRules
 import Airbender.Proofs.FullUnsigned.OrdinaryHistory
 import Airbender.Proofs.FullUnsigned.MulDivExecution
+import Airbender.Proofs.FullUnsigned.SubwordExecution
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 
@@ -14640,3 +14641,5 @@ import Airbender.Proofs.FullUnsigned.MulDivExecution
 
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_ordinary_history
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_muldiv_execution
+
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_subword_execution
