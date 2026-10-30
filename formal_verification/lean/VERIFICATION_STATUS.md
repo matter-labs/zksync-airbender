@@ -1178,3 +1178,28 @@ The public round-control and formal setup source obligations remain open.
 Design items 2 and 3 follow the machine targets. The packed-checker pilot
 stays unchanged. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+### Full unsigned exact event-group obligation
+
+`unrolled_full_instruction_events` partitions the actual combined event list
+at each native instruction window. The group contains exactly that row's
+CPU events, its matched standard worker events and its matched split worker
+events. The theorem gives an equality of lists. It retains native row order
+and leaves chronological permutation to the shared history proof.
+
+`unrolled_full_ordinary_events` proves that an ordinary instruction window
+contains only its own CPU events. No worker from either pool can enter that
+window. These results close exact event grouping for full unsigned path
+extraction. They assume no worker occurrence plan or separate RAM argument.
+
+The new module passed focused kernel checks. Both new roots passed direct
+axiom checks. They use only the three allowed axioms. The explicit inventory
+now contains 13,276 roots. All 13,274 previous roots remain present. The final
+bounded group used 531 MiB of physical memory and left no owned process
+running. Resource limits stay unchanged.
+
+Full unsigned path execution and initialization integration remain open.
+The public round-control and formal setup source obligations remain open.
+Design items 2 and 3 follow the machine targets. The packed-checker pilot
+stays unchanged. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.
