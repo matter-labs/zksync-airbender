@@ -11,7 +11,7 @@ variable [Fact babyBearModulus.Prime]
 
 /-- Each ordinary full native window supplies the exact three-port history
 used by its original family proof. All six CPU families use the same pool. -/
-theorem unrolled_full_ordinary_history
+theorem unrolled_full_ordinary_context
     {trace : PooledTrace babyBearModulus} {workers : Delegation.MemoryData babyBearModulus}
     {splitWorkers : Keccak.Split.Native.MemoryData babyBearModulus}
     (accepted : UnrolledAcceptance trace workers splitWorkers.steps
@@ -30,6 +30,7 @@ theorem unrolled_full_ordinary_history
     let low := (decodeTimestamp row.assignment row.columns.initialTime).value
     ∃ before after,
       SailHistory cells (events.filter fun event => decide (event.1 ≤ low)) origin before ∧
+      SailHistory cells (events.filter fun event => decide (low < event.1 ∧ event.1 ≤ low + 4)) before after ∧
       SailHistory cells (rowEvents 1 row).reverse before after ∧
       (∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded) ∧
       SailHistory cells (events.filter fun event => decide (low + 4 < event.1)) after finalState := by
@@ -90,10 +91,39 @@ theorem unrolled_full_ordinary_history
     intro a b both
     omega)
   have equal := List.Perm.eq_of_pairwise' target strict projected.symm
-  refine ⟨before, after, past, equal.symm ▸ current, ?_, future⟩
+  refine ⟨before, after, past, current, equal.symm ▸ current, ?_, future⟩
   intro port native
   have inMachine : (readToken row.assignment port, writeToken row.columns row.assignment port) ∈ pooledSteps trace :=
     List.mem_flatMap.mpr ⟨row, member, List.mem_map.mpr ⟨port, by simpa [ports] using native, rfl⟩⟩
   exact reads _ (List.mem_append.mpr (Or.inl (List.mem_append.mpr (Or.inl inMachine))))
+
+
+/-- The full ordinary window has the canonical native history and raw read bounds. -/
+theorem unrolled_full_ordinary_history
+    {trace : PooledTrace babyBearModulus} {workers : Delegation.MemoryData babyBearModulus}
+    {splitWorkers : Keccak.Split.Native.MemoryData babyBearModulus}
+    (accepted : UnrolledAcceptance trace workers splitWorkers.steps
+      (splitWorkers.rows.map (Keccak.Split.Native.Row.fulfillment splitWorkers.cached)))
+    (equations : Keccak.Split.Native.EquationsHold splitWorkers.cached splitWorkers.setup splitWorkers.rows)
+    (active : ∀ row ∈ splitWorkers.rows, row.assignment (row.columns splitWorkers.cached).execute = 1)
+    (initialClock : (timeOfPair trace.initial.timestamp).Bounded)
+    (initialAligned : (timeOfPair trace.initial.timestamp).value % 4 = 0)
+    (row : Trace.Row babyBearModulus PooledFamily) (member : row ∈ trace.rows)
+    (ordinary : ¬ (row.family = .addSub ∧ Delegation.Requests.Selected row.assignment))
+    {cells : List Cell} {events : List MemoryAccess} {origin finalState : Reference.RiscV.Sail.State}
+    (permutation : events.Perm ((unrolledFullMemoryData trace workers splitWorkers).steps.map transferEvent))
+    (ordered : events.Pairwise (fun a b => b.1 ≤ a.1))
+    (history : SailHistory cells events origin finalState)
+    (reads : ∀ edge ∈ (unrolledFullMemoryData trace workers splitWorkers).steps, edge.1.word.Bounded) :
+    let low := (decodeTimestamp row.assignment row.columns.initialTime).value
+    ∃ before after,
+      SailHistory cells (events.filter fun event => decide (event.1 ≤ low)) origin before ∧
+      SailHistory cells (rowEvents 1 row).reverse before after ∧
+      (∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded) ∧
+      SailHistory cells (events.filter fun event => decide (low + 4 < event.1)) after finalState := by
+  obtain ⟨before, after, past, _, native, ranges, future⟩ :=
+    unrolled_full_ordinary_context accepted equations active initialClock initialAligned row member ordinary
+      permutation ordered history reads
+  exact ⟨before, after, past, native, ranges, future⟩
 
 end Airbender.Compiler.MachineTargets.Proofs

@@ -1049,6 +1049,8 @@ import Airbender.Proofs.FullUnsigned.OrdinaryHistory
 import Airbender.Proofs.FullUnsigned.MulDivExecution
 import Airbender.Proofs.FullUnsigned.SubwordExecution
 import Airbender.Proofs.FullUnsigned.StreamCount
+import Airbender.Proofs.FullUnsigned.PCBounds
+import Airbender.Proofs.FullUnsigned.OrdinaryCycles
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 
@@ -14649,3 +14651,8 @@ import Airbender.Proofs.FullUnsigned.StreamCount
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_initial_count
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_terminal_count
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_caller_read_disabled
+
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_pc_bounds
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_ordinary_context
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_subword_execution_from_shared_history
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_ordinary_cycle
