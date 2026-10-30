@@ -113,6 +113,13 @@ All three physical source-to-table certificates remain open. They must decode
 the columns and match every physical row, including padding, to the canonical
 tables.
 
+The generic RLE decoder now has a kernel proof for every supported block.
+It preserves affine lengths and signed steps, dense values, and periodic
+repetitions and signed strides. Column and array rules preserve every entry
+and its order. The source-row adapter uses the exact retained column JSON.
+Its physical-row premise stays explicit. Bind these decoder rules to each
+captured column and prove physical row membership next.
+
 ## Finding status versus conditional proof coverage
 
 **An assumption can close a conditional proof obligation while the finding stays
