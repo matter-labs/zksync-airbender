@@ -344,7 +344,8 @@ fn unified_base_layer_transpiler_accepts_valid_proof() {
 #[test]
 fn unified_base_layer_guest_execution_is_measured_and_rejects_tampering() {
     use full_statement_verifier::host_utils::{
-        canonical_fsv_dir, load_fsv_exact, measure_fsv_execution, FsvExecutionFailure,
+        canonical_fsv_dir, fsv_stream_digest, load_fsv_exact, measure_fsv_execution,
+        FsvExecutionFailure,
     };
     use verifier_common::fsv_binaries::{FsvDescriptor, FsvProgram, SecurityLevel, SoundnessMode};
 
@@ -372,6 +373,7 @@ fn unified_base_layer_guest_execution_is_measured_and_rejects_tampering() {
     assert_eq!(record.output, expected);
     assert_eq!(record.digest, guest.digest());
     assert_eq!(record.stream_words, stream.len());
+    assert_eq!(record.stream_digest, fsv_stream_digest(&stream));
     assert!(record.cycles > 0);
     println!("unified base layer guest: {} cycles", record.cycles);
 
@@ -383,8 +385,11 @@ fn unified_base_layer_guest_execution_is_measured_and_rejects_tampering() {
     ] {
         let mut tampered = stream.clone();
         tampered[idx] ^= 0x5555_5555;
+        let tampered_digest = fsv_stream_digest(&tampered);
         let err =
             measure_fsv_execution(&guest, tampered).expect_err("a tampered stream must not return");
+        assert_eq!(err.stream_digest, tampered_digest);
+        assert_ne!(err.stream_digest, record.stream_digest);
         assert!(
             matches!(
                 err.failure,

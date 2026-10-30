@@ -9,7 +9,7 @@ pub use fsv::{
     VerifiedFsvProgram, FSV_DIGEST_RECIPE, FSV_MANIFEST_FILE,
 };
 pub use fsv_execution::{
-    append_fsv_ledger, fsv_ledger_row, fsv_stream, measure_fsv_blake_variants,
+    append_fsv_ledger, fsv_ledger_row, fsv_stream, fsv_stream_digest, measure_fsv_blake_variants,
     measure_fsv_execution, FsvExecutionError, FsvExecutionFailure, FsvExecutionRecord,
     FSV_EXECUTION_CYCLES_LIMIT,
 };

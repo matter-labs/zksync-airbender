@@ -19,6 +19,7 @@ use riscv_transpiler::vm::{
     DelegationsAndUnifiedCounters, RamWithRomRegion, SimpleTape, State, VM,
 };
 use setups::Setups;
+use sha3::{Digest, Keccak256};
 use std::fmt;
 use std::path::Path;
 use verifier_common::field::baby_bear::base::BabyBearField;
@@ -45,6 +46,8 @@ pub struct FsvExecutionRecord {
     pub output: [u32; 16],
     /// Length of the ND stream the guest was given.
     pub stream_words: usize,
+    /// [`fsv_stream_digest`] of that stream: which input was executed.
+    pub stream_digest: FsvDigest,
 }
 
 /// A guest execution that did not reach the program's exit loop.
@@ -53,7 +56,20 @@ pub struct FsvExecutionError {
     pub descriptor: FsvDescriptor,
     pub digest: FsvDigest,
     pub stream_words: usize,
+    pub stream_digest: FsvDigest,
     pub failure: FsvExecutionFailure,
+}
+
+/// Keccak256 of `le_u64(stream.len()) || stream words` (length in words, words
+/// little-endian): the identity of an ND stream in execution records and ledger rows.
+#[must_use]
+pub fn fsv_stream_digest(stream: &[u32]) -> FsvDigest {
+    let mut hasher = Keccak256::new();
+    hasher.update((stream.len() as u64).to_le_bytes());
+    for word in stream {
+        hasher.update(word.to_le_bytes());
+    }
+    FsvDigest(hasher.finalize().into())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -76,12 +92,13 @@ impl fmt::Display for FsvExecutionError {
             descriptor,
             digest,
             stream_words,
+            stream_digest,
             failure,
         } = self;
         write!(
             f,
             "full-statement verifier {descriptor} (digest {digest}) on a {stream_words}-word \
-             stream did not return: "
+             stream (digest {stream_digest}) did not return: "
         )?;
         match failure {
             FsvExecutionFailure::NoExitPoint => {
@@ -134,10 +151,12 @@ fn execute(
     cycles_limit: usize,
 ) -> Result<FsvExecutionRecord, FsvExecutionError> {
     let stream_words = stream.len();
+    let stream_digest = fsv_stream_digest(&stream);
     let fail = |failure| FsvExecutionError {
         descriptor,
         digest,
         stream_words,
+        stream_digest,
         failure,
     };
     let exit_pc = std::panic::catch_unwind(|| setups::program_setups::find_binary_exit_point(bin))
@@ -191,6 +210,7 @@ fn execute(
         cycles,
         output,
         stream_words,
+        stream_digest,
     })
 }
 
@@ -255,15 +275,25 @@ pub fn measure_fsv_blake_variants(
 }
 
 /// One execution-ledger row: the full descriptor, the pinned digest, success, cycles (when
-/// known), the stream length, and the returned words or the failure.
+/// known), the stream length and digest, and the returned words or the failure.
 #[must_use]
 pub fn fsv_ledger_row(
     label: &str,
     result: &Result<FsvExecutionRecord, FsvExecutionError>,
 ) -> serde_json::Value {
-    let (descriptor, digest, stream_words) = match result {
-        Ok(record) => (record.descriptor, record.digest, record.stream_words),
-        Err(error) => (error.descriptor, error.digest, error.stream_words),
+    let (descriptor, digest, stream_words, stream_digest) = match result {
+        Ok(record) => (
+            record.descriptor,
+            record.digest,
+            record.stream_words,
+            record.stream_digest,
+        ),
+        Err(error) => (
+            error.descriptor,
+            error.digest,
+            error.stream_words,
+            error.stream_digest,
+        ),
     };
     let [security, soundness_mode, program, profile, blake] = descriptor.tokens();
     let mut row = serde_json::json!({
@@ -276,6 +306,7 @@ pub fn fsv_ledger_row(
         "digest": digest.to_string(),
         "success": result.is_ok(),
         "stream_words": stream_words,
+        "stream_digest": stream_digest.to_string(),
     });
     let fields = row.as_object_mut().expect("a JSON object");
     match result {
@@ -355,12 +386,19 @@ mod tests {
     }
 
     #[test]
+    fn stream_digest_binds_length_and_words() {
+        assert_ne!(fsv_stream_digest(&[1, 2]), fsv_stream_digest(&[2, 1]));
+        assert_ne!(fsv_stream_digest(&[]), fsv_stream_digest(&[0]));
+    }
+
+    #[test]
     fn exit_loop_is_success_with_the_returned_words() {
         let record = run(EXIT_SEQUENCE, 1_000).unwrap();
         // s10 is 0, so the sixteen loads return the first sixteen words of the image.
         assert_eq!(record.output[..], EXIT_SEQUENCE[..16]);
         assert_eq!(record.cycles, EXIT_SEQUENCE.len() as u64);
         assert_eq!(record.stream_words, 3);
+        assert_eq!(record.stream_digest, fsv_stream_digest(&[7, 8, 9]));
     }
 
     #[test]
@@ -481,9 +519,14 @@ mod tests {
         assert_eq!(ok_row["success"], true);
         assert_eq!(ok_row["cycles"], EXIT_SEQUENCE.len() as u64);
         assert_eq!(ok_row["stream_words"], 3);
+        assert_eq!(
+            ok_row["stream_digest"],
+            fsv_stream_digest(&[7, 8, 9]).to_string()
+        );
         assert_eq!(ok_row["output"][0], format!("{:08x}", EXIT_SEQUENCE[0]));
         let err_row = fsv_ledger_row("err", &err);
         assert_eq!(err_row["success"], false);
+        assert_eq!(err_row["stream_digest"], ok_row["stream_digest"]);
         assert_eq!(err_row["cycles"], 1);
         assert!(err_row["failure"]
             .as_str()
