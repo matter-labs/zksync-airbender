@@ -143,11 +143,26 @@ cargo run --release -p cli -- verify \
   `pessimistic-conjecture`.
 - `run`: no proof, no mode.
 
-`ethproofs-soundcalc` proving is not enabled yet: the prover rejects it before
-reading inputs. The standalone L1 compression program
+Status: CPU proving in `ethproofs-soundcalc` is enabled; its end-to-end
+validation is still pending. The GPU backend rejects `ethproofs-soundcalc`
+before reading inputs, because it does not yet implement that mode's folding
+and OOD proof of work. The standalone L1 compression program
 (`cargo run --release -p program_prover --features l1 --bin l1_compression`)
 takes the same flag and rejects `ethproofs-soundcalc` before reading its input:
-the L1 feeder/wrap/EVM profile exists only in `pessimistic-conjecture`.
+the L1 feeder/wrap/EVM profile is deferred and exists only in
+`pessimistic-conjecture`.
+
+In `ethproofs-soundcalc`, recursion chooses between unrolled and unified layers
+from the measured cycle count of the selected verifier guest, not from the
+pessimistic census, and requires the guest's output to equal the native
+verifier's. Set `FSV_EXECUTION_LEDGER=<path>` to append one JSON line per such
+guest execution: unrolled cost probes (`batch-<id>-unrolled-<layers>`), bridge
+inputs (`batch-<id>-bridge`) and final rounds (`batch-<id>-unified-<round>`).
+Each row records the guest's descriptor, its pinned ROM digest, the input
+stream's digest and length, and the cycles and returned words or the failure.
+A row records the execution only: a cost probe below the switch threshold is
+not followed by a proof. `pessimistic-conjecture` uses the calibrated census and
+writes no rows.
 
 ```bash
 cargo run --release -p cli -- verify \
