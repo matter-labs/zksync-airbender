@@ -1048,6 +1048,7 @@ import Airbender.Proofs.Keccak.SplitNativeWriteRules
 import Airbender.Proofs.FullUnsigned.OrdinaryHistory
 import Airbender.Proofs.FullUnsigned.MulDivExecution
 import Airbender.Proofs.FullUnsigned.SubwordExecution
+import Airbender.Proofs.FullUnsigned.StreamCount
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 
@@ -14643,3 +14644,8 @@ import Airbender.Proofs.FullUnsigned.SubwordExecution
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_muldiv_execution
 
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_subword_execution
+
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_cycle_count
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_initial_count
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_terminal_count
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_caller_read_disabled
