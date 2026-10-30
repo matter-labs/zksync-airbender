@@ -1231,3 +1231,35 @@ the formal setup source bridge remain open. Design items 2 and 3 follow the
 machine targets. The packed-checker pilot stays unchanged. Full frontend
 validation, environment audit, baseline refresh, transitive replay and Linux
 qualification did not run.
+
+### Full unsigned native split input-observation obligation
+
+`history_unique_address_read` derives a cell's initial read when its address
+occurs once in the actual history. Other addresses may repeat. The native
+register proofs check that control and pointer registers each occur once in
+every split layout. Their initial observations need no lane-address premise.
+
+`native_call_addresses_distinct` uses these actual register reads and the
+public call arguments. It derives the original aligned lane layout from the
+native controller and pointer equations. The complete native write projection
+then supplies distinct addresses for every real port. Both cache modes pass.
+
+`native_call_input_observations` derives every remaining native read from the
+same initialized history. `native_call_executes_of_history` proves the original
+complete split call. It no longer takes input observations or address
+distinctness as premises. Public call arguments, canonical raw read bounds,
+initialized cells and exact event matching remain explicit. The complete
+retained fixed tables still need the formal JSON source bridge.
+
+All three new modules passed focused kernel checks. All nine new roots passed
+direct axiom checks. They use only the three allowed axioms. The explicit
+inventory now contains 13,290 roots. All 13,281 previous roots remain present.
+The final bounded group used 480 MiB of physical memory and left no owned
+process running. Resource limits stay unchanged.
+
+Full unsigned path execution must connect the extracted caller windows to
+these native calls and derive supported public arguments. Initialization
+integration and the formal setup source bridge remain open. Design items 2
+and 3 follow the machine targets. The packed-checker pilot stays unchanged.
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
