@@ -639,3 +639,20 @@ roots remain present. The final bounded group passed and left no owned process
 running. Five-input parity arithmetic, native parity call execution, theta/rho
 call execution, the fixed setup source bridge and full unsigned integration
 remain open. Full validation remains pending.
+
+### Native five-input parity lookup obligation
+
+The actual five-input XOR table now proves the exact nibble operation. It bounds
+all five inputs and the output. It preserves the zero field and native tag 64.
+The literal importer checks all 8,388,608 values in the eight physical columns.
+It stores shared literal nodes. The output uses sixteen nodes. Kernel proofs
+check all 256 output transitions and the actual key-column transitions. They
+derive the operation on every row. The proof adds no expected-result premise.
+
+Nineteen new roots passed focused kernel and axiom checks. They use only the
+three allowed axioms. The explicit inventory now contains 12,892 roots. All
+previous roots remain present. The last bounded group passed and left no owned
+process running. The packed-checker pilot stays unchanged. Native parity query
+binding and call execution, theta/rho call execution, the fixed setup source
+bridge and full unsigned integration remain open. Full validation remains
+pending.
