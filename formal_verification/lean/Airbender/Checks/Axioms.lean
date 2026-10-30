@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.SplitChiLaneOperation
 import Airbender.Proofs.Keccak.SplitChiNativeLookup
 import Airbender.Proofs.Keccak.SplitChiLookup
 import Airbender.Proofs.Keccak.SplitPermutation
@@ -14064,3 +14065,15 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Proofs.chi5_arithmetic_query_shape
 #print axioms Airbender.Keccak.Split.Native.Proofs.chi5_arithmetic_tag
 #print axioms Airbender.Keccak.Split.Native.Proofs.chi5_native_arithmetic_queries
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5LaneLimb
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5Nibble
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_lane_packing
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_nibble_values
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_value_of_nibbles
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_lane_limb_value
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5PackNibbles
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_four_nibbles
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_lane_limb_operation
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5LaneValue
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_lane_bound
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_native_lane_operation
