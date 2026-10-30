@@ -893,3 +893,31 @@ Canonical write bounds, complete theta/rho lane effects and Sail call execution
 remain open. The formal setup source bridge and full unsigned integration
 remain open. Design items 2 and 3 follow the machine targets. The packed-checker
 pilot stays unchanged. Full validation remains pending.
+
+### Native theta/rho complete lane-effect obligation
+
+Both native cache modes now prove the complete original theta/rho lane effect.
+The actual write limbs have canonical sixteen-bit values. All twenty write
+limbs pack the exact original byte rotation. The complete output lane equals
+the original state lane XOR the native D lane, followed by the original rho
+rotation. The native controller selects the original call and all seven
+physical slots. Both parity-input lanes stay unchanged.
+
+`theta_native_reference_schedule` gives the unchanged complete call reference.
+The proof keeps the initialized next-parity read bounds explicit. Native
+assertions derive all four top bits and carries. Exact native lookup membership
+derives every byte XOR and fragment. The proof adds no expected-result premise.
+
+All six new modules passed focused kernel checks. All 26 new roots passed
+direct axiom checks. They use only the three allowed axioms. The explicit
+inventory now contains 13,196 roots. All 13,170 previous roots remain present.
+The byte-rotation kernel check used 1,596 MiB of physical memory. The final
+native group used 476 MiB. Both checks left no owned process running. The proof
+groups the sixty-four rotations into eight declarations. Resource limits stay
+unchanged.
+
+Native theta/rho Sail call execution and full unsigned integration remain open.
+The combined history must supply the initialized read bounds. The formal setup
+source bridge remains open. Design items 2 and 3 follow the machine targets.
+The packed-checker pilot stays unchanged. Full frontend validation, environment
+audit, baseline refresh, transitive replay and Linux qualification did not run.

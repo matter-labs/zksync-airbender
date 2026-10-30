@@ -1006,6 +1006,12 @@ import Airbender.Proofs.GKRProtocol.DecoderQueryNative.WordMemoryCached
 import Airbender.Proofs.GKRProtocol.DecoderQueryNative.WordMemoryUncached
 import Tests.GKRDecoderSetup
 import Tests.KeccakKnownAnswer
+import Airbender.Proofs.Arithmetic.ByteLaneRotation
+import Airbender.Proofs.Arithmetic.ByteLanePacking
+import Airbender.Proofs.Keccak.SplitThetaOutputBytes
+import Airbender.Proofs.Keccak.SplitThetaOutputPacking
+import Airbender.Proofs.Keccak.SplitThetaLaneOperation
+import Airbender.Proofs.Keccak.SplitThetaReferenceEffect
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 
@@ -14458,3 +14464,30 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Proofs.thetaOutputLimbExpression
 #print axioms Airbender.Keccak.Split.Native.Proofs.theta_native_output_equation
 #print axioms Airbender.Keccak.Split.Native.Proofs.theta_native_selected_output
+
+#print axioms Airbender.Arithmetic.packByteLane
+#print axioms Airbender.Arithmetic.byteRotationSource
+#print axioms Airbender.Arithmetic.byteRotationPrevious
+#print axioms Airbender.Arithmetic.rotatedLaneByte
+#print axioms Airbender.Arithmetic.pack_byte_lane_bound
+#print axioms Airbender.Arithmetic.rotated_lane_byte_bound
+#print axioms Airbender.Arithmetic.rotate_left_of_bytes
+#print axioms Airbender.Arithmetic.pack_byte_pairs
+#print axioms Airbender.Arithmetic.pack_byte_lane_xor
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaXoredStateBytes
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_xored_state_byte_bound
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_output_byte_value
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_output_byte_bound
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_write_limb_value
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_write_limb_rotation
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaLaneValue
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_readonly_lane
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_state_lane_bytes
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_d_lane_bytes
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_xored_lane_value
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_write_lane_bytes
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_native_lane_operation
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_write_lane_bound
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaReferenceLanes
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_native_reference_result
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_native_reference_schedule
