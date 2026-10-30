@@ -1062,6 +1062,9 @@ import Airbender.Proofs.FullUnsigned.NativeComposition
 import Airbender.Proofs.FullUnsigned.NativeExecution
 import Airbender.Proofs.FullUnsigned.NativeROM
 import Airbender.Proofs.FullUnsigned.BootExecution
+import Airbender.Proofs.FullUnsigned.PrefixMemory
+import Airbender.Proofs.FullUnsigned.PrefixRequests
+import Airbender.Proofs.FullUnsigned.PrefixAcceptance
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 
@@ -14688,3 +14691,10 @@ import Airbender.Proofs.FullUnsigned.BootExecution
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_rom_unchanged
 
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_boot_execution
+
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolledFullPrefixTrace
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolledFullPrefixWorkers
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolledFullPrefixSplitWorkers
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_prefix_steps
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_prefix_requests
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_prefix_accepted
