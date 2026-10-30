@@ -1,3 +1,5 @@
+import Airbender.Proofs.FullUnsigned.TaggedSetupInterpretation
+import Airbender.Proofs.Keccak.SplitChiTagDomain
 import Airbender.Proofs.FullUnsigned.CapturedSetup
 import Tests.SetupSourceRLE
 import Tests.SetupSourceDecoding
@@ -15458,3 +15460,13 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Setup.SourceCaptureChi.columns
 #print axioms Airbender.Setup.SourceCaptureChiProofs.columns_decoded
 #print axioms Airbender.Setup.SourceCaptureChiProofs.trace_len_decoded
+
+#print axioms Airbender.Compiler.MachineTargets.GuardedSetupRows
+#print axioms Airbender.Keccak.Split.Native.Proofs.TaggedSetupRefinement
+#print axioms Airbender.Keccak.Split.Native.Proofs.equations_of_tagged_setup_refinement
+#print axioms Airbender.Keccak.Split.Native.Proofs.control_of_fixed_tagged_setup_refinement
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_reference_row_tag
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_reference_tag
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_reference_excludes_zero
+#print axioms Airbender.Compiler.MachineTargets.Proofs.fixed_setup_lookup_of_guarded_source_rows
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_soundness_of_guarded_source_rows

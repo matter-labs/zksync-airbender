@@ -1989,3 +1989,28 @@ stays unchanged. Design items 2 and 3 still follow the machine targets.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned chi5 query transport obligation
+
+The earlier full physical chi5 containment helper is too strong. The canonical
+table has 1,048,697 real rows with tags 65 and 66. The physical capture also
+has zero padding. The kernel proves that the canonical table excludes the
+all-zero row. Keep the old conditional helper for compatibility. Use guarded
+source membership for the actual query tags to close the original target.
+
+Guarded transport now passes kernel checks. It preserves every constraint,
+assertion and timestamp lookup in both cache modes. The adapter returns the
+original `UnrolledFullUnsigned` proposition. The target, canonical table and
+original setup premises stay unchanged. This is a proof interface correction.
+It does not establish a native circuit defect.
+
+The focused group passed six module checks. Nine new roots passed direct
+axiom checks. They use only the three allowed axioms. The inventory now has
+14,056 roots. It retains all 14,047 previous roots. The three source-row
+membership certificates remain open. Chi5 now uses its actual query tags.
+Design items 2 and 3 still follow the machine targets. The packed-checker
+pilot stays unchanged.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.

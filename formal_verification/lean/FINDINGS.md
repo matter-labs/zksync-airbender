@@ -127,12 +127,23 @@ bind the trace lengths. Large arrays share a checked scalar dictionary.
 Their proof preserves every entry and its order. It does not normalize a
 large literal JSON array in the elaborator.
 
-The remaining row predicates are `SplitParityPhysicalRows`,
-`SplitThetaPhysicalRows` and `SplitChiPhysicalRows`. They name the original
-canonical tables. Each predicate includes physical padding. The conditional
-adapters supply the captured-source certificates from these predicates.
-The original target setup-source references stay unchanged. Bind the equal
-byte representation at that interface when the row certificates are complete.
+The parity and theta/rho row certificates remain open. They must include
+physical padding. Their canonical tables include that padding.
+
+The earlier `SplitChiPhysicalRows` helper is too strong. The canonical chi5
+table has 1,048,697 real rows. Its tags are 65 and 66. The physical source has
+4,194,304 rows and includes zero padding. The kernel proves that the canonical
+table excludes the all-zero row. Thus full physical containment cannot hold
+for chi5. The old conditional helper remains available for compatibility.
+It is not the route to the full target.
+
+The actual chi5 queries use only tags 65 and 66. Guarded source transport now
+uses these native tags. It preserves all constraints, assertions and timestamp
+lookups in both cache modes. This proof interface correction does not show a
+circuit defect. It does not change the target, canonical table or original
+setup premise. Prove canonical membership for these queried source rows next.
+Bind the equal byte representation at the original setup-source interface
+when the row certificates are complete.
 
 ## Finding status versus conditional proof coverage
 
