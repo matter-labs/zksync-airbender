@@ -573,3 +573,19 @@ process running. An explicit vector-index bound avoids the earlier memory-cap
 failure. Resource limits stay unchanged. The fixed setup source bridge, other
 split arithmetic workers and the full unsigned target remain open. Full
 validation remains pending.
+
+### Native chi5 call-ABI obligation
+
+A successful reference control read now identifies the unique native blessed
+call. The proof covers all 361 control words. Initialized pointer words recover
+the exact supported reference pointer. Pointer alignment excludes low-limb
+carry and word overflow for every state lane. Each actual RAM port then has
+the original reference cell address. Both native lane halves have the exact
+reference thirty-two-bit values.
+
+Twelve new roots passed focused kernel and axiom checks. They use only the
+three allowed axioms. The explicit inventory now contains 12,854 roots. All
+previous roots remain present. The last bounded group passed and left no owned
+process running. Sail write execution and the combined native history remain
+open. The fixed setup source bridge and the full unsigned target remain open.
+Full validation remains pending.

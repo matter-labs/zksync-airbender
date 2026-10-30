@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.SplitChiLaneHalves
 import Airbender.Proofs.Keccak.SplitChiReferenceEffect
 import Airbender.Proofs.Keccak.SplitChiLaneOperation
 import Airbender.Proofs.Keccak.SplitChiNativeLookup
@@ -14102,3 +14103,15 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Proofs.chi5_ports_enumeration
 #print axioms Airbender.Keccak.Split.Native.Proofs.chi5ReferenceLanes
 #print axioms Airbender.Keccak.Split.Native.Proofs.chi5_native_reference_result
+#print axioms Airbender.Keccak.Split.Proofs.indexOfControl
+#print axioms Airbender.Keccak.Split.Proofs.index_of_control
+#print axioms Airbender.Keccak.Split.Proofs.control_injective
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_control_port_address
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_call_control_binding
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_pointer_word
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_call_pointer_binding
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_pointer_lane_room
+#print axioms Airbender.Keccak.Split.Native.Proofs.split_state_slot_bound
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_call_lane_address
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_four_limb_halves
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_lane_port_half
