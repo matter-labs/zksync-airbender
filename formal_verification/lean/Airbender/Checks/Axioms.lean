@@ -1,3 +1,4 @@
+import Airbender.Proofs.FullUnsigned.ThetaSourceXorMembership
 import Airbender.Proofs.FullUnsigned.ThetaSourceControlSlots
 import Airbender.Proofs.FullUnsigned.ChiSourceMembership
 import Airbender.Proofs.FullUnsigned.ChiSourceLowOutput
@@ -15737,3 +15738,16 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Setup.ThetaControlSuffix.Column8.matches
 #print axioms Airbender.Setup.SourceCaptureThetaProofs.source_control_slot_rows
 #print axioms Airbender.Compiler.MachineTargets.Proofs.theta_source_control_slot_member
+
+#print axioms Airbender.Setup.Proofs.getFromBlocks_first
+#print axioms Airbender.Setup.Proofs.checkBlockRows_append
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_xor_high_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_xor_low_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_xor_padding_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_xor_tag_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_xor_keys_match
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_xor_output_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_xor_output_match
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_xor_columns_match
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_xor_rows
+#print axioms Airbender.Compiler.MachineTargets.Proofs.theta_source_xor_member
