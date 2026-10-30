@@ -18,9 +18,9 @@
 //! * the proximity regime is chosen PER WHIR ITERATION (the theorem carries a
 //!   separate proximity parameter `δ_i` and list size `ℓ_i` per iteration):
 //!   [`ProximityRegime::UniqueDecoding`] for the base round — at rate 1/2 the
-//!   Johnson-bound batching term of `N − 1` columns is 73–90 bits for any
-//!   multiplicity and cannot be lifted within any sane batching PoW, and the
-//!   Johnson radius at rate 1/2 is below the unique-decoding one anyway —
+//!   Johnson-bound powers-batching term for the committed columns does not
+//!   reach the target with the selected batching PoW; its query term alone
+//!   does not establish the base round's bound —
 //!   and [`ProximityRegime::JohnsonBound`] with an explicit multiplicity `m`
 //!   afterwards, where a query is worth 1.9–6.8 bits instead of ≤ 1;
 //! * the price of the Johnson rounds is a proof of work before every
@@ -40,13 +40,19 @@
 //!   emulated base fold term is 1 bit conservative, and the batching term is
 //!   recomputed on the real base code.
 //!
-//! What this mode changes against the pessimistic ladder, and why it cannot
-//! keep the base round: under both accepted regimes a query into the rate-1/2
-//! base oracle is worth at most `−log2(1 − 1/4) ≈ 0.415` bits, so today's 89
-//! queries at 26 PoW bits certify 62 bits whatever the later rounds do; 100
-//! bits need `ceil((100 − 28) / 0.415) = 174` base queries at 28 PoW bits
-//! (base LDE factor and round-0 fold unchanged). Every later round keeps its
-//! fold; the second oracle keeps its LDE factor, the later ones move to a
+//! The base round uses unique decoding. At rate 1/2 its query contribution is
+//! `−log2(1 − 1/4) ≈ 0.415` bits per query. With soundcalc pinned at `2af5e7d`,
+//! `soundcalc/assess_current_configs.py` reports 62 bits for the pessimistic
+//! base's query-plus-PoW term (89 queries, 26 PoW bits). Under Johnson-bound
+//! accounting with explicit multiplicity `m = 50`, the same pin's
+//! `soundcalc/late_round_rebalance.py` reports 69 bits for the base query/shift
+//! term including that PoW; its separate powers-batching term remains below
+//! 100 bits. These are WHIR PCS component bounds, not whole-system or GKR
+//! soundness claims, and the 62-bit figure applies specifically to unique
+//! decoding. The selected unique-decoding base needs
+//! `ceil((100 − 28) / 0.415) = 174` queries at 28 PoW bits for its 100-bit query
+//! term (base LDE factor and round-0 fold unchanged). Every later round keeps
+//! its fold; the second oracle keeps its LDE factor, the later ones move to a
 //! better rate at the cost of a few queries.
 //!
 //! Each [`EthproofsSoundcalcEntry`] is certified for a CEILING on the number

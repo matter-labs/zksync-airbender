@@ -64,8 +64,18 @@ per round).
 
 ## Rebalancing the pessimistic ladders' late rounds (`late_round_rebalance.py`)
 
-Under the Johnson bound with a per-oracle multiplicity, the pessimistic ladders' base
-round (rate 1/2, 89 queries, 26 bits of PoW) is worth 69 bits, but their last oracles
+With soundcalc pinned at [`2af5e7d`](https://github.com/ethereum/soundcalc/tree/2af5e7dfc01e4aef1bc0e544a3b75c1940b1dded),
+`late_round_rebalance.py` selects Johnson-bound multiplicity `m = 50` for the
+pessimistic base round (rate 1/2, 89 queries, 26 bits of query PoW). Its printed
+`queries 69` is the base query/shift contribution including that PoW; folding
+and powers batching are separate terms, and the batching term is below the
+100-bit target. Under unique decoding, `assess_current_configs.py` at the same
+pin reports 62 bits for the base query-plus-PoW term: each query contributes
+`-log2(1 - 1/4) ≈ 0.415` bits. Both figures describe WHIR PCS components, not
+whole-system or GKR soundness. The different regime and multiplicity explain
+the different query bounds.
+
+Under the driver's per-oracle Johnson-bound choices, the last oracles
 (rate 2^-19 on 2^24..2^27 domains) fall to 60-68 bits: the fold term grows with the
 domain over rate^1.5 and the list size, faster than the ~log2(1/rate)/2 bits a query
 buys there. The driver keeps the base round, the folds and the query PoW, and for every
