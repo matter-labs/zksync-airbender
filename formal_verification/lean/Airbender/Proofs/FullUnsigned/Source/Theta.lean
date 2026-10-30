@@ -1,0 +1,4 @@
+import Airbender.Data.Setup.Source.Theta
+import Airbender.Proofs.FullUnsigned.SetupSourceCertificate
+
+certify_source_bank Airbender.Setup.SourceCaptureThetaProofs using Airbender.Setup.SourceCaptureTheta
