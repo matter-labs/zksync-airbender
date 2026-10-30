@@ -163,19 +163,18 @@ fn build_proof_layout_inputs_inner(
     // ------------------------------------------------------------------
     // whir
     // ------------------------------------------------------------------
-    // The GPU prover implements the plain schedule shape: one OOD sample per
-    // intermediate oracle, no OOD / folding-challenge PoW.
+    // The GPU prover implements one OOD sample per intermediate oracle and
+    // internal-round OOD / folding-challenge PoW, but no base-round folding
+    // PoW.
     for round in whir_schedule.internal_rounds.iter() {
         assert_eq!(
             round.num_ood_samples, 1,
-            "GPU prover: one OOD sample per oracle"
+            "GPU prover: exactly one OOD sample per oracle is implemented"
         );
-        assert_eq!(round.ood_pow_bits, 0, "GPU prover: no OOD PoW");
-        assert_eq!(round.folding_pow_bits, 0, "GPU prover: no folding PoW");
     }
     assert_eq!(
         whir_schedule.base_round.folding_pow_bits, 0,
-        "GPU prover: no folding PoW"
+        "GPU prover: base-round folding PoW is not implemented"
     );
     let whir_fold_steps = whir_schedule.fold_steps();
     let whir_queries = whir_schedule.queries_per_round();

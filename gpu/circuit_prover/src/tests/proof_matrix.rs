@@ -655,6 +655,14 @@ pub(super) fn replay_bigint_delegation_buffer() -> (Vec<BigintDelegationWitness>
 }
 
 pub(super) fn prepare_bigint_proof_fixture() -> BasicUnrolledProofFixture {
+    prepare_bigint_proof_fixture_for_config(delegation_prover_config(
+        DelegationCircuitType::BigIntWithControl,
+    ))
+}
+
+pub(super) fn prepare_bigint_proof_fixture_for_config(
+    config: ProverConfig,
+) -> BasicUnrolledProofFixture {
     let (buffer, table_driver) = replay_bigint_delegation_buffer();
     let oracle = BigintDelegationOracle {
         cycle_data: &buffer,
@@ -664,7 +672,7 @@ pub(super) fn prepare_bigint_proof_fixture() -> BasicUnrolledProofFixture {
     // the buffer only after building the CPU reference (which is what uses the
     // oracle), so clone the buffer for the tracing host.
     let buffer_for_host = buffer.clone();
-    let fixture = prepare_delegation_proof_fixture(
+    let fixture = prepare_delegation_proof_fixture_for_config(
         DelegationCircuitType::BigIntWithControl,
         BIGINT_DELEGATION_LAYOUT_PATH,
         &table_driver,
@@ -672,6 +680,7 @@ pub(super) fn prepare_bigint_proof_fixture() -> BasicUnrolledProofFixture {
         &oracle,
         bigint_with_extended_control_mod::witness_eval_fn,
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl).get_domain_size(),
+        config,
     );
     drop(buffer);
     fixture
@@ -1375,5 +1384,139 @@ pub(super) mod keccak_f1600 {
         KECCAK_THETA_RHO_X11_NUM_WRITES,
         KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
         NUM_KECCAK_F1600_THETA_RHO_CALLS
+    );
+}
+
+// ---------------------------------------------------------------------------
+// EthproofsSoundnessCalc mode: internal-round folding-challenge and OOD-draw
+// PoW. The CPU reference and the GPU proof share the mode's config.
+// ---------------------------------------------------------------------------
+
+/// Every circuit's committed ethproofs-soundcalc config passes the GPU
+/// recursive-WHIR admission (fold ladder, per-oracle commitment shape, cap,
+/// twiddle domain) with its folding and OOD PoW, and keeps the remaining
+/// capability limits (no base-round folding PoW, one OOD sample per oracle).
+#[test]
+fn cpu_ethproofs_schedules_pass_recursive_whir_admission() {
+    const CIRCUITS: [&str; 15] = [
+        "bigint_with_control",
+        "blake2_g_function",
+        "blake2_with_compression",
+        "keccak_chi5",
+        "keccak_column_parity",
+        "keccak_special5",
+        "keccak_theta_rho",
+        "unrolled_circuits/add_sub_lui_auipc_mop",
+        "unrolled_circuits/inits_and_teardowns",
+        "unrolled_circuits/jump_branch_slt",
+        "unrolled_circuits/load_store_subword_only",
+        "unrolled_circuits/load_store_word_only",
+        "unrolled_circuits/mul_div_unsigned",
+        "unrolled_circuits/shift_binary",
+        "unrolled_circuits/unified_reduced_machine",
+    ];
+    for circuit in CIRCUITS {
+        let config: ProverConfig = deserialize_json_for_test(&format!(
+            "circuit_defs/{circuit}/generated/prover_config_sec_100_ethproofs_soundcalc.json"
+        ));
+        let schedule = &config.whir_schedule;
+        assert_eq!(schedule.base_round.folding_pow_bits, 0, "{circuit}");
+        assert!(
+            schedule
+                .internal_rounds
+                .iter()
+                .all(|round| round.num_ood_samples == 1 && round.folding_pow_bits > 0),
+            "{circuit}"
+        );
+        assert!(schedule.internal_rounds[0].ood_pow_bits > 0, "{circuit}");
+        gpu_whir::validate_baby_bear_recursive_schedule(
+            config.whir_message_size_log2() as u32,
+            schedule,
+            27,
+        );
+    }
+}
+
+fn ethproofs_config(circuit_type: CircuitType, layout_path: &str) -> ProverConfig {
+    let compiled_circuit: GKRCircuitArtifact<BF> = deserialize_json_for_test(layout_path);
+    prover_config_in_mode(
+        circuit_type,
+        &compiled_circuit,
+        SecurityLevel::Sec100,
+        circuit_common::SoundnessMode::EthproofsSoundnessCalc,
+    )
+}
+
+/// GPU proof == CPU reference under a config that gates WHIR folding
+/// challenges and OOD draws, and the reference really carries those nonces.
+/// With `AB_GPU_PROOF_EXPORT_DIR` set, the GPU proof is written there as
+/// `<verifier_name>_ethproofs_soundcalc_gpu_proof.json` for the generated
+/// verifier's acceptance and tampered-nonce test (`verifier/tests/gpu_proofs.rs`).
+fn run_whir_pow_proof_parity(fixture: &BasicUnrolledProofFixture, verifier_name: &str) {
+    let schedule = &fixture.base.prover_config.whir_schedule;
+    let whir = &fixture.expected_cpu_proof.whir_proof;
+    assert_eq!(schedule.base_round.folding_pow_bits, 0);
+    assert!(schedule.internal_rounds.iter().any(|r| r.ood_pow_bits > 0));
+    for (oracle, round) in whir
+        .intermediate_whir_oracles
+        .iter()
+        .zip(&schedule.internal_rounds)
+    {
+        assert!(round.folding_pow_bits > 0);
+        assert_eq!(oracle.folding_pow_nonces.len(), round.folding_log2);
+        assert_eq!(oracle.ood_pow_nonce.is_some(), round.ood_pow_bits > 0);
+    }
+    let (gpu_proof, _ms) = fixture.schedule_prove().unwrap().finish().unwrap();
+    assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
+    if let Some(dir) = std::env::var_os("AB_GPU_PROOF_EXPORT_DIR") {
+        let path = std::path::Path::new(&dir).join(format!(
+            "{verifier_name}_ethproofs_soundcalc_gpu_proof.json"
+        ));
+        serde_json::to_writer(std::fs::File::create(&path).unwrap(), &gpu_proof).unwrap();
+        eprintln!("exported GPU proof to {}", path.display());
+    }
+}
+
+#[test]
+#[ignore]
+fn run_bigint_ethproofs_proof_parity_test() {
+    let circuit_type = CircuitType::Delegation(DelegationCircuitType::BigIntWithControl);
+    let config = ethproofs_config(circuit_type, BIGINT_DELEGATION_LAYOUT_PATH);
+    run_whir_pow_proof_parity(
+        &prepare_bigint_proof_fixture_for_config(config),
+        "bigint_with_extended_control",
+    );
+}
+
+#[test]
+#[ignore]
+fn run_blake2_with_compression_ethproofs_proof_parity_test() {
+    let circuit_type = CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression);
+    let config = ethproofs_config(circuit_type, BLAKE2_WITH_COMPRESSION_LAYOUT_PATH);
+    run_whir_pow_proof_parity(
+        &prepare_blake2_with_compression_proof_fixture_for_config(config),
+        "blake2_with_extended_control",
+    );
+}
+
+#[test]
+#[ignore]
+fn run_add_sub_ethproofs_proof_parity_test() {
+    run_whir_pow_proof_parity(
+        &prepare_basic_unrolled_proof_fixture_in_mode(
+            circuit_common::SoundnessMode::EthproofsSoundnessCalc,
+        ),
+        "add_sub_lui_auipc_mop",
+    );
+}
+
+#[test]
+#[ignore]
+fn run_unified_ethproofs_proof_parity_test() {
+    run_whir_pow_proof_parity(
+        &prepare_unified_proof_fixture_in_mode(
+            circuit_common::SoundnessMode::EthproofsSoundnessCalc,
+        ),
+        "unified_reduced_machine",
     );
 }

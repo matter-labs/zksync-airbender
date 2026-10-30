@@ -133,23 +133,37 @@ fn cpu_physical_proof_admission_checks_full_schedule_and_policy() {
         validate_base_proof_geometry_policy(&geometry, policy, 4);
         validate_baby_bear_base_proof_policy(&geometry, policy, 27);
         gpu_whir::validate_baby_bear_recursive_schedule((n + k) as u32, &config.whir_schedule, 27);
-        for case in 0..4 {
+        for case in 0..2 {
             let mut bad = config.whir_schedule.clone();
-            match case {
-                0 => bad.base_round.folding_pow_bits = 1,
-                1 => bad.internal_rounds[0].num_ood_samples = 2,
-                2 => bad.internal_rounds[0].ood_pow_bits = 1,
-                _ => bad.internal_rounds[0].folding_pow_bits = 1,
-            }
-            assert!(
-                std::panic::catch_unwind(|| gpu_whir::validate_baby_bear_recursive_schedule(
-                    (n + k) as u32,
-                    &bad,
-                    27,
-                ))
-                .is_err()
-            );
+            let expected = match case {
+                0 => {
+                    bad.base_round.folding_pow_bits = 1;
+                    "base-round folding PoW is not implemented"
+                }
+                _ => {
+                    bad.internal_rounds[0].num_ood_samples = 2;
+                    "exactly one OOD sample per oracle"
+                }
+            };
+            let error = std::panic::catch_unwind(|| {
+                gpu_whir::validate_baby_bear_recursive_schedule((n + k) as u32, &bad, 27)
+            })
+            .expect_err(expected);
+            let message = error
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| error.downcast_ref::<&str>().copied())
+                .unwrap();
+            assert!(message.contains(expected), "{message}");
         }
+        // Internal-round folding-challenge and OOD-draw PoW are implemented;
+        // CPU/GPU parity for them is covered by
+        // `tests::virtual_packing::virtual_whir_k{0,2}_ethproofs_pow_cpu_parity` and the
+        // ethproofs-mode proof-parity tests in `tests::proof_matrix`.
+        let mut gated = config.whir_schedule.clone();
+        gated.internal_rounds[0].ood_pow_bits = 1;
+        gated.internal_rounds[0].folding_pow_bits = 1;
+        gpu_whir::validate_baby_bear_recursive_schedule((n + k) as u32, &gated, 27);
         let nondefault = ProofMemoryPolicy {
             setup: memory_policy::OpeningStrategy::PerCoset,
             ..policy

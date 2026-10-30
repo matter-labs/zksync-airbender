@@ -134,6 +134,32 @@ pub(super) fn delegation_prover_config(circuit_type: DelegationCircuitType) -> P
         .unwrap()
 }
 
+/// `circuit_type`'s prover config under `mode` at `level`. The default mode is
+/// the circuit's own config; another mode is its geometry's
+/// [`circuit_common::CircuitGeometry::prover_config`] (what the circuits'
+/// `prover_config_in_mode` computes) for `compiled_circuit`, with the trace
+/// length and base packing of the default-mode config.
+pub(super) fn prover_config_in_mode(
+    circuit_type: CircuitType,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    level: SecurityLevel,
+    mode: circuit_common::SoundnessMode,
+) -> ProverConfig {
+    let default = crate::config::prover_config(circuit_type, level).unwrap();
+    if mode == circuit_common::SoundnessMode::DEFAULT {
+        return default;
+    }
+    let base_round = &default.whir_schedule.base_round;
+    let geometry = circuit_common::CircuitGeometry {
+        trace_len_log2: default.trace_len_log2 as u32,
+        base_packing: circuit_common::BasePacking {
+            physical_packing_log2: base_round.physical_packing_log2,
+            virtual_packing: base_round.is_virtual_packing(),
+        },
+    };
+    geometry.prover_config(compiled_circuit, level, mode)
+}
+
 pub(super) fn test_external_challenges() -> GKRExternalChallenges<BF, E4> {
     let memory_argument_alpha =
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);

@@ -28,6 +28,30 @@ fn config(k: usize) -> ProverConfig {
     .prover_config(SecurityLevel::Sec100)
 }
 
+/// The certified ethproofs-soundcalc config of `config(k)`'s circuit, as
+/// committed next to its layout. Its internal rounds gate the folding
+/// challenges and OOD draws behind PoW.
+fn ethproofs_config(k: usize) -> ProverConfig {
+    let json = if k == 0 {
+        include_str!(
+            "../../../../circuit_defs/bigint_with_control/generated/prover_config_sec_100_ethproofs_soundcalc.json"
+        )
+    } else {
+        include_str!(
+            "../../../../circuit_defs/blake2_with_compression/generated/prover_config_sec_100_ethproofs_soundcalc.json"
+        )
+    };
+    let ethproofs: ProverConfig = serde_json::from_str(json).unwrap();
+    assert_eq!(ethproofs.trace_len_log2, config(k).trace_len_log2);
+    assert!(ethproofs
+        .whir_schedule
+        .internal_rounds
+        .iter()
+        .all(|round| round.folding_pow_bits > 0));
+    assert!(ethproofs.whir_schedule.internal_rounds[0].ood_pow_bits > 0);
+    ethproofs
+}
+
 fn layout(config: &ProverConfig, geometry: BaseCommitmentGeometry) -> ProofLayout {
     let schedule = &config.whir_schedule;
     let fold_steps = schedule.fold_steps();
@@ -141,12 +165,9 @@ fn cpu_virtual_slab_schema_and_claim_aliases() {
     }
 }
 
-fn standalone(k: usize) {
-    let mut config = config(k);
-    if k == 0 {
-        config.whir_schedule.base_round.batching_pow_bits = Some(13);
-    }
-    standalone_for_config(&config, 64);
+fn standalone(k: usize, config: &ProverConfig) {
+    assert_eq!(config.pack_log2(), k);
+    standalone_for_config(config, 64);
 }
 
 fn standalone_for_config(config: &ProverConfig, first_leaf_values: usize) {
@@ -358,6 +379,18 @@ fn standalone_for_config(config: &ProverConfig, first_leaf_values: usize) {
             config.whir_schedule.queries_per_round(),
             config.whir_schedule.intermediate_lde_factors(),
             config.whir_schedule.queries_pow_bits_per_round(),
+            &config
+                .whir_schedule
+                .internal_rounds
+                .iter()
+                .map(|round| round.folding_pow_bits)
+                .collect::<Vec<_>>(),
+            &config
+                .whir_schedule
+                .internal_rounds
+                .iter()
+                .map(|round| round.ood_pow_bits)
+                .collect::<Vec<_>>(),
             config.cap_size,
             message_log_u32,
             true,
@@ -403,6 +436,21 @@ fn standalone_for_config(config: &ProverConfig, first_leaf_values: usize) {
     );
     assert!(gpu.base_sumcheck_polys.is_empty());
     assert!(gpu.base_folding_pow_nonces.is_empty());
+    // The gated draws really ran: one folding nonce per step of a gated round,
+    // an OOD nonce exactly for gated OOD draws.
+    for (oracle, round) in gpu
+        .intermediate_whir_oracles
+        .iter()
+        .zip(&config.whir_schedule.internal_rounds)
+    {
+        let gated_steps = if round.folding_pow_bits > 0 {
+            round.folding_log2
+        } else {
+            0
+        };
+        assert_eq!(oracle.folding_pow_nonces.len(), gated_steps);
+        assert_eq!(oracle.ood_pow_nonce.is_some(), round.ood_pow_bits > 0);
+    }
     assert_eq!(
         gpu.intermediate_whir_oracles[0].queries[0]
             .leaf_values_concatenated
@@ -416,13 +464,27 @@ fn standalone_for_config(config: &ProverConfig, first_leaf_values: usize) {
 #[test]
 #[ignore = "full-domain zero-fold protocol with empty roles and batching override"]
 fn virtual_whir_k0_empty_roles_cpu_parity() {
-    standalone(0);
+    let mut config = config(0);
+    config.whir_schedule.base_round.batching_pow_bits = Some(13);
+    standalone(0, &config);
 }
 
 #[test]
 #[ignore = "full-domain physical plus virtual zero-fold protocol"]
 fn virtual_whir_k2_tail_groups_cpu_parity() {
-    standalone(2);
+    standalone(2, &config(2));
+}
+
+#[test]
+#[ignore = "full-domain zero-fold protocol under the certified ethproofs schedule (folding and OOD PoW)"]
+fn virtual_whir_k0_ethproofs_pow_cpu_parity() {
+    standalone(0, &ethproofs_config(0));
+}
+
+#[test]
+#[ignore = "full-domain physical plus virtual zero-fold protocol under the certified ethproofs schedule (folding and OOD PoW)"]
+fn virtual_whir_k2_ethproofs_pow_cpu_parity() {
+    standalone(2, &ethproofs_config(2));
 }
 
 fn bounded_virtual_config() -> ProverConfig {

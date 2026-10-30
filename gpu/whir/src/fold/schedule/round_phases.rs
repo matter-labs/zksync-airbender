@@ -1,5 +1,6 @@
 use super::super::*;
 
+use crate::pow::schedule_draw_e4_challenges_with_pow;
 use gpu_hash::blake2s::{transcript_commit, transcript_squeeze_e4, transcript_squeeze_fresh_e4};
 use gpu_ops::powers::get_powers_by_ref;
 use gpu_ops::squaring::squaring_sequence_e4;
@@ -64,10 +65,14 @@ pub(super) fn schedule_commit_next_oracle_phase(
 /// device-resident OOD point so the caller's
 /// delinearization phase can read it without a host round-trip.
 ///
+/// With `ood_pow_bits > 0` the point is drawn under PoW and the nonce lands in
+/// the slab's OOD-PoW slot for `oracle_idx`; otherwise it is a plain draw.
+///
 /// Range tracking is the caller's responsibility.
 pub(super) fn schedule_ood_sample_phase(
     state: &mut GpuWhirState,
     oracle_idx: usize,
+    ood_pow_bits: u32,
     proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
     device_seed: &mut DeviceSlice<u32>,
@@ -76,7 +81,32 @@ pub(super) fn schedule_ood_sample_phase(
 ) -> CudaResult<DeviceAllocation<E4>> {
     let mut ood_point_device: DeviceAllocation<E4> =
         context.alloc(1, AllocationPlacement::BestFit)?;
-    transcript_squeeze_e4(device_seed, &mut ood_point_device, stream)?;
+    if ood_pow_bits > 0 {
+        // SAFETY: `ProofLayout` computes a live, non-overlapping mutable
+        // region for the OOD-PoW nonce array inside the slab allocation.
+        let (nonces_ptr, nonces_len) =
+            unsafe { proof_layout.whir_ood_pow_nonces_device_mut(proof_slab.as_ptr() as *mut u8) };
+        assert!(
+            oracle_idx < nonces_len,
+            "oracle_idx {oracle_idx} out of slab ood_pow_nonces range (len {nonces_len})",
+        );
+        // SAFETY: `nonces_ptr.add(oracle_idx)` is an 8-byte-aligned, live,
+        // disjoint single-`u64` slot inside the pool-backed `proof_slab`. The
+        // PoW search writes it and the nonce commit reads it, both
+        // stream-ordered on `exec_stream`.
+        let nonce_slab_dst = unsafe {
+            era_cudart::slice::DeviceVariable::from_raw_parts_mut(nonces_ptr.add(oracle_idx))
+        };
+        schedule_draw_e4_challenges_with_pow(
+            device_seed,
+            &mut ood_point_device,
+            ood_pow_bits,
+            nonce_slab_dst,
+            context,
+        )?;
+    } else {
+        transcript_squeeze_e4(device_seed, &mut ood_point_device, stream)?;
+    }
     // SAFETY: `ProofLayout` computes a live, non-overlapping mutable region for
     // the OOD-sample array inside the slab allocation.
     let (dst_ptr, dst_len) =

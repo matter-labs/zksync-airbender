@@ -106,6 +106,16 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
         };
         let (final_device_seed_mut, _claim_point) =
             backward_scheduled.final_device_seed_and_claim_point_mut();
+        let folding_pow_bits: Vec<u32> = whir_schedule
+            .internal_rounds
+            .iter()
+            .map(|round| round.folding_pow_bits)
+            .collect();
+        let ood_pow_bits: Vec<u32> = whir_schedule
+            .internal_rounds
+            .iter()
+            .map(|round| round.ood_pow_bits)
+            .collect();
         schedule_gpu_whir_fold_with_sources(
             &mut stage1_output.memory_trace_holder,
             &mut stage1_output.witness_trace_holder,
@@ -118,6 +128,8 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
             whir_schedule.queries_per_round(),
             whir_schedule.intermediate_lde_factors(),
             whir_schedule.queries_pow_bits_per_round(),
+            &folding_pow_bits,
+            &ood_pow_bits,
             whir_schedule.cap_size,
             u32::try_from(base_geometry.message_size_log2()).expect("message log2 exceeds u32"),
             true, // use_hypercube_evals_for_batching

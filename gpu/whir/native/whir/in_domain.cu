@@ -128,6 +128,38 @@ EXTERN __launch_bounds__(WHIR_IN_DOMAIN_BLOCK_THREADS) __global__
     fold_term(leaves + static_cast<size_t>(t) * leaf_stride, leaf_width, weights[t], points[t], exponents[t], alpha);
 }
 
+// The fused kernel above split around the challenge for a PoW-gated folding
+// draw: correct the reductions and commit the round polynomial here, draw the
+// challenge on the stream, then fold the terms with it below.
+EXTERN __launch_bounds__(WHIR_IN_DOMAIN_BLOCK_THREADS) __global__
+    void ab_whir_in_domain_correct_and_commit_kernel(const e4 *leaves, const unsigned leaf_stride, const unsigned leaf_width, const e4 *weights,
+                                                     const bf *points, e4 *reductions, u32 *seed_io, e4 *coeffs_out, const unsigned count) {
+  __shared__ e4 smem_p0[WHIR_IN_DOMAIN_BLOCK_THREADS];
+  __shared__ e4 smem_p1[WHIR_IN_DOMAIN_BLOCK_THREADS];
+  __shared__ e4 smem_p2[WHIR_IN_DOMAIN_BLOCK_THREADS];
+  e4 acc0 = e4::ZERO();
+  e4 acc1 = e4::ZERO();
+  e4 acc2 = e4::ZERO();
+  accumulate_term_corrections(leaves, leaf_stride, leaf_width, weights, points, count, acc0, acc1, acc2);
+  block_reduce_corrections(smem_p0, smem_p1, smem_p2, acc0, acc1, acc2);
+  if (threadIdx.x == 0) {
+    reductions[0] = e4::add(reductions[0], smem_p0[0]);
+    reductions[1] = e4::add(reductions[1], smem_p1[0]);
+    reductions[2] = e4::add(reductions[2], smem_p2[0]);
+    u32 state[::airbender::hash::STATE_SIZE];
+    ::airbender::gkr::ops::whir_fold_round_commit_inline(reductions, seed_io, coeffs_out, state);
+  }
+}
+
+// Fold every term by the device-resident challenge; one thread per term.
+EXTERN __global__ void ab_whir_in_domain_fold_terms_kernel(e4 *leaves, const unsigned leaf_stride, const unsigned leaf_width, e4 *weights, bf *points,
+                                                           unsigned *exponents, const e4 *challenge, const unsigned count) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= count)
+    return;
+  fold_term(leaves + static_cast<size_t>(gid) * leaf_stride, leaf_width, weights[gid], points[gid], exponents[gid], *challenge);
+}
+
 // Leaf-only refresh from a recomputed oracle's bit-reversed monomial copy
 // (four BF limb columns of N, each bit-reversed over log N: coefficient u of
 // slot polynomial P_s sits at offset bitrev_M(u) of block bitrev_V(s)). Tree

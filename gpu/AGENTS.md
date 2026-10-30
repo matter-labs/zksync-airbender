@@ -116,8 +116,8 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   / `common_constants`. See [`trace/AGENTS.md`](trace/AGENTS.md).
 - **`gpu_gkr`** = the GKR engine (forward pass, backward/sumcheck rounds,
   setup, base-layer claims, proof layout) plus the GKR/WHIR protocol kernels
-  (`gkr_ops/`), with its own `gpu_gkr_native` (26 kernels and 8 `__constant__`
-  symbols), namespaces
+  (`gkr_ops/`), with its own `gpu_gkr_native` (70 kernels, 33 of them
+  macro-instantiated, and 8 `__constant__` symbols), namespaces
   `airbender::gkr::{backward, forward, ops, setup}`. `build.rs` sets
   `export_include(true)`: exports its `native/` dir as
   `DEP_GPU_GKR_NATIVE_INCLUDE` so `gpu_whir` can include its
@@ -125,7 +125,7 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   for its own blake2s-dependent protocol kernels. See [`gkr/AGENTS.md`](gkr/AGENTS.md).
 - **`gpu_whir`** = WHIR folds (`fold/`) + PoW/query scheduling (`pow.rs`) +
   the recursive WHIR extension oracle and its retained/fused LDE/Merkle commit
-  scheduler on exec, with its own `gpu_whir_native` (25 kernels, no `__constant__`
+  scheduler on exec, with its own `gpu_whir_native` (27 kernels, no `__constant__`
   symbols), namespace `airbender::whir`. Reads
   `gpu_gkr`'s exported headers (`accumulate_eq.cu`) and `gpu_hash`'s
   `hash.cuh` (`leaves.cu`, `residue_commit.cu`, `in_domain.cu`) plus gpu_ntt's

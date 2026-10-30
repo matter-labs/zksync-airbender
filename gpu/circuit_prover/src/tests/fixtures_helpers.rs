@@ -150,6 +150,7 @@ pub(super) fn finish_proof_fixture(
     compute_cpu_reference: bool,
     device_allocator_block_log_size: u32,
     security_level: SecurityLevel,
+    mode: circuit_common::SoundnessMode,
 ) -> (
     BasicUnrolledFixture,
     Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
@@ -178,7 +179,12 @@ pub(super) fn finish_proof_fixture(
     };
 
     let fixture_circuit_type = circuit_type;
-    let prover_config = crate::config::prover_config(fixture_circuit_type, security_level).unwrap();
+    let prover_config = prover_config_in_mode(
+        fixture_circuit_type,
+        &compiled_circuit,
+        security_level,
+        mode,
+    );
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = CpuGKRSetup::construct(
         table_driver,
@@ -406,6 +412,7 @@ pub(super) fn prepare_unrolled_non_memory_proof_fixture<const FAMILY_IDX: u8>(
         compute_cpu_reference,
         default_fixture_device_allocator_block_log_size(),
         crate::upstream::SecurityLevel::Sec100,
+        circuit_common::SoundnessMode::DEFAULT,
     )
 }
 
@@ -823,6 +830,7 @@ pub(super) fn prepare_basic_unrolled_fixture(
         build_config.compute_cpu_reference,
         build_config.device_allocator_block_log_size,
         build_config.security_level,
+        build_config.mode,
     )
 }
 
@@ -839,6 +847,7 @@ pub(crate) fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixtur
             compute_cpu_reference: true,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
             security_level: crate::upstream::SecurityLevel::Sec100,
+            mode: circuit_common::SoundnessMode::DEFAULT,
         });
     BasicUnrolledProofFixture {
         base,
@@ -864,6 +873,33 @@ pub(crate) fn prepare_basic_unrolled_proof_fixture_sec100() -> BasicUnrolledProo
             compute_cpu_reference: true,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
             security_level: crate::upstream::SecurityLevel::Sec100,
+            mode: circuit_common::SoundnessMode::DEFAULT,
+        });
+    BasicUnrolledProofFixture {
+        base,
+        expected_cpu_proof: expected_cpu_proof
+            .expect("proof fixture must include the CPU reference proof"),
+    }
+}
+
+/// [`prepare_basic_unrolled_proof_fixture_sec100`] with the CPU reference
+/// and the GPU proof both made under `mode`'s config.
+pub(crate) fn prepare_basic_unrolled_proof_fixture_in_mode(
+    mode: circuit_common::SoundnessMode,
+) -> BasicUnrolledProofFixture {
+    let (base, expected_cpu_proof) =
+        prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
+            binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
+            text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
+            layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
+            circuit_type: CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+            )),
+            non_determinism_reads: &[15, 1],
+            compute_cpu_reference: true,
+            device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
+            security_level: crate::upstream::SecurityLevel::Sec100,
+            mode,
         });
     BasicUnrolledProofFixture {
         base,
@@ -885,6 +921,7 @@ pub(super) fn prepare_basic_unrolled_profiling_fixture() -> BasicUnrolledFixture
             compute_cpu_reference: false,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
             security_level: crate::upstream::SecurityLevel::Sec100,
+            mode: circuit_common::SoundnessMode::DEFAULT,
         });
     assert!(
         expected_cpu_proof.is_none(),

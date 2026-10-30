@@ -426,6 +426,7 @@ struct BasicUnrolledFixtureBuildConfig<'a> {
     compute_cpu_reference: bool,
     device_allocator_block_log_size: u32,
     security_level: crate::upstream::SecurityLevel,
+    mode: circuit_common::SoundnessMode,
 }
 
 mod fixtures_helpers;

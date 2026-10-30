@@ -236,6 +236,14 @@ pub(crate) struct WhirLayout {
     pub sumcheck_polys: Range<usize>,
     /// `pow_nonces` — `pow_rounds` `u64` values.
     pub pow_nonces: Range<usize>,
+    /// Folding-challenge PoW nonces — one `u64` slot per folding step,
+    /// parallel to `sumcheck_polys`. Only the steps of rounds with
+    /// `folding_pow_bits > 0` are written and assembled.
+    pub folding_pow_nonces: Range<usize>,
+    /// OOD-draw PoW nonces — one `u64` slot per intermediate oracle, parallel
+    /// to `ood_samples`. Only oracles with `ood_pow_bits > 0` are written and
+    /// assembled.
+    pub ood_pow_nonces: Range<usize>,
     /// `final_monomials` — `final_monomials_len` `E4` values.
     pub final_monomials: Range<usize>,
 }
@@ -470,6 +478,8 @@ impl ProofLayout {
         // sumcheck_polys entries are `[E4; 3]` = 3 * E4.
         let sumcheck_polys = alloc(cur, dims.total_sumcheck_polys * 3, size_of::<E4>());
         let pow_nonces = alloc(cur, dims.pow_rounds, size_of::<u64>());
+        let folding_pow_nonces = alloc(cur, dims.total_sumcheck_polys, size_of::<u64>());
+        let ood_pow_nonces = alloc(cur, dims.intermediate.len(), size_of::<u64>());
         let final_monomials = alloc(cur, dims.final_monomials_len, size_of::<E4>());
 
         WhirLayout {
@@ -483,6 +493,8 @@ impl ProofLayout {
             ood_samples,
             sumcheck_polys,
             pow_nonces,
+            folding_pow_nonces,
+            ood_pow_nonces,
             final_monomials,
         }
     }

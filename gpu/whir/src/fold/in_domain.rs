@@ -1,5 +1,7 @@
 use super::*;
 
+mod split;
+
 /// Query terms stay small while the original/OOD equality polynomial stays
 /// dense. All buffers are read and written only by exec-stream operations.
 pub(super) struct InDomainState {
@@ -124,6 +126,60 @@ impl InDomainState {
         self.leaf_width >>= 1;
         self.max_domain_log2 = self.max_domain_log2.saturating_sub(1);
         Ok(true)
+    }
+
+    /// [`Self::try_update_and_fold`] split around the challenge for a
+    /// PoW-gated folding draw: corrects the reductions and commits the round
+    /// polynomial without drawing. The caller then draws the challenge and
+    /// calls [`Self::fold_terms`]. Gated draws fold only intermediate oracles,
+    /// which always carry the base queries' terms (base-round folding PoW is
+    /// rejected at schedule admission).
+    pub(super) fn correct_and_commit(
+        &mut self,
+        reductions: &mut DeviceSlice<E4>,
+        seed: &mut DeviceSlice<u32>,
+        coefficients: &mut DeviceSlice<E4>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        assert!(
+            self.count != 0,
+            "PoW-gated folding step without symbolic in-domain terms"
+        );
+        assert!(self.leaf_width >= 2);
+        split::correct_and_commit(
+            &self.leaves[..self.count * self.leaf_stride],
+            self.leaf_stride as u32,
+            self.leaf_width as u32,
+            &self.weights[..self.count],
+            &self.points[..self.count],
+            reductions,
+            seed,
+            coefficients,
+            context.get_exec_stream(),
+        )
+    }
+
+    /// Folds the terms by the challenge drawn after
+    /// [`Self::correct_and_commit`].
+    pub(super) fn fold_terms(
+        &mut self,
+        challenge: &DeviceSlice<E4>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        assert!(self.count != 0 && self.leaf_width >= 2);
+        split::fold_terms(
+            &mut self.leaves[..self.count * self.leaf_stride],
+            self.leaf_stride as u32,
+            self.leaf_width as u32,
+            &mut self.weights[..self.count],
+            &mut self.points[..self.count],
+            &mut self.exponents[..self.count],
+            challenge,
+            context.get_exec_stream(),
+        )?;
+        self.leaf_width >>= 1;
+        self.max_domain_log2 = self.max_domain_log2.saturating_sub(1);
+        Ok(())
     }
 }
 

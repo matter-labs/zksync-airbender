@@ -195,6 +195,14 @@ fn layout_is_32_byte_aligned_and_nonoverlapping() {
         layout.whir.pow_nonces.clone(),
     ));
     ranges.push((
+        "whir.folding_pow_nonces".to_string(),
+        layout.whir.folding_pow_nonces.clone(),
+    ));
+    ranges.push((
+        "whir.ood_pow_nonces".to_string(),
+        layout.whir.ood_pow_nonces.clone(),
+    ));
+    ranges.push((
         "whir.final_monomials".to_string(),
         layout.whir.final_monomials.clone(),
     ));
@@ -342,6 +350,16 @@ fn whir_range_sizes_match_inputs() {
         layout.whir.pow_nonces.end - layout.whir.pow_nonces.start,
         inputs.whir.pow_rounds * size_of::<u64>()
     );
+    // One folding-PoW slot per sumcheck polynomial, one OOD-PoW slot per
+    // intermediate oracle.
+    assert_eq!(
+        layout.whir.folding_pow_nonces.end - layout.whir.folding_pow_nonces.start,
+        inputs.whir.total_sumcheck_polys * size_of::<u64>()
+    );
+    assert_eq!(
+        layout.whir.ood_pow_nonces.end - layout.whir.ood_pow_nonces.start,
+        inputs.whir.intermediate.len() * size_of::<u64>()
+    );
     assert_eq!(
         layout.whir.final_monomials.end - layout.whir.final_monomials.start,
         inputs.whir.final_monomials_len * size_of::<E4>()
@@ -475,6 +493,8 @@ fn cpu_parser_splits_whir_streams_by_schedule() {
         .collect();
     let ood = [sample_e4(100), sample_e4(101)];
     let nonces = [7u64, 8, 9];
+    let folding_nonces: Vec<u64> = (0..8).map(|i| 1000 + i).collect();
+    let ood_nonces = [2000u64, 2001];
 
     unsafe {
         let (point_ptr, point_len) =
@@ -495,6 +515,12 @@ fn cpu_parser_splits_whir_streams_by_schedule() {
         let (ptr, len) = layout.whir_pow_nonces_device_mut(slab.as_mut_ptr());
         assert_eq!(len, nonces.len());
         std::ptr::copy_nonoverlapping(nonces.as_ptr(), ptr, nonces.len());
+        let (ptr, len) = layout.whir_folding_pow_nonces_device_mut(slab.as_mut_ptr());
+        assert_eq!(len, folding_nonces.len());
+        std::ptr::copy_nonoverlapping(folding_nonces.as_ptr(), ptr, folding_nonces.len());
+        let (ptr, len) = layout.whir_ood_pow_nonces_device_mut(slab.as_mut_ptr());
+        assert_eq!(len, ood_nonces.len());
+        std::ptr::copy_nonoverlapping(ood_nonces.as_ptr(), ptr, ood_nonces.len());
     }
 
     // the device-side handoff fields stay readable from the slab
@@ -519,6 +545,54 @@ fn cpu_parser_splits_whir_streams_by_schedule() {
     assert_eq!(proof.intermediate_whir_oracles[0].queries_pow_nonce, 8);
     assert_eq!(proof.intermediate_whir_oracles[1].queries_pow_nonce, 9);
     assert_eq!(proof.whir_schedule, schedule);
+    // Ungated rounds leave their written PoW slots unassembled.
+    for oracle in &proof.intermediate_whir_oracles {
+        assert!(oracle.folding_pow_nonces.is_empty());
+        assert_eq!(oracle.ood_pow_nonce, None);
+    }
+    assert!(proof.base_folding_pow_nonces.is_empty());
+
+    // Gate oracle 0's folding draws and oracle 1's OOD draw only: each takes
+    // exactly its parallel slots.
+    let mut gated = schedule.clone();
+    gated.internal_rounds[0].folding_pow_bits = 20;
+    gated.internal_rounds[1].ood_pow_bits = 7;
+    let proof = layout.parse_whir_proof(slab, &gated);
+    let [first, second] = &proof.intermediate_whir_oracles[..] else {
+        panic!("two intermediate oracles");
+    };
+    assert_eq!(first.folding_pow_nonces, folding_nonces[1..5].to_vec());
+    assert_eq!(first.ood_pow_nonce, None);
+    assert!(second.folding_pow_nonces.is_empty());
+    assert_eq!(second.ood_pow_nonce, Some(ood_nonces[1]));
+    assert_eq!(first.sumcheck_polys, polys[1..5].to_vec());
+    assert_eq!(second.queries_pow_nonce, 9);
+
+    gated.internal_rounds[0].ood_pow_bits = 1;
+    gated.internal_rounds[1].folding_pow_bits = 1;
+    let proof = layout.parse_whir_proof(slab, &gated);
+    assert_eq!(
+        proof.intermediate_whir_oracles[0].ood_pow_nonce,
+        Some(ood_nonces[0])
+    );
+    assert_eq!(
+        proof.intermediate_whir_oracles[1].folding_pow_nonces,
+        folding_nonces[5..8].to_vec()
+    );
+
+    // Base-round folding PoW stays a capability error.
+    let mut base_gated = schedule.clone();
+    base_gated.base_round.folding_pow_bits = 1;
+    let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        layout.parse_whir_proof(slab, &base_gated)
+    }))
+    .expect_err("base-round folding PoW must be rejected");
+    let message = error
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| error.downcast_ref::<&str>().copied())
+        .unwrap();
+    assert!(message.contains("base-round folding PoW is not implemented"));
 }
 
 #[test]

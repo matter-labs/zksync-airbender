@@ -54,9 +54,9 @@ rather than letting the duplicate drift by convention.
 - **Archive / `links` key**: `gpu_whir_native` (`build.rs`:
   `gpu_native_build::CudaArchive::new("gpu_whir_native", "GPU_WHIR").build()`
   — no `export_include`; nothing above this crate includes its headers).
-- **Kernel count**: 25 `__global__` kernels — `accumulate_eq.cu` 4,
+- **Kernel count**: 27 `__global__` kernels — `accumulate_eq.cu` 4,
   `columns.cu` 1, `fold.cu` 9, `leaves.cu` 1, `residue_commit.cu` 6,
-  `in_domain.cu` 4. Count with
+  `in_domain.cu` 6. Count with
   `rg -c '__global__' gpu/whir/native/whir/*.cu`, or equivalently
   `rg -o 'ab_[a-z0-9_]*_kernel' gpu/whir/native/whir/*.cu | sort -u | wc -l`.
   Count `__global__` regardless of whether `void` appears on the same line.

@@ -162,17 +162,15 @@ pub fn validate_baby_bear_recursive_schedule(
     );
     assert_eq!(
         schedule.base_round.folding_pow_bits, 0,
-        "GPU prover: no folding PoW"
+        "GPU prover: base-round folding PoW is not implemented"
     );
     let mut log_n = message_log;
     let mut previous_fold = schedule.base_round.fold_log2;
     for round in &schedule.internal_rounds {
         assert_eq!(
             round.num_ood_samples, 1,
-            "GPU prover: one OOD sample per oracle"
+            "GPU prover: exactly one OOD sample per oracle is implemented"
         );
-        assert_eq!(round.ood_pow_bits, 0, "GPU prover: no OOD PoW");
-        assert_eq!(round.folding_pow_bits, 0, "GPU prover: no folding PoW");
         log_n = log_n
             .checked_sub(u32::try_from(previous_fold).expect("fold log2 exceeds u32"))
             .expect("WHIR schedule exceeds message domain");

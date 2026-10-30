@@ -34,6 +34,11 @@ pub fn schedule_gpu_whir_fold_with_sources(
     whir_queries_schedule: Vec<usize>,
     whir_steps_lde_factors: Vec<usize>,
     whir_pow_schedule: Vec<u32>,
+    // Per intermediate oracle `j` (the CPU's `internal_rounds[j]`): the
+    // folding-challenge PoW bits of the round folding it, and the PoW bits
+    // gating its OOD draw. The base round has no folding PoW.
+    whir_folding_pow_schedule: &[u32],
+    whir_ood_pow_schedule: &[u32],
     tree_cap_size: usize,
     trace_len_log2: u32,
     use_hypercube_evals_for_batching: bool,
@@ -85,6 +90,11 @@ pub fn schedule_gpu_whir_fold_with_sources(
     assert_eq!(whir_steps_schedule.len(), whir_queries_schedule.len());
     assert_eq!(whir_steps_schedule.len(), whir_pow_schedule.len());
     assert_eq!(whir_steps_schedule.len(), whir_steps_lde_factors.len() + 1);
+    assert_eq!(
+        whir_folding_pow_schedule.len(),
+        whir_steps_lde_factors.len()
+    );
+    assert_eq!(whir_ood_pow_schedule.len(), whir_steps_lde_factors.len());
 
     let stream = context.get_exec_stream();
     let mut tracing_ranges = Vec::new();
@@ -175,6 +185,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
         folds_range.start(stream)?;
         schedule_fold_round(
             num_folding_steps,
+            0, // base-round folding PoW is rejected at schedule admission
             &mut state,
             &mut scheduled_sumcheck_poly_idx,
             proof_slab,
@@ -215,6 +226,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
         let ood_point_device = schedule_ood_sample_phase(
             &mut state,
             0,
+            whir_ood_pow_schedule[0],
             proof_slab,
             proof_layout,
             final_device_seed,
@@ -467,6 +479,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
         )?;
         schedule_fold_round(
             num_folding_steps,
+            whir_folding_pow_schedule[internal_round_idx],
             &mut state,
             &mut scheduled_sumcheck_poly_idx,
             proof_slab,
@@ -504,6 +517,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
         let ood_point_device = schedule_ood_sample_phase(
             &mut state,
             internal_round_idx + 1,
+            whir_ood_pow_schedule[internal_round_idx + 1],
             proof_slab,
             proof_layout,
             final_device_seed,
@@ -642,6 +656,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
         )?;
         schedule_fold_round(
             num_folding_steps,
+            whir_folding_pow_schedule[num_internal_whir_steps],
             &mut state,
             &mut scheduled_sumcheck_poly_idx,
             proof_slab,

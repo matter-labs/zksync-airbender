@@ -926,13 +926,34 @@ pub(crate) fn prepare_unified_proof_fixture() -> BasicUnrolledProofFixture {
 /// checks proof structure + device-memory behavior, so it skips the expensive CPU
 /// unified prove).
 pub(crate) fn prepare_unified_profiling_fixture() -> BasicUnrolledFixture {
-    prepare_unified_fixture(UNIFIED_LAYOUT_PATH, false, 0).0
+    prepare_unified_fixture(
+        UNIFIED_LAYOUT_PATH,
+        false,
+        0,
+        circuit_common::SoundnessMode::DEFAULT,
+    )
+    .0
 }
 
 pub(crate) fn prepare_unified_proof_fixture_with_layout(
     layout_path: &str,
 ) -> BasicUnrolledProofFixture {
-    let (base, expected_cpu_proof) = prepare_unified_fixture(layout_path, true, 0);
+    prepare_unified_proof_fixture_for(layout_path, circuit_common::SoundnessMode::DEFAULT)
+}
+
+/// [`prepare_unified_proof_fixture`] with the CPU reference and the GPU proof
+/// both made under `mode`'s config.
+pub(crate) fn prepare_unified_proof_fixture_in_mode(
+    mode: circuit_common::SoundnessMode,
+) -> BasicUnrolledProofFixture {
+    prepare_unified_proof_fixture_for(UNIFIED_LAYOUT_PATH, mode)
+}
+
+fn prepare_unified_proof_fixture_for(
+    layout_path: &str,
+    mode: circuit_common::SoundnessMode,
+) -> BasicUnrolledProofFixture {
+    let (base, expected_cpu_proof) = prepare_unified_fixture(layout_path, true, 0, mode);
     BasicUnrolledProofFixture {
         base,
         expected_cpu_proof: expected_cpu_proof
@@ -943,7 +964,12 @@ pub(crate) fn prepare_unified_proof_fixture_with_layout(
 pub(super) fn prepare_unified_proof_fixture_with_packing(
     pack_log2: usize,
 ) -> BasicUnrolledProofFixture {
-    let (base, expected_cpu_proof) = prepare_unified_fixture(UNIFIED_LAYOUT_PATH, true, pack_log2);
+    let (base, expected_cpu_proof) = prepare_unified_fixture(
+        UNIFIED_LAYOUT_PATH,
+        true,
+        pack_log2,
+        circuit_common::SoundnessMode::DEFAULT,
+    );
     BasicUnrolledProofFixture {
         base,
         expected_cpu_proof: expected_cpu_proof.unwrap(),
@@ -954,6 +980,7 @@ fn prepare_unified_fixture(
     layout_path: &str,
     compute_cpu_reference: bool,
     pack_log2: usize,
+    mode: circuit_common::SoundnessMode,
 ) -> (
     BasicUnrolledFixture,
     Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
@@ -1049,8 +1076,14 @@ fn prepare_unified_fixture(
 
     let fixture_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::Unified);
     let prover_config = if pack_log2 == 0 {
-        crate::config::prover_config(fixture_circuit_type, SecurityLevel::Sec100).unwrap()
+        prover_config_in_mode(
+            fixture_circuit_type,
+            &compiled_circuit,
+            SecurityLevel::Sec100,
+            mode,
+        )
     } else {
+        assert_eq!(mode, circuit_common::SoundnessMode::DEFAULT);
         prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
             TRACE_LEN_LOG2 as usize, pack_log2, SecurityLevel::Sec100)
     };
