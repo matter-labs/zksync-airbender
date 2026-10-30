@@ -451,3 +451,12 @@ The source-to-data bridge in `FixedSetup` remains open. Its JSON parser has an
 opaque kernel worker. The imported table proofs do not close this bridge.
 The split worker functions and the complete blessed sequence also remain open.
 Full validation remains pending.
+
+### Split exact worker-accounting obligation
+
+Exact native request matching now accounts for every active split worker.
+The proof removes the zero-clock exception with the native liveness theorem.
+Every worker has an actual caller with the same full-width CSR and timestamp.
+Both new roots passed focused kernel and axiom checks. They use only the three
+allowed axioms. The explicit inventory now contains 12,716 roots. All prior
+roots remain present. No function or complete execution claim follows yet.
