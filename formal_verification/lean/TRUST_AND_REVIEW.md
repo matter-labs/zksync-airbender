@@ -153,11 +153,13 @@ row. The region keeps its exact native length. Those extra slots cannot supply
 table membership. Separate private column declarations keep elaboration bounded.
 The JSON-to-canonical-table bridge remains open. Source parsing and exact RLE
 column decoding now have kernel proofs for the three split captures. Physical
-row membership in the canonical tables remains open. Parity and theta/rho
-include physical padding. Chi5 needs membership only for native query tags
-65 and 66. Its canonical table excludes the all-zero padding row. The kernel
-checks both this exclusion and the guarded transport in both cache modes.
-The original target, setup premises and canonical table stay unchanged.
+real-row membership in the canonical tables remains open. The kernel now
+checks the physical padding cases. Parser validation supplies column coverage.
+Exact final-block certificates supply zero values. Parity and theta/rho
+include these rows in their canonical tables. Chi5 needs membership only for
+native query tags 65 and 66. Its canonical table excludes the all-zero row.
+The kernel checks this exclusion and guarded transport in both cache modes.
+The original target, setup premises and canonical tables stay unchanged.
 
 The generated source expressions retain each original key, value and field
 order. The frontend requires generation freshness and exact byte comparison

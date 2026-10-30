@@ -11,7 +11,7 @@ request and RAM matching remain explicit. The final full validation is pending.
 
 | Setup machine | Current target status |
 | --- | --- |
-| Unrolled full unsigned | Open. Native execution, public supported-use induction and initialization are kernel checked. Complete three `FixedSetupRows` certificates: parity, theta/rho and chi5. Each must cover every parsed physical row, including padding. The target excludes special5 calls. |
+| Unrolled full unsigned | Open. Native execution, public supported-use induction and initialization are kernel checked. Complete `SplitParityRealRows`, `SplitThetaRealRows` and `SplitChiRealRows`. Then bind the equal source representation at the original interface. The parser, exact columns and padding cases pass kernel checks. Chi5 uses its native query tags. The target excludes special5 calls. |
 | Unrolled reduced | Proved by `MachineTargets.Proofs.unrolled_reduced_soundness`. The theorem has exactly the `UnrolledReduced` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. |
 | Unified | Proved by `MachineTargets.Proofs.unified_soundness`. The theorem has exactly the `Unified` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. The target excludes special5 calls. |
 
@@ -2029,6 +2029,44 @@ allowed axioms. The inventory now has 14,059 roots. It retains all 14,056
 previous roots. The bounded module check used 411 MiB of physical memory.
 No guard left an owned process running. The packed-checker pilot stays
 unchanged. Design items 2 and 3 still follow the machine targets.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
+
+
+### Full unsigned physical padding obligations
+
+The padding cases are closed. Parsing already proves each column's complete
+physical coverage. Exact terminal-block certificates locate its zero tail.
+The kernel checks all 28 captured columns. The proof does not expand their
+large prefixes. Parity and theta/rho padding rows belong to the original
+canonical tables. Native query tags exclude chi5 padding.
+
+The three source adapters now require only the named real-row predicates:
+`SplitParityRealRows`, `SplitThetaRealRows` and `SplitChiRealRows`. These
+predicates retain parsing, column shape and complete row values. They are
+open proof obligations. They are not new assumptions of the machine target.
+Bind the equal byte representation at the original source interface when
+the row certificates are complete. The full unsigned target remains open.
+
+The shared index decoder preserves the captured values. Its ordinary wrapper
+keeps conversion at the named encoding. The terminal-index certificate uses
+a short binary arithmetic proof. Earlier drafts hit time or depth limits.
+Two owned guards stopped early. Shorter diagnostic guards also timed out.
+All guards cleaned their owned children. The guard limits did not increase.
+
+Every affected source representation and parser certificate passed a focused
+rebuild. The final padding group passed eight module checks in 26 seconds.
+It used 836 MiB of physical memory. Generation freshness and exact byte
+identity pass for all three sources. The existing changed-block control
+passes. The new controls accept valid padding. They reject a nonzero tail
+and an insufficient padding extent. The Python scripts pass syntax checks.
+The frontend now requires these controls. The full frontend did not run.
+
+All 122 new roots pass direct axiom checks. They use only the three allowed
+axioms. The inventory now has 14,181 roots. It retains all 14,059 previous
+roots. The packed-checker pilot stays unchanged. Design items 2 and 3 still
+follow the machine targets.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.

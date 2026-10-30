@@ -145,6 +145,14 @@ setup premise. Prove canonical membership for these queried source rows next.
 Bind the equal byte representation at the original setup-source interface
 when the row certificates are complete.
 
+The physical padding cases now have kernel proofs. The original parser
+validation supplies complete column coverage. Exact terminal-block facts
+supply zero values. Parity and theta/rho padding rows belong to their original
+canonical tables. Native chi5 tags exclude its padding. No target premise
+changed. The remaining real-row obligations are `SplitParityRealRows`,
+`SplitThetaRealRows` and `SplitChiRealRows`. Their adapters preserve the full
+parsed row and original canonical table. The three real-row proofs remain open.
+
 ## Finding status versus conditional proof coverage
 
 **An assumption can close a conditional proof obligation while the finding stays
