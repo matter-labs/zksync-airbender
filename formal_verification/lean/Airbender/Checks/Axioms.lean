@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.SplitParityReferenceEffect
 import Airbender.Proofs.Keccak.SplitParityNativeQueries
 import Tests.SetupParityGeneric
 import Airbender.Proofs.Keccak.SplitXor5Lookup
@@ -14180,3 +14181,56 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Proofs.column_parity_native_iota_queries
 #print axioms Airbender.Keccak.Split.Native.Proofs.column_parity_native_xor5_queries
 #print axioms Tests.SetupParityGeneric.matchesSource
+
+#print axioms Airbender.Arithmetic.value_of_four_nibbles
+#print axioms Airbender.Arithmetic.packFourChunks
+#print axioms Airbender.Arithmetic.pack_four_xor
+#print axioms Airbender.Arithmetic.pack_four_xor_five
+#print axioms Airbender.Keccak.Split.Native.Proofs.parityLaneLimb
+#print axioms Airbender.Keccak.Split.Native.Proofs.parityNibble
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_write_limb_packing
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_nibble_bound
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_write_limb_value
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_nibble_operation
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_write_limb_operation
+#print axioms Airbender.Keccak.Split.Native.Proofs.parityLaneValue
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_readonly_limb
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_readonly_lane
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_write_lane_bound
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_native_lane_operation
+#print axioms Airbender.Keccak.Split.Native.Proofs.parityQueryRow
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_native_controller_schedule
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_native_slot_key
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_native_slots
+#print axioms Airbender.Keccak.Split.Native.Proofs.parityIotaLimb
+#print axioms Airbender.Keccak.Split.Native.Proofs.parityIotaPosition
+#print axioms Airbender.Keccak.Split.Native.Proofs.parityIotaInputLow
+#print axioms Airbender.Keccak.Split.Native.Proofs.parityIotaInputHigh
+#print axioms Airbender.Keccak.Split.Native.Proofs.parityIotaOutputByte
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_read_packing
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_write_packing
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_low_query
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_high_query
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_query_control
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_output_byte_value
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_control_high_limbs
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_unchanged_low
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_unchanged_limb
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_zero_parts
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_constant_limbs
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_constant_word
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_control_value
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_byte_operation
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_low_zero
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_high_bytes
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_low_bytes
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_read_limb_value
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_affected_limb_operation
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_read_limb_bound
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_limb_operation
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_iota_lane_operation
+#print axioms Airbender.Keccak.Split.Native.Proofs.parityReferenceLanes
+#print axioms Airbender.Keccak.Split.Native.Proofs.paritySelectedRound
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_native_first_lane
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_native_reference_result
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_native_reference_schedule
