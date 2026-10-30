@@ -23,7 +23,7 @@
 //! `recursion_chain_preimage` and threaded through the stages exactly like the
 //! research test does.
 
-use crate::l1::{prove_l1_wrap_in_memory, L1Proof, L1WrapTimings};
+use crate::l1::{prove_l1_wrap_in_memory_in_mode, L1Proof, L1WrapTimings};
 use crate::unified_transition::{
     prove_unified_transition_with_replayer_precommitted_timed,
     prove_unified_transition_with_replayer_timed, UnifiedTransitionTimings,
@@ -32,11 +32,12 @@ use full_statement_verifier::host_utils::{
     build_unified_stream, compute_end_params, load_fsv_program, load_program, FsvRecursionChain,
 };
 use full_statement_verifier::program_proof::ProgramProof;
-use prover::definitions::SecurityLevel;
+use prover::definitions::{ProverConfigProfile, ProvingSelection, SecurityLevel, SoundnessMode};
 use prover::gkr::prover::{
     DefaultBabyBearBackend, DefaultBabyBearGKRBackend, OperationMode, RsCodewordSource,
     WhirOracleStorage,
 };
+use prover::gkr::prover_config::example_configs::ConfigSelectionError;
 use prover::tests::gkr::orchestration::common::ProgramConfig;
 use prover::worker::Worker;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
@@ -79,7 +80,7 @@ pub struct L1CompressionResult {
 ///   stages 1-2: `fully_in_memory_continuous()` on large machines (oracle
 ///   recompute otherwise dominates the chunk proving time),
 ///   `fully_recompute()` where the feeder-LDE codewords don't fit RAM. Stage
-///   3 is always in-memory-continuous ([`prove_l1_wrap_in_memory`]).
+///   3 is always in-memory-continuous ([`crate::l1::prove_l1_wrap_in_memory`]).
 pub fn compress_fixed_point_to_l1(
     input_proof: &ProgramProof,
     input_setups: &Setups,
@@ -89,6 +90,43 @@ pub fn compress_fixed_point_to_l1(
     feeder_storage: WhirOracleStorage,
     worker: &Worker,
 ) -> L1CompressionResult {
+    compress_fixed_point_to_l1_in_mode(
+        input_proof,
+        input_setups,
+        fsv_dir,
+        proth120_circuit_layout_path,
+        use_caches,
+        feeder_storage,
+        worker,
+        SoundnessMode::PessimisticConjecture,
+    )
+    .expect("pessimistic L1 compression is supported")
+}
+
+/// Reject unsupported scope before reading artifacts, loading guests or allocating setups.
+pub fn validate_l1_soundness_mode(mode: SoundnessMode) -> Result<(), ConfigSelectionError> {
+    ProverConfigProfile::L1Feeder.validate_selection(ProvingSelection {
+        security_level: SecurityLevel::Sec100,
+        soundness_mode: mode,
+    })
+}
+
+/// Mode-explicit L1 boundary; the ethproofs extension is deferred product scope.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "compatibility API plus an explicit soundness mode"
+)]
+pub fn compress_fixed_point_to_l1_in_mode(
+    input_proof: &ProgramProof,
+    input_setups: &Setups,
+    fsv_dir: &Path,
+    proth120_circuit_layout_path: &Path,
+    use_caches: bool,
+    feeder_storage: WhirOracleStorage,
+    worker: &Worker,
+    soundness_mode: SoundnessMode,
+) -> Result<L1CompressionResult, ConfigSelectionError> {
+    validate_l1_soundness_mode(soundness_mode)?;
     let total_started = std::time::Instant::now();
 
     // The input must be the stable point: 1 unified chunk + 1 blake proof.
@@ -125,7 +163,12 @@ pub fn compress_fixed_point_to_l1(
     );
     let (feeder_bin, feeder_text) = load_program(&fsv_dir.join(format!("{FEEDER_FSV_STEM}.elf")));
 
-    let feeder_config = prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23();
+    let feeder_config = prover::gkr::prover_config::example_configs::try_l1_feeder_config_for_2_23(
+        ProvingSelection {
+            security_level: SecurityLevel::Sec100,
+            soundness_mode,
+        },
+    )?;
     println!(
         "[l1-compression] feeder config: base lde {}, whir steps {:?}, queries {:?}, pow {:?}; \
          feeder oracle storage: {feeder_storage:?}",
@@ -240,8 +283,12 @@ pub fn compress_fixed_point_to_l1(
         cycles_bound: L1_CYCLES_BOUND,
         ram_bound_bytes: RAM_BOUND,
     };
-    let (l1_proof, l1_operation_mode, l1_timings) =
-        prove_l1_wrap_in_memory(&program, proth120_circuit_layout_path, worker);
+    let (l1_proof, l1_operation_mode, l1_timings) = prove_l1_wrap_in_memory_in_mode(
+        &program,
+        proth120_circuit_layout_path,
+        worker,
+        soundness_mode,
+    )?;
 
     // ── Timing marks: setup-commitment work vs proving work, per stage and
     //    in total. ──
@@ -279,12 +326,12 @@ pub fn compress_fixed_point_to_l1(
         total_started.elapsed().as_millis() / 1000,
     );
 
-    L1CompressionResult {
+    Ok(L1CompressionResult {
         l1_proof,
         l1_operation_mode,
         stage_timings,
         l1_timings,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -395,5 +442,33 @@ mod diagnostics {
             );
             println!("        {el:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod soundness_boundary_tests {
+    use super::*;
+
+    #[test]
+    fn ethproofs_l1_compression_rejects_before_input_and_path_checks() {
+        let worker = Worker::new_with_num_threads(1);
+        let error = compress_fixed_point_to_l1_in_mode(
+            &crate::bundle::tests::empty_proof(),
+            &Setups::new(),
+            Path::new("/missing/fsv"),
+            Path::new("/missing/layout.json"),
+            false,
+            WhirOracleStorage::fully_recompute(),
+            &worker,
+            SoundnessMode::EthproofsSoundnessCalc,
+        )
+        .err()
+        .expect("ethproofs L1 compression must reject");
+        assert!(matches!(error,
+            prover::gkr::prover_config::example_configs::ConfigSelectionError::UnsupportedSpecialConfigMode {
+                profile: prover::definitions::ProverConfigProfile::L1Feeder,
+                mode: prover::definitions::SoundnessMode::EthproofsSoundnessCalc,
+            }));
+        assert!(error.to_string().contains("ethproofs soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope)"));
     }
 }

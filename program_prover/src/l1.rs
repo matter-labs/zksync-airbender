@@ -29,8 +29,7 @@ use prover::gkr::prover::{
 };
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use prover::tests::gkr::large_field::{
-    build_unified_trace_without_precompiles, evm_production_packed_prover_config,
-    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
+    build_unified_trace_without_precompiles, EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
 };
 use prover::tests::gkr::orchestration::common::{
     dummy_external_challenges, run_vm_and_capture, ProgramConfig,
@@ -72,10 +71,33 @@ pub fn prove_l1_wrap_in_memory(
     circuit_layout_path: &Path,
     worker: &Worker,
 ) -> (L1Proof, OperationMode, L1WrapTimings) {
+    prove_l1_wrap_in_memory_in_mode(
+        program,
+        circuit_layout_path,
+        worker,
+        prover::definitions::SoundnessMode::PessimisticConjecture,
+    )
+    .expect("pessimistic L1 wrap is supported")
+}
+
+/// Mode-explicit wrap boundary. Profile validation runs before circuit loading or VM work.
+pub fn prove_l1_wrap_in_memory_in_mode(
+    program: &ProgramConfig,
+    circuit_layout_path: &Path,
+    worker: &Worker,
+    soundness_mode: prover::definitions::SoundnessMode,
+) -> Result<
+    (L1Proof, OperationMode, L1WrapTimings),
+    prover::gkr::prover_config::example_configs::ConfigSelectionError,
+> {
+    use prover::gkr::prover_config::example_configs::try_evm_production_packed_prover_config;
+    let prover_config =
+        try_evm_production_packed_prover_config(prover::definitions::ProvingSelection {
+            security_level: prover::definitions::SecurityLevel::Sec100,
+            soundness_mode,
+        })?;
     let mut timings = L1WrapTimings::default();
     let external_challenges_pow_bits = EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS;
-    let level = prover::definitions::SecurityLevel::Sec100;
-    let prover_config = evm_production_packed_prover_config(level);
     // the base-commitment packing is a property of the prover config
     let pack_log2 = prover_config.pack_log2();
     let trace_len = 1usize << prover_config.trace_len_log2;
@@ -180,5 +202,34 @@ pub fn prove_l1_wrap_in_memory(
         now.elapsed()
     );
 
-    (proof, operation_mode, timings)
+    Ok((proof, operation_mode, timings))
+}
+
+#[cfg(test)]
+mod soundness_boundary_tests {
+    use super::*;
+
+    #[test]
+    fn ethproofs_l1_wrap_rejects_before_vm_and_layout_loading() {
+        let worker = Worker::new_with_num_threads(1);
+        let program = ProgramConfig {
+            program: riscv_transpiler::elf::ProgramSource::elf("/missing/program.elf"),
+            non_determinism_reads: Vec::new(),
+            cycles_bound: 1,
+            ram_bound_bytes: 1,
+        };
+        let error = prove_l1_wrap_in_memory_in_mode(
+            &program,
+            Path::new("/missing/layout.json"),
+            &worker,
+            prover::definitions::SoundnessMode::EthproofsSoundnessCalc,
+        )
+        .expect_err("ethproofs L1 wrap must reject");
+        assert!(matches!(error,
+            prover::gkr::prover_config::example_configs::ConfigSelectionError::UnsupportedSpecialConfigMode {
+                profile: prover::definitions::ProverConfigProfile::EvmProductionPacked,
+                mode: prover::definitions::SoundnessMode::EthproofsSoundnessCalc,
+            }));
+        assert!(error.to_string().contains("ethproofs soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope)"));
+    }
 }

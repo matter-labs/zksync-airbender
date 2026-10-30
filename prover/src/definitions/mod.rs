@@ -77,6 +77,21 @@ impl SoundnessMode {
     /// proof / verifier fixture).
     pub const DEFAULT: SoundnessMode = SoundnessMode::PessimisticConjecture;
 
+    /// Stable spelling accepted by command-line callers.
+    pub fn cli_name(self) -> &'static str {
+        match self {
+            Self::PessimisticConjecture => "pessimistic-conjecture",
+            Self::EthproofsSoundnessCalc => "ethproofs-soundcalc",
+        }
+    }
+
+    pub fn from_cli_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|mode| mode.cli_name() == name)
+    }
+
     /// Suffix of the serialized config files
     /// (`generated/prover_config_<level>_<suffix>.json`).
     pub fn file_suffix(self) -> &'static str {
@@ -467,4 +482,24 @@ pub fn produce_initial_permutation_product_contribution<
     result.mul_assign(&read_set_contribution.inverse().unwrap());
 
     result
+}
+
+#[cfg(all(test, feature = "prover"))]
+mod soundness_mode_tests {
+    use super::SoundnessMode;
+
+    #[test]
+    fn soundness_mode_names_round_trip() {
+        for &mode in SoundnessMode::ALL {
+            assert_eq!(SoundnessMode::from_cli_name(mode.cli_name()), Some(mode));
+            assert_eq!(mode.cli_name().replace('-', "_"), mode.file_suffix());
+            let encoded = serde_json::to_string(&mode).unwrap();
+            assert_eq!(
+                serde_json::from_str::<SoundnessMode>(&encoded).unwrap(),
+                mode
+            );
+        }
+        assert_eq!(SoundnessMode::from_cli_name("ethproofs_soundcalc"), None);
+        assert_eq!(SoundnessMode::from_cli_name("unknown"), None);
+    }
 }

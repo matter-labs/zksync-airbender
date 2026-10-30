@@ -19,12 +19,17 @@
 //!   → final (fsv_unified_recursion_layer, unified mode), repeated until the
 //!     proof converges to one unified + one delegation proof
 
+mod artifact;
+pub use artifact::{ProofArtifact, ARTIFACT_SCHEMA_VERSION};
+pub use prover::definitions::SoundnessMode;
+
 use clap::ValueEnum;
 use execution_prover::BinaryHandle;
 use full_statement_verifier::host_utils::{
     bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
-    final_blake_mode, load_fsv_program, native_verify_unified, native_verify_unrolled,
-    unified_switch_cycles, unrolled_blake_mode, FsvRecursionChain,
+    final_blake_mode, fsv_digest, load_fsv_exact, load_fsv_program,
+    try_native_verify_unified_in_mode, try_native_verify_unrolled_in_mode, unified_switch_cycles,
+    unrolled_blake_mode, FsvRecursionChain,
 };
 use full_statement_verifier::program_proof::ProgramProof;
 use riscv_transpiler::vm::FlatResponsesSource;
@@ -34,7 +39,7 @@ use sha3::{Digest, Keccak256};
 use std::alloc::Global;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
+use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProgram};
 
 /// Serde-friendly mirror of `prover::definitions::SecurityLevel` (which does
 /// not derive serde) for the persisted artifact.
@@ -174,51 +179,6 @@ impl ProofCounts {
                 .collect(),
         }
     }
-}
-
-/// Proof artifact, schema v3. `proof` + `setups` are enough to
-/// verify natively; `chain_end_params` is the ordered list of layer
-/// `end_params` from base onward, from which the recursion chain state after
-/// this artifact's layer (`chain_hash` / `chain_preimage`) is reconstructed
-/// for staged continuation.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ProofArtifact {
-    pub schema_version: u32,
-    pub security_level: SecurityLevel,
-    pub target: ProofTarget,
-    pub backend: ProverBackend,
-    pub batch_id: u64,
-    /// `proof.executed_cycles()` of the artifact's (final) proof layer.
-    pub cycles: u64,
-    /// `executed_cycles()` of the base layer: the program's own cycle count.
-    pub program_cycles: u64,
-    pub program_bin_keccak: [u8; 32],
-    pub program_text_keccak: [u8; 32],
-    pub timings_ms: ProofTimingsMs,
-    pub proof_counts: ProofCounts,
-    /// Layer end-params history: `[base, unrolled_1, .., bridge, final]`.
-    pub chain_end_params: Vec<[u32; 8]>,
-    /// Recursion-chain state AFTER this artifact's layer.
-    pub chain_hash: [u32; 8],
-    pub chain_preimage: [u32; 16],
-    /// Blake-mode tags of the fsv verifier binaries the pipeline used
-    /// (`BlakeMode::tag()` values). Untrusted CLAIM data: at verification
-    /// time they only select among the checked-in trusted fsv binaries, so a
-    /// lie makes the chain-binding comparison fail.
-    #[serde(default = "default_blake_tag")]
-    pub blake_unrolled: String,
-    #[serde(default = "default_blake_tag")]
-    pub blake_bridge: String,
-    #[serde(default = "default_blake_tag")]
-    pub blake_final: String,
-    pub proof: ProgramProof,
-    pub setups: Setups,
-}
-
-pub const ARTIFACT_SCHEMA_VERSION: u32 = 3;
-
-fn default_blake_tag() -> String {
-    BlakeMode::Compression.tag().to_string()
 }
 
 // ==============================================================================
@@ -768,6 +728,7 @@ impl ProgramProver {
     /// this prover computed for its program and the fsv programs, so nothing is recomputed;
     /// `verify_artifact` verifies without trusting this prover.
     pub fn verify(&mut self, artifact: &ProofArtifact) -> Result<[u32; 16], String> {
+        artifact.validate_expected_mode(self.config.soundness_mode)?;
         if artifact.target != self.config.target {
             return Err(format!(
                 "artifact target {:?} differs from this prover's target {:?}",
@@ -804,7 +765,7 @@ impl ProgramProver {
                 Ok(compute_end_params(&setups, find_binary_exit_point(bin)?))
             },
         )?;
-        verify_against_chain(artifact, &expected)
+        verify_against_chain(artifact, &expected, self.config.soundness_mode)
     }
 
     pub fn prove_words(
@@ -853,8 +814,7 @@ impl ProgramProver {
 
         Ok(finalize_artifact(
             &self.fsv,
-            self.config.target,
-            self.config.backend,
+            &self.config,
             batch_id,
             &loaded,
             state,
@@ -862,7 +822,10 @@ impl ProgramProver {
     }
 
     pub fn continue_artifact(&mut self, artifact: ProofArtifact) -> Result<ProofArtifact, String> {
+        artifact.validate_expected_mode(self.config.soundness_mode)?;
         validate_continuation_request(&artifact, self.config.target)?;
+        // A serialized checkpoint is untrusted even when its mode label matches.
+        verify_artifact_in_mode(&artifact, &self.source, self.config.soundness_mode)?;
         let loaded = load_and_validate_program(&self.source, &artifact)?;
 
         let batch_id = artifact.batch_id;
@@ -889,8 +852,7 @@ impl ProgramProver {
 
         Ok(finalize_artifact(
             &self.fsv,
-            self.config.target,
-            self.config.backend,
+            &self.config,
             batch_id,
             &loaded,
             state,
@@ -900,8 +862,7 @@ impl ProgramProver {
 
 fn finalize_artifact(
     fsv: &FsvPrograms,
-    target: ProofTarget,
-    backend: ProverBackend,
+    config: &ProgramProverConfig,
     batch_id: u64,
     loaded: &LoadedProgram,
     mut state: RecursionState,
@@ -921,8 +882,9 @@ fn finalize_artifact(
     ProofArtifact {
         schema_version: ARTIFACT_SCHEMA_VERSION,
         security_level: COMPILED_SECURITY_LEVEL,
-        target,
-        backend,
+        soundness_mode: config.soundness_mode,
+        target: config.target,
+        backend: config.backend,
         batch_id,
         cycles: state.proof.executed_cycles(),
         program_cycles: state.program_cycles,
@@ -950,6 +912,14 @@ fn finalize_artifact(
 
 /// Trusted unified chain hashes for zero, one, or at least two unrolled recursion layers.
 pub fn unified_verification_chain_hashes(source: &ProgramSource) -> Result<[[u32; 8]; 3], String> {
+    unified_verification_chain_hashes_in_mode(source, SoundnessMode::PessimisticConjecture)
+}
+
+/// Trusted unified chain hashes under a caller-selected standard soundness mode.
+pub fn unified_verification_chain_hashes_in_mode(
+    source: &ProgramSource,
+    mode: SoundnessMode,
+) -> Result<[[u32; 8]; 3], String> {
     let loaded = load_program(source)?;
     let worker = worker::Worker::new();
     let unrolled_blake = unrolled_blake_mode();
@@ -963,7 +933,7 @@ pub fn unified_verification_chain_hashes(source: &ProgramSource) -> Result<[[u32
             unrolled_blake.tag(),
             bridge_blake.tag(),
             final_blake.tag(),
-            &mut recomputed_end_params(&loaded, &worker),
+            &mut recomputed_end_params(&loaded, &worker, selection_in_mode(mode)),
         )?;
         *hash = rebuild_chain(&expected)?.hash();
     }
@@ -974,6 +944,16 @@ pub fn verify_artifact(
     artifact: &ProofArtifact,
     source: &ProgramSource,
 ) -> Result<[u32; 16], String> {
+    verify_artifact_in_mode(artifact, source, SoundnessMode::PessimisticConjecture)
+}
+
+/// Verify with a caller-supplied acceptance mode, before loading the source or setups.
+pub fn verify_artifact_in_mode(
+    artifact: &ProofArtifact,
+    source: &ProgramSource,
+    expected_mode: SoundnessMode,
+) -> Result<[u32; 16], String> {
+    artifact.validate_expected_mode(expected_mode)?;
     let loaded = load_and_validate_program(source, artifact)?;
     validate_artifact_chain(artifact)?;
 
@@ -989,14 +969,15 @@ pub fn verify_artifact(
         &artifact.blake_unrolled,
         &artifact.blake_bridge,
         &artifact.blake_final,
-        &mut recomputed_end_params(&loaded, &worker),
+        &mut recomputed_end_params(&loaded, &worker, selection_in_mode(expected_mode)),
     )?;
-    verify_against_chain(artifact, &expected)
+    verify_against_chain(artifact, &expected, expected_mode)
 }
 
 fn verify_against_chain(
     artifact: &ProofArtifact,
     expected: &[[u32; 8]],
+    expected_mode: SoundnessMode,
 ) -> Result<[u32; 16], String> {
     if expected != artifact.chain_end_params {
         return Err(
@@ -1009,23 +990,26 @@ fn verify_against_chain(
     // base-layer statement (no recursion chain in the stream).
     let is_base = expected.len() == 1;
     let output = match artifact.target {
-        ProofTarget::Base | ProofTarget::RecursionUnrolled => native_verify_unrolled(
+        ProofTarget::Base | ProofTarget::RecursionUnrolled => try_native_verify_unrolled_in_mode(
             build_unrolled_stream(
                 &artifact.setups,
                 &artifact.proof,
                 verifier_common::BLAKE_MODE,
             ),
             is_base,
+            expected_mode,
         ),
-        ProofTarget::RecursionUnified => native_verify_unified(
+        ProofTarget::RecursionUnified => try_native_verify_unified_in_mode(
             build_unified_stream(
                 &artifact.setups,
                 &artifact.proof,
                 verifier_common::BLAKE_MODE,
             ),
             is_base,
+            expected_mode,
         ),
-    };
+    }
+    .map_err(|error| format!("NativeVerificationFailed: {error}"))?;
     ensure_recursion_chain_binds_program(&output, &expected_chain.hash())?;
     Ok(output)
 }
@@ -1147,40 +1131,19 @@ fn trusted_end_params_key(
     selection: prover::definitions::ProvingSelection,
     profile: prover::definitions::ProverConfigProfile,
 ) -> TrustedEndParamsKey {
-    let mut hasher = Keccak256::new();
-    hasher.update((bin.len() as u64).to_le_bytes());
-    hasher.update((text.len() as u64).to_le_bytes());
-    for word in bin.iter().chain(text.iter()) {
-        hasher.update(word.to_le_bytes());
-    }
     TrustedEndParamsKey {
         machine,
         selection,
         profile,
-        program_hash: hasher.finalize().into(),
+        program_hash: fsv_digest(bin, text).0,
     }
 }
 
-/// Trusted `end_params` of `(binary, machine)`: recomputed setups (cached by
-/// binary keccak in-process — the unified setup is expensive, so it is only
-/// computed when the claim actually includes unified layers) hashed with the
-/// binary's statically derived exit PC.
-fn trusted_end_params(
-    bin: &[u32],
-    text: &[u32],
-    machine: SetupMachine,
-    worker: &worker::Worker,
-) -> Result<[u32; 8], String> {
-    trusted_end_params_in_mode(
-        bin,
-        text,
-        machine,
-        prover::definitions::ProvingSelection {
-            security_level: COMPILED_SECURITY_LEVEL.to_prover(),
-            soundness_mode: prover::definitions::SoundnessMode::PessimisticConjecture,
-        },
-        worker,
-    )
+fn selection_in_mode(soundness_mode: SoundnessMode) -> prover::definitions::ProvingSelection {
+    prover::definitions::ProvingSelection {
+        security_level: COMPILED_SECURITY_LEVEL.to_prover(),
+        soundness_mode,
+    }
 }
 
 /// Mode-explicit standard setup reconstruction. Special-profile setups need their own producer.
@@ -1234,18 +1197,26 @@ enum ChainProgram {
 fn recomputed_end_params<'a>(
     loaded: &'a LoadedProgram,
     worker: &'a worker::Worker,
+    selection: prover::definitions::ProvingSelection,
 ) -> impl FnMut(ChainProgram) -> Result<[u32; 8], String> + 'a {
     let fsv_dir = fsv_dir();
     move |program| match program {
-        ChainProgram::User => trusted_end_params(
+        ChainProgram::User => trusted_end_params_in_mode(
             &loaded.bin_u32,
             &loaded.text_u32,
             SetupMachine::UnrolledFullUnsigned,
+            selection,
             worker,
         ),
         ChainProgram::Fsv(program, blake, setup_machine) => {
-            let (bin, text) = load_fsv_program(&fsv_dir, program, blake);
-            trusted_end_params(&bin, &text, setup_machine, worker)
+            let descriptor = FsvDescriptor::new(
+                selection.security_level,
+                selection.soundness_mode,
+                program,
+                blake,
+            );
+            let guest = load_fsv_exact(&fsv_dir, &descriptor).map_err(|error| error.to_string())?;
+            trusted_end_params_in_mode(guest.bin(), guest.text(), setup_machine, selection, worker)
         }
     }
 }
@@ -1431,12 +1402,7 @@ fn load_and_validate_program(
     source: &ProgramSource,
     artifact: &ProofArtifact,
 ) -> Result<LoadedProgram, String> {
-    if artifact.schema_version != ARTIFACT_SCHEMA_VERSION {
-        return Err(format!(
-            "unsupported proof artifact schema_version {} (expected {})",
-            artifact.schema_version, ARTIFACT_SCHEMA_VERSION
-        ));
-    }
+    artifact.validate_schema()?;
     if artifact.security_level != COMPILED_SECURITY_LEVEL {
         return Err(format!(
             "proof security level ({:?}) does not match binary security level ({:?})",
