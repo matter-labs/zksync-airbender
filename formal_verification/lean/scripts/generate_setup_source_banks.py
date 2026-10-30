@@ -140,17 +140,13 @@ def generate(label, filename):
     module = "Airbender.Data.Setup.Source." + label
     proof_module = "Airbender.Proofs.FullUnsigned.Source." + label
     lines = [
-        "import Lean.Compiler.NeverExtractAttr", "import Airbender.Import.SetupSourceBank", "",
+        "import Lean.Compiler.NeverExtractAttr", "import Airbender.Import.SetupSourceBank",
+        "import Airbender.Import.SetupSourceIndices", "",
         f"namespace {namespace}", "open Lean Airbender.Setup",
         "set_option maxRecDepth 16384", "set_option maxHeartbeats 2400000", "set_option Elab.async false",
         "set_option compiler.extract_closed false", "",
-        "/-- Decode packed index data. Keep recursion in tail position. -/",
-        "private def decodeIndices (base count packed : Nat) : List Nat :=",
-        "  let rec go : Nat → Nat → List Nat → List Nat",
-        "    | 0, _, earlier => earlier.reverse",
-        "    | remaining + 1, value, earlier =>",
-        "      go remaining (value / base) ((value % base) :: earlier)",
-        "  go count packed []", "",
+        "/-- Decode packed index data with the shared source rule. -/",
+        "private def decodeIndices := SourceIndices.decode", "",
     ]
     for i, text in enumerate(texts):
         lines.append(f"private def text_{i} : String := " + json.dumps(text, ensure_ascii=False))

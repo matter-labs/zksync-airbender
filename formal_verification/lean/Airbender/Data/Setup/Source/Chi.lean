@@ -1,5 +1,6 @@
 import Lean.Compiler.NeverExtractAttr
 import Airbender.Import.SetupSourceBank
+import Airbender.Import.SetupSourceIndices
 
 namespace Airbender.Setup.SourceCaptureChi
 open Lean Airbender.Setup
@@ -8,13 +9,8 @@ set_option maxHeartbeats 2400000
 set_option Elab.async false
 set_option compiler.extract_closed false
 
-/-- Decode packed index data. Keep recursion in tail position. -/
-private def decodeIndices (base count packed : Nat) : List Nat :=
-  let rec go : Nat → Nat → List Nat → List Nat
-    | 0, _, earlier => earlier.reverse
-    | remaining + 1, value, earlier =>
-      go remaining (value / base) ((value % base) :: earlier)
-  go count packed []
+/-- Decode packed index data with the shared source rule. -/
+private def decodeIndices := SourceIndices.decode
 
 private def text_0 : String := ""
 private def text_1 : String := "0"
