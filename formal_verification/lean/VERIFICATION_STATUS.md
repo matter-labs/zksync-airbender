@@ -11,7 +11,7 @@ request and RAM matching remain explicit. The final full validation is pending.
 
 | Setup machine | Current target status |
 | --- | --- |
-| Unrolled full unsigned | Open. The standalone initialization inputs and public ordinary, standard caller and split caller images are proved. Connect the combined native path and public acceptance. Prove standard worker supported use, split worker functions and the complete blessed split sequence. The target excludes special5 calls. |
+| Unrolled full unsigned | Open. The standalone initialization inputs and public ordinary, standard caller and split caller images are proved. The public decoder now classifies every native row across all six families and both caller registries. Connect the combined native path. Prove standard worker supported use, split worker functions and the complete blessed split sequence. The target excludes special5 calls. |
 | Unrolled reduced | Proved by `MachineTargets.Proofs.unrolled_reduced_soundness`. The theorem has exactly the `UnrolledReduced` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. |
 | Unified | Proved by `MachineTargets.Proofs.unified_soundness`. The theorem has exactly the `Unified` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. The target excludes special5 calls. |
 
@@ -460,3 +460,16 @@ Every worker has an actual caller with the same full-width CSR and timestamp.
 Both new roots passed focused kernel and axiom checks. They use only the three
 allowed axioms. The explicit inventory now contains 12,716 roots. All prior
 roots remain present. No function or complete execution claim follows yet.
+
+### Full unsigned public decoder obligation
+
+Exact public lookup now classifies every actual row of all six CPU families.
+The proof restores the unused funct3 slots from public instruction metadata.
+Native selectors separate ordinary rows from standard and split callers.
+All five admitted caller forms retain the original public Sail source and
+complete CSR query. The public special5 exclusion stays explicit.
+
+Six new roots passed focused kernel and axiom checks. They use only the three
+allowed axioms. The inventory now contains 12,722 roots. All prior roots remain
+present. This closes the target's public row-classification obligation.
+The combined native execution and remaining split obligations stay open.
