@@ -1295,3 +1295,28 @@ Initialization integration and the formal setup source bridge remain open.
 Design items 2 and 3 follow the machine targets. The packed-checker pilot
 stays unchanged. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+### Full unsigned ordinary-history and MUL/DIV execution obligations
+
+`unrolled_full_ordinary_history` extracts the exact native instruction
+history from the combined memory pool. It covers all six CPU families.
+It supplies raw bounds for each actual CPU read port. The proof uses the
+common ordered history and the exact global event permutation.
+
+`unrolled_full_muldiv_execution` connects that history to the original
+Sail MUL/DIV instruction. The public registry supplies the source and
+decoder query. The native first read port supplies the operand bound.
+The result uses the actual native start and final PCs.
+
+Both new modules passed focused kernel checks. Both new roots passed
+direct axiom checks. They use only the three allowed axioms. The explicit
+inventory now contains 13,296 roots. All 13,294 previous roots remain
+present. The final bounded group used 531 MiB of physical memory and
+left no owned process running. Resource limits stay unchanged.
+
+The full path proof must still connect the remaining ordinary and standard
+worker cycles. It must derive supported public arguments at each reachable
+boundary. Initialization integration and the formal setup source bridge
+remain open. Design items 2 and 3 follow the machine targets. The packed
+checker pilot stays unchanged. Full frontend validation, environment audit,
+baseline refresh, transitive replay and Linux qualification did not run.
