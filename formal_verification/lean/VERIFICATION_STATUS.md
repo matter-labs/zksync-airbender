@@ -1367,3 +1367,33 @@ integration and the formal setup source bridge remain open. Design items
 2 and 3 follow the machine targets. The packed-checker pilot stays unchanged.
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+### Full unsigned six-family ordinary-cycle obligation
+
+`unrolled_full_ordinary_cycle` now executes every ordinary full native row
+at its actual shared-history cuts. It covers arithmetic, modular operations,
+external input, word memory, subword memory, shifts, bitwise operations,
+control flow and multiply/divide. Each case uses its original Sail clause.
+The result includes the exact stream increment and native PC endpoints.
+
+`unrolled_full_ordinary_context` retains the filtered cycle history and its
+canonical native order. `unrolled_full_pc_bounds` derives both PC endpoint
+bounds from public queries, native state matching and verifier closure.
+The subword shared-history lemma supports the complete cycle dispatch.
+All previous public theorem statements stay unchanged.
+
+The cycle proof derives raw x0 reads from the same Sail history and common
+word bounds. It has no separate zero-value premise. Public configuration,
+physical image, readonly ROM history and exact native matching stay explicit.
+
+All changed modules and four new roots passed focused kernel and direct
+axiom checks. They use only the three allowed axioms. The explicit inventory
+now contains 13,305 roots. All 13,301 previous roots remain present. The
+bounded group used 547 MiB of physical memory and left no owned process
+running. Resource limits stay unchanged.
+
+Standard-worker call integration, full path composition, supported-use
+derivation, initialization integration and the formal setup source bridge
+remain open. Design items 2 and 3 follow the machine targets. The packed
+checker pilot stays unchanged. Full frontend validation, environment audit,
+baseline refresh, transitive replay and Linux qualification did not run.
