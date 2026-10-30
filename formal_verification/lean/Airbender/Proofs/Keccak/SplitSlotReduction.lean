@@ -372,6 +372,10 @@ private def slotCache : Vector (Vector (Fin 31) 7) 361 := #v[
 private theorem slot_cache_correct : ∀ index : Fin 361, slots index = slotCache[index] := by
   decide +kernel
 
+/-- Reuse the kernel-checked physical slot cache in native layout bindings. -/
+theorem slots_normalized (index : Fin 361) : slots index = slotCache[index] :=
+  slot_cache_correct index
+
 private def normalizedStep (index : Fin 361) (state : LaneState) : LaneState :=
   let positions := slotCache[index]
   let input := Vector.ofFn fun lane : Fin 7 => state positions[lane]
