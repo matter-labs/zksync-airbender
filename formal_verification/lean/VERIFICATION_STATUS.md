@@ -538,3 +538,18 @@ Eight new roots passed focused kernel and axiom checks. They use only the
 three allowed axioms. The explicit inventory now contains 12,806 roots. All
 previous roots remain present. Lane packing, worker retirement and combined
 memory execution remain open. Full validation remains pending.
+
+### Native chi5 lane-effect obligation
+
+Both native cache modes now prove the complete chi effect on actual memory
+lanes. The proof binds each native read and write limb to its four arithmetic
+queries. All 80 packing cases passed kernel checks. Lookup bounds recover each
+canonical sixteen-bit limb. Bitwise assembly proves the sixty-four-bit lane
+operation. The proof adds no operand or expected-output premise.
+
+Twelve new roots passed focused kernel and axiom checks. They use only the
+three allowed axioms. The explicit inventory now contains 12,818 roots. All
+previous roots remain present. The final bounded group passed and left no owned
+process running. Native control and memory retirement remain open. The fixed
+setup source bridge and the full unsigned target remain open. Full validation
+remains pending.
