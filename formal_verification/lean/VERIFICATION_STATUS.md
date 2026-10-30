@@ -1094,3 +1094,34 @@ source obligations remain open. Design items 2 and 3 follow the machine
 targets. The packed-checker pilot stays unchanged. Full frontend validation,
 environment audit, baseline refresh, transitive replay and Linux qualification
 did not run.
+
+### Full unsigned combined-history zero and realization obligations
+
+`port_not_zero` checks all imported split port addresses in both cache modes.
+Every port accesses a nonzero register or the separate RAM space. The result
+needs no witness bounds. `unrolled_full_memory_zero_rules` proves zero-register
+preservation for the complete CPU and worker pool. Caller writes use the
+native zero equations. Ordinary writes use the exact public instruction.
+
+`unrolled_full_memory_history` assembles the combined native history proof.
+It derives zero seed values from initialized Sail reads and canonical seed
+words. It then proves every raw read and write bound, every terminal word
+bound, one exact Sail history and each terminal memory observation. No
+separate CPU or worker RAM permutation is an input.
+
+This supporting theorem keeps native initialization, public round masks and
+split setup interpretation explicit. The target proof must derive them from
+its existing public inputs. Physical ROM initialization remains separate from
+the native verifier seed. The full unsigned target stays unchanged.
+
+All three new modules passed focused kernel checks. All three new roots passed
+direct axiom checks. They use only the three allowed axioms. The explicit
+inventory now contains 13,264 roots. All 13,261 previous roots remain present.
+The final bounded group used 538 MiB of physical memory and left no owned
+process running. Resource limits stay unchanged.
+
+Full unsigned path execution and initialization integration remain open.
+The public round-control and formal setup source obligations remain open.
+Design items 2 and 3 follow the machine targets. The packed-checker pilot
+stays unchanged. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.

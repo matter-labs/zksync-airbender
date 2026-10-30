@@ -1,3 +1,4 @@
+import Airbender.Proofs.FullUnsigned.MemoryHistory
 import Airbender.Proofs.FullUnsigned.MemoryWriteRules
 import Airbender.Proofs.FullUnsigned.MemoryFacts
 import Airbender.Proofs.Keccak.SplitThetaOutputEquations
@@ -14588,3 +14589,7 @@ import Airbender.Proofs.Keccak.SplitNativeWriteRules
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_ordinary_source
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_cpu_write_rule
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_memory_write_rules
+
+#print axioms Airbender.Keccak.Split.Native.Proofs.port_not_zero
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_memory_zero_rules
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_memory_history
