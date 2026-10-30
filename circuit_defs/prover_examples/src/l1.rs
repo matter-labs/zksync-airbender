@@ -180,7 +180,7 @@ pub fn prove_l1_wrap_in_recompute_mode(
     );
 
     serialize_pretty_to_file(&proof, proof_output_path);
-    serialize_pretty_to_file(&commitment_mode, aux_output_path);
+    serialize_pretty_to_file(&operation_mode, aux_output_path);
     println!(
         "L1 wrap: wrote {} and {}",
         proof_output_path.display(),
