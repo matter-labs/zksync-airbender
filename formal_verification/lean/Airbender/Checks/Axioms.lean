@@ -1,3 +1,4 @@
+import Tests.SetupSourceDecoding
 import Tests.SetupSourceBank
 import Airbender.Proofs.FullUnsigned.Source.Parity
 import Airbender.Proofs.FullUnsigned.Source.Theta
@@ -14937,3 +14938,25 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Setup.SourceCaptureChi.sourceSha256
 #print axioms Airbender.Setup.SourceCaptureChiProofs.root_eager
 #print axioms Airbender.Setup.SourceCaptureChiProofs.parsed
+
+#print axioms Airbender.Setup.SourceData.columnJson
+#print axioms Airbender.Setup.SourceData.columnsJson
+#print axioms Airbender.Setup.SourceDecoding.decode_natural
+#print axioms Airbender.Setup.SourceDecoding.decode_integer
+#print axioms Airbender.Setup.SourceDecoding.decode_naturals
+#print axioms Airbender.Setup.SourceDecoding.decode_block
+#print axioms Airbender.Setup.SourceDecoding.decode_column
+#print axioms Airbender.Setup.SourceDecoding.decode_columns
+#print axioms Airbender.Setup.SourceDecoding.columns_field
+#print axioms Tests.SetupSourceDecoding.mixed_column_decoded
+#print axioms Tests.SetupSourceDecoding.mixed_row_order
+#print axioms Tests.SetupSourceDecoding.physical_end
+#print axioms Tests.SetupSourceDecoding.repeated_columns_decoded
+#print axioms Tests.SetupSourceDecoding.empty_columns_decoded
+#print axioms Tests.SetupSourceDecoding.zero_repetitions_preserved
+#print axioms Tests.SetupSourceDecoding.negative_first_rejected
+#print axioms Tests.SetupSourceDecoding.negative_dense_rejected
+#print axioms Tests.SetupSourceDecoding.fractional_stride_rejected
+#print axioms Tests.SetupSourceDecoding.missing_blocks_rejected
+#print axioms Tests.SetupSourceDecoding.field_decoded
+#print axioms Airbender.Compiler.MachineTargets.Proofs.fixed_setup_rows_of_column_json

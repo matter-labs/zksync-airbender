@@ -1,4 +1,5 @@
 import Airbender.Review.Compiler.SetupSource
+import Airbender.Proofs.FullUnsigned.SetupSourceDecoding
 
 namespace Airbender.Setup
 open Lean
@@ -96,5 +97,21 @@ theorem fixed_setup_rows_of_decoded_columns
       using values ⟨column, bound⟩
   rw [sameRow]
   exact physicalRows physical
+
+/-- The exact column JSON supplies the decoder premise of the source-row
+certificate. The complete physical-row obligation stays explicit. -/
+theorem fixed_setup_rows_of_column_json
+    {source : String} {json : Json} {columns : Array Setup.Column} {length : Nat}
+    {table : Table F (fields width)}
+    (sourceDecoded : Import.SetupJson.parse source = .ok json)
+    (lengthDecoded : json.getObjValAs? Nat "trace_len" = .ok length)
+    (columnsField : json.getObjVal? "columns" = .ok (Setup.SourceData.columnsJson columns))
+    (physicalRows : ∀ index : Fin length, table.toRaw.Contains #[]
+      (Vector.ofFn fun column : Fin width =>
+        (Setup.signedValue
+          ((((columns[column.val]?).getD ⟨#[]⟩).get? index.val).getD 0) : F))) :
+    FixedSetupRows source table :=
+  fixed_setup_rows_of_decoded_columns sourceDecoded lengthDecoded
+    (Setup.SourceDecoding.columns_field columnsField) physicalRows
 
 end Airbender.Compiler.MachineTargets.Proofs

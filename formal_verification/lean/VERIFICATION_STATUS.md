@@ -1924,3 +1924,31 @@ premise changed. The packed-checker pilot stays unchanged.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned RLE decoding obligation
+
+The generic RLE decoding obligation is closed. The proof covers arbitrary
+affine blocks, dense arrays and periodic blocks with signed strides. Column
+and array decoding retain each entry in its original position. The exact
+column JSON now supplies the decoder premise of `FixedSetupRows`. The
+adapter retains the complete physical-row membership premise.
+
+The focused source group passed 24 checks. Eleven new kernel controls pass.
+They cover mixed block order, the physical end, repeated and empty columns,
+and zero repetitions. They reject negative natural values, fractional
+strides and missing block fields. Zero repetitions stay in the decoded data;
+the existing artifact validator still rejects an empty block.
+
+All 21 new roots and five retained controls passed direct axiom checks. They
+use only the three allowed axioms. The explicit inventory now has 13,552
+roots. It retains all 13,531 previous roots. The bounded checks used at most
+454 MiB of physical memory. They left no owned process running.
+
+Bind the decoder rules to the three captured column arrays next. Then prove
+physical row membership in each canonical table, including padding. The
+three `FixedSetupRows` certificates remain open. No target statement or
+existing premise changed. The packed-checker pilot stays unchanged.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
