@@ -1392,48 +1392,160 @@ pub(super) mod keccak_f1600 {
 // PoW. The CPU reference and the GPU proof share the mode's config.
 // ---------------------------------------------------------------------------
 
-/// Every circuit's committed ethproofs-soundcalc config passes the GPU
+/// Every circuit's config, resolved by the production
+/// [`crate::config::prover_config_for_selection`] from its compiled circuit,
+/// equals the committed config of its mode. The pessimistic one is the
+/// circuit's own config; the ethproofs-soundcalc one passes the GPU
 /// recursive-WHIR admission (fold ladder, per-oracle commitment shape, cap,
 /// twiddle domain) with its folding and OOD PoW, and keeps the remaining
 /// capability limits (no base-round folding PoW, one OOD sample per oracle).
 #[test]
 fn cpu_ethproofs_schedules_pass_recursive_whir_admission() {
-    const CIRCUITS: [&str; 15] = [
-        "bigint_with_control",
-        "blake2_g_function",
-        "blake2_with_compression",
-        "keccak_chi5",
-        "keccak_column_parity",
-        "keccak_special5",
-        "keccak_theta_rho",
-        "unrolled_circuits/add_sub_lui_auipc_mop",
-        "unrolled_circuits/inits_and_teardowns",
-        "unrolled_circuits/jump_branch_slt",
-        "unrolled_circuits/load_store_subword_only",
-        "unrolled_circuits/load_store_word_only",
-        "unrolled_circuits/mul_div_unsigned",
-        "unrolled_circuits/shift_binary",
-        "unrolled_circuits/unified_reduced_machine",
+    use DelegationCircuitType as D;
+    use UnrolledCircuitType as U;
+    use UnrolledMemoryCircuitType as M;
+    use UnrolledNonMemoryCircuitType as N;
+    const CIRCUITS: [(CircuitType, &str, &str); 15] = [
+        (
+            CircuitType::Delegation(D::BigIntWithControl),
+            "bigint_with_control",
+            "bigint_with_extended_control",
+        ),
+        (
+            CircuitType::Delegation(D::Blake2GFunction),
+            "blake2_g_function",
+            "blake2_g_function",
+        ),
+        (
+            CircuitType::Delegation(D::Blake2WithCompression),
+            "blake2_with_compression",
+            "blake2_with_extended_control",
+        ),
+        (
+            CircuitType::Delegation(D::KeccakChi5),
+            "keccak_chi5",
+            "keccak_chi5",
+        ),
+        (
+            CircuitType::Delegation(D::KeccakColumnParity),
+            "keccak_column_parity",
+            "keccak_column_parity",
+        ),
+        (
+            CircuitType::Delegation(D::KeccakSpecial5),
+            "keccak_special5",
+            "keccak_special5",
+        ),
+        (
+            CircuitType::Delegation(D::KeccakThetaRho),
+            "keccak_theta_rho",
+            "keccak_theta_rho",
+        ),
+        (
+            CircuitType::Unrolled(U::NonMemory(N::AddSubLuiAuipcMop)),
+            "unrolled_circuits/add_sub_lui_auipc_mop",
+            "add_sub_lui_auipc_mop",
+        ),
+        (
+            CircuitType::Unrolled(U::InitsAndTeardowns),
+            "unrolled_circuits/inits_and_teardowns",
+            "inits_and_teardowns",
+        ),
+        (
+            CircuitType::Unrolled(U::NonMemory(N::JumpBranchSlt)),
+            "unrolled_circuits/jump_branch_slt",
+            "jump_branch_slt",
+        ),
+        (
+            CircuitType::Unrolled(U::Memory(M::LoadStoreSubwordOnly)),
+            "unrolled_circuits/load_store_subword_only",
+            "mem_subword_only",
+        ),
+        (
+            CircuitType::Unrolled(U::Memory(M::LoadStoreWordOnly)),
+            "unrolled_circuits/load_store_word_only",
+            "mem_word_only",
+        ),
+        (
+            CircuitType::Unrolled(U::NonMemory(N::MulDivUnsigned)),
+            "unrolled_circuits/mul_div_unsigned",
+            "unsigned_mul_div",
+        ),
+        (
+            CircuitType::Unrolled(U::NonMemory(N::ShiftBinary)),
+            "unrolled_circuits/shift_binary",
+            "shift_binop",
+        ),
+        (
+            CircuitType::Unrolled(U::Unified),
+            "unrolled_circuits/unified_reduced_machine",
+            "unified_reduced_machine",
+        ),
     ];
-    for circuit in CIRCUITS {
-        let config: ProverConfig = deserialize_json_for_test(&format!(
-            "circuit_defs/{circuit}/generated/prover_config_sec_100_ethproofs_soundcalc.json"
-        ));
-        let schedule = &config.whir_schedule;
-        assert_eq!(schedule.base_round.folding_pow_bits, 0, "{circuit}");
-        assert!(
-            schedule
-                .internal_rounds
-                .iter()
-                .all(|round| round.num_ood_samples == 1 && round.folding_pow_bits > 0),
-            "{circuit}"
-        );
-        assert!(schedule.internal_rounds[0].ood_pow_bits > 0, "{circuit}");
-        gpu_whir::validate_baby_bear_recursive_schedule(
-            config.whir_message_size_log2() as u32,
-            schedule,
-            27,
-        );
+    // The list is every circuit with a committed ethproofs-soundcalc config.
+    let committed: std::collections::BTreeSet<String> = ["", "unrolled_circuits/"]
+        .into_iter()
+        .flat_map(|prefix| {
+            std::fs::read_dir(test_artifact_path(&format!("circuit_defs/{prefix}")))
+                .unwrap()
+                .map(move |entry| {
+                    format!("{prefix}{}", entry.unwrap().file_name().to_string_lossy())
+                })
+        })
+        .filter(|dir| {
+            test_artifact_path(&format!(
+                "circuit_defs/{dir}/generated/prover_config_sec_100_ethproofs_soundcalc.json"
+            ))
+            .exists()
+        })
+        .collect();
+    assert_eq!(
+        committed,
+        CIRCUITS.iter().map(|(_, dir, _)| dir.to_string()).collect()
+    );
+    for (circuit_type, dir, layout) in CIRCUITS {
+        let compiled: GKRCircuitArtifact<BF> =
+            deserialize_json_for_test(&format!("cs/compiled_circuits/{layout}_layout_gkr.json"));
+        for &mode in circuit_common::SoundnessMode::ALL {
+            let selection = ProvingSelection {
+                security_level: SecurityLevel::Sec100,
+                soundness_mode: mode,
+            };
+            let config =
+                crate::config::prover_config_for_selection(circuit_type, &compiled, selection)
+                    .unwrap_or_else(|error| panic!("{circuit_type:?}/{mode:?}: {error}"));
+            let committed: ProverConfig = deserialize_json_for_test(&format!(
+                "circuit_defs/{dir}/generated/prover_config_sec_100_{}.json",
+                mode.file_suffix()
+            ));
+            assert_eq!(config, committed, "{circuit_type:?}/{mode:?}");
+            if mode == circuit_common::SoundnessMode::PessimisticConjecture {
+                assert_eq!(
+                    config,
+                    crate::config::prover_config(circuit_type, SecurityLevel::Sec100).unwrap(),
+                    "{circuit_type:?}"
+                );
+                continue;
+            }
+            let schedule = &config.whir_schedule;
+            assert_eq!(schedule.base_round.folding_pow_bits, 0, "{circuit_type:?}");
+            assert!(
+                schedule
+                    .internal_rounds
+                    .iter()
+                    .all(|round| round.num_ood_samples == 1 && round.folding_pow_bits > 0),
+                "{circuit_type:?}"
+            );
+            assert!(
+                schedule.internal_rounds[0].ood_pow_bits > 0,
+                "{circuit_type:?}"
+            );
+            gpu_whir::validate_baby_bear_recursive_schedule(
+                config.whir_message_size_log2() as u32,
+                schedule,
+                27,
+            );
+        }
     }
 }
 

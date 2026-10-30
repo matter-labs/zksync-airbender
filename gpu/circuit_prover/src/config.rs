@@ -1,7 +1,8 @@
 //! Prover configuration policy.
 //!
-//! Maps a `CircuitType` + `SecurityLevel` to the canonical upstream
-//! `ProverConfig`, and owns the GPU-supported-security-level contract. The
+//! Maps a `CircuitType` + `ProvingSelection` (security level and soundness
+//! mode) to the canonical upstream `ProverConfig`, and owns the
+//! GPU-supported-security-level contract. The
 //! canonical configs include virtual packing, with independent physical
 //! packing in the Blake compression default. The proof backend qualifies
 //! separate physical-only configurations and the qualified merged Blake shape
@@ -16,7 +17,8 @@
 //! domain type with no `ProverConfig`/`SecurityLevel` coupling.
 
 use crate::upstream::{
-    pow_bits, BaseCommitmentGeometry, GKRCircuitArtifact, ProverConfig, SecurityLevel,
+    pow_bits, BaseCommitmentGeometry, ConfigSelectionError, GKRCircuitArtifact, ProverConfig,
+    ProvingSelection, SecurityLevel,
 };
 use gpu_core::primitives::field::{BF, E4};
 use gpu_trace::witness::circuit_type::CircuitType;
@@ -41,11 +43,24 @@ impl std::fmt::Display for UnsupportedGpuSecurityLevel {
 
 impl std::error::Error for UnsupportedGpuSecurityLevel {}
 
-/// Canonical `ProverConfig` for `circuit_type` at `security_level`. Delegates to
-/// the CPU's `config_for_security_level_under_pessimistic_conjecture` so GPU and
-/// CPU agree on the production WHIR schedule (the per-circuit lookup-challenge
-/// and WHIR-batching PoWs are ground on device — see
-/// [`lookup_challenges_pow_bits`] / [`batched_proximity_check_pow_bits_for_geometry`]).
+/// Canonical `ProverConfig` for `circuit_type` under `selection`, resolved from
+/// the compiled circuit's committed columns. Delegates to the CPU resolver
+/// (`CircuitType::try_prover_config_in_mode`) so GPU and CPU agree on the WHIR
+/// schedule in every soundness mode (the per-circuit lookup-challenge and
+/// WHIR-batching PoWs are ground on device — see [`lookup_challenges_pow_bits`] /
+/// [`batched_proximity_check_pow_bits_for_geometry`] — and so are the
+/// folding-challenge and OOD PoWs a schedule carries).
+pub fn prover_config_for_selection(
+    circuit_type: CircuitType,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    selection: ProvingSelection,
+) -> Result<ProverConfig, ConfigSelectionError> {
+    circuit_type.try_prover_config_in_mode(compiled_circuit, selection)
+}
+
+/// Pessimistic-conjecture `ProverConfig` for `circuit_type` at
+/// `security_level`: the circuit definition's own config, equal to
+/// [`prover_config_for_selection`] in that mode.
 ///
 /// The `Result` is retained for API stability (`SecurityLevel` currently has no
 /// unsupported variant, so both arms are `Ok`).

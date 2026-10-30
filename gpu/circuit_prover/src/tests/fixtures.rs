@@ -135,29 +135,23 @@ pub(super) fn delegation_prover_config(circuit_type: DelegationCircuitType) -> P
 }
 
 /// `circuit_type`'s prover config under `mode` at `level`. The default mode is
-/// the circuit's own config; another mode is its geometry's
-/// [`circuit_common::CircuitGeometry::prover_config`] (what the circuits'
-/// `prover_config_in_mode` computes) for `compiled_circuit`, with the trace
-/// length and base packing of the default-mode config.
+/// the circuit's own config; another mode is the production
+/// [`crate::config::prover_config_for_selection`] for `compiled_circuit`.
 pub(super) fn prover_config_in_mode(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
     level: SecurityLevel,
     mode: circuit_common::SoundnessMode,
 ) -> ProverConfig {
-    let default = crate::config::prover_config(circuit_type, level).unwrap();
     if mode == circuit_common::SoundnessMode::DEFAULT {
-        return default;
+        return crate::config::prover_config(circuit_type, level).unwrap();
     }
-    let base_round = &default.whir_schedule.base_round;
-    let geometry = circuit_common::CircuitGeometry {
-        trace_len_log2: default.trace_len_log2 as u32,
-        base_packing: circuit_common::BasePacking {
-            physical_packing_log2: base_round.physical_packing_log2,
-            virtual_packing: base_round.is_virtual_packing(),
-        },
+    let selection = ProvingSelection {
+        security_level: level,
+        soundness_mode: mode,
     };
-    geometry.prover_config(compiled_circuit, level, mode)
+    crate::config::prover_config_for_selection(circuit_type, compiled_circuit, selection)
+        .unwrap_or_else(|error| panic!("{circuit_type:?}/{mode:?}: {error}"))
 }
 
 pub(super) fn test_external_challenges() -> GKRExternalChallenges<BF, E4> {
