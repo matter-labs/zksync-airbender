@@ -1034,6 +1034,8 @@ import Airbender.Proofs.Keccak.SplitPhysicalSnapshot
 import Airbender.Proofs.Keccak.SplitPhysicalStep
 import Airbender.Proofs.Keccak.SplitNativePhysicalStep
 import Airbender.Proofs.Keccak.SplitNativePermutation
+import Airbender.Proofs.Keccak.SplitNativeWordBounds
+import Airbender.Proofs.Keccak.SplitNativeWriteRules
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 
@@ -14567,3 +14569,9 @@ import Airbender.Proofs.Keccak.SplitNativePermutation
 #print axioms Airbender.Keccak.Split.Call.Proofs.physical_step_of_words
 #print axioms Airbender.Keccak.Split.Native.Proofs.native_physical_step
 #print axioms Airbender.Keccak.Split.Native.Proofs.native_permutation_of_initialized_chain
+
+#print axioms Airbender.Keccak.Split.Native.Proofs.parity_write_words_bounded
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_write_words_bounded
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_write_words_bounded
+#print axioms Airbender.Keccak.Split.Native.Proofs.native_write_words_bounded
+#print axioms Airbender.Keccak.Split.Native.Proofs.native_write_rule
