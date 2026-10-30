@@ -1571,3 +1571,32 @@ source bridge also remains open. Design items 2 and 3 follow the machine
 targets. The packed-checker pilot stays unchanged. Full frontend validation,
 environment audit, baseline refresh, transitive replay and Linux qualification
 did not run.
+
+### Full unsigned prefix-frontier input obligations
+
+`unrolled_full_prefix_worker_read` proves that a nonzero worker read in
+the caller's final native slot comes from the exact prefix frontier. CPU
+writes earlier in that cycle touch x0. Standard and split workers occupy
+aligned final slots. Exact suffix matching excludes an intervening write.
+No input value, valid command or reference result is assumed.
+
+`unrolled_full_prefix_boot` preserves the public boot interface at the actual
+prefix endpoint. Full public queries bound that endpoint's PC. Native clock
+equations bound its timestamp. The accepted prefix closes the same typed
+verifier boundary.
+
+`unrolled_full_boot_execution_and_bounds` retains canonical terminal-word
+bounds beside complete boot execution. These bounds let supported-use
+induction recover worker registers from native frontier tokens. The existing
+boot-execution theorem keeps its original public statement.
+
+All changed modules and three new roots passed focused kernel and direct
+axiom checks. They use only the three allowed axioms. The explicit inventory
+now contains 13,330 roots. All 13,327 previous roots remain present. The
+bounded group used 563 MiB of physical memory and left no owned process
+running. Resource limits stay unchanged.
+
+Public supported-use induction and the formal setup source bridge remain
+open. Design items 2 and 3 follow the machine targets. The packed-checker
+pilot stays unchanged. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.
