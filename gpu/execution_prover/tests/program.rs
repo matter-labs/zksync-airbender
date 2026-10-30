@@ -340,7 +340,7 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
         );
     log::info!("CPU reference proved (internal closure passed); verifying natively");
     let cpu_output = crate::upstream::native_verify_unified(
-        crate::upstream::build_unified_stream(&cpu_setups, &cpu_proof),
+        crate::upstream::build_unified_stream(&cpu_setups, &cpu_proof, verifier_common::BLAKE_MODE),
         true,
     );
     log::info!("CPU reference verifies; output registers: {cpu_output:?}");
@@ -462,7 +462,7 @@ fn test_program_prover_cpu_gpu_proof_diff() {
     );
     log::info!("CPU reference proved; verifying natively");
     let cpu_output = crate::upstream::native_verify_unrolled(
-        build_unrolled_stream(&cpu_setups, &cpu_proof),
+        build_unrolled_stream(&cpu_setups, &cpu_proof, verifier_common::BLAKE_MODE),
         true,
     );
     log::info!("CPU reference verifies; output registers: {cpu_output:?}");
@@ -651,7 +651,10 @@ fn test_program_prover_recursion_layer_verify() {
         text_section,
         vec![100, 5],
     );
-    native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
+    native_verify_unrolled(
+        build_unrolled_stream(&base_setups, &base_proof, verifier_common::BLAKE_MODE),
+        true,
+    );
     log::info!(
         "base layer proved on GPU + verified natively ({} cycles)",
         base_proof.executed_cycles()
@@ -666,7 +669,11 @@ fn test_program_prover_recursion_layer_verify() {
             .join("tools/gkr_verifier/full_statement_verifiers/fsv_unrolled_base_layer_sec_100_blake2_with_compression.elf"),
     )
     .load_unpadded();
-    let stream = build_unrolled_stream(&base_setups, &base_proof);
+    let stream = build_unrolled_stream(
+        &base_setups,
+        &base_proof,
+        crate::upstream::BlakeMode::Compression,
+    );
     let (mut recursion_proof, recursion_setups) = prove_on_gpu(
         &mut prover,
         ExecutionKind::Unrolled,
@@ -682,7 +689,11 @@ fn test_program_prover_recursion_layer_verify() {
     );
 
     let output = native_verify_unrolled(
-        build_unrolled_stream(&recursion_setups, &recursion_proof),
+        build_unrolled_stream(
+            &recursion_setups,
+            &recursion_proof,
+            verifier_common::BLAKE_MODE,
+        ),
         false,
     );
     log::info!("recursion layer verified natively; output registers: {output:?}");
@@ -841,18 +852,29 @@ fn test_generate_sec100_cost_model_fixtures() {
         };
         let names = ["base", "recursion0", "recursion1"].map(|name| format!("{name}{suffix}"));
         let (base_proof, base_setups) = prove_registered_on_gpu(&mut prover, &guest, witness);
-        native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
+        native_verify_unrolled(
+            build_unrolled_stream(&base_setups, &base_proof, verifier_common::BLAKE_MODE),
+            true,
+        );
         write_cost_model_fixture(&fixture_dir, &names[0], &base_proof, &base_setups);
         let base_end_params = compute_end_params(&base_setups, base_proof.final_pc);
         let mut chain = FsvRecursionChain::begin(&base_end_params);
         let (mut recursion0_proof, recursion0_setups) = prove_registered_on_gpu(
             &mut prover,
             &base_verifier,
-            build_unrolled_stream(&base_setups, &base_proof),
+            build_unrolled_stream(
+                &base_setups,
+                &base_proof,
+                crate::upstream::BlakeMode::Compression,
+            ),
         );
         recursion0_proof.set_recursion_chain(&chain);
         native_verify_unrolled(
-            build_unrolled_stream(&recursion0_setups, &recursion0_proof),
+            build_unrolled_stream(
+                &recursion0_setups,
+                &recursion0_proof,
+                verifier_common::BLAKE_MODE,
+            ),
             false,
         );
         write_cost_model_fixture(
@@ -867,11 +889,19 @@ fn test_generate_sec100_cost_model_fixtures() {
         let (mut recursion1_proof, recursion1_setups) = prove_registered_on_gpu(
             &mut prover,
             &recursion_verifier,
-            build_unrolled_stream(&recursion0_setups, &recursion0_proof),
+            build_unrolled_stream(
+                &recursion0_setups,
+                &recursion0_proof,
+                crate::upstream::BlakeMode::Compression,
+            ),
         );
         recursion1_proof.set_recursion_chain(&chain);
         native_verify_unrolled(
-            build_unrolled_stream(&recursion1_setups, &recursion1_proof),
+            build_unrolled_stream(
+                &recursion1_setups,
+                &recursion1_proof,
+                verifier_common::BLAKE_MODE,
+            ),
             false,
         );
         write_cost_model_fixture(
@@ -894,7 +924,11 @@ fn test_generate_sec100_cost_model_fixtures() {
         vec![15, 1_200_000],
     );
     native_verify_unrolled(
-        build_unrolled_stream(&base_alt_setups, &base_alt_proof),
+        build_unrolled_stream(
+            &base_alt_setups,
+            &base_alt_proof,
+            verifier_common::BLAKE_MODE,
+        ),
         true,
     );
     write_cost_model_fixture(&fixture_dir, "base_alt", &base_alt_proof, &base_alt_setups);
@@ -933,7 +967,10 @@ fn test_generate_sec100_cost_model_fixtures() {
     ] {
         assert!(keccak_proof.delegation_proofs[&csr].len() >= 2);
     }
-    native_verify_unrolled(build_unrolled_stream(&keccak_setups, &keccak_proof), true);
+    native_verify_unrolled(
+        build_unrolled_stream(&keccak_setups, &keccak_proof, verifier_common::BLAKE_MODE),
+        true,
+    );
     write_cost_model_fixture(&fixture_dir, "keccak_f1600", &keccak_proof, &keccak_setups);
 
     // One instruction of each listed family per iteration, then the i&t windows.
@@ -961,7 +998,10 @@ fn test_generate_sec100_cost_model_fixtures() {
         vec![],
     );
     assert_eq!(memory_proof.inits_and_teardown_proofs.len(), 2);
-    native_verify_unrolled(build_unrolled_stream(&memory_setups, &memory_proof), true);
+    native_verify_unrolled(
+        build_unrolled_stream(&memory_setups, &memory_proof, verifier_common::BLAKE_MODE),
+        true,
+    );
     write_cost_model_fixture(
         &fixture_dir,
         "memory_windows",
@@ -995,7 +1035,10 @@ fn test_generate_sec100_cost_model_fixtures() {
     );
     assert_eq!(memory_proof.inits_and_teardown_proofs.len(), 2);
     memory_proof.set_recursion_chain(&chain);
-    native_verify_unrolled(build_unrolled_stream(&memory_setups, &memory_proof), false);
+    native_verify_unrolled(
+        build_unrolled_stream(&memory_setups, &memory_proof, verifier_common::BLAKE_MODE),
+        false,
+    );
     write_cost_model_fixture(
         &fixture_dir,
         "memory_windows_recursion",
@@ -1031,7 +1074,10 @@ fn run_gpu_recursive_pipeline(
         base_text_section,
         base_non_determinism,
     );
-    native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
+    native_verify_unrolled(
+        build_unrolled_stream(&base_setups, &base_proof, verifier_common::BLAKE_MODE),
+        true,
+    );
     log::info!(
         "stage 1: base layer proved + verified ({} cycles)",
         base_proof.executed_cycles()
@@ -1096,10 +1142,13 @@ fn run_gpu_recursive_pipeline(
             MachineType::Reduced,
             bin.clone(),
             text.clone(),
-            build_unrolled_stream(&setups, &proof),
+            build_unrolled_stream(&setups, &proof, unrolled_blake),
         );
         new_proof.set_recursion_chain(&chain);
-        native_verify_unrolled(build_unrolled_stream(&new_setups, &new_proof), false);
+        native_verify_unrolled(
+            build_unrolled_stream(&new_setups, &new_proof, verifier_common::BLAKE_MODE),
+            false,
+        );
         log::info!(
             "stage 2: unrolled recursion layer {layer} proved + verified ({} cycles)",
             new_proof.executed_cycles()
@@ -1128,10 +1177,13 @@ fn run_gpu_recursive_pipeline(
         MachineType::Reduced,
         bridge_bin.clone(),
         bridge_text.clone(),
-        build_unrolled_stream(&setups, &proof),
+        build_unrolled_stream(&setups, &proof, bridge_blake),
     );
     bridge_proof.set_recursion_chain(&chain);
-    native_verify_unified(build_unified_stream(&bridge_setups, &bridge_proof), false);
+    native_verify_unified(
+        build_unified_stream(&bridge_setups, &bridge_proof, verifier_common::BLAKE_MODE),
+        false,
+    );
     log::info!(
         "stage 4: bridge proved in unified mode + verified ({} cycles)",
         bridge_proof.executed_cycles()
@@ -1149,10 +1201,13 @@ fn run_gpu_recursive_pipeline(
         MachineType::Reduced,
         final_bin.clone(),
         final_text.clone(),
-        build_unified_stream(&bridge_setups, &bridge_proof),
+        build_unified_stream(&bridge_setups, &bridge_proof, final_blake),
     );
     final_proof.set_recursion_chain(&chain);
-    let output = native_verify_unified(build_unified_stream(&final_setups, &final_proof), false);
+    let output = native_verify_unified(
+        build_unified_stream(&final_setups, &final_proof, verifier_common::BLAKE_MODE),
+        false,
+    );
     log::info!(
         "stage 5: final unified recursion proof verified ({} cycles); output registers: {output:?}",
         final_proof.executed_cycles()
@@ -1176,10 +1231,13 @@ fn run_gpu_recursive_pipeline(
             MachineType::Reduced,
             final_bin.clone(),
             final_text.clone(),
-            build_unified_stream(&setups, &proof),
+            build_unified_stream(&setups, &proof, final_blake),
         );
         new_proof.set_recursion_chain(&chain);
-        native_verify_unified(build_unified_stream(&new_setups, &new_proof), false);
+        native_verify_unified(
+            build_unified_stream(&new_setups, &new_proof, verifier_common::BLAKE_MODE),
+            false,
+        );
         log::info!(
             "extra final round {round}: verified ({} cycles)",
             new_proof.executed_cycles()
