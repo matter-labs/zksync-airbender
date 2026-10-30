@@ -1397,3 +1397,34 @@ derivation, initialization integration and the formal setup source bridge
 remain open. Design items 2 and 3 follow the machine targets. The packed
 checker pilot stays unchanged. Full frontend validation, environment audit,
 baseline refresh, transitive replay and Linux qualification did not run.
+
+### Full unsigned standard-worker caller-cycle obligation
+
+`unrolled_full_standard_caller_cycle` connects bigint and extended-round
+workers to their actual caller cuts in the shared history. Each cycle
+executes the original complete memory-call relation and Sail PC retirement.
+The public source remains valid at the call. Native start and final PCs
+match the same public instruction.
+
+`unrolled_full_standard_addresses_distinct` derives port separation from
+the complete initialized pool and exact matching. The observation theorem
+then derives every input read. The worker-call theorem proves both native
+call relations. The source and PC theorems connect full public lookup to
+the actual matched worker. No call result, per-port observation or address
+separation is a premise.
+
+Commands, round controllers and worker RAM domains stay explicit. The
+supported-use proof must derive them at reachable boundaries. The common
+initialized boundary, raw bounds and exact matching also stay explicit.
+
+All five new modules and six roots passed focused kernel and direct axiom
+checks. They use only the three allowed axioms. The explicit inventory now
+contains 13,311 roots. All 13,305 previous roots remain present. The bounded
+group used 535 MiB of physical memory and left no owned process running.
+Resource limits stay unchanged.
+
+Full path composition, supported-use derivation, native ROM interpretation,
+initialization integration and the formal setup source bridge remain open.
+Design items 2 and 3 follow the machine targets. The packed-checker pilot
+stays unchanged. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.
