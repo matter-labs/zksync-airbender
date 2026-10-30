@@ -2278,3 +2278,27 @@ and 3 follow the machine targets.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned theta/rho split source key obligations
+
+The split arithmetic source keys and fixed fields are closed. The three
+keys equal the original native keys on all 524,288 rows. The three unused
+fields stay zero. The source tag stays 58. Exact source block windows
+preserve the 65,536-row physical offset. Short periodic and constant-block
+proofs then supply every row value.
+
+The focused group passed in eight seconds. It used 715 MiB of physical
+memory. The guard cleaned all owned children. No native source artifact,
+table or packed-checker pilot changed. All seven new roots passed direct
+axiom checks. They use only the three allowed axioms. The inventory now
+has 14,323 roots. It retains all 14,316 previous roots.
+
+Theta/rho now needs its two split output-fragment correspondences. Its
+other source cases are closed. Parity real-row membership remains open.
+The original source strings still need their byte-equal bindings.
+FullUnsigned is not yet proved. Design items 2 and 3 follow the machine
+targets.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
