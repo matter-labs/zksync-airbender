@@ -738,3 +738,42 @@ arithmetic and Sail call execution remain open. The formal setup source bridge
 and full unsigned integration remain open. Design items 2 and 3 follow the
 machine targets. The packed-checker pilot stays unchanged. Full validation
 remains pending.
+
+### Native theta/rho arithmetic lookup obligations
+
+The full unsigned target now has both native theta/rho arithmetic lookup
+proofs. `xor_byte_table_sound` proves the complete byte-XOR relation.
+`theta_split_table_sound` proves the complete XOR/split relation. The proofs
+bound both byte keys and the selected shift. They derive both exact output
+fragments. They retain every physical padding field and discriminator.
+The native XOR region has 65,536 rows. The native XOR/split region has 524,288
+rows. Each region retains all nine physical columns.
+
+Sixteen kernel certificates check every low and high fragment shift.
+A general evaluation proof lifts the checked native node transitions to all
+rows. The generator supplies finite node correspondences. Kernel proofs check
+those correspondences against the imported nodes. The full frontend gate now
+checks that the generated correspondence sources are current.
+
+The shared literal importer keeps the exact native region length. It can add
+zero encoding slots outside that length. Those slots cannot supply lookup
+membership. It checks every original source value after encoding. The two new
+regions passed all 5,308,416 source-cell comparisons. Serial proof elaboration
+keeps the fragment certificates within the existing resource limits. Earlier
+attempts reached the memory cap. The limits stay unchanged.
+
+The final focused group passed 116 source-module checks. It includes the
+affected parity consumers and the complete parity source-cell comparison.
+All 98 new roots passed direct axiom checks. They use only the three allowed
+axioms. The explicit inventory now contains 13,099 roots. All 13,001 previous
+roots remain present. The last bounded group used 1,773 MiB of physical memory
+and left no owned process running. A wider intermediate group stopped safely
+after it reached unrelated reference proofs. The final group checks the
+affected sources. Generator freshness and Python syntax checks also passed.
+
+Native theta/rho query binding, lane effects and Sail call execution remain
+open. The formal setup source bridge and full unsigned integration remain
+open. Design items 2 and 3 follow the machine targets. The packed-checker pilot
+stays unchanged. Full frontend checks, environment audit and baseline refresh,
+transitive kernel replay, and Linux runtime and warm-cache qualification
+remain pending.

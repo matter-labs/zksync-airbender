@@ -60,9 +60,10 @@ private def selectedValues (column : Airbender.Setup.Column) (offset length : Na
   return values
 
 private def makeColumn (depth : Nat) (values : Array Nat) : Except String Column := do
+  unless 0 < depth && values.size ≤ 16 ^ depth do throw "native literal tree capacity is invalid"
   let mut nodes : Array (Vector Nat 16) := #[]
   let mut intern : Std.HashMap (Array Nat) Nat := {}
-  let mut layer := values
+  let mut layer := values ++ Array.replicate (16 ^ depth - values.size) 0
   for _ in [:depth] do
     unless layer.size % 16 = 0 do throw "native literal level is not divisible by sixteen"
     let mut parents := Array.mkEmpty (layer.size / 16)
@@ -99,13 +100,13 @@ elab "import_setup_literal_tree " name:ident " from " path:str " native_table_id
     | .error error => throwError "native literal import failed: {error}"
   let some region := artifact.tables.find? (fun region => region.id == id.getNat)
     | throwError "native literal table ID is absent"
-  let mut extent := 1
-  let mut depth := 0
+  let mut extent := 16
+  let mut depth := 1
   while extent < region.length do
     extent := 16 * extent
     depth := depth + 1
-  unless 0 < depth && extent == region.length do
-    throwError "native literal region length must be a positive power of sixteen"
+  unless 0 < region.length do
+    throwError "native literal region must contain a row"
   let columns ← artifact.columns.mapIdxM fun index column => do
     let values ← match selectedValues column region.offset region.length with
       | .ok values => pure values
@@ -114,7 +115,11 @@ elab "import_setup_literal_tree " name:ident " from " path:str " native_table_id
       | .ok encoded => pure encoded
       | .error error => throwError "native literal encoding failed: {error}"
     logInfo m!"native literal column {index}: {encoded.nodes.size} shared nodes; all {values.size} values checked"
-    columnSyntax encoded
+    let encodedTerm ← columnSyntax encoded
+    if region.length = extent then return encodedTerm
+    let columnName := mkIdent (name.getId.appendAfter s!"Column{index}")
+    elabCommand (← `(private def $columnName : Airbender.Setup.LiteralTree.Column := $encodedTerm))
+    `($columnName)
   elabCommand (← `(def $name : Airbender.Setup.LiteralTree.Region $(quote columns.size) :=
     Airbender.Setup.LiteralTree.Region.mk $(quote region.length) #v[$[$columns],*]))
   let sourceName := mkIdent (name.getId.appendAfter "SourceBytes")

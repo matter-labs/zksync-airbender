@@ -147,7 +147,11 @@ The [shared literal importer](Airbender/Import/SetupLiteralTree.lean) retains
 complete physical setup rows as literal nodes. It compares every decoded value
 with the parsed source. It selects shared nodes by literal equality. It does
 not infer an expected arithmetic formula. Kernel proofs check the node values
-and derive the operation on all rows. The JSON source-to-data bridge remains
+and derive the operation on all rows. The tree can encode a region whose length
+is not a power of sixteen. It adds zero encoding slots after the last native
+row. The region keeps its exact native length. Those extra slots cannot supply
+table membership. Separate private column declarations keep elaboration bounded.
+The JSON source-to-data bridge remains
 a separate open obligation. The packed-checker pilot stays unchanged.
 
 Sail generation uses the pinned upstream compiler and selected original roots.

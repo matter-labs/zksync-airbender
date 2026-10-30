@@ -567,6 +567,8 @@ def main():
                 runner.run(label, [sys.executable, 'scripts/' + script])
             runner.run('native-lookup-bindings',
                        [sys.executable, 'scripts/generate_native_lookup_requests.py', '--check'])
+            runner.run('theta-fragment-correspondences',
+                       [sys.executable, 'scripts/generate_theta_fragment_maps.py', '--check'])
             runner.run('review', [sys.executable, 'scripts/check_review.py', '--verified-build', str(snapshot)], review=True)
         runner.stage = 'closure'
         if discover(root) != sources:
