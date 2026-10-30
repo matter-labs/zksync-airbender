@@ -11,7 +11,7 @@ request and RAM matching remain explicit. The final full validation is pending.
 
 | Setup machine | Current target status |
 | --- | --- |
-| Unrolled full unsigned | Open. The `UnrolledFullUnsigned` target lists all premises. Prove native soundness for its combined relation. Bind the public program setup. Connect the caller, worker and initialization boundaries. Prove the split Keccak worker functions on the new base. The target excludes special5 calls. |
+| Unrolled full unsigned | Open. The standalone initialization inputs and public ordinary, standard caller and split caller images are proved. Connect the combined native path and public acceptance. Prove standard worker supported use, split worker functions and the complete blessed split sequence. The target excludes special5 calls. |
 | Unrolled reduced | Open. Standalone initialization, shared native history, instruction cycles and complete round caller cycles are proved. The native path interprets public ROM bytes and derives worker controls and RAM locations from public supported use. Bind public decoder lookup to native acceptance. |
 | Unified | Proved by `MachineTargets.Proofs.unified_soundness`. The theorem has exactly the `Unified` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. The target excludes special5 calls. |
 
@@ -418,3 +418,13 @@ table objects. It is not a full frontend or transitive replay. The environment
 audit and Linux qualification remain pending. Work now resumes the full unsigned
 machine and the blessed split Keccak sequence. The packed checker pilot stays
 at its current scope until all three machine targets are done.
+
+### Full unsigned initialization obligation
+
+The full unsigned standalone initialization adapter passed a focused kernel
+check. Public text constructs the six-family ordinary stream image and the
+separate standard and split caller images. The standard filter retains exact
+bigint and extended-round decoder metadata. The adapter derives boot inputs
+from the unchanged standalone initialization boundary, public profile and setup.
+The full unsigned machine target remains open. Its native combined path and
+blessed split Keccak function are not yet proved. Full validation remains pending.
