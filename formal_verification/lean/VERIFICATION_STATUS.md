@@ -1627,3 +1627,27 @@ proved boot execution and frontier facts. The formal setup source bridge
 also remains open. Design items 2 and 3 follow the machine targets. The
 packed-checker pilot stays unchanged. Full frontend validation, environment
 audit, baseline refresh, transitive replay and Linux qualification did not run.
+
+### Full unsigned reusable split-input obligation
+
+`nativeCallArguments` retains only a derived blessed input control, a bounded
+pointer word and its public RAM/alignment conditions. It stores no output,
+memory effect or execution result. Actual reachable reference observations
+prove these facts for the native tokens. The same tokens recover the public
+arguments at any actual history cut that observes them.
+
+`unrolled_full_supported_split_native_inputs` derives those reusable facts
+and every native port domain from public full-reference reachability. This
+removes the reference-state identity from the inputs needed by prefix
+induction. Both cache modes retain their actual register ports.
+
+All changed modules and four new roots passed focused kernel and direct
+axiom checks. They use only the three allowed axioms. The explicit inventory
+now contains 13,338 roots. All 13,334 previous roots remain present. The
+bounded group used 531 MiB of physical memory and left no owned process
+running. Resource limits stay unchanged.
+
+Full native-prefix induction and the formal setup source bridge remain
+open. Design items 2 and 3 follow the machine targets. The packed-checker
+pilot stays unchanged. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.
