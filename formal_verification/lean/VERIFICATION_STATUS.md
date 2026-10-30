@@ -719,3 +719,22 @@ history must supply the initialized bounds, read observations and event
 permutations. The packed-checker pilot stays unchanged. Full frontend checks,
 environment audit and baseline refresh, transitive kernel replay and Linux
 runtime and warm-cache qualification remain pending.
+
+### Native theta/rho controller and slot obligations
+
+The retained native controller now proves the original control transition and
+all five exact column flags. The slot region retains all nine physical
+columns. It proves all five state slots and both neighboring parity slots.
+Exact slot-key membership rejects the leading padding row. The complete
+control key selects the unique original call. The generic controller proof
+uses the retained native generic extent. Both region views keep the same
+complete source bytes. No production source or reference changed.
+
+Twelve new roots passed focused kernel and axiom checks. They use only the
+three allowed axioms. The explicit inventory now contains 13,001 roots. All
+12,989 previous roots remain present. The last bounded group passed. It used
+649 MiB of physical memory and left no owned process running. Native theta/rho
+arithmetic and Sail call execution remain open. The formal setup source bridge
+and full unsigned integration remain open. Design items 2 and 3 follow the
+machine targets. The packed-checker pilot stays unchanged. Full validation
+remains pending.

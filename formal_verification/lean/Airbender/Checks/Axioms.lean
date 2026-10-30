@@ -1,3 +1,5 @@
+import Airbender.Proofs.Keccak.SplitThetaControllerLookup
+import Airbender.Proofs.Keccak.SplitThetaSlotLookup
 import Airbender.Proofs.Keccak.SplitParityCallExecution
 import Airbender.Proofs.Keccak.SplitParityReferenceEffect
 import Airbender.Proofs.Keccak.SplitParityNativeQueries
@@ -14261,3 +14263,16 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Proofs.parity_call_write_projection
 #print axioms Airbender.Keccak.Split.Native.Proofs.parity_call_ports_present
 #print axioms Airbender.Keccak.Split.Native.Proofs.parity_call_executes
+
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.thetaRhoControllerIndex
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.theta_rho_controller_schedule
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.theta_rho_controller_slots
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.theta_rho_slots_source
+#print axioms Airbender.Keccak.Split.Native.Fixed.thetaRhoSlots
+#print axioms Airbender.Keccak.Split.Native.Fixed.thetaRhoSlotsSourceBytes
+#print axioms Airbender.Keccak.Split.Native.Fixed.thetaRhoSlotsRegion
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.theta_rho_controller_table_schedule
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.theta_rho_generic_controller_schedule
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.theta_rho_controller_execute_value
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.theta_rho_slot_key
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.theta_rho_slot_table_sound
