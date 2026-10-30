@@ -353,4 +353,102 @@ theorem run_number_token (head : NumberHead) (tail : List Char) (value : JsonNum
   simpa only [List.reverse_cons] using
     numeric_end_step (head.char :: tail) value decoded frames result ending
 
+/-- Check a string character that needs no JSON escape. -/
+def unescapedCharacter (c : Char) : Bool :=
+  c != '\\' && c != '"' && decide (0x20 ≤ c.toNat)
+
+private theorem unescaped_step (frames : List Frame) (result : Option Json) (key : Bool)
+    (earlier : List Char) (c : Char) (valid : unescapedCharacter c = true) :
+    step {frames, phase := .string key false earlier, result} c =
+      .ok {frames, phase := .string key false (c :: earlier), result} := by
+  simp only [unescapedCharacter, Bool.and_eq_true, bne_iff_ne, decide_eq_true_eq] at valid
+  obtain ⟨⟨noSlash, noQuote⟩, lower⟩ := valid
+  simp [step, noSlash, noQuote, Nat.not_lt.mpr lower, pure, Except.pure]
+
+private theorem unescaped_tail (chars : List Char) (valid : ∀ c ∈ chars, unescapedCharacter c = true)
+    (frames : List Frame) (result : Option Json) (key : Bool) (earlier : List Char) :
+    run (.ok {frames, phase := .string key false earlier, result}) chars =
+      .ok {frames, phase := .string key false (chars.reverse ++ earlier), result} := by
+  induction chars generalizing earlier with
+  | nil => rfl
+  | cons c rest ih =>
+    rw [run_cons_numeric]
+    change run (step {frames, phase := .string key false earlier, result} c) rest = _
+    rw [unescaped_step frames result key earlier c (valid c (by simp))]
+    simpa only [List.reverse_cons, List.append_assoc, List.singleton_append] using
+      ih (fun x member => valid x (by simp only [List.mem_cons]; exact Or.inr member)) (c :: earlier)
+
+private theorem stringCore_unescaped (chars : List Char)
+    (valid : ∀ c ∈ chars, unescapedCharacter c = true) (earlier : List Char) (extra : Nat) :
+    stringCore (chars.length + extra + 1) (chars ++ ['"']) earlier =
+      .ok (String.ofList (earlier.reverse ++ chars), []) := by
+  induction chars generalizing earlier with
+  | nil =>
+    simp only [List.nil_append, stringCore, List.append_nil, pure, Except.pure]
+  | cons c rest ih =>
+    have safe := valid c (by simp)
+    simp only [unescapedCharacter, Bool.and_eq_true, bne_iff_ne, decide_eq_true_eq] at safe
+    obtain ⟨⟨noSlash, noQuote⟩, lower⟩ := safe
+    have recurrence : stringCore (rest.length + extra + 1 + 1) (c :: (rest ++ ['"'])) earlier =
+        stringCore (rest.length + extra + 1) (rest ++ ['"']) (c :: earlier) := by
+      rw [stringCore]
+      · simp only [Nat.not_lt.mpr lower, ↓reduceIte, pure, Except.pure, bind, Except.bind]
+      · exact noQuote
+      · exact noSlash
+    simpa only [List.length_cons, Nat.succ_add, List.cons_append,
+      List.reverse_cons, List.append_assoc, List.singleton_append, List.nil_append] using
+      recurrence.trans (ih (fun x member => valid x (by simp only [List.mem_cons]; exact Or.inr member))
+        (c :: earlier))
+
+
+private theorem completeString_unescaped (chars : List Char)
+    (valid : ∀ c ∈ chars, unescapedCharacter c = true) (state : State) (key : Bool) :
+    completeString state key chars.reverse =
+      if key then acceptKey state (String.ofList chars) else acceptValue state (.str (String.ofList chars)) := by
+  have parsed := stringCore_unescaped chars valid [] 1
+  simp only [List.reverse_nil, List.nil_append] at parsed
+  unfold completeString
+  rw [List.length_reverse, List.reverse_reverse, parsed]
+  rfl
+
+/-- Safe string characters retain their exact value in every context. -/
+theorem run_unescaped_string (chars : List Char)
+    (valid : ∀ c ∈ chars, unescapedCharacter c = true)
+    (frames : List Frame) (result : Option Json) (allow : Bool) :
+    run (.ok {frames, phase := .value allow, result}) ('"' :: (chars ++ ['"'])) =
+      acceptedSourceValue frames result (.str (String.ofList chars)) := by
+  rw [run_cons_numeric]
+  change run (.ok {frames, phase := .string false false [], result}) (chars ++ ['"']) = _
+  rw [run_append, unescaped_tail chars valid]
+  simp only [List.append_nil]
+  change completeString {frames, phase := .string false false chars.reverse, result} false chars.reverse = _
+  rw [completeString_unescaped chars valid]
+  cases frames with
+  | nil => rfl
+  | cons frame frames =>
+    cases frame with
+    | array previous => rfl
+    | object previous key => cases key <;> rfl
+
+/-- Safe key characters retain their value and consume the following colon. -/
+theorem run_unescaped_key (chars : List Char)
+    (valid : ∀ c ∈ chars, unescapedCharacter c = true)
+    (earlier : List (String × Json)) (frames : List Frame) (result : Option Json) (allow : Bool) :
+    run (.ok {frames := .object earlier none :: frames, phase := .key allow, result})
+      (('"' :: (chars ++ ['"'])) ++ [':']) =
+      .ok {frames := .object earlier (some (String.ofList chars)) :: frames, phase := .value false, result} := by
+  have quoted : run (.ok {frames := .object earlier none :: frames, phase := .key allow, result})
+        ('"' :: (chars ++ ['"'])) =
+        .ok {frames := .object earlier (some (String.ofList chars)) :: frames, phase := .colon, result} := by
+    rw [run_cons_numeric]
+    change run (.ok {frames := .object earlier none :: frames, phase := .string true false [], result})
+      (chars ++ ['"']) = _
+    rw [run_append, unescaped_tail chars valid]
+    simp only [List.append_nil]
+    change completeString {frames := .object earlier none :: frames, phase := .string true false chars.reverse, result} true chars.reverse = _
+    rw [completeString_unescaped chars valid]
+    rfl
+  rw [run_append, quoted]
+  rfl
+
 end Airbender.Import.SetupJson

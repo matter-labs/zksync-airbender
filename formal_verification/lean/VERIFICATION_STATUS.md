@@ -1857,3 +1857,34 @@ certificates remain open. No target or existing premise changed.
 Design items 2 and 3 follow the machine targets. The packed-checker pilot
 stays unchanged. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+
+### Full unsigned shared source composition obligation
+
+The string checker now has a kernel soundness theorem. One check supplies
+both a JSON value and an object key. Shared source nodes compose numbers,
+strings, booleans, null values, arrays and objects. Their proofs preserve
+source order and the exact JSON result. The source generator can reuse these
+proofs for each distinct node.
+
+The string checker rejects characters that require JSON escapes. A runtime
+scan found no such characters in the three retained split sources. The source
+rules add no restriction to the target statements or to the setup parser.
+
+Focused checks passed for the importer and source rules. The 18 retained
+setup-directory JSON differential checks still pass. All 14 new kernel
+controls pass. They cover empty strings, spaces, Unicode, keys, both Boolean
+values, null values and mixed nodes. They reject quotes, backslashes and
+control characters in the unescaped representation.
+
+All 39 new roots passed direct axiom checks. They use only the three allowed
+axioms. The explicit inventory now contains 13,468 roots. All 13,429 previous
+roots remain present. The bounded focused groups used at most 749 MiB of
+physical memory. They left no owned process running. Resource limits stay
+unchanged.
+
+The three production source-table certificates remain open. Generate their
+shared source nodes and prove physical row matching next. Design items 2 and
+3 follow the machine targets. The packed-checker pilot stays unchanged. Full
+frontend validation, environment audit, baseline refresh, transitive replay
+and Linux qualification did not run.

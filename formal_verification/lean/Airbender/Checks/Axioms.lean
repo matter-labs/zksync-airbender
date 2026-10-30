@@ -2,6 +2,7 @@ import Airbender.Import.SetupJson
 import Tests.SetupJson
 import Tests.SetupSourceArrays
 import Tests.SetupSourceNumbers
+import Tests.SetupSourceNodes
 import Airbender.Proofs.Keccak.SplitSetupTransport
 import Airbender.Review.Compiler.SetupSource
 import Airbender.Proofs.FullUnsigned.SetupInterpretation
@@ -14828,3 +14829,43 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Tests.SetupSourceNumbers.number_array_source
 #print axioms Tests.SetupSourceNumbers.key_source
 #print axioms Tests.SetupSourceNumbers.number_object_source
+
+#print axioms Airbender.Import.SetupJson.unescapedCharacter
+#print axioms Airbender.Import.SetupJson.run_unescaped_string
+#print axioms Airbender.Import.SetupJson.run_unescaped_key
+#print axioms Airbender.Setup.SourceData.stringBytes
+#print axioms Airbender.Setup.SourceData.booleanBytes
+#print axioms Airbender.Setup.SourceData.nullBytes
+#print axioms Airbender.Setup.SourceData.Node
+#print axioms Airbender.Setup.SourceData.numberNode
+#print axioms Airbender.Setup.SourceData.stringNode
+#print axioms Airbender.Setup.SourceData.booleanNode
+#print axioms Airbender.Setup.SourceData.nullNode
+#print axioms Airbender.Setup.SourceData.arrayNode
+#print axioms Airbender.Setup.SourceData.objectNode
+#print axioms Airbender.Setup.SourceProofs.check_string
+#print axioms Airbender.Setup.SourceProofs.check_string_sound
+#print axioms Airbender.Setup.SourceProofs.null_source
+#print axioms Airbender.Setup.SourceProofs.boolean_source
+#print axioms Airbender.Setup.SourceProofs.NodeSource
+#print axioms Airbender.Setup.SourceProofs.number_node_source
+#print axioms Airbender.Setup.SourceProofs.string_node_source
+#print axioms Airbender.Setup.SourceProofs.boolean_node_source
+#print axioms Airbender.Setup.SourceProofs.null_node_source
+#print axioms Airbender.Setup.SourceProofs.array_node_source
+#print axioms Airbender.Setup.SourceProofs.object_node_eager
+#print axioms Airbender.Setup.SourceProofs.object_node_source
+#print axioms Tests.SetupSourceNodes.string_checked
+#print axioms Tests.SetupSourceNodes.empty_checked
+#print axioms Tests.SetupSourceNodes.space_checked
+#print axioms Tests.SetupSourceNodes.unicode_checked
+#print axioms Tests.SetupSourceNodes.quote_rejected
+#print axioms Tests.SetupSourceNodes.backslash_rejected
+#print axioms Tests.SetupSourceNodes.control_rejected
+#print axioms Tests.SetupSourceNodes.string_value_source
+#print axioms Tests.SetupSourceNodes.empty_value_source
+#print axioms Tests.SetupSourceNodes.string_key_source
+#print axioms Tests.SetupSourceNodes.null_value_source
+#print axioms Tests.SetupSourceNodes.boolean_values_source
+#print axioms Tests.SetupSourceNodes.node_array_source
+#print axioms Tests.SetupSourceNodes.node_object_source

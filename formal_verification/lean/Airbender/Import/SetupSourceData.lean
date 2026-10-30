@@ -56,4 +56,31 @@ def objectContents {α : Type} (keyBytes bytes : α → List Char) : List α →
 def objectBytes {α : Type} (keyBytes bytes : α → List Char) (entries : List α) : List Char :=
   '{' :: (objectContents keyBytes bytes entries ++ ['}'])
 
+
+def stringBytes (value : String) : List Char := '"' :: (value.toList ++ ['"'])
+
+def booleanBytes : Bool → List Char
+  | true => ['t', 'r', 'u', 'e']
+  | false => ['f', 'a', 'l', 's', 'e']
+
+def nullBytes : List Char := ['n', 'u', 'l', 'l']
+
+/-- Source bytes and their expected JSON value. -/
+structure Node where
+  bytes : List Char
+  value : Json
+
+def numberNode (token : NumberToken) : Node := ⟨token.bytes, .num token.value⟩
+def stringNode (value : String) : Node := ⟨stringBytes value, .str value⟩
+def booleanNode (value : Bool) : Node := ⟨booleanBytes value, .bool value⟩
+def nullNode : Node := ⟨nullBytes, .null⟩
+
+def arrayNode {α : Type} (child : α → Node) (entries : List α) : Node :=
+  ⟨arrayBytes (fun index => (child index).bytes) entries,
+    .arr (entries.map (fun index => (child index).value)).toArray⟩
+
+def objectNode {α : Type} (key : α → String) (child : α → Node) (entries : List α) : Node :=
+  ⟨objectBytes (fun index => stringBytes (key index)) (fun index => (child index).bytes) entries,
+    Json.mkObj (entries.map (fun index => (key index, (child index).value)))⟩
+
 end Airbender.Setup.SourceData

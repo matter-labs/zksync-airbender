@@ -93,6 +93,14 @@ tokens. Captured source bytes, imported values and target premises stay
 unchanged. Complete the three source-table certificates before claiming the
 full target.
 
+Shared source composition now covers every JSON form in the retained split
+sources. A string check supplies both value and key parsing. Node proofs
+compose those facts with checked numbers, booleans, null values, arrays and
+objects. The unescaped string guard passes the runtime scan of the three
+retained sources. Kernel controls also reject unsupported raw escape and
+control characters. The captured source certificates and their physical row
+matching remain open.
+
 ## Finding status versus conditional proof coverage
 
 **An assumption can close a conditional proof obligation while the finding stays
