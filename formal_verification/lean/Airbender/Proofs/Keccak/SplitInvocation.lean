@@ -1,6 +1,7 @@
 import Airbender.Review.Trace.Workers.Keccak.SplitRequests
 import Airbender.Proofs.Trace.Timestamps
 import Airbender.Proofs.Constraints
+import Airbender.Proofs.Keccak.SplitRequests
 
 namespace Airbender.Keccak.Split.Native.Proofs
 open Trace
@@ -34,5 +35,33 @@ theorem active_invocation_live [Fact babyBearModulus.Prime]
     have value : (503316480 : ZMod babyBearModulus).val = 503316480 := rfl
     rw [value] at bound
     omega
+
+/-- Exact request matching accounts for every active split fulfillment. -/
+theorem native_requests_match [Fact babyBearModulus.Prime]
+    {data : RequestTrace babyBearModulus} (accepted : RequestChecks data)
+    {initial : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    (inputs : RequestInputs data initial addresses) : data.calls.Perm data.fulfillments := by
+  have binding := request_clock_binding (by decide) (by decide) accepted inputs
+  have all : data.fulfillments.filter (fun request => decide (Delegation.Requests.Live request)) =
+      data.fulfillments := by
+    apply List.filter_eq_self.mpr
+    intro request member
+    obtain ⟨worker, present, rfl⟩ := List.mem_map.mp member
+    exact decide_eq_true (active_invocation_live data.workers.cached
+      (accepted.workerEquations.rowsHold worker present) (accepted.workerActive worker present))
+  exact all ▸ binding.fulfilled
+
+/-- Every actual split worker has a caller at its exact native request. -/
+theorem native_worker_caller [Fact babyBearModulus.Prime]
+    {data : RequestTrace babyBearModulus} (accepted : RequestChecks data)
+    {initial : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    (inputs : RequestInputs data initial addresses)
+    {worker : Row babyBearModulus} (member : worker ∈ data.workers.rows) :
+    ∃ caller ∈ data.callers,
+      worker.fulfillment data.workers.cached = Delegation.Requests.caller caller.assignment := by
+  have matched := native_requests_match accepted inputs
+  obtain ⟨caller, present, equal⟩ := List.mem_map.mp
+    (matched.mem_iff.mpr (List.mem_map.mpr ⟨worker, member, rfl⟩))
+  exact ⟨caller, present, equal.symm⟩
 
 end Airbender.Keccak.Split.Native.Proofs

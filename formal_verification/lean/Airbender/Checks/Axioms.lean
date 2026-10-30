@@ -13967,3 +13967,5 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.theta_rho_generic_controller_sound
 #print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5_generic_controller_sound
 #print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.generic_control_setup_facts
+#print axioms Airbender.Keccak.Split.Native.Proofs.native_requests_match
+#print axioms Airbender.Keccak.Split.Native.Proofs.native_worker_caller
