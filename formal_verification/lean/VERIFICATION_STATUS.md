@@ -1600,3 +1600,30 @@ Public supported-use induction and the formal setup source bridge remain
 open. Design items 2 and 3 follow the machine targets. The packed-checker
 pilot stays unchanged. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+### Full unsigned reachable-input conversion obligations
+
+`unrolled_full_supported_standard_inputs` converts reachable public full
+reference arguments into native standard-worker commands, round controls
+and RAM domains. The proof uses bounded actual frontier observations. It
+reuses one extracted native ABI argument proof. The existing unified stream
+reference theorem keeps its original public statement.
+
+`unrolled_full_supported_split_inputs` obtains the blessed split index and
+register arguments from public full-reference reachability. The native
+split RAM-domain theorem then locates every actual port. It uses only the
+pointer-word bound and two register observations. Native lane-value bounds
+and an expected operation result are not premises. Both cache modes and
+all three split layouts use their complete port enumeration.
+
+All changed modules and four new roots passed focused kernel and direct
+axiom checks. They use only the three allowed axioms. The explicit inventory
+now contains 13,334 roots. All 13,330 previous roots remain present. The
+bounded group used 541 MiB of physical memory and left no owned process
+running. Resource limits stay unchanged.
+
+The full native-prefix induction must connect these converters to the
+proved boot execution and frontier facts. The formal setup source bridge
+also remains open. Design items 2 and 3 follow the machine targets. The
+packed-checker pilot stays unchanged. Full frontend validation, environment
+audit, baseline refresh, transitive replay and Linux qualification did not run.
