@@ -623,3 +623,19 @@ The last bounded group passed and left no owned process running. Resource caps
 stay unchanged. Parity arithmetic and call execution remain open. The fixed
 setup source bridge, theta/rho call effect and full unsigned integration remain
 open. Full validation remains pending.
+
+### Native parity slot-key and byte-iota obligations
+
+Exact slot-table membership now binds all six original physical lanes. The
+proof checks the full control key and rejects the padding row for a live key.
+The native byte-iota table now proves both byte bounds and the exact output.
+Seven columns reuse the established imported iota data. The counter column has
+a different RLE partition. A kernel proof shows that its values agree with the
+original arithmetic reference. The proof retains every physical column.
+
+Eight new roots passed focused kernel and axiom checks. They use only the three
+allowed axioms. The explicit inventory now contains 12,873 roots. All previous
+roots remain present. The final bounded group passed and left no owned process
+running. Five-input parity arithmetic, native parity call execution, theta/rho
+call execution, the fixed setup source bridge and full unsigned integration
+remain open. Full validation remains pending.
