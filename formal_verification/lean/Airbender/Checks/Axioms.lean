@@ -1,3 +1,5 @@
+import Airbender.Proofs.Keccak.SplitParitySlotLookup
+import Airbender.Proofs.Keccak.SplitParityIotaLookup
 import Airbender.Proofs.Keccak.SplitParityControllerLookup
 import Airbender.Proofs.Keccak.SplitChiCallExecution
 import Airbender.Proofs.Keccak.SplitChiLaneHalves
@@ -14128,3 +14130,11 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_controller_source
 #print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_controller_table_sound
 #print axioms Airbender.Keccak.Split.Call.Proofs.slots_normalized
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_controller_execute_value
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_slot_key
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_slot_table_sound
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_iota_other_columns
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_iota_counter
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_iota_reference
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_iota_field_row
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.column_parity_iota_table_sound
