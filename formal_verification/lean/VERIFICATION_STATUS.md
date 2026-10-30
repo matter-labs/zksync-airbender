@@ -1034,3 +1034,33 @@ path execution and initialization connection. The formal setup source bridge
 remains open. Design items 2 and 3 follow the machine targets. The packed-checker
 pilot stays unchanged. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+### Full unsigned combined-history clock and order obligations
+
+`unrolled_request_times_unique` derives unique clocks for the complete native
+caller set. `unrolled_request_clock_bounds` uses the exact combined request
+permutation. It bounds every standard and split worker invocation. It also
+proves exact live matching and unique live fulfillment clocks. No separate
+worker permutation or typed decoder premise is an input.
+
+`unrolledFullMemoryData` retains one architectural RAM pool. It contains all
+CPU, standard worker and split worker edges. `unrolled_full_write_clocks`
+bounds every produced clock. `unrolled_full_memory_clocks` uses exact combined
+RAM matching to bound every read clock. `unrolled_full_memory_facts` derives
+address preservation and strict read-before-write order for the complete pool.
+The CPU's omitted virtual port has the native zero-clock token. The split
+ports use the current derived-borrow equations. Seed clock bounds and fixed
+controller provenance remain explicit. These are supporting obligations of
+the unchanged full unsigned target.
+
+All three new modules passed focused kernel checks. All six new roots passed
+direct axiom checks. They use only the three allowed axioms. The explicit
+inventory now contains 13,258 roots. All 13,252 previous roots remain present.
+The final bounded group used 531 MiB of physical memory and left no owned
+process running. Resource limits stay unchanged.
+
+The combined history still needs its complete write rules, path execution
+and initialization connection. The formal setup source bridge remains open.
+Design items 2 and 3 follow the machine targets. The packed-checker pilot
+stays unchanged. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.
