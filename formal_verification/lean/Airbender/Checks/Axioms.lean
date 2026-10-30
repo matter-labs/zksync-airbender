@@ -1,3 +1,4 @@
+import Airbender.Proofs.FullUnsigned.CallHistory
 import Airbender.Proofs.FullUnsigned.EventGroups
 import Airbender.Proofs.FullUnsigned.CPUWindows
 import Airbender.Proofs.FullUnsigned.RequestSchedule
@@ -14611,3 +14612,9 @@ import Airbender.Proofs.Keccak.SplitNativeWriteRules
 
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_instruction_events
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_ordinary_events
+
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_standard_caller_events
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_split_caller_events
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_caller_zero_ports
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_standard_caller_history
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_split_caller_history
