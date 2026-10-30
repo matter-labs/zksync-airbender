@@ -298,7 +298,7 @@ fn unified_base_layer_transpiler_accepts_valid_proof() {
         "Missing {elf_path} — run `cd tools/gkr_verifier && ./dump_bin.sh fsv_unified_base_layer_sec_100` (or gkr_test.sh `binaries`)"
     );
     let (binary, text_section) =
-        full_statement_verifier::host_utils::load_program(std::path::Path::new(&elf_path));
+        riscv_transpiler::elf::load_legacy_program(std::path::Path::new(&elf_path));
 
     let instructions: Vec<Instruction> =
         preprocess_bytecode::<ReducedMachineDecoderConfig, true>(&text_section);
