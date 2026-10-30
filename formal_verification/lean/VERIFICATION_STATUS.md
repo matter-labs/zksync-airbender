@@ -1203,3 +1203,31 @@ The public round-control and formal setup source obligations remain open.
 Design items 2 and 3 follow the machine targets. The packed-checker pilot
 stays unchanged. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+### Full unsigned caller-history extraction obligation
+
+The two caller event theorems reduce each full native caller window to its
+own CPU events and one matched worker. Unique invocation times select the
+worker. The native CSR values exclude contributions from the other pool.
+This result covers standard and split callers in both split cache modes.
+
+`unrolled_full_caller_zero_ports` uses exact public decoder matching to prove
+that both architectural CPU ports address x0. The two caller history theorems
+then extract each worker's exact Sail history from the combined history.
+They remove only the CPU x0 events. The extracted event list is a permutation
+of every actual worker port. The prefix and suffix histories keep the same
+caller boundaries. No separate worker RAM permutation or expected effect
+is an input.
+
+All three new modules passed focused kernel checks. All five new roots passed
+direct axiom checks. They use only the three allowed axioms. The explicit
+inventory now contains 13,281 roots. All 13,276 previous roots remain present.
+The final bounded group used 529 MiB of physical memory and left no owned
+process running. Resource limits stay unchanged.
+
+Full unsigned path execution still needs native input observations at these
+boundaries and public supported-use controls. Initialization integration and
+the formal setup source bridge remain open. Design items 2 and 3 follow the
+machine targets. The packed-checker pilot stays unchanged. Full frontend
+validation, environment audit, baseline refresh, transitive replay and Linux
+qualification did not run.
