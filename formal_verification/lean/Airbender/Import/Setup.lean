@@ -1,4 +1,5 @@
 import Airbender.Import.Schema
+import Airbender.Import.SetupJson
 
 namespace Airbender.Setup
 open Lean
@@ -154,7 +155,7 @@ def Artifact.validate (artifact : Artifact) : Except String Unit := do
 
 /-- Parse the exported data; no Rust row formula is reconstructed in Lean. -/
 def parse (source : String) : Except String Artifact := do
-  let json ← Json.parse source
+  let json ← Import.SetupJson.parse source
   exactKeys json #["version", "field_modulus", "trace_len", "circuit", "program",
     "tables", "columns", "range16", "timestamp_range"]
   let artifact : Artifact ← fromJson? json

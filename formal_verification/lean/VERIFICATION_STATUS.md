@@ -1744,3 +1744,34 @@ The source certificates still need a compact kernel representation.
 Design items 2 and 3 follow the machine targets. The packed-checker pilot
 stays unchanged. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+
+### Full unsigned source-decoder transparency obligation
+
+`Setup.parse` now uses `Import.SetupJson`. All decoder recursion is total.
+`run_append` proves exact source-block composition. `parse_of_run` connects
+checked block execution and a checked final state to the decoded JSON.
+The kernel can keep earlier array data abstract during a later block check.
+
+Focused checks passed for 101 modules. They include the changed importer,
+source-interpretation proofs and complete theta/rho physical-table comparison.
+All 18 retained setup-directory JSON files match the earlier parser. Every
+decoded artifact field also matches. The edge controls cover numbers, Unicode,
+duplicate keys, delimiters and malformed input. All seven named kernel
+controls pass. Static setup checks also pass for 16 setup artifacts, 731
+native source hashes, 15 production circuits and one derived fixture.
+
+All 18 new roots passed direct axiom checks. They use only the three allowed
+axioms. The explicit inventory now contains 13,372 roots. All 13,354 previous
+roots remain present. The bounded focused group used 769 MiB of physical
+memory and left no owned process running. Resource limits stay unchanged.
+
+The decoder keeps the existing 64-bit number bound as an explicit integer.
+The retained source bytes, imported values and target statements stay
+unchanged. The three `FixedSetupRows` certificates remain open. A separate
+block-certificate generator stays in the evidence directory until its kernel
+checks pass. No full-source certificate is claimed by the decoder change.
+
+Design items 2 and 3 follow the machine targets. The packed-checker pilot
+stays unchanged. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.
