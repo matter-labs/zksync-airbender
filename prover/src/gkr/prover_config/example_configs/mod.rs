@@ -40,6 +40,46 @@ pub use special_configs::*;
 
 pub use crate::definitions::SoundnessMode;
 
+/// A requested circuit shape has no certified configuration. No schedule is interpolated.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConfigSelectionError {
+    MissingSchedule {
+        mode: SoundnessMode,
+        level: SecurityLevel,
+        input: WhirInput,
+    },
+    MissingColumnCount,
+    CommittedPolynomialCeiling {
+        actual: usize,
+        ceiling: usize,
+    },
+    TraceLengthMismatch {
+        declared: usize,
+        compiled: usize,
+    },
+}
+
+impl core::fmt::Display for ConfigSelectionError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::MissingSchedule { mode, level, input } => write!(
+                f, "no {mode:?} WHIR schedule for {level:?}, input {input:?}"
+            ),
+            Self::MissingColumnCount => write!(
+                f, "the EthproofsSoundnessCalc schedule is certified for a committed-polynomial ceiling: provide the compiled circuit's column count"
+            ),
+            Self::CommittedPolynomialCeiling { actual, ceiling } => write!(
+                f, "{actual} committed polynomials exceed the {ceiling} ceiling certified for EthproofsSoundnessCalc"
+            ),
+            Self::TraceLengthMismatch { declared, compiled } => write!(
+                f, "declared trace length {declared} differs from compiled trace length {compiled}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ConfigSelectionError {}
+
 /// How a circuit's base columns are committed. Physical and virtual packing
 /// are independent: physical packing commits `2^physical_packing_log2`
 /// consecutive columns as ONE `(trace_len_log2 + physical_packing_log2)`-variate
@@ -212,12 +252,21 @@ impl WhirInput {
 /// also carries the committed-polynomial ceiling its batching proof of work
 /// was certified for, and `input.num_committed_polys` must not exceed it.
 pub fn whir_schedule(mode: SoundnessMode, level: SecurityLevel, input: &WhirInput) -> WhirSchedule {
+    try_whir_schedule(mode, level, input).unwrap_or_else(|error| panic!("{error}"))
+}
+
+/// Fallible schedule lookup, including the Ethproofs committed-polynomial ceiling.
+pub fn try_whir_schedule(
+    mode: SoundnessMode,
+    level: SecurityLevel,
+    input: &WhirInput,
+) -> Result<WhirSchedule, ConfigSelectionError> {
     match mode {
         SoundnessMode::PessimisticConjecture => {
-            pessimistic_conjecture::whir_schedule(level, input.message_size_log2, input.packing())
+            pessimistic_conjecture::try_whir_schedule(level, input)
         }
         SoundnessMode::EthproofsSoundnessCalc => {
-            ethproofs_soundcalc::entry(level, input).schedule(input.physical_packing_log2)
+            Ok(ethproofs_soundcalc::try_entry(level, input)?.schedule(input.physical_packing_log2))
         }
     }
 }
@@ -253,6 +302,18 @@ pub fn prover_config(
     packing: BasePacking,
     columns: Option<&BaseColumns>,
 ) -> ProverConfig {
+    try_prover_config(mode, level, trace_len_log2, packing, columns)
+        .unwrap_or_else(|error| panic!("{error}"))
+}
+
+/// Resolve an existing certified config without substituting another mode or shape.
+pub fn try_prover_config(
+    mode: SoundnessMode,
+    level: SecurityLevel,
+    trace_len_log2: usize,
+    packing: BasePacking,
+    columns: Option<&BaseColumns>,
+) -> Result<ProverConfig, ConfigSelectionError> {
     let input = match columns {
         Some(columns) => WhirInput::new(
             trace_len_log2,
@@ -262,7 +323,11 @@ pub fn prover_config(
         ),
         None => WhirInput::without_column_count(trace_len_log2, packing),
     };
-    standard_config(trace_len_log2, level, whir_schedule(mode, level, &input))
+    Ok(standard_config(
+        trace_len_log2,
+        level,
+        try_whir_schedule(mode, level, &input)?,
+    ))
 }
 
 /// The standard config shape around a WHIR schedule: separate memory and
@@ -290,6 +355,50 @@ pub fn standard_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ethproofs_column_ceiling_is_fallible() {
+        let mode = SoundnessMode::EthproofsSoundnessCalc;
+        let input = WhirInput {
+            message_size_log2: 23,
+            physical_packing_log2: 0,
+            virtual_packing: false,
+            num_committed_polys: Some(129),
+        };
+        assert_eq!(
+            try_whir_schedule(mode, SecurityLevel::Sec100, &input),
+            Err(ConfigSelectionError::CommittedPolynomialCeiling {
+                actual: 129,
+                ceiling: 128
+            })
+        );
+        assert_eq!(
+            try_whir_schedule(
+                mode,
+                SecurityLevel::Sec100,
+                &WhirInput {
+                    num_committed_polys: None,
+                    ..input
+                }
+            ),
+            Err(ConfigSelectionError::MissingColumnCount)
+        );
+    }
+
+    #[test]
+    fn absent_schedules_are_fallible_in_both_modes() {
+        let input = WhirInput::without_column_count(19, BasePacking::NONE);
+        for &mode in SoundnessMode::ALL {
+            assert_eq!(
+                try_whir_schedule(mode, SecurityLevel::Sec100, &input),
+                Err(ConfigSelectionError::MissingSchedule {
+                    mode,
+                    level: SecurityLevel::Sec100,
+                    input
+                })
+            );
+        }
+    }
 
     #[test]
     fn base_columns_count_packed_polys() {

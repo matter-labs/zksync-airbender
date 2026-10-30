@@ -52,7 +52,18 @@ pub struct DelegationCircuitSetup {
 }
 
 impl DelegationCircuitSetup {
-    /// The circuit's prover config at `level` — the single source of its
+    /// Fallible lookup keyed by security level and soundness mode.
+    pub fn try_prover_config_in_mode(
+        &self,
+        level: SecurityLevel,
+        mode: circuit_common::SoundnessMode,
+    ) -> Result<prover::gkr::prover_config::ProverConfig, circuit_common::ConfigSelectionError>
+    {
+        self.geometry
+            .try_prover_config(&self.compiled_circuit, level, mode)
+    }
+
+    /// Pessimistic compatibility wrapper: the circuit's prover config at `level` — the single source of its
     /// proving geometry (trace length, schedules, packing).
     pub fn prover_config(&self, level: SecurityLevel) -> &prover::gkr::prover_config::ProverConfig {
         let config = circuit_common::prover_config_at(&self.prover_configs, level);

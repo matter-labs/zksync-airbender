@@ -207,8 +207,9 @@ fn schedule_phase_one<'a>(
             circuit_type,
             sequence_id,
             precomputations,
-            security_level,
+            selection,
         } = request;
+        let security_level = selection.security_level;
         trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] initializing setup for circuit {circuit_type:?}[{sequence_id}]"
         );
@@ -256,8 +257,9 @@ fn schedule_phase_one<'a>(
                 precomputations,
                 inits_and_teardowns,
                 tracing_data,
-                security_level,
+                selection,
             } = req;
+            let security_level = selection.security_level;
             let state = RequestState {
                 batch_id,
                 circuit_type,
@@ -282,8 +284,9 @@ fn schedule_phase_one<'a>(
                 tracing_data,
                 external_challenges,
                 memory_caps,
-                security_level,
+                selection,
             } = req;
+            let security_level = selection.security_level;
             let state = RequestState {
                 batch_id,
                 circuit_type,

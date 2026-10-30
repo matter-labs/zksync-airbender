@@ -14,7 +14,6 @@ use crate::upstream::{
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{ProofRequest, ProofResult};
-use execution_prover::prover_config;
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType,
@@ -42,9 +41,11 @@ pub(super) fn run<A: HostTraceAllocator>(
         tracing_data,
         external_challenges,
         memory_caps,
-        security_level,
+        selection,
     } = request;
-    let config = prover_config(circuit_type, security_level);
+    let config = precomputations
+        .config_for_request(circuit_type, selection)
+        .unwrap_or_else(|error| panic!("{error}"));
     let twiddles = jobs.twiddles(1usize << config.whir_message_size_log2(), worker);
     let setup_commitment = precomputations
         .setup_commitment
@@ -71,7 +72,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         &precomputations.setup,
         setup_commitment,
         &*twiddles,
-        &config,
+        config,
         OperationMode::MultipleChunks,
         top_bits,
         precomputations.trace_len,

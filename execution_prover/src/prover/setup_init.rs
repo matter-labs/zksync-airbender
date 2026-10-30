@@ -2,7 +2,7 @@ use crate::backend::ExecutionBackend;
 use crate::messages::{
     SetupInitializationRequest, WorkBatch, WorkRequest, WorkResult, WorkerResult,
 };
-use crate::upstream::SecurityLevel;
+use crate::upstream::ProvingSelection;
 use crossbeam_channel::{unbounded, Receiver};
 use execution_prover_model::circuit_type::CircuitType;
 use fft::GoodAllocator;
@@ -20,7 +20,7 @@ pub(super) struct PendingSetupInitialization<A: GoodAllocator> {
 
 pub(super) fn request_setup_initialization<B: ExecutionBackend>(
     backend: &B,
-    security_level: SecurityLevel,
+    selection: ProvingSelection,
     precomputations: Vec<(CircuitType, B::Precomputations)>,
 ) -> PendingSetupInitialization<B::Allocator> {
     assert!(
@@ -46,7 +46,7 @@ pub(super) fn request_setup_initialization<B: ExecutionBackend>(
                     circuit_type,
                     sequence_id,
                     precomputations,
-                    security_level,
+                    selection,
                 },
             ))
             .expect("backend batch channel closed before setup initialization was submitted");

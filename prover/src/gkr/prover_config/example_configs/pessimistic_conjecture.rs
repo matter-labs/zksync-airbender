@@ -11,18 +11,30 @@ use crate::gkr::whir::proximity_testing_modes::PessimisticConjectureMode;
 
 use super::*;
 
-/// The schedule for `2^message_size_log2` committed polynomials under
-/// `packing` (the physical packing is recorded on the base round; virtual
-/// packing is the [`WhirSchedule::to_virtual_packing`] twin of the ladder).
-pub(super) fn whir_schedule(
+fn whir_schedule(
     level: SecurityLevel,
     message_size_log2: usize,
     packing: BasePacking,
 ) -> WhirSchedule {
+    let input = WhirInput {
+        message_size_log2,
+        physical_packing_log2: packing.physical_packing_log2,
+        virtual_packing: packing.virtual_packing,
+        num_committed_polys: None,
+    };
+    try_whir_schedule(level, &input).unwrap_or_else(|error| panic!("{error}"))
+}
+
+/// The schedule for `2^message_size_log2` committed polynomials under
+/// `packing` (the physical packing is recorded on the base round; virtual
+/// packing is the [`WhirSchedule::to_virtual_packing`] twin of the ladder).
+pub(super) fn try_whir_schedule(
+    level: SecurityLevel,
+    input: &WhirInput,
+) -> Result<WhirSchedule, ConfigSelectionError> {
+    let packing = input.packing();
     let mut schedule = match level {
-        SecurityLevel::Sec100 => {
-            ladder_for_100_bits(message_size_log2, packing.physical_packing_log2)
-        }
+        SecurityLevel::Sec100 => ladder_for_100_bits(input)?,
     };
     if packing.virtual_packing {
         // The twin re-commits the batched polynomial as intermediate oracle 0
@@ -36,16 +48,16 @@ pub(super) fn whir_schedule(
         schedule =
             schedule.to_virtual_packing(level.security_bits() as u32, &PessimisticConjectureMode);
     }
-    schedule
+    Ok(schedule)
 }
 
 /// The sec-100 ladder for a `2^message_size_log2` message: base LDE factor
 /// [`DEFAULT_LDE_FACTOR`], cap [`DEFAULT_CAP_SIZE`], a round-0 fold of 1
 /// (two values per column per base leaf), one OOD sample per intermediate
 /// oracle, no OOD or folding PoW.
-fn ladder_for_100_bits(message_size_log2: usize, physical_packing_log2: usize) -> WhirSchedule {
+fn ladder_for_100_bits(input: &WhirInput) -> Result<WhirSchedule, ConfigSelectionError> {
     let (steps, queries, lde_factors, pows): (&[usize], &[usize], &[usize], &[u32]) =
-        match message_size_log2 {
+        match input.message_size_log2 {
             20 => (
                 &[1, 5, 5, 4, 4],
                 &[89, 11, 8, 7, 7],
@@ -81,21 +93,23 @@ fn ladder_for_100_bits(message_size_log2: usize, physical_packing_log2: usize) -
                 &[16, 512, 8192, 16384, 131072],
                 &[26, 24, 25, 19, 21, 21],
             ),
-            a => {
-                unimplemented!(
-                    "no PessimisticConjecture WHIR schedule has been computed for a 2^{a} message"
-                );
+            _ => {
+                return Err(ConfigSelectionError::MissingSchedule {
+                    mode: SoundnessMode::PessimisticConjecture,
+                    level: SecurityLevel::Sec100,
+                    input: *input,
+                })
             }
         };
-    WhirSchedule::from_legacy_arrays(
+    Ok(WhirSchedule::from_legacy_arrays(
         DEFAULT_LDE_FACTOR,
         DEFAULT_CAP_SIZE,
-        physical_packing_log2,
+        input.physical_packing_log2,
         steps,
         queries,
         lde_factors,
         pows,
-    )
+    ))
 }
 
 /// The unpacked standard config of a `2^trace_len_log2` trace at `level`

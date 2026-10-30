@@ -12,7 +12,6 @@ use crate::upstream::{
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{MemoryCommitmentRequest, MemoryCommitmentResult};
-use execution_prover::prover_config;
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType,
@@ -39,9 +38,11 @@ pub(super) fn run<A: HostTraceAllocator>(
         precomputations,
         inits_and_teardowns,
         tracing_data,
-        security_level,
+        selection,
     } = request;
-    let config = prover_config(circuit_type, security_level);
+    let config = precomputations
+        .config_for_request(circuit_type, selection)
+        .unwrap_or_else(|error| panic!("{error}"));
     let twiddles = jobs.twiddles(1usize << config.whir_message_size_log2(), worker);
     let flat_cap = match circuit_type {
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(_)) => {
@@ -73,7 +74,7 @@ pub(super) fn run<A: HostTraceAllocator>(
                 precomputations.compiled_circuit(),
                 &rows,
                 &*twiddles,
-                &config,
+                config,
                 *default_pc_value_in_padding,
                 decoder_table,
                 worker,
@@ -105,7 +106,7 @@ pub(super) fn run<A: HostTraceAllocator>(
                 precomputations.compiled_circuit(),
                 &rows,
                 &*twiddles,
-                &config,
+                config,
                 decoder_table,
                 worker,
             )
@@ -139,7 +140,7 @@ pub(super) fn run<A: HostTraceAllocator>(
                 sets,
                 UNUSED_TEXT_SECTION,
                 &*twiddles,
-                &config,
+                config,
                 decoder_table,
                 worker,
             )
@@ -162,7 +163,7 @@ pub(super) fn run<A: HostTraceAllocator>(
                 precomputations.compiled_circuit(),
                 sets,
                 &*twiddles,
-                &config,
+                config,
                 worker,
             )
         }
@@ -180,7 +181,7 @@ pub(super) fn run<A: HostTraceAllocator>(
                     &jobs.backend,
                     &precomputations,
                     trace,
-                    &config,
+                    config,
                     &twiddles,
                     worker,
                 ),
@@ -191,7 +192,7 @@ pub(super) fn run<A: HostTraceAllocator>(
                     &jobs.backend,
                     &precomputations,
                     trace,
-                    &config,
+                    config,
                     &twiddles,
                     worker,
                 ),
@@ -202,7 +203,7 @@ pub(super) fn run<A: HostTraceAllocator>(
                     &jobs.backend,
                     &precomputations,
                     trace,
-                    &config,
+                    config,
                     &twiddles,
                     worker,
                 ),
@@ -213,7 +214,7 @@ pub(super) fn run<A: HostTraceAllocator>(
                     &jobs.backend,
                     &precomputations,
                     trace,
-                    &config,
+                    config,
                     &twiddles,
                     worker,
                 ),
@@ -224,7 +225,7 @@ pub(super) fn run<A: HostTraceAllocator>(
                     &jobs.backend,
                     &precomputations,
                     trace,
-                    &config,
+                    config,
                     &twiddles,
                     worker,
                 ),
@@ -235,7 +236,7 @@ pub(super) fn run<A: HostTraceAllocator>(
                     &jobs.backend,
                     &precomputations,
                     trace,
-                    &config,
+                    config,
                     &twiddles,
                     worker,
                 ),
@@ -246,7 +247,7 @@ pub(super) fn run<A: HostTraceAllocator>(
                     &jobs.backend,
                     &precomputations,
                     trace,
-                    &config,
+                    config,
                     &twiddles,
                     worker,
                 ),

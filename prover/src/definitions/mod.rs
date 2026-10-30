@@ -87,6 +87,22 @@ impl SoundnessMode {
     }
 }
 
+/// Immutable security and soundness selection for a prover and its prepared state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct ProvingSelection {
+    pub security_level: SecurityLevel,
+    pub soundness_mode: SoundnessMode,
+}
+
+impl Default for ProvingSelection {
+    fn default() -> Self {
+        Self {
+            security_level: SecurityLevel::Sec100,
+            soundness_mode: SoundnessMode::DEFAULT,
+        }
+    }
+}
+
 /// The blake2s implementation a verifier program is built with: what a
 /// Merkle compression costs it, and so which proof layouts pay off. Lives
 /// here so the prover-side config (`WhirSchedule`), the verifier generator

@@ -37,7 +37,9 @@ impl CircuitPrecomputation for TestPrecomputations {
 pub(crate) struct TestConfiguration;
 
 impl BackendConfiguration for TestConfiguration {
-    fn execution_defaults() -> ExecutionProverConfiguration<Self> {
+    fn execution_defaults(
+        selection: prover::definitions::ProvingSelection,
+    ) -> ExecutionProverConfiguration<Self> {
         ExecutionProverConfiguration {
             max_thread_pool_threads: Some(1),
             expected_concurrent_jobs: 1,
@@ -45,7 +47,8 @@ impl BackendConfiguration for TestConfiguration {
             host_allocator_backing_allocation_size: BLOCK_BYTES,
             host_allocators_per_job_count: POOL_BLOCKS,
             min_free_host_allocators_per_job: 1,
-            security_level: SecurityLevel::Sec100,
+            security_level: selection.security_level,
+            soundness_mode: selection.soundness_mode,
             ram_config: JitRunnerRam::Medium,
             assume_canonical_mop_inputs: false,
             backend: Self,
@@ -128,8 +131,10 @@ impl ExecutionBackend for TestBackend {
                             })
                         }
                         WorkRequest::MemoryCommitment(request) => {
-                            let config =
-                                crate::prover_config(request.circuit_type, request.security_level);
+                            let config = crate::prover_config(
+                                request.circuit_type,
+                                request.selection.security_level,
+                            );
                             WorkResult::MemoryCommitment(MemoryCommitmentResult {
                                 batch_id: request.batch_id,
                                 circuit_type: request.circuit_type,

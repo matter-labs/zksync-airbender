@@ -262,6 +262,7 @@ fn make_prover_config(
     settings: BackendSettings,
 ) -> ProgramProverConfig {
     ProgramProverConfig {
+        soundness_mode: prover::definitions::SoundnessMode::DEFAULT,
         target,
         backend: backend.unwrap_or_else(default_backend_for_build),
         cycles_bound: settings.cycles_bound,

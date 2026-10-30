@@ -527,6 +527,13 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
 /// for that shape, or when the circuit commits more polynomials than the
 /// entry's ceiling.
 pub(super) fn entry(level: SecurityLevel, input: &WhirInput) -> &'static EthproofsSoundcalcEntry {
+    try_entry(level, input).unwrap_or_else(|error| panic!("{error}"))
+}
+
+pub(super) fn try_entry(
+    level: SecurityLevel,
+    input: &WhirInput,
+) -> Result<&'static EthproofsSoundcalcEntry, ConfigSelectionError> {
     let entry = ENTRIES
         .iter()
         .find(|e| {
@@ -534,33 +541,21 @@ pub(super) fn entry(level: SecurityLevel, input: &WhirInput) -> &'static Ethproo
                 && e.message_size_log2 == input.message_size_log2
                 && e.virtual_packing == input.virtual_packing
         })
-        .unwrap_or_else(|| {
-            panic!(
-                "no EthproofsSoundnessCalc WHIR schedule has been certified for a 2^{} message with {} \
-                 at {:?}; run example_configs/soundcalc/whir_schedule_search.py for the shape and add \
-                 its entry to example_configs/ethproofs_soundcalc.rs",
-                input.message_size_log2,
-                if input.virtual_packing {
-                    "virtual packing"
-                } else {
-                    "two values per column per leaf"
-                },
-                level
-            )
+        .ok_or(ConfigSelectionError::MissingSchedule {
+            mode: SoundnessMode::EthproofsSoundnessCalc,
+            level,
+            input: *input,
+        })?;
+    let actual = input
+        .num_committed_polys
+        .ok_or(ConfigSelectionError::MissingColumnCount)?;
+    if actual > entry.max_committed_polys {
+        return Err(ConfigSelectionError::CommittedPolynomialCeiling {
+            actual,
+            ceiling: entry.max_committed_polys,
         });
-    let num_committed_polys = input.num_committed_polys.expect(
-        "the EthproofsSoundnessCalc schedule is certified for a committed-polynomial ceiling: build \
-         the config from the compiled circuit (WhirInput::new), not without a column count",
-    );
-    assert!(
-        num_committed_polys <= entry.max_committed_polys,
-        "{} committed polynomials exceed the {} ceiling the EthproofsSoundnessCalc schedule for a 2^{} \
-         message was certified for; re-run the search with a larger ceiling",
-        num_committed_polys,
-        entry.max_committed_polys,
-        input.message_size_log2
-    );
-    entry
+    }
+    Ok(entry)
 }
 
 #[cfg(test)]

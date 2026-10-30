@@ -1,6 +1,48 @@
 use crate::upstream::{ProverConfig, SecurityLevel};
 use execution_prover_model::circuit_type::CircuitType;
+pub use prover::definitions::{ProvingSelection, SoundnessMode};
+use prover::gkr::prover_config::example_configs::ConfigSelectionError;
 use riscv_transpiler::jit::JitRunnerRam;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SelectionError {
+    UnsupportedBackendSoundnessMode {
+        backend: &'static str,
+        selection: ProvingSelection,
+    },
+    ConfigSelection(ConfigSelectionError),
+    PreparedSelectionMismatch {
+        prepared: ProvingSelection,
+        requested: ProvingSelection,
+    },
+    PreparedCircuitMismatch {
+        prepared: CircuitType,
+        requested: CircuitType,
+    },
+}
+
+impl std::fmt::Display for SelectionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnsupportedBackendSoundnessMode { backend, selection } => write!(f,
+                "UnsupportedBackendSoundnessMode: {backend} cannot prove {:?}: missing internal folding-PoW and OOD-PoW",
+                selection.soundness_mode),
+            Self::ConfigSelection(error) => write!(f, "ConfigSelectionFailed: {error}"),
+            Self::PreparedSelectionMismatch { prepared, requested } => write!(f,
+                "prepared selection {prepared:?} differs from requested selection {requested:?}"),
+            Self::PreparedCircuitMismatch { prepared, requested } => write!(f,
+                "prepared circuit {prepared:?} differs from requested circuit {requested:?}"),
+        }
+    }
+}
+
+impl std::error::Error for SelectionError {}
+
+impl From<ConfigSelectionError> for SelectionError {
+    fn from(error: ConfigSelectionError) -> Self {
+        Self::ConfigSelection(error)
+    }
+}
 
 /// Commitments and proofs must use the same geometry on both backends: the
 /// circuit definition's own config (`CircuitType::prover_config`).
@@ -9,7 +51,7 @@ pub fn prover_config(circuit_type: CircuitType, security_level: SecurityLevel) -
 }
 
 pub trait BackendConfiguration: Copy + Send + Sync + 'static + Sized {
-    fn execution_defaults() -> ExecutionProverConfiguration<Self>;
+    fn execution_defaults(selection: ProvingSelection) -> ExecutionProverConfiguration<Self>;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -24,6 +66,7 @@ pub struct ExecutionProverConfiguration<C> {
     /// Free blocks the cache is trimmed back towards; pressure relief, not a bound.
     pub min_free_host_allocators_per_job: usize,
     pub security_level: SecurityLevel,
+    pub soundness_mode: SoundnessMode,
     pub ram_config: JitRunnerRam,
     /// Simulate the field operations (MOPs) without the reduction of their inputs
     /// (`MopField::BabyBearAssumeCanonical`). It is only valid for the programs that never
@@ -35,6 +78,19 @@ pub struct ExecutionProverConfiguration<C> {
 
 impl<C: BackendConfiguration> Default for ExecutionProverConfiguration<C> {
     fn default() -> Self {
-        C::execution_defaults()
+        Self::for_selection(ProvingSelection::default())
+    }
+}
+
+impl<C: BackendConfiguration> ExecutionProverConfiguration<C> {
+    pub fn for_selection(selection: ProvingSelection) -> Self {
+        C::execution_defaults(selection)
+    }
+
+    pub fn selection(&self) -> ProvingSelection {
+        ProvingSelection {
+            security_level: self.security_level,
+            soundness_mode: self.soundness_mode,
+        }
     }
 }

@@ -93,6 +93,7 @@ pub enum UnrolledCircuitWitnessEvalFn<A: GoodAllocator> {
 
 pub struct CircuitSetup<A: GoodAllocator = Global> {
     pub family_idx: u8,
+    pub geometry: circuit_common::CircuitGeometry,
     pub trace_len: usize,
     pub compiled_circuit: GKRCircuitArtifact<BabyBearField>,
     pub table_driver: TableDriver<BabyBearField>,
@@ -105,7 +106,17 @@ pub struct CircuitSetup<A: GoodAllocator = Global> {
 }
 
 impl<A: GoodAllocator> CircuitSetup<A> {
-    /// The circuit's prover config at `level` — the single source of its
+    /// Resolve the exact mode using this setup's compiled circuit.
+    pub fn try_prover_config_in_mode(
+        &self,
+        level: SecurityLevel,
+        mode: circuit_common::SoundnessMode,
+    ) -> Result<ProverConfig, circuit_common::ConfigSelectionError> {
+        self.geometry
+            .try_prover_config(&self.compiled_circuit, level, mode)
+    }
+
+    /// Pessimistic compatibility wrapper: the circuit's prover config at `level` — the single source of its
     /// proving geometry (trace length, schedules, packing).
     pub fn prover_config(&self, level: SecurityLevel) -> &ProverConfig {
         let config = circuit_common::prover_config_at(&self.prover_configs, level);
@@ -148,6 +159,7 @@ pub fn make_setup_for_non_mem_circuit<
 
     CircuitSetup {
         family_idx: C::CIRCUIT_FAMILY,
+        geometry: C::geometry(),
         trace_len: 1 << C::trace_len_log2(),
         compiled_circuit: circuit,
         table_driver,
@@ -192,6 +204,7 @@ pub fn make_setup_for_with_mem_circuit<
 
     CircuitSetup {
         family_idx: C::CIRCUIT_FAMILY,
+        geometry: C::geometry(),
         trace_len: 1 << C::trace_len_log2(),
         compiled_circuit: circuit,
         table_driver,

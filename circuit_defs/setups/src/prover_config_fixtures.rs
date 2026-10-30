@@ -94,7 +94,7 @@ mod tests {
                     .unwrap();
                     assert_eq!(
                         on_disk,
-                        geometry.prover_config(&compiled, level, mode),
+                        geometry.try_prover_config(&compiled, level, mode).unwrap(),
                         "{} is stale: regenerate the prover config fixtures",
                         path.display()
                     );

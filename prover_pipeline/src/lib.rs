@@ -97,6 +97,7 @@ impl RamSize {
 
 #[derive(Clone, Debug)]
 pub struct ProgramProverConfig {
+    pub soundness_mode: prover::definitions::SoundnessMode,
     pub target: ProofTarget,
     pub backend: ProverBackend,
     /// Cycle limit for the proved program; `None` compiles no limit check.
@@ -108,9 +109,19 @@ pub struct ProgramProverConfig {
     pub replay_threads: Option<usize>,
 }
 
+impl ProgramProverConfig {
+    pub fn selection(&self) -> prover::definitions::ProvingSelection {
+        prover::definitions::ProvingSelection {
+            security_level: COMPILED_SECURITY_LEVEL.to_prover(),
+            soundness_mode: self.soundness_mode,
+        }
+    }
+}
+
 impl Default for ProgramProverConfig {
     fn default() -> Self {
         Self {
+            soundness_mode: prover::definitions::SoundnessMode::DEFAULT,
             target: ProofTarget::RecursionUnified,
             backend: default_backend_for_build(),
             cycles_bound: None,
@@ -230,6 +241,19 @@ pub trait ProveBackend {
         cycles_bound: Option<u32>,
     );
 
+    /// Fallible selection-aware registration. Existing implementers retain their register hook.
+    fn try_register(
+        &mut self,
+        kind: ExecutionKind,
+        machine: MachineType,
+        bin: &[u32],
+        text: &[u32],
+        cycles_bound: Option<u32>,
+    ) -> Result<(), String> {
+        self.register(kind, machine, bin, text, cycles_bound);
+        Ok(())
+    }
+
     fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String>;
 
     /// `Setups` of a registered binary, from its precomputations.
@@ -269,22 +293,39 @@ struct PipelineBackend<B: execution_prover::backend::ExecutionBackend> {
 }
 
 impl<B: execution_prover::backend::ExecutionBackend> PipelineBackend<B> {
-    fn new(config: &ProgramProverConfig) -> Self {
+    fn configuration(
+        config: &ProgramProverConfig,
+    ) -> execution_prover::ExecutionProverConfiguration<B::Configuration> {
         let defaults =
-            execution_prover::ExecutionProverConfiguration::<B::Configuration>::default();
-        let configuration = execution_prover::ExecutionProverConfiguration {
+            execution_prover::ExecutionProverConfiguration::<B::Configuration>::for_selection(
+                config.selection(),
+            );
+        execution_prover::ExecutionProverConfiguration {
             max_thread_pool_threads: config.worker_threads,
+            expected_concurrent_jobs: defaults.expected_concurrent_jobs,
             replay_worker_threads_count: config
                 .replay_threads
                 .unwrap_or(defaults.replay_worker_threads_count),
-            security_level: COMPILED_SECURITY_LEVEL.to_prover(),
+            host_allocator_backing_allocation_size: defaults.host_allocator_backing_allocation_size,
+            host_allocators_per_job_count: defaults.host_allocators_per_job_count,
+            min_free_host_allocators_per_job: defaults.min_free_host_allocators_per_job,
+            security_level: config.selection().security_level,
+            soundness_mode: config.soundness_mode,
             ram_config: config.ram_size.jit(),
-            ..defaults
-        };
-        Self {
-            prover: execution_prover::ExecutionProver::with_configuration(configuration),
-            handles: std::collections::BTreeMap::new(),
+            assume_canonical_mop_inputs: defaults.assume_canonical_mop_inputs,
+            backend: defaults.backend,
         }
+    }
+
+    fn new(config: &ProgramProverConfig) -> Result<Self, String> {
+        let prover =
+            execution_prover::ExecutionProver::try_with_configuration(Self::configuration(config))
+                .map_err(|error| error.to_string())?;
+        assert_eq!(prover.selection(), config.selection());
+        Ok(Self {
+            prover,
+            handles: std::collections::BTreeMap::new(),
+        })
     }
 }
 
@@ -297,12 +338,28 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
         text: &[u32],
         cycles_bound: Option<u32>,
     ) {
-        let prover = &mut self.prover;
-        self.handles
-            .entry(handle_key(kind, machine, bin, text))
-            .or_insert_with(|| {
-                prover.add_binary(kind, machine, bin.to_vec(), text.to_vec(), cycles_bound)
-            });
+        self.try_register(kind, machine, bin, text, cycles_bound)
+            .unwrap_or_else(|error| panic!("{error}"));
+    }
+
+    fn try_register(
+        &mut self,
+        kind: ExecutionKind,
+        machine: MachineType,
+        bin: &[u32],
+        text: &[u32],
+        cycles_bound: Option<u32>,
+    ) -> Result<(), String> {
+        if let std::collections::btree_map::Entry::Vacant(entry) =
+            self.handles.entry(handle_key(kind, machine, bin, text))
+        {
+            let handle = self
+                .prover
+                .try_add_binary(kind, machine, bin.to_vec(), text.to_vec(), cycles_bound)
+                .map_err(|error| error.to_string())?;
+            entry.insert(handle);
+        }
+        Ok(())
     }
 
     fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String> {
@@ -618,12 +675,22 @@ pub struct ProgramProver {
 
 impl ProgramProver {
     pub fn new(source: ProgramSource, config: ProgramProverConfig) -> Result<Self, String> {
+        if config.backend == ProverBackend::Gpu
+            && config.soundness_mode == prover::definitions::SoundnessMode::EthproofsSoundnessCalc
+        {
+            return Err("UnsupportedBackendSoundnessMode: GPU EthproofsSoundnessCalc requires internal folding-PoW and OOD-PoW".to_string());
+        }
+        // Until S4 supplies matching guests, tagged artifacts and native verification,
+        // allowing this would create ethproofs proofs inside pessimistic v3 artifacts.
+        if config.soundness_mode != prover::definitions::SoundnessMode::PessimisticConjecture {
+            return Err("UnsupportedPipelineSoundnessMode: EthproofsSoundnessCalc requires mode-aware FSV guests, artifacts and verification".to_string());
+        }
         let backend = match config.backend {
-            ProverBackend::Cpu => BackendImpl::Cpu(PipelineBackend::new(&config)),
+            ProverBackend::Cpu => BackendImpl::Cpu(PipelineBackend::new(&config)?),
             ProverBackend::Gpu => {
                 #[cfg(feature = "gpu")]
                 {
-                    BackendImpl::Gpu(PipelineBackend::new(&config))
+                    BackendImpl::Gpu(PipelineBackend::new(&config)?)
                 }
                 #[cfg(not(feature = "gpu"))]
                 {
@@ -658,35 +725,35 @@ impl ProgramProver {
         let fsv = &self.fsv;
         let target = self.config.target;
         let backend = self.backend.as_dyn();
-        backend.register(
+        backend.try_register(
             ExecutionKind::Unrolled,
             MachineType::FullUnsigned,
             &loaded.bin_u32,
             &loaded.text_u32,
             cycles_bound,
-        );
+        )?;
         let mut count = 1;
         if target != ProofTarget::Base {
             for (bin, text) in [&fsv.unrolled_base, &fsv.unrolled_recursion] {
-                backend.register(
+                backend.try_register(
                     ExecutionKind::Unrolled,
                     MachineType::Reduced,
                     bin,
                     text,
                     None,
-                );
+                )?;
                 count += 1;
             }
         }
         if target == ProofTarget::RecursionUnified {
             for (bin, text) in [&fsv.bridge_base, &fsv.bridge_recursion, &fsv.unified] {
-                backend.register(
+                backend.try_register(
                     ExecutionKind::Unified,
                     MachineType::Reduced,
                     bin,
                     text,
                     None,
-                );
+                )?;
                 count += 1;
             }
         }
@@ -1539,5 +1606,64 @@ mod program_source_tests {
         assert_eq!(loaded.bin_u32.len() * 4, loaded.bin_bytes.len());
         assert_eq!(loaded.text_u32.len() * 4, loaded.text_bytes.len());
         assert_ne!(keccak256(&loaded.bin_bytes), keccak256(&loaded.text_bytes));
+    }
+}
+
+#[cfg(test)]
+mod soundness_selection_tests {
+    use super::*;
+    use prover::definitions::SoundnessMode;
+
+    #[test]
+    fn pipeline_backend_preserves_selection() {
+        for &soundness_mode in SoundnessMode::ALL {
+            let config = ProgramProverConfig {
+                soundness_mode,
+                ..ProgramProverConfig::default()
+            };
+            let execution =
+                PipelineBackend::<cpu_execution_prover::CpuBackend>::configuration(&config);
+            assert_eq!(execution.selection(), config.selection());
+        }
+        assert_eq!(
+            ProgramProverConfig::default().soundness_mode,
+            SoundnessMode::PessimisticConjecture
+        );
+    }
+
+    #[test]
+    fn cpu_ethproofs_pipeline_rejection_precedes_source_loading() {
+        let config = ProgramProverConfig {
+            backend: ProverBackend::Cpu,
+            soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
+            ..ProgramProverConfig::default()
+        };
+        let source = ProgramSource::legacy_binaries_from_bin(std::path::Path::new(
+            "/does-not-exist/task-s-program.bin",
+        ));
+        let error = match ProgramProver::new(source, config) {
+            Err(error) => error,
+            Ok(_) => panic!("CPU ethproofs pipeline unexpectedly initialized"),
+        };
+        assert!(error.contains("UnsupportedPipelineSoundnessMode"));
+    }
+
+    #[test]
+    fn gpu_ethproofs_rejection_precedes_source_loading() {
+        let config = ProgramProverConfig {
+            backend: ProverBackend::Gpu,
+            soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
+            ..ProgramProverConfig::default()
+        };
+        let source = ProgramSource::legacy_binaries_from_bin(std::path::Path::new(
+            "/does-not-exist/task-s-program.bin",
+        ));
+        let error = match ProgramProver::new(source, config) {
+            Err(error) => error,
+            Ok(_) => panic!("GPU ethproofs unexpectedly initialized"),
+        };
+        assert!(error.contains("UnsupportedBackendSoundnessMode"));
+        assert!(error.contains("internal folding-PoW"));
+        assert!(error.contains("OOD-PoW"));
     }
 }

@@ -7,7 +7,11 @@ use crate::upstream::{
     UnsignedMulDivCircuit,
 };
 use crate::MachineType;
-use circuit_common::{DelegationCircuit, ProverConfig, RiscVCycleCircuit, SecurityLevel};
+use circuit_common::GKRCircuitArtifact;
+use circuit_common::{
+    CircuitGeometry, ConfigSelectionError, DelegationCircuit, ProverConfig, ProvingSelection,
+    RiscVCycleCircuit, SecurityLevel,
+};
 use common_constants::circuit_families::{
     ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX, INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX,
     JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX, LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX,
@@ -51,7 +55,20 @@ pub enum CircuitType {
 }
 
 impl CircuitType {
-    /// The prover config of this circuit at `level`, straight from the circuit
+    /// Resolve this circuit's selected schedule from its actual compiled columns.
+    pub fn try_prover_config_in_mode(
+        &self,
+        compiled: &GKRCircuitArtifact<BabyBearField>,
+        selection: ProvingSelection,
+    ) -> Result<ProverConfig, ConfigSelectionError> {
+        self.geometry().try_prover_config(
+            compiled,
+            selection.security_level,
+            selection.soundness_mode,
+        )
+    }
+
+    /// Pessimistic compatibility wrapper: the config of this circuit at `level`, straight from the circuit
     /// definition (`DelegationCircuit::prover_config` /
     /// `RiscVCycleCircuit::prover_config`): the single source of the proving
     /// and verification geometry (trace length, schedules, packing).
@@ -59,6 +76,14 @@ impl CircuitType {
         match self {
             Self::Delegation(delegation_type) => delegation_type.prover_config(level),
             Self::Unrolled(unrolled_type) => unrolled_type.prover_config(level),
+        }
+    }
+
+    /// Geometry declared by the circuit definition.
+    pub fn geometry(&self) -> CircuitGeometry {
+        match self {
+            Self::Delegation(delegation_type) => delegation_type.geometry(),
+            Self::Unrolled(unrolled_type) => unrolled_type.geometry(),
         }
     }
 
@@ -143,6 +168,33 @@ impl DelegationCircuitType {
             }
             Self::KeccakChi5 => {
                 <KeccakChi5DelegationCircuit as DelegationCircuit<BabyBearField>>::prover_config(level)
+            }
+        }
+    }
+
+    /// Geometry declared by the circuit definition.
+    pub fn geometry(&self) -> CircuitGeometry {
+        match self {
+            Self::BigIntWithControl => {
+                <BigIntDelegationCircuit as DelegationCircuit<BabyBearField>>::geometry()
+            }
+            Self::Blake2WithCompression => {
+                <Blake2sWithCompressionDelegationCircuit as DelegationCircuit<BabyBearField>>::geometry()
+            }
+            Self::Blake2GFunction => {
+                <Blake2sGFunctionDelegationCircuit as DelegationCircuit<BabyBearField>>::geometry()
+            }
+            Self::KeccakSpecial5 => {
+                <KeccakSpecial5DelegationCircuit as DelegationCircuit<BabyBearField>>::geometry()
+            }
+            Self::KeccakColumnParity => {
+                <KeccakColumnParityDelegationCircuit as DelegationCircuit<BabyBearField>>::geometry()
+            }
+            Self::KeccakThetaRho => {
+                <KeccakThetaRhoDelegationCircuit as DelegationCircuit<BabyBearField>>::geometry()
+            }
+            Self::KeccakChi5 => {
+                <KeccakChi5DelegationCircuit as DelegationCircuit<BabyBearField>>::geometry()
             }
         }
     }
@@ -236,6 +288,18 @@ impl UnrolledCircuitType {
         }
     }
 
+    /// Geometry declared by the circuit definition.
+    pub fn geometry(&self) -> CircuitGeometry {
+        match self {
+            Self::InitsAndTeardowns => inits_and_teardowns::geometry(),
+            Self::Memory(circuit_type) => circuit_type.geometry(),
+            Self::NonMemory(circuit_type) => circuit_type.geometry(),
+            Self::Unified => {
+                <UnifiedReducedMachineCircuit as RiscVCycleCircuit<BabyBearField, true>>::geometry()
+            }
+        }
+    }
+
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
         1 << self.get_domain_size_log2()
@@ -292,6 +356,18 @@ impl UnrolledMemoryCircuitType {
                 BabyBearField,
                 true,
             >>::prover_config(level),
+        }
+    }
+
+    /// Geometry declared by the circuit definition.
+    pub fn geometry(&self) -> CircuitGeometry {
+        match self {
+            Self::LoadStoreSubwordOnly => {
+                <LoadStoreSubwordOnlyCircuit as RiscVCycleCircuit<BabyBearField, true>>::geometry()
+            }
+            Self::LoadStoreWordOnly => {
+                <LoadStoreWordOnlyCircuit as RiscVCycleCircuit<BabyBearField, true>>::geometry()
+            }
         }
     }
 
@@ -356,6 +432,24 @@ impl UnrolledNonMemoryCircuitType {
                 <ShiftBinaryCircuit as RiscVCycleCircuit<BabyBearField, false>>::prover_config(
                     level,
                 )
+            }
+        }
+    }
+
+    /// Geometry declared by the circuit definition.
+    pub fn geometry(&self) -> CircuitGeometry {
+        match self {
+            Self::AddSubLuiAuipcMop => {
+                <AddSubLuiAuipcMopCircuit as RiscVCycleCircuit<BabyBearField, false>>::geometry()
+            }
+            Self::JumpBranchSlt => {
+                <JumpBranchSltCircuit as RiscVCycleCircuit<BabyBearField, false>>::geometry()
+            }
+            Self::MulDivUnsigned => {
+                <UnsignedMulDivCircuit as RiscVCycleCircuit<BabyBearField, false>>::geometry()
+            }
+            Self::ShiftBinary => {
+                <ShiftBinaryCircuit as RiscVCycleCircuit<BabyBearField, false>>::geometry()
             }
         }
     }
@@ -459,6 +553,11 @@ mod prover_config_tests {
         .collect();
         for circuit_type in all {
             for &level in SecurityLevel::ALL {
+                assert_eq!(
+                    circuit_type.geometry().default_mode_prover_config(level),
+                    circuit_type.prover_config(level),
+                    "{circuit_type:?}"
+                );
                 assert_eq!(
                     circuit_type.get_domain_size_log2() as usize,
                     circuit_type.prover_config(level).trace_len_log2,

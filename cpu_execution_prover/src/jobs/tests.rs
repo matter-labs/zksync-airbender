@@ -11,7 +11,7 @@ use execution_prover_model::circuit_type::{CircuitType, DelegationCircuitType};
 use execution_prover_model::trace::{
     ChunkedTraceHolder, DelegationTracingDataHost, TracingDataHost,
 };
-use prover::definitions::{GKRExternalChallenges, SecurityLevel};
+use prover::definitions::{GKRExternalChallenges, ProvingSelection, SecurityLevel, SoundnessMode};
 use worker::Worker;
 
 const SECURITY_LEVEL: SecurityLevel = SecurityLevel::Sec100;
@@ -50,14 +50,22 @@ fn prove(
     let precomputations = CpuCircuitPrecomputations::from_canonical(
         circuit_type,
         build_delegation_setup(DELEGATION, &worker),
-    );
+        ProvingSelection {
+            security_level: SECURITY_LEVEL,
+            soundness_mode: SoundnessMode::DEFAULT,
+        },
+    )
+    .unwrap();
     jobs.execute::<CpuTraceAllocator>(
         WorkRequest::SetupInitialization(SetupInitializationRequest {
             batch_id: 0,
             circuit_type,
             sequence_id: 0,
             precomputations: precomputations.clone(),
-            security_level: SECURITY_LEVEL,
+            selection: ProvingSelection {
+                security_level: SECURITY_LEVEL,
+                soundness_mode: SoundnessMode::DEFAULT,
+            },
         }),
         &worker,
     );
@@ -69,7 +77,10 @@ fn prove(
             precomputations: precomputations.clone(),
             inits_and_teardowns: None,
             tracing_data: Some(empty_trace()),
-            security_level: SECURITY_LEVEL,
+            selection: ProvingSelection {
+                security_level: SECURITY_LEVEL,
+                soundness_mode: SoundnessMode::DEFAULT,
+            },
         }),
         &worker,
     ) else {
@@ -85,7 +96,10 @@ fn prove(
             tracing_data: Some(empty_trace()),
             external_challenges: challenges(),
             memory_caps: memory_caps(committed.merkle_tree_caps),
-            security_level: SECURITY_LEVEL,
+            selection: ProvingSelection {
+                security_level: SECURITY_LEVEL,
+                soundness_mode: SoundnessMode::DEFAULT,
+            },
         }),
         &worker,
     ) else {
