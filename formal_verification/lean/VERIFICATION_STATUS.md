@@ -973,3 +973,37 @@ complete native 361-call chain must connect to the proved physical schedule.
 Design items 2 and 3 follow the machine targets. The packed-checker pilot stays
 unchanged. Full frontend validation, environment audit, baseline refresh,
 transitive replay and Linux qualification did not run.
+
+### Native complete split-permutation obligation
+
+`native_permutation_of_initialized_chain` now proves the original Keccak
+permutation from all 361 actual native split calls. Both cache modes pass.
+The theorem uses the current imported equations and the complete retained
+native setup tables. It adds no expected output or physical-step premise.
+
+The proof binds each call index to its actual reference control read. It
+derives distinct aligned write destinations and all final touched words.
+Every untouched physical word retains its prior value. Exact low and high
+word reads identify each complete canonical lane. These facts prove the
+original physical micro-step for each native row. The existing complete
+schedule theorem then gives the original permutation.
+
+The theorem keeps initialized Sail histories, exact event permutations, read
+observations, public arguments and physical snapshots explicit. The unused
+padding lane has value zero and needs no initialized memory cell. Full unsigned
+integration must derive these histories and snapshots from the combined CPU
+and worker memory argument. It must also close the formal JSON source-to-table
+bridge. The original full unsigned target stays unchanged.
+
+All eight new modules passed focused kernel checks. All 20 new roots passed
+direct axiom checks. They use only the three allowed axioms. The explicit
+inventory now contains 13,247 roots. All 13,227 previous roots remain present.
+The final bounded group used 491 MiB of physical memory and left no owned
+process running. Generic list proofs replaced a large finite destination
+check. Explicit lane-pair arguments removed an elaboration timeout. Resource
+limits stay unchanged.
+
+The combined full unsigned machine proof remains open. Design items 2 and 3
+follow the machine targets. The packed-checker pilot stays unchanged. Full
+frontend validation, environment audit, baseline refresh, transitive replay
+and Linux qualification did not run.
