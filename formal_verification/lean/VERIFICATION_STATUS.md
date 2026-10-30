@@ -1651,3 +1651,33 @@ Full native-prefix induction and the formal setup source bridge remain
 open. Design items 2 and 3 follow the machine targets. The packed-checker
 pilot stays unchanged. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+### Full unsigned native-input execution-interface obligation
+
+`unrolled_full_split_arguments_at_cut` recovers public split arguments from
+derived native input tokens at the exact caller cut. Exact combined matching
+and initialized history supply its register observations. No lane value or
+per-cut argument is assumed by the execution interface.
+
+`unrolled_full_boot_execution_of_native_inputs` now executes the complete
+boot trace from reusable standard and split input facts. It proves the full
+reference relation and canonical terminal bounds. The native input facts
+contain commands, controls, pointers and RAM locations. They contain no
+worker output, instruction result or reference trace.
+
+The selected-caller composition interfaces apply these facts at actual
+selected callers. All three earlier public composition/execution statements
+stay unchanged. Their existing interfaces now use the same kernel-checked
+proofs through wrappers. The full machine target also stays unchanged.
+
+All changed modules and five new roots passed focused kernel and direct
+axiom checks. They use only the three allowed axioms. The explicit inventory
+now contains 13,343 roots. All 13,338 previous roots remain present. The
+bounded group used 533 MiB of physical memory and left no owned process
+running. Resource limits stay unchanged.
+
+Full native-prefix induction must still derive all reusable input facts
+from public supported use. The formal setup source bridge also remains open.
+Design items 2 and 3 follow the machine targets. The packed-checker pilot
+stays unchanged. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.

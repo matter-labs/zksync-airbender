@@ -44,7 +44,7 @@ variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 /-- Complete full execution starts from the native zero boot image and returns
 its unchanged terminal interface through public ROM interpretation. Supported
 worker input contracts and the formal fixed-setup bridge remain separate. -/
-theorem unrolled_full_boot_execution_and_bounds
+theorem unrolled_full_boot_execution_and_bounds_of_selected_inputs
     {initial : State} {text : List (BitVec 32)} {capacity : Nat}
     (bundles : List UnifiedReduced.Caller.DelegationUse.Bundle) (splitBundles : List Keccak.Split.Bundle)
     {masks : PooledFamily → NativeDecoder.ProgramRows.Mask}
@@ -74,7 +74,8 @@ theorem unrolled_full_boot_execution_and_bounds
     (splitInputs : ∀ events finalState,
       events.Perm ((unrolledFullMemoryData (PooledROMView.data initial trace) workers splitWorkers).steps.map transferEvent) →
       events.Pairwise (fun a b => b.1 ≤ a.1) → SailHistory cells events initial finalState →
-      ∀ row ∈ (PooledROMView.data initial trace).rows, ∀ worker ∈ splitWorkers.rows,
+      ∀ row ∈ (PooledROMView.data initial trace).rows, row.family = .addSub →
+        Delegation.Requests.Selected row.assignment → ∀ worker ∈ splitWorkers.rows,
         worker.fulfillment splitWorkers.cached = Delegation.Requests.caller row.assignment →
         ∀ before, SailHistory cells (events.filter fun event => decide (event.1 ≤ row.clock)) initial before →
           ∃ index : Fin 361, Keccak.Split.ArgumentsAt index.val before)
@@ -120,7 +121,7 @@ theorem unrolled_full_boot_execution_and_bounds
   have pc := initial_state_pc (by decide) initialBound
   have physicalPorts : NonDeterminism.Pooled.StreamPorts physicalTrace stream :=
     interpreted_stream_ports (data := ⟨trace, workers, []⟩) initial ports
-  obtain ⟨finalState, execution, finalPC, sinks⟩ := unrolled_full_physical_execution bundles splitBundles
+  obtain ⟨finalState, execution, finalPC, sinks⟩ := unrolled_full_physical_execution_of_selected_inputs bundles splitBundles
     setup physicalLookup physicalAccepted excluded initialPC closure equations fixedEquations active
     clocks.initial clocks.aligned physical.image physical.wordSetup physical.subwordSetup boot.aligned
     boot.toPooledPublicInputs permutation ordered history readonly physicalFacts inputs workerSetup workerFamilies
@@ -138,6 +139,51 @@ theorem unrolled_full_boot_execution_and_bounds
   · intro token member
     obtain ⟨cell, included, address, read⟩ := sinks _ (List.mem_map.mpr ⟨token, member, rfl⟩)
     exact ⟨cell, included, by simpa only [ROMView.token_address] using address, read⟩
+
+
+/-- The existing execution interface keeps its original public statement. -/
+theorem unrolled_full_boot_execution_and_bounds
+    {initial : State} {text : List (BitVec 32)} {capacity : Nat}
+    (bundles : List UnifiedReduced.Caller.DelegationUse.Bundle) (splitBundles : List Keccak.Split.Bundle)
+    {masks : PooledFamily → NativeDecoder.ProgramRows.Mask}
+    {columns : PooledFamily → List (List (ZMod babyBearModulus))}
+    {trace : PooledTrace babyBearModulus} {workers : Delegation.MemoryData babyBearModulus}
+    {splitWorkers : Keccak.Split.Native.MemoryData babyBearModulus} {cells : List Cell}
+    (setup : UnrolledProgramSetup .fullUnsigned initial text capacity masks columns)
+    (lookup : UnrolledDecoderExactLookup trace masks columns)
+    (accepted : UnrolledAcceptance trace workers splitWorkers.steps
+      (splitWorkers.rows.map (Keccak.Split.Native.Row.fulfillment splitWorkers.cached)))
+    (excluded : FullUnsigned.NoSpecial5Call initial text)
+    (boot : PooledBootInputs trace initial cells
+      (NativeDecoder.ProgramRows.programOf .fullUnsigned initial text) AddSub.Modular.External.decoderFields)
+    (workerSetup : workers.setup = Delegation.modeledSetup Keccak.Controller.rows)
+    (workerFamilies : ∀ worker ∈ workers.rows, FullUnsigned.standardCall worker.family)
+    (equations : Keccak.Split.Native.EquationsHold splitWorkers.cached splitWorkers.setup splitWorkers.rows)
+    (control : Keccak.Split.Native.ControlSetupFacts splitWorkers.setup)
+    (fixedEquations : Keccak.Split.Native.EquationsHold
+      splitWorkers.cached Keccak.Split.Native.Proofs.fixedSetup splitWorkers.rows)
+    (active : ∀ row ∈ splitWorkers.rows, row.assignment (row.columns splitWorkers.cached).execute = 1)
+    (ram : ExternalBoundary.WorkerRAM.Binding workers.rows)
+    (splitRAM : ∀ edge ∈ splitWorkers.steps, ¬ ROMView.shadow edge.1.address)
+    (commands : ∀ worker ∈ workers.rows, worker.family = .bigint →
+      ∃ command, ExternalBoundary.BigintABI.Binding worker.assignment command)
+    (controls : ∀ w, (⟨.blakeRound, w⟩ : Delegation.Row babyBearModulus) ∈ workers.rows →
+      ExternalBoundary.HashABI.RoundControl w)
+    (splitInputs : ∀ events finalState,
+      events.Perm ((unrolledFullMemoryData (PooledROMView.data initial trace) workers splitWorkers).steps.map transferEvent) →
+      events.Pairwise (fun a b => b.1 ≤ a.1) → SailHistory cells events initial finalState →
+      ∀ row ∈ (PooledROMView.data initial trace).rows, ∀ worker ∈ splitWorkers.rows,
+        worker.fulfillment splitWorkers.cached = Delegation.Requests.caller row.assignment →
+        ∀ before, SailHistory cells (events.filter fun event => decide (event.1 ≤ row.clock)) initial before →
+          ∃ index : Fin 361, Keccak.Split.ArgumentsAt index.val before)
+    (stream : List (BitVec 32)) (ports : NonDeterminism.Pooled.StreamPorts trace stream) :
+    (FullUnsigned.Realizes stream (FullUnsigned.Program.ofText initial text bundles splitBundles)
+      trace initial cells (ROMView.token initial)) ∧
+      ∀ token ∈ trace.terminalMemory, (ROMView.token initial token).word.Bounded := by
+  exact unrolled_full_boot_execution_and_bounds_of_selected_inputs bundles splitBundles setup lookup accepted excluded boot
+    workerSetup workerFamilies equations control fixedEquations active ram splitRAM commands controls
+    (fun events finalState permutation ordered history row included _family _selected worker present matched before past =>
+      splitInputs events finalState permutation ordered history row included worker present matched before past) stream ports
 
 
 /-- The complete native zero-boot execution keeps its original terminal interface. -/

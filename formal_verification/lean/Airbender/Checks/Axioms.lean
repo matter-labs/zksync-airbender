@@ -1071,6 +1071,8 @@ import Airbender.Proofs.FullUnsigned.SupportedStandard
 import Airbender.Proofs.FullUnsigned.SupportedSplit
 import Airbender.Proofs.Keccak.SplitNativeRAMDomain
 import Airbender.Proofs.Keccak.SplitNativeArguments
+import Airbender.Proofs.FullUnsigned.SplitArgumentsAtCut
+import Airbender.Proofs.FullUnsigned.NativeInputExecution
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 
@@ -14718,3 +14720,9 @@ import Airbender.Proofs.Keccak.SplitNativeArguments
 #print axioms Airbender.Keccak.Split.Native.Proofs.native_arguments_of_reference
 #print axioms Airbender.Keccak.Split.Native.Proofs.native_arguments_at_observations
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_supported_split_native_inputs
+
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_split_arguments_at_cut
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_cycle_transition_of_selected_inputs
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_physical_execution_of_selected_inputs
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_boot_execution_and_bounds_of_selected_inputs
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_boot_execution_of_native_inputs
