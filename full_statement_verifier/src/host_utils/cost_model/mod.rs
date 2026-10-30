@@ -1,7 +1,7 @@
 pub mod census;
 
 use crate::program_proof::ProgramProof;
-use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
+use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProgram};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum CircuitId {
@@ -15,6 +15,11 @@ pub enum EstimateError {
     UnknownBinary {
         program: FsvProgram,
         mode: BlakeMode,
+    },
+    /// The census is not calibrated for the descriptor's security level, soundness mode or
+    /// profile ([`census::CENSUS_CALIBRATION`]).
+    UnknownDescriptor {
+        descriptor: FsvDescriptor,
     },
     UnpricedCircuit {
         circuit: CircuitId,
@@ -34,6 +39,12 @@ impl core::fmt::Display for EstimateError {
                  --test cost_model_trace -- --ignored`",
                 mode.tag()
             ),
+            Self::UnknownDescriptor { descriptor } => write!(
+                f,
+                "no census table for {descriptor}: the census is calibrated only for \
+                 sec_100/pessimistic_conjecture standard-profile guests; measure the guest \
+                 with `host_utils::measure_fsv_execution` instead"
+            ),
             Self::UnpricedCircuit { circuit } => write!(
                 f,
                 "no per-proof cost for {circuit:?}; it was absent from every calibration \
@@ -51,17 +62,28 @@ impl core::fmt::Display for EstimateError {
     }
 }
 
-/// Estimated cycles for verifying `proof` with the given fsv binary. Valid
+/// Estimated cycles for verifying `proof` with the guest of `descriptor`. Valid
 /// canonical proofs only (the verifier returns early on content checks).
-/// Held to 0.05% of measurement on every calibration fixture.
+/// Held to 0.05% of measurement on every calibration fixture. Only
+/// [`census::CENSUS_CALIBRATION`] guests are priced; any other descriptor is
+/// [`EstimateError::UnknownDescriptor`].
+pub fn estimate_verifier_cycles_for(
+    proof: &ProgramProof,
+    descriptor: &FsvDescriptor,
+) -> Result<u64, EstimateError> {
+    // Family dims partition the cycle count (census_family_cycles_sum_to_total).
+    let totals = census::census_totals(proof, descriptor)?;
+    Ok(totals[..census::NUM_FAMILY_DIMS].iter().sum())
+}
+
+/// [`estimate_verifier_cycles_for`] the Sec100 pessimistic-conjecture guest of
+/// `program` built with `mode`.
 pub fn estimate_verifier_cycles(
     proof: &ProgramProof,
     program: FsvProgram,
     mode: BlakeMode,
 ) -> Result<u64, EstimateError> {
-    // Family dims partition the cycle count (census_family_cycles_sum_to_total).
-    let totals = census::census_totals(proof, program, mode)?;
-    Ok(totals[..census::NUM_FAMILY_DIMS].iter().sum())
+    estimate_verifier_cycles_for(proof, &census::calibrated_descriptor(program, mode))
 }
 
 #[must_use]

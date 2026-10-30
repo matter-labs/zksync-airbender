@@ -315,7 +315,9 @@ pub fn load_fsv_exact(
 }
 
 /// [`load_fsv_exact`] of the Sec100 pessimistic-conjecture guest, for callers that predate
-/// soundness-mode selection; panics on any [`FsvLoadError`].
+/// soundness-mode selection; panics on any [`FsvLoadError`]. Only the pinned builds load:
+/// a directory holding other builds of the same guest (a `no_caches` variant, a local
+/// modification) panics with `DigestMismatch` rather than falling back.
 #[must_use]
 pub fn load_fsv_program(
     dir: impl AsRef<Path>,

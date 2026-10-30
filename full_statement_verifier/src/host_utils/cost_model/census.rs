@@ -8,15 +8,39 @@
 //! changes; see that test for fixture generation. blake2 g-function is
 //! unpriced → `UnpricedCircuit`.
 //!
-//! `CENSUS_TABLES` is currently keyed by `(FsvProgram, BlakeMode)`, not
-//! `SecurityLevel`, because every active `FsvProgram` resolves to the sole
-//! Sec100 verifier set. Adding another security level requires extending the
-//! estimator key and calibrating a separate table; Sec100 coefficients must not
-//! be reused for it.
+//! Every `CENSUS_TABLES` row is calibrated for [`CENSUS_CALIBRATION`] and keyed by
+//! `(FsvProgram, BlakeMode)` within it. Lookups check a descriptor's security level,
+//! soundness mode and profile against [`CENSUS_CALIBRATION`] first, so another level
+//! or mode (ethproofs_soundcalc guests run different verifier code) gets
+//! `UnknownDescriptor`, never these coefficients. Pricing another one needs its own
+//! calibrated table.
 
 use super::{proof_counts, CircuitId, EstimateError};
 use crate::program_proof::ProgramProof;
-use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
+use verifier_common::fsv_binaries::{
+    BlakeMode, FsvDescriptor, FsvProfile, FsvProgram, SecurityLevel, SoundnessMode,
+};
+
+/// The security level, soundness mode and profile of the guests `CENSUS_TABLES`
+/// was calibrated on.
+pub const CENSUS_CALIBRATION: (SecurityLevel, SoundnessMode, FsvProfile) = (
+    SecurityLevel::Sec100,
+    SoundnessMode::PessimisticConjecture,
+    FsvProfile::Standard,
+);
+
+/// The calibrated descriptor of `program` built with `mode`.
+#[must_use]
+pub const fn calibrated_descriptor(program: FsvProgram, mode: BlakeMode) -> FsvDescriptor {
+    let (security, soundness_mode, profile) = CENSUS_CALIBRATION;
+    FsvDescriptor {
+        security,
+        soundness_mode,
+        program,
+        profile,
+        blake: mode,
+    }
+}
 
 pub const NUM_CENSUS_DIMS: usize = 10;
 pub const NUM_FAMILY_DIMS: usize = 6;
@@ -58,22 +82,41 @@ impl CensusTable {
 
 /// Census of verifying `proof`, as `(dim, value)` pairs in `CENSUS_DIMS`
 /// order. Valid canonical proofs only.
+pub fn estimate_verifier_census_for(
+    proof: &ProgramProof,
+    descriptor: &FsvDescriptor,
+) -> Result<Vec<(CircuitId, u64)>, EstimateError> {
+    Ok(CENSUS_DIMS
+        .into_iter()
+        .zip(census_totals(proof, descriptor)?)
+        .collect())
+}
+
+/// [`estimate_verifier_census_for`] the Sec100 pessimistic-conjecture guest of
+/// `program` built with `mode`.
 pub fn estimate_verifier_census(
     proof: &ProgramProof,
     program: FsvProgram,
     mode: BlakeMode,
 ) -> Result<Vec<(CircuitId, u64)>, EstimateError> {
-    Ok(CENSUS_DIMS
-        .into_iter()
-        .zip(census_totals(proof, program, mode)?)
-        .collect())
+    estimate_verifier_census_for(proof, &calibrated_descriptor(program, mode))
 }
 
 pub(super) fn census_totals(
     proof: &ProgramProof,
-    program: FsvProgram,
-    mode: BlakeMode,
+    descriptor: &FsvDescriptor,
 ) -> Result<CensusVec, EstimateError> {
+    if (
+        descriptor.security,
+        descriptor.soundness_mode,
+        descriptor.profile,
+    ) != CENSUS_CALIBRATION
+    {
+        return Err(EstimateError::UnknownDescriptor {
+            descriptor: *descriptor,
+        });
+    }
+    let (program, mode) = (descriptor.program, descriptor.blake);
     let table = CENSUS_TABLES
         .iter()
         .find(|(p, m, _)| *p == program && *m == mode)
@@ -259,6 +302,64 @@ mod tests {
         let mut counts = counts.to_vec();
         counts.push((CircuitId::InitsAndTeardowns, inits));
         totals_from_counts(&test_table(), &counts, inits).map(|t| t[0])
+    }
+
+    #[test]
+    fn only_the_calibrated_descriptor_is_priced() {
+        let proof = ProgramProof {
+            riscv_proofs: Default::default(),
+            compiled_riscv_circuits: Default::default(),
+            inits_and_teardown_proofs: vec![],
+            inits_and_teardowns_circuit: None,
+            delegation_proofs: Default::default(),
+            compiled_delegation_circuits: Default::default(),
+            register_final_values: vec![],
+            final_pc: 0,
+            final_timestamp: 0,
+            end_params: [0; 8],
+            recursion_chain_preimage: None,
+            recursion_chain_hash: None,
+            pow_challenge: 0,
+            num_it_circuits: None,
+        };
+        let calibrated =
+            calibrated_descriptor(FsvProgram::UnrolledBaseLayer, BlakeMode::Compression);
+        // Past the guard: the table is found and the (empty) proof is priced.
+        assert_eq!(
+            census_totals(&proof, &calibrated),
+            Err(EstimateError::UnexpectedInitsAndTeardowns { found: 0 })
+        );
+        let ethproofs = FsvDescriptor {
+            soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
+            ..calibrated
+        };
+        let feeder = FsvDescriptor {
+            profile: FsvProfile::L1Feeder,
+            ..calibrated
+        };
+        for descriptor in [ethproofs, feeder] {
+            assert_eq!(
+                census_totals(&proof, &descriptor),
+                Err(EstimateError::UnknownDescriptor { descriptor })
+            );
+            assert_eq!(
+                super::super::estimate_verifier_cycles_for(&proof, &descriptor),
+                Err(EstimateError::UnknownDescriptor { descriptor })
+            );
+            assert!(estimate_verifier_census_for(&proof, &descriptor).is_err());
+        }
+        // The legacy entry points are the calibrated descriptor.
+        assert_eq!(
+            super::super::estimate_verifier_cycles(
+                &proof,
+                FsvProgram::UnifiedRecursionLayer,
+                BlakeMode::Compression
+            ),
+            Err(EstimateError::UnknownBinary {
+                program: FsvProgram::UnifiedRecursionLayer,
+                mode: BlakeMode::Compression
+            })
+        );
     }
 
     #[test]

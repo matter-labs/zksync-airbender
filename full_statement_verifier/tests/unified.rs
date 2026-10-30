@@ -336,3 +336,61 @@ fn unified_base_layer_transpiler_accepts_valid_proof() {
         (state.timestamp - common_constants::INITIAL_TIMESTAMP) / common_constants::TIMESTAMP_STEP;
     println!("FSV unified base layer: finished in {exact_cycles} transpiler cycles");
 }
+
+/// The pinned unified base-layer guest, run through `host_utils::measure_fsv_execution`,
+/// returns what the native verifier returns; tampering the proof body, the setup-cap VK or the
+/// final register state never yields a success record.
+#[cfg(feature = "host_utils")]
+#[test]
+fn unified_base_layer_guest_execution_is_measured_and_rejects_tampering() {
+    use full_statement_verifier::host_utils::{
+        canonical_fsv_dir, load_fsv_exact, measure_fsv_execution, FsvExecutionFailure,
+    };
+    use verifier_common::fsv_binaries::{FsvDescriptor, FsvProgram, SecurityLevel, SoundnessMode};
+
+    let (proof, setup_cap) = assemble(load_bundle());
+    let expected = run_unified_base_layer(build_stream(
+        &proof,
+        &setup_cap,
+        verifier_common::BLAKE_MODE,
+    ))
+    .expect("fixture must verify natively");
+    let guest = load_fsv_exact(
+        canonical_fsv_dir(),
+        &FsvDescriptor::new(
+            SecurityLevel::Sec100,
+            SoundnessMode::PessimisticConjecture,
+            FsvProgram::UnifiedBaseLayer,
+            BlakeMode::Compression,
+        ),
+    )
+    .unwrap_or_else(|err| panic!("{err}"));
+
+    let stream = build_stream(&proof, &setup_cap, BlakeMode::Compression);
+    let record =
+        measure_fsv_execution(&guest, stream.clone()).unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(record.output, expected);
+    assert_eq!(record.digest, guest.digest());
+    assert_eq!(record.stream_words, stream.len());
+    assert!(record.cycles > 0);
+    println!("unified base layer guest: {} cycles", record.cycles);
+
+    let prefix_len = MerkleTreeCap::flatten_single(&setup_cap).len();
+    for idx in [
+        prefix_len + (stream.len() - prefix_len) / 2,
+        prefix_len / 2,
+        prefix_len + 3,
+    ] {
+        let mut tampered = stream.clone();
+        tampered[idx] ^= 0x5555_5555;
+        let err =
+            measure_fsv_execution(&guest, tampered).expect_err("a tampered stream must not return");
+        assert!(
+            matches!(
+                err.failure,
+                FsvExecutionFailure::Aborted { .. } | FsvExecutionFailure::WrongTerminal { .. }
+            ),
+            "word {idx}: {err}"
+        );
+    }
+}

@@ -1,11 +1,17 @@
 pub mod cost_model;
 pub mod fixture_codec;
 mod fsv;
+mod fsv_execution;
 
 pub use fsv::{
     canonical_fsv_dir, fsv_digest, fsv_manifest, fsv_manifest_entry, load_fsv_exact,
     load_fsv_program, render_fsv_manifest, FsvDigest, FsvLoadError, FsvManifestEntry,
     VerifiedFsvProgram, FSV_DIGEST_RECIPE, FSV_MANIFEST_FILE,
+};
+pub use fsv_execution::{
+    append_fsv_ledger, fsv_ledger_row, fsv_stream, measure_fsv_blake_variants,
+    measure_fsv_execution, FsvExecutionError, FsvExecutionFailure, FsvExecutionRecord,
+    FSV_EXECUTION_CYCLES_LIMIT,
 };
 
 use crate::program_proof::ProgramProof;
