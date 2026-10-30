@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.SplitChiNativeLookup
 import Airbender.Proofs.Keccak.SplitChiLookup
 import Airbender.Proofs.Keccak.SplitPermutation
 import Airbender.Proofs.FullUnsigned.Requests
@@ -14055,3 +14056,11 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5_native_column_operation
 #print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5_arithmetic_field_tag_region
 #print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.chi5_generic_lookup_sound
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5FixedTable
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5ArithmeticQuery
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_arithmetic_table
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_arithmetic_arity
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5ArithmeticEntry
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_arithmetic_query_shape
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_arithmetic_tag
+#print axioms Airbender.Keccak.Split.Native.Proofs.chi5_native_arithmetic_queries
