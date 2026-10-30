@@ -1001,13 +1001,16 @@ imports `keccak_special5_layout_no_caches_gkr.json`. The
 cover that circuit's 649-call protocol and its seven local modes. The three
 split compiled circuits now have cached and no-cache Lean imports of their equations, fixed
 lookups and timestamp queries, including explicit grouped timestamp metadata.
-They have no worker soundness or composed execution proof. Shared state layout
-and the same mathematical Keccak-f1600
-reference do not supply a refinement between these different native protocols.
+They have no native worker soundness or composed machine execution proof.
+The [pure split reference composition](Airbender/Proofs/Keccak/SplitPermutation.lean)
+now proves the original Keccak permutation for all 361 reference calls.
+It includes the final delayed iota. It does not prove native worker effects.
+Shared state layout does not supply a refinement between the native protocols.
 The [split schedule](Airbender/Review/Trace/Workers/Keccak/SplitSchedule.lean)
 now states the exact public 361-call order and control transition;
 [kernel proofs](Airbender/Proofs/Keccak/SplitSchedule.lean) check the counts and
-progression. This establishes protocol order only, not worker effects.
+progression. The new phase proofs also establish the pure reference result.
+Native worker effects remain open.
 
 **Unified setup differs.** The inspected
 [`SUPPORTED_CSRS` list](../../circuit_defs/setups/src/unrolled_circuits/unifier_reduced_machine_circuit/mod.rs)
@@ -1015,7 +1018,9 @@ includes `KECCAK_SPECIAL5_CSR_REGISTER` and omits all three split Keccak CSRs.
 Current unified verifier programs make no Keccak CSR calls, so the unified
 target explicitly excludes special5 calls. The blessed split path belongs to
 the unrolled full unsigned target, whose machine configuration supports the
-three split CSRs. Its decoder/setup and caller/worker bindings remain open.
+three split CSRs. Its public decoder and exact caller/worker request bindings
+now pass. Native worker functions, fixed-setup provenance and combined memory
+execution remain open.
 
 **Supported-use contract.** The developers classify unsupported delegation
 invocations as UB ([AIH-350](https://linear.app/matterlabs/issue/AIH-350)); the
@@ -1030,9 +1035,10 @@ prefix bridge compile, while the original conditional entrypoints retain their
 explicit witness contracts for compatibility. Neither the new contract nor the
 bridge supplies missing split-circuit or unified setup coverage.
 
-**Required open work.** Model the three split circuits, establish their 361-call
-composition against the independent reference, and check their public program,
-CSR/setup, caller and exact-memory bindings. Preserve existing special5 claims
+**Required open work.** Prove native soundness for the three split circuits.
+Connect their actual read/write effects to the checked 361-call reference.
+Close fixed-setup provenance and combined memory execution. Derive supported
+use from every actual native prefix. Preserve existing special5 claims
 as conditional circuit/protocol results. Do not assume split/special5 equivalence,
 or change circuit constraints, generators or production layouts to make the
 current proof go through. A supported-use execution claim must explicitly leave

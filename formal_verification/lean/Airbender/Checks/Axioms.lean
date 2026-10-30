@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.SplitPermutation
 import Airbender.Proofs.FullUnsigned.Requests
 import Airbender.Proofs.FullUnsigned.PublicRows
 import Tests.SetupGenericColumns
@@ -13983,3 +13984,44 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_split_request_checks
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_split_request_inputs
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_split_worker_callers
+#print axioms Airbender.Keccak.Split.Call.Proofs.parity_phase_round_zero
+#print axioms Airbender.Keccak.Split.Call.Proofs.parity_phase_round_one
+#print axioms Airbender.Keccak.Split.Call.Proofs.transpose_pi_source
+#print axioms Airbender.Keccak.Split.Call.Proofs.physical_slot_reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.final_iota_reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.micro_normalized
+#print axioms Airbender.Keccak.Split.Call.Proofs.ParityPart0.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ParityPart1.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ParityPart2.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ParityPart3.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ParityPart4.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ParityPart5.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.parity_phase_reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ThetaRhoPart0.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ThetaRhoPart1.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ThetaRhoPart2.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ThetaRhoPart3.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ThetaRhoPart4.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ThetaRhoPart5.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ChiPart0.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ChiPart1.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ChiPart2.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ChiPart3.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ChiPart4.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ChiPart5.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.logical_final_layout
+#print axioms Airbender.Keccak.Split.Call.Proofs.theta_rho_phase_reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.chi_phase_reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.assembled_round_reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.permutation_of_physical_chain
+#print axioms Airbender.Keccak.Split.Call.Proofs.ThetaRhoPart4.First.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ThetaRhoPart4.Second.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ThetaRhoPart5.First.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.ThetaRhoPart5.Second.reference
+#print axioms Airbender.Keccak.Split.Call.Proofs.microStep
+#print axioms Airbender.Keccak.Split.Call.Proofs.parityPhase
+#print axioms Airbender.Keccak.Split.Call.Proofs.thetaRhoPhase
+#print axioms Airbender.Keccak.Split.Call.Proofs.chiPhase
+#print axioms Airbender.Keccak.Split.Call.Proofs.logicalLanes
+#print axioms Airbender.Keccak.Split.Call.Proofs.transposeLane
+#print axioms Airbender.Keccak.Split.Call.Proofs.assembledRound
