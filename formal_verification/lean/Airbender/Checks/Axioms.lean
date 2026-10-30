@@ -1051,6 +1051,11 @@ import Airbender.Proofs.FullUnsigned.SubwordExecution
 import Airbender.Proofs.FullUnsigned.StreamCount
 import Airbender.Proofs.FullUnsigned.PCBounds
 import Airbender.Proofs.FullUnsigned.OrdinaryCycles
+import Airbender.Proofs.FullUnsigned.StandardObservations
+import Airbender.Proofs.FullUnsigned.StandardCalls
+import Airbender.Proofs.FullUnsigned.StandardSource
+import Airbender.Proofs.FullUnsigned.StandardPC
+import Airbender.Proofs.FullUnsigned.StandardCycles
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 
@@ -14656,3 +14661,10 @@ import Airbender.Proofs.FullUnsigned.OrdinaryCycles
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_ordinary_context
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_subword_execution_from_shared_history
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_ordinary_cycle
+
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_standard_addresses_distinct
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_standard_input_observations
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_standard_worker_call
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_standard_caller_source
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_standard_pc_binding
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_standard_caller_cycle
