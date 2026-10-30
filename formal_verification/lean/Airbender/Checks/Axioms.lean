@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.SplitNativeInputObservations
 import Airbender.Proofs.FullUnsigned.CallHistory
 import Airbender.Proofs.FullUnsigned.EventGroups
 import Airbender.Proofs.FullUnsigned.CPUWindows
@@ -14618,3 +14619,13 @@ import Airbender.Proofs.Keccak.SplitNativeWriteRules
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_caller_zero_ports
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_standard_caller_history
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_split_caller_history
+
+#print axioms Airbender.Trace.Proofs.history_unique_address_read
+#print axioms Airbender.Keccak.Split.Native.Proofs.nativeRegisterPort
+#print axioms Airbender.Keccak.Split.Native.Proofs.native_register_port_mem
+#print axioms Airbender.Keccak.Split.Native.Proofs.native_register_port_address
+#print axioms Airbender.Keccak.Split.Native.Proofs.native_register_events_filter
+#print axioms Airbender.Keccak.Split.Native.Proofs.native_register_observation
+#print axioms Airbender.Keccak.Split.Native.Proofs.native_call_addresses_distinct
+#print axioms Airbender.Keccak.Split.Native.Proofs.native_call_input_observations
+#print axioms Airbender.Keccak.Split.Native.Proofs.native_call_executes_of_history
