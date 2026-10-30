@@ -248,4 +248,158 @@ elab "import_setup_table " name:ident " from " path:str " native_table_id " id:n
   unless !columns.isEmpty do throwError "table import requires at least one column"
   emitData name region.length region.offset columns source
 
+private def compactColumnPrefix (column : Column) (length : Nat) : Column := Id.run do
+  if length < 1048576 || column.blocks.size ≤ 1024 then return column
+  let mut prefixBlocks : Array Block := #[]
+  let mut rest : Array Block := #[]
+  let mut position := 0
+  for block in column.blocks do
+    if position < length then
+      if length < position + block.length then return column
+      prefixBlocks := prefixBlocks.push block
+    else rest := rest.push block
+    position := position + block.length
+  let values := prefixBlocks.flatMap fun block =>
+    (Array.range block.length).map fun index => (block.get? index).getD 0
+  if values.size != length then return column
+  for period in #[16, 256, 4096, 65536] do
+    if period < length && length % period == 0 then
+      let pattern := values.extract 0 period
+      let replacement := Block.periodic (length / period) 0 pattern
+      if (values.mapIdx fun index value => replacement.get? index == some value).all id then
+        return ⟨#[replacement] ++ rest⟩
+  return column
+
+private def splitColumnAt (column : Column) (offset : Nat) : Option (Column × Column) := Id.run do
+  let mut before : Array Block := #[]
+  let mut after : Array Block := #[]
+  let mut position := 0
+  for block in column.blocks do
+    if position + block.length ≤ offset then
+      before := before.push block
+    else after := after.push block
+    position := position + block.length
+  if position < offset then return none
+  return some (⟨before⟩, ⟨after⟩)
+
+structure SizedBlock (size : Nat) where
+  block : Block
+  length_eq : block.length = size
+
+def SizedBlock.affine (size first : Nat) (step : Int) : SizedBlock size :=
+  ⟨.affine size first step, rfl⟩
+
+def SizedBlock.dense {size : Nat} (values : Vector Nat size) : SizedBlock size :=
+  ⟨.dense values.toArray, values.size_toArray⟩
+
+def SizedBlock.periodic {size : Nat} (repetitions : Nat) (stride : Int) (values : Vector Nat size) :
+    SizedBlock (repetitions * size) :=
+  ⟨.periodic repetitions stride values.toArray, by
+    change repetitions * values.toArray.size = repetitions * size
+    rw [values.size_toArray]⟩
+
+@[simp] theorem SizedBlock.block_length {size : Nat} (value : SizedBlock size) :
+    value.block.length = size := value.length_eq
+
+private def sharedBlockSyntax (block : Block) : CommandElabM (TSyntax `term) := do
+  let valuesSyntax (values : Array Nat) : CommandElabM (TSyntax `term) := do
+    if let some first := values[0]? then
+      let run := (values.toList.takeWhile (· == first)).length
+      if 1 < run && run < values.size && values.size % run == 0 then
+        let compact := (Array.range (values.size / run)).map fun index =>
+          (values[index * run]?).getD 0
+        if (values.mapIdx fun index value => value == (compact[index / run]?).getD 0).all id then
+          let literal ← arraySyntax (compact.map quote)
+          return ← `(Vector.ofFn (fun index : Fin $(quote values.size) =>
+            ($literal[index.val / $(quote run)]?).getD 0))
+    let literal ← arraySyntax (values.map quote)
+    `((⟨$literal, by simp⟩ : Vector Nat $(quote values.size)))
+  match block with
+  | .affine size first step =>
+    let step ← if step ≥ 0 then `(Int.ofNat $(quote step.toNat))
+      else `(Int.negSucc $(quote (-step - 1).toNat))
+    `(Airbender.Setup.SizedBlock.affine $(quote size) $(quote first) $step)
+  | .dense values =>
+    let values ← valuesSyntax values
+    `(Airbender.Setup.SizedBlock.dense $values)
+  | .periodic repetitions stride values =>
+    let stride ← if stride ≥ 0 then `(Int.ofNat $(quote stride.toNat))
+      else `(Int.negSucc $(quote (-stride - 1).toNat))
+    let values ← valuesSyntax values
+    `(Airbender.Setup.SizedBlock.periodic $(quote repetitions) $stride $values)
+
+/-- Import a complete generic table with separate column declarations.
+The parsed values and source bytes match the ordinary generic import.
+Separate declarations limit elaboration memory for tables with many blocks. -/
+elab "import_setup_generic_columns " name:ident " from " path:str " native_table_id " id:num : command => do
+  let (artifact, source) ← readArtifact path.getString
+  let length := artifact.tables.foldl (fun extent region =>
+    max extent (region.offset + region.length)) 0
+  unless length > 0 do throwError "setup has no generic table regions"
+  let some region := artifact.tables.find? (fun region => region.id == id.getNat)
+    | throwError "setup split region is absent"
+  let mut shared : Std.HashMap String (Block × TSyntax `term) := {}
+  let mut columns : Array (TSyntax `term) := #[]
+  let mut prefixes : Array (TSyntax `term) := #[]
+  let mut suffixes : Array (TSyntax `term) := #[]
+  let mut prefixLengths : Array (TSyntax `term) := #[]
+  let mut controlOffsets : Array (TSyntax `term) := #[]
+  let mut controlColumns : Array (TSyntax `term) := #[]
+  let prefixLength := region.offset
+  for (column, index) in artifact.columns.zipIdx do
+    let column := compactColumnPrefix column prefixLength
+    let some (before, after) := splitColumnAt column prefixLength
+      | throwError "setup split region exceeds its parsed column"
+    let actualLength := before.blocks.foldl (fun total block => total + block.length) 0
+    prefixLengths := prefixLengths.push (quote actualLength)
+    controlOffsets := controlOffsets.push (quote (prefixLength - actualLength))
+    controlColumns := controlColumns.push (← columnSyntax (sliceColumn column region.offset region.length))
+    let mut parts : Array (TSyntax `term) := #[]
+    for (part, label) in #[(before, "Prefix"), (after, "Suffix")] do
+      let mut blocks : Array (TSyntax `term) := #[]
+      for block in part.blocks do
+        let key := reprStr block
+        let value ← if let some (original, value) := shared[key]? then do
+          unless original = block do throwError "setup block sharing changed a parsed value"
+          pure value
+        else do
+          let blockName := mkIdent (name.getId.appendAfter s!"Block{shared.size}")
+          let literal ← sharedBlockSyntax block
+          elabCommand (← `(def $blockName : Airbender.Setup.SizedBlock $(quote block.length) := $literal))
+          let value ← `(($blockName).block)
+          shared := shared.insert key (block, value)
+          pure value
+        blocks := blocks.push value
+      let blockArray ← arraySyntax blocks
+      let partName := mkIdent (name.getId.appendAfter s!"{label}{index}")
+      elabCommand (← `(abbrev $partName : Airbender.Setup.Column := ⟨$blockArray⟩))
+      parts := parts.push (← `(($partName : Airbender.Setup.Column)))
+    let before := parts[0]!
+    let after := parts[1]!
+    prefixes := prefixes.push before
+    suffixes := suffixes.push after
+    let columnName := mkIdent (name.getId.appendAfter s!"Column{index}")
+    elabCommand (← `(def $columnName : Airbender.Setup.Column := ⟨($before).blocks ++ ($after).blocks⟩))
+    columns := columns.push (← `(($columnName : Airbender.Setup.Column)))
+  let prefixesName := mkIdent (name.getId.appendAfter "Prefixes")
+  let suffixesName := mkIdent (name.getId.appendAfter "Suffixes")
+  let prefixLengthsName := mkIdent (name.getId.appendAfter "PrefixLengths")
+  let controlOffsetsName := mkIdent (name.getId.appendAfter "ControlOffsets")
+  elabCommand (← `(def $prefixesName : Vector Airbender.Setup.Column $(quote columns.size) := #v[$[$prefixes],*]))
+  elabCommand (← `(def $suffixesName : Vector Airbender.Setup.Column $(quote columns.size) := #v[$[$suffixes],*]))
+  elabCommand (← `(def $prefixLengthsName : Vector Nat $(quote columns.size) := #v[$[$prefixLengths],*]))
+  elabCommand (← `(def $controlOffsetsName : Vector Nat $(quote columns.size) := #v[$[$controlOffsets],*]))
+  let controlName := mkIdent (name.getId.appendAfter "Control")
+  elabCommand (← `(def $controlName : Airbender.Setup.TableData $(quote columns.size) :=
+    Airbender.Setup.TableData.mk $(quote region.length) 0 #v[$[$controlColumns],*]))
+  elabCommand (← `(def $name : Airbender.Setup.TableData $(quote columns.size) :=
+    Airbender.Setup.TableData.mk $(quote length) 0 #v[$[$columns],*]))
+  let sourceName := mkIdent (name.getId.appendAfter "SourceBytes")
+  elabCommand (← `(def $sourceName : String := $(quote source)))
+  let regions ← artifact.tables.mapM fun region =>
+    `(Airbender.Setup.Region.mk $(quote region.id) $(quote region.offset) $(quote region.length)
+      $(quote region.width) $(quote region.key_columns))
+  let regionsName := mkIdent (name.getId.appendAfter "Regions")
+  elabCommand (← `(def $regionsName : Array Airbender.Setup.Region := #[$[$regions],*]))
+
 end Airbender.Setup
