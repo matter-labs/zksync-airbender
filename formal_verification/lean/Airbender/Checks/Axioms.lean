@@ -1,3 +1,6 @@
+import Airbender.Proofs.Keccak.SplitSetupTransport
+import Airbender.Review.Compiler.SetupSource
+import Airbender.Proofs.FullUnsigned.SetupInterpretation
 import Airbender.Proofs.FullUnsigned.SplitRetirement
 import Airbender.Proofs.Keccak.SplitNativeInputObservations
 import Airbender.Proofs.FullUnsigned.CallHistory
@@ -14734,3 +14737,10 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_supported_native_inputs
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_supported_execution
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_soundness_of_setup_interpretation
+
+#print axioms Airbender.Keccak.Split.Native.Proofs.SetupRefinement
+#print axioms Airbender.Keccak.Split.Native.Proofs.equations_of_setup_refinement
+#print axioms Airbender.Keccak.Split.Native.Proofs.control_of_fixed_setup_refinement
+#print axioms Airbender.Compiler.MachineTargets.FixedSetupRows
+#print axioms Airbender.Compiler.MachineTargets.Proofs.fixed_setup_lookup_of_source_rows
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_soundness_of_source_rows

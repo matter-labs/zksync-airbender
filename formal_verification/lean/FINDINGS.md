@@ -59,6 +59,18 @@ Kernel checks now cover full native execution and public supported-use
 induction. The target wrapper exposes one source-interpretation function.
 This function must connect parsed fixed JSON to the canonical tables.
 
+The setup transport proof now covers all three workers in both cache modes.
+Three `FixedSetupRows` certificates suffice for the original target. Each
+certificate must map every parsed physical row, including padding, into its
+complete canonical table. Parity, theta/rho and chi5 certificates remain open.
+No new assumption closes them.
+
+A total JSON decoder prototype stays outside the branch. Small kernel tests
+and differential checks of all 18 retained setup-directory JSON files pass.
+Direct kernel evaluation of the complete theta/rho source exceeds the fixed
+memory cap. A compact source certificate is still required. The retained
+artifacts, setup parser and imported values stay unchanged.
+
 ## Finding status versus conditional proof coverage
 
 **An assumption can close a conditional proof obligation while the finding stays
