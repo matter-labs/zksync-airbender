@@ -171,15 +171,11 @@ pub(crate) fn leaves_from_monomials(
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert!(
-        log_v <= 5,
-        "leaf width must fit one 256-thread block interleave"
+        log_v <= 8,
+        "leaf width must fit the 256-thread interleave: log_r = 8 - log_v"
     );
     assert!(log_n >= log_v);
     let log_m = log_n - log_v;
-    assert!(
-        log_m <= 8,
-        "slot polynomials must fit the block-family sizes"
-    );
     assert!(log_c >= 1);
     assert!(log_m + log_c <= params.omega_log_order);
     assert_eq!(coeffs.len(), 4usize << log_n);
@@ -670,67 +666,65 @@ mod tests {
             .collect()
     }
 
-    /// All ten fused (recomputed) shapes, including M = 2 (R > M) and M = 256
-    /// (chain length 32): kernel leaves equal an independent host Horner and
-    /// the fused query path's leaves, bit for bit.
-    #[test]
-    fn leaves_from_monomials_match_host_and_fused_query() {
-        let context = make_test_context(64, 16);
+    /// Compare reconstructed leaves with independent host Horner evaluation,
+    /// and optionally with the existing fused-query implementation.
+    fn assert_leaves_from_monomials_match_host(
+        log_n: u32,
+        log_c: u32,
+        log_v: u32,
+        compare_fused: bool,
+        context: &gpu_prover_context::ProverContext,
+    ) {
         let stream = context.get_exec_stream();
-        for (log_n, log_c, log_v) in [
-            (13u32, 14u32, 5u32),
-            (12, 14, 5),
-            (11, 15, 5),
-            (10, 15, 5),
-            (9, 15, 4),
-            (8, 19, 4),
-            (7, 19, 4),
-            (6, 19, 5),
-            (5, 19, 4),
-            (4, 19, 3),
-        ] {
-            let log_m = log_n - log_v;
-            let log_total_leaves = log_m + log_c;
-            let coeffs = (0..1usize << log_n)
-                .map(|_| E4::random_element(&mut rng()))
+        let log_m = log_n - log_v;
+        let log_total_leaves = log_m + log_c;
+        let coeffs = (0..1usize << log_n)
+            .map(|_| E4::random_element(&mut rng()))
+            .collect::<Vec<_>>();
+        let columns = bitreversed_limb_columns(&coeffs, log_n);
+        let mut d_coeffs = DeviceAllocation::alloc(columns.len()).unwrap();
+        memory_copy_async(&mut d_coeffs, &columns[..], stream).unwrap();
+        let params = context.ntt_device_context().whir_leaf_transform_params();
+        let d_tree = if compare_fused {
+            Some(
+                DeviceAllocation::<Digest>::alloc(
+                    2usize << (log_total_leaves - PARTIAL_TREE_REDUCTION_LAYERS),
+                )
+                .unwrap(),
+            )
+        } else {
+            None
+        };
+        for count in [1usize, 137, 300] {
+            let indexes = (0..count)
+                .map(|_| rng().random_range(0..1u64 << log_total_leaves) as u32)
                 .collect::<Vec<_>>();
-            let columns = bitreversed_limb_columns(&coeffs, log_n);
-            let mut d_coeffs = DeviceAllocation::alloc(columns.len()).unwrap();
-            memory_copy_async(&mut d_coeffs, &columns[..], stream).unwrap();
-            let params = context.ntt_device_context().whir_leaf_transform_params();
-            let d_tree: DeviceAllocation<Digest> = DeviceAllocation::alloc(
-                2usize << (log_total_leaves - PARTIAL_TREE_REDUCTION_LAYERS),
+            let mut d_indexes = DeviceAllocation::alloc(count).unwrap();
+            memory_copy_async(&mut d_indexes, &indexes[..], stream).unwrap();
+            let mut d_leaves: DeviceAllocation<E4> =
+                DeviceAllocation::alloc(count << log_v).unwrap();
+            leaves_from_monomials(
+                &d_coeffs[..],
+                params,
+                log_n,
+                log_c,
+                log_v,
+                &d_indexes[..],
+                &mut d_leaves[..],
+                stream,
             )
             .unwrap();
-            for count in [1usize, 137, 300] {
-                let indexes = (0..count)
-                    .map(|_| rng().random_range(0..1u64 << log_total_leaves) as u32)
-                    .collect::<Vec<_>>();
-                let mut d_indexes = DeviceAllocation::alloc(count).unwrap();
-                memory_copy_async(&mut d_indexes, &indexes[..], stream).unwrap();
-                let mut d_leaves: DeviceAllocation<E4> =
-                    DeviceAllocation::alloc(count << log_v).unwrap();
-                leaves_from_monomials(
-                    &d_coeffs[..],
-                    params,
-                    log_n,
-                    log_c,
-                    log_v,
-                    &d_indexes[..],
-                    &mut d_leaves[..],
-                    stream,
-                )
-                .unwrap();
-                let actual = download(&d_leaves[..], E4::ZERO, stream);
-                let expected = indexes
-                    .iter()
-                    .flat_map(|q| host_leaf(&coeffs, log_m, log_c, log_v, *q))
-                    .collect::<Vec<_>>();
-                assert_eq!(
-                    actual, expected,
-                    "host reference ({log_n},{log_c},{log_v}) x{count}"
-                );
+            let actual = download(&d_leaves[..], E4::ZERO, stream);
+            let expected = indexes
+                .iter()
+                .flat_map(|q| host_leaf(&coeffs, log_m, log_c, log_v, *q))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                actual, expected,
+                "host reference ({log_n},{log_c},{log_v}) x{count}"
+            );
 
+            if let Some(tree) = &d_tree {
                 let mut d_query_leaves: DeviceAllocation<BF> =
                     DeviceAllocation::alloc(count << (log_v + 2)).unwrap();
                 let mut d_paths: DeviceAllocation<u32> = DeviceAllocation::alloc(
@@ -739,7 +733,7 @@ mod tests {
                 .unwrap();
                 crate::fused_commit::query(
                     &d_coeffs[..],
-                    &d_tree[..],
+                    &tree[..],
                     &d_indexes[..],
                     &mut d_query_leaves[..],
                     &mut d_paths[..],
@@ -759,5 +753,63 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn leaves_from_monomials_match_host_and_fused_query() {
+        // All ten fused shapes, including M = 2 (R > M) and M = 256
+        // (chain length 32), retain both independent comparisons.
+        let context = make_test_context(64, 16);
+        for (log_n, log_c, log_v) in [
+            (13u32, 14u32, 5u32),
+            (12, 14, 5),
+            (11, 15, 5),
+            (10, 15, 5),
+            (9, 15, 4),
+            (8, 19, 4),
+            (7, 19, 4),
+            (6, 19, 5),
+            (5, 19, 4),
+            (4, 19, 3),
+        ] {
+            assert_leaves_from_monomials_match_host(log_n, log_c, log_v, true, &context);
+        }
+    }
+
+    #[test]
+    fn leaves_from_monomials_wide_interleave_matches_host() {
+        let context = make_test_context(64, 16);
+        for (log_n, log_c, log_v) in [(10, 6, 6), (10, 6, 7), (10, 6, 8), (14, 1, 5)] {
+            assert_leaves_from_monomials_match_host(log_n, log_c, log_v, false, &context);
+        }
+        eprintln!("in-domain reconstruction: 12 new direct CPU comparisons");
+    }
+
+    #[test]
+    fn leaf_width_above_block_interleave_is_rejected_before_launch() {
+        let context = make_test_context(64, 16);
+        let coeffs = DeviceAllocation::<BF>::alloc(1).unwrap();
+        let indexes = DeviceAllocation::<u32>::alloc(0).unwrap();
+        let mut leaves = DeviceAllocation::<E4>::alloc(0).unwrap();
+        let params = context.ntt_device_context().whir_leaf_transform_params();
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            leaves_from_monomials(
+                &coeffs,
+                params,
+                9,
+                1,
+                9,
+                &indexes,
+                &mut leaves,
+                context.get_exec_stream(),
+            )
+        }))
+        .expect_err("log_v=9 exceeds the 256-thread interleave");
+        let message = error
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| error.downcast_ref::<&str>().copied())
+            .unwrap();
+        assert!(message.contains("leaf width") && message.contains("256-thread"));
     }
 }

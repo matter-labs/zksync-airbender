@@ -66,6 +66,15 @@ fn assert_recursive_commitment_matches_live_cpu(
     );
 
     {
+        let depth = (trace_len * lde_factor / values_per_leaf / tree_cap_size).ilog2();
+        let _range = gpu_core::primitives::nvtx::scoped_range(
+            Some("ab"),
+            match depth {
+                5 => "g2.tree.depth5",
+                6 => "g2.tree.depth6",
+                _ => "g2.tree.other",
+            },
+        );
         let mut gpu = GpuWhirExtensionOracle::from_monomial_coeffs(
             &monomial_coeffs,
             lde_factor,
@@ -199,6 +208,19 @@ fn assert_recursive_commitment_matches_live_cpu(
 fn recursive_whir_commitment_matches_live_cpu() {
     // M256: compare every committed leaf and path against the CPU encoding.
     assert_recursive_commitment_matches_live_cpu(13, 4, 32, 4);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn recursive_whir_partial_tree_depth_five_matches_live_cpu() {
+    // Exercise both commit dispatches with the reduction roots as the cap.
+    // Each route also has a depth-six control with one upper tree level.
+    assert_recursive_commitment_matches_live_cpu(9, 2, 16, 1);
+    // Fused: 64 coefficient leaves, two-node cap, five path levels.
+    assert_recursive_commitment_matches_live_cpu(9, 2, 16, 2);
+    assert_recursive_commitment_matches_live_cpu(14, 2, 32, 16);
+    // Retained: 1024 coefficient leaves, 32-node cap, five path levels.
+    assert_recursive_commitment_matches_live_cpu(14, 2, 32, 32);
 }
 
 #[test]

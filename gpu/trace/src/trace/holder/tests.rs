@@ -1235,10 +1235,28 @@ const PHYSICAL_PARTIAL_TREE_SHAPES: [(u32, u32); 2] = [(14, 1), (14, 5)];
 #[cfg(not(no_cuda))]
 fn partial_tree_from_physical_leaves_matches_natural_path() {
     let stream = CudaStream::default();
-    let log_subtree_cap_size = 1u32;
-    for (log_domain_size, log_rows_per_leaf) in PHYSICAL_PARTIAL_TREE_SHAPES {
+    let mut cases = 0;
+    for (log_domain_size, log_rows_per_leaf, log_subtree_cap_size) in
+        PHYSICAL_PARTIAL_TREE_SHAPES.into_iter().flat_map(|(n, b)| {
+            [
+                1,
+                n - b - PARTIAL_TREE_REDUCTION_LAYERS - 1,
+                n - b - PARTIAL_TREE_REDUCTION_LAYERS,
+            ]
+            .map(move |cap| (n, b, cap))
+        })
+    {
         for log_lde_factor in [0u32, 1u32] {
             for columns_count in [1usize, 3usize] {
+                let depth = log_domain_size - log_rows_per_leaf - log_subtree_cap_size;
+                let _range = gpu_core::primitives::nvtx::scoped_range(
+                    Some("ab"),
+                    match depth {
+                        5 => "g2.tree.depth5",
+                        6 => "g2.tree.depth6",
+                        _ => "g2.tree.other",
+                    },
+                );
                 let log_tree_cap_size = log_lde_factor + log_subtree_cap_size;
                 let cosets_in_tile = 1usize << log_lde_factor;
                 let rows_count = 1usize << log_domain_size;
@@ -1248,7 +1266,7 @@ fn partial_tree_from_physical_leaves_matches_natural_path() {
                 let trees_len = per_coset_tree_stride * cosets_in_tile;
                 let label = format!(
                     "n={log_domain_size} b={log_rows_per_leaf} cosets={cosets_in_tile} \
-                     cols={columns_count}"
+                     cols={columns_count} log_subcap={log_subtree_cap_size}"
                 );
 
                 let natural = deterministic_values(per_coset_evals_stride * cosets_in_tile);
@@ -1317,9 +1335,12 @@ fn partial_tree_from_physical_leaves_matches_natural_path() {
                     &stream,
                 );
                 assert_eq!(new_caps, old_caps, "{label}: unified cap");
+                cases += 1;
             }
         }
     }
+    assert_eq!(cases, 24);
+    eprintln!("physical partial trees: 24 natural/physical comparisons including depths five/six");
 }
 
 #[test]

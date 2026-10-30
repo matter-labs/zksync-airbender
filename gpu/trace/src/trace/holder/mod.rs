@@ -213,9 +213,11 @@ impl<T> TraceHolder<T> {
         let log_leaf = geometry.values_per_leaf().trailing_zeros();
         let log_subcap =
             geometry.cap_size().trailing_zeros() - geometry.lde_factor().trailing_zeros();
+        // Equality leaves exactly the five reconstructed levels below the cap;
+        // the cached boundary itself is the cap, with no upper levels to build.
         match trees_mode {
             TreesCacheMode::CachePartial => assert!(
-                log_message > log_leaf + PARTIAL_TREE_REDUCTION_LAYERS + log_subcap,
+                log_message >= log_leaf + PARTIAL_TREE_REDUCTION_LAYERS + log_subcap,
                 "base partial tree exceeds the commitment domain"
             ),
             TreesCacheMode::CacheFull | TreesCacheMode::CacheNone => {}
@@ -1615,9 +1617,10 @@ pub(crate) fn commit_trace_with_partial_tree_multi_coset(
 ) -> CudaResult<()> {
     assert!(log_tree_cap_size >= log_lde_factor);
     let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
+    // At equality the bottom-five-level reduction produces the cap directly.
     assert!(
         log_domain_size
-            > log_rows_per_leaf + PARTIAL_TREE_REDUCTION_LAYERS + log_coset_tree_cap_size
+            >= log_rows_per_leaf + PARTIAL_TREE_REDUCTION_LAYERS + log_coset_tree_cap_size
     );
     let per_coset_evals_stride = columns_count << log_domain_size;
     let per_coset_leaves_count = 1usize << (log_domain_size - log_rows_per_leaf);
@@ -1658,9 +1661,10 @@ pub fn build_partial_trees_from_physical(
 ) -> CudaResult<()> {
     assert!(log_tree_cap_size >= log_lde_factor);
     let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
+    // At equality the bottom-five-level reduction produces the cap directly.
     assert!(
         log_domain_size
-            > log_rows_per_leaf + PARTIAL_TREE_REDUCTION_LAYERS + log_coset_tree_cap_size
+            >= log_rows_per_leaf + PARTIAL_TREE_REDUCTION_LAYERS + log_coset_tree_cap_size
     );
     let per_coset_evals_stride = columns_count << log_domain_size;
     let per_coset_leaves_count = 1usize << (log_domain_size - log_rows_per_leaf);

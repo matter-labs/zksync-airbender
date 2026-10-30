@@ -84,8 +84,10 @@ fn admit_baby_bear_recursive_oracle_shape(
     let log_domain = log_n
         .checked_add(log_lde)
         .expect("recursive WHIR evaluation domain overflow");
+    // Equality makes the five-level reduction roots the cap; the upper-tree
+    // builder accepts zero remaining levels.
     assert!(
-        log_leaves > PARTIAL_TREE_REDUCTION_LAYERS + log_cap,
+        log_leaves >= PARTIAL_TREE_REDUCTION_LAYERS + log_cap,
         "recursive WHIR commitments require a partial tree"
     );
     assert!(
@@ -612,6 +614,22 @@ mod cpu_recursive_shapes {
     use super::admit_baby_bear_recursive_oracle_shape as admit;
 
     #[test]
+    fn cpu_partial_tree_depth_five_is_supported() {
+        assert!(admit(9, 4, 1, 0, 27)); // Six path levels: existing control.
+        assert!(admit(9, 4, 1, 1, 27)); // Exactly five path levels.
+        let error = std::panic::catch_unwind(|| admit(9, 4, 1, 2, 27))
+            .expect_err("depth four cannot hold the five reconstructed levels");
+        let message = error
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| error.downcast_ref::<&str>().copied())
+            .unwrap();
+        assert!(message.contains("partial tree"));
+        // The retained route shares the same exact-depth boundary.
+        assert!(!admit(22, 6, 5, 16, 27));
+    }
+
+    #[test]
     fn cpu_virtual_default_ladders_fit_recursive_capabilities() {
         use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType as Delegation};
         use prover::definitions::SecurityLevel;
@@ -709,7 +727,7 @@ mod cpu_recursive_shapes {
             (22, 7, 5, 4, 27),
             (22, 6, 5, 4, 26),
             (22, 6, 6, 4, 28),
-            (22, 6, 5, 16, 27),
+            (22, 6, 5, 17, 27),
             (22, 6, 0, 4, 27),
         ] {
             assert!(std::panic::catch_unwind(|| admit(n, v, lde, cap, capacity)).is_err());

@@ -37,11 +37,49 @@ fn test_config(message_log: usize, k: usize) -> ProverConfig {
 }
 
 fn test_config_with_base_fold(message_log: usize, k: usize, fold: usize) -> ProverConfig {
+    test_config_with_base_fold_and_cap(message_log, k, fold, 16)
+}
+
+fn test_config_with_base_fold_and_cap(
+    message_log: usize,
+    k: usize,
+    fold: usize,
+    cap: usize,
+) -> ProverConfig {
     ProverConfig::whir_only(
         message_log - k,
-        WhirSchedule::from_legacy_arrays(2, 16, k, &[fold, 5], &[1, 1], &[2], &[0, 0]),
+        WhirSchedule::from_legacy_arrays(2, cap, k, &[fold, 5], &[1, 1], &[2], &[0, 0]),
         SecurityLevel::Sec100,
     )
+}
+
+#[test]
+fn cpu_partial_tree_depth_five_is_supported() {
+    for fold in [1, 0] {
+        let boundary_cap = 1usize << (14 - fold - PARTIAL_TREE_REDUCTION_LAYERS as usize);
+        for cap in [boundary_cap / 2, boundary_cap] {
+            let config = test_config_with_base_fold_and_cap(13, 0, fold, cap);
+            config.validate_for_whir_message_size(13);
+            let shape = geometry(&config, BaseOracleRole::Memory, 3);
+            TraceHolder::<BF>::validate_base_layout(&shape, TreesCacheMode::CachePartial);
+        }
+        let mut config = test_config_with_base_fold_and_cap(13, 0, fold, 2 * boundary_cap);
+        // Keep the larger cap valid for the unused intermediate oracle, so the
+        // negative isolates the base partial-tree depth rather than CPU geometry.
+        config.whir_schedule.internal_rounds[0].lde_factor_log2 += 1;
+        config.validate_for_whir_message_size(13);
+        let shape = geometry(&config, BaseOracleRole::Memory, 3);
+        let error = std::panic::catch_unwind(|| {
+            TraceHolder::<BF>::validate_base_layout(&shape, TreesCacheMode::CachePartial);
+        })
+        .expect_err("depth four cannot hold the five reconstructed levels");
+        let message = error
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| error.downcast_ref::<&str>().copied())
+            .unwrap();
+        assert!(message.contains("base partial tree"));
+    }
 }
 
 #[test]
@@ -390,6 +428,53 @@ fn materialized_case_for_geometry(
         baseline,
         "packed holder reservations return to baseline"
     );
+}
+
+#[test]
+fn partial_tree_depth_five_matches_live_cpu() {
+    let context = super::tests::make_test_context(256, 16);
+    let worker = Worker::new_with_num_threads(1);
+    let mut cases = 0;
+    for fold in [1, 0] {
+        for depth in [6, 5] {
+            let _range = gpu_core::primitives::nvtx::scoped_range(
+                Some("ab"),
+                if depth == 5 {
+                    "g2.tree.depth5"
+                } else {
+                    "g2.tree.depth6"
+                },
+            );
+            let cap = 1usize << (14 - fold - depth);
+            let config = test_config_with_base_fold_and_cap(13, 0, fold, cap);
+            let raw = source(3, 1usize << config.trace_len_log2);
+            let cpu = cpu_oracle(&config, &raw, &worker);
+            assert_eq!(cpu.query_for_folded_index(0).2.path.len(), depth);
+            for role in [
+                BaseOracleRole::Memory,
+                BaseOracleRole::Witness,
+                BaseOracleRole::Setup,
+            ] {
+                for deferred in [false, true] {
+                    materialized_case(
+                        &config,
+                        role,
+                        3,
+                        &raw,
+                        &cpu,
+                        TreesCacheMode::CachePartial,
+                        deferred,
+                        !deferred,
+                        &worker,
+                        &context,
+                    );
+                    cases += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(cases, 24);
+    eprintln!("partial-tree depths five/six: 24 live CPU cap/leaf/path comparisons");
 }
 
 fn materialized_matrix(k: usize) {
