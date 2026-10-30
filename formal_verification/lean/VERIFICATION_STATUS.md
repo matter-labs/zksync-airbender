@@ -1151,3 +1151,30 @@ The public round-control and formal setup source obligations remain open.
 Design items 2 and 3 follow the machine targets. The packed-checker pilot
 stays unchanged. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+### Full unsigned exact instruction-window obligation
+
+`unrolled_full_fulfillment_window` proves an exact instruction-window test.
+A fulfillment event lies in a CPU cycle if and only if that CPU row selects
+the same full-width request. Aligned state clocks and unique caller times
+exclude every other cycle. The standard and split event-window theorems apply
+this result to each actual physical port. Both split cache modes pass.
+
+`unrolled_cpu_event_time` derives each CPU event's native access slot.
+`unrolled_cpu_event_window` proves that each CPU event lies in exactly its
+own instruction window. The proof covers all six CPU families and both
+caller forms. These results supply the exact window membership needed to
+extract native calls from the combined history. They add no occurrence plan
+or per-worker permutation premise.
+
+Both new modules passed focused kernel checks. All five new roots passed
+direct axiom checks. They use only the three allowed axioms. The explicit
+inventory now contains 13,274 roots. All 13,269 previous roots remain present.
+The final bounded group used 535 MiB of physical memory and left no owned
+process running. Resource limits stay unchanged.
+
+Full unsigned path execution and initialization integration remain open.
+The public round-control and formal setup source obligations remain open.
+Design items 2 and 3 follow the machine targets. The packed-checker pilot
+stays unchanged. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.
