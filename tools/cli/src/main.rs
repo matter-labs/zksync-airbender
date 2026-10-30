@@ -160,6 +160,15 @@ enum Commands {
         #[arg(long, value_enum, default_value = "full-unsigned")]
         machine: RunMachine,
     },
+    /// Write the input of the `fsv_aggregate_unified_sec_100` guest (draft):
+    /// `[N] ++ nd_words(proof_1) ++ .. ++ nd_words(proof_N)` as prover-input JSON.
+    AggregateInput {
+        /// RecursionUnified proof artifacts, in aggregation order.
+        #[arg(long, num_args = 1.., required = true)]
+        proof: Vec<String>,
+        #[arg(long)]
+        output: String,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -404,7 +413,96 @@ fn run_cli() {
                 machine,
             );
         }
+        Commands::AggregateInput { proof, output } => {
+            write_aggregation_input(&proof, &output);
+        }
     }
+}
+
+/// Input of the `fsv_aggregate_unified_sec_100` guest; see
+/// `tools/gkr_verifier/src/common_fsv_aggregate_unified_sec_100.rs` for the
+/// guest and its commitment scheme.
+struct AggregationInput {
+    /// `[N] ++ nd_words(proof_1) ++ .. ++ nd_words(proof_N)`.
+    words: Vec<u32>,
+    /// Index in `words` where each proof's ND stream starts.
+    proof_offsets: Vec<usize>,
+    /// The recursion-chain hash all artifacts claim.
+    chain_hash: [u32; 8],
+    /// The guest's x10..x17, folded from the artifacts' claimed values (the
+    /// guest folds the verified ones).
+    expected_output: [u32; 8],
+}
+
+fn build_aggregation_input(proof_paths: &[String]) -> AggregationInput {
+    use verifier_common::transcript::Blake2sBufferingTranscript;
+    use verifier_common::USE_REDUCED_BLAKE2_ROUNDS;
+
+    let num_proofs = u32::try_from(proof_paths.len()).expect("too many proofs");
+    let mut words = vec![num_proofs];
+    let mut proof_offsets = Vec::with_capacity(proof_paths.len());
+    let mut chain_hash: Option<[u32; 8]> = None;
+    let mut hasher = Blake2sBufferingTranscript::<USE_REDUCED_BLAKE2_ROUNDS>::new();
+    // [acc_{i-1} || out_i], as in the guest
+    let mut block = [0u32; 16];
+    for path in proof_paths {
+        let artifact: ProofArtifact = deserialize_from_file(path);
+        let nd_words = prover_pipeline::unified_verifier_nd_words(&artifact)
+            .unwrap_or_else(|e| panic!("{path}: {e}"));
+        println!(
+            "{path}: batch {}, {} nd words",
+            artifact.batch_id,
+            nd_words.len()
+        );
+        proof_offsets.push(words.len());
+        words.extend(nd_words);
+
+        match chain_hash {
+            None => {
+                // acc_0 = H(C || N || 0^7)
+                chain_hash = Some(artifact.chain_hash);
+                block[..8].copy_from_slice(&artifact.chain_hash);
+                block[8] = num_proofs;
+                hasher.absorb(&block);
+                block[..8].copy_from_slice(&hasher.finalize_reset().0);
+            }
+            Some(hash) => assert_eq!(
+                hash, artifact.chain_hash,
+                "{path}: recursion chain differs from the first proof's"
+            ),
+        }
+        // acc_i = H(acc_{i-1} || out_i)
+        for (dst, register) in block[8..]
+            .iter_mut()
+            .zip(&artifact.proof.register_final_values[10..18])
+        {
+            *dst = register.value;
+        }
+        hasher.absorb(&block);
+        block[..8].copy_from_slice(&hasher.finalize_reset().0);
+    }
+
+    AggregationInput {
+        words,
+        proof_offsets,
+        chain_hash: chain_hash.expect("at least one proof"),
+        expected_output: block[..8].try_into().unwrap(),
+    }
+}
+
+fn write_aggregation_input(proof_paths: &[String], output: &str) {
+    let input = build_aggregation_input(proof_paths);
+    let bytes: Vec<u8> = input.words.iter().flat_map(|w| w.to_le_bytes()).collect();
+    let json = serde_json::json!({
+        "prover_input": base64::engine::general_purpose::STANDARD.encode(bytes),
+    });
+    fs::write(output, json.to_string()).expect("Failed to write aggregation input");
+    println!(
+        "wrote {} words to {output}; common chain hash {:?}",
+        input.words.len(),
+        input.chain_hash
+    );
+    println!("Expected result: {:?}", input.expected_output);
 }
 
 fn run_binary(
