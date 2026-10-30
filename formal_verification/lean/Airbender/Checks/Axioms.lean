@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.SplitThetaControllerQuery
 import Airbender.Proofs.Keccak.SplitThetaDOperation
 import Airbender.Proofs.Keccak.SplitThetaInputPacking
 import Tests.SetupThetaGeneric
@@ -14442,3 +14443,12 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Proofs.thetaPreviousLaneValue
 #print axioms Airbender.Keccak.Split.Native.Proofs.theta_d_lane_operation
 #print axioms Airbender.Keccak.Split.Native.Proofs.theta_d_native_reference
+
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaQueryRow
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_native_controller_schedule
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_native_slot_key
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_native_slots
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaColumnFlag
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_rotation_shift_equation
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_rotation_shift_selected
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_rotation_shift_value
