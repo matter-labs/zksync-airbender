@@ -1007,3 +1007,30 @@ The combined full unsigned machine proof remains open. Design items 2 and 3
 follow the machine targets. The packed-checker pilot stays unchanged. Full
 frontend validation, environment audit, baseline refresh, transitive replay
 and Linux qualification did not run.
+
+### Native split combined-history write-bound obligation
+
+`native_write_words_bounded` proves canonical raw write-word limbs for all
+three split workers in both cache modes. Exact native equations and the
+complete retained tables derive the control and state write bounds. Pointer
+and readonly refreshes retain their initialized input bounds. No Sail history,
+call argument or expected result is an input to this bound proof.
+
+`native_write_rule` places each split row inside an arbitrary combined memory
+pool. All actual ports write at the same imported offset two. The common time
+induction can therefore supply all row read bounds and obtain each raw write
+bound. This closes the split-worker component of the combined history's
+write-bound rule. It does not assume the worker result or a separate split RAM
+permutation.
+
+Both new modules passed focused kernel checks. All five new roots passed
+direct axiom checks. They use only the three allowed axioms. The explicit
+inventory now contains 13,252 roots. All 13,247 previous roots remain present.
+The bounded group used 514 MiB of physical memory and left no owned process
+running. Resource limits stay unchanged.
+
+The complete combined CPU and worker history still needs its clock facts,
+path execution and initialization connection. The formal setup source bridge
+remains open. Design items 2 and 3 follow the machine targets. The packed-checker
+pilot stays unchanged. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.
