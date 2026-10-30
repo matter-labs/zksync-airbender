@@ -1,3 +1,4 @@
+import Airbender.Proofs.FullUnsigned.ThetaSourceControlSlots
 import Airbender.Proofs.FullUnsigned.ChiSourceMembership
 import Airbender.Proofs.FullUnsigned.ChiSourceLowOutput
 import Airbender.Proofs.FullUnsigned.ChiSourceCycle1
@@ -15706,3 +15707,33 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.MachineTargets.Proofs.chi_source_arithmetic_member
 #print axioms Airbender.Compiler.MachineTargets.Proofs.split_chi_real_rows
 #print axioms Airbender.Compiler.MachineTargets.Proofs.chi_source_rows
+
+#print axioms Airbender.Setup.ThetaControlSuffix.Column0.skip
+#print axioms Airbender.Setup.ThetaControlSuffix.Column0.entries
+#print axioms Airbender.Setup.ThetaControlSuffix.Column0.matches
+#print axioms Airbender.Setup.ThetaControlSuffix.Column1.skip
+#print axioms Airbender.Setup.ThetaControlSuffix.Column1.entries
+#print axioms Airbender.Setup.ThetaControlSuffix.Column1.matches
+#print axioms Airbender.Setup.ThetaControlSuffix.Column2.skip
+#print axioms Airbender.Setup.ThetaControlSuffix.Column2.entries
+#print axioms Airbender.Setup.ThetaControlSuffix.Column2.matches
+#print axioms Airbender.Setup.ThetaControlSuffix.Column3.skip
+#print axioms Airbender.Setup.ThetaControlSuffix.Column3.entries
+#print axioms Airbender.Setup.ThetaControlSuffix.Column3.matches
+#print axioms Airbender.Setup.ThetaControlSuffix.Column4.skip
+#print axioms Airbender.Setup.ThetaControlSuffix.Column4.entries
+#print axioms Airbender.Setup.ThetaControlSuffix.Column4.matches
+#print axioms Airbender.Setup.ThetaControlSuffix.Column5.skip
+#print axioms Airbender.Setup.ThetaControlSuffix.Column5.entries
+#print axioms Airbender.Setup.ThetaControlSuffix.Column5.matches
+#print axioms Airbender.Setup.ThetaControlSuffix.Column6.skip
+#print axioms Airbender.Setup.ThetaControlSuffix.Column6.entries
+#print axioms Airbender.Setup.ThetaControlSuffix.Column6.matches
+#print axioms Airbender.Setup.ThetaControlSuffix.Column7.skip
+#print axioms Airbender.Setup.ThetaControlSuffix.Column7.entries
+#print axioms Airbender.Setup.ThetaControlSuffix.Column7.matches
+#print axioms Airbender.Setup.ThetaControlSuffix.Column8.skip
+#print axioms Airbender.Setup.ThetaControlSuffix.Column8.entries
+#print axioms Airbender.Setup.ThetaControlSuffix.Column8.matches
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_control_slot_rows
+#print axioms Airbender.Compiler.MachineTargets.Proofs.theta_source_control_slot_member
