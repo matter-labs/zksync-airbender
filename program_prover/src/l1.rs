@@ -25,7 +25,7 @@ use prover::field::Proth120;
 use prover::gkr::prover::setup::GKRSetup;
 use prover::gkr::prover::{
     prove_configured_with_gkr_with_storage_and_backend, GKRProof, NaiveGKRBackend, OperationMode,
-    Proth120WorkStealingLazyBackend, SetupCommitment, WhirOracleStorage,
+    Proth120WorkStealingLazyBackend, WhirOracleStorage,
 };
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use prover::tests::gkr::large_field::{
@@ -77,7 +77,7 @@ pub fn prove_l1_wrap_in_memory(
     let level = prover::definitions::SecurityLevel::Sec100;
     let prover_config = evm_production_packed_prover_config(level);
     // the base-commitment packing is a property of the prover config
-    let pack_log2 = prover_config.pack_log2;
+    let pack_log2 = prover_config.pack_log2();
     let trace_len = 1usize << prover_config.trace_len_log2;
 
     // 1. Run the program on the reduced machine and capture the execution.
@@ -180,5 +180,5 @@ pub fn prove_l1_wrap_in_memory(
         now.elapsed()
     );
 
-    (proof, commitment_mode, timings)
+    (proof, operation_mode, timings)
 }
