@@ -117,7 +117,9 @@ fn keccak_sizing_row<const WORDS: usize, const LANES: usize>(
         }
         for (words, distance) in witness
             .indirect_writes
-            .chunks_exact_mut(2)
+            .as_chunks_mut::<2>()
+            .0
+            .iter_mut()
             .zip(lane_read_distances)
         {
             for word in words {
