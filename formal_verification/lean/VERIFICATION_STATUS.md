@@ -2228,3 +2228,26 @@ Design items 2 and 3 follow the machine targets.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned theta/rho control and slot obligations
+
+The theta/rho controller and slot source cases are closed. All 242 rows
+match their original physical reference rows in all nine fields. Exact
+suffix certificates bind the parsed source columns. Successful source
+parsing supplies their complete physical coverage. The row theorem then
+supplies canonical membership with the original parse and row-value premises.
+
+The focused group passed in twenty seconds. It used 2,387 MiB of physical
+memory under the 2,560 MiB cap. The guard cleaned all owned children.
+All 29 new roots passed direct axiom checks. They use only the three allowed
+axioms. The inventory now has 14,304 roots. It retains all 14,275 previous
+roots. No native source artifact, table or packed-checker pilot changed.
+
+Theta/rho still needs source membership for its byte-XOR and split-XOR
+arithmetic regions. Parity real-row membership also remains open. The
+original source strings still need their byte-equal bindings. FullUnsigned
+is not yet proved. Design items 2 and 3 follow the machine targets.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
