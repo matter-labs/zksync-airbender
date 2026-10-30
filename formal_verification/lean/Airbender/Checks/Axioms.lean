@@ -1061,6 +1061,7 @@ import Airbender.Proofs.FullUnsigned.EventInterval
 import Airbender.Proofs.FullUnsigned.NativeComposition
 import Airbender.Proofs.FullUnsigned.NativeExecution
 import Airbender.Proofs.FullUnsigned.NativeROM
+import Airbender.Proofs.FullUnsigned.BootExecution
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 
@@ -14685,3 +14686,5 @@ import Airbender.Proofs.FullUnsigned.NativeROM
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_rom_acceptance
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_rom_lookup
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_rom_unchanged
+
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_boot_execution

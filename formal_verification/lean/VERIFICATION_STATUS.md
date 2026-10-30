@@ -1518,3 +1518,30 @@ and the formal setup source bridge remain open. Design items 2 and 3 follow
 the machine targets. The packed-checker pilot stays unchanged. Full frontend
 validation, environment audit, baseline refresh, transitive replay and Linux
 qualification did not run.
+
+### Full unsigned zero-boot execution-adapter obligation
+
+`unrolled_full_boot_execution` now starts from the native zero boot image.
+It constructs the physical initialized history through public ROM
+interpretation. It derives common raw bounds, every cycle's execution,
+terminal observations and exact stream consumption. The existing standalone
+initialization-to-boot adapter supplies this theorem's boot interface.
+The result returns the unchanged native terminal tokens through `ROMView`.
+
+Round masks follow from the explicit round controller contract and native
+packing equations. Exact lookup, request and RAM matching stay explicit.
+No instruction, call result or completed reference trace is a premise.
+
+The new module and root passed focused kernel and direct axiom checks.
+It uses only the three allowed axioms. The explicit inventory now contains
+13,321 roots. All 13,320 previous roots remain present. The bounded group
+used 547 MiB of physical memory and left no owned process running. Resource
+limits stay unchanged.
+
+Two full-target obligations remain. Public supported use must supply
+commands, round controls, worker RAM domains and split arguments at actual
+caller cuts. The formal JSON source-to-fixed-setup bridge must supply the
+canonical setup interpretation. The full target statement stays unchanged.
+Design items 2 and 3 follow the machine targets. The packed-checker pilot
+stays unchanged. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.
