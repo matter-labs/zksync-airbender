@@ -805,3 +805,30 @@ request and RAM matching stay explicit. Design items 2 and 3 follow the machine
 targets. The packed-checker pilot stays unchanged. Full frontend checks,
 environment audit and baseline refresh, transitive kernel replay, and Linux
 runtime and warm-cache qualification remain pending.
+
+### Native theta/rho byte-input binding obligation
+
+The full unsigned target now has native theta/rho byte-input bindings in both
+cache modes. Every state operand has its canonical byte bound. Every fragment
+query consumes the same D byte and lane shift as the original native queries.
+The D bytes and both fragments have their exact native arithmetic meaning.
+Both readonly lanes preserve all four actual memory limbs.
+
+The actual memory-port expressions pack each state read limb from its two
+queried bytes. The previous parity lane has the same packing proof. These
+equations and native byte bounds give canonical sixteen-bit read values for
+all five state lanes and the previous parity lane. The proofs add no input
+value or expected-result premise. The next parity lane still needs its
+initialization-derived read bounds and its native carry proof.
+
+Both new modules passed focused kernel checks. All 20 new roots passed direct
+axiom checks. They use only the three allowed axioms. The explicit inventory
+now contains 13,140 roots. All 13,120 previous roots remain present. The last
+bounded group used 603 MiB of physical memory and left no owned process
+running. An explicit small column-index bound removed an earlier elaboration
+memory spike. Resource limits stay unchanged.
+
+Native theta/rho rotation, write-lane effects and Sail call execution remain
+open. The formal setup source bridge and full unsigned integration remain
+open. Design items 2 and 3 follow the machine targets. The packed-checker pilot
+stays unchanged. Full validation remains pending.

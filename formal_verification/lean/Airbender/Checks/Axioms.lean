@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.SplitThetaInputPacking
 import Tests.SetupThetaGeneric
 import Airbender.Proofs.Keccak.SplitThetaNativeQueries
 import Airbender.Proofs.Keccak.SplitThetaSplitLookup
@@ -14400,3 +14401,24 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Proofs.theta_rho_native_slot_query
 #print axioms Airbender.Keccak.Split.Native.Proofs.theta_rho_native_control_query
 #print axioms Tests.SetupThetaGeneric.matchesSource
+
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaLaneLimb
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaStateByte
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaPreviousByte
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaRotatedByte
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaDByte
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaFragmentByte
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaRotationShift
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_state_byte_bound
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_d_operand_bounds
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_d_byte_operation
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_d_query_shared
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_shift_query_shared
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_fragment_byte_bound
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_rotation_shift_bound
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_fragment_byte_operation
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_readonly_limb
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_state_limb_packing
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_previous_limb_packing
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_state_limb_value
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_previous_limb_value
