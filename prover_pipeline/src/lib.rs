@@ -602,11 +602,6 @@ pub struct ProgramProver {
 
 impl ProgramProver {
     pub fn new(source: ProgramSource, config: ProgramProverConfig) -> Result<Self, String> {
-        if config.backend == ProverBackend::Gpu
-            && config.soundness_mode == prover::definitions::SoundnessMode::EthproofsSoundnessCalc
-        {
-            return Err("UnsupportedBackendSoundnessMode: GPU EthproofsSoundnessCalc requires internal folding-PoW and OOD-PoW".to_string());
-        }
         let fsv = FsvPrograms::load(config.target, config.selection())?;
         assert_eq!(fsv.selection, config.selection());
         // Resolve source errors before creating the backend's worker pools and buffers.
@@ -1684,9 +1679,12 @@ mod soundness_selection_tests {
         assert!(error.starts_with("failed to load program"), "{error}");
     }
 
+    /// GPU + ethproofs is not a capability rejection: the source error comes
+    /// first, as on the CPU.
     #[test]
-    fn gpu_ethproofs_rejection_precedes_source_loading() {
+    fn gpu_ethproofs_source_error_precedes_backend_construction() {
         let config = ProgramProverConfig {
+            target: ProofTarget::Base,
             backend: ProverBackend::Gpu,
             soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
             ..ProgramProverConfig::default()
@@ -1696,11 +1694,9 @@ mod soundness_selection_tests {
         ));
         let error = match ProgramProver::new(source, config) {
             Err(error) => error,
-            Ok(_) => panic!("GPU ethproofs unexpectedly initialized"),
+            Ok(_) => panic!("GPU ethproofs pipeline unexpectedly initialized"),
         };
-        assert!(error.contains("UnsupportedBackendSoundnessMode"));
-        assert!(error.contains("internal folding-PoW"));
-        assert!(error.contains("OOD-PoW"));
+        assert!(error.starts_with("failed to load program"), "{error}");
     }
 }
 

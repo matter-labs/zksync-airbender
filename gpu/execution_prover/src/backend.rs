@@ -8,6 +8,7 @@ use era_cudart::device::get_device_count;
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use execution_prover::backend::{CircuitPrecomputation, ExecutionBackend};
 use execution_prover::config::ExecutionProverConfiguration;
+use execution_prover::config::{ProvingSelection, SelectionError, SoundnessMode};
 use execution_prover::messages::WorkBatch;
 use execution_prover::setup::CanonicalCircuitSetup;
 use execution_prover_model::circuit_type::CircuitType;
@@ -41,6 +42,10 @@ impl ExecutionBackend for GpuBackend {
     type Memory = LockedBoxedMemoryHolder;
     type Snapshot = LockedBoxedTraceChunk;
     type Precomputations = CircuitPrecomputations;
+
+    fn validate_selection(_selection: ProvingSelection) -> Result<(), SelectionError> {
+        Ok(())
+    }
 
     fn initialize(
         config: &ExecutionProverConfiguration<Self::Configuration>,
@@ -82,10 +87,43 @@ impl ExecutionBackend for GpuBackend {
         setup: CanonicalCircuitSetup,
         security: SecurityLevel,
     ) -> Self::Precomputations {
-        CircuitPrecomputations::from_canonical(circuit, setup, security).unwrap()
+        self.prepare_with_selection(
+            circuit,
+            setup,
+            ProvingSelection {
+                security_level: security,
+                soundness_mode: SoundnessMode::PessimisticConjecture,
+            },
+        )
+        .unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    fn prepare_with_selection(
+        &self,
+        circuit: CircuitType,
+        setup: CanonicalCircuitSetup,
+        selection: ProvingSelection,
+    ) -> Result<Self::Precomputations, SelectionError> {
+        CircuitPrecomputations::from_canonical(circuit, setup, selection)
     }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {
         self.manager.send_batch(batch);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cpu_gpu_backend_accepts_every_soundness_mode() {
+        for &soundness_mode in SoundnessMode::ALL {
+            let selection = ProvingSelection {
+                soundness_mode,
+                ..ProvingSelection::default()
+            };
+            assert_eq!(GpuBackend::validate_selection(selection), Ok(()));
+        }
     }
 }

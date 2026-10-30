@@ -6,6 +6,7 @@ use super::model::{
 use super::probe::{commit_memory, drain, input_footprint, run_case};
 use crate::upstream::SecurityLevel;
 use clap::Parser;
+use execution_prover::config::{ProvingSelection, SoundnessMode};
 use era_cudart::device::set_device;
 use era_cudart_sys::CudaError;
 use gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy as MemoryPolicy;
@@ -141,7 +142,10 @@ fn prepare_arena(
         crate::memory_policy::select_arena_bytes(context.get_mem_size());
     }
     assert_empty(&context);
-    let factory = SyntheticInputFactory::new(SecurityLevel::Sec100);
+    let factory = SyntheticInputFactory::new(ProvingSelection {
+        security_level: SecurityLevel::Sec100,
+        soundness_mode: SoundnessMode::DEFAULT,
+    });
     let mut prepared = Vec::new();
     for circuit in all_circuits() {
         eprintln!(

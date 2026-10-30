@@ -13,6 +13,7 @@ use crate::upstream::{
     BaseColumns, BaseCommitmentGeometry, CommitmentMode, CpuGKRSetup, GKRCircuitArtifact,
     MerkleTreeCapVarLength, PrimeField, ProverConfig, SecurityLevel, UnrolledCircuitWitnessEvalFn,
 };
+use execution_prover::config::{ProvingSelection, SelectionError};
 use execution_prover::setup::CanonicalCircuitSetup;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -23,24 +24,54 @@ mod tests;
 pub(crate) struct ResolvedProverConfig<F: PrimeField> {
     circuit_type: CircuitType,
     circuit: Arc<GKRCircuitArtifact<F>>,
+    selection: ProvingSelection,
     config: ProverConfig,
     geometry: BaseCommitmentGeometry,
 }
 
 impl<F: PrimeField> ResolvedProverConfig<F> {
+    /// Pessimistic-conjecture compatibility constructor.
+    #[cfg(test)]
     fn new(
         circuit_type: CircuitType,
         circuit: Arc<GKRCircuitArtifact<F>>,
         config: ProverConfig,
     ) -> Self {
+        let selection = ProvingSelection {
+            security_level: config.security_level,
+            soundness_mode: execution_prover::config::SoundnessMode::PessimisticConjecture,
+        };
+        Self::for_selection(circuit_type, circuit, selection, config)
+    }
+
+    fn for_selection(
+        circuit_type: CircuitType,
+        circuit: Arc<GKRCircuitArtifact<F>>,
+        selection: ProvingSelection,
+        config: ProverConfig,
+    ) -> Self {
+        assert_eq!(
+            selection.security_level, config.security_level,
+            "selection security level differs from its config"
+        );
         let geometry = BaseCommitmentGeometry::from_config(&config, BaseColumns::of(&circuit))
             .expect("invalid canonical commitment geometry");
         Self {
             circuit_type,
             circuit,
+            selection,
             config,
             geometry,
         }
+    }
+
+    /// Divergence guard: a request is served only under the selection its
+    /// precomputations were resolved for.
+    pub(crate) fn validate_selection(&self, selection: ProvingSelection) {
+        assert_eq!(
+            selection, self.selection,
+            "request selection differs from resolved config"
+        );
     }
 
     pub(crate) fn config(&self) -> &ProverConfig {
@@ -262,8 +293,8 @@ impl CircuitPrecomputations {
     pub fn from_canonical(
         circuit_type: CircuitType,
         setup: CanonicalCircuitSetup,
-        security_level: SecurityLevel,
-    ) -> CudaResult<Self> {
+        selection: ProvingSelection,
+    ) -> Result<Self, SelectionError> {
         let (compiled_circuit, cpu_setup, decoder_table) = match setup {
             CanonicalCircuitSetup::Riscv(setup) => {
                 let decoder_table = setup.witness_eval_fn.map(|evaluator| match evaluator {
@@ -280,12 +311,16 @@ impl CircuitPrecomputations {
             circuit_type.get_domain_size(),
             "compiled circuit trace_len disagrees with CircuitType geometry for {circuit_type:?}"
         );
-        let config = gpu_circuit_prover::config::prover_config(circuit_type, security_level)
-            .expect("unsupported GPU security level");
+        let config = gpu_circuit_prover::config::prover_config_for_selection(
+            circuit_type,
+            &compiled_circuit,
+            selection,
+        )?;
         let compiled_circuit = Arc::new(compiled_circuit);
-        let resolved_config = Arc::new(ResolvedProverConfig::new(
+        let resolved_config = Arc::new(ResolvedProverConfig::for_selection(
             circuit_type,
             Arc::clone(&compiled_circuit),
+            selection,
             config,
         ));
         let gkr_programs = Arc::new(
@@ -299,7 +334,8 @@ impl CircuitPrecomputations {
         let decoder_host = match decoder_table.as_deref() {
             Some(rows) if !rows.is_empty() => {
                 let mut buf =
-                    alloc_static_pinned_box_uninit::<ExecutorFamilyDecoderData>(rows.len())?;
+                    alloc_static_pinned_box_uninit::<ExecutorFamilyDecoderData>(rows.len())
+                        .expect("pinned decoder table allocation failed");
                 for (slot, src) in buf.iter_mut().zip(rows.iter().copied()) {
                     *slot = src.unwrap_or_default().into();
                 }
