@@ -2094,3 +2094,35 @@ still follow the machine targets.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned chi5 controller source obligation
+
+The chi5 controller source case is closed. Every one of its 121 rows has
+canonical lookup membership. The proof preserves all 11 fields. It keeps
+the parse, column shape and complete row-value premises explicit. The new
+membership theorem uses the retained source representation. Its connection
+to the original setup-source interface remains open.
+
+The source index decoder now proves exact suffix extraction. The kernel
+checks a bounded suffix for each of the 11 columns. A constructor equation
+supplies each index projection. This avoids evaluation of the full index
+list. Successful source parsing supplies the complete column coverage.
+The kernel then checks all 1,331 controller field equalities. The existing
+native controller theorem connects these fields to the original generic table.
+
+The focused group passed seven module checks in 19 seconds. It used 2,313 MiB
+of physical memory under the 2,560 MiB cap. Direct native-column comparison
+reduced a prior peak of 2,520 MiB. The guard cleaned every owned child. The
+padding controls still accept the valid case. They reject both invalid cases.
+No source artifact or native table changed. All 41 new roots passed direct
+axiom checks. They use only the three allowed axioms. The inventory now has
+14,230 roots. It retains all 14,189 previous roots.
+
+Chi5 now needs its five arithmetic output correspondences. The parity and
+theta/rho real-row predicates also remain open. Bind the original source
+interface when the row certificates are complete. The packed-checker pilot
+stays unchanged. Design items 2 and 3 still follow the machine targets.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.

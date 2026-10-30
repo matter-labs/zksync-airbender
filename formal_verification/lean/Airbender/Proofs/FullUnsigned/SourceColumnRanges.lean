@@ -1,4 +1,5 @@
 import Airbender.Proofs.Tables.UniformBlocks
+import Airbender.Proofs.Tables.BlockRanges
 import Airbender.Proofs.FullUnsigned.SetupSourceArrays
 
 namespace Airbender.Setup.Proofs
@@ -48,5 +49,25 @@ theorem constant_affine_get (length value index : Nat) (bound : index < length) 
     Block.get? (.affine length value 0) index = some value := by
   simp only [Block.get?, Block.length, if_pos bound, zero_mul, add_zero,
     if_pos (Int.natCast_nonneg value), Int.toNat_natCast]
+
+/-- Complete coverage locates any retained source suffix. -/
+theorem column_suffix_get (column : Column) (first length index : Nat)
+    (covered : (column.blocks.toList.map Block.length).sum = length)
+    (lower : length - ((column.blocks.toList.drop first).map Block.length).sum ≤ index) :
+    column.get? index = getFromBlocks (column.blocks.toList.drop first)
+      (index - (length - ((column.blocks.toList.drop first).map Block.length).sum)) := by
+  let front := column.blocks.toList.take first
+  let back := column.blocks.toList.drop first
+  have partition : column.blocks.toList = front ++ back := (List.take_append_drop first _).symm
+  have total := covered
+  rw [partition, List.map_append, List.sum_append] at total
+  have start : (front.map Block.length).sum = length - (back.map Block.length).sum := by omega
+  have splitIndex : index = (front.map Block.length).sum + (index - (front.map Block.length).sum) := by
+    change length - (back.map Block.length).sum ≤ index at lower
+    omega
+  change getFromBlocks column.blocks.toList index =
+    getFromBlocks back (index - (length - (back.map Block.length).sum))
+  conv_lhs => rw [partition, splitIndex, skip_blocks]
+  rw [start]
 
 end Airbender.Setup.Proofs

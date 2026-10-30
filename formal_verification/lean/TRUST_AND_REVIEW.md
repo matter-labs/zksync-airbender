@@ -160,6 +160,10 @@ include these rows in their canonical tables. Chi5 needs membership only for
 native query tags 65 and 66. Its canonical table excludes the all-zero row.
 The kernel checks this exclusion and guarded transport in both cache modes.
 The original target, setup premises and canonical tables stay unchanged.
+The kernel also checks all five chi5 source input columns and its complete
+tag column. The controller source case has full canonical lookup membership.
+Exact suffix decoding and the original parse validation supply its positions.
+The five arithmetic output columns remain open.
 
 The generated source expressions retain each original key, value and field
 order. The frontend requires generation freshness and exact byte comparison
