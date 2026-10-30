@@ -1,3 +1,4 @@
+import Airbender.Proofs.FullUnsigned.RequestSchedule
 import Airbender.Proofs.FullUnsigned.MemoryHistory
 import Airbender.Proofs.FullUnsigned.MemoryWriteRules
 import Airbender.Proofs.FullUnsigned.MemoryFacts
@@ -14593,3 +14594,9 @@ import Airbender.Proofs.Keccak.SplitNativeWriteRules
 #print axioms Airbender.Keccak.Split.Native.Proofs.port_not_zero
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_memory_zero_rules
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_memory_history
+
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_requests_match
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_fulfillment_slot
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_standard_worker_slot
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_split_worker_slot
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_fulfillment_times_unique

@@ -1125,3 +1125,29 @@ The public round-control and formal setup source obligations remain open.
 Design items 2 and 3 follow the machine targets. The packed-checker pilot
 stays unchanged. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+### Full unsigned combined worker-schedule obligation
+
+`unrolled_full_requests_match` removes zero-clock fulfillments with the
+actual native activity and timestamp equations. Exact combined matching then
+accounts for every worker row. `unrolled_full_fulfillment_times_unique`
+excludes shared invocation clocks across both worker pools.
+
+`unrolled_full_fulfillment_slot` obtains an actual selected CPU caller for
+each fulfillment. The invocation clock equals the caller's initial clock plus
+one. `unrolled_full_standard_worker_slot` and `unrolled_full_split_worker_slot`
+place all physical worker events in that caller's final cycle slot. Both
+split cache modes use their current imported offset two. No decoder registry,
+worker occurrence plan or separate request permutation is an input.
+
+The new module passed focused kernel checks. All five new roots passed direct
+axiom checks. They use only the three allowed axioms. The explicit inventory
+now contains 13,269 roots. All 13,264 previous roots remain present. The final
+bounded group used 536 MiB of physical memory and left no owned process
+running. Resource limits stay unchanged.
+
+Full unsigned path execution and initialization integration remain open.
+The public round-control and formal setup source obligations remain open.
+Design items 2 and 3 follow the machine targets. The packed-checker pilot
+stays unchanged. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.
