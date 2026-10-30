@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.SplitThetaOutputEquations
 import Airbender.Proofs.Keccak.SplitThetaControllerQuery
 import Airbender.Proofs.Keccak.SplitThetaDOperation
 import Airbender.Proofs.Keccak.SplitThetaInputPacking
@@ -14452,3 +14453,8 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Proofs.theta_rotation_shift_equation
 #print axioms Airbender.Keccak.Split.Native.Proofs.theta_rotation_shift_selected
 #print axioms Airbender.Keccak.Split.Native.Proofs.theta_rotation_shift_value
+
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaOutputByte
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaOutputLimbExpression
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_native_output_equation
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_native_selected_output

@@ -874,3 +874,22 @@ Native theta/rho write-lane equations, complete lane effects and Sail call
 execution remain open. The formal setup source bridge and full unsigned
 integration remain open. Design items 2 and 3 follow the machine targets. The
 packed-checker pilot stays unchanged. Full validation remains pending.
+
+### Native theta/rho write-equation obligation
+
+Native constraints now prove all twenty actual theta/rho write equations.
+Each equation uses all five native flags and the original rho byte placement.
+Exact column flags select each written limb's original rho expression. Both
+cache modes pass. The proof derives the equations from the imported native
+assertions. It adds no write-value or expected-result premise.
+
+The new module passed focused kernel checks. All four new roots passed direct
+axiom checks. They use only the three allowed axioms. The explicit inventory
+now contains 13,170 roots. All 13,166 previous roots remain present. The last
+bounded group used 1,368 MiB of physical memory and left no owned process
+running. Resource limits stay unchanged.
+
+Canonical write bounds, complete theta/rho lane effects and Sail call execution
+remain open. The formal setup source bridge and full unsigned integration
+remain open. Design items 2 and 3 follow the machine targets. The packed-checker
+pilot stays unchanged. Full validation remains pending.
