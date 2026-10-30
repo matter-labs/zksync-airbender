@@ -1713,3 +1713,34 @@ claiming the full target. Design items 2 and 3 follow the machine targets.
 The packed-checker pilot stays unchanged. Full frontend validation,
 environment audit, baseline refresh, transitive replay and Linux qualification
 did not run.
+
+
+### Full unsigned setup transport obligation
+
+`equations_of_setup_refinement` now transports every native split equation
+to a refined fixed table. It preserves every assertion and timestamp query.
+The proof covers the three workers in both cache modes.
+`control_of_fixed_setup_refinement` derives the native controller facts.
+
+`unrolled_full_soundness_of_source_rows` connects this transport to the
+original full target and its initialization adapter. It requires three
+`FixedSetupRows` certificates. They cover parity, theta/rho and chi5. Each
+certificate must map every parsed physical row, including padding, into the
+complete fixed table. All three certificates remain open. No target or
+existing premise changed.
+
+The changed modules and six new roots passed focused kernel and direct axiom
+checks. They use only the three allowed axioms. The explicit inventory now
+contains 13,354 roots. All 13,348 previous roots remain present. The bounded
+group used 554 MiB of physical memory and left no owned process running.
+Resource limits stay unchanged.
+
+A total JSON decoder prototype stays in the evidence directory. Its small
+kernel tests and all 18 retained setup-directory JSON differential checks
+passed. Direct kernel source evaluation exceeded the memory cap. The guard
+stopped each probe and left no worker running. The prototype is not adopted.
+The source certificates still need a compact kernel representation.
+
+Design items 2 and 3 follow the machine targets. The packed-checker pilot
+stays unchanged. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.
