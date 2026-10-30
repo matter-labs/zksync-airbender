@@ -2176,3 +2176,29 @@ needs its binding. Design items 2 and 3 follow the machine targets.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned chi5 low output obligation
+
+Chi5 source output field zero now matches its original canonical column.
+The proof covers all 1,048,576 arithmetic rows. Exact scalar certificates
+prove both remaining source index grammars. The first grammar has 54,535
+stored block indices. The second has 6,969. Every digit, repeat count and
+scalar product enters an ordinary kernel proof. Binary power certificates
+avoid a change to the exponentiation limit.
+
+A general cycle theorem supplies every row from short block checks. It
+preserves the source prefix and the final partial cycle. It does not read
+the later controller or padding rows. The focused low-output group passed
+in ten seconds. It used 1,047 MiB of physical memory. The guard cleaned all
+owned children. All 23 new roots passed direct axiom checks. They use only
+the three allowed axioms. The inventory now has 14,263 roots. It retains
+all 14,240 previous roots. No native source artifact or table changed.
+The packed checker pilot stays unchanged.
+
+One chi5 arithmetic output correspondence remains. The parity and theta/rho
+real-row predicates also remain open. The original source interface still
+needs its binding. Design items 2 and 3 follow the machine targets.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.

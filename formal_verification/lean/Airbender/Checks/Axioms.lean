@@ -1,3 +1,5 @@
+import Airbender.Proofs.FullUnsigned.ChiSourceLowOutput
+import Airbender.Proofs.FullUnsigned.ChiSourceCycle1
 import Airbender.Proofs.FullUnsigned.ChiSourceMiddleOutput
 import Airbender.Proofs.FullUnsigned.ChiSourceOuterOutputs
 import Airbender.Proofs.FullUnsigned.ChiSourceController
@@ -15666,3 +15668,27 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Setup.Proofs.checkBlockRows_sound
 #print axioms Airbender.Setup.SourceCaptureChiProofs.source_output2_get
 #print axioms Airbender.Setup.SourceCaptureChiProofs.source_output2_matches
+
+#print axioms Airbender.Setup.SourceIndices.decode_ofDigits
+#print axioms Airbender.Setup.SourceIndices.repeatWordTail
+#print axioms Airbender.Setup.SourceIndices.ofDigits_repeat_suffix
+#print axioms Airbender.Setup.SourceIndices.Encoded
+#print axioms Airbender.Setup.SourceIndices.Encoded.grammar
+#print axioms Airbender.Setup.SourceIndices.Encoded.decode
+#print axioms Airbender.Setup.ChiSourceCycle0.front
+#print axioms Airbender.Setup.ChiSourceCycle0.cycle
+#print axioms Airbender.Setup.ChiSourceCycle0.tail
+#print axioms Airbender.Setup.ChiSourceCycle0.front_power
+#print axioms Airbender.Setup.ChiSourceCycle0.cycle_power
+#print axioms Airbender.Setup.ChiSourceCycle0.source_indices
+#print axioms Airbender.Setup.ChiSourceCycle1.front
+#print axioms Airbender.Setup.ChiSourceCycle1.cycle
+#print axioms Airbender.Setup.ChiSourceCycle1.tail
+#print axioms Airbender.Setup.ChiSourceCycle1.front_power
+#print axioms Airbender.Setup.ChiSourceCycle1.cycle_power
+#print axioms Airbender.Setup.ChiSourceCycle1.source_indices
+#print axioms Airbender.Setup.Proofs.repeated_blocks_length
+#print axioms Airbender.Setup.Proofs.getFromBlocks_repeated
+#print axioms Airbender.Setup.Proofs.checked_cycle_rows
+#print axioms Airbender.Setup.SourceCaptureChiProofs.source_output0_get
+#print axioms Airbender.Setup.SourceCaptureChiProofs.source_output0_matches
