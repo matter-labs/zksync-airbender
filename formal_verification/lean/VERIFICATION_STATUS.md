@@ -1545,3 +1545,29 @@ canonical setup interpretation. The full target statement stays unchanged.
 Design items 2 and 3 follow the machine targets. The packed-checker pilot
 stays unchanged. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+### Full unsigned accepted-prefix obligation
+
+`unrolled_full_prefix_accepted` constructs an accepted native prefix before
+any actual positive-clock CPU boundary. It retains the same standard and
+split setup data and both cache modes. The exact native memory split gives
+the prefix its terminal frontier and preserves the full suffix facts.
+
+The three prefix functions select actual CPU and worker rows. The transfer
+theorem proves that they select exactly the writes before one common cut.
+The request theorem restricts the complete combined ledger to that cut.
+State matching restricts to the actual next CPU state. No independent prefix
+match, command, round mask, supported argument or reference result is used.
+
+All three new modules and six roots passed focused kernel and direct axiom
+checks. They use only the three allowed axioms. The explicit inventory now
+contains 13,327 roots. All 13,321 previous roots remain present. The bounded
+group used 539 MiB of physical memory and left no owned process running.
+Resource limits stay unchanged.
+
+This closes native prefix construction for supported-use induction. Public
+supported use must still supply the worker input contracts. The formal setup
+source bridge also remains open. Design items 2 and 3 follow the machine
+targets. The packed-checker pilot stays unchanged. Full frontend validation,
+environment audit, baseline refresh, transitive replay and Linux qualification
+did not run.
