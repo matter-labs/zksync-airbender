@@ -697,3 +697,25 @@ calculation from the native values. The last bounded group passed. It used
 stay unchanged. Native parity Sail call execution, theta/rho call execution,
 the formal setup source bridge and full unsigned integration remain open.
 The packed-checker pilot stays unchanged. Full validation remains pending.
+
+### Native parity Sail call obligation
+
+`parity_call_executes` now proves the original complete parity `Call.Executes`
+relation. Both native cache modes pass. The proof binds the actual control and
+pointer registers. It checks all twelve lane halves and the full native write
+list. The initialized pointer leaves room for every state and scratch slot.
+The proof retains initialized read-word bounds, exact event permutation,
+actual read observations and `SailHistory`. These premises also bound the old
+scratch input. The parity equations do not constrain that old input. The
+history proof gives the complete Sail memory frame. It adds no result premise.
+
+Twenty-five new roots passed focused kernel and axiom checks. They use only the
+three allowed axioms. The explicit inventory now contains 12,989 roots. All
+12,964 previous roots remain present. The last bounded group passed. It used
+627 MiB of physical memory and left no owned process running. Chi5 and parity
+now have native call-execution proofs. Theta/rho call execution, the formal
+setup source bridge and full unsigned integration remain open. The combined
+history must supply the initialized bounds, read observations and event
+permutations. The packed-checker pilot stays unchanged. Full frontend checks,
+environment audit and baseline refresh, transitive kernel replay and Linux
+runtime and warm-cache qualification remain pending.
