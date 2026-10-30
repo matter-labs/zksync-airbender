@@ -777,3 +777,31 @@ open. Design items 2 and 3 follow the machine targets. The packed-checker pilot
 stays unchanged. Full frontend checks, environment audit and baseline refresh,
 transitive kernel replay, and Linux runtime and warm-cache qualification
 remain pending.
+
+### Native theta/rho fixed-query obligation
+
+The full unsigned target now has all fifty native theta/rho fixed-query
+bindings. Both cache modes pass. The eight byte-XOR queries enforce their
+complete operation. The forty XOR/split queries enforce both exact shifted
+fragments. The two remaining queries select the complete native slot and
+control regions. Every query keeps all nine physical fields.
+
+The new composed setup view retains all 4,194,304 physical rows. It selects
+each original region at its native offset and retains the trailing zero rows.
+All 37,748,736 physical source-cell comparisons passed. The region-selection
+proof rejects every wrong discriminator and the physical zero padding.
+It adds no operand or expected-result premise. The earlier generic view and
+its public proofs remain present.
+
+Both new proof modules passed focused kernel checks. The complete physical
+source comparison passed. All 21 new roots passed direct axiom checks. They
+use only the three allowed axioms. The explicit inventory now contains 13,120
+roots. All 13,099 previous roots remain present. The last bounded proof group
+used 724 MiB of physical memory and left no owned process running.
+
+Native theta/rho lane effects and Sail call execution remain open. The formal
+setup source bridge and full unsigned integration remain open. Exact lookup,
+request and RAM matching stay explicit. Design items 2 and 3 follow the machine
+targets. The packed-checker pilot stays unchanged. Full frontend checks,
+environment audit and baseline refresh, transitive kernel replay, and Linux
+runtime and warm-cache qualification remain pending.

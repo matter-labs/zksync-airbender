@@ -1,3 +1,5 @@
+import Tests.SetupThetaGeneric
+import Airbender.Proofs.Keccak.SplitThetaNativeQueries
 import Airbender.Proofs.Keccak.SplitThetaSplitLookup
 import Airbender.Proofs.Keccak.SplitThetaControllerLookup
 import Airbender.Proofs.Keccak.SplitThetaSlotLookup
@@ -14376,3 +14378,25 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Fixed.thetaRhoXorSplit
 #print axioms Airbender.Keccak.Split.Native.Fixed.thetaRhoXorSplitSourceBytes
 #print axioms Airbender.Keccak.Split.Native.Fixed.thetaRhoXorSplitRegion
+
+#print axioms Airbender.Keccak.Split.Native.Fixed.thetaRhoPhysicalGenericLength
+#print axioms Airbender.Keccak.Split.Native.Fixed.thetaRhoPhysicalGenericRow
+#print axioms Airbender.Keccak.Split.Native.Fixed.thetaRhoPhysicalGenericTable
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.theta_rho_physical_generic_member
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.theta_rho_physical_control_tag
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.theta_rho_physical_slot_tag
+#print axioms Airbender.Keccak.Split.Native.Fixed.Proofs.theta_rho_physical_generic_bindings
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaRhoFixedTable
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaRhoQuery
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_rho_query_table
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_rho_query_arity
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaRhoQueryEntry
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_rho_query_shape
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaRhoQueryTag
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_rho_query_tag
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_rho_native_query
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_rho_native_xor_queries
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_rho_native_split_queries
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_rho_native_slot_query
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_rho_native_control_query
+#print axioms Tests.SetupThetaGeneric.matchesSource
