@@ -78,6 +78,13 @@ branch. It does not prove the three source-to-table certificates. Repeated
 RLE blocks offer a smaller certificate representation. The retained artifacts
 and imported values stay unchanged.
 
+The source-array composition obligation is now proved. One `EagerSource`
+certificate can cover every occurrence of an encoded block. The composition
+rules preserve the exact byte order and decoded RLE block order. Kernel
+controls cover affine, dense and periodic encodings. They reject changed
+values and missing separators. The three production source certificates
+remain open.
+
 ## Finding status versus conditional proof coverage
 
 **An assumption can close a conditional proof obligation while the finding stays
