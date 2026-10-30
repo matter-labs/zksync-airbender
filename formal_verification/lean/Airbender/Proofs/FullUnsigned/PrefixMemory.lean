@@ -164,4 +164,31 @@ theorem unrolled_full_prefix_steps
   have boundary : (timeOfPair next.start.timestamp).value = next.clock := rfl
   rw [boundary, machine, standard, split]
 
+/-- The actual native worker transfer has its derived invocation event clock. -/
+theorem unrolled_full_standard_event_clock
+    {trace : PooledTrace babyBearModulus} {workers : Delegation.MemoryData babyBearModulus}
+    {splitWorkers : Keccak.Split.Native.MemoryData babyBearModulus}
+    (accepted : UnrolledAcceptance trace workers splitWorkers.steps
+      (splitWorkers.rows.map (Keccak.Split.Native.Row.fulfillment splitWorkers.cached)))
+    (initialClock : (timeOfPair trace.initial.timestamp).Bounded)
+    (initialAligned : (timeOfPair trace.initial.timestamp).value % 4 = 0)
+    {worker : Delegation.Row babyBearModulus} (member : worker ∈ workers.rows)
+    {edge : MemoryToken babyBearModulus × MemoryToken babyBearModulus} (present : edge ∈ worker.memorySteps) :
+    (transferEvent edge).1 = (timeOfPair (Delegation.Requests.fulfillment worker).time).value + 3 := by
+  exact standard_event_clock accepted initialClock initialAligned member present
+
+/-- The actual native worker transfer has its derived invocation event clock. -/
+theorem unrolled_full_split_event_clock
+    {trace : PooledTrace babyBearModulus} {workers : Delegation.MemoryData babyBearModulus}
+    {splitWorkers : Keccak.Split.Native.MemoryData babyBearModulus}
+    (accepted : UnrolledAcceptance trace workers splitWorkers.steps
+      (splitWorkers.rows.map (Keccak.Split.Native.Row.fulfillment splitWorkers.cached)))
+    (initialClock : (timeOfPair trace.initial.timestamp).Bounded)
+    (initialAligned : (timeOfPair trace.initial.timestamp).value % 4 = 0)
+    {worker : Keccak.Split.Native.Row babyBearModulus} (member : worker ∈ splitWorkers.rows)
+    {edge : MemoryToken babyBearModulus × MemoryToken babyBearModulus}
+    (present : edge ∈ worker.memorySteps splitWorkers.cached) :
+    (transferEvent edge).1 = (timeOfPair (worker.fulfillment splitWorkers.cached).time).value + 3 := by
+  exact split_event_clock accepted initialClock initialAligned member present
+
 end Airbender.Compiler.MachineTargets.Proofs
