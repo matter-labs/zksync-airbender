@@ -136,9 +136,11 @@ cargo run --release -p cli -- verify \
   no conversion. Continue an `ethproofs-soundcalc` artifact with
   `--soundness-mode ethproofs-soundcalc`.
 - `verify`: the expected mode. The artifact's recorded mode must equal it, and
-  the proof is checked with this mode's verifiers and verifier guests; the
-  artifact cannot choose them. Artifacts from before the mode was recorded
-  verify only as `pessimistic-conjecture`.
+  the proof is checked with this mode's native verifier and this mode's pinned
+  verifier guests. The artifact's `blake_*` tags only select among those
+  guests, and the recursion chain binds that choice; no tag can select a guest
+  of another mode. Artifacts from before the mode was recorded verify only as
+  `pessimistic-conjecture`.
 - `run`: no proof, no mode.
 
 `ethproofs-soundcalc` proving is not enabled yet: the prover rejects it before

@@ -1,7 +1,7 @@
 //! Standalone L1 compression test program: takes the recursion pipeline's
 //! stable point (1 unified + 1 blake proof) and compresses it all the way to
 //! the single Proth120 packed L1 proof with ALL oracles in memory
-//! (`program_prover::compression::compress_fixed_point_to_l1`).
+//! (`program_prover::compression::compress_fixed_point_to_l1_in_mode`).
 //!
 //! Meant for large external machines (target shape: 192 cores + enough RAM to
 //! materialize the ~2^31 packed RS codewords). Build for such a box with
@@ -15,15 +15,20 @@
 //! `cargo zigbuild`; building on the target machine itself also works), then
 //!
 //! ```text
-//! l1_compression --proof final_layer_0_proof_<tags>.bin \
-//!     --setups final_layer_0_setups_<tags>.bin [--threads 192] [--out-dir .]
+//! l1_compression --bundle final_layer_0_bundle.json [--threads 192] [--out-dir .]
 //! ```
 //!
 //! run from a repo checkout (the fsv verifier programs and the Proth120
-//! circuit layout are read from the checkout by default). The input is either
-//! a versioned proof bundle (`--bundle`, carrying its soundness mode) or the
-//! legacy pair of zlib-compressed bincode caches the `prover_examples`
-//! recursion tests write (`--proof` + `--setups`, pessimistic only). Outputs:
+//! circuit layout are read from the checkout by default). The input is a
+//! versioned JSON proof bundle (`--bundle`, the format of
+//! `program_prover::bundle::write_program_proof_bundle`), which carries its
+//! soundness mode and is read in the expected mode. At this revision nothing
+//! in the recursion flow writes that bundle (only tests call the writer), so
+//! this program has no producer for its input. The retired `--proof` +
+//! `--setups` pair of bincode caches is rejected without being read
+//! (`L1InputError::LegacyBincodeUnsupported`). The supported L1 route is the
+//! L1 stack's pipeline targets (`ProofTarget::{L1Feeder, L1}`) once that stack
+//! is rebased. Outputs:
 //! `unified_circuit_proof_proth120.json` +
 //! `unified_circuit_proof_proth120_commitment_mod_aux_data.json` in the
 //! output directory — the exact fixture pair the EVM tooling consumes.
