@@ -1,5 +1,12 @@
 pub mod cost_model;
 pub mod fixture_codec;
+mod fsv;
+
+pub use fsv::{
+    canonical_fsv_dir, fsv_digest, fsv_manifest, fsv_manifest_entry, load_fsv_exact,
+    load_fsv_program, render_fsv_manifest, FsvDigest, FsvLoadError, FsvManifestEntry,
+    VerifiedFsvProgram, FSV_DIGEST_RECIPE, FSV_MANIFEST_FILE,
+};
 
 use crate::program_proof::ProgramProof;
 use crate::recursion_chain::{self, RecursionChain};
@@ -25,7 +32,7 @@ pub fn compute_end_params(setups: &Setups, final_pc: u32) -> [u32; 8] {
 }
 
 /// The ND stream of an unrolled proof for a full-statement verifier built
-/// with `blake` (the mode `load_fsv_program` loaded it with, or
+/// with `blake` (the mode its guest was loaded for, or
 /// `verifier_common::BLAKE_MODE` for the native verifier of this process).
 #[must_use]
 pub fn build_unrolled_stream(setups: &Setups, proof: &ProgramProof, blake: BlakeMode) -> Vec<u32> {
@@ -126,45 +133,6 @@ pub fn native_verify_unified_in_mode(
 #[must_use]
 pub fn load_program(elf_path: &Path) -> (Vec<u32>, Vec<u32>) {
     riscv_transpiler::elf::load_legacy_program(elf_path)
-}
-
-#[must_use]
-pub fn load_fsv_program(
-    dir: impl AsRef<Path>,
-    program: FsvProgram,
-    blake: BlakeMode,
-) -> (Vec<u32>, Vec<u32>) {
-    let dir = dir.as_ref();
-    let stem = program.file_stem(blake);
-    println!("Trying to load `{}` verifier", stem);
-    let elf_path = dir.join(format!("{stem}.elf"));
-    let exists = match elf_path.try_exists() {
-        Ok(res) => res,
-        Err(err) => {
-            if let Some(err) = err.get_ref() {
-                println!("Failed to probe path `{}`: {}", elf_path.display(), err);
-            } else {
-                println!("Failed to probe path `{}`", elf_path.display());
-            }
-            false
-        }
-    };
-    if exists {
-        load_program(&elf_path)
-    } else {
-        println!(
-            "Verifier binary `{}` doesn't exist at path {}, using fallback naming mode",
-            stem,
-            elf_path.display(),
-        );
-        assert!(
-            blake == BlakeMode::Compression,
-            "missing variant binary {} — run `cd tools/gkr_verifier && ./dump_recursive_verifiers.sh`",
-            elf_path.display()
-        );
-        let base = program.base_name();
-        load_program(&dir.join(format!("{base}.elf")))
-    }
 }
 
 fn blake_mode_from_env(vars: &[&str], program: FsvProgram, default: BlakeMode) -> BlakeMode {

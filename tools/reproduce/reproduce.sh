@@ -37,8 +37,12 @@ cargo test --release -p verifier_generator --test generate_verifiers
 
 cd "$REPO_ROOT/tools/gkr_verifier"
 
-# Full-statement verifiers in every blake variant the recursion pipeline can select.
-./dump_recursive_verifiers.sh
+# Full-statement verifiers in every soundness mode and blake variant the recursion pipeline can
+# select (full_statement_verifiers/ and full_statement_verifiers/ethproofs_soundcalc/), then the
+# manifest pinning their decoded ROM images (full_statement_verifiers/fsv_manifest.txt). The
+# committed pessimistic_conjecture unified base layer guest is not rebuilt here; the manifest pins
+# the committed file.
+./dump_recursive_verifiers.sh --soundness-mode all
 
 # Standalone per-circuit verifiers (both soundness modes; the pessimistic-conjecture set is the
 # one the cost-model drift guard consumes): every binary under src/bin/circuit_verifiers/.
@@ -51,6 +55,13 @@ done
 ./dump_bin.sh --sec 100 $PER_CIRCUIT
 
 echo "==> checksums"
-for f in full_statement_verifiers/*.elf circuit_verifiers/*/*.elf; do
+for f in full_statement_verifiers/*.elf full_statement_verifiers/*/*.elf full_statement_verifiers/fsv_manifest.txt circuit_verifiers/*/*.elf; do
     [ -f "$f" ] && shasum -a 256 "$f"
 done | sort -k2 -u
+
+# Every registered guest loads from the rebuilt tree under its pinned digest, the manifest is
+# what the guests regenerate to, and the wrong-mode / swapped-blake / tampered / missing guest
+# controls are rejected with their specific errors.
+echo "==> checking the full-statement verifier registry against the rebuilt guests"
+cd "$REPO_ROOT"
+cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers --lib host_utils::fsv

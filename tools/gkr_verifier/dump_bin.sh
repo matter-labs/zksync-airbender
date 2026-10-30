@@ -18,13 +18,18 @@ usage() {
     echo "  --variant VAR   no_caches (default) or caches"
     echo "  --sec LEVEL     only 100 bits is accepted"
     echo "  --mode MODE     per-circuit verifiers of one soundness mode only"
-    echo "                  (pessimistic_conjecture | ethproofs_soundcalc); default: both"
+    echo "                  (pessimistic_conjecture | ethproofs_soundcalc); default: both."
+    echo "                  pessimistic_conjecture also drops the ethproofs_soundcalc full"
+    echo "                  statement verifiers"
     echo "  --warnings      show compiler warnings (suppressed by default)"
     echo "  -h, --help      show this message"
     echo ""
     echo "Binaries (cargo bin names):"
     echo "  full statement verifiers -> full_statement_verifiers/<name>.elf:"
     ls src/bin/full_statement_verifiers/*.rs 2>/dev/null | sed 's|.*/||;s|\.rs||;s|^|    |'
+    echo "  ethproofs_soundcalc full statement verifiers <name>_ethproofs_soundcalc"
+    echo "    -> full_statement_verifiers/ethproofs_soundcalc/<name>.elf:"
+    ls src/bin/full_statement_verifiers/ethproofs_soundcalc/*.rs 2>/dev/null | sed 's|.*/||;s|\.rs||;s|^|    |;s|$|_ethproofs_soundcalc|'
     echo "  per-circuit verifiers <circuit>_<mode> -> circuit_verifiers/<mode>/<circuit>.elf:"
     for m in src/bin/circuit_verifiers/*/; do
         m=$(basename "$m")
@@ -65,10 +70,12 @@ case "$SEC" in
 esac
 
 # Binary name -> output path. Per-circuit verifiers are named `<circuit>_<mode>` and land in
-# `circuit_verifiers/<mode>/<circuit>.elf`; full statement verifiers keep their name in
-# `full_statement_verifiers/`.
+# `circuit_verifiers/<mode>/<circuit>.elf`; pessimistic-conjecture full statement verifiers keep
+# their name in `full_statement_verifiers/`, ethproofs-soundcalc ones (`fsv_<name>_ethproofs_soundcalc`)
+# land in `full_statement_verifiers/ethproofs_soundcalc/fsv_<name>.elf`.
 out_path() {
     case "$1" in
+        fsv_*_ethproofs_soundcalc) echo "full_statement_verifiers/ethproofs_soundcalc/${1%_ethproofs_soundcalc}.elf" ;;
         fsv_*) echo "full_statement_verifiers/$1.elf" ;;
         *_pessimistic_conjecture) echo "circuit_verifiers/pessimistic_conjecture/${1%_pessimistic_conjecture}.elf" ;;
         *_ethproofs_soundcalc) echo "circuit_verifiers/ethproofs_soundcalc/${1%_ethproofs_soundcalc}.elf" ;;
@@ -83,6 +90,9 @@ if [ $# -gt 0 ]; then
     CIRCUITS="$@"
 else
     FSV=$(ls src/bin/full_statement_verifiers/*.rs | sed 's|.*/||;s|\.rs||' | grep "_sec_${SEC}")
+    if [ "$MODE_FILTER" != "pessimistic_conjecture" ]; then
+        FSV="$FSV $(ls src/bin/full_statement_verifiers/ethproofs_soundcalc/*.rs | sed 's|.*/||;s|\.rs||;s|$|_ethproofs_soundcalc|' | grep "_sec_${SEC}_")"
+    fi
     PER_CIRCUIT=""
     for m in src/bin/circuit_verifiers/*/; do
         m=$(basename "$m")
