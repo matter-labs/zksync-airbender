@@ -1454,3 +1454,36 @@ initialization integration and the formal setup source bridge remain open.
 Design items 2 and 3 follow the machine targets. The packed-checker pilot
 stays unchanged. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+### Full unsigned physical-history path-composition obligation
+
+`unrolled_full_cycle_transition` joins all six ordinary CPU families,
+standard workers and split workers in one stream-indexed reference step.
+It derives each native instruction and complete call result. The first
+step starts from the original public Sail state. Later steps use the same
+actual history cuts and native PCs.
+
+`unrolled_full_physical_execution` composes the complete native state path.
+It proves the combined full reference relation, terminal PC, tracked terminal
+reads and exact total stream consumption. It uses the same initialized
+physical history and exact combined matching throughout. It assumes no
+instruction or worker execution result.
+
+This theorem closes physical-history path composition. It is not yet a
+proof of `UnrolledFullUnsigned`. The following named obligations remain:
+
+1. Derive standard commands, round controllers and worker RAM domains from
+   public supported use. Derive split arguments at each reachable caller cut.
+2. Interpret native zero ROM tokens in the complete combined pool.
+3. Connect the actual initialization boundary to that interpreted execution.
+4. Prove the JSON source-to-fixed-setup bridge stated in `FixedSetup`.
+
+Both new modules and roots passed focused kernel and direct axiom checks.
+They use only the three allowed axioms. The explicit inventory now contains
+13,315 roots. All 13,313 previous roots remain present. The bounded group
+used 535 MiB of physical memory and left no owned process running. Resource
+limits stay unchanged.
+
+Design items 2 and 3 follow the machine targets. The packed-checker pilot
+stays unchanged. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.

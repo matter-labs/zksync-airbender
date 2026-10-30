@@ -1058,6 +1058,8 @@ import Airbender.Proofs.FullUnsigned.StandardPC
 import Airbender.Proofs.FullUnsigned.StandardCycles
 import Airbender.Proofs.FullUnsigned.SplitCycles
 import Airbender.Proofs.FullUnsigned.EventInterval
+import Airbender.Proofs.FullUnsigned.NativeComposition
+import Airbender.Proofs.FullUnsigned.NativeExecution
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 
@@ -14673,3 +14675,6 @@ import Airbender.Proofs.FullUnsigned.EventInterval
 
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_split_caller_cycle
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_event_interval
+
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_cycle_transition
+#print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_physical_execution
