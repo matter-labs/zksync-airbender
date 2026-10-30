@@ -938,6 +938,21 @@ pub fn verify_artifact(
     verify_against_chain(artifact, &expected)
 }
 
+/// The non-determinism stream a unified recursion verifier program
+/// (`fsv_unified_recursion_layer`, or the aggregation guest per proof) reads
+/// to verify a `RecursionUnified` artifact. Untrusted: binding the proof to a
+/// program is left to whoever checks the verifier's output chain hash.
+pub fn unified_verifier_nd_words(artifact: &ProofArtifact) -> Result<Vec<u32>, String> {
+    if artifact.target != ProofTarget::RecursionUnified {
+        return Err(format!(
+            "expected a RecursionUnified proof artifact, got {:?}",
+            artifact.target
+        ));
+    }
+    validate_artifact_chain(artifact)?;
+    Ok(build_unified_stream(&artifact.setups, &artifact.proof))
+}
+
 fn verify_against_chain(
     artifact: &ProofArtifact,
     expected: &[[u32; 8]],
