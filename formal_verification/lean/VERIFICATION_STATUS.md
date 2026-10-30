@@ -1487,3 +1487,34 @@ limits stay unchanged.
 Design items 2 and 3 follow the machine targets. The packed-checker pilot
 stays unchanged. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+### Full unsigned combined-pool ROM-interpretation obligation
+
+`unrolled_full_rom_acceptance` now preserves full native acceptance under
+public ROM interpretation. The proof covers all six CPU families and the
+combined standard and split worker pools. CPU transfer projection uses
+canonical addresses from that same native pool. It handles selected callers
+through their two architectural x0 ports.
+
+The complete transfer projection preserves exact state, request and RAM
+permutations. `unrolled_full_rom_lookup` preserves every full-width public
+decoder query. `unrolled_full_rom_unchanged` proves that each interpreted ROM
+transfer refreshes its original public word. No alternate worker permutation
+or execution result is a premise.
+
+Worker RAM-domain contracts remain explicit. They keep standard and split
+transfers fixed. Supported use must still derive those contracts together
+with commands, round controls and split arguments at reachable caller cuts.
+The native boot seed remains separate from the physical public byte image.
+
+The new module and five roots passed focused kernel and direct axiom checks.
+They use only the three allowed axioms. The explicit inventory now contains
+13,320 roots. All 13,315 previous roots remain present. The bounded group
+used 534 MiB of physical memory and left no owned process running. Resource
+limits stay unchanged.
+
+Public supported-use derivation, initialization-to-execution integration
+and the formal setup source bridge remain open. Design items 2 and 3 follow
+the machine targets. The packed-checker pilot stays unchanged. Full frontend
+validation, environment audit, baseline refresh, transitive replay and Linux
+qualification did not run.
