@@ -42,14 +42,14 @@ draws to the WHIR handoff:
    multilinear coefficients before drawing its challenge. At the layer boundary,
    absorb the at-point evaluations followed by cached-relation evaluations, both
    in map order, then draw the next batching challenge.
-5. Draw `config.pack_log2` extra coordinates, absorb the batching PoW nonce and
-   draw the WHIR batching challenge. The resulting seed must equal the proof's
-   `intermediate_transcript_seed`.
+5. Draw `config.pack_log2()` extra coordinates, absorb
+   `proof.whir_proof.batching_challenge_pow_nonce` and draw the WHIR batching
+   challenge. The batched base-oracle evaluations must equal the first WHIR
+   sumcheck claim.
 
-This replay checks transcript order, shape and the recorded handoff seed. It does
-not verify claims or PoW difficulty. `gkr_whir_handoff_seed` itself only reads the
-recorded seed. The generated Solidity verifier checks the GKR relations and WHIR
-openings; the Rust replay is an encoding oracle.
+This replay checks transcript order, shape and the WHIR batching claim. It does
+not verify the full proof or PoW difficulty. The generated Solidity verifier
+checks the GKR relations and WHIR openings; the Rust replay is an encoding oracle.
 
 ## Packing and the WHIR boundary
 
@@ -60,7 +60,7 @@ claims are folded as adjacent pairs in coordinate order, using
 `a + (b - a) * r`; a short final group is zero-padded.
 
 Batching PoW uses the configuration's WHIR message size and base LDE together with
-`committed_base_oracle_columns(circuit, config.pack_log2,
+`committed_base_oracle_columns(circuit, config.pack_log2(),
 config.merged_memory_and_witness())`. The raw column census is not the packed
 oracle count. Circuit ranges, the proof and the resolved configuration determine
 the layer counts and dimensions; this recipe does not pin a retired shape.
@@ -81,8 +81,8 @@ word is Keccak256 of the setup cap serialized as big-endian u32 digest words;
 
 ## Committed checks and regeneration
 
-- [replay_reaches_the_recorded_handoff_seed](tests/encoding_roundtrip.rs) checks
-  the replay against the proof's recorded seed.
+- [replay_reaches_the_whir_batching_claim](tests/encoding_roundtrip.rs) checks
+  the replay against the first WHIR sumcheck claim.
 - [e1_factorization_including_degenerate_points](tests/encoding_roundtrip.rs)
   checks round factorization at the exceptional challenges as well as ordinary points.
 - [run_merged.sh](generated_contracts/run_merged.sh) checks actual proof acceptance,
