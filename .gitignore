@@ -13,6 +13,10 @@ __pycache__/
 *.pyc
 # Iteration outputs of the experiments_runner add/sub proving test
 /experiments_runner/test_proofs/
+# Local, regenerable proof caches (not tracked artifacts): the recursion examples'
+# zlib-compressed JSON caches and the program_prover manual prove/verify tests' JSON.
+/circuit_defs/prover_examples/*.json.zlib
+/program_prover/tmp_*.json
 # Generated on-disk dumps of RS codewords and merkle trees
 # (prover `gkr::whir::rs_on_disk` coset files and `merkle_trees::on_disk` tree files).
 *.rscw
