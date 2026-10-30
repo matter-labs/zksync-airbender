@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.SplitThetaDOperation
 import Airbender.Proofs.Keccak.SplitThetaInputPacking
 import Tests.SetupThetaGeneric
 import Airbender.Proofs.Keccak.SplitThetaNativeQueries
@@ -14422,3 +14423,22 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Keccak.Split.Native.Proofs.theta_previous_limb_packing
 #print axioms Airbender.Keccak.Split.Native.Proofs.theta_state_limb_value
 #print axioms Airbender.Keccak.Split.Native.Proofs.theta_previous_limb_value
+
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaNextTop
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_next_top_bit
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_next_top_bound
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_next_rotation_equation
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaRotatedLimbValue
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_rotated_limb_bound
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_next_rotation_integer
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_next_top_value
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_rotated_limb_value
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaNextLaneValue
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaRotatedLaneValue
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_native_next_rotation
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaDLimbValue
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_d_limb_operation
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaDLaneValue
+#print axioms Airbender.Keccak.Split.Native.Proofs.thetaPreviousLaneValue
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_d_lane_operation
+#print axioms Airbender.Keccak.Split.Native.Proofs.theta_d_native_reference
