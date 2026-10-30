@@ -674,3 +674,26 @@ process running. The source comparison is a runtime fidelity check. It does not
 close the formal JSON source bridge. Native parity lane effects and Sail call
 execution, theta/rho call execution, the source bridge and full unsigned
 integration remain open. Full validation remains pending.
+
+### Native parity lane-effect obligation
+
+Both native cache modes now prove the complete parity lane result. The proof
+uses the actual twenty-two generic queries and all six physical lanes. It
+derives each written limb from the queried nibbles. It proves the complete
+five-input XOR. The four readonly inputs keep their values. The first lane
+uses the four actual byte-iota queries and the three native linear equations.
+Its complete write equals its read XOR the selected original round constant.
+The native controller selects that constant only on the first column. It
+also binds the original control transition and all six physical slots.
+`parity_native_reference_schedule` gives the unchanged `Call.result` equality.
+The proof adds no result or operand premise.
+
+Fifty-two new roots passed focused kernel and axiom checks. They use only the
+three allowed axioms. The explicit inventory now contains 12,964 roots. All
+12,912 previous roots remain present. Earlier combined reference checks
+reached the memory cap. The final proof separates the finite reference
+calculation from the native values. The last bounded group passed. It used
+633 MiB of physical memory and left no owned process running. Resource caps
+stay unchanged. Native parity Sail call execution, theta/rho call execution,
+the formal setup source bridge and full unsigned integration remain open.
+The packed-checker pilot stays unchanged. Full validation remains pending.
