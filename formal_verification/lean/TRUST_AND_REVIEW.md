@@ -151,8 +151,17 @@ and derive the operation on all rows. The tree can encode a region whose length
 is not a power of sixteen. It adds zero encoding slots after the last native
 row. The region keeps its exact native length. Those extra slots cannot supply
 table membership. Separate private column declarations keep elaboration bounded.
-The JSON source-to-data bridge remains
-a separate open obligation. The packed-checker pilot stays unchanged.
+The JSON-to-canonical-table bridge remains open. Source parsing and exact RLE
+column decoding now have kernel proofs for the three split captures. Physical
+row membership in the canonical tables remains open.
+
+The generated source expressions retain each original key, value and field
+order. The frontend requires generation freshness and exact byte comparison
+with each raw artifact. These checks verify imported values. They do not
+supply theorem proofs. The kernel checks source parsing, each distinct RLE
+block and complete column decoding. A negative control changes one retained
+block and keeps the source bytes fixed. The kernel rejects that control.
+The packed-checker pilot stays unchanged.
 
 Sail generation uses the pinned upstream compiler and selected original roots.
 The normal four-byte nextPC assignment is extracted verbatim from the normal

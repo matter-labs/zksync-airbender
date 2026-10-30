@@ -93,7 +93,7 @@ def generate(label, filename):
     texts, numbers = sorted(texts), sorted(numbers)
     text_index = {text: i for i, text in enumerate(texts)}
     number_index = {number: i for i, number in enumerate(numbers)}
-    nodes, memo = [], {}
+    nodes, memo, node_values = [], {}, []
 
     def intern(entry):
         if entry is None:
@@ -112,17 +112,37 @@ def generate(label, filename):
         if description not in memo:
             memo[description] = len(nodes)
             nodes.append(description)
+            node_values.append(entry)
         return memo[description]
 
     intern(None)
     root = intern(value)
+    column_ids = [intern(column) for column in value["columns"]]
+    block_arrays = {}
+    for column in value["columns"]:
+        if list(column) != ["blocks"]:
+            raise ValueError("Unexpected retained column fields")
+        array_id = intern(column["blocks"])
+        block_arrays[array_id] = sorted(set(nodes[array_id][1]))
+    columns_id = intern(value["columns"])
+    indexed_arrays = dict(block_arrays)
+    indexed_arrays[columns_id] = sorted(set(column_ids))
+    block_ids = sorted({index for pool in block_arrays.values() for index in pool})
+    large_arrays = sorted({intern(node_values[index]["values"]) for index in block_ids
+                           if len(node_values[index].get("values", [])) > 64})
+    for array_id in large_arrays:
+        indexed_arrays[array_id] = sorted(set(nodes[array_id][1]))
+    natural_ids = sorted({child for array_id in large_arrays for child in indexed_arrays[array_id]})
+    for index in natural_ids:
+        if type(node_values[index]) is not int or node_values[index] < 0:
+            raise ValueError("Retained RLE payload is not a natural number")
     namespace = "Airbender.Setup.SourceCapture" + label
     module = "Airbender.Data.Setup.Source." + label
     proof_module = "Airbender.Proofs.FullUnsigned.Source." + label
     lines = [
         "import Lean.Compiler.NeverExtractAttr", "import Airbender.Import.SetupSourceBank", "",
         f"namespace {namespace}", "open Lean Airbender.Setup",
-        "set_option maxRecDepth 16384", "set_option maxHeartbeats 2400000",
+        "set_option maxRecDepth 16384", "set_option maxHeartbeats 2400000", "set_option Elab.async false",
         "set_option compiler.extract_closed false", "",
         "/-- Decode packed index data. Keep recursion in tail position. -/",
         "private def decodeIndices (base count packed : Nat) : List Nat :=",
@@ -142,6 +162,70 @@ def generate(label, filename):
     lines += ["def text (index : Nat) : String := " + choice([f"text_{i}" for i in range(len(texts))]),
               "def token (index : Nat) : SourceData.NumberToken := " +
               choice([f"token_{i}" for i in range(len(numbers))])]
+    for array_id, children in indexed_arrays.items():
+        positions = {child: index for index, child in enumerate(children)}
+        lines.append(f"def select_{array_id} (index : Nat) : Nat := " +
+                     choice([str(child) for child in children]))
+        lines.append(f"def entries_{array_id} : List Nat := " +
+                     indices([positions[child] for child in nodes[array_id][1]]))
+
+    source_lines = lines
+    lines = [f"import {module}", "import Airbender.Import.SetupSourceBindings", "",
+             f"namespace {namespace}", "open Lean Airbender.Setup",
+             "set_option maxRecDepth 16384", "set_option maxHeartbeats 2400000", "set_option Elab.async false",
+             "set_option compiler.extract_closed false", ""]
+    def native_block(block):
+        kind = block["kind"]
+        if kind == "affine":
+            return f'.affine {block["length"]} {block["first"]} ({block["step"]})'
+        array_id = intern(block["values"])
+        values = (f"payload_{array_id}" if array_id in large_arrays else
+                  "#[" + ", ".join(map(str, block["values"])) + "]")
+        if kind == "dense":
+            return ".dense " + values
+        if kind == "periodic":
+            return f'.periodic {block["repetitions"]} ({block["stride"]}) {values}'
+        raise ValueError("Unexpected retained block kind")
+
+    for array_id in large_arrays:
+        children = indexed_arrays[array_id]
+        argument = "_index" if len(children) == 1 else "index"
+        lines.append(f"private def naturals_{array_id} ({argument} : Nat) : Nat := " +
+                     choice([str(node_values[child]) for child in children]))
+        lines.append(f"private noncomputable def valuesBinding_{array_id} : SourceBank.ValueArrayBinding := " +
+                     f"⟨{array_id}, select_{array_id}, naturals_{array_id}, entries_{array_id}⟩")
+        lines.append(f"private noncomputable def payload_{array_id} : Array Nat := valuesBinding_{array_id}.values")
+    lines.append("def naturalSources : List (Nat × Nat) := " +
+                 sequence([f"({index}, {node_values[index]})" for index in natural_ids]))
+    lines.append("noncomputable def valueArrays : List (SourceBank.ValueArrayBinding × Array Nat) := " +
+                 sequence([f"(valuesBinding_{index}, payload_{index})" for index in large_arrays]))
+    lines.append("def blockArrays : List (Nat × Nat) := " +
+                 sequence([f'({index}, {intern(node_values[index]["values"])})' for index in block_ids
+                           if "values" in node_values[index] and intern(node_values[index]["values"]) in large_arrays]))
+    for index in block_ids:
+        lines.append(f"@[noinline, never_extract] private noncomputable def block_{index} (salt : Nat) : Block := " +
+                     "if salt = 0 then " + native_block(node_values[index]) + " else .affine 0 0 0")
+    for array_id, children in block_arrays.items():
+        lines.append(f"private noncomputable def blocks_{array_id} (index : Nat) : Block := " +
+                     choice([f"(block_{child} 0)" for child in children]))
+    for index in sorted(set(column_ids)):
+        key_index, array_id = nodes[index][1][0]
+        lines.append(f"private noncomputable def binding_{index} : SourceBank.ColumnBinding := " +
+                     f"⟨{index}, {key_index}, {array_id}, select_{array_id}, blocks_{array_id}, entries_{array_id}⟩")
+        lines.append(f"private noncomputable def column_{index} : Column := binding_{index}.column")
+    lines.append("noncomputable def blockSources : List (Nat × Block) := " +
+                 sequence([f"({index}, (block_{index} 0))" for index in block_ids]))
+    lines.append("noncomputable def columnBindings : List (SourceBank.ColumnBinding × Column) := " +
+                 sequence([f"(binding_{index}, column_{index})" for index in sorted(set(column_ids))]))
+    lines.append("noncomputable def column (index : Nat) : Column := " +
+                 choice([f"column_{index}" for index in indexed_arrays[columns_id]]))
+    lines.append(f"def columnsIndex : Nat := {columns_id}")
+    lines.append(f"def columnsChildren : Nat → Nat := select_{columns_id}")
+    lines.append(f"def columnsEntries : List Nat := entries_{columns_id}")
+    lines.append("noncomputable def columns : Array Column := (columnsEntries.map column).toArray")
+    lines += [f"end {namespace}", ""]
+    rle_text = "\n".join(lines)
+    lines = source_lines
     descriptions, levels = [], []
     for node in nodes:
         kind = node[0]
@@ -153,7 +237,8 @@ def generate(label, filename):
         elif kind in ("number", "string"):
             body = f".{kind} {node[1]}"
         elif kind == "array":
-            body = ".array (" + indices(node[1]) + ")"
+            body = (f".indexedArray select_{len(descriptions)} entries_{len(descriptions)}"
+                    if len(descriptions) in indexed_arrays else ".array (" + indices(node[1]) + ")")
             depth += max((levels[child] for child in node[1]), default=0)
         else:
             body = ".object " + sequence([f"({key}, {child})" for key, child in node[1]])
@@ -184,12 +269,15 @@ def generate(label, filename):
         "def root : SourceData.Node := SourceBank.evaluate text token bank (fuel + 1) rootIndex",
         "def source : String := String.ofList root.bytes",
         f"def byteLength : Nat := {len(raw)}",
+        f'def traceLength : Nat := {value["trace_len"]}',
         f'def sourceSha256 : String := "{hashlib.sha256(raw).hexdigest()}"',
         f"end {namespace}", "",
     ]
-    proof = [f"import {module}", "import Airbender.Proofs.FullUnsigned.SetupSourceCertificate", "",
-             f"certify_source_bank {namespace}Proofs using {namespace}", ""]
-    return {module: "\n".join(lines), proof_module: "\n".join(proof)}
+    proof = [f"import {module}RLE", "import Airbender.Proofs.FullUnsigned.SetupSourceCertificate", "",
+             "set_option Elab.async false",
+             f"certify_source_bank {namespace}Proofs using {namespace}",
+             f"certify_source_rle {namespace}Proofs using {namespace}", ""]
+    return {module: "\n".join(lines), module + "RLE": rle_text, proof_module: "\n".join(proof)}
 
 
 def main():

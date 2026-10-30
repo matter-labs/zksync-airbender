@@ -10,6 +10,7 @@ inductive Description where
   | number (index : Nat)
   | string (index : Nat)
   | array (entries : List Nat)
+  | indexedArray (children : Nat → Nat) (entries : List Nat)
   | object (entries : List (Nat × Nat))
 
 inductive Bank where
@@ -45,6 +46,8 @@ def evaluate (strings : Nat → String) (tokens : Nat → SourceData.NumberToken
     | .number index => SourceData.numberNode (tokens index)
     | .string index => SourceData.stringNode (strings index)
     | .array entries => sharedArrayNode (evaluate strings tokens bank fuel) entries
+    | .indexedArray children entries =>
+      sharedArrayNode (fun index => evaluate strings tokens bank fuel (children index)) entries
     | .object entries => sharedObjectNode (fun entry => strings entry.1)
         (fun entry => evaluate strings tokens bank fuel entry.2) entries
 

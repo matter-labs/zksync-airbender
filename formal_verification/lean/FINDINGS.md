@@ -120,6 +120,20 @@ and its order. The source-row adapter uses the exact retained column JSON.
 Its physical-row premise stays explicit. Bind these decoder rules to each
 captured column and prove physical row membership next.
 
+The three captured sources now have exact column decoder certificates.
+The kernel checks all 283 parity blocks, 2,100 theta/rho blocks and 539 chi5
+blocks. The certificates preserve all 8, 9 and 11 physical columns. They also
+bind the trace lengths. Large arrays share a checked scalar dictionary.
+Their proof preserves every entry and its order. It does not normalize a
+large literal JSON array in the elaborator.
+
+The remaining row predicates are `SplitParityPhysicalRows`,
+`SplitThetaPhysicalRows` and `SplitChiPhysicalRows`. They name the original
+canonical tables. Each predicate includes physical padding. The conditional
+adapters supply the captured-source certificates from these predicates.
+The original target setup-source references stay unchanged. Bind the equal
+byte representation at that interface when the row certificates are complete.
+
 ## Finding status versus conditional proof coverage
 
 **An assumption can close a conditional proof obligation while the finding stays

@@ -62,6 +62,8 @@ theorem evaluate_source (strings : Nat → String) (tokens : Nat → SourceData.
     | number index => exact number_node_source (tokens index) (numberChecked index)
     | string index => exact string_node_source (strings index) (stringChecked index)
     | array entries => exact array_node_source _ ih entries
+    | indexedArray children entries =>
+      exact array_node_source _ (fun index => ih (children index)) entries
     | object entries =>
       exact object_node_source (fun entry => strings entry.1)
         (fun entry => evaluate strings tokens bank fuel entry.2)

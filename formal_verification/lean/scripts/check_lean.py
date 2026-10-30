@@ -571,6 +571,8 @@ def main():
                        [sys.executable, 'scripts/generate_setup_source_banks.py', '--check'])
             runner.run('setup-source-byte-identity',
                        ['lake', 'env', sys.executable, 'scripts/check_setup_source_banks.py'])
+            runner.run('setup-source-binding-controls',
+                       ['lake', 'env', sys.executable, 'scripts/check_setup_source_binding_controls.py'])
             runner.run('theta-fragment-correspondences',
                        [sys.executable, 'scripts/generate_theta_fragment_maps.py', '--check'])
             runner.run('review', [sys.executable, 'scripts/check_review.py', '--verified-build', str(snapshot)], review=True)
