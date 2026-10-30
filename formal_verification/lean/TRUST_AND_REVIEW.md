@@ -163,7 +163,7 @@ The original target, setup premises and canonical tables stay unchanged.
 The kernel also checks all five chi5 source input columns and its complete
 tag column. The controller source case has full canonical lookup membership.
 Exact suffix decoding and the original parse validation supply its positions.
-The five arithmetic output columns remain open.
+Two arithmetic output columns also match the canonical table. Three remain open.
 
 The generated source expressions retain each original key, value and field
 order. The frontend requires generation freshness and exact byte comparison

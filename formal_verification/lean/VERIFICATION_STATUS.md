@@ -2126,3 +2126,29 @@ stays unchanged. Design items 2 and 3 still follow the machine targets.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned chi5 outer output obligations
+
+Chi5 source output fields three and four now match the original canonical
+columns. The proof covers all 1,048,576 arithmetic rows. It checks each stored
+RLE template. Analytic periodic and constant-block rules then supply every
+row value. The existing canonical chi theorem connects these values to the
+original generic table.
+
+A combined template check exceeded the physical memory cap. The final proof
+checks its bounded templates separately. It derives block lengths from their
+proved shapes. No limit increased. The final focused group passed three
+module checks in 29 seconds. It used 935 MiB of physical memory. Every guard
+cleaned its owned children. Four new roots pass direct axiom checks. They use
+only the three allowed axioms. The inventory now has 14,234 roots. It retains
+all 14,230 previous roots.
+
+Chi5 has three arithmetic output correspondences left. Its five input fields,
+tag column, other two output fields and controller rows have kernel proofs.
+The parity and theta/rho real-row predicates also remain open. Bind the
+original source interface when the row certificates are complete. The packed
+checker pilot stays unchanged. Design items 2 and 3 still follow the targets.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
