@@ -946,3 +946,30 @@ The formal setup source bridge remains open. Design items 2 and 3 follow the
 machine targets. The packed-checker pilot stays unchanged. Full frontend
 validation, environment audit, baseline refresh, transitive replay and Linux
 qualification did not run.
+
+### Native split-pool controller and call-dispatch obligations
+
+`fixed_control_setup_facts` derives the two controller facts from exact
+membership in the complete retained native tables. `fixed_memory_history`
+uses those facts with native equations and exact logical RAM matching. It
+proves address preservation and strict read-before-write order for every
+physical split port. No controller-semantic premise is an input.
+
+`native_call_executes` dispatches each actual split row to the original
+complete Sail call. It covers parity, theta/rho and chi5 in both cache modes.
+It keeps initialized read bounds, exact read observations and the event
+permutation explicit. These proofs use `fixedSetup`, the complete retained
+tables. The original JSON source-to-table obligation remains separate and open.
+
+All three new modules passed focused kernel checks. All four new roots passed
+direct axiom checks. They use only the three allowed axioms. The explicit
+inventory now contains 13,227 roots. All 13,223 previous roots remain present.
+The final bounded group used 473 MiB of physical memory and left no owned
+process running. Resource limits stay unchanged.
+
+Full unsigned integration must connect these native worker calls to the same
+initialized CPU history. It must close the formal setup source bridge. The
+complete native 361-call chain must connect to the proved physical schedule.
+Design items 2 and 3 follow the machine targets. The packed-checker pilot stays
+unchanged. Full frontend validation, environment audit, baseline refresh,
+transitive replay and Linux qualification did not run.
