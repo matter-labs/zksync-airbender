@@ -1344,3 +1344,26 @@ integration and the formal setup source bridge remain open. Design items
 2 and 3 follow the machine targets. The packed-checker pilot stays unchanged.
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+### Full unsigned stream-position obligation
+
+`unrolled_full_cycle_count` derives each cycle's exact stream increment from
+native clocks and state matching. `unrolled_full_initial_count` proves the
+initial count is zero. `unrolled_full_terminal_count` proves the final count
+includes each external read once. These results cover all six CPU families.
+
+`unrolled_full_caller_read_disabled` proves that standard and split callers
+consume no stream word. It uses exact public lookup and the imported packed
+selector equations. It does not require a separate caller decoder registry.
+
+The new module and all four roots passed focused kernel and direct axiom
+checks. They use only the three allowed axioms. The explicit inventory now
+contains 13,301 roots. All 13,297 previous roots remain present. The bounded
+group used 540 MiB of physical memory and left no owned process running.
+Resource limits stay unchanged.
+
+Full unsigned composition, supported-use derivation, initialization
+integration and the formal setup source bridge remain open. Design items
+2 and 3 follow the machine targets. The packed-checker pilot stays unchanged.
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
