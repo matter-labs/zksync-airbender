@@ -1,3 +1,5 @@
+import Airbender.Import.SetupJson
+import Tests.SetupJson
 import Airbender.Proofs.Keccak.SplitSetupTransport
 import Airbender.Review.Compiler.SetupSource
 import Airbender.Proofs.FullUnsigned.SetupInterpretation
@@ -14744,3 +14746,22 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.MachineTargets.FixedSetupRows
 #print axioms Airbender.Compiler.MachineTargets.Proofs.fixed_setup_lookup_of_source_rows
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_soundness_of_source_rows
+
+#print axioms Airbender.Import.SetupJson.Frame
+#print axioms Airbender.Import.SetupJson.Phase
+#print axioms Airbender.Import.SetupJson.State
+#print axioms Airbender.Import.SetupJson.step
+#print axioms Airbender.Import.SetupJson.run
+#print axioms Airbender.Import.SetupJson.run_append
+#print axioms Airbender.Import.SetupJson.finish
+#print axioms Airbender.Import.SetupJson.parseChars
+#print axioms Airbender.Import.SetupJson.parse
+#print axioms Airbender.Import.SetupJson.parse_ofList
+#print axioms Airbender.Import.SetupJson.parse_of_run
+#print axioms Tests.SetupJson.scalar_kernel
+#print axioms Tests.SetupJson.nested_kernel
+#print axioms Tests.SetupJson.surrogate_kernel
+#print axioms Tests.SetupJson.lone_surrogate_kernel
+#print axioms Tests.SetupJson.duplicate_key_kernel
+#print axioms Tests.SetupJson.malformed_kernel
+#print axioms Tests.SetupJson.symbolic_array_block

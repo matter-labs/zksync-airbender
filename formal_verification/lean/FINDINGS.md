@@ -47,29 +47,29 @@ are not interchangeable with a full verifier or cryptographic exploit.
 ## Kernel fixed-setup provenance
 
 The full unsigned target has an unresolved fixed-setup binding. `FixedSetup`
-describes parsed JSON. `Setup.parse` calls `Lean.Json.parse`. Its `anyCore`
-worker is opaque in the kernel. A focused probe confirms that even an empty
-JSON object does not reduce through this parser in a kernel proof.
+describes parsed JSON. `Setup.parse` now uses a total incremental decoder.
+Its block-composition and final-result laws pass kernel checks. The earlier
+opaque `Lean.Json.parse` call now serves only as a differential test oracle.
 
-The imported table facts need a proved source-to-data bridge. A runtime parse
-check cannot close this kernel obligation. Keep the target premise and axiom
-policy unchanged. This binding gap does not establish a circuit failure.
+The decoder retains the existing JSON values on the supported 64-bit host.
+Checks cover all 18 retained setup-directory JSON files. They also compare
+every decoded artifact field. Number, Unicode, duplicate-key and malformed
+input controls pass. These runtime checks preserve importer evidence. They
+do not close the source-to-table kernel obligation.
 
-Kernel checks now cover full native execution and public supported-use
-induction. The target wrapper exposes one source-interpretation function.
-This function must connect parsed fixed JSON to the canonical tables.
-
-The setup transport proof now covers all three workers in both cache modes.
+The setup transport proof covers all three workers in both cache modes.
 Three `FixedSetupRows` certificates suffice for the original target. Each
 certificate must map every parsed physical row, including padding, into its
 complete canonical table. Parity, theta/rho and chi5 certificates remain open.
-No new assumption closes them.
+No new assumption closes them. Full native execution, public supported-use
+induction and the initialization adapter are kernel checked behind this
+explicit source obligation.
 
-A total JSON decoder prototype stays outside the branch. Small kernel tests
-and differential checks of all 18 retained setup-directory JSON files pass.
-Direct kernel evaluation of the complete theta/rho source exceeds the fixed
-memory cap. A compact source certificate is still required. The retained
-artifacts, setup parser and imported values stay unchanged.
+Direct evaluation of a complete source exceeds the fixed memory cap. The
+failed monolithic decoder probes stay outside the branch. A separate block
+certificate generator remains experimental. The total decoder now permits
+small kernel checks with abstract earlier parser data. The retained artifacts
+and imported values stay unchanged.
 
 ## Finding status versus conditional proof coverage
 
