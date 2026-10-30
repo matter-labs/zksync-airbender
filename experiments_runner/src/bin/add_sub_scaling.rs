@@ -354,7 +354,7 @@ mod imp {
             );
         let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
         let setup_commitment =
-            setup.commit_for_config(twiddles.plain(), &prover_config, setup_worker);
+            setup.commit_for_config(twiddles.plain(), prover_config, setup_worker);
         println!(
             "[outer] shared setup (twiddles + setup construct + commit) took {:.3?}",
             t.elapsed()
