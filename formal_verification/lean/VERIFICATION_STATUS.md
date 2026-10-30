@@ -21,8 +21,8 @@ unsigned target remains open. Each target names its native acceptance, program
 setup, decoder lookup and initialization premises.
 Exact lookup matching and state/RAM permutations remain explicit.
 
-Work now follows this order: Unified, UnrolledReduced, then
-UnrolledFullUnsigned. The packed checker pilot stays at its current scope.
+Unified and UnrolledReduced are complete. Work now covers UnrolledFullUnsigned
+and blessed split Keccak. The packed checker pilot stays at its current scope.
 
 ## Rebase checks
 
@@ -144,48 +144,47 @@ The final `unified_soundness : Unified` theorem passed a focused kernel check.
 Its axiom report lists only `propext`, `Classical.choice` and `Quot.sound`.
 The check used the retained dependency cache. Full environment auditing and
 transitive kernel replay remain pending. All 12,457 pre-rebase audit roots
-remain in the explicit inventory. Work now proceeds to UnrolledReduced.
+remain in the explicit inventory. The reduced target proof is now also complete.
 Its public ordinary and caller images and standalone initialization adapter
 passed focused kernel and axiom checks. Its shared stream/caller memory theorem
 also passed. Native matching derives clocks, zero-register reads, canonical
 word bounds, worker operations and one actual Sail memory history. The round
 controller contract remains explicit at this intermediate memory interface.
-The reduced target must derive it from public supported use before completion.
+The public supported-use proof now derives this contract.
 Reduced arithmetic, modular, external, shift, bitwise and control-flow clauses
 now have shared-history execution adapters. Their focused kernel and axiom
 checks passed. These adapters take actual operands and histories from the shared
 transport. The control adapter keeps its native final-PC range explicit.
-The native PC path must derive that range before final target assembly.
+The native PC path now derives that range from state matching and the typed boundary.
 The reduced LW/SW address, native transport and full instruction adapters
 also passed focused kernel checks. They use shared initialized address codes
 and readonly-ROM history. The native clock proofs derive unique aligned row
 clocks, four-tick advancement and exact CPU event windows. Their axiom reports
-use only the three allowed axioms. Global cycle and caller composition remains
-open for the reduced target.
+use only the three allowed axioms. Global cycle and caller composition now pass.
 Exact caller slots now identify every worker in each native instruction
 window. The cycle split and ordinary row history passed focused kernel checks.
 State matching and the existing typed boundary derive every final-PC range.
 Native clocks derive the initial, per-cycle and terminal stream counts.
 Their axiom reports use only the three allowed axioms. The ordinary dispatcher,
-complete caller retirement and supported-use composition remain open.
+complete caller retirement and supported-use composition now pass.
 The reduced ordinary dispatcher has now passed focused kernel and axiom checks.
 It binds all four native CPU families to the public modular/external clauses,
 actual shared cycle states and exact stream increments. The native ROM adapter
-must supply its readonly-event property. Caller retirement and final supported-use
-composition remain open.
+now supplies its readonly-event property. Caller retirement and supported-use
+composition now pass.
 The complete reduced caller-cycle adapter has now passed focused kernel and
 axiom checks. Exact slots select one actual worker. Shared history supplies
 its reads and frame. The extended-round reference and native caller PC equations
 prove complete retirement. The full CSR query disables external reads on callers.
 Round control, worker RAM binding and readonly-ROM history remain explicit at
-this intermediate interface. The final native prefix induction must derive them.
+this intermediate interface. The native prefix induction now derives them.
 The complete reduced native path now composes those ordinary and caller cycles.
 It proves `ReducedRealizes` with final PC, shared terminal memory and exact
 stream consumption. Its focused kernel and axiom checks passed. Native worker
 liveness places every worker event inside the same path. Seed-clock lemmas
 also support raw native prefixes without equating ROM bytes to native zero.
-The final target still needs native ROM transport, joint supported-use
-induction and public decoder acceptance assembly.
+Native ROM transport, joint supported-use induction and public decoder
+acceptance assembly now complete the reduced target.
 The ROM-aware code-frame lemmas passed focused kernel and axiom checks.
 Interpreted ROM events refresh the same public word. Fetch transport can use
 that readonly history without the global tracked-RAM lower bound. The worker
@@ -202,8 +201,8 @@ The ROM-aware load/store cycle proof also passed. It uses the current native
 equations for readonly loads. It removes the global RAM lower bound from this
 cycle proof. A separate worker-port lemma derives each indirect RAM bound
 from exact worker-domain binding. The public ROM profile admits low ROM
-shadow cells. Unified still needs the joint worker-domain induction and its
-final target assembly.
+shadow cells. The joint worker-domain induction and final Unified target
+assembly now pass.
 All nine ordinary worker and CPU memory-port inventories passed focused
 checks. Their timestamp records use an explicit absent borrow subtrahend.
 The focused circuit and proof group passed all 288 module checks.
@@ -385,8 +384,8 @@ preserves imported constraints, decoder queries, callers, requests and shared
 memory matching. It preserves public instruction bytes and external responses.
 The physical initialization adapter and complete conditional reduced path pass.
 Worker controls and RAM port locations remain explicit intermediate premises.
-The public supported-use adapter must prove them. Public decoder acceptance
-also remains open. The final reduced machine target is not yet proved.
+The public supported-use adapter now proves them. Public decoder acceptance
+also passes. The final reduced machine target is proved.
 
 The check used Lean 4.31.0 and retained unchanged dependency objects. All selected
 roots use only the three allowed axioms. The full frontend, environment audit,
@@ -399,8 +398,8 @@ Each prefix keeps exact request and RAM matching. Its actual caller endpoint
 supplies a typed verifier boundary. Joint induction proves native round controls
 and each worker port location from reachable public reference arguments.
 The native path now has no private worker-control or port-domain premise.
-The public decoder and native acceptance adapter remain open. The final reduced
-target is not yet proved. Full validation remains pending as stated above.
+The public decoder and native acceptance adapter now pass. The final reduced
+target is proved. Full validation remains pending as stated above.
 
 ### Reduced target proved
 
@@ -428,3 +427,11 @@ bigint and extended-round decoder metadata. The adapter derives boot inputs
 from the unchanged standalone initialization boundary, public profile and setup.
 The full unsigned machine target remains open. Its native combined path and
 blessed split Keccak function are not yet proved. Full validation remains pending.
+
+### Split native worker coverage obligation
+
+The native invocation proof passed for all three split worker kinds and both
+cache modes. An active worker cannot use invocation zero. The proof uses the
+actual imported initial timestamp lookup. It adds no schedule or positive-clock
+premise. Exact request matching can therefore account for every active worker.
+The complete full unsigned execution proof remains open.

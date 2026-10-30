@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.SplitInvocation
 import Airbender.Proofs.FullUnsigned.TargetInputs
 import Airbender.Proofs.Reduced.PublicBinding
 import Airbender.Proofs.Reduced.PublicCallers
@@ -13948,3 +13949,4 @@ import Tests.KeccakKnownAnswer
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_caller_image
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_split_caller_image
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_initialization_inputs
+#print axioms Airbender.Keccak.Split.Native.Proofs.active_invocation_live
