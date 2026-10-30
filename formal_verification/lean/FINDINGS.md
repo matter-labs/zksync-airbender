@@ -154,8 +154,10 @@ changed. The remaining real-row obligations are `SplitParityRealRows`,
 parsed row and original canonical table. The three real-row proofs remain open.
 The five chi5 arithmetic input columns now match the original canonical
 columns on every row. Its complete tag column also matches. The kernel checks
-these correspondences from the retained source blocks. Chi5 output columns
-and controller rows remain open.
+these correspondences from the retained source blocks. The chi5 controller source rows now have canonical lookup membership proofs.
+The kernel checks all 1,331 fields. Exact source suffix decoding and the
+original parse validation supply their positions. The five arithmetic output
+column correspondences remain open.
 
 ## Finding status versus conditional proof coverage
 

@@ -1,3 +1,4 @@
+import Airbender.Proofs.FullUnsigned.ChiSourceController
 import Airbender.Proofs.FullUnsigned.ChiSourceInputs
 import Airbender.Proofs.FullUnsigned.PaddingMembership
 import Airbender.Proofs.FullUnsigned.ChiSourceDomain
@@ -15609,3 +15610,45 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Setup.SourceCaptureChiProofs.source_inputs_match
 #print axioms Airbender.Setup.SourceCaptureChiProofs.source_tag_column
 #print axioms Airbender.Setup.SourceCaptureChiProofs.source_tag_matches
+
+#print axioms Airbender.Setup.SourceIndices.decode_succ
+#print axioms Airbender.Setup.SourceIndices.decode_drop
+#print axioms Airbender.Setup.SourceBankCertificate.drop_encoded
+#print axioms Airbender.Setup.Proofs.column_suffix_get
+#print axioms Airbender.Setup.source_column_lengths
+#print axioms Airbender.Setup.ChiControllerSuffix.Column0.skip
+#print axioms Airbender.Setup.ChiControllerSuffix.Column0.entries
+#print axioms Airbender.Setup.ChiControllerSuffix.Column0.matches
+#print axioms Airbender.Setup.ChiControllerSuffix.Column1.skip
+#print axioms Airbender.Setup.ChiControllerSuffix.Column1.entries
+#print axioms Airbender.Setup.ChiControllerSuffix.Column1.matches
+#print axioms Airbender.Setup.ChiControllerSuffix.Column2.skip
+#print axioms Airbender.Setup.ChiControllerSuffix.Column2.entries
+#print axioms Airbender.Setup.ChiControllerSuffix.Column2.matches
+#print axioms Airbender.Setup.ChiControllerSuffix.Column3.skip
+#print axioms Airbender.Setup.ChiControllerSuffix.Column3.entries
+#print axioms Airbender.Setup.ChiControllerSuffix.Column3.matches
+#print axioms Airbender.Setup.ChiControllerSuffix.Column4.skip
+#print axioms Airbender.Setup.ChiControllerSuffix.Column4.entries
+#print axioms Airbender.Setup.ChiControllerSuffix.Column4.matches
+#print axioms Airbender.Setup.ChiControllerSuffix.Column5.skip
+#print axioms Airbender.Setup.ChiControllerSuffix.Column5.entries
+#print axioms Airbender.Setup.ChiControllerSuffix.Column5.matches
+#print axioms Airbender.Setup.ChiControllerSuffix.Column6.skip
+#print axioms Airbender.Setup.ChiControllerSuffix.Column6.entries
+#print axioms Airbender.Setup.ChiControllerSuffix.Column6.matches
+#print axioms Airbender.Setup.ChiControllerSuffix.Column7.skip
+#print axioms Airbender.Setup.ChiControllerSuffix.Column7.entries
+#print axioms Airbender.Setup.ChiControllerSuffix.Column7.matches
+#print axioms Airbender.Setup.ChiControllerSuffix.Column8.skip
+#print axioms Airbender.Setup.ChiControllerSuffix.Column8.entries
+#print axioms Airbender.Setup.ChiControllerSuffix.Column8.matches
+#print axioms Airbender.Setup.ChiControllerSuffix.Column9.skip
+#print axioms Airbender.Setup.ChiControllerSuffix.Column9.entries
+#print axioms Airbender.Setup.ChiControllerSuffix.Column9.matches
+#print axioms Airbender.Setup.ChiControllerSuffix.Column10.skip
+#print axioms Airbender.Setup.ChiControllerSuffix.Column10.entries
+#print axioms Airbender.Setup.ChiControllerSuffix.Column10.matches
+#print axioms Airbender.Setup.SourceCaptureChiProofs.source_controller_get
+#print axioms Airbender.Setup.SourceCaptureChiProofs.source_controller_rows
+#print axioms Airbender.Compiler.MachineTargets.Proofs.chi_source_controller_member

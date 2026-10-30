@@ -209,4 +209,74 @@ elab "certify_source_tails " base:ident " using " data:ident " trace_rows " leng
   let allType ← liftTermElabM <| inferType allProof
   checkedProof (base.getId.str "padding_columns") allType allProof
 
+/-- A suffix certificate uses the original encoded index list. Every numeric
+witness and the short decoded list enter an ordinary kernel proof. -/
+theorem drop_encoded (entries : List Nat) (base total first rest packed power quotient : Nat)
+    (suffix : List Nat)
+    (encoded : entries = SourceIndices.decode base total packed)
+    (totalEq : total = first + rest) (powerEq : Nat.pow base first = power)
+    (quotientEq : packed / power = quotient)
+    (suffixEq : SourceIndices.decode base rest quotient = suffix) :
+    entries.drop first = suffix := by
+  rw [encoded, totalEq, SourceIndices.decode_drop, ← Nat.pow_eq, powerEq, quotientEq, suffixEq]
+
+private def natList (values : List Nat) : Lean.Expr :=
+  values.foldr (fun value rest =>
+    mkApp3 (mkConst ``List.cons [Level.zero]) (mkConst ``Nat) (mkRawNatLit value) rest)
+    (mkApp (mkConst ``List.nil [Level.zero]) (mkConst ``Nat))
+
+private def checkedData (name : Name) (type value : Lean.Expr) : CommandElabM Unit := do
+  let height := getMaxHeight (← getEnv) value + 1
+  liftCoreM <| addDecl (.defnDecl {
+    name := name, levelParams := [], type := type, value := value,
+    hints := .regular height, safety := .safe })
+  modifyEnv (addNoncomputable · name)
+
+/-- Retain a bounded suffix of actual source indices. The data are proposed
+by the command. Its equality with the original source list is kernel checked. -/
+elab "certify_source_suffix " base:ident " from " source:ident " keep_count " keep:num : command =>
+    withEnableInfoTree false do
+  let sourceName ← resolveGlobalConstNoOverload source
+  let entries := mkConst sourceName
+  let decoded ← liftTermElabM <| unfoldEntries entries
+  let entriesName := base.getId.str "entries"
+  let firstName := base.getId.str "skip"
+  let (first, values, makeProof) ← liftTermElabM do
+    if decoded.isAppOf ``SourceIndices.decode then
+      let args := decoded.getAppArgs
+      let radix ← storedNat args[0]!
+      let total ← storedNat args[1]!
+      let packed ← storedNat args[2]!
+      unless 0 < radix do throwError "source index base is zero"
+      let rest := min total keep.getNat
+      let first := total - rest
+      let powerValue := radix ^ first
+      let quotientValue := packed / powerValue
+      let values := (List.range rest).map fun index => (quotientValue / radix ^ index) % radix
+      let encoded ← mkEqRefl entries
+      let totalProof ← mkEqRefl (mkRawNatLit total)
+      let (power, powerProof) ← binaryPower radix first
+      let divided ← mkAppM ``Nat.div #[mkRawNatLit packed, power]
+      let quotientProof ← mkEqRefl divided
+      let smallDecode := mkAppN (mkConst ``SourceIndices.decode)
+        #[mkRawNatLit radix, mkRawNatLit rest, mkRawNatLit quotientValue]
+      let suffixProof ← mkEqRefl smallDecode
+      let makeProof := fun suffix => mkAppN (mkConst ``drop_encoded)
+        #[entries, mkRawNatLit radix, mkRawNatLit total, mkRawNatLit first, mkRawNatLit rest,
+          mkRawNatLit packed, power, mkRawNatLit quotientValue, suffix, encoded, totalProof,
+          powerProof, quotientProof, suffixProof]
+      return (first, values, makeProof)
+    else
+      let all ← metadataElements entries
+      let values ← (all.toList.mapM storedNat : MetaM (List Nat))
+      let first := values.length - keep.getNat
+      let lhs ← mkAppM ``List.drop #[mkRawNatLit first, entries]
+      let proof ← mkEqRefl lhs
+      return (first, values.drop first, fun _ => proof)
+  checkedData firstName (mkConst ``Nat) (mkRawNatLit first)
+  checkedData entriesName (mkApp (mkConst ``List [Level.zero]) (mkConst ``Nat)) (natList values)
+  let lhs ← liftTermElabM <| mkAppM ``List.drop #[mkConst firstName, entries]
+  let type ← liftTermElabM <| mkEq lhs (mkConst entriesName)
+  checkedProof (base.getId.str "matches") type (makeProof (mkConst entriesName))
+
 end Airbender.Setup.SourceBankCertificate
