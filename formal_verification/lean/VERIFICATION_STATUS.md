@@ -2302,3 +2302,33 @@ targets.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned theta/rho source fragment for shift zero
+
+The low output fragment for shift zero is closed. It reuses the complete
+proved byte-XOR source column. The proof keeps the two distinct leading
+blocks. The remaining 897 blocks have equal source-node indices. A general
+decoder theorem supplies their equality without evaluation of the payloads.
+The exact retained index window has a kernel-checked scalar certificate.
+
+Direct block-list conversion exceeded the physical memory cap. The final
+proof uses the existing checked source-decoder callbacks. It passed in six
+seconds. It used 929 MiB of physical memory. All guards cleaned their owned
+children. No limit increased. The index-certificate syntax now uses distinct
+keywords. Both existing chi cycle certificates passed focused builds with
+that syntax. Their public names and statements stay intact. Nine new and
+18 retained roots passed direct axiom checks. They use only the three
+allowed axioms. The inventory now has 14,332 roots. It retains all 14,323
+previous roots.
+
+The other seven low-fragment shift cases and the high output fragment stay
+open. The other theta/rho source cases are closed. Parity real-row membership
+also remains open. The original source strings still need their byte-equal
+bindings. A direct theta string-conversion probe exceeded the memory cap.
+Its failed proof was not adopted. FullUnsigned is not yet proved. Design
+items 2 and 3 follow the machine targets. The packed-checker pilot stays
+unchanged.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.

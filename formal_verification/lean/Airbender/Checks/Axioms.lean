@@ -1,3 +1,4 @@
+import Airbender.Proofs.FullUnsigned.ThetaSourceLowZero
 import Airbender.Proofs.FullUnsigned.ThetaSourceSplitKeys
 import Airbender.Proofs.FullUnsigned.ThetaSourceXorMembership
 import Airbender.Proofs.FullUnsigned.ThetaSourceControlSlots
@@ -15760,3 +15761,13 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_padding_get
 #print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_tag_get
 #print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_keys_match
+
+#print axioms Airbender.Setup.SourceIndices.decode_take
+#print axioms Airbender.Setup.SourceIndices.decode_mod
+#print axioms Airbender.Setup.SourceIndices.slice_from_word
+#print axioms Airbender.Setup.SourceDecoding.blocks_equal_of_nodes
+#print axioms Airbender.Setup.ThetaLowZeroIndices.entries
+#print axioms Airbender.Setup.ThetaLowZeroIndices.prefix_power
+#print axioms Airbender.Setup.ThetaLowZeroIndices.body_power
+#print axioms Airbender.Setup.ThetaLowZeroIndices.source_slice
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_low_zero_get
