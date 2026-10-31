@@ -25,7 +25,15 @@ class LookupPremiseGeneration(unittest.TestCase):
             audit.parent.mkdir(parents=True)
             shutil.copyfile(ROOT / 'Airbender/Checks/Axioms.lean', audit)
             for relative in ('Airbender/Review/Compiler/ProgramLogicalRows.lean',
-                             'Airbender/Proofs/GKRProtocol/ProgramLogicalRows.lean'):
+                             'Airbender/Proofs/GKRProtocol/ProgramLogicalRows.lean',
+                             'Airbender/Data/Compiler/NativeProgramSetup.lean',
+                             'Airbender/Proofs/GKRProtocol/ProgramSetupNative.lean'):
+                destination = scratch / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / relative, destination)
+            for name in ('add-sub', 'jump-branch', 'mul-div', 'shift-binop',
+                         'word-memory', 'subword-memory', 'unified'):
+                relative = Path('artifacts/setup') / (name + '.json')
                 destination = scratch / relative
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / relative, destination)

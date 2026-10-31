@@ -1,3 +1,4 @@
+import Airbender.Proofs.GKRProtocol.ProgramSetupNative
 import Airbender.Proofs.GKRProtocol.ProgramLogicalRows
 import Airbender.Proofs.GKRProtocol.LookupSetupPartition
 import Airbender.Proofs.FullUnsigned.Target
@@ -18864,3 +18865,30 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 
 #print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.lookupLength
 #print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate.lookupLength
+
+#print axioms Airbender.Compiler.NativeProgramSetup.layouts
+#print axioms Airbender.Compiler.NativeProgramSetup.lookupLength
+#print axioms Airbender.Compiler.NativeProgramSetup.genericWidth
+#print axioms Airbender.Compiler.NativeProgramSetup.retainedRows
+#print axioms Airbender.Compiler.NativeProgramSetup.rows
+#print axioms Airbender.Compiler.NativeProgramSetup.ValidGeometry
+#print axioms Airbender.Compiler.NativeProgramSetup.geometry_valid
+#print axioms Airbender.Compiler.NativeProgramSetup.rows_fixed_group
+
+#print axioms Airbender.Reference.Compiler.ProgramSetup.Layout
+#print axioms Airbender.Reference.Compiler.ProgramSetup.inRegion
+#print axioms Airbender.Reference.Compiler.ProgramSetup.decoderPadding
+#print axioms Airbender.Reference.Compiler.ProgramSetup.packTagged
+#print axioms Airbender.Reference.Compiler.ProgramSetup.romPayload
+#print axioms Airbender.Reference.Compiler.ProgramSetup.genericRows
+#print axioms Airbender.Reference.Compiler.ProgramSetup.groupRows
+#print axioms Airbender.Reference.Compiler.ProgramSetup.fixed_group
+#print axioms Airbender.Reference.Compiler.ProgramSetup.tagged_fixed
+#print axioms Airbender.Reference.Compiler.ProgramSetup.untagged_decoder
+#print axioms Airbender.Reference.Compiler.ProgramSetup.untagged_padding
+#print axioms Airbender.Reference.Compiler.ProgramSetup.tagged_decoder
+#print axioms Airbender.Reference.Compiler.ProgramSetup.tagged_rom
+#print axioms Airbender.Reference.Compiler.ProgramSetup.packTagged_payload
+#print axioms Airbender.Reference.Compiler.ProgramSetup.packTagged_tag
+#print axioms Airbender.Reference.Compiler.ProgramSetup.packTagged_injective
+#print axioms Airbender.Reference.Compiler.ProgramSetup.decoderPadding_head
