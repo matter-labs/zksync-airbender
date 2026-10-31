@@ -1,26 +1,15 @@
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedFoundation
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedUniquePart0
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedUniquePart1
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedUniquePart2
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedUniquePart3
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedUniquePart4
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedForwardPart0
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedForwardPart1
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedForwardPart2
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedForwardPart3
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedForwardPart4
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedBackwardPart0
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedBackwardPart1
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedBackwardPart2
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedBackwardPart3
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.UnifiedCachedNumericCertificate
+import Airbender.Import.GKRProtocol.FullArithmeticCheckImport
 
 namespace Airbender.Compiler.FullArithmeticNative.UnifiedCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
-finalize_full_compiler_arithmetic native inputs 137 variables 147 sources 120 gates 130
+certify_full_compiler_arithmetic native inputs 137 variables 147 sources 120 gates 130 using numericFullChecked
+
+finalize_checked_full_compiler_arithmetic native inputs 137 variables 147
 
 end Airbender.Compiler.FullArithmeticNative.UnifiedCached

@@ -5,7 +5,6 @@ open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_full_compiler_arithmetic native from "artifacts/compiler/blake-g-uncached.json"
   source "artifacts/compiler/blake-g-uncached-source.json"

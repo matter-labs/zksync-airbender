@@ -1,19 +1,15 @@
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGUncachedFoundation
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGUncachedUniquePart0
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGUncachedUniquePart1
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGUncachedUniquePart2
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGUncachedUniquePart3
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGUncachedForwardPart0
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGUncachedForwardPart1
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGUncachedBackwardPart0
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGUncachedNumericCertificate
+import Airbender.Import.GKRProtocol.FullArithmeticCheckImport
 
 namespace Airbender.Compiler.FullArithmeticNative.BlakeGUncached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
-finalize_full_compiler_arithmetic native inputs 112 variables 116 sources 32 gates 36
+certify_full_compiler_arithmetic native inputs 112 variables 116 sources 32 gates 36 using numericFullChecked
+
+finalize_checked_full_compiler_arithmetic native inputs 112 variables 116
 
 end Airbender.Compiler.FullArithmeticNative.BlakeGUncached

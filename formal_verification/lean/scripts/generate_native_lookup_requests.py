@@ -2184,8 +2184,23 @@ packed_arithmetic_roots += ['Airbender.Compiler.NumericArithmeticChecks.forwardE
  'Tests.NumericArithmeticChecks.importedCombinations.tree_binding',
  'Tests.NumericArithmeticChecks.importedCombinations.tree_valid']
 
+from gkr_numeric_arithmetic import (NUMERIC_CAPTURES, CASES as NUMERIC_CASES,
+                                    FAMILIES as NUMERIC_FAMILIES, capture_roots as numeric_capture_roots)
+for numeric_stem, numeric_family in zip(NUMERIC_CASES, NUMERIC_FAMILIES, strict=True):
+    for numeric_mode in ["Cached", "Uncached"]:
+        numeric_case = numeric_stem + numeric_mode
+        if numeric_case not in NUMERIC_CAPTURES or numeric_stem == "BlakeRound":
+            continue
+        numeric_payload = json.loads((ROOT / "artifacts/compiler/numeric-arithmetic" /
+                                      (numeric_family + "-" + numeric_mode.lower() + ".json")).read_text())
+        packed_arithmetic_roots += numeric_capture_roots(numeric_case, numeric_payload)
+
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
+for numeric_case in sorted(NUMERIC_CAPTURES):
+    numeric_capture_import = "import Airbender.Proofs.GKRProtocol.FullArithmeticNative." + numeric_case
+    if numeric_capture_import not in content.splitlines():
+        content = numeric_capture_import + "\n" + content
 numeric_import = 'import Tests.NumericArithmeticChecks'
 if numeric_import not in content.splitlines():
     content = numeric_import + '\n' + content

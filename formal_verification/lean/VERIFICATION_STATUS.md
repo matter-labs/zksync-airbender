@@ -65,7 +65,8 @@ roots. Its adoption adds six helpers. That checkpoint has 17,769 explicit roots.
 That checkpoint has 17,854 explicit roots. The next three fixed-column
 families add 131 roots. That checkpoint has 17,985 explicit roots. The arithmetic pilot adds 38 roots.
 The numeric arithmetic rollout adds 434 roots.
-The current explicit inventory has 18,457 roots.
+The next seven arithmetic families add 1,041 roots.
+The current explicit inventory has 19,498 roots.
 
 The complete ordinary AND data has the same serialized values before and
 after this change. Its SHA-256 is
@@ -345,11 +346,54 @@ pass. CI checks both capture modes and runs the kernel binding controls after
 the Lean source build. All 18,023 established explicit roots remain. The
 inventory now has 18,457 roots. No worker remains.
 
-Both cache modes remain required. The other 18 arithmetic captures still need
-migration. Other fact families and unlimited heartbeat settings also remain.
-The full frontend, environment audit and baseline refresh, full transitive
-replay, cold full measurements, and Linux runtime and cache qualification stay
-pending for implementation review.
+### Additional arithmetic families
+
+The same numeric checker now covers both cache modes for Blake G, jump and
+branch, MUL/DIV, shift and binop, subword memory, unified and word memory.
+Each capture uses one closed kernel result. The public corollaries retain their
+original types. All original input, source, residual, extension and certificate
+values stay the same.
+
+This step retires 108 fact modules. The fourteen captures now use 70 modules,
+including their original foundations. All 70 source modules pass in 222.45 s.
+The group peaks at 707.83 MiB. No adopted capture raises `maxHeartbeats`.
+
+A kernel control accepts all 3,723 original public theorem types. All 1,645
+imported data values are identical. All 5,368 original public declarations
+remain. All 6,409 focused axiom checks pass. They use only `propext`,
+`Classical.choice` and `Quot.sound`.
+
+All 56 selected replay modules pass with the standard 32 MiB thread stack.
+No safe declaration uses a skipped dependency. The preservation, axiom and
+replay group takes 134.39 s. It peaks at 1161.71 MiB. These runs trust imported
+objects. They do not constitute transitive replay.
+
+All 14 Python generator controls pass. Generation, payload provenance,
+boundary, public program graph, links and workflow syntax checks pass. CI
+requires all 22 arithmetic captures. Eighteen captures now use whole results.
+Bigint and Keccak still use their established proofs in both cache modes.
+All 18,457 established explicit roots remain. The inventory now has 19,498
+roots. No worker remains.
+
+### Dense arithmetic obligations
+
+The remaining four arithmetic captures need a bounded dense path. Bigint has
+5,064 raw source terms. A direct source binding exceeds the memory cap.
+An unadopted erasure prototype preserves every term before polynomial expansion.
+Its four complete source bindings pass source checks and selected replay.
+The group peaks at 1755.77 MiB. The complete Bigint checker still exceeds the
+memory cap. Keccak still needs qualification on the dense path.
+
+Those prototypes stay in
+`/tmp/airbender-review-round/checker-pilot-2026-10-31/dense-normalization-prototype/`.
+They do not supply adopted proof claims. The two open obligations are dense
+normalization within the resource cap and qualification of all four complete
+captures. No production equation or proof premise changes.
+
+Both cache modes remain required. Other fact families and unlimited heartbeat
+settings also need migration. The full frontend, environment audit and baseline
+refresh, full transitive replay, cold full measurements, and Linux runtime and
+cache qualification stay pending for implementation review.
 
 ## Rebase checks
 
