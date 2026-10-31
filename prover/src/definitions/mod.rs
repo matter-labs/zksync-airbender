@@ -48,6 +48,164 @@ impl SecurityLevel {
     }
 }
 
+/// Which soundness accounting a default prover configuration is computed under
+/// (`prover_config::example_configs`). Lives next to [`SecurityLevel`] so that
+/// `no_std` verifier crates can name it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum SoundnessMode {
+    /// The in-house capacity-conjecture accounting
+    /// ([`PessimisticConjectureMode`](crate::gkr::whir::proximity_testing_modes::PessimisticConjectureMode):
+    /// one query at rate `ρ` is worth `log2(1/ρ)` bits, plus 20 % extra
+    /// queries; no folding-challenge or OOD proof of work): the production
+    /// ladders of `example_configs::pessimistic_conjecture`.
+    PessimisticConjecture,
+    /// Schedules certified at the security level by `ethereum/soundcalc`
+    /// (commit `2af5e7d`, 2026-09-21): a unique-decoding base round, Johnson
+    /// bound later rounds with an explicit multiplicity, a proof of work on
+    /// every folding challenge and on the single OOD sample of every oracle.
+    /// See `example_configs::ethproofs_soundcalc`.
+    EthproofsSoundnessCalc,
+}
+
+impl SoundnessMode {
+    pub const ALL: &'static [SoundnessMode] = &[
+        SoundnessMode::PessimisticConjecture,
+        SoundnessMode::EthproofsSoundnessCalc,
+    ];
+
+    /// The mode of the configs proved and verified by default (every tracked
+    /// proof / verifier fixture).
+    pub const DEFAULT: SoundnessMode = SoundnessMode::PessimisticConjecture;
+
+    /// Stable spelling accepted by command-line callers.
+    pub fn cli_name(self) -> &'static str {
+        match self {
+            Self::PessimisticConjecture => "pessimistic-conjecture",
+            Self::EthproofsSoundnessCalc => "ethproofs-soundcalc",
+        }
+    }
+
+    pub fn from_cli_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|mode| mode.cli_name() == name)
+    }
+
+    /// Suffix of the serialized config files
+    /// (`generated/prover_config_<level>_<suffix>.json`).
+    pub fn file_suffix(self) -> &'static str {
+        match self {
+            SoundnessMode::PessimisticConjecture => "pessimistic_conjecture",
+            SoundnessMode::EthproofsSoundnessCalc => "ethproofs_soundcalc",
+        }
+    }
+}
+
+/// Immutable security and soundness selection for a prover and its prepared state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct ProvingSelection {
+    pub security_level: SecurityLevel,
+    pub soundness_mode: SoundnessMode,
+}
+
+/// Provenance of a named configuration; special profiles have separate soundness analyses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ProverConfigProfile {
+    Standard,
+    L1Feeder,
+    EvmProductionPacked,
+}
+
+impl Default for ProvingSelection {
+    fn default() -> Self {
+        Self {
+            security_level: SecurityLevel::Sec100,
+            soundness_mode: SoundnessMode::DEFAULT,
+        }
+    }
+}
+
+/// The blake2s implementation a verifier program is built with: what a
+/// Merkle compression costs it, and so which proof layouts pay off. Lives
+/// here so the prover-side config (`WhirSchedule`), the verifier generator
+/// and the proof flattener agree on one policy; `verifier_common::BLAKE_MODE`
+/// is the mode of the build at hand.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum BlakeMode {
+    /// The whole compression is one delegation call
+    /// (`blake2_with_compression`): a Merkle level costs the main machine
+    /// little more than reading its sibling.
+    Compression,
+    /// The mixing function is delegated (`blake2_g_function`): one call per
+    /// G function, the rest of the compression on the main machine.
+    GFunction,
+    /// The compression runs on the main machine with the special blake
+    /// opcodes (`special_opcodes_extension`): hundreds of cycles each.
+    BlakeSpecialOpcodes,
+    /// The plain software compression: a RISC-V build without any blake
+    /// feature (`mop_extension`), or every native (host) build.
+    Software,
+}
+
+impl BlakeMode {
+    pub const ALL: &'static [BlakeMode] = &[
+        BlakeMode::Compression,
+        BlakeMode::GFunction,
+        BlakeMode::BlakeSpecialOpcodes,
+        BlakeMode::Software,
+    ];
+
+    #[must_use]
+    pub const fn tag(self) -> &'static str {
+        match self {
+            Self::Compression => "blake2_with_compression",
+            Self::GFunction => "blake2_g_function",
+            Self::BlakeSpecialOpcodes => "special_opcodes_extension",
+            Self::Software => "software",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "blake2_with_compression" | "compression" | "round" => Some(Self::Compression),
+            "blake2_g_function" | "g_function" => Some(Self::GFunction),
+            "special_opcodes_extension" | "special_opcodes" | "spec" => {
+                Some(Self::BlakeSpecialOpcodes)
+            }
+            "software" | "mop_extension" | "baseline" => Some(Self::Software),
+            _ => None,
+        }
+    }
+
+    /// Whether a compression is expensive enough on the main machine that
+    /// hashing fewer Merkle nodes beats the bookkeeping of a pruned
+    /// multiproof (measured on add/sub: a wash with the delegated
+    /// compression, -10% of the verifier with the special opcodes).
+    #[must_use]
+    pub const fn merkle_compressions_are_expensive(self) -> bool {
+        match self {
+            Self::Compression => false,
+            Self::GFunction | Self::BlakeSpecialOpcodes | Self::Software => true,
+        }
+    }
+
+    /// Whether a WHIR round that opens `num_queries` leaves of trees capped
+    /// at `cap_size` nodes is proved and verified as a pruned Merkle
+    /// multiproof under this blake implementation: only when the
+    /// compressions are expensive, and only when the round draws at least
+    /// twice as many queries as the cap has nodes (below that the shared
+    /// ancestors are too few to pay for the walk's bookkeeping). The one
+    /// policy `WhirSchedule::merkle_multiproof_for_round`, the generated
+    /// verifiers (at compile time, for `verifier_common::BLAKE_MODE`) and
+    /// the proof flattener follow.
+    #[must_use]
+    pub const fn merkle_multiproofs(self, num_queries: usize, cap_size: usize) -> bool {
+        self.merkle_compressions_are_expensive() && num_queries >= 2 * cap_size
+    }
+}
+
 use cs::definitions::gkr::AddressSpaceType;
 
 pub use self::hash_like_holder::*;
@@ -324,4 +482,24 @@ pub fn produce_initial_permutation_product_contribution<
     result.mul_assign(&read_set_contribution.inverse().unwrap());
 
     result
+}
+
+#[cfg(all(test, feature = "prover"))]
+mod soundness_mode_tests {
+    use super::SoundnessMode;
+
+    #[test]
+    fn soundness_mode_names_round_trip() {
+        for &mode in SoundnessMode::ALL {
+            assert_eq!(SoundnessMode::from_cli_name(mode.cli_name()), Some(mode));
+            assert_eq!(mode.cli_name().replace('-', "_"), mode.file_suffix());
+            let encoded = serde_json::to_string(&mode).unwrap();
+            assert_eq!(
+                serde_json::from_str::<SoundnessMode>(&encoded).unwrap(),
+                mode
+            );
+        }
+        assert_eq!(SoundnessMode::from_cli_name("ethproofs_soundcalc"), None);
+        assert_eq!(SoundnessMode::from_cli_name("unknown"), None);
+    }
 }

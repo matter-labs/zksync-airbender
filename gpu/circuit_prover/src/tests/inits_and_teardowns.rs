@@ -147,8 +147,10 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
     let trace_len = 1usize << TRACE_LEN_LOG2;
     let worker = Worker::new_with_num_threads(8);
 
-    let binary = read_test_words("examples/hashed_fibonacci/app.bin");
-    let text_section = read_test_words("examples/hashed_fibonacci/app.text");
+    let (binary, text_section) = load_test_program(
+        "examples/hashed_fibonacci/app.bin",
+        "examples/hashed_fibonacci/app.text",
+    );
     let instructions: Vec<Instruction> =
         preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
     let tape = SimpleTape::new(&instructions);
@@ -279,16 +281,10 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
     // --- memory tree caps fed to GPU prove(): from the CPU proof if present,
     //     else a lightweight CPU stage1 pass over the same memory trace ---
     let memory_tree_caps = if let Some(ref cpu_proof) = expected_cpu_proof {
-        let combined_cap = &cpu_proof.whir_proof.memory_commitment.commitment.cap;
-        let lde_factor = whir_schedule.base_lde_factor;
-        let subcap_size = combined_cap.cap.len() / lde_factor;
-        combined_cap
-            .cap
-            .chunks_exact(subcap_size)
-            .map(|chunk| MerkleTreeCapVarLength {
-                cap: chunk.to_vec(),
-            })
-            .collect::<Vec<_>>()
+        natural_coset_caps_from_cap(
+            &cpu_proof.whir_proof.memory_commitment.commitment.cap,
+            whir_schedule.base_lde_factor(),
+        )
     } else {
         let (mem_oracle, _wit_oracle) =
             commit_separate_memory_and_witness_subtrees::<BF, BF, DefaultTreeConstructor, _>(
@@ -299,10 +295,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
                 &prover::allocation_pool::GenericAllocationPool::proxy(),
                 &worker,
             );
-        stage1_subcaps_from_cap(
-            &mem_oracle.get_cap(),
-            whir_schedule.cap_size / whir_schedule.base_lde_factor,
-        )
+        natural_coset_caps_from_cap(&mem_oracle.get_cap(), whir_schedule.base_lde_factor())
     };
 
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();

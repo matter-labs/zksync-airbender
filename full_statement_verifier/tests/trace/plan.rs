@@ -3,6 +3,10 @@ use full_statement_verifier::program_proof::ProgramProof;
 use setups::Setups;
 use verifier_common::fsv_binaries::FsvProgram;
 use verifier_common::gkr::flatten::flatten_gkr_proof_for_nds;
+use verifier_common::BlakeMode;
+
+/// The cost model is calibrated on the `blake2_with_compression` binaries.
+const CALIBRATED_BLAKE: BlakeMode = BlakeMode::Compression;
 use verifier_common::prover::definitions::MerkleTreeCap;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -51,7 +55,7 @@ pub fn plan_unrolled_stream(
             let compiled = &proof.compiled_riscv_circuits[k];
             for p in proofs {
                 proof_first_words.push(w);
-                w += flatten_gkr_proof_for_nds(p, compiled).len();
+                w += flatten_gkr_proof_for_nds(p, compiled, CALIBRATED_BLAKE).len();
             }
         }
         regions.push(RegionPlan {
@@ -74,7 +78,7 @@ pub fn plan_unrolled_stream(
             .expect("compiled inits and teardowns");
         for p in &proof.inits_and_teardown_proofs {
             proof_first_words.push(w);
-            w += flatten_gkr_proof_for_nds(p, compiled).len();
+            w += flatten_gkr_proof_for_nds(p, compiled, CALIBRATED_BLAKE).len();
         }
     }
     regions.push(RegionPlan {
@@ -94,7 +98,7 @@ pub fn plan_unrolled_stream(
             let compiled = &proof.compiled_delegation_circuits[k];
             for p in proofs {
                 proof_first_words.push(w);
-                w += flatten_gkr_proof_for_nds(p, compiled).len();
+                w += flatten_gkr_proof_for_nds(p, compiled, CALIBRATED_BLAKE).len();
             }
         }
         regions.push(RegionPlan {

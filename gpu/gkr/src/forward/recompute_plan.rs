@@ -175,27 +175,14 @@ impl RecomputePlan {
         policy: GkrMemoryPolicy,
     ) -> Self {
         let artifact = programs.runtime_circuit();
+        policy.validate_for_main_layers(artifact.layers.len());
         let (value_layers, cache_layers) = match policy {
             GkrMemoryPolicy::Materialize => (0, 0),
             GkrMemoryPolicy::Recompute {
                 value_layers,
                 cache_layers,
-            } => {
-                assert!(
-                    value_layers != 0 || cache_layers != 0,
-                    "recomputation must omit a nonempty prefix"
-                );
-                (value_layers, cache_layers)
-            }
+            } => (value_layers, cache_layers),
         };
-        assert!(
-            value_layers < artifact.layers.len(),
-            "value omission must retain the final MAIN value layer"
-        );
-        assert!(
-            cache_layers <= artifact.layers.len(),
-            "cache omission exceeds the MAIN layer count"
-        );
         let mut canonical = BTreeMap::new();
         for (layer, data) in layout.layers.iter().enumerate() {
             for (&address, &(class, field, column)) in &data.index {

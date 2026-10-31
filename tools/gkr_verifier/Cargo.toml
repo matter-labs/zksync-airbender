@@ -2,6 +2,8 @@ cargo-features = ["panic-immediate-abort"]
 
 [package]
 name = "gkr_verifier"
+# every binary is listed explicitly below (nested src/bin folders are not auto-discovered)
+autobins = false
 version = "0.1.0"
 edition = "2021"
 authors = ["The Matter Labs Team <hello@matterlabs.dev>"]
@@ -31,91 +33,166 @@ no_caches = ["verifier_common/no_caches"]
 verifier_stats = ["verifier_common/verifier_stats"]
 default = ["blake2_with_compression"]
 
-# --- 100-bit security variants ---
-
+# --- Full-statement verifiers (production; `full_statement_verifiers/<name>_<blake>.elf`),
+# wired to the pessimistic-conjecture (production) circuit verifiers. The exact set of built
+# guests is `verifier_common::fsv_binaries::FSV_REGISTRY`. ---
 [[bin]]
 name = "fsv_unrolled_base_layer_sec_100"
-path = "src/bin/fsv_unrolled_base_layer_sec_100.rs"
+path = "src/bin/full_statement_verifiers/fsv_unrolled_base_layer_sec_100.rs"
 
 [[bin]]
 name = "fsv_unrolled_recursion_layer_sec_100"
-path = "src/bin/fsv_unrolled_recursion_layer_sec_100.rs"
+path = "src/bin/full_statement_verifiers/fsv_unrolled_recursion_layer_sec_100.rs"
 
 [[bin]]
 name = "fsv_unified_base_layer_sec_100"
-path = "src/bin/fsv_unified_base_layer_sec_100.rs"
+path = "src/bin/full_statement_verifiers/fsv_unified_base_layer_sec_100.rs"
 
 [[bin]]
 name = "fsv_unified_recursion_layer_sec_100"
-path = "src/bin/fsv_unified_recursion_layer_sec_100.rs"
+path = "src/bin/full_statement_verifiers/fsv_unified_recursion_layer_sec_100.rs"
 
 [[bin]]
 name = "fsv_unified_recursion_layer_sec_100_l1_feeder"
-path = "src/bin/fsv_unified_recursion_layer_sec_100_l1_feeder.rs"
+path = "src/bin/full_statement_verifiers/fsv_unified_recursion_layer_sec_100_l1_feeder.rs"
+
+# --- Full-statement verifiers wired to the ethproofs-soundcalc circuit verifiers
+# (`full_statement_verifiers/ethproofs_soundcalc/<name without the mode suffix>_<blake>.elf`).
+# No unified base layer: the recursion pipeline never selects it. No L1 feeder: its schedule
+# exists only in pessimistic_conjecture. ---
+[[bin]]
+name = "fsv_unrolled_base_layer_sec_100_ethproofs_soundcalc"
+path = "src/bin/full_statement_verifiers/ethproofs_soundcalc/fsv_unrolled_base_layer_sec_100.rs"
 
 [[bin]]
-name = "inits_and_teardowns_sec_100"
-path = "src/bin/inits_and_teardowns_sec_100.rs"
+name = "fsv_unrolled_recursion_layer_sec_100_ethproofs_soundcalc"
+path = "src/bin/full_statement_verifiers/ethproofs_soundcalc/fsv_unrolled_recursion_layer_sec_100.rs"
 
 [[bin]]
-name = "add_sub_lui_auipc_mop_sec_100"
-path = "src/bin/add_sub_lui_auipc_mop_sec_100.rs"
+name = "fsv_unified_recursion_layer_sec_100_ethproofs_soundcalc"
+path = "src/bin/full_statement_verifiers/ethproofs_soundcalc/fsv_unified_recursion_layer_sec_100.rs"
+
+# --- Per-circuit test verifiers, pessimistic_conjecture (`circuit_verifiers/pessimistic_conjecture/<circuit>.elf`) ---
+[[bin]]
+name = "add_sub_lui_auipc_mop_pessimistic_conjecture"
+path = "src/bin/circuit_verifiers/pessimistic_conjecture/add_sub_lui_auipc_mop.rs"
 
 [[bin]]
-name = "jump_branch_slt_sec_100"
-path = "src/bin/jump_branch_slt_sec_100.rs"
+name = "bigint_with_extended_control_pessimistic_conjecture"
+path = "src/bin/circuit_verifiers/pessimistic_conjecture/bigint_with_extended_control.rs"
 
 [[bin]]
-name = "shift_binop_sec_100"
-path = "src/bin/shift_binop_sec_100.rs"
+name = "blake2_g_function_pessimistic_conjecture"
+path = "src/bin/circuit_verifiers/pessimistic_conjecture/blake2_g_function.rs"
 
 [[bin]]
-name = "unsigned_mul_div_sec_100"
-path = "src/bin/unsigned_mul_div_sec_100.rs"
+name = "blake2_with_extended_control_pessimistic_conjecture"
+path = "src/bin/circuit_verifiers/pessimistic_conjecture/blake2_with_extended_control.rs"
 
 [[bin]]
-name = "bigint_with_extended_control_sec_100"
-path = "src/bin/bigint_with_extended_control_sec_100.rs"
+name = "inits_and_teardowns_pessimistic_conjecture"
+path = "src/bin/circuit_verifiers/pessimistic_conjecture/inits_and_teardowns.rs"
 
 [[bin]]
-name = "blake2_with_extended_control_sec_100"
-path = "src/bin/blake2_with_extended_control_sec_100.rs"
+name = "jump_branch_slt_pessimistic_conjecture"
+path = "src/bin/circuit_verifiers/pessimistic_conjecture/jump_branch_slt.rs"
 
 [[bin]]
-name = "blake2_with_extended_control_sec_100_pack4"
-path = "src/bin/blake2_with_extended_control_sec_100_pack4.rs"
+name = "keccak_chi5_pessimistic_conjecture"
+path = "src/bin/circuit_verifiers/pessimistic_conjecture/keccak_chi5.rs"
 
 [[bin]]
-name = "mem_word_only_sec_100"
-path = "src/bin/mem_word_only_sec_100.rs"
+name = "keccak_column_parity_pessimistic_conjecture"
+path = "src/bin/circuit_verifiers/pessimistic_conjecture/keccak_column_parity.rs"
 
 [[bin]]
-name = "mem_subword_only_sec_100"
-path = "src/bin/mem_subword_only_sec_100.rs"
+name = "keccak_special5_pessimistic_conjecture"
+path = "src/bin/circuit_verifiers/pessimistic_conjecture/keccak_special5.rs"
 
 [[bin]]
-name = "keccak_special5_sec_100"
-path = "src/bin/keccak_special5_sec_100.rs"
+name = "keccak_theta_rho_pessimistic_conjecture"
+path = "src/bin/circuit_verifiers/pessimistic_conjecture/keccak_theta_rho.rs"
 
 [[bin]]
-name = "keccak_column_parity_sec_100"
-path = "src/bin/keccak_column_parity_sec_100.rs"
+name = "mem_subword_only_pessimistic_conjecture"
+path = "src/bin/circuit_verifiers/pessimistic_conjecture/mem_subword_only.rs"
 
 [[bin]]
-name = "keccak_theta_rho_sec_100"
-path = "src/bin/keccak_theta_rho_sec_100.rs"
+name = "mem_word_only_pessimistic_conjecture"
+path = "src/bin/circuit_verifiers/pessimistic_conjecture/mem_word_only.rs"
 
 [[bin]]
-name = "keccak_chi5_sec_100"
-path = "src/bin/keccak_chi5_sec_100.rs"
+name = "shift_binop_pessimistic_conjecture"
+path = "src/bin/circuit_verifiers/pessimistic_conjecture/shift_binop.rs"
 
 [[bin]]
-name = "blake2_g_function_sec_100"
-path = "src/bin/blake2_g_function_sec_100.rs"
+name = "unified_reduced_machine_pessimistic_conjecture"
+path = "src/bin/circuit_verifiers/pessimistic_conjecture/unified_reduced_machine.rs"
 
 [[bin]]
-name = "unified_reduced_machine_sec_100"
-path = "src/bin/unified_reduced_machine_sec_100.rs"
+name = "unsigned_mul_div_pessimistic_conjecture"
+path = "src/bin/circuit_verifiers/pessimistic_conjecture/unsigned_mul_div.rs"
+
+# --- Per-circuit test verifiers, ethproofs_soundcalc (`circuit_verifiers/ethproofs_soundcalc/<circuit>.elf`) ---
+[[bin]]
+name = "add_sub_lui_auipc_mop_ethproofs_soundcalc"
+path = "src/bin/circuit_verifiers/ethproofs_soundcalc/add_sub_lui_auipc_mop.rs"
+
+[[bin]]
+name = "bigint_with_extended_control_ethproofs_soundcalc"
+path = "src/bin/circuit_verifiers/ethproofs_soundcalc/bigint_with_extended_control.rs"
+
+[[bin]]
+name = "blake2_g_function_ethproofs_soundcalc"
+path = "src/bin/circuit_verifiers/ethproofs_soundcalc/blake2_g_function.rs"
+
+[[bin]]
+name = "blake2_with_extended_control_ethproofs_soundcalc"
+path = "src/bin/circuit_verifiers/ethproofs_soundcalc/blake2_with_extended_control.rs"
+
+[[bin]]
+name = "inits_and_teardowns_ethproofs_soundcalc"
+path = "src/bin/circuit_verifiers/ethproofs_soundcalc/inits_and_teardowns.rs"
+
+[[bin]]
+name = "jump_branch_slt_ethproofs_soundcalc"
+path = "src/bin/circuit_verifiers/ethproofs_soundcalc/jump_branch_slt.rs"
+
+[[bin]]
+name = "keccak_chi5_ethproofs_soundcalc"
+path = "src/bin/circuit_verifiers/ethproofs_soundcalc/keccak_chi5.rs"
+
+[[bin]]
+name = "keccak_column_parity_ethproofs_soundcalc"
+path = "src/bin/circuit_verifiers/ethproofs_soundcalc/keccak_column_parity.rs"
+
+[[bin]]
+name = "keccak_special5_ethproofs_soundcalc"
+path = "src/bin/circuit_verifiers/ethproofs_soundcalc/keccak_special5.rs"
+
+[[bin]]
+name = "keccak_theta_rho_ethproofs_soundcalc"
+path = "src/bin/circuit_verifiers/ethproofs_soundcalc/keccak_theta_rho.rs"
+
+[[bin]]
+name = "mem_subword_only_ethproofs_soundcalc"
+path = "src/bin/circuit_verifiers/ethproofs_soundcalc/mem_subword_only.rs"
+
+[[bin]]
+name = "mem_word_only_ethproofs_soundcalc"
+path = "src/bin/circuit_verifiers/ethproofs_soundcalc/mem_word_only.rs"
+
+[[bin]]
+name = "shift_binop_ethproofs_soundcalc"
+path = "src/bin/circuit_verifiers/ethproofs_soundcalc/shift_binop.rs"
+
+[[bin]]
+name = "unified_reduced_machine_ethproofs_soundcalc"
+path = "src/bin/circuit_verifiers/ethproofs_soundcalc/unified_reduced_machine.rs"
+
+[[bin]]
+name = "unsigned_mul_div_ethproofs_soundcalc"
+path = "src/bin/circuit_verifiers/ethproofs_soundcalc/unsigned_mul_div.rs"
 
 [workspace]
 

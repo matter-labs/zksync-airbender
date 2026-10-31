@@ -16,7 +16,6 @@ use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::*;
 use riscv_transpiler::cycle::*;
 use std::alloc::Global;
-use std::path::Path;
 use worker::Worker;
 
 pub use ::add_sub_lui_auipc_mop::AddSubLuiAuipcMopCircuit;
@@ -48,14 +47,10 @@ pub use prover;
 
 pub mod circuits;
 pub mod program_setups;
+pub mod prover_config_fixtures;
 pub mod unrolled_circuits;
 pub use self::circuits::*;
 pub use self::unrolled_circuits::*;
-
-pub fn pad_bytecode_bytes_for_proving(bytecode: &mut Vec<u8>) {
-    assert!(bytecode.len() <= common_constants::ROM_BYTE_SIZE);
-    bytecode.resize(common_constants::ROM_BYTE_SIZE, 0);
-}
 
 pub fn pad_bytecode_for_proving(bytecode: &mut Vec<u32>) {
     assert!(bytecode.len() <= common_constants::ROM_WORD_SIZE);
@@ -98,6 +93,7 @@ pub enum UnrolledCircuitWitnessEvalFn<A: GoodAllocator> {
 
 pub struct CircuitSetup<A: GoodAllocator = Global> {
     pub family_idx: u8,
+    pub geometry: circuit_common::CircuitGeometry,
     pub trace_len: usize,
     pub compiled_circuit: GKRCircuitArtifact<BabyBearField>,
     pub table_driver: TableDriver<BabyBearField>,
@@ -110,7 +106,17 @@ pub struct CircuitSetup<A: GoodAllocator = Global> {
 }
 
 impl<A: GoodAllocator> CircuitSetup<A> {
-    /// The circuit's prover config at `level` — the single source of its
+    /// Resolve the exact mode using this setup's compiled circuit.
+    pub fn try_prover_config_in_mode(
+        &self,
+        level: SecurityLevel,
+        mode: circuit_common::SoundnessMode,
+    ) -> Result<ProverConfig, circuit_common::ConfigSelectionError> {
+        self.geometry
+            .try_prover_config(&self.compiled_circuit, level, mode)
+    }
+
+    /// Pessimistic compatibility wrapper: the circuit's prover config at `level` — the single source of its
     /// proving geometry (trace length, schedules, packing).
     pub fn prover_config(&self, level: SecurityLevel) -> &ProverConfig {
         let config = circuit_common::prover_config_at(&self.prover_configs, level);
@@ -153,6 +159,7 @@ pub fn make_setup_for_non_mem_circuit<
 
     CircuitSetup {
         family_idx: C::CIRCUIT_FAMILY,
+        geometry: C::geometry(),
         trace_len: 1 << C::trace_len_log2(),
         compiled_circuit: circuit,
         table_driver,
@@ -197,6 +204,7 @@ pub fn make_setup_for_with_mem_circuit<
 
     CircuitSetup {
         family_idx: C::CIRCUIT_FAMILY,
+        geometry: C::geometry(),
         trace_len: 1 << C::trace_len_log2(),
         compiled_circuit: circuit,
         table_driver,
@@ -267,40 +275,4 @@ pub fn compute_setup_commitment(
     assert!(lde_factor.is_power_of_two());
 
     todo!();
-}
-
-pub fn binary_u8_to_u32(binary_u8: &[u8]) -> Vec<u32> {
-    assert_eq!(binary_u8.len() % core::mem::size_of::<u32>(), 0);
-    let mut binary = Vec::with_capacity(binary_u8.len() / core::mem::size_of::<u32>());
-    for el in binary_u8.as_chunks::<4>().0 {
-        binary.push(u32::from_le_bytes(*el));
-    }
-    binary
-}
-
-pub fn read_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
-    use std::io::Read;
-    let mut file = std::fs::File::open(path)
-        .map_err(|_| {
-            panic!("Failed to load file at path {}", path.display());
-        })
-        .expect("must open provided file");
-    let mut buffer = vec![];
-    file.read_to_end(&mut buffer).expect("must read the file");
-    let binary = binary_u8_to_u32(&buffer);
-    (buffer, binary)
-}
-
-pub fn read_and_pad_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
-    let (mut buffer, mut binary) = read_binary(path);
-    pad_bytecode_bytes_for_proving(&mut buffer);
-    pad_bytecode_for_proving(&mut binary);
-    (buffer, binary)
-}
-
-pub fn pad_binary(mut buffer: Vec<u8>) -> (Vec<u8>, Vec<u32>) {
-    let mut binary = binary_u8_to_u32(&buffer);
-    pad_bytecode_bytes_for_proving(&mut buffer);
-    pad_bytecode_for_proving(&mut binary);
-    (buffer, binary)
 }

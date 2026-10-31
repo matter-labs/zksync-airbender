@@ -74,8 +74,10 @@ mod fixtures;
 mod inits_and_teardowns;
 mod lsb_commit_pipeline;
 mod memory_policies;
+mod packed_proof;
 mod proof_matrix;
 mod stagewise;
+mod virtual_packing;
 
 use asserts::*;
 
@@ -104,15 +106,14 @@ fn upload_slice_to_device_for_test<T: Copy>(
     device
 }
 
-fn read_test_words(relative_path: &str) -> Vec<u32> {
-    let bytes = std::fs::read(test_artifact_path(relative_path)).unwrap();
-    assert_eq!(bytes.len() % 4, 0);
-    bytes
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect()
+/// `(flat ROM image words, text section words)` of a committed `objcopy` dump pair under the
+/// artifact root, unpadded (the shape the files have on disk).
+fn load_test_program(binary_path: &str, text_path: &str) -> (Vec<u32>, Vec<u32>) {
+    riscv_transpiler::elf::ProgramSource::legacy_binaries(
+        test_artifact_path(binary_path),
+        test_artifact_path(text_path),
+    )
+    .load_unpadded()
 }
 
 fn deserialize_json_for_test<T: serde::de::DeserializeOwned>(relative_path: &str) -> T {
@@ -269,19 +270,25 @@ impl BasicUnrolledFixture {
         let (mem_log_lde_factor, mem_log_tree_cap_size) = match self.gpu_setup_host.as_ref() {
             Some(host) => (host.log_lde_factor, host.log_tree_cap_size),
             None => (
-                self.prover_config
-                    .whir_schedule
-                    .base_lde_factor
-                    .trailing_zeros(),
+                self.prover_config.whir_schedule.base_lde_factor_log2() as u32,
                 self.prover_config.whir_schedule.cap_size.trailing_zeros(),
             ),
         };
         let memory_transfer_host = Arc::new(
-            gpu_trace::trace::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps(
-                &self.memory_tree_caps,
-                mem_log_lde_factor,
-                mem_log_tree_cap_size,
-            ),
+            if self.prover_config.pack_log2() != 0 || self.prover_config.is_virtual_packing() {
+                let geometry = BaseCommitmentGeometry::from_config(
+                    &self.prover_config,
+                    BaseColumns::of(&self.compiled_circuit),
+                )
+                .unwrap();
+                gpu_trace::trace::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps_for_geometry(&self.memory_tree_caps, geometry)
+            } else {
+                gpu_trace::trace::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps(
+                    &self.memory_tree_caps,
+                    mem_log_lde_factor,
+                    mem_log_tree_cap_size,
+                )
+            },
         );
         let memory_transfer = gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer::new(
             memory_transfer_host,
@@ -341,11 +348,24 @@ impl BasicUnrolledFixture {
         )
     }
 
-    fn dr_tail_plan(&self) -> CudaResult<gpu_gkr::DrTailProofPlan> {
-        gpu_gkr::preflight_dr_tail_resources(
+    fn dr_tail_plan(&self) -> CudaResult<crate::proof::ProofPreflight<BF>> {
+        self.dr_tail_plan_for_policy(self.memory_policy())
+    }
+
+    fn dr_tail_plan_for_policy(
+        &self,
+        policy: ProofMemoryPolicy,
+    ) -> CudaResult<crate::proof::ProofPreflight<BF>> {
+        crate::proof::preflight_proof(
             &self.gkr_programs,
+            &self.prover_config,
             self.final_trace_size_log_2,
             era_cudart::device::get_device()?,
+            policy,
+            self.context
+                .ntt_device_context()
+                .whir_leaf_transform_params()
+                .omega_log_order,
         )
     }
 
@@ -362,6 +382,7 @@ impl BasicUnrolledFixture {
         policy: ProofMemoryPolicy,
     ) -> CudaResult<GpuGKRProofJob<'static>> {
         let mem_before_inputs = self.context.get_used_mem_current();
+        let dr_tail_plan = self.dr_tail_plan_for_policy(policy)?;
         let mut transfers = self.create_transfers()?;
 
         let h2d_stream = self.context.get_h2d_stream();
@@ -370,7 +391,6 @@ impl BasicUnrolledFixture {
         transfers.schedule(&self.context)?;
         transfer_range.end(h2d_stream)?;
 
-        let dr_tail_plan = self.dr_tail_plan()?;
         let mut proof_job = crate::proof::prove::<Global>(
             &self.gkr_programs,
             &self.prover_config,
@@ -406,6 +426,7 @@ struct BasicUnrolledFixtureBuildConfig<'a> {
     compute_cpu_reference: bool,
     device_allocator_block_log_size: u32,
     security_level: crate::upstream::SecurityLevel,
+    mode: circuit_common::SoundnessMode,
 }
 
 mod fixtures_helpers;

@@ -8,6 +8,7 @@ use crate::upstream::SecurityLevel;
 use clap::Parser;
 use era_cudart::device::set_device;
 use era_cudart_sys::CudaError;
+use execution_prover::config::{ProvingSelection, SoundnessMode};
 use gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy as MemoryPolicy;
 use gpu_core::allocator::tracker::AllocationDirection;
 use gpu_prover_context::{ProverContext, ProverContextConfig};
@@ -50,6 +51,10 @@ struct Arguments {
     /// Replay production selection; --configuration asserts the expected policy.
     #[arg(long, conflicts_with_all = ["fit_only", "generate_policy", "list"])]
     replay_presets: bool,
+    /// Soundness mode of the swept proofs (`pessimistic-conjecture` or
+    /// `ethproofs-soundcalc`). The presets are sized for the default mode.
+    #[arg(long, value_parser = parse_soundness_mode, default_value = SoundnessMode::DEFAULT.cli_name())]
+    soundness_mode: SoundnessMode,
 }
 
 pub(super) fn main_entry() -> Result<(), Box<dyn Error>> {
@@ -141,7 +146,10 @@ fn prepare_arena(
         crate::memory_policy::select_arena_bytes(context.get_mem_size());
     }
     assert_empty(&context);
-    let factory = SyntheticInputFactory::new(SecurityLevel::Sec100);
+    let factory = SyntheticInputFactory::new(ProvingSelection {
+        security_level: SecurityLevel::Sec100,
+        soundness_mode: a.soundness_mode,
+    });
     let mut prepared = Vec::new();
     for circuit in all_circuits() {
         eprintln!(
@@ -453,6 +461,16 @@ fn assert_empty(context: &ProverContext) {
     );
 }
 
+fn parse_soundness_mode(value: &str) -> Result<SoundnessMode, String> {
+    SoundnessMode::from_cli_name(value).ok_or_else(|| {
+        let names: Vec<_> = SoundnessMode::ALL
+            .iter()
+            .map(|mode| mode.cli_name())
+            .collect();
+        format!("soundness mode must be one of {}", names.join(", "))
+    })
+}
+
 fn parse_case(value: &str) -> Result<(String, String), String> {
     let (circuit, configuration) = value
         .split_once('=')
@@ -494,4 +512,22 @@ fn parse_arena_gib(value: &str) -> Result<usize, String> {
         ));
     }
     Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cpu_soundness_mode_defaults_to_pessimistic_and_parses_cli_names() {
+        let parse = |extra: &[&str]| {
+            Arguments::try_parse_from(["gpu_memory_sweep", "--list"].iter().chain(extra))
+                .map(|a| a.soundness_mode)
+        };
+        assert_eq!(parse(&[]).unwrap(), SoundnessMode::PessimisticConjecture);
+        for &mode in SoundnessMode::ALL {
+            assert_eq!(parse(&["--soundness-mode", mode.cli_name()]).unwrap(), mode);
+        }
+        assert!(parse(&["--soundness-mode", "optimistic"]).is_err());
+    }
 }

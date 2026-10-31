@@ -1,9 +1,9 @@
 use base64::Engine;
 use clap::{Parser, Subcommand, ValueEnum};
 use prover_pipeline::{
-    default_backend_for_build, deserialize_from_file, serialize_to_file, u32_from_hex_string,
-    ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact, ProofTarget, ProverBackend,
-    RamSize,
+    default_backend_for_build, deserialize_from_file, load_program_words, serialize_to_file,
+    u32_from_hex_string, ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact,
+    ProofTarget, ProverBackend, RamSize, SoundnessMode,
 };
 use reqwest::blocking::Client;
 use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
@@ -13,7 +13,6 @@ use riscv_transpiler::ir::{
 use riscv_transpiler::vm::{DelegationsCounters, RamWithRomRegion, SimpleTape, State, VM};
 use serde::Serialize;
 use serde_json::Value;
-use setups::read_binary;
 use std::path::Path;
 use std::{fs, iter};
 
@@ -65,6 +64,13 @@ struct BackendSettings {
     replay_threads: Option<usize>,
 }
 
+/// `--soundness-mode` values: the [`SoundnessMode::cli_name`] spellings.
+fn soundness_mode_parser() -> impl clap::builder::TypedValueParser<Value = SoundnessMode> {
+    use clap::builder::TypedValueParser;
+    clap::builder::PossibleValuesParser::new(SoundnessMode::ALL.iter().map(|mode| mode.cli_name()))
+        .map(|name: String| SoundnessMode::from_cli_name(&name).expect("a possible value"))
+}
+
 #[derive(Clone, Debug, ValueEnum)]
 enum RunMachine {
     FullUnsigned,
@@ -75,10 +81,15 @@ enum RunMachine {
 enum Commands {
     /// Generate proof artifact for a single input.
     Prove {
-        #[arg(short, long)]
-        bin: String,
-        #[arg(long)]
+        /// Flat ROM image (`objcopy -O binary`); pair with `--text`, or use `--elf` instead.
+        #[arg(short, long, required_unless_present = "elf", conflicts_with = "elf")]
+        bin: Option<String>,
+        /// Text section dump; derived from `--bin` when omitted.
+        #[arg(long, conflicts_with = "elf")]
         text: Option<String>,
+        /// The linked ELF file, replacing `--bin`/`--text`.
+        #[arg(long)]
+        elf: Option<String>,
         #[clap(flatten)]
         input: InputConfig,
         #[arg(long, default_value = "output")]
@@ -91,16 +102,29 @@ enum Commands {
         backend: Option<ProverBackend>,
         #[arg(long, default_value_t = 0)]
         batch_id: u64,
+        /// Soundness accounting of every proof layer and of its verifier. A mode the backend
+        /// cannot prove is rejected before the input is read.
+        #[arg(
+            long,
+            value_parser = soundness_mode_parser(),
+            default_value = SoundnessMode::DEFAULT.cli_name()
+        )]
+        soundness_mode: SoundnessMode,
 
         #[clap(flatten)]
         settings: BackendSettings,
     },
     /// Generate proof artifacts for many input files.
     ProveBatch {
-        #[arg(short, long)]
-        bin: String,
-        #[arg(long)]
+        /// Flat ROM image (`objcopy -O binary`); pair with `--text`, or use `--elf` instead.
+        #[arg(short, long, required_unless_present = "elf", conflicts_with = "elf")]
+        bin: Option<String>,
+        /// Text section dump; derived from `--bin` when omitted.
+        #[arg(long, conflicts_with = "elf")]
         text: Option<String>,
+        /// The linked ELF file, replacing `--bin`/`--text`.
+        #[arg(long)]
+        elf: Option<String>,
         #[arg(long)]
         input_file: Vec<String>,
         #[arg(long, value_enum, default_value = "hex")]
@@ -113,6 +137,15 @@ enum Commands {
         backend: Option<ProverBackend>,
         #[arg(long, default_value_t = 0)]
         batch_id_base: u64,
+        /// Soundness accounting of every proof layer and of its verifier, recorded in every
+        /// artifact and in the batch summary. A mode the backend cannot prove is rejected before
+        /// any input is read.
+        #[arg(
+            long,
+            value_parser = soundness_mode_parser(),
+            default_value = SoundnessMode::DEFAULT.cli_name()
+        )]
+        soundness_mode: SoundnessMode,
 
         #[clap(flatten)]
         settings: BackendSettings,
@@ -121,10 +154,15 @@ enum Commands {
     ContinueProof {
         #[arg(short, long)]
         proof: String,
-        #[arg(short, long)]
-        bin: String,
-        #[arg(long)]
+        /// Flat ROM image (`objcopy -O binary`); pair with `--text`, or use `--elf` instead.
+        #[arg(short, long, required_unless_present = "elf", conflicts_with = "elf")]
+        bin: Option<String>,
+        /// Text section dump; derived from `--bin` when omitted.
+        #[arg(long, conflicts_with = "elf")]
         text: Option<String>,
+        /// The linked ELF file, replacing `--bin`/`--text`.
+        #[arg(long)]
+        elf: Option<String>,
         #[arg(long, default_value = "output")]
         output_dir: String,
         #[arg(long, default_value = "proof.json")]
@@ -133,6 +171,14 @@ enum Commands {
         target: ProofTarget,
         #[arg(long, value_enum)]
         backend: Option<ProverBackend>,
+        /// Expected soundness mode of the input artifact, also used for the new layers. An artifact
+        /// in another mode is rejected before any proving; there is no conversion between modes.
+        #[arg(
+            long,
+            value_parser = soundness_mode_parser(),
+            default_value = SoundnessMode::DEFAULT.cli_name()
+        )]
+        soundness_mode: SoundnessMode,
         #[clap(flatten)]
         settings: BackendSettings,
     },
@@ -140,17 +186,35 @@ enum Commands {
     Verify {
         #[arg(short, long)]
         proof: String,
-        #[arg(short, long)]
-        bin: String,
-        #[arg(long)]
+        /// Flat ROM image (`objcopy -O binary`); pair with `--text`, or use `--elf` instead.
+        #[arg(short, long, required_unless_present = "elf", conflicts_with = "elf")]
+        bin: Option<String>,
+        /// Text section dump; derived from `--bin` when omitted.
+        #[arg(long, conflicts_with = "elf")]
         text: Option<String>,
+        /// The linked ELF file, replacing `--bin`/`--text`.
+        #[arg(long)]
+        elf: Option<String>,
+        /// Expected soundness mode of the artifact: the proof is checked with this mode's verifiers,
+        /// and an artifact claiming another mode is rejected.
+        #[arg(
+            long,
+            value_parser = soundness_mode_parser(),
+            default_value = SoundnessMode::DEFAULT.cli_name()
+        )]
+        soundness_mode: SoundnessMode,
     },
     /// Run binary via the transpiler VM.
     Run {
-        #[arg(short, long)]
-        bin: String,
-        #[arg(long)]
+        /// Flat ROM image (`objcopy -O binary`); pair with `--text`, or use `--elf` instead.
+        #[arg(short, long, required_unless_present = "elf", conflicts_with = "elf")]
+        bin: Option<String>,
+        /// Text section dump; derived from `--bin` when omitted.
+        #[arg(long, conflicts_with = "elf")]
         text: Option<String>,
+        /// The linked ELF file, replacing `--bin`/`--text`.
+        #[arg(long)]
+        elf: Option<String>,
         #[clap(flatten)]
         input: InputConfig,
         #[arg(long)]
@@ -164,6 +228,7 @@ enum Commands {
 
 #[derive(Debug, Serialize)]
 struct BatchSummary {
+    soundness_mode: &'static str,
     items: Vec<BatchSummaryItem>,
 }
 
@@ -233,11 +298,13 @@ fn parse_input_data(
 }
 
 fn make_prover_config(
+    soundness_mode: SoundnessMode,
     target: ProofTarget,
     backend: Option<ProverBackend>,
     settings: BackendSettings,
 ) -> ProgramProverConfig {
     ProgramProverConfig {
+        soundness_mode,
         target,
         backend: backend.unwrap_or_else(default_backend_for_build),
         cycles_bound: settings.cycles_bound,
@@ -281,23 +348,24 @@ fn run_cli() {
         Commands::Prove {
             bin,
             text,
+            elf,
             input,
             output_dir,
             output_file,
             target,
             backend,
             batch_id,
+            soundness_mode,
             settings,
         } => {
-            let input_words = fetch_input_data(&input)
-                .expect("Failed to fetch input")
-                .unwrap_or_default();
-
-            let source = ProgramSource::from_paths(bin, text);
-            let prover_config = make_prover_config(target, backend, settings);
+            let source = program_source(bin, text, elf);
+            let prover_config = make_prover_config(soundness_mode, target, backend, settings);
 
             let mut prover = ProgramProver::new(source, prover_config)
                 .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
+            let input_words = fetch_input_data(&input)
+                .expect("Failed to fetch input")
+                .unwrap_or_default();
             let artifact = prover
                 .prove_words(batch_id, input_words)
                 .unwrap_or_else(|e| panic!("Proving failed: {}", e));
@@ -307,23 +375,28 @@ fn run_cli() {
         Commands::ProveBatch {
             bin,
             text,
+            elf,
             input_file,
             input_type,
             output_dir,
             target,
             backend,
             batch_id_base,
+            soundness_mode,
             settings,
         } => {
-            let source = ProgramSource::from_paths(bin, text);
-            let prover_config = make_prover_config(target, backend, settings);
+            let source = program_source(bin, text, elf);
+            let prover_config = make_prover_config(soundness_mode, target, backend, settings);
 
             let mut prover = ProgramProver::new(source, prover_config)
                 .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
 
             fs::create_dir_all(&output_dir).expect("Failed to create output directory");
 
-            let mut summary = BatchSummary { items: Vec::new() };
+            let mut summary = BatchSummary {
+                soundness_mode: soundness_mode.cli_name(),
+                items: Vec::new(),
+            };
 
             for (idx, input_path) in input_file.iter().enumerate() {
                 let input_data = fs::read_to_string(input_path)
@@ -359,15 +432,20 @@ fn run_cli() {
             proof,
             bin,
             text,
+            elf,
             output_dir,
             output_file,
             target,
             backend,
+            soundness_mode,
             settings,
         } => {
             let input_artifact: ProofArtifact = deserialize_from_file(&proof);
-            let source = ProgramSource::from_paths(bin, text);
-            let prover_config = make_prover_config(target, backend, settings);
+            input_artifact
+                .validate_expected_mode(soundness_mode)
+                .unwrap_or_else(|e| panic!("Continuation rejected: {}", e));
+            let source = program_source(bin, text, elf);
+            let prover_config = make_prover_config(soundness_mode, target, backend, settings);
 
             let mut prover = ProgramProver::new(source, prover_config)
                 .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
@@ -377,16 +455,24 @@ fn run_cli() {
 
             write_artifact(&artifact, &output_dir, &output_file);
         }
-        Commands::Verify { proof, bin, text } => {
+        Commands::Verify {
+            proof,
+            bin,
+            text,
+            elf,
+            soundness_mode,
+        } => {
             let artifact: ProofArtifact = deserialize_from_file(&proof);
-            let source = ProgramSource::from_paths(bin, text);
-            let output = prover_pipeline::verify_artifact(&artifact, &source)
-                .unwrap_or_else(|e| panic!("Verification failed: {}", e));
+            let source = program_source(bin, text, elf);
+            let output =
+                prover_pipeline::verify_artifact_in_mode(&artifact, &source, soundness_mode)
+                    .unwrap_or_else(|e| panic!("Verification failed: {}", e));
             println!("PROOF IS VALID. output={:?}", output);
         }
         Commands::Run {
             bin,
             text,
+            elf,
             input,
             cycles,
             expected_results,
@@ -395,7 +481,7 @@ fn run_cli() {
             let input_words = fetch_input_data(&input)
                 .expect("Failed to fetch input")
                 .unwrap_or_default();
-            let source = ProgramSource::from_paths(bin, text);
+            let source = program_source(bin, text, elf);
             run_binary(
                 &source,
                 cycles.unwrap_or(DEFAULT_CYCLES),
@@ -407,6 +493,15 @@ fn run_cli() {
     }
 }
 
+fn program_source(bin: Option<String>, text: Option<String>, elf: Option<String>) -> ProgramSource {
+    match (bin, text, elf) {
+        (Some(bin), Some(text), None) => ProgramSource::legacy_binaries(bin, text),
+        (Some(bin), None, None) => ProgramSource::legacy_binaries_from_bin(bin),
+        (None, None, Some(elf)) => ProgramSource::elf(elf),
+        _ => unreachable!("clap enforces exactly one of --bin / --elf"),
+    }
+}
+
 fn run_binary(
     source: &ProgramSource,
     cycles: usize,
@@ -414,8 +509,8 @@ fn run_binary(
     expected_results: Option<Vec<u32>>,
     machine: RunMachine,
 ) {
-    let (_, binary_image) = read_binary(Path::new(&source.bin_path));
-    let (_, text_section) = read_binary(Path::new(&source.text_path));
+    let (binary_image, text_section) =
+        load_program_words(source).unwrap_or_else(|e| panic!("Failed to load program: {}", e));
 
     let (registers, finished) = match machine {
         RunMachine::FullUnsigned => run_binary_with_decoder::<FullUnsignedMachineDecoderConfig>(
@@ -498,4 +593,123 @@ fn run_binary_with_decoder<D: DecodingOptions>(
     );
 
     (state.registers.map(|register| register.value), finished)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    const MODE_COMMANDS: [&[&str]; 4] = [
+        &["prove", "--bin", "app.bin"],
+        &["prove-batch", "--bin", "app.bin"],
+        &[
+            "continue-proof",
+            "--proof",
+            "proof.json",
+            "--bin",
+            "app.bin",
+        ],
+        &["verify", "--proof", "proof.json", "--bin", "app.bin"],
+    ];
+
+    fn parse(args: &[&str]) -> Result<Cli, clap::Error> {
+        Cli::try_parse_from(iter::once("cli").chain(args.iter().copied()))
+    }
+
+    fn with_mode<'a>(command: &[&'a str], mode: &'a str) -> Vec<&'a str> {
+        command
+            .iter()
+            .copied()
+            .chain(["--soundness-mode", mode])
+            .collect()
+    }
+
+    fn mode_of(command: Commands) -> SoundnessMode {
+        match command {
+            Commands::Prove { soundness_mode, .. }
+            | Commands::ProveBatch { soundness_mode, .. }
+            | Commands::ContinueProof { soundness_mode, .. }
+            | Commands::Verify { soundness_mode, .. } => soundness_mode,
+            Commands::Run { .. } => panic!("run takes no soundness mode"),
+        }
+    }
+
+    #[test]
+    fn soundness_mode_defaults_to_pessimistic_conjecture() {
+        assert_eq!(SoundnessMode::DEFAULT, SoundnessMode::PessimisticConjecture);
+        for command in MODE_COMMANDS {
+            let parsed = parse(command).unwrap();
+            assert_eq!(
+                mode_of(parsed.command),
+                SoundnessMode::PessimisticConjecture,
+                "{command:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_mode_is_accepted_by_its_cli_name() {
+        for command in MODE_COMMANDS {
+            for mode in SoundnessMode::ALL {
+                let parsed = parse(&with_mode(command, mode.cli_name())).unwrap();
+                assert_eq!(mode_of(parsed.command), *mode, "{command:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn other_spellings_are_rejected() {
+        for command in MODE_COMMANDS {
+            for spelling in ["ethproofs", "EthproofsSoundnessCalc", "ethproofs_soundcalc"] {
+                let err = parse(&with_mode(command, spelling)).err().unwrap();
+                assert_eq!(err.kind(), clap::error::ErrorKind::InvalidValue);
+            }
+        }
+    }
+
+    #[test]
+    fn run_takes_no_soundness_mode() {
+        let err = parse(&with_mode(
+            &["run", "--bin", "app.bin"],
+            SoundnessMode::DEFAULT.cli_name(),
+        ))
+        .err()
+        .unwrap();
+        assert_eq!(err.kind(), clap::error::ErrorKind::UnknownArgument);
+    }
+
+    #[test]
+    fn prover_config_carries_the_selected_mode() {
+        for mode in SoundnessMode::ALL {
+            let parsed = parse(&with_mode(MODE_COMMANDS[0], mode.cli_name())).unwrap();
+            let Commands::Prove {
+                soundness_mode,
+                target,
+                backend,
+                settings,
+                ..
+            } = parsed.command
+            else {
+                unreachable!("parsed a prove command")
+            };
+            let config = make_prover_config(soundness_mode, target, backend, settings);
+            assert_eq!(config.soundness_mode, *mode);
+        }
+    }
+
+    #[test]
+    fn help_lists_every_mode() {
+        let mut cli = Cli::command();
+        for name in ["prove", "prove-batch", "continue-proof", "verify"] {
+            let help = cli
+                .find_subcommand_mut(name)
+                .unwrap()
+                .render_long_help()
+                .to_string();
+            for mode in SoundnessMode::ALL {
+                assert!(help.contains(mode.cli_name()), "{name}: {help}");
+            }
+        }
+    }
 }

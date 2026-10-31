@@ -33,23 +33,7 @@ pub(super) fn extract_non_memory_family<const FAMILY_IDX: u8>(
 
     let cycles_bound = 1 << 20;
 
-    let binary = std::fs::read(test_artifact_path(binary_path)).unwrap();
-    assert_eq!(binary.len() % 4, 0);
-    let binary: Vec<_> = binary
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
-
-    let text_section = std::fs::read(test_artifact_path(text_path)).unwrap();
-    assert_eq!(text_section.len() % 4, 0);
-    let text_section: Vec<_> = text_section
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
+    let (binary, text_section) = load_test_program(binary_path, text_path);
 
     let instructions: Vec<Instruction> =
         preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
@@ -166,6 +150,7 @@ pub(super) fn finish_proof_fixture(
     compute_cpu_reference: bool,
     device_allocator_block_log_size: u32,
     security_level: SecurityLevel,
+    mode: circuit_common::SoundnessMode,
 ) -> (
     BasicUnrolledFixture,
     Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
@@ -194,7 +179,12 @@ pub(super) fn finish_proof_fixture(
     };
 
     let fixture_circuit_type = circuit_type;
-    let prover_config = crate::config::prover_config(fixture_circuit_type, security_level).unwrap();
+    let prover_config = prover_config_in_mode(
+        fixture_circuit_type,
+        &compiled_circuit,
+        security_level,
+        mode,
+    );
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = CpuGKRSetup::construct(
         table_driver,
@@ -215,7 +205,7 @@ pub(super) fn finish_proof_fixture(
     let gpu_setup_host = Arc::new(
         GpuGKRSetupHost::precompute_from_cpu_setup(
             &setup,
-            whir_schedule.base_lde_factor.trailing_zeros(),
+            whir_schedule.base_lde_factor_log2() as u32,
             1,
             whir_schedule.cap_size.trailing_zeros(),
             &context,
@@ -334,16 +324,10 @@ pub(super) fn finish_proof_fixture(
 
     // Extract per-coset memory tree caps from the CPU proof (needed for the new prove signature).
     let memory_tree_caps = if let Some(ref cpu_proof) = expected_cpu_proof {
-        let combined_cap = &cpu_proof.whir_proof.memory_commitment.commitment.cap;
-        let lde_factor = whir_schedule.base_lde_factor;
-        let subcap_size = combined_cap.cap.len() / lde_factor;
-        combined_cap
-            .cap
-            .chunks_exact(subcap_size)
-            .map(|chunk| MerkleTreeCapVarLength {
-                cap: chunk.to_vec(),
-            })
-            .collect_vec()
+        natural_coset_caps_from_cap(
+            &cpu_proof.whir_proof.memory_commitment.commitment.cap,
+            whir_schedule.base_lde_factor(),
+        )
     } else {
         compute_memory_tree_caps_for_fixture()
     };
@@ -422,6 +406,7 @@ pub(super) fn prepare_unrolled_non_memory_proof_fixture<const FAMILY_IDX: u8>(
         compute_cpu_reference,
         default_fixture_device_allocator_block_log_size(),
         crate::upstream::SecurityLevel::Sec100,
+        circuit_common::SoundnessMode::DEFAULT,
     )
 }
 
@@ -440,23 +425,7 @@ pub(super) fn extract_memory_family<const FAMILY_IDX: u8>(
 
     let cycles_bound = 1 << 20;
 
-    let binary = std::fs::read(test_artifact_path(binary_path)).unwrap();
-    assert_eq!(binary.len() % 4, 0);
-    let binary: Vec<_> = binary
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
-
-    let text_section = std::fs::read(test_artifact_path(text_path)).unwrap();
-    assert_eq!(text_section.len() % 4, 0);
-    let text_section: Vec<_> = text_section
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
+    let (binary, text_section) = load_test_program(binary_path, text_path);
 
     let instructions: Vec<Instruction> =
         preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
@@ -622,7 +591,7 @@ pub(super) fn finish_proof_fixture_memory(
     let gpu_setup_host = Arc::new(
         GpuGKRSetupHost::precompute_from_cpu_setup(
             &setup,
-            whir_schedule.base_lde_factor.trailing_zeros(),
+            whir_schedule.base_lde_factor_log2() as u32,
             1,
             whir_schedule.cap_size.trailing_zeros(),
             &context,
@@ -736,16 +705,10 @@ pub(super) fn finish_proof_fixture_memory(
     };
 
     let memory_tree_caps = if let Some(ref cpu_proof) = expected_cpu_proof {
-        let combined_cap = &cpu_proof.whir_proof.memory_commitment.commitment.cap;
-        let lde_factor = whir_schedule.base_lde_factor;
-        let subcap_size = combined_cap.cap.len() / lde_factor;
-        combined_cap
-            .cap
-            .chunks_exact(subcap_size)
-            .map(|chunk| MerkleTreeCapVarLength {
-                cap: chunk.to_vec(),
-            })
-            .collect_vec()
+        natural_coset_caps_from_cap(
+            &cpu_proof.whir_proof.memory_commitment.commitment.cap,
+            whir_schedule.base_lde_factor(),
+        )
     } else {
         compute_memory_tree_caps_for_fixture()
     };
@@ -855,6 +818,7 @@ pub(super) fn prepare_basic_unrolled_fixture(
         build_config.compute_cpu_reference,
         build_config.device_allocator_block_log_size,
         build_config.security_level,
+        build_config.mode,
     )
 }
 
@@ -871,6 +835,7 @@ pub(crate) fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixtur
             compute_cpu_reference: true,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
             security_level: crate::upstream::SecurityLevel::Sec100,
+            mode: circuit_common::SoundnessMode::DEFAULT,
         });
     BasicUnrolledProofFixture {
         base,
@@ -896,6 +861,33 @@ pub(crate) fn prepare_basic_unrolled_proof_fixture_sec100() -> BasicUnrolledProo
             compute_cpu_reference: true,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
             security_level: crate::upstream::SecurityLevel::Sec100,
+            mode: circuit_common::SoundnessMode::DEFAULT,
+        });
+    BasicUnrolledProofFixture {
+        base,
+        expected_cpu_proof: expected_cpu_proof
+            .expect("proof fixture must include the CPU reference proof"),
+    }
+}
+
+/// [`prepare_basic_unrolled_proof_fixture_sec100`] with the CPU reference
+/// and the GPU proof both made under `mode`'s config.
+pub(crate) fn prepare_basic_unrolled_proof_fixture_in_mode(
+    mode: circuit_common::SoundnessMode,
+) -> BasicUnrolledProofFixture {
+    let (base, expected_cpu_proof) =
+        prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
+            binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
+            text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
+            layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
+            circuit_type: CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+            )),
+            non_determinism_reads: &[15, 1],
+            compute_cpu_reference: true,
+            device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
+            security_level: crate::upstream::SecurityLevel::Sec100,
+            mode,
         });
     BasicUnrolledProofFixture {
         base,
@@ -917,6 +909,7 @@ pub(super) fn prepare_basic_unrolled_profiling_fixture() -> BasicUnrolledFixture
             compute_cpu_reference: false,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
             security_level: crate::upstream::SecurityLevel::Sec100,
+            mode: circuit_common::SoundnessMode::DEFAULT,
         });
     assert!(
         expected_cpu_proof.is_none(),

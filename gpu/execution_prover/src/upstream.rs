@@ -15,9 +15,13 @@ pub use cs::gkr_compiler::GKRCircuitArtifact;
 pub use common_constants::ROM_WORD_SIZE;
 
 // `prover` — CPU prover types the GPU orchestrator interoperates with.
+pub use field::PrimeField;
 pub use prover::definitions::{GKRExternalChallenges, SecurityLevel};
 pub use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 pub use prover::gkr::prover::GKRProof;
+pub use prover::gkr::prover_config::commitment_geometry::BaseCommitmentGeometry;
+pub use prover::gkr::prover_config::CommitmentMode;
+pub use prover::gkr::prover_config::{BaseColumns, ProverConfig};
 pub use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 
 // `setups` — per-circuit witness evaluators carrying the decoder tables.

@@ -87,6 +87,33 @@ pub(super) fn host_forward_ntt_single_coset(
     evals
 }
 
+/// Independent CPU reference for column-major natural monomials, returning
+/// bitreversed evaluations in coset-major slabs. No GPU reference is used.
+pub(super) fn host_cosets_from_natural_monomials(
+    monomials: &[BF],
+    log_n: usize,
+    log_f: usize,
+) -> Vec<Vec<BF>> {
+    let n = 1usize << log_n;
+    assert_eq!(monomials.len() % n, 0);
+    let worker = Worker::new_with_num_threads(4);
+    let twiddles = precompute_twiddles_for_fft::<BF, Global, false>(n, &worker);
+    (0..1usize << log_f)
+        .map(|coset| {
+            let mut result = Vec::with_capacity(monomials.len());
+            for column in monomials.chunks(n) {
+                let mut bitrev = column.to_vec();
+                bitreverse_enumeration_inplace(&mut bitrev);
+                let mut values =
+                    host_forward_ntt_single_coset(&bitrev, log_n, log_f, coset, &twiddles[..n / 2]);
+                bitreverse_enumeration_inplace(&mut values);
+                result.extend(values);
+            }
+            result
+        })
+        .collect()
+}
+
 #[cfg(not(no_cuda))]
 pub(super) fn run_evals_to_monomials(
     log_n_range: Range<usize>,

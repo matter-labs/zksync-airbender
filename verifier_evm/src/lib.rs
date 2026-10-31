@@ -8,8 +8,9 @@
 //!   WHIR verified in ONE transaction, the GKR→WHIR handoff state passed in memory, the verified
 //!   statement reported to a constructor-pinned `IVerificationRegistry`.
 //! - [`flatten`] / [`seed`]: from a proof, compute the single-transaction calldata
-//!   ([`merged_calldata`] = GKR stream ‖ WHIR proof stream), the intermediate GKR→WHIR seed and
-//!   the registry mark ([`verified_mark`]) the verifier reports.
+//!   ([`merged_calldata`] = GKR stream ‖ WHIR proof stream) and the registry mark
+//!   ([`verified_mark`]) the verifier reports. The GKR→WHIR state is never serialized: the
+//!   merged verifier keeps it in memory.
 //!
 //! Nothing in `src/` reads on-disk fixtures; the Solidity templates are embedded via
 //! `include_str!`. Intermediate/debug artifacts live under `debug_data/` and are produced by
@@ -21,4 +22,4 @@ pub mod seed;
 
 pub use flatten::{gkr_calldata, merged_calldata, whir_stream};
 pub use generator::{emit_circuit_yul, generate_verifier};
-pub use seed::{commit_seed_preimage, gkr_whir_handoff_seed, verified_mark, VerifiedMark};
+pub use seed::{commit_seed_preimage, verified_mark, VerifiedMark};

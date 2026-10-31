@@ -4,6 +4,7 @@ use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::SecurityLevel;
 use execution_prover::backend::ExecutionBackend;
 use execution_prover::config::ExecutionProverConfiguration;
+use execution_prover::config::{ProvingSelection, SelectionError, SoundnessMode};
 use execution_prover::messages::WorkBatch;
 use execution_prover::setup::CanonicalCircuitSetup;
 use execution_prover_model::allocator::CpuTraceAllocator;
@@ -23,6 +24,10 @@ impl ExecutionBackend for CpuBackend {
     type Memory = Box<MemoryHolder>;
     type Snapshot = Box<TraceChunk>;
     type Precomputations = CpuCircuitPrecomputations;
+
+    fn validate_selection(_selection: ProvingSelection) -> Result<(), SelectionError> {
+        Ok(())
+    }
 
     fn initialize(
         _config: &ExecutionProverConfiguration<Self::Configuration>,
@@ -51,9 +56,26 @@ impl ExecutionBackend for CpuBackend {
         &self,
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
-        _security: SecurityLevel,
+        security: SecurityLevel,
     ) -> Self::Precomputations {
-        CpuCircuitPrecomputations::from_canonical(circuit, setup)
+        self.prepare_with_selection(
+            circuit,
+            setup,
+            ProvingSelection {
+                security_level: security,
+                soundness_mode: SoundnessMode::PessimisticConjecture,
+            },
+        )
+        .unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    fn prepare_with_selection(
+        &self,
+        circuit: CircuitType,
+        setup: CanonicalCircuitSetup,
+        selection: ProvingSelection,
+    ) -> Result<Self::Precomputations, SelectionError> {
+        CpuCircuitPrecomputations::from_canonical(circuit, setup, selection)
     }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {

@@ -5,8 +5,8 @@
 To create a proof you need:
 
 - the CLI tool in `tools/cli`
-- your compiled program as `app.bin`
-- optionally, the paired `app.text` file and an input file
+- your compiled program, either as the linked `app.elf` or as the flat `app.bin` image
+- optionally, the paired `app.text` file (with `app.bin`) and an input file
 
 The default proving target is `recursion-unified`, so a minimal CPU proof command is:
 
@@ -32,6 +32,8 @@ In practice, the programs we prove follow these rules:
 - final public outputs are reported through the standard success/finish convention used by the examples
 
 If you have only `app.bin`, the CLI will derive `app.text` automatically by replacing the `.bin` suffix with `.text`.
+
+Every command that takes `--bin`/`--text` also accepts `--elf app.elf` instead: the flat ROM image and the text section are then read straight from the linked ELF (`riscv_transpiler::elf::read_elf`), producing the same bytes `cargo objcopy` dumps, so proof artifacts made from one form verify against the other.
 
 ## Running a program
 

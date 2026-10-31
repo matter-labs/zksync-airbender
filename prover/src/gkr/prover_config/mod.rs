@@ -1,10 +1,15 @@
 use std::collections::BTreeMap;
 
 use crate::definitions::SecurityLevel;
-use crate::gkr::{prover::WhirSchedule, whir::proximity_testing_modes::ProximityTestingMode};
+use crate::gkr::whir::proximity_testing_modes::ProximityTestingMode;
 
+pub mod commitment_geometry;
 pub mod example_configs;
 pub mod pow_bits;
+pub mod whir_schedule;
+
+pub use example_configs::{BaseColumns, BasePacking, SoundnessMode, WhirInput};
+pub use whir_schedule::{WhirBaseRoundSchedule, WhirInternalRound, WhirSchedule};
 
 /// One step of a sumcheck schedule: how many variables the step binds and
 /// with which evaluation strategy. The prover binds variables LSB-first
@@ -234,21 +239,27 @@ pub enum CommitmentMode {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(from = "legacy_compat::ProverConfigRepr")]
 pub struct ProverConfig {
     /// log2 of the circuit trace length this config was computed for. The
     /// prove entries assert the caller-supplied `trace_len` matches, so a
     /// config can never silently be applied to a different-size circuit
     /// (schedules, query counts and PoW splits are all size-specific).
     pub trace_len_log2: usize,
-    pub lde_factor: usize,
+    /// Merkle cap size of every committed oracle; equal to
+    /// `whir_schedule.cap_size` (asserted by the validation).
     pub cap_size: usize,
-    pub base_oracles_values_per_leaf: usize,
     // we do not expect any challenges for sumcheck, as it's soundness
     // error is very small
     pub sumcheck_explicit_output_size_log_2: usize,
-    // Both proof-of-work bit counts (lookup challenges, WHIR batching) are derived
-    // per-circuit from `security_level` via `pow_bits`, so neither is stored here.
+    // The lookup-challenge proof-of-work bit count is derived per-circuit from
+    // `security_level` via `pow_bits`; the WHIR-side PoW knobs live in the
+    // schedule.
     pub security_level: SecurityLevel,
+    /// The whole WHIR geometry: the base round ([`WhirBaseRoundSchedule`]:
+    /// the base oracles' LDE factor, physical packing, round-0 fold — `0` is
+    /// virtual packing with one value per column per leaf — and base query
+    /// draw), and one [`WhirInternalRound`] per intermediate oracle.
     pub whir_schedule: WhirSchedule,
     /// Step schedule for the same-size (per-circuit batched relation) layer
     /// sumchecks, applied to every same-size layer regardless of its input
@@ -262,18 +273,6 @@ pub struct ProverConfig {
     /// NaiveSumcheck for every round otherwise. Each entry must satisfy
     /// [`validate_sumcheck_schedule`] for its key.
     pub dimension_reducing_sumcheck_schedule: BTreeMap<usize, Vec<SumcheckStep>>,
-    /// log2 of the BASE-COMMITMENT packing factor. Every committed column set
-    /// (memory and witness — separately in `SeparateMemoryAndWitness`, as one
-    /// merged set in the merged modes — and the setup) is packed by
-    /// `2^pack_log2` consecutive columns into ONE `(trace_len_log2 +
-    /// pack_log2)`-variate multilinear (block `y` of the packed poly is
-    /// sub-poly `y`; a short tail group is zero-padded), which is LDE'd and
-    /// Merkle-committed over the enlarged domain. The WHIR message is then
-    /// `2^(trace_len_log2 + pack_log2)` and the base claims are merged with
-    /// `pack_log2` extra claim-point coordinates drawn after the GKR phase.
-    /// `0` = unpacked (one committed column per base column). Twiddles passed
-    /// to the prover must cover the `2^(trace_len_log2 + pack_log2)` domain.
-    pub pack_log2: usize,
     /// Whether memory and witness are committed as two base oracles or as one
     /// merged oracle (see [`CommitmentMode`]). Decides the transcript layout,
     /// the committed (packed) column grouping and thus the generated verifier.
@@ -281,10 +280,11 @@ pub struct ProverConfig {
 }
 
 impl ProverConfig {
-    /// A bare config for WHIR-only drivers and tests: an unpacked
+    /// A bare config for WHIR-only drivers and tests: a
     /// `SeparateMemoryAndWitness` commitment of `2^trace_len_log2` columns
-    /// under `whir_schedule` (the base LDE factor, cap and round-0 leaf size are
-    /// the schedule's); the GKR-side schedules are the all-naive defaults.
+    /// under `whir_schedule` (the base LDE factor, cap, packing and round-0
+    /// leaf size are the schedule's); the GKR-side schedules are the all-naive
+    /// defaults.
     pub fn whir_only(
         trace_len_log2: usize,
         whir_schedule: WhirSchedule,
@@ -292,16 +292,13 @@ impl ProverConfig {
     ) -> Self {
         Self {
             trace_len_log2,
-            lde_factor: whir_schedule.base_lde_factor,
             cap_size: whir_schedule.cap_size,
-            base_oracles_values_per_leaf: 1usize << whir_schedule.whir_steps_schedule[0],
             sumcheck_explicit_output_size_log_2:
                 crate::definitions::DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
             security_level,
             whir_schedule,
             same_size_sumcheck_schedule: naive_same_size_schedule(),
             dimension_reducing_sumcheck_schedule: Default::default(),
-            pack_log2: 0,
             commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
         }
     }
@@ -311,11 +308,55 @@ impl ProverConfig {
         matches!(self.commitment_mode, CommitmentMode::MergedMemoryAndWitness)
     }
 
+    /// The base round of the WHIR schedule: the base oracles' rate, packing,
+    /// round-0 fold and query draw (see [`WhirBaseRoundSchedule`]).
+    pub fn base_round(&self) -> &WhirBaseRoundSchedule {
+        &self.whir_schedule.base_round
+    }
+
+    /// log2 of the BASE-COMMITMENT packing factor. Every committed column set
+    /// (memory and witness — separately in `SeparateMemoryAndWitness`, as one
+    /// merged set in the merged modes — and the setup) is packed by
+    /// `2^pack_log2` consecutive columns into ONE `(trace_len_log2 +
+    /// pack_log2)`-variate multilinear (block `y` of the packed poly is
+    /// sub-poly `y`; a short tail group is zero-padded), which is LDE'd and
+    /// Merkle-committed over the enlarged domain. The WHIR message is then
+    /// `2^(trace_len_log2 + pack_log2)` and the base claims are merged with
+    /// `pack_log2` extra claim-point coordinates drawn after the GKR phase.
+    /// `0` = unpacked (one committed column per base column). Independent of
+    /// the round-0 fold (virtual packing). Twiddles passed to the prover must
+    /// cover the `2^(trace_len_log2 + pack_log2)` domain.
+    pub fn pack_log2(&self) -> usize {
+        self.whir_schedule.pack_log2()
+    }
+
+    /// The base oracles' LDE factor.
+    pub fn lde_factor(&self) -> usize {
+        self.whir_schedule.base_lde_factor()
+    }
+
+    pub fn base_lde_factor_log2(&self) -> usize {
+        self.whir_schedule.base_lde_factor_log2()
+    }
+
+    /// Values every base-oracle leaf holds per committed column: one round-0
+    /// fold worth (`2^folding_log2` under explicit packing, `1` under virtual
+    /// packing).
+    pub fn base_oracles_values_per_leaf(&self) -> usize {
+        self.whir_schedule.base_values_per_leaf()
+    }
+
+    /// Whether the base round is the virtual-packing (one value per column per
+    /// leaf, no round-0 sumcheck) one.
+    pub fn is_virtual_packing(&self) -> bool {
+        self.whir_schedule.is_virtual_packing()
+    }
+
     /// log2 of the WHIR message size — the committed (packed) column length
     /// `trace_len_log2 + pack_log2`; equal to [`Self::trace_len_log2`] when
     /// unpacked.
     pub fn whir_message_size_log2(&self) -> usize {
-        self.trace_len_log2 + self.pack_log2
+        self.trace_len_log2 + self.pack_log2()
     }
 
     /// Structural validation of the WHIR schedule for a starting polynomial of
@@ -342,33 +383,43 @@ impl ProverConfig {
         use crate::definitions::DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2;
 
         let schedule = &self.whir_schedule;
-        let num_rounds = schedule.whir_steps_schedule.len();
-        assert!(num_rounds >= 1, "empty WHIR schedule");
-        assert_eq!(schedule.whir_queries_schedule.len(), num_rounds);
-        assert_eq!(schedule.whir_pow_schedule.len(), num_rounds);
-        assert_eq!(schedule.whir_steps_lde_factors.len(), num_rounds - 1);
-        assert_eq!(schedule.base_lde_factor, self.lde_factor);
-        assert_eq!(schedule.cap_size, self.cap_size);
         assert_eq!(
-            self.base_oracles_values_per_leaf,
-            1usize << schedule.whir_steps_schedule[0],
-            "base-oracle leaves hold exactly one round-0 fold worth of values"
+            message_size_log2,
+            self.whir_message_size_log2(),
+            "the WHIR message size is trace_len_log2 + pack_log2"
         );
+        let num_rounds = schedule.num_rounds();
         assert!(
-            self.lde_factor.is_power_of_two() && self.lde_factor >= 2,
+            num_rounds >= 2,
+            "a WHIR schedule needs the base round and at least one internal round"
+        );
+        assert_eq!(schedule.cap_size, self.cap_size);
+        assert!(
+            schedule.base_lde_factor_log2() >= 1,
             "base LDE factor {} must be a power of two >= 2",
-            self.lde_factor
+            schedule.base_lde_factor()
         );
         assert!(
             self.cap_size.is_power_of_two(),
             "cap size {} must be a power of two",
             self.cap_size
         );
-        for (i, lde_factor) in schedule.whir_steps_lde_factors.iter().enumerate() {
+        assert!(schedule.base_round.num_queries >= 1);
+        for (i, round) in schedule.internal_rounds.iter().enumerate() {
             assert!(
-                lde_factor.is_power_of_two() && *lde_factor >= 2,
-                "WHIR round {i} LDE factor {lde_factor} must be a power of two >= 2"
+                round.lde_factor_log2 >= 1,
+                "WHIR intermediate oracle {i} LDE factor {} must be a power of two >= 2",
+                round.lde_factor()
             );
+            assert!(
+                round.folding_log2 >= 1,
+                "WHIR intermediate oracle {i} must be folded by at least one step"
+            );
+            assert!(
+                round.num_ood_samples >= 1,
+                "WHIR intermediate oracle {i} needs at least one OOD sample"
+            );
+            assert!(round.num_queries >= 1);
         }
 
         // Merkle geometry of the oracle committed with LDE factor `lde_factor`
@@ -395,13 +446,13 @@ impl ProverConfig {
         check_tree(
             "base oracles",
             message_size_log2,
-            self.lde_factor,
-            schedule.whir_steps_schedule[0],
+            schedule.base_lde_factor(),
+            schedule.base_folding_log2(),
         );
 
         let mut poly_size_log2 = message_size_log2;
-        for (round, fold_log2) in schedule.whir_steps_schedule.iter().enumerate() {
-            assert!(*fold_log2 >= 1);
+        let fold_steps = schedule.fold_steps();
+        for (round, fold_log2) in fold_steps.iter().enumerate() {
             assert!(
                 poly_size_log2 >= *fold_log2,
                 "WHIR round {round} folds by 2^{fold_log2} but only a 2^{poly_size_log2} \
@@ -416,13 +467,14 @@ impl ProverConfig {
                      (below the 2^{DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2} plain-text floor): \
                      terminate the schedule here and ship the tail in plain text instead"
                 );
-                // the oracle committed after this round: its leaves hold one
-                // NEXT-round fold worth of values
+                // the oracle committed after this round is intermediate oracle
+                // `round`: its leaves hold one fold of ITS round worth of values
+                let oracle = &schedule.internal_rounds[round];
                 check_tree(
                     &format!("WHIR round {round} intermediate oracle"),
                     poly_size_log2,
-                    schedule.whir_steps_lde_factors[round],
-                    schedule.whir_steps_schedule[round + 1],
+                    oracle.lde_factor(),
+                    oracle.folding_log2,
                 );
             }
         }
@@ -465,34 +517,31 @@ impl WhirSchedule {
 
         {
             // base oracle queries
-            let depth =
-                trace_len_log_2 + (self.base_lde_factor.trailing_zeros() as usize) - cap_depth_cut;
-            let num_queries = self.whir_queries_schedule[0];
+            let depth = trace_len_log_2 + self.base_lde_factor_log2() - cap_depth_cut;
+            let num_queries = self.base_round.num_queries;
             whir_sumcheck_terms += num_queries;
             let cost = cost_model.single_merkle_tree_depth_cost() * depth * num_queries;
             total_cost += cost;
         }
 
-        let mut poly_size = trace_len_log_2 - self.whir_steps_schedule[0];
+        let mut poly_size = trace_len_log_2 - self.base_folding_log2();
 
-        if !self.whir_steps_lde_factors.is_empty() {
-            for i in 0..self.whir_steps_lde_factors.len() {
-                let num_queries = self.whir_queries_schedule[i + 1];
-                whir_sumcheck_terms += num_queries;
-                let rate = self.whir_steps_lde_factors[i].trailing_zeros();
-                if poly_size + (rate as usize) < cap_depth_cut {
-                    return usize::MAX;
-                }
-                let depth = poly_size + (rate as usize) - cap_depth_cut;
-                let cost = cost_model.single_merkle_tree_depth_cost() * depth * num_queries;
-                total_cost = total_cost.saturating_add(cost);
-                // and folding
-                let fold_by = self.whir_steps_schedule[i + 1];
-                let cost = num_queries
-                    .saturating_mul(cost_model.whir_leaf_hashing_and_folding_cost(fold_by as u32));
-                total_cost = total_cost.saturating_add(cost);
-                poly_size -= fold_by;
+        for round in self.internal_rounds.iter() {
+            let num_queries = round.num_queries;
+            whir_sumcheck_terms += num_queries;
+            let rate = round.lde_factor_log2;
+            if poly_size + rate < cap_depth_cut {
+                return usize::MAX;
             }
+            let depth = poly_size + rate - cap_depth_cut;
+            let cost = cost_model.single_merkle_tree_depth_cost() * depth * num_queries;
+            total_cost = total_cost.saturating_add(cost);
+            // and folding
+            let fold_by = round.folding_log2;
+            let cost = num_queries
+                .saturating_mul(cost_model.whir_leaf_hashing_and_folding_cost(fold_by as u32));
+            total_cost = total_cost.saturating_add(cost);
+            poly_size -= fold_by;
         }
         // final sumcheck
         let cost = cost_model.whir_sumcheck_terms_cost(poly_size) * whir_sumcheck_terms;
@@ -558,26 +607,28 @@ pub fn compute_best_prover_config_guess(
     // NOTE: we do not implement any complex WHIR parameters search strategy, but try to keep all WHIR commits to be
     // roughly the same complexity.
 
-    let mut whir_schedule = WhirSchedule {
-        base_lde_factor: lde_factor,
-        cap_size,
-        whir_steps_schedule: vec![1], // in all our circuits base oracles are relatively large, and packing multiple leafs
-        // in them is not obviously beneficial. So one can quickly fold by 2 and move from individual proximity checks
-        // to batched one, and then try to using `1 << whir_average_folding_rate_log_2` elements per leaf
-        whir_pow_schedule: vec![first_round_pow_bits],
-        whir_steps_lde_factors: vec![],
-        whir_queries_schedule: vec![],
-    };
-
     let base_rate = lde_factor.trailing_zeros();
-    {
+    let num_base_queries = {
         let proximity_testing_bits = whir_target_security_bits - first_round_pow_bits;
-        let num_queries = proximity_testing_mode
-            .num_queries_for_rate_and_bits_of_security(proximity_testing_bits, base_rate);
-        whir_schedule
-            .whir_queries_schedule
-            .push(num_queries as usize);
-    }
+        proximity_testing_mode
+            .num_queries_for_rate_and_bits_of_security(proximity_testing_bits, base_rate)
+    };
+    let whir_schedule = WhirSchedule {
+        cap_size,
+        base_round: WhirBaseRoundSchedule {
+            lde_factor_log2: base_rate as usize,
+            // in all our circuits base oracles are relatively large, and packing multiple leafs
+            // in them is not obviously beneficial. So one can quickly fold by 2 and move from individual proximity checks
+            // to batched one, and then try to using `1 << whir_average_folding_rate_log_2` elements per leaf
+            physical_packing_log2: 0,
+            fold_log2: 1,
+            batching_pow_bits: None,
+            folding_pow_bits: 0,
+            num_queries: num_base_queries as usize,
+            queries_pow_bits: first_round_pow_bits,
+        },
+        internal_rounds: vec![],
+    };
 
     let mut candidates = BTreeMap::new();
 
@@ -701,19 +752,24 @@ fn whir_folding_step(
                     }
                 }
                 let current_rate = path
-                    .whir_steps_lde_factors
+                    .internal_rounds
                     .last()
-                    .copied()
-                    .unwrap_or(path.base_lde_factor.trailing_zeros() as usize);
+                    .map(|r| r.lde_factor_log2)
+                    .unwrap_or(path.base_lde_factor_log2());
                 if current_rate + whir_poly_size_log_2 < path.cap_size.trailing_zeros() as usize {
                     continue;
                 }
 
                 let mut new_path = path.clone();
-                new_path.whir_pow_schedule.push(pow_bits);
-                new_path.whir_queries_schedule.push(min_queries as usize);
-                new_path.whir_steps_schedule.push(fold_by);
-                new_path.whir_steps_lde_factors.push(1usize << rate_to_use);
+                new_path.internal_rounds.push(WhirInternalRound {
+                    lde_factor_log2: rate_to_use,
+                    folding_log2: fold_by,
+                    num_queries: min_queries as usize,
+                    queries_pow_bits: pow_bits,
+                    folding_pow_bits: 0,
+                    num_ood_samples: 1,
+                    ood_pow_bits: 0,
+                });
 
                 whir_folding_step(
                     candidates,
@@ -728,6 +784,76 @@ fn whir_folding_step(
                     cost_model,
                     &new_path,
                 );
+            }
+        }
+    }
+}
+
+// LEGACY-COMPAT (delete once every tracked proof / config fixture has been
+// regenerated with the refactored layout): the pre-refactor serialized
+// `ProverConfig` carried `lde_factor`, `base_oracles_values_per_leaf` and
+// `pack_log2` as its own fields (now derived from the schedule). The decoder
+// accepts both layouts; a legacy `pack_log2` is re-applied to the (legacy,
+// unpacked-decoded) schedule, and the legacy LDE factor / leaf size are
+// asserted against it.
+mod legacy_compat {
+    use super::*;
+
+    #[derive(serde::Deserialize)]
+    pub(crate) struct ProverConfigRepr {
+        trace_len_log2: usize,
+        cap_size: usize,
+        sumcheck_explicit_output_size_log_2: usize,
+        security_level: SecurityLevel,
+        whir_schedule: WhirSchedule,
+        #[serde(default)]
+        same_size_sumcheck_schedule: Vec<SumcheckStep>,
+        #[serde(default)]
+        dimension_reducing_sumcheck_schedule: BTreeMap<usize, Vec<SumcheckStep>>,
+        commitment_mode: CommitmentMode,
+        // legacy fields
+        #[serde(default)]
+        lde_factor: Option<usize>,
+        #[serde(default)]
+        base_oracles_values_per_leaf: Option<usize>,
+        #[serde(default)]
+        pack_log2: Option<usize>,
+    }
+
+    impl From<ProverConfigRepr> for ProverConfig {
+        fn from(repr: ProverConfigRepr) -> Self {
+            let mut whir_schedule = repr.whir_schedule;
+            if let Some(pack_log2) = repr.pack_log2 {
+                let schedule_pack_log2 = &mut whir_schedule.base_round.physical_packing_log2;
+                assert!(
+                    *schedule_pack_log2 == 0 || *schedule_pack_log2 == pack_log2,
+                    "legacy config pack_log2 {pack_log2} contradicts the schedule's"
+                );
+                *schedule_pack_log2 = pack_log2;
+            }
+            if let Some(lde_factor) = repr.lde_factor {
+                assert_eq!(
+                    lde_factor,
+                    whir_schedule.base_lde_factor(),
+                    "legacy config lde_factor contradicts the schedule's"
+                );
+            }
+            if let Some(values_per_leaf) = repr.base_oracles_values_per_leaf {
+                assert_eq!(
+                    values_per_leaf,
+                    whir_schedule.base_values_per_leaf(),
+                    "legacy config base_oracles_values_per_leaf contradicts the schedule's"
+                );
+            }
+            Self {
+                trace_len_log2: repr.trace_len_log2,
+                cap_size: repr.cap_size,
+                sumcheck_explicit_output_size_log_2: repr.sumcheck_explicit_output_size_log_2,
+                security_level: repr.security_level,
+                whir_schedule,
+                same_size_sumcheck_schedule: repr.same_size_sumcheck_schedule,
+                dimension_reducing_sumcheck_schedule: repr.dimension_reducing_sumcheck_schedule,
+                commitment_mode: repr.commitment_mode,
             }
         }
     }
@@ -757,11 +883,42 @@ mod test {
         // Re-append the retired sixth round of the 2^23 schedule: its oracle
         // would be an LDE of a 2^3 polynomial, below the plain-text floor.
         let mut config = example_configs::config_for_100_bits_under_pessimistic_conjecture(23);
-        config.whir_schedule.whir_steps_schedule.push(2);
-        config.whir_schedule.whir_queries_schedule.push(5);
-        config.whir_schedule.whir_pow_schedule.push(21);
-        config.whir_schedule.whir_steps_lde_factors.push(524288);
+        config
+            .whir_schedule
+            .internal_rounds
+            .push(WhirInternalRound {
+                lde_factor_log2: 19,
+                folding_log2: 2,
+                num_queries: 5,
+                queries_pow_bits: 21,
+                folding_pow_bits: 0,
+                num_ood_samples: 1,
+                ood_pow_bits: 0,
+            });
         config.validate_for_whir_message_size(23);
+    }
+
+    #[test]
+    fn legacy_config_json_decodes_with_its_packing() {
+        // the pre-refactor serialized layout of a PACKED config: the packing
+        // lived on the config, the schedule was six flat arrays
+        let json = r#"{"trace_len_log2": 20, "lde_factor": 2, "cap_size": 16, "base_oracles_values_per_leaf": 2,
+            "sumcheck_explicit_output_size_log_2": 4, "security_level": "Sec100",
+            "whir_schedule": {"base_lde_factor": 2, "cap_size": 16, "whir_steps_schedule": [1, 5, 5, 5, 4, 3],
+                "whir_queries_schedule": [89, 23, 10, 7, 5, 5], "whir_steps_lde_factors": [16, 512, 16384, 524288, 524288],
+                "whir_pow_schedule": [26, 24, 25, 19, 21, 21]},
+            "same_size_sumcheck_schedule": [], "dimension_reducing_sumcheck_schedule": {},
+            "pack_log2": 4, "commitment_mode": "SeparateMemoryAndWitness"}"#;
+        let decoded: ProverConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(decoded.pack_log2(), 4);
+        assert_eq!(decoded.lde_factor(), 2);
+        assert_eq!(decoded.base_oracles_values_per_leaf(), 2);
+        assert_eq!(decoded.whir_message_size_log2(), 24);
+        decoded.validate_for_whir_message_size(24);
+        // the current layout round-trips
+        let reencoded = serde_json::to_string(&decoded).unwrap();
+        let again: ProverConfig = serde_json::from_str(&reencoded).unwrap();
+        assert_eq!(again, decoded);
     }
 
     #[test]
@@ -806,7 +963,7 @@ mod geometry_validation_tests {
                 trace_len_log2,
                 SecurityLevel::Sec100,
             );
-            assert!(config.cap_size > config.lde_factor);
+            assert!(config.cap_size > config.lde_factor());
             config.validate_for_whir_message_size(config.whir_message_size_log2());
         }
         let packed = packed_config_for_security_level_under_pessimistic_conjecture(
@@ -835,9 +992,9 @@ mod geometry_validation_tests {
             config_for_security_level_under_pessimistic_conjecture(20, SecurityLevel::Sec100);
         // shrink the first intermediate oracle's LDE so its tree has fewer leaves
         // than the cap: poly 2^(20 - fold0), LDE 2, leaves / 2^fold1
-        config.whir_schedule.whir_steps_lde_factors[0] = 2;
-        let fold0 = config.whir_schedule.whir_steps_schedule[0];
-        let fold1 = config.whir_schedule.whir_steps_schedule[1];
+        config.whir_schedule.internal_rounds[0].lde_factor_log2 = 1;
+        let fold0 = config.whir_schedule.base_folding_log2();
+        let fold1 = config.whir_schedule.internal_rounds[0].folding_log2;
         let leaves_log2 = 20 - fold0 + 1 - fold1;
         config.cap_size = 1 << (leaves_log2 + 1);
         config.whir_schedule.cap_size = config.cap_size;

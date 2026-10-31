@@ -23,7 +23,7 @@ use gpu_prover_context::ProverContextConfig;
 // and unreachable from this crate. See task-8 report (manifest gap).
 const TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 20;
 
-fn make_test_context(
+pub(super) fn make_test_context(
     device_allocation_blocks_count: usize,
     host_pool_size_mb: usize,
 ) -> ProverContext {
@@ -64,6 +64,62 @@ fn cpu_all_cosets(coeffs: &[BF], log_lde_factor: u32, worker: &Worker) -> Vec<Ve
         result.push(evals);
     }
     result
+}
+
+#[test]
+fn padded_raw_backing_preserves_prefix_and_zeros_recycled_tail_before_transfer() {
+    use gpu_prover_context::transfer::Transfer;
+
+    let context = make_test_context(64, 16);
+    let baseline = context.get_used_mem_current();
+    let rows = 1 << 8;
+    let mut dirty = context
+        .alloc::<u32>(8 * rows, AllocationPlacement::Bottom)
+        .unwrap();
+    let recycled_ptr = dirty.as_ptr();
+    memory_set_async(
+        // SAFETY: this exclusive allocation consists entirely of initialized-size u32 storage.
+        unsafe { dirty.transmute_mut::<u8>() },
+        0xff,
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    drop(dirty);
+    let mut holder = TraceHolder::<u32>::new_without_cosets_padded(
+        8,
+        1,
+        1,
+        3,
+        5,
+        2,
+        TreesCacheMode::CacheNone,
+        &context,
+    )
+    .unwrap();
+    assert_eq!(holder.padded_hypercube_evals().as_ptr(), recycled_ptr);
+    assert_eq!(holder.allocated_columns(), 8);
+    assert_eq!(holder.padded_hypercube_evals().len(), 8 * rows);
+    assert_eq!(holder.get_hypercube_evals().len(), 5 * rows);
+    assert_eq!(holder.get_uninit_hypercube_evals_mut().len(), 5 * rows);
+    let source: Vec<u32> = (0..5 * rows).map(|i| i as u32 + 1).collect();
+    let mut transfer = Transfer::new().unwrap();
+    transfer.record_allocated(&context).unwrap();
+    transfer.stage(&source, holder.get_uninit_hypercube_evals_mut());
+    transfer.record_transferred(&context).unwrap();
+    transfer.ensure_transferred(&context).unwrap();
+    let mut actual = vec![u32::MAX; 8 * rows];
+    memory_copy_async(
+        &mut actual,
+        holder.padded_hypercube_evals(),
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    assert_eq!(&actual[..5 * rows], source.as_slice());
+    assert!(actual[5 * rows..].iter().all(|&value| value == 0));
+    drop(transfer);
+    drop(holder);
+    assert_eq!(context.get_used_mem_current(), baseline);
 }
 
 #[test]
@@ -1179,10 +1235,28 @@ const PHYSICAL_PARTIAL_TREE_SHAPES: [(u32, u32); 2] = [(14, 1), (14, 5)];
 #[cfg(not(no_cuda))]
 fn partial_tree_from_physical_leaves_matches_natural_path() {
     let stream = CudaStream::default();
-    let log_subtree_cap_size = 1u32;
-    for (log_domain_size, log_rows_per_leaf) in PHYSICAL_PARTIAL_TREE_SHAPES {
+    let mut cases = 0;
+    for (log_domain_size, log_rows_per_leaf, log_subtree_cap_size) in
+        PHYSICAL_PARTIAL_TREE_SHAPES.into_iter().flat_map(|(n, b)| {
+            [
+                1,
+                n - b - PARTIAL_TREE_REDUCTION_LAYERS - 1,
+                n - b - PARTIAL_TREE_REDUCTION_LAYERS,
+            ]
+            .map(move |cap| (n, b, cap))
+        })
+    {
         for log_lde_factor in [0u32, 1u32] {
             for columns_count in [1usize, 3usize] {
+                let depth = log_domain_size - log_rows_per_leaf - log_subtree_cap_size;
+                let _range = gpu_core::primitives::nvtx::scoped_range(
+                    Some("ab"),
+                    match depth {
+                        5 => "g2.tree.depth5",
+                        6 => "g2.tree.depth6",
+                        _ => "g2.tree.other",
+                    },
+                );
                 let log_tree_cap_size = log_lde_factor + log_subtree_cap_size;
                 let cosets_in_tile = 1usize << log_lde_factor;
                 let rows_count = 1usize << log_domain_size;
@@ -1192,7 +1266,7 @@ fn partial_tree_from_physical_leaves_matches_natural_path() {
                 let trees_len = per_coset_tree_stride * cosets_in_tile;
                 let label = format!(
                     "n={log_domain_size} b={log_rows_per_leaf} cosets={cosets_in_tile} \
-                     cols={columns_count}"
+                     cols={columns_count} log_subcap={log_subtree_cap_size}"
                 );
 
                 let natural = deterministic_values(per_coset_evals_stride * cosets_in_tile);
@@ -1261,9 +1335,12 @@ fn partial_tree_from_physical_leaves_matches_natural_path() {
                     &stream,
                 );
                 assert_eq!(new_caps, old_caps, "{label}: unified cap");
+                cases += 1;
             }
         }
     }
+    assert_eq!(cases, 24);
+    eprintln!("physical partial trees: 24 natural/physical comparisons including depths five/six");
 }
 
 #[test]

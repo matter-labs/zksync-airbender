@@ -319,8 +319,11 @@ pub fn replay_delegation_circuit<
     buffers
 }
 
+/// Pessimistic compatibility entry point. Use [`prove_unrolled_execution_with_replayer_in_mode`]
+/// for an explicit mode.
+///
 /// The caller chooses the compute backends: the FFT/tree [`Backend`] (whose
-/// [`Backend::TwiddleSet`]s are built here, once per trace length) and the
+/// [`Backend::TwiddleSet`]s are built here, once per WHIR message length) and the
 /// [`GKRBackend`] sumcheck engine. Proof bytes are backend-independent; pass
 /// `DefaultBabyBearBackend::default()` + `DefaultBabyBearGKRBackend::default()`
 /// for the target-recommended pair.
@@ -349,6 +352,53 @@ pub fn prove_unrolled_execution_with_replayer<
     full_statement_verifier::program_proof::ProgramProof,
     BTreeMap<u32, UnrolledCircuitSetupParams>,
 ) {
+    prove_unrolled_execution_with_replayer_in_mode::<C, A, B, GB>(
+        cycles_bound,
+        binary_image,
+        text_section,
+        use_caches,
+        non_determinism,
+        ram_bound,
+        worker,
+        security_level,
+        prover::definitions::SoundnessMode::PessimisticConjecture,
+        permutation_argument_pow_bits,
+        backend,
+        gkr_backend,
+    )
+    .unwrap_or_else(|error| panic!("{error}"))
+}
+
+/// Prove every RISC-V, delegation and init/teardown circuit under one explicit mode.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Keep the replay and proving inputs explicit at the orchestration boundary."
+)]
+pub fn prove_unrolled_execution_with_replayer_in_mode<
+    C: MachineConfig,
+    A: GoodAllocator,
+    B: Backend<BabyBearField, BabyBearExt4>,
+    GB: GKRBackend<BabyBearField, BabyBearExt4>,
+>(
+    cycles_bound: usize,
+    binary_image: &[u32],
+    text_section: &[u32],
+    use_caches: bool,
+    non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
+    ram_bound: usize,
+    worker: &worker::Worker,
+    security_level: SecurityLevel,
+    soundness_mode: prover::definitions::SoundnessMode,
+    permutation_argument_pow_bits: u32,
+    backend: &B,
+    gkr_backend: &GB,
+) -> Result<
+    (
+        full_statement_verifier::program_proof::ProgramProof,
+        BTreeMap<u32, UnrolledCircuitSetupParams>,
+    ),
+    circuit_common::ConfigSelectionError,
+> {
     let mut program_proof = full_statement_verifier::program_proof::ProgramProof {
         riscv_proofs: BTreeMap::new(),
         compiled_riscv_circuits: BTreeMap::new(),
@@ -698,7 +748,7 @@ pub fn prove_unrolled_execution_with_replayer<
     let inits_and_teardowns = ram.collect_inits_and_teardowns_sets::<BabyBearField, _>(
         worker,
         inits_and_teardowns_setup
-            .prover_config(security_level)
+            .try_prover_config_in_mode(security_level, soundness_mode)?
             .trace_len_log2,
         setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS,
         None,
@@ -730,11 +780,11 @@ pub fn prove_unrolled_execution_with_replayer<
         else {
             unreachable!()
         };
-        let trace_len = setup.trace_len;
-        let prover_config = setup.prover_config(security_level).clone();
+        let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+        let message_len = 1usize << prover_config.whir_message_size_log2();
         let twiddles_for_size = twiddles
-            .entry(trace_len)
-            .or_insert_with(|| backend.make_twiddles(trace_len, worker));
+            .entry(message_len)
+            .or_insert_with(|| backend.make_twiddles(message_len, worker));
 
         for chunk in witness_chunks.iter() {
             let cap = commit_memory_tree_for_unrolled_nonmem_circuits::<
@@ -772,11 +822,11 @@ pub fn prove_unrolled_execution_with_replayer<
         else {
             unreachable!()
         };
-        let trace_len = setup.trace_len;
-        let prover_config = setup.prover_config(security_level).clone();
+        let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+        let message_len = 1usize << prover_config.whir_message_size_log2();
         let twiddles_for_size = twiddles
-            .entry(trace_len)
-            .or_insert_with(|| backend.make_twiddles(trace_len, worker));
+            .entry(message_len)
+            .or_insert_with(|| backend.make_twiddles(message_len, worker));
 
         for chunk in witness_chunks.iter() {
             let cap = commit_memory_tree_for_unrolled_mem_circuits::<
@@ -804,13 +854,12 @@ pub fn prove_unrolled_execution_with_replayer<
     // and inits and teardowns
     let mut inits_and_teardown_trees_and_top_bits = vec![];
     {
-        let trace_len = inits_and_teardowns_setup.trace_len;
+        let prover_config =
+            inits_and_teardowns_setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+        let message_len = 1usize << prover_config.whir_message_size_log2();
         let twiddles_for_size = twiddles
-            .entry(trace_len)
-            .or_insert_with(|| backend.make_twiddles(trace_len, worker));
-        let prover_config = inits_and_teardowns_setup
-            .prover_config(security_level)
-            .clone();
+            .entry(message_len)
+            .or_insert_with(|| backend.make_twiddles(message_len, worker));
         for (upper_bits, values_and_timestamps) in inits_and_teardowns.iter() {
             let cap = commit_memory_tree_for_inits_and_teardowns::<
                 BabyBearField,
@@ -842,11 +891,11 @@ pub fn prove_unrolled_execution_with_replayer<
         let delegation_circuits = &blake_circuits;
         let setup = &blake_round_function_setup;
         if !delegation_circuits.is_empty() {
-            let trace_len = setup.trace_len;
-            let prover_config = setup.prover_config(security_level).clone();
+            let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+            let message_len = 1usize << prover_config.whir_message_size_log2();
             let twiddles_for_size = twiddles
-                .entry(trace_len)
-                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
+                .entry(message_len)
+                .or_insert_with(|| backend.make_twiddles(message_len, worker));
 
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
@@ -884,11 +933,11 @@ pub fn prove_unrolled_execution_with_replayer<
         let delegation_circuits = &bigint_circuits;
         let setup = &bigint_setup;
         if !delegation_circuits.is_empty() {
-            let trace_len = setup.trace_len;
-            let prover_config = setup.prover_config(security_level).clone();
+            let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+            let message_len = 1usize << prover_config.whir_message_size_log2();
             let twiddles_for_size = twiddles
-                .entry(trace_len)
-                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
+                .entry(message_len)
+                .or_insert_with(|| backend.make_twiddles(message_len, worker));
 
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
@@ -926,11 +975,11 @@ pub fn prove_unrolled_execution_with_replayer<
         let delegation_circuits = &keccak_special5_circuits;
         let setup = &keccak_special5_setup;
         if !delegation_circuits.is_empty() {
-            let trace_len = setup.trace_len;
-            let prover_config = setup.prover_config(security_level).clone();
+            let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+            let message_len = 1usize << prover_config.whir_message_size_log2();
             let twiddles_for_size = twiddles
-                .entry(trace_len)
-                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
+                .entry(message_len)
+                .or_insert_with(|| backend.make_twiddles(message_len, worker));
 
             let mut per_tree_set = vec![];
             for el in delegation_circuits.iter() {
@@ -969,11 +1018,12 @@ pub fn prove_unrolled_execution_with_replayer<
             let delegation_circuits = &$traces;
             let setup = &$setup;
             if !delegation_circuits.is_empty() {
-                let trace_len = setup.trace_len;
-                let prover_config = setup.prover_config(security_level).clone();
+                let prover_config =
+                    setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+                let message_len = 1usize << prover_config.whir_message_size_log2();
                 let twiddles_for_size = twiddles
-                    .entry(trace_len)
-                    .or_insert_with(|| backend.make_twiddles(trace_len, worker));
+                    .entry(message_len)
+                    .or_insert_with(|| backend.make_twiddles(message_len, worker));
 
                 let mut per_tree_set = vec![];
                 for el in delegation_circuits.iter() {
@@ -1156,10 +1206,12 @@ pub fn prove_unrolled_execution_with_replayer<
 
                 // dump setup if it's present for existing machine
                 let trace_len = setup.trace_len;
-                let prover_config = setup.prover_config(security_level).clone();
+                let prover_config =
+                    setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+                let message_len = 1usize << prover_config.whir_message_size_log2();
                 let twiddles_for_size = twiddles
-                    .entry(trace_len)
-                    .or_insert_with(|| backend.make_twiddles(trace_len, worker));
+                    .entry(message_len)
+                    .or_insert_with(|| backend.make_twiddles(message_len, worker));
                 let setup_commitment = setup.setup.commit_for_config::<DefaultTreeConstructor>(
                     twiddles_for_size.plain(),
                     &prover_config,
@@ -1184,10 +1236,11 @@ pub fn prove_unrolled_execution_with_replayer<
 
         let setup = &setups[&family_idx];
         let trace_len = setup.trace_len;
-        let prover_config = setup.prover_config(security_level).clone();
+        let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+        let message_len = 1usize << prover_config.whir_message_size_log2();
         let twiddles_for_size = twiddles
-            .entry(trace_len)
-            .or_insert_with(|| backend.make_twiddles(trace_len, worker));
+            .entry(message_len)
+            .or_insert_with(|| backend.make_twiddles(message_len, worker));
         let setup_commitment = setup.setup.commit_for_config::<DefaultTreeConstructor>(
             twiddles_for_size.plain(),
             &prover_config,
@@ -1323,10 +1376,12 @@ pub fn prove_unrolled_execution_with_replayer<
                 main_proofs.insert(family_idx, vec![]);
 
                 let trace_len = setup.trace_len;
-                let prover_config = setup.prover_config(security_level).clone();
+                let prover_config =
+                    setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+                let message_len = 1usize << prover_config.whir_message_size_log2();
                 let twiddles_for_size = twiddles
-                    .entry(trace_len)
-                    .or_insert_with(|| backend.make_twiddles(trace_len, worker));
+                    .entry(message_len)
+                    .or_insert_with(|| backend.make_twiddles(message_len, worker));
                 let setup_commitment = setup.setup.commit_for_config::<DefaultTreeConstructor>(
                     twiddles_for_size.plain(),
                     &prover_config,
@@ -1350,10 +1405,11 @@ pub fn prove_unrolled_execution_with_replayer<
 
         let setup = &setups[&family_idx];
         let trace_len = setup.trace_len;
-        let prover_config = setup.prover_config(security_level).clone();
+        let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+        let message_len = 1usize << prover_config.whir_message_size_log2();
         let twiddles_for_size = twiddles
-            .entry(trace_len)
-            .or_insert_with(|| backend.make_twiddles(trace_len, worker));
+            .entry(message_len)
+            .or_insert_with(|| backend.make_twiddles(message_len, worker));
         let setup_commitment = setup.setup.commit_for_config::<DefaultTreeConstructor>(
             twiddles_for_size.plain(),
             &prover_config,
@@ -1486,10 +1542,11 @@ pub fn prove_unrolled_execution_with_replayer<
     {
         let setup = &inits_and_teardowns_setup;
         let trace_len = setup.trace_len;
-        let prover_config = setup.prover_config(security_level).clone();
+        let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
+        let message_len = 1usize << prover_config.whir_message_size_log2();
         let twiddles_for_size = twiddles
-            .entry(trace_len)
-            .or_insert_with(|| backend.make_twiddles(trace_len, worker));
+            .entry(message_len)
+            .or_insert_with(|| backend.make_twiddles(message_len, worker));
         let setup_commitment =
             setup
                 .setup
@@ -1571,7 +1628,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let setup = &blake_round_function_setup;
         let witness_eval_fn = setups::blake2_with_compression_witness_eval_fn;
         if !delegation_circuits.is_empty() {
-            let prover_config = setup.prover_config(security_level).clone();
+            let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                     &delegation_circuits[..],
@@ -1606,7 +1663,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let setup = &bigint_setup;
         let witness_eval_fn = setups::bigint_witness_eval_fn;
         if !delegation_circuits.is_empty() {
-            let prover_config = setup.prover_config(security_level).clone();
+            let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                     &delegation_circuits[..],
@@ -1641,7 +1698,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let setup = &keccak_special5_setup;
         let witness_eval_fn = setups::keccak_special5_witness_eval_fn;
         if !delegation_circuits.is_empty() {
-            let prover_config = setup.prover_config(security_level).clone();
+            let prover_config = setup.try_prover_config_in_mode(security_level, soundness_mode)?;
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                     &delegation_circuits[..],
@@ -1676,7 +1733,8 @@ pub fn prove_unrolled_execution_with_replayer<
             let setup = &$setup;
             let witness_eval_fn = $witness_eval_fn;
             if !delegation_circuits.is_empty() {
-                let prover_config = setup.prover_config(security_level).clone();
+                let prover_config =
+                    setup.try_prover_config_in_mode(security_level, soundness_mode)?;
                 let (proofs, per_tree_set) =
                     prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                         &delegation_circuits[..],
@@ -1754,7 +1812,7 @@ pub fn prove_unrolled_execution_with_replayer<
 
     assert_eq!(permutation_argument_accumulator, BabyBearExt4::ONE);
 
-    (program_proof, risc_v_setup_params)
+    Ok((program_proof, risc_v_setup_params))
 }
 
 #[expect(
@@ -1814,13 +1872,14 @@ pub(crate) fn prove_delegation_circuit<
     }
 
     let trace_len = setup.trace_len;
+    let message_len = 1usize << prover_config.whir_message_size_log2();
     let twiddles_for_size = twiddles
-        .entry(trace_len)
-        .or_insert_with(|| backend.make_twiddles(trace_len, worker));
+        .entry(message_len)
+        .or_insert_with(|| backend.make_twiddles(message_len, worker));
     let setup_commitment =
         setup
             .setup
-            .commit_for_config(twiddles_for_size.plain(), &prover_config, worker);
+            .commit_for_config(twiddles_for_size.plain(), prover_config, worker);
 
     let mut per_tree_set = vec![];
 
@@ -1944,10 +2003,10 @@ pub(crate) mod test {
         skip_if_ci!();
 
         let use_caches = true;
-        let (_, binary_image) =
-            setups::read_and_pad_binary(Path::new("../../examples/basic_fibonacci/app.bin"));
-        let (_, text_section) =
-            setups::read_and_pad_binary(Path::new("../../examples/basic_fibonacci/app.text"));
+        let (binary_image, text_section) = riscv_transpiler::elf::load_legacy_binaries(
+            Path::new("../../examples/basic_fibonacci/app.bin"),
+            Path::new("../../examples/basic_fibonacci/app.text"),
+        );
 
         // setups::pad_bytecode_for_proving(&mut binary);
 
@@ -1973,9 +2032,9 @@ pub(crate) mod test {
             &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
         );
 
-        bincode_serialize_to_file(&program_proof, "tmp_proof.bin");
+        crate::serialize_to_file(&program_proof, "tmp_proof.json");
         let setups: Vec<_> = setups.into_values().collect();
-        bincode_serialize_to_file(&setups, "tmp_setup.bin");
+        crate::serialize_to_file(&setups, "tmp_setup.json");
     }
 
     #[cfg(feature = "verifiers")]
@@ -1984,18 +2043,18 @@ pub(crate) mod test {
     #[serial_test::serial(prover_examples_proof_artifacts)]
     fn test_verify_simple_fib() {
         skip_if_ci!();
-        use crate::bincode_deserialize_from_file;
+        use crate::deserialize_from_file;
         use full_statement_verifier::program_proof::ProgramProof;
         use full_statement_verifier::unrolled_circuit_params::NUM_BASE_LAYER_CIRCUITS;
         use setups::*;
         use verifier_common::errors::DebugErrorCreator;
 
-        let program_proof: ProgramProof = bincode_deserialize_from_file("tmp_proof.bin");
+        let program_proof: ProgramProof = deserialize_from_file("tmp_proof.json");
         let risc_v_setups: Vec<UnrolledCircuitSetupParams> =
-            bincode_deserialize_from_file("tmp_setup.bin");
+            deserialize_from_file("tmp_setup.json");
         assert_eq!(risc_v_setups.len(), NUM_BASE_LAYER_CIRCUITS);
 
-        let responses = program_proof.flatten_for_verification();
+        let responses = program_proof.flatten_for_verification(verifier_common::BLAKE_MODE);
         std::thread::Builder::new()
             .name("verifier thread".to_string())
             .stack_size(1 << 27)
@@ -2009,7 +2068,7 @@ pub(crate) mod test {
                 // prover::nd_source_std::set_iterator(it);
 
                 let verification_result =
-                    full_statement_verifier::unrolled_proof_statement::verify_unrolled_base_layer_sec_100::<
+                    full_statement_verifier::pessimistic_conjecture::verify_unrolled_base_layer::<
                         _,
                         DebugErrorCreator,
                         true,
@@ -2028,18 +2087,21 @@ pub(crate) mod test {
     #[serial_test::serial(prover_examples_proof_artifacts)]
     fn test_verify_individual_proof() {
         skip_if_ci!();
-        use crate::bincode_deserialize_from_file;
+        use crate::deserialize_from_file;
         use full_statement_verifier::program_proof::ProgramProof;
 
         use verifier_common::errors::DebugErrorCreator;
         let circuit_family = 3;
         let verifier_idx = 2;
 
-        let program_proof: ProgramProof = bincode_deserialize_from_file("tmp_proof.bin");
+        let program_proof: ProgramProof = deserialize_from_file("tmp_proof.json");
         let proof = &program_proof.riscv_proofs[&circuit_family][0];
         let compiled_circuit = &program_proof.compiled_riscv_circuits[&circuit_family];
-        let responses =
-            ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(proof, compiled_circuit);
+        let responses = ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
+            proof,
+            compiled_circuit,
+            ::verifier_common::BLAKE_MODE,
+        );
         let external_challenges = proof.external_challenges;
 
         std::thread::Builder::new()
@@ -2050,7 +2112,7 @@ pub(crate) mod test {
                 // prover::nd_source_std::set_iterator(it);
 
                 let (family, _, verifier_fn) =
-                    full_statement_verifier::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer_sec_100::<
+                    full_statement_verifier::unrolled_circuit_params::pessimistic_conjecture::unrolled_circuit_verifiers_for_base_layer::<
                         _,
                         DebugErrorCreator,
                     >()[verifier_idx];

@@ -1,5 +1,5 @@
 use super::*;
-use crate::upstream::{Field, FieldExtension, PrimeField};
+use crate::upstream::{FieldExtension, PrimeField};
 
 fn sample_e4(value: u32) -> E4 {
     E4::from_base(BF::from_u32_unchecked(value))
@@ -66,9 +66,11 @@ fn sample_inputs() -> ProofLayoutInputs {
     ];
 
     let whir = WhirDims {
+        pack_log2: 0,
         original_evaluation_point_len: 2,
         setup: WhirBaseLayerDims {
             num_columns: 4,
+            logical_num_columns: 4,
             cap_digest_count: 8,
             query_count: 16,
             leaf_values_len: 32,
@@ -76,6 +78,7 @@ fn sample_inputs() -> ProofLayoutInputs {
         },
         memory: WhirBaseLayerDims {
             num_columns: 32,
+            logical_num_columns: 32,
             cap_digest_count: 8,
             query_count: 16,
             leaf_values_len: 128,
@@ -83,6 +86,7 @@ fn sample_inputs() -> ProofLayoutInputs {
         },
         witness: WhirBaseLayerDims {
             num_columns: 64,
+            logical_num_columns: 64,
             cap_digest_count: 8,
             query_count: 16,
             leaf_values_len: 256,
@@ -189,6 +193,14 @@ fn layout_is_32_byte_aligned_and_nonoverlapping() {
     ranges.push((
         "whir.pow_nonces".to_string(),
         layout.whir.pow_nonces.clone(),
+    ));
+    ranges.push((
+        "whir.folding_pow_nonces".to_string(),
+        layout.whir.folding_pow_nonces.clone(),
+    ));
+    ranges.push((
+        "whir.ood_pow_nonces".to_string(),
+        layout.whir.ood_pow_nonces.clone(),
     ));
     ranges.push((
         "whir.final_monomials".to_string(),
@@ -338,6 +350,16 @@ fn whir_range_sizes_match_inputs() {
         layout.whir.pow_nonces.end - layout.whir.pow_nonces.start,
         inputs.whir.pow_rounds * size_of::<u64>()
     );
+    // One folding-PoW slot per sumcheck polynomial, one OOD-PoW slot per
+    // intermediate oracle.
+    assert_eq!(
+        layout.whir.folding_pow_nonces.end - layout.whir.folding_pow_nonces.start,
+        inputs.whir.total_sumcheck_polys * size_of::<u64>()
+    );
+    assert_eq!(
+        layout.whir.ood_pow_nonces.end - layout.whir.ood_pow_nonces.start,
+        inputs.whir.intermediate.len() * size_of::<u64>()
+    );
     assert_eq!(
         layout.whir.final_monomials.end - layout.whir.final_monomials.start,
         inputs.whir.final_monomials_len * size_of::<E4>()
@@ -451,19 +473,28 @@ fn parser_round_trips_extra_evaluations() {
 }
 
 #[test]
-fn cpu_parser_preserves_whir_handoff_fields() {
+fn cpu_parser_splits_whir_streams_by_schedule() {
     let inputs = sample_inputs();
     let layout = ProofLayout::new(&inputs);
     let mut slab_storage = AlignedSlab::zeroed(layout.total_bytes);
     let slab = slab_storage.as_bytes_mut();
-    let point = vec![sample_e4(10), sample_e4(20)];
+    let point = [sample_e4(10), sample_e4(20)];
     let batching = sample_e4(30);
-    let first_poly = [sample_e4(1), sample_e4(2), sample_e4(3)];
-    let mut p_at_one = first_poly[0];
-    p_at_one.add_assign(&first_poly[1]);
-    p_at_one.add_assign(&first_poly[2]);
-    let mut expected_batched_opening = first_poly[0];
-    expected_batched_opening.add_assign(&p_at_one);
+    // 8 sumcheck polynomials over the sample's 3 rounds (2 intermediate
+    // oracles): a round-0 fold of 1, then 4 + 3 = 8 total
+    let polys: Vec<[E4; 3]> = (0..8)
+        .map(|i| {
+            [
+                sample_e4(3 * i + 1),
+                sample_e4(3 * i + 2),
+                sample_e4(3 * i + 3),
+            ]
+        })
+        .collect();
+    let ood = [sample_e4(100), sample_e4(101)];
+    let nonces = [7u64, 8, 9];
+    let folding_nonces: Vec<u64> = (0..8).map(|i| 1000 + i).collect();
+    let ood_nonces = [2000u64, 2001];
 
     unsafe {
         let (point_ptr, point_len) =
@@ -475,12 +506,194 @@ fn cpu_parser_preserves_whir_handoff_fields() {
         assert_eq!(batching_len, 1);
         std::ptr::copy_nonoverlapping(&batching, batching_ptr, 1);
         let (ptr, len) = layout.whir_sumcheck_polys_device_mut(slab.as_mut_ptr());
-        assert!(len >= first_poly.len());
-        std::ptr::copy_nonoverlapping(first_poly.as_ptr(), ptr, first_poly.len());
+        assert_eq!(len, 3 * polys.len());
+        let flat: Vec<E4> = polys.iter().flatten().copied().collect();
+        std::ptr::copy_nonoverlapping(flat.as_ptr(), ptr, flat.len());
+        let (ptr, len) = layout.whir_ood_samples_device_mut(slab.as_mut_ptr());
+        assert_eq!(len, ood.len());
+        std::ptr::copy_nonoverlapping(ood.as_ptr(), ptr, ood.len());
+        let (ptr, len) = layout.whir_pow_nonces_device_mut(slab.as_mut_ptr());
+        assert_eq!(len, nonces.len());
+        std::ptr::copy_nonoverlapping(nonces.as_ptr(), ptr, nonces.len());
+        let (ptr, len) = layout.whir_folding_pow_nonces_device_mut(slab.as_mut_ptr());
+        assert_eq!(len, folding_nonces.len());
+        std::ptr::copy_nonoverlapping(folding_nonces.as_ptr(), ptr, folding_nonces.len());
+        let (ptr, len) = layout.whir_ood_pow_nonces_device_mut(slab.as_mut_ptr());
+        assert_eq!(len, ood_nonces.len());
+        std::ptr::copy_nonoverlapping(ood_nonces.as_ptr(), ptr, ood_nonces.len());
     }
 
-    let proof = layout.parse_whir_proof(slab);
-    assert_eq!(proof.original_evaluation_point, Some(point));
-    assert_eq!(proof.batching_challenge, Some(batching));
-    assert_eq!(proof.batched_opening, Some(expected_batched_opening));
+    // the device-side handoff fields stay readable from the slab
+    assert_eq!(layout.whir_original_evaluation_point_host(slab), &point[..]);
+    assert_eq!(layout.whir_batching_challenge_host(slab), &[batching][..]);
+
+    let schedule =
+        WhirSchedule::from_legacy_arrays(2, 8, 0, &[1, 4, 3], &[16, 12, 10], &[4, 8], &[1, 1, 1]);
+    let proof = layout.parse_whir_proof(slab, &schedule);
+    assert_eq!(proof.base_sumcheck_polys, polys[..1].to_vec());
+    assert_eq!(
+        proof.intermediate_whir_oracles[0].sumcheck_polys,
+        polys[1..5].to_vec()
+    );
+    assert_eq!(
+        proof.intermediate_whir_oracles[1].sumcheck_polys,
+        polys[5..8].to_vec()
+    );
+    assert_eq!(proof.intermediate_whir_oracles[0].ood_samples, vec![ood[0]]);
+    assert_eq!(proof.intermediate_whir_oracles[1].ood_samples, vec![ood[1]]);
+    assert_eq!(proof.base_queries_pow_nonce, 7);
+    assert_eq!(proof.intermediate_whir_oracles[0].queries_pow_nonce, 8);
+    assert_eq!(proof.intermediate_whir_oracles[1].queries_pow_nonce, 9);
+    assert_eq!(proof.whir_schedule, schedule);
+    // Ungated rounds leave their written PoW slots unassembled.
+    for oracle in &proof.intermediate_whir_oracles {
+        assert!(oracle.folding_pow_nonces.is_empty());
+        assert_eq!(oracle.ood_pow_nonce, None);
+    }
+    assert!(proof.base_folding_pow_nonces.is_empty());
+
+    // Gate oracle 0's folding draws and oracle 1's OOD draw only: each takes
+    // exactly its parallel slots.
+    let mut gated = schedule.clone();
+    gated.internal_rounds[0].folding_pow_bits = 20;
+    gated.internal_rounds[1].ood_pow_bits = 7;
+    let proof = layout.parse_whir_proof(slab, &gated);
+    let [first, second] = &proof.intermediate_whir_oracles[..] else {
+        panic!("two intermediate oracles");
+    };
+    assert_eq!(first.folding_pow_nonces, folding_nonces[1..5].to_vec());
+    assert_eq!(first.ood_pow_nonce, None);
+    assert!(second.folding_pow_nonces.is_empty());
+    assert_eq!(second.ood_pow_nonce, Some(ood_nonces[1]));
+    assert_eq!(first.sumcheck_polys, polys[1..5].to_vec());
+    assert_eq!(second.queries_pow_nonce, 9);
+
+    gated.internal_rounds[0].ood_pow_bits = 1;
+    gated.internal_rounds[1].folding_pow_bits = 1;
+    let proof = layout.parse_whir_proof(slab, &gated);
+    assert_eq!(
+        proof.intermediate_whir_oracles[0].ood_pow_nonce,
+        Some(ood_nonces[0])
+    );
+    assert_eq!(
+        proof.intermediate_whir_oracles[1].folding_pow_nonces,
+        folding_nonces[5..8].to_vec()
+    );
+
+    // Base-round folding PoW stays a capability error.
+    let mut base_gated = schedule.clone();
+    base_gated.base_round.folding_pow_bits = 1;
+    let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        layout.parse_whir_proof(slab, &base_gated)
+    }))
+    .expect_err("base-round folding PoW must be rejected");
+    let message = error
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| error.downcast_ref::<&str>().copied())
+        .unwrap();
+    assert!(message.contains("base-round folding PoW is not implemented"));
+}
+
+#[test]
+fn cpu_packed_proof_layout_keeps_logical_claims_and_aliases_k0() {
+    let inputs = sample_inputs();
+    let identity = ProofLayout::new(&inputs);
+    for base in [
+        &identity.whir.memory,
+        &identity.whir.witness,
+        &identity.whir.setup,
+    ] {
+        assert_eq!(
+            base.logical_evals, base.evals,
+            "k0 must alias without another range"
+        );
+    }
+    for k in 1..=4 {
+        let mut inputs = sample_inputs();
+        inputs.whir.pack_log2 = k;
+        inputs.whir.original_evaluation_point_len = 20 + k;
+        let pack = 1usize << k;
+        for (base, logical) in [
+            (&mut inputs.whir.memory, pack + 1),
+            (&mut inputs.whir.witness, 2 * pack + 1),
+            (&mut inputs.whir.setup, 0),
+        ] {
+            base.logical_num_columns = logical;
+            base.num_columns = logical.div_ceil(pack);
+        }
+        let layout = ProofLayout::new(&inputs);
+        let mut slab = AlignedSlab::zeroed(layout.total_bytes);
+        let bytes = slab.as_bytes_mut();
+        let nonce = 0x1234_5678_9abc_def0u64;
+        // This CPU mirror checks the device accessor's offset without dereferencing
+        // its pointer, then reads the same slot through the terminal host accessor.
+        let (nonce_ptr, nonce_len) =
+            unsafe { layout.batched_proximity_pow_nonce_device_mut(bytes.as_mut_ptr()) };
+        assert_eq!(nonce_len, 1);
+        assert_eq!(
+            nonce_ptr as usize,
+            bytes.as_ptr() as usize + layout.batched_proximity_pow_nonce.start
+        );
+        bytes[layout.batched_proximity_pow_nonce.clone()].copy_from_slice(&nonce.to_le_bytes());
+        assert_eq!(layout.batched_proximity_pow_nonce_host(bytes), nonce);
+        let mut ranges = Vec::new();
+        for (slot, kind) in [
+            WhirBaseLayerKind::Memory,
+            WhirBaseLayerKind::Witness,
+            WhirBaseLayerKind::Setup,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let base = match kind {
+                WhirBaseLayerKind::Memory => &layout.whir.memory,
+                WhirBaseLayerKind::Witness => &layout.whir.witness,
+                WhirBaseLayerKind::Setup => &layout.whir.setup,
+            };
+            for (range, sentinel) in [
+                (&base.logical_evals, sample_e4(100 + slot as u32)),
+                (&base.evals, sample_e4(200 + slot as u32)),
+            ] {
+                assert_eq!(range.start % FIELD_ALIGN, 0);
+                if !range.is_empty() {
+                    ranges.push(range.clone());
+                }
+                // SAFETY: the aligned host slab is exclusively owned and each
+                // tested range is E4-aligned and within the allocation.
+                unsafe {
+                    let values = std::slice::from_raw_parts_mut(
+                        bytes.as_mut_ptr().add(range.start).cast::<E4>(),
+                        range.len() / size_of::<E4>(),
+                    );
+                    values.fill(sentinel);
+                }
+            }
+        }
+        ranges.sort_by_key(|range| range.start);
+        for adjacent in ranges.windows(2) {
+            assert!(adjacent[0].end <= adjacent[1].start);
+        }
+        for (slot, kind) in [
+            WhirBaseLayerKind::Memory,
+            WhirBaseLayerKind::Witness,
+            WhirBaseLayerKind::Setup,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert!(layout
+                .whir_base_logical_evals_host(bytes, kind)
+                .iter()
+                .all(|v| *v == sample_e4(100 + slot as u32)));
+            assert!(layout
+                .whir_base_evals_host(bytes, kind)
+                .iter()
+                .all(|v| *v == sample_e4(200 + slot as u32)));
+        }
+        assert_eq!(
+            layout.whir_original_evaluation_point_host(bytes).len(),
+            20 + k
+        );
+    }
 }

@@ -13,9 +13,10 @@ pub struct ShiftBinaryCircuit;
 
 impl<F: PrimeField> circuit_common::RiscVCycleCircuit<F, false> for ShiftBinaryCircuit {
     const CIRCUIT_FAMILY: u8 = common_constants::circuit_families::SHIFT_BINARY_CIRCUIT_FAMILY_IDX;
-    fn prover_config(level: circuit_common::SecurityLevel) -> circuit_common::ProverConfig {
-        circuit_common::default_prover_config(24, level)
-    }
+    // the LOGICAL trace length for the purposes of GKR (rows of the circuit
+    // trace); the polynomials WHIR commits may be larger when the base
+    // commitment packs columns (`BASE_PACKING`)
+    const TRACE_LEN_LOG2: u32 = 24;
     const NUM_INIT_AND_TEARDOWN_PAIRS: usize = 0;
 
     fn circuit_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS, _bytecode: &[u32]) {

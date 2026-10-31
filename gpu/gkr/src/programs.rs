@@ -405,6 +405,11 @@ impl GkrPrograms {
         &self.compiled_circuit
     }
 
+    /// MAIN layer count used by pre-transfer omission-policy validation.
+    pub fn main_layers_count(&self) -> usize {
+        self.runtime_circuit.layers.len()
+    }
+
     pub(crate) fn runtime_circuit(&self) -> &Arc<GKRCircuitArtifact<BF>> {
         &self.runtime_circuit
     }

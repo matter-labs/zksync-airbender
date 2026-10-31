@@ -54,9 +54,9 @@ rather than letting the duplicate drift by convention.
 - **Archive / `links` key**: `gpu_whir_native` (`build.rs`:
   `gpu_native_build::CudaArchive::new("gpu_whir_native", "GPU_WHIR").build()`
   — no `export_include`; nothing above this crate includes its headers).
-- **Kernel count**: 25 `__global__` kernels — `accumulate_eq.cu` 4,
+- **Kernel count**: 27 `__global__` kernels — `accumulate_eq.cu` 4,
   `columns.cu` 1, `fold.cu` 9, `leaves.cu` 1, `residue_commit.cu` 6,
-  `in_domain.cu` 4. Count with
+  `in_domain.cu` 6. Count with
   `rg -c '__global__' gpu/whir/native/whir/*.cu`, or equivalently
   `rg -o 'ab_[a-z0-9_]*_kernel' gpu/whir/native/whir/*.cu | sort -u | wc -l`.
   Count `__global__` regardless of whether `void` appears on the same line.
@@ -79,10 +79,22 @@ rather than letting the duplicate drift by convention.
   `AB_DETERMINISTIC_POW` on this archive.
 ## Production commitment and query terms
 
+Base fold0 skips the base sumcheck and commits the batched polynomial itself as
+intermediate oracle0. Its base queries use one BF value per physical column and
+the full base LDE domain. Admission validates the requested message, LDE, cap
+and folding dimensions rather than a qualified message/ladder tuple. Cap
+absorption precedes OOD, and fresh delinearization follows the query draw.
+Schedule admission permits the CPU batching-PoW override independently of that
+geometry.
+
 Recursive oracles use coefficient leaves and partial Merkle trees. Small shapes
-use the fused families in `fused_commit.rs`; retained residue LDEs cover
-`(log_n, log_v) = (14..23, 5)`. Unsupported shapes and full-tree geometries fail
-explicitly. All recursive commitment work runs on `exec_stream`.
+select existing fused Block/Subwarp families in `fused_commit.rs`, then fall
+back to retained residue LDEs when those fast paths do not apply. Actual
+transform, gather-grid and staging capacities bound that fallback. The full
+polynomial plus LDE domain must fit both BabyBear's 27-bit domain and the
+context twiddle capacity; recursive commitments require the partial-tree
+representation. See [geometry limits](../docs/commitment_geometry.md). All
+recursive commitment work runs on `exec_stream`.
 
 Retained LDEs process all cosets before hashing when
 `log_ntt_len <= MAX_LOG_N_FOR_SINGLE_KERNEL_LDE`. Larger transforms run
@@ -117,6 +129,9 @@ Horner evaluation directly from monomial coefficients.
   forces `RUST_TEST_THREADS=1`). The crate carries no `#[serial]`
   annotations. CPU-only tests may be named or moduled `cpu_*` to run
   parallel under nextest.
+- The six `packed_handoff` CPU-byte-parity tests require `deterministic_pow`.
+  Run them with `--features deterministic_pow`; unified builds also enable this
+  through the `gpu_circuit_prover` default features.
 - For compute-heavy GPU tests or prover flows, use `--release` by default.
 - Compile first with `cargo nextest run --no-run`, then run under
   `.agents/bin/with_gpu_lock.sh cargo nextest run …` so only the execution

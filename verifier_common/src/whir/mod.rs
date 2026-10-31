@@ -1,3 +1,5 @@
+pub mod multiproof;
+
 use crate::lazy_vec::LazyVec;
 use crate::structs::{assemble_query_index, BitSource};
 use blake2s_u32::{DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS};

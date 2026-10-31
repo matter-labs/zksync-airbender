@@ -60,7 +60,16 @@ pub(crate) fn populate_inline_inits_and_teardowns_columns<F: PrimeField, A>(
                     dest
                 );
             } else {
-                debug_assert!(column_major_trace[dest].iter().all(|v| v.is_zero()),);
+                // The caller allocated the destination at trace length but no
+                // evaluator writes it, so its content is unspecified (the
+                // memory-only trace is not zero-initialized); the move below
+                // replaces it whole.
+                assert_eq!(
+                    src.len(),
+                    column_major_trace[dest].len(),
+                    "inline i/t population: source length differs from destination column {}",
+                    dest
+                );
             }
             let _prev = core::mem::replace(&mut column_major_trace[dest], src);
         }
@@ -70,7 +79,9 @@ pub(crate) fn populate_inline_inits_and_teardowns_columns<F: PrimeField, A>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cs::definitions::gkr::*;
     use field::baby_bear::base::BabyBearField;
+    use field::Field;
 
     use std::alloc::Global;
     use std::vec;
@@ -158,6 +169,186 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// In-trace path (`require_target_empty == false`): destinations hold
+    /// stale, nonzero data (as the uninitialized memory-only trace can after
+    /// allocator reuse); each is replaced exactly by its source, and columns
+    /// outside `teardown_sets` are left untouched.
+    #[test]
+    fn in_trace_path_replaces_stale_destinations_exactly() {
+        let trace_len = 16usize;
+        let teardown_sets = synth_teardown_sets(); // covers cols 0..8
+        let total_width = 10;
+        let stale = |col: usize, row: usize| {
+            BabyBearField::from_u32_with_reduction(0xdead_0000 + (col * 100 + row) as u32)
+        };
+        let mut column_major_trace: Vec<Vec<BabyBearField, Global>, Global> = (0..total_width)
+            .map(|col| (0..trace_len).map(|row| stale(col, row)).collect())
+            .collect();
+
+        let dumped = synth_dumped_data(&teardown_sets, trace_len);
+        populate_inline_inits_and_teardowns_columns(
+            &mut column_major_trace,
+            dumped,
+            &teardown_sets,
+            false,
+        );
+
+        for (set_idx, ([ts0, ts1], [v0, v1])) in teardown_sets.iter().enumerate() {
+            for (limb_idx, addr) in [ts0, ts1, v0, v1].into_iter().enumerate() {
+                let GKRAddress::BaseLayerMemory(col) = *addr else {
+                    panic!("not BaseLayerMemory");
+                };
+                let expected: Vec<_> = (0..trace_len)
+                    .map(|row| marker(set_idx as u32, limb_idx as u32, row as u32))
+                    .collect();
+                assert_eq!(column_major_trace[col], expected, "column {col}");
+            }
+        }
+        for col in 8..total_width {
+            let expected: Vec<_> = (0..trace_len).map(|row| stale(col, row)).collect();
+            assert_eq!(
+                column_major_trace[col], expected,
+                "column {col} must stay untouched"
+            );
+        }
+    }
+
+    /// In-trace path: a source whose length differs from the trace-length
+    /// destination is rejected rather than silently resizing the column.
+    #[test]
+    #[should_panic(expected = "source length differs from destination column 0")]
+    fn in_trace_path_rejects_length_mismatch() {
+        let trace_len = 8usize;
+        let teardown_sets = synth_teardown_sets();
+        let mut column_major_trace: Vec<Vec<BabyBearField, Global>, Global> = (0..8)
+            .map(|_| vec![BabyBearField::ZERO; trace_len])
+            .collect();
+        let dumped = synth_dumped_data(&teardown_sets, trace_len / 2);
+        populate_inline_inits_and_teardowns_columns(
+            &mut column_major_trace,
+            dumped,
+            &teardown_sets,
+            false,
+        );
+    }
+
+    /// Memory columns `evaluate_memory_witness_for_executor_family_inner`
+    /// writes per row: the machine state, the memory-resident decoder inputs,
+    /// and each RAM access's address, address-space flag, read timestamp and
+    /// read/write value columns.
+    fn evaluator_written_memory_columns(layout: &GKRMemoryLayout) -> Vec<usize> {
+        let word_columns = |word: RamWordRepresentation| -> Vec<usize> {
+            match word {
+                RamWordRepresentation::Zero => vec![],
+                RamWordRepresentation::U16Limbs(columns) => columns.to_vec(),
+                RamWordRepresentation::U8Limbs(columns) => columns.to_vec(),
+            }
+        };
+        let state = layout.machine_state.as_ref().expect("executor layout");
+        let mut columns = vec![state.execute];
+        for part in [state.initial_state, state.final_state] {
+            columns.extend(part.pc);
+            columns.extend(part.timestamp);
+        }
+        let decoder = layout.decoder_input.as_ref().expect("executor layout");
+        for address in [decoder.rs2_index, decoder.rd_index]
+            .iter()
+            .chain(decoder.circuit_family_mask_bits.iter())
+        {
+            if let GKRAddress::BaseLayerMemory(column) = *address {
+                columns.push(column);
+            }
+        }
+        for query in layout.ram_access_sets.iter() {
+            match query.get_address() {
+                RamAddress::ConstantRegister(_) => {}
+                RamAddress::RegisterOnly(address) => columns.push(address.register_index),
+                RamAddress::RegisterOrRam(address) => {
+                    let (RegisterOrRamAddressSpace::RegisterAddressSpace(column)
+                    | RegisterOrRamAddressSpace::RamAddressSpace(column)) = address.address_space;
+                    columns.push(column);
+                    columns.extend(address.address);
+                }
+                RamAddress::IndirectRam(_) => {
+                    panic!("the memory evaluator does not handle indirect RAM accesses")
+                }
+            }
+            columns.extend(query.get_read_timestamp_columns());
+            columns.extend(word_columns(query.get_read_value_columns()));
+            if let RamQuery::Write(write) = query {
+                columns.extend(word_columns(write.write_value));
+            }
+        }
+        columns
+    }
+
+    /// Static form of the property the in-trace path relies on, over every
+    /// committed executor-family layout: inline teardown columns are distinct
+    /// memory columns disjoint from the evaluator's, and the two together
+    /// cover the memory trace, so no column of the non-zeroed memory-only
+    /// trace is left unwritten.
+    #[test]
+    fn inline_teardown_columns_complement_the_memory_evaluator() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../cs/compiled_circuits");
+        let mut checked = 0;
+        let mut with_inline_teardowns = 0;
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            let name = path.file_name().unwrap().to_str().unwrap().to_owned();
+            if !(name.ends_with("_layout_gkr.json") || name.ends_with("_layout_no_caches_gkr.json"))
+            {
+                continue;
+            }
+            let circuit: GKRCircuitArtifact<BabyBearField> = serde_json::from_reader(
+                std::io::BufReader::new(std::fs::File::open(&path).unwrap()),
+            )
+            .unwrap();
+            let layout = &circuit.memory_layout;
+            if layout.machine_state.is_none() {
+                continue; // not evaluated by the executor-family memory evaluator
+            }
+            let evaluated: std::collections::BTreeSet<usize> =
+                evaluator_written_memory_columns(layout)
+                    .into_iter()
+                    .collect();
+            let mut teardown = std::collections::BTreeSet::new();
+            for ([a, b], [c, d]) in layout.teardown_sets.iter() {
+                for address in [a, b, c, d] {
+                    let GKRAddress::BaseLayerMemory(column) = *address else {
+                        panic!("{name}: teardown column {address:?} is not BaseLayerMemory");
+                    };
+                    assert!(
+                        teardown.insert(column),
+                        "{name}: teardown column {column} repeats"
+                    );
+                }
+            }
+            assert!(
+                evaluated.is_disjoint(&teardown),
+                "{name}: teardown columns {:?} are written by the memory evaluator",
+                evaluated.intersection(&teardown).collect::<Vec<_>>()
+            );
+            let covered: Vec<usize> = evaluated.union(&teardown).copied().collect();
+            assert_eq!(
+                covered,
+                (0..layout.total_width).collect::<Vec<_>>(),
+                "{name}: memory columns are not exactly covered by evaluator + teardown columns"
+            );
+            checked += 1;
+            with_inline_teardowns += usize::from(!teardown.is_empty());
+        }
+        assert!(
+            checked > 0,
+            "no executor-family layouts found in {}",
+            dir.display()
+        );
+        assert!(
+            with_inline_teardowns > 0,
+            "no layout with inline teardown sets found in {}",
+            dir.display()
+        );
     }
 
     /// Two teardown_sets pointing at the same column trip the empty-target

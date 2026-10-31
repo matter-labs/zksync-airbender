@@ -1,6 +1,6 @@
 use field::baby_bear::{base::BabyBearField as F, ext4::BabyBearExt4 as E};
 use field::{Field, FieldExtension};
-use verifier::add_sub_lui_auipc_mop::sec_100::common::{
+use verifier::add_sub_lui_auipc_mop::pessimistic_conjecture::common::{
     fold_whir_accumulator, push_whir_base_pow_entry, push_whir_pow_entry,
 };
 use verifier_common::whir::WhirAccumulator;

@@ -15,6 +15,13 @@ pub(super) fn run_proof_parity(fixture: &BasicUnrolledProofFixture) {
 /// uninitialized-witness regression guard). schedule -> schedule -> finish -> finish.
 pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture) {
     let baseline = fixture.base.context.get_used_mem_current();
+    let policy = fixture.base.memory_policy();
+    eprintln!(
+        "production proof policy: circuit={:?} arena_bytes={} policy={policy:?}",
+        fixture.base.circuit_type,
+        fixture.base.context.get_mem_size()
+    );
+    fixture.base.context.reset_used_mem_peak();
     let job0 = fixture.schedule_prove().unwrap();
     let job1 = fixture.schedule_prove().unwrap();
     let (p0, ms0) = job0.finish().unwrap();
@@ -30,6 +37,7 @@ pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture) {
         baseline,
         "device memory must return to baseline after both proofs complete"
     );
+    eprintln!("production multi-schedule peak: circuit={:?} arena_bytes={} peak_bytes={} baseline={baseline}", fixture.base.circuit_type, fixture.base.context.get_mem_size(), fixture.base.context.get_used_mem_peak());
 }
 
 #[test]
@@ -584,7 +592,7 @@ fn run_load_store_subword_only_profile_test() {
 // Tests are kept `#[ignore]`d (heavy GPU) — run with `--ignored`.
 // ===========================================================================
 
-const BIGINT_DELEGATION_LAYOUT_PATH: &str =
+pub(super) const BIGINT_DELEGATION_LAYOUT_PATH: &str =
     "cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json";
 const BIGINT_WITH_CONTROL_BINARY_PATH: &str = "examples/bigint_with_control/app.bin";
 const BIGINT_WITH_CONTROL_TEXT_PATH: &str = "examples/bigint_with_control/app.text";
@@ -609,7 +617,7 @@ const BLAKE2_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 /// bigint delegation call via the bigint CSR ABI; it takes no non-determinism
 /// input, so the nd array below is unused padding), so `bigint_calls > 0` and
 /// the fixture drives a REAL bigint delegation proof.
-fn replay_bigint_delegation_buffer() -> (Vec<BigintDelegationWitness>, TableDriver<BF>) {
+pub(super) fn replay_bigint_delegation_buffer() -> (Vec<BigintDelegationWitness>, TableDriver<BF>) {
     let buffer = replay_delegation_trace_buffer_for_workload::<_, FullUnsignedMachineDecoderConfig>(
         BIGINT_WITH_CONTROL_BINARY_PATH,
         BIGINT_WITH_CONTROL_TEXT_PATH,
@@ -647,6 +655,14 @@ fn replay_bigint_delegation_buffer() -> (Vec<BigintDelegationWitness>, TableDriv
 }
 
 pub(super) fn prepare_bigint_proof_fixture() -> BasicUnrolledProofFixture {
+    prepare_bigint_proof_fixture_for_config(delegation_prover_config(
+        DelegationCircuitType::BigIntWithControl,
+    ))
+}
+
+pub(super) fn prepare_bigint_proof_fixture_for_config(
+    config: ProverConfig,
+) -> BasicUnrolledProofFixture {
     let (buffer, table_driver) = replay_bigint_delegation_buffer();
     let oracle = BigintDelegationOracle {
         cycle_data: &buffer,
@@ -656,7 +672,7 @@ pub(super) fn prepare_bigint_proof_fixture() -> BasicUnrolledProofFixture {
     // the buffer only after building the CPU reference (which is what uses the
     // oracle), so clone the buffer for the tracing host.
     let buffer_for_host = buffer.clone();
-    let fixture = prepare_delegation_proof_fixture(
+    let fixture = prepare_delegation_proof_fixture_for_config(
         DelegationCircuitType::BigIntWithControl,
         BIGINT_DELEGATION_LAYOUT_PATH,
         &table_driver,
@@ -664,6 +680,7 @@ pub(super) fn prepare_bigint_proof_fixture() -> BasicUnrolledProofFixture {
         &oracle,
         bigint_with_extended_control_mod::witness_eval_fn,
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl).get_domain_size(),
+        config,
     );
     drop(buffer);
     fixture
@@ -691,7 +708,7 @@ fn run_bigint_proof_parity_test() {
 #[test]
 #[ignore]
 fn run_bigint_multi_schedule_test() {
-    run_multi_schedule(&prepare_bigint_proof_fixture());
+    super::packed_proof::geometry_proof(prepare_bigint_proof_fixture());
 }
 
 #[test]
@@ -791,7 +808,7 @@ fn run_keccak_special5_proof_parity_test() {
 #[test]
 #[ignore]
 fn run_keccak_special5_multi_schedule_test() {
-    run_multi_schedule(&prepare_keccak_special5_proof_fixture());
+    super::packed_proof::geometry_proof(prepare_keccak_special5_proof_fixture());
 }
 
 #[test]
@@ -868,13 +885,31 @@ fn replay_blake2_with_compression_delegation_buffer(
 }
 
 pub(super) fn prepare_blake2_with_compression_proof_fixture() -> BasicUnrolledProofFixture {
+    prepare_blake2_with_compression_proof_fixture_with_packing(0)
+}
+
+pub(super) fn prepare_blake2_with_compression_proof_fixture_with_packing(
+    pack_log2: usize,
+) -> BasicUnrolledProofFixture {
+    let config = if pack_log2 == 0 {
+        delegation_prover_config(DelegationCircuitType::Blake2WithCompression)
+    } else {
+        prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
+            BLAKE2_NUM_DELEGATION_CYCLES.trailing_zeros() as usize, pack_log2, SecurityLevel::Sec100)
+    };
+    prepare_blake2_with_compression_proof_fixture_for_config(config)
+}
+
+pub(super) fn prepare_blake2_with_compression_proof_fixture_for_config(
+    config: ProverConfig,
+) -> BasicUnrolledProofFixture {
     let (buffer, table_driver) = replay_blake2_with_compression_delegation_buffer();
     let oracle = Blake2sDelegationOracle {
         cycle_data: &buffer,
         marker: core::marker::PhantomData,
     };
     let buffer_for_host = buffer.clone();
-    let fixture = prepare_delegation_proof_fixture(
+    let fixture = prepare_delegation_proof_fixture_for_config(
         DelegationCircuitType::Blake2WithCompression,
         BLAKE2_WITH_COMPRESSION_LAYOUT_PATH,
         &table_driver,
@@ -882,6 +917,7 @@ pub(super) fn prepare_blake2_with_compression_proof_fixture() -> BasicUnrolledPr
         &oracle,
         fixtures::blake2_with_extended_control_mod::witness_eval_fn,
         BLAKE2_NUM_DELEGATION_CYCLES,
+        config,
     );
     drop(buffer);
     fixture
@@ -910,7 +946,7 @@ fn run_blake2_with_compression_proof_parity_test() {
 #[test]
 #[ignore]
 fn run_blake2_with_compression_multi_schedule_test() {
-    run_multi_schedule(&prepare_blake2_with_compression_proof_fixture());
+    super::packed_proof::geometry_proof(prepare_blake2_with_compression_proof_fixture());
 }
 
 #[test]
@@ -1018,7 +1054,7 @@ fn run_blake2_g_function_proof_parity_test() {
 #[test]
 #[ignore]
 fn run_blake2_g_function_multi_schedule_test() {
-    run_multi_schedule(&prepare_blake2_g_function_proof_fixture());
+    super::packed_proof::geometry_proof(prepare_blake2_g_function_proof_fixture());
 }
 
 #[test]
@@ -1146,7 +1182,11 @@ fn prepare_inits_and_teardowns_matrix_profiling_fixture() -> BasicUnrolledFixtur
 #[test]
 #[ignore]
 fn run_inits_and_teardowns_proof_parity_test() {
-    run_proof_parity(&prepare_inits_and_teardowns_matrix_proof_fixture());
+    let fixture = prepare_inits_and_teardowns_matrix_proof_fixture();
+    assert_eq!(fixture.base.compiled_circuit.witness_layout.total_width, 0);
+    assert_eq!(fixture.base.compiled_circuit.generic_lookup_tables_width, 0);
+    assert!(fixture.base.gpu_setup_host.is_none());
+    run_proof_parity(&fixture);
 }
 
 #[test]
@@ -1163,7 +1203,7 @@ fn run_inits_and_teardowns_profile_test() {
     run_profile(&prepare_inits_and_teardowns_matrix_profiling_fixture());
 }
 
-mod keccak_f1600 {
+pub(super) mod keccak_f1600 {
     use super::*;
     use circuit_common::DelegationCircuit;
     use common_constants::keccak_f1600::*;
@@ -1223,9 +1263,7 @@ mod keccak_f1600 {
                 )
             }
 
-            #[test]
-            #[ignore]
-            fn $multi_schedule() {
+            pub(in crate::tests) fn $stem() -> BasicUnrolledProofFixture {
                 let buffer = $buffer();
                 let oracle = $oracle {
                     cycle_data: &buffer,
@@ -1234,7 +1272,7 @@ mod keccak_f1600 {
                 let mut table_driver = TableDriver::<BF>::new();
                 <$definition as DelegationCircuit<BF>>::table_driver_fn(&mut table_driver);
                 let circuit_type = DelegationCircuitType::$variant;
-                let fixture = prepare_delegation_proof_fixture(
+                prepare_delegation_proof_fixture(
                     circuit_type,
                     concat!(
                         "cs/compiled_circuits/",
@@ -1246,8 +1284,13 @@ mod keccak_f1600 {
                     &oracle,
                     setups::$stem::witness_eval_fn,
                     CircuitType::Delegation(circuit_type).get_domain_size(),
-                );
-                run_multi_schedule(&fixture);
+                )
+            }
+
+            #[test]
+            #[ignore]
+            fn $multi_schedule() {
+                super::super::packed_proof::geometry_proof($stem());
             }
 
             #[test]
@@ -1341,5 +1384,251 @@ mod keccak_f1600 {
         KECCAK_THETA_RHO_X11_NUM_WRITES,
         KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
         NUM_KECCAK_F1600_THETA_RHO_CALLS
+    );
+}
+
+// ---------------------------------------------------------------------------
+// EthproofsSoundnessCalc mode: internal-round folding-challenge and OOD-draw
+// PoW. The CPU reference and the GPU proof share the mode's config.
+// ---------------------------------------------------------------------------
+
+/// Every circuit's config, resolved by the production
+/// [`crate::config::prover_config_for_selection`] from its compiled circuit,
+/// equals the committed config of its mode. The pessimistic one is the
+/// circuit's own config; the ethproofs-soundcalc one passes the GPU
+/// recursive-WHIR admission (fold ladder, per-oracle commitment shape, cap,
+/// twiddle domain) with its folding and OOD PoW, and keeps the remaining
+/// capability limits (no base-round folding PoW, one OOD sample per oracle).
+#[test]
+fn cpu_ethproofs_schedules_pass_recursive_whir_admission() {
+    use DelegationCircuitType as D;
+    use UnrolledCircuitType as U;
+    use UnrolledMemoryCircuitType as M;
+    use UnrolledNonMemoryCircuitType as N;
+    const CIRCUITS: [(CircuitType, &str, &str); 15] = [
+        (
+            CircuitType::Delegation(D::BigIntWithControl),
+            "bigint_with_control",
+            "bigint_with_extended_control",
+        ),
+        (
+            CircuitType::Delegation(D::Blake2GFunction),
+            "blake2_g_function",
+            "blake2_g_function",
+        ),
+        (
+            CircuitType::Delegation(D::Blake2WithCompression),
+            "blake2_with_compression",
+            "blake2_with_extended_control",
+        ),
+        (
+            CircuitType::Delegation(D::KeccakChi5),
+            "keccak_chi5",
+            "keccak_chi5",
+        ),
+        (
+            CircuitType::Delegation(D::KeccakColumnParity),
+            "keccak_column_parity",
+            "keccak_column_parity",
+        ),
+        (
+            CircuitType::Delegation(D::KeccakSpecial5),
+            "keccak_special5",
+            "keccak_special5",
+        ),
+        (
+            CircuitType::Delegation(D::KeccakThetaRho),
+            "keccak_theta_rho",
+            "keccak_theta_rho",
+        ),
+        (
+            CircuitType::Unrolled(U::NonMemory(N::AddSubLuiAuipcMop)),
+            "unrolled_circuits/add_sub_lui_auipc_mop",
+            "add_sub_lui_auipc_mop",
+        ),
+        (
+            CircuitType::Unrolled(U::InitsAndTeardowns),
+            "unrolled_circuits/inits_and_teardowns",
+            "inits_and_teardowns",
+        ),
+        (
+            CircuitType::Unrolled(U::NonMemory(N::JumpBranchSlt)),
+            "unrolled_circuits/jump_branch_slt",
+            "jump_branch_slt",
+        ),
+        (
+            CircuitType::Unrolled(U::Memory(M::LoadStoreSubwordOnly)),
+            "unrolled_circuits/load_store_subword_only",
+            "mem_subword_only",
+        ),
+        (
+            CircuitType::Unrolled(U::Memory(M::LoadStoreWordOnly)),
+            "unrolled_circuits/load_store_word_only",
+            "mem_word_only",
+        ),
+        (
+            CircuitType::Unrolled(U::NonMemory(N::MulDivUnsigned)),
+            "unrolled_circuits/mul_div_unsigned",
+            "unsigned_mul_div",
+        ),
+        (
+            CircuitType::Unrolled(U::NonMemory(N::ShiftBinary)),
+            "unrolled_circuits/shift_binary",
+            "shift_binop",
+        ),
+        (
+            CircuitType::Unrolled(U::Unified),
+            "unrolled_circuits/unified_reduced_machine",
+            "unified_reduced_machine",
+        ),
+    ];
+    // The list is every circuit with a committed ethproofs-soundcalc config.
+    let committed: std::collections::BTreeSet<String> = ["", "unrolled_circuits/"]
+        .into_iter()
+        .flat_map(|prefix| {
+            std::fs::read_dir(test_artifact_path(&format!("circuit_defs/{prefix}")))
+                .unwrap()
+                .map(move |entry| {
+                    format!("{prefix}{}", entry.unwrap().file_name().to_string_lossy())
+                })
+        })
+        .filter(|dir| {
+            test_artifact_path(&format!(
+                "circuit_defs/{dir}/generated/prover_config_sec_100_ethproofs_soundcalc.json"
+            ))
+            .exists()
+        })
+        .collect();
+    assert_eq!(
+        committed,
+        CIRCUITS.iter().map(|(_, dir, _)| dir.to_string()).collect()
+    );
+    for (circuit_type, dir, layout) in CIRCUITS {
+        let compiled: GKRCircuitArtifact<BF> =
+            deserialize_json_for_test(&format!("cs/compiled_circuits/{layout}_layout_gkr.json"));
+        for &mode in circuit_common::SoundnessMode::ALL {
+            let selection = ProvingSelection {
+                security_level: SecurityLevel::Sec100,
+                soundness_mode: mode,
+            };
+            let config =
+                crate::config::prover_config_for_selection(circuit_type, &compiled, selection)
+                    .unwrap_or_else(|error| panic!("{circuit_type:?}/{mode:?}: {error}"));
+            let committed: ProverConfig = deserialize_json_for_test(&format!(
+                "circuit_defs/{dir}/generated/prover_config_sec_100_{}.json",
+                mode.file_suffix()
+            ));
+            assert_eq!(config, committed, "{circuit_type:?}/{mode:?}");
+            if mode == circuit_common::SoundnessMode::PessimisticConjecture {
+                assert_eq!(
+                    config,
+                    crate::config::prover_config(circuit_type, SecurityLevel::Sec100).unwrap(),
+                    "{circuit_type:?}"
+                );
+                continue;
+            }
+            let schedule = &config.whir_schedule;
+            assert_eq!(schedule.base_round.folding_pow_bits, 0, "{circuit_type:?}");
+            assert!(
+                schedule
+                    .internal_rounds
+                    .iter()
+                    .all(|round| round.num_ood_samples == 1 && round.folding_pow_bits > 0),
+                "{circuit_type:?}"
+            );
+            assert!(
+                schedule.internal_rounds[0].ood_pow_bits > 0,
+                "{circuit_type:?}"
+            );
+            gpu_whir::validate_baby_bear_recursive_schedule(
+                config.whir_message_size_log2() as u32,
+                schedule,
+                27,
+            );
+        }
+    }
+}
+
+fn ethproofs_config(circuit_type: CircuitType, layout_path: &str) -> ProverConfig {
+    let compiled_circuit: GKRCircuitArtifact<BF> = deserialize_json_for_test(layout_path);
+    prover_config_in_mode(
+        circuit_type,
+        &compiled_circuit,
+        SecurityLevel::Sec100,
+        circuit_common::SoundnessMode::EthproofsSoundnessCalc,
+    )
+}
+
+/// GPU proof == CPU reference under a config that gates WHIR folding
+/// challenges and OOD draws, and the reference really carries those nonces.
+/// With `AB_GPU_PROOF_EXPORT_DIR` set, the GPU proof is written there as
+/// `<verifier_name>_ethproofs_soundcalc_gpu_proof.json` for the generated
+/// verifier's acceptance and tampered-nonce test (`verifier/tests/gpu_proofs.rs`).
+fn run_whir_pow_proof_parity(fixture: &BasicUnrolledProofFixture, verifier_name: &str) {
+    let schedule = &fixture.base.prover_config.whir_schedule;
+    let whir = &fixture.expected_cpu_proof.whir_proof;
+    assert_eq!(schedule.base_round.folding_pow_bits, 0);
+    assert!(schedule.internal_rounds.iter().any(|r| r.ood_pow_bits > 0));
+    for (oracle, round) in whir
+        .intermediate_whir_oracles
+        .iter()
+        .zip(&schedule.internal_rounds)
+    {
+        assert!(round.folding_pow_bits > 0);
+        assert_eq!(oracle.folding_pow_nonces.len(), round.folding_log2);
+        assert_eq!(oracle.ood_pow_nonce.is_some(), round.ood_pow_bits > 0);
+    }
+    let (gpu_proof, _ms) = fixture.schedule_prove().unwrap().finish().unwrap();
+    assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
+    if let Some(dir) = std::env::var_os("AB_GPU_PROOF_EXPORT_DIR") {
+        let path = std::path::Path::new(&dir).join(format!(
+            "{verifier_name}_ethproofs_soundcalc_gpu_proof.json"
+        ));
+        serde_json::to_writer(std::fs::File::create(&path).unwrap(), &gpu_proof).unwrap();
+        eprintln!("exported GPU proof to {}", path.display());
+    }
+}
+
+#[test]
+#[ignore]
+fn run_bigint_ethproofs_proof_parity_test() {
+    let circuit_type = CircuitType::Delegation(DelegationCircuitType::BigIntWithControl);
+    let config = ethproofs_config(circuit_type, BIGINT_DELEGATION_LAYOUT_PATH);
+    run_whir_pow_proof_parity(
+        &prepare_bigint_proof_fixture_for_config(config),
+        "bigint_with_extended_control",
+    );
+}
+
+#[test]
+#[ignore]
+fn run_blake2_with_compression_ethproofs_proof_parity_test() {
+    let circuit_type = CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression);
+    let config = ethproofs_config(circuit_type, BLAKE2_WITH_COMPRESSION_LAYOUT_PATH);
+    run_whir_pow_proof_parity(
+        &prepare_blake2_with_compression_proof_fixture_for_config(config),
+        "blake2_with_extended_control",
+    );
+}
+
+#[test]
+#[ignore]
+fn run_add_sub_ethproofs_proof_parity_test() {
+    run_whir_pow_proof_parity(
+        &prepare_basic_unrolled_proof_fixture_in_mode(
+            circuit_common::SoundnessMode::EthproofsSoundnessCalc,
+        ),
+        "add_sub_lui_auipc_mop",
+    );
+}
+
+#[test]
+#[ignore]
+fn run_unified_ethproofs_proof_parity_test() {
+    run_whir_pow_proof_parity(
+        &prepare_unified_proof_fixture_in_mode(
+            circuit_common::SoundnessMode::EthproofsSoundnessCalc,
+        ),
+        "unified_reduced_machine",
     );
 }

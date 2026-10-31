@@ -27,20 +27,18 @@ fn test_prover_config() -> prover_config::ProverConfig {
         // FOLDING_STEPS of the tests below; never checked — this config
         // drives `evaluate_sumcheck_for_layer` directly, not a prove entry
         trace_len_log2: 4,
-        pack_log2: 0,
         commitment_mode: prover_config::CommitmentMode::SeparateMemoryAndWitness,
-        lde_factor: 2,
         cap_size: 64,
-        base_oracles_values_per_leaf: 2,
         sumcheck_explicit_output_size_log_2: 4,
         security_level: crate::definitions::SecurityLevel::Sec100,
         whir_schedule: crate::gkr::prover::WhirSchedule {
-            base_lde_factor: 2,
             cap_size: 64,
-            whir_steps_schedule: vec![],
-            whir_queries_schedule: vec![],
-            whir_steps_lde_factors: vec![],
-            whir_pow_schedule: vec![],
+            base_round: prover_config::WhirBaseRoundSchedule {
+                lde_factor_log2: 1,
+                num_queries: 0,
+                ..Default::default()
+            },
+            internal_rounds: vec![],
         },
         same_size_sumcheck_schedule: prover_config::naive_same_size_schedule(),
         dimension_reducing_sumcheck_schedule: Default::default(),

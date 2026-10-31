@@ -22,8 +22,9 @@
 //! `RECURSION_UNROLLED_BLAKE` / `RECURSION_BRIDGE_BLAKE` / `RECURSION_FINAL_BLAKE`
 //! (see `full_statement_verifier::host_utils` for the selection rules). Build
 //! the matching binaries with `tools/gkr_verifier/dump_recursive_verifiers.sh`.
-//! Intermediate proofs/setups are cached to disk, keyed by the active blake
-//! variants so different options don't overwrite each other.
+//! Intermediate proofs/setups are cached to disk as zlib-compressed JSON
+//! (`*.json.zlib`), keyed by the active blake variants so different options
+//! don't overwrite each other.
 //!
 //! The protocol pieces (recursion hash chain, `end_params` hashing, nd-stream
 //! layout, binary registry) live in `full_statement_verifier::recursion_chain`,
@@ -64,7 +65,7 @@ mod tests {
     const UNIFIED_CYCLES_BOUND: usize = 1 << 27;
     const RAM_BOUND: usize = 1 << 30;
 
-    const FSV_DIR: &str = "../../tools/gkr_verifier";
+    const FSV_DIR: &str = "../../tools/gkr_verifier/full_statement_verifiers";
 
     // ---- pure helpers -------------------------------------------------------
 
@@ -142,7 +143,7 @@ mod tests {
         let worker = Worker::new_with_num_threads(12);
 
         // === Stage 1: base layer — prove zksync_os app + witness (IM ISA). ===
-        let (zksync_bin, zksync_text) = load_program(
+        let (zksync_bin, zksync_text) = riscv_transpiler::elf::load_legacy_binaries(
             Path::new("../../riscv_transpiler/examples/zksync_os/app.bin"),
             Path::new("../../riscv_transpiler/examples/zksync_os/app.text"),
         );
@@ -152,11 +153,11 @@ mod tests {
 
         println!("=== Stage 1: proving zksync_os base layer ===");
         let (base_proof, base_setups) =
-            if let Ok(base_proof) = try_deserialize_compressed_from_file("base_proofs.bin") {
+            if let Ok(base_proof) = try_deserialize_compressed_from_file("base_proofs.json.zlib") {
                 println!("Using existing files for base layer");
                 (
                     base_proof,
-                    try_deserialize_compressed_from_file("base_setups.bin").unwrap(),
+                    try_deserialize_compressed_from_file("base_setups.json.zlib").unwrap(),
                 )
             } else {
                 let (base_proof, base_setups) = prove_unrolled_execution_with_replayer::<
@@ -178,14 +179,17 @@ mod tests {
                     &DefaultBabyBearGKRBackend::default(),
                 );
                 println!("Base proofs are done");
-                serialize_compressed_to_file(&base_proof, "base_proofs.bin");
-                serialize_compressed_to_file(&base_setups, "base_setups.bin");
+                serialize_compressed_to_file(&base_proof, "base_proofs.json.zlib");
+                serialize_compressed_to_file(&base_setups, "base_setups.json.zlib");
 
                 (base_proof, base_setups)
             };
 
         // sanity: base proof verifies on the native machine.
-        native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
+        native_verify_unrolled(
+            build_unrolled_stream(&base_setups, &base_proof, verifier_common::BLAKE_MODE),
+            true,
+        );
         println!("Base layer proofs pass the verification on native arch");
 
         let base_end_params = compute_end_params(&base_setups, base_proof.final_pc);
@@ -226,15 +230,22 @@ mod tests {
 
             // Resume from a previously-proven unrolled layer if present.
             if let Ok(cached_proof) = try_deserialize_compressed_from_file::<ProgramProof>(
-                &format!("recursion_layer_{}_proof_{}.bin", layer, u_tag),
+                &format!("recursion_layer_{}_proof_{}.json.zlib", layer, u_tag),
             ) {
                 println!("Using existing files for unrolled layer {layer}");
                 let cached_setups: Setups = try_deserialize_compressed_from_file(&format!(
-                    "recursion_layer_{layer}_setups_{u_tag}.bin"
+                    "recursion_layer_{layer}_setups_{u_tag}.json.zlib"
                 ))
                 .unwrap();
                 total_cycles += cached_proof.executed_cycles();
-                native_verify_unrolled(build_unrolled_stream(&cached_setups, &cached_proof), false);
+                native_verify_unrolled(
+                    build_unrolled_stream(
+                        &cached_setups,
+                        &cached_proof,
+                        verifier_common::BLAKE_MODE,
+                    ),
+                    false,
+                );
                 let end_params = compute_end_params(&cached_setups, cached_proof.final_pc);
                 chain.extend(&end_params);
                 proof = cached_proof;
@@ -276,7 +287,11 @@ mod tests {
                 bin,
                 text,
                 use_caches,
-                QuasiUARTSource::new_with_reads(build_unrolled_stream(&setups, &proof)),
+                QuasiUARTSource::new_with_reads(build_unrolled_stream(
+                    &setups,
+                    &proof,
+                    unrolled_blake,
+                )),
                 RAM_BOUND,
                 &worker,
                 SecurityLevel::Sec100,
@@ -287,11 +302,11 @@ mod tests {
             new_proof.set_recursion_chain(&chain);
             serialize_compressed_to_file(
                 &new_proof,
-                &format!("recursion_layer_{layer}_proof_{u_tag}.bin"),
+                &format!("recursion_layer_{layer}_proof_{u_tag}.json.zlib"),
             );
             serialize_compressed_to_file(
                 &new_setups,
-                &format!("recursion_layer_{layer}_setups_{u_tag}.bin"),
+                &format!("recursion_layer_{layer}_setups_{u_tag}.json.zlib"),
             );
 
             let round_cycles = new_proof.executed_cycles();
@@ -299,7 +314,10 @@ mod tests {
             println!("unrolled recursion round ran {round_cycles} cycles (total {total_cycles})");
 
             // sanity verify (this proof carries a recursion preimage).
-            native_verify_unrolled(build_unrolled_stream(&new_setups, &new_proof), false);
+            native_verify_unrolled(
+                build_unrolled_stream(&new_setups, &new_proof, verifier_common::BLAKE_MODE),
+                false,
+            );
 
             let end_params = compute_end_params(&new_setups, new_proof.final_pc);
             chain.extend(&end_params);
@@ -327,13 +345,13 @@ mod tests {
         );
         let (bridge_proof, bridge_setups) = if let Ok(bridge_proof) =
             try_deserialize_compressed_from_file::<ProgramProof>(&format!(
-                "bridge_proof_{u_tag}_{bridge_tag}.bin"
+                "bridge_proof_{u_tag}_{bridge_tag}.json.zlib"
             )) {
             println!("Using existing files for bridge layer");
             (
                 bridge_proof,
                 try_deserialize_compressed_from_file(&format!(
-                    "bridge_setups_{u_tag}_{bridge_tag}.bin"
+                    "bridge_setups_{u_tag}_{bridge_tag}.json.zlib"
                 ))
                 .unwrap(),
             )
@@ -343,7 +361,11 @@ mod tests {
                 &bridge_bin,
                 &bridge_text,
                 use_caches,
-                QuasiUARTSource::new_with_reads(build_unrolled_stream(&setups, &proof)),
+                QuasiUARTSource::new_with_reads(build_unrolled_stream(
+                    &setups,
+                    &proof,
+                    bridge_blake,
+                )),
                 RAM_BOUND,
                 &worker,
                 SecurityLevel::Sec100,
@@ -355,11 +377,11 @@ mod tests {
 
             serialize_compressed_to_file(
                 &bridge_proof,
-                &format!("bridge_proof_{u_tag}_{bridge_tag}.bin"),
+                &format!("bridge_proof_{u_tag}_{bridge_tag}.json.zlib"),
             );
             serialize_compressed_to_file(
                 &bridge_setups,
-                &format!("bridge_setups_{u_tag}_{bridge_tag}.bin"),
+                &format!("bridge_setups_{u_tag}_{bridge_tag}.json.zlib"),
             );
 
             (bridge_proof, bridge_setups)
@@ -368,7 +390,10 @@ mod tests {
         total_cycles += bridge_proof_cycles;
         println!("bridge unified proof ran {bridge_proof_cycles} cycles (total {total_cycles})");
 
-        native_verify_unified(build_unified_stream(&bridge_setups, &bridge_proof), false);
+        native_verify_unified(
+            build_unified_stream(&bridge_setups, &bridge_proof, verifier_common::BLAKE_MODE),
+            false,
+        );
 
         let bridge_end_params = compute_end_params(&bridge_setups, bridge_proof.final_pc);
         chain.extend(&bridge_end_params);
@@ -414,7 +439,7 @@ mod tests {
             let measured = measure_verifier_cycles(
                 &unified_rec_bin,
                 &unified_rec_text,
-                build_unified_stream(&setups, &proof),
+                build_unified_stream(&setups, &proof, final_blake),
             );
             println!(
                 "=== final layer {final_layer}: proving fsv_unified_recursion_layer in unified \
@@ -423,10 +448,12 @@ mod tests {
                 measured.div_ceil(1 << 23)
             );
 
-            let proof_file =
-                format!("final_layer_{final_layer}_proof_{u_tag}_{bridge_tag}_{final_tag}.bin");
-            let setups_file =
-                format!("final_layer_{final_layer}_setups_{u_tag}_{bridge_tag}_{final_tag}.bin");
+            let proof_file = format!(
+                "final_layer_{final_layer}_proof_{u_tag}_{bridge_tag}_{final_tag}.json.zlib"
+            );
+            let setups_file = format!(
+                "final_layer_{final_layer}_setups_{u_tag}_{bridge_tag}_{final_tag}.json.zlib"
+            );
             let (new_proof, new_setups) = if let Ok(cached_proof) =
                 try_deserialize_compressed_from_file::<ProgramProof>(&proof_file)
             {
@@ -441,7 +468,11 @@ mod tests {
                     &unified_rec_bin,
                     &unified_rec_text,
                     use_caches,
-                    QuasiUARTSource::new_with_reads(build_unified_stream(&setups, &proof)),
+                    QuasiUARTSource::new_with_reads(build_unified_stream(
+                        &setups,
+                        &proof,
+                        final_blake,
+                    )),
                     RAM_BOUND,
                     &worker,
                     SecurityLevel::Sec100,
@@ -464,7 +495,10 @@ mod tests {
                  delegations {new_delegations:?}"
             );
 
-            native_verify_unified(build_unified_stream(&new_setups, &new_proof), false);
+            native_verify_unified(
+                build_unified_stream(&new_setups, &new_proof, verifier_common::BLAKE_MODE),
+                false,
+            );
 
             let end_params = compute_end_params(&new_setups, new_proof.final_pc);
             chain.extend(&end_params);
@@ -474,7 +508,10 @@ mod tests {
         }
 
         let (chunks, delegations) = proof_shape(&proof);
-        let final_output = native_verify_unified(build_unified_stream(&setups, &proof), false);
+        let final_output = native_verify_unified(
+            build_unified_stream(&setups, &proof, verifier_common::BLAKE_MODE),
+            false,
+        );
 
         println!("=== pipeline complete: {total_cycles} total cycles proven ===");
         println!(
@@ -488,7 +525,7 @@ mod tests {
         let next_cycles = measure_verifier_cycles(
             &unified_rec_bin,
             &unified_rec_text,
-            build_unified_stream(&setups, &proof),
+            build_unified_stream(&setups, &proof, final_blake),
         );
         println!(
             "verifying the final proof would take {next_cycles} cycles ({} unified chunk(s))",
@@ -514,18 +551,18 @@ mod tests {
         let bridge_tag = bridge_blake_mode().tag();
         let final_tag = final_blake_mode().tag();
         let proof: ProgramProof = try_deserialize_compressed_from_file(&format!(
-            "final_layer_0_proof_{u_tag}_{bridge_tag}_{final_tag}.bin"
+            "final_layer_0_proof_{u_tag}_{bridge_tag}_{final_tag}.json.zlib"
         ))
         .expect("run test_recursive_proving_pipeline_zksync_os first");
         let setups: Setups = try_deserialize_compressed_from_file(&format!(
-            "final_layer_0_setups_{u_tag}_{bridge_tag}_{final_tag}.bin"
+            "final_layer_0_setups_{u_tag}_{bridge_tag}_{final_tag}.json.zlib"
         ))
         .unwrap();
 
         for mode in [BlakeMode::Compression, BlakeMode::BlakeSpecialOpcodes] {
             let (bin, text) = load_fsv_program(FSV_DIR, FsvProgram::UnifiedRecursionLayer, mode);
             let cycles =
-                measure_verifier_cycles(&bin, &text, build_unified_stream(&setups, &proof));
+                measure_verifier_cycles(&bin, &text, build_unified_stream(&setups, &proof, mode));
             println!(
                 "verifying the converged proof with fsv_unified_recursion_layer[{}] takes {cycles} cycles ({} x 2^22, {} x 2^23 chunks)",
                 mode.tag(),
@@ -572,33 +609,34 @@ mod tests {
 
         // Converged pipeline artifacts.
         let mut proof: ProgramProof = try_deserialize_compressed_from_file(&format!(
-            "final_layer_0_proof_{u_tag}_{bridge_tag}_{final_tag}.bin"
+            "final_layer_0_proof_{u_tag}_{bridge_tag}_{final_tag}.json.zlib"
         ))
         .expect("run test_recursive_proving_pipeline_zksync_os first");
         let mut setups: Setups = try_deserialize_compressed_from_file(&format!(
-            "final_layer_0_setups_{u_tag}_{bridge_tag}_{final_tag}.bin"
+            "final_layer_0_setups_{u_tag}_{bridge_tag}_{final_tag}.json.zlib"
         ))
         .unwrap();
 
         // Reconstruct the recursion chain exactly as the pipeline left it:
         // begin at the base layer, extend through every cached stage.
         let base_proof: ProgramProof =
-            try_deserialize_compressed_from_file("base_proofs.bin").unwrap();
-        let base_setups: Setups = try_deserialize_compressed_from_file("base_setups.bin").unwrap();
+            try_deserialize_compressed_from_file("base_proofs.json.zlib").unwrap();
+        let base_setups: Setups =
+            try_deserialize_compressed_from_file("base_setups.json.zlib").unwrap();
         let mut chain =
             FsvRecursionChain::begin(&compute_end_params(&base_setups, base_proof.final_pc));
         for (p_file, s_file) in [
             (
-                format!("recursion_layer_0_proof_{u_tag}.bin"),
-                format!("recursion_layer_0_setups_{u_tag}.bin"),
+                format!("recursion_layer_0_proof_{u_tag}.json.zlib"),
+                format!("recursion_layer_0_setups_{u_tag}.json.zlib"),
             ),
             (
-                format!("bridge_proof_{u_tag}_{bridge_tag}.bin"),
-                format!("bridge_setups_{u_tag}_{bridge_tag}.bin"),
+                format!("bridge_proof_{u_tag}_{bridge_tag}.json.zlib"),
+                format!("bridge_setups_{u_tag}_{bridge_tag}.json.zlib"),
             ),
             (
-                format!("final_layer_0_proof_{u_tag}_{bridge_tag}_{final_tag}.bin"),
-                format!("final_layer_0_setups_{u_tag}_{bridge_tag}_{final_tag}.bin"),
+                format!("final_layer_0_proof_{u_tag}_{bridge_tag}_{final_tag}.json.zlib"),
+                format!("final_layer_0_setups_{u_tag}_{bridge_tag}_{final_tag}.json.zlib"),
             ),
         ] {
             let p: ProgramProof = try_deserialize_compressed_from_file(&p_file).unwrap();
@@ -617,7 +655,7 @@ mod tests {
             let measured = measure_verifier_cycles(
                 &spec_bin,
                 &spec_text,
-                build_unified_stream(&setups, &proof),
+                build_unified_stream(&setups, &proof, BlakeMode::BlakeSpecialOpcodes),
             );
             let need = measured.div_ceil(1 << 23) as usize;
             let (cur_chunks, cur_delegations) = shape(&proof);
@@ -635,8 +673,9 @@ mod tests {
                 return;
             }
 
-            let p_file = format!("spec_layer_{k}_proof_{u_tag}_{bridge_tag}_{final_tag}.bin");
-            let s_file = format!("spec_layer_{k}_setups_{u_tag}_{bridge_tag}_{final_tag}.bin");
+            let p_file = format!("spec_layer_{k}_proof_{u_tag}_{bridge_tag}_{final_tag}.json.zlib");
+            let s_file =
+                format!("spec_layer_{k}_setups_{u_tag}_{bridge_tag}_{final_tag}.json.zlib");
             let (new_proof, new_setups) =
                 if let Ok(cached) = try_deserialize_compressed_from_file::<ProgramProof>(&p_file) {
                     println!("Using existing files for spec layer {k}");
@@ -650,7 +689,11 @@ mod tests {
                         &spec_bin,
                         &spec_text,
                         use_caches,
-                        QuasiUARTSource::new_with_reads(build_unified_stream(&setups, &proof)),
+                        QuasiUARTSource::new_with_reads(build_unified_stream(
+                            &setups,
+                            &proof,
+                            BlakeMode::BlakeSpecialOpcodes,
+                        )),
                         RAM_BOUND,
                         &worker,
                         SecurityLevel::Sec100,
@@ -674,7 +717,10 @@ mod tests {
                 delegations.is_empty(),
                 "special-opcodes verifier run must make no delegation calls"
             );
-            native_verify_unified(build_unified_stream(&new_setups, &new_proof), false);
+            native_verify_unified(
+                build_unified_stream(&new_setups, &new_proof, verifier_common::BLAKE_MODE),
+                false,
+            );
             chain.extend(&compute_end_params(&new_setups, new_proof.final_pc));
             proof = new_proof;
             setups = new_setups;
@@ -731,30 +777,31 @@ mod tests {
         // Input: the converged pipeline proof (1 unified chunk + 1 blake
         // proof, standard schedule, separate commitment).
         let mut proof: ProgramProof =
-            try_deserialize_compressed_from_file(&format!("final_layer_0_proof_{tags}.bin"))
+            try_deserialize_compressed_from_file(&format!("final_layer_0_proof_{tags}.json.zlib"))
                 .expect("run test_recursive_proving_pipeline_zksync_os first");
         let mut setups: Setups =
-            try_deserialize_compressed_from_file(&format!("final_layer_0_setups_{tags}.bin"))
+            try_deserialize_compressed_from_file(&format!("final_layer_0_setups_{tags}.json.zlib"))
                 .unwrap();
 
         // Reconstruct the recursion chain through every cached stage.
         let base_proof: ProgramProof =
-            try_deserialize_compressed_from_file("base_proofs.bin").unwrap();
-        let base_setups: Setups = try_deserialize_compressed_from_file("base_setups.bin").unwrap();
+            try_deserialize_compressed_from_file("base_proofs.json.zlib").unwrap();
+        let base_setups: Setups =
+            try_deserialize_compressed_from_file("base_setups.json.zlib").unwrap();
         let mut chain =
             FsvRecursionChain::begin(&compute_end_params(&base_setups, base_proof.final_pc));
         for (p_file, s_file) in [
             (
-                format!("recursion_layer_0_proof_{u_tag}.bin"),
-                format!("recursion_layer_0_setups_{u_tag}.bin"),
+                format!("recursion_layer_0_proof_{u_tag}.json.zlib"),
+                format!("recursion_layer_0_setups_{u_tag}.json.zlib"),
             ),
             (
-                format!("bridge_proof_{u_tag}_{bridge_tag}.bin"),
-                format!("bridge_setups_{u_tag}_{bridge_tag}.bin"),
+                format!("bridge_proof_{u_tag}_{bridge_tag}.json.zlib"),
+                format!("bridge_setups_{u_tag}_{bridge_tag}.json.zlib"),
             ),
             (
-                format!("final_layer_0_proof_{tags}.bin"),
-                format!("final_layer_0_setups_{tags}.bin"),
+                format!("final_layer_0_proof_{tags}.json.zlib"),
+                format!("final_layer_0_setups_{tags}.json.zlib"),
             ),
         ] {
             let p: ProgramProof = try_deserialize_compressed_from_file(&p_file).unwrap();
@@ -770,25 +817,20 @@ mod tests {
             FsvProgram::UnifiedRecursionLayer,
             BlakeMode::BlakeSpecialOpcodes,
         );
-        let (feeder_bin, feeder_text) = load_program(
-            Path::new(&format!(
-                "{FSV_DIR}/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.bin"
-            )),
-            Path::new(&format!(
-                "{FSV_DIR}/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.text"
-            )),
-        );
+        let (feeder_bin, feeder_text) = load_program(Path::new(&format!(
+            "{FSV_DIR}/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.elf"
+        )));
 
         let feeder_config =
             prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23();
         println!(
             "[l1-feeder] config: base lde {}, whir steps {:?}, queries {:?}, pow {:?}, \
              intermediate lde factors {:?}",
-            feeder_config.lde_factor,
-            feeder_config.whir_schedule.whir_steps_schedule,
-            feeder_config.whir_schedule.whir_queries_schedule,
-            feeder_config.whir_schedule.whir_pow_schedule,
-            feeder_config.whir_schedule.whir_steps_lde_factors,
+            feeder_config.lde_factor(),
+            feeder_config.whir_schedule.fold_steps(),
+            feeder_config.whir_schedule.queries_per_round(),
+            feeder_config.whir_schedule.queries_pow_bits_per_round(),
+            feeder_config.whir_schedule.intermediate_lde_factors(),
         );
 
         const MAX_LAYERS: usize = 5;
@@ -799,8 +841,8 @@ mod tests {
                 (&feeder_bin, &feeder_text)
             };
 
-            let p_file = format!("feeder_layer_{k}_proof_{tags}.bin");
-            let s_file = format!("feeder_layer_{k}_setups_{tags}.bin");
+            let p_file = format!("feeder_layer_{k}_proof_{tags}.json.zlib");
+            let s_file = format!("feeder_layer_{k}_setups_{tags}.json.zlib");
             let (new_proof, new_setups) =
                 if let Ok(cached) = try_deserialize_compressed_from_file::<ProgramProof>(&p_file) {
                     println!("Using existing files for feeder layer {k}");
@@ -814,7 +856,11 @@ mod tests {
                         run_bin,
                         run_text,
                         use_caches,
-                        QuasiUARTSource::new_with_reads(build_unified_stream(&setups, &proof)),
+                        QuasiUARTSource::new_with_reads(build_unified_stream(
+                            &setups,
+                            &proof,
+                            BlakeMode::BlakeSpecialOpcodes,
+                        )),
                         RAM_BOUND,
                         &worker,
                         SecurityLevel::Sec100,
@@ -841,7 +887,7 @@ mod tests {
             let measured = measure_verifier_cycles(
                 &feeder_bin,
                 &feeder_text,
-                build_unified_stream(&setups, &proof),
+                build_unified_stream(&setups, &proof, BlakeMode::BlakeSpecialOpcodes),
             );
             let need = measured.div_ceil(1 << 23) as usize;
             println!(
@@ -896,20 +942,22 @@ mod tests {
         let tags = format!("{u_tag}_{bridge_tag}_{final_tag}");
 
         let proof: ProgramProof =
-            try_deserialize_compressed_from_file(&format!("feeder_layer_1_proof_{tags}.bin"))
+            try_deserialize_compressed_from_file(&format!("feeder_layer_1_proof_{tags}.json.zlib"))
                 .expect("run test_l1_feeder_high_lde_research first");
-        let setups: Setups =
-            try_deserialize_compressed_from_file(&format!("feeder_layer_1_setups_{tags}.bin"))
-                .unwrap();
-        let stream = build_unified_stream(&setups, &proof);
+        let setups: Setups = try_deserialize_compressed_from_file(&format!(
+            "feeder_layer_1_setups_{tags}.json.zlib"
+        ))
+        .unwrap();
+        let stream = build_unified_stream(
+            &setups,
+            &proof,
+            verifier_common::fsv_binaries::BlakeMode::BlakeSpecialOpcodes,
+        );
 
         let program = ProgramConfig {
-            binary_path: format!(
-                "{FSV_DIR}/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.bin"
-            ),
-            text_section_path: format!(
-                "{FSV_DIR}/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.text"
-            ),
+            program: riscv_transpiler::elf::ProgramSource::elf(format!(
+                "{FSV_DIR}/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.elf"
+            )),
             non_determinism_reads: stream,
             cycles_bound: 1 << 22,
             ram_bound_bytes: 1 << 30,
@@ -945,18 +993,19 @@ mod tests {
         let final_tag = final_blake_mode().tag();
         let tags = format!("{u_tag}_{bridge_tag}_{final_tag}");
         let proof: ProgramProof =
-            try_deserialize_compressed_from_file(&format!("feeder_layer_0_proof_{tags}.bin"))
+            try_deserialize_compressed_from_file(&format!("feeder_layer_0_proof_{tags}.json.zlib"))
                 .expect("run test_l1_feeder_high_lde_research first");
-        let setups: Setups =
-            try_deserialize_compressed_from_file(&format!("feeder_layer_0_setups_{tags}.bin"))
-                .unwrap();
-        let stream = build_unified_stream(&setups, &proof);
+        let setups: Setups = try_deserialize_compressed_from_file(&format!(
+            "feeder_layer_0_setups_{tags}.json.zlib"
+        ))
+        .unwrap();
+        let stream = build_unified_stream(&setups, &proof, verifier_common::BLAKE_MODE);
         let result = std::thread::Builder::new()
             .name("feeder verifier".to_string())
             .stack_size(1 << 27)
             .spawn(move || {
                 let mut it = stream.into_iter();
-                full_statement_verifier::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_l1_feeder::<
+                full_statement_verifier::pessimistic_conjecture::verify_unified_circuit_recursion_layer_l1_feeder::<
                     _,
                     DebugErrorCreator,
                     { full_statement_verifier::verifier_common::USE_REDUCED_BLAKE2_ROUNDS },
@@ -975,7 +1024,7 @@ mod tests {
         use riscv_transpiler::ir::simple_instruction_set::*;
         use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
 
-        let (_zksync_bin, zksync_text) = load_program(
+        let (_zksync_bin, zksync_text) = riscv_transpiler::elf::load_legacy_binaries(
             Path::new("../../riscv_transpiler/examples/zksync_os/app.bin"),
             Path::new("../../riscv_transpiler/examples/zksync_os/app.text"),
         );
@@ -987,39 +1036,29 @@ mod tests {
     }
 }
 
+/// The proof caches are zlib-compressed JSON (`*.json.zlib`). Bincode cannot round-trip
+/// `ProgramProof`: several proof and circuit types decode through JSON-only compatibility
+/// layouts or skip fields on write. The bincode caches of earlier revisions (`*.bin`) are
+/// never read.
 #[cfg(test)]
 mod scripts {
-    use std::io::Read;
-    use std::io::Write;
+    use full_statement_verifier::host_utils::fixture_codec;
 
+    /// `Err` when the cache file is absent; a present but undecodable file panics.
     #[allow(dead_code)]
     pub(super) fn try_deserialize_compressed_from_file<T: serde::de::DeserializeOwned>(
         filename: &str,
     ) -> Result<T, ()> {
-        use flate2::read::ZlibDecoder;
-
-        let mut src = std::fs::File::open(filename).map_err(|_| ())?;
-        let mut buffer = vec![];
-        src.read_to_end(&mut buffer).map_err(|_| ())?;
-
-        let mut decoder = ZlibDecoder::new(&buffer[..]);
-        let mut unpacked: Vec<u8> = vec![];
-        decoder.read_to_end(&mut unpacked).map_err(|_| ())?;
-
-        Ok(bincode::deserialize_from(&unpacked[..]).unwrap())
+        let bytes = std::fs::read(filename).map_err(|_| ())?;
+        Ok(fixture_codec::decode(&bytes))
     }
 
     #[allow(dead_code)]
     pub(super) fn serialize_compressed_to_file<T: serde::Serialize>(el: &T, filename: &str) {
-        use flate2::write::ZlibEncoder;
-        use flate2::Compression;
-        let mut buffer = vec![];
-        bincode::serialize_into(&mut buffer, el).unwrap();
-
         let dst = std::fs::File::create(filename).unwrap();
-        let mut e = ZlibEncoder::new(dst, Compression::default());
-        e.write_all(&buffer).expect("must compress");
-        let _ = e.finish();
+        fixture_codec::encode(el, std::io::BufWriter::new(dst))
+            .into_inner()
+            .expect("flush cache file");
     }
 
     #[test]
@@ -1029,6 +1068,6 @@ mod scripts {
 
         let file_name = "recursion_layer_0_setups";
         let data: T = program_prover::deserialize_from_file(&format!("{file_name}.json"));
-        serialize_compressed_to_file(&data, &format!("{file_name}.bin"));
+        serialize_compressed_to_file(&data, &format!("{file_name}.json.zlib"));
     }
 }

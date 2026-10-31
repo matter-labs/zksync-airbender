@@ -9,7 +9,6 @@ use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{
     SetupInitializationRequest, SetupInitializationResult, WorkRequest, WorkResult,
 };
-use execution_prover::prover_config;
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::trace::{ChunkedTraceHolder, InitsAndTeardownsTraceHost};
 use inits_and_teardowns::TeardownColumns;
@@ -54,11 +53,13 @@ impl CpuJobs {
             circuit_type,
             sequence_id,
             precomputations,
-            security_level,
+            selection,
         } = request;
-        let config = prover_config(circuit_type, security_level);
-        let twiddles = self.twiddles(precomputations.trace_len, worker);
-        precomputations.initialize_setup(&config, &*twiddles, worker);
+        let config = precomputations
+            .config_for_request(circuit_type, selection)
+            .unwrap_or_else(|error| panic!("{error}"));
+        let twiddles = self.twiddles(1usize << config.whir_message_size_log2(), worker);
+        precomputations.initialize_setup(&*twiddles, worker);
         SetupInitializationResult {
             batch_id,
             circuit_type,
@@ -66,13 +67,13 @@ impl CpuJobs {
         }
     }
 
-    fn twiddles(&mut self, trace_len: usize, worker: &Worker) -> Arc<CpuTwiddles> {
+    fn twiddles(&mut self, message_len: usize, worker: &Worker) -> Arc<CpuTwiddles> {
         self.twiddles
-            .entry(trace_len)
+            .entry(message_len)
             .or_insert_with(|| {
                 Arc::new(<DefaultBabyBearBackend as Backend<BF, E4>>::make_twiddles(
                     &self.backend,
-                    trace_len,
+                    message_len,
                     worker,
                 ))
             })

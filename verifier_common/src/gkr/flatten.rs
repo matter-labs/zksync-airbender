@@ -3,8 +3,11 @@ use alloc::vec::Vec;
 
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::{Field, FieldExtension, PrimeField};
+use prover::definitions::BlakeMode;
 use prover::gkr::prover::GKRProof;
+use prover::gkr::whir::WhirIntermediateCommitmentAndQueries;
 use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
+use prover::transcript::blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS as DIGEST_SIZE_U32_WORDS;
 
 fn flatten_field_els<F: PrimeField, E: FieldExtension<F>>(src: &[E], dst: &mut Vec<u32>) {
     for el in src {
@@ -13,9 +16,112 @@ fn flatten_field_els<F: PrimeField, E: FieldExtension<F>>(src: &[E], dst: &mut V
     }
 }
 
+fn push_nonce(nonce: u64, dst: &mut Vec<u32>) {
+    dst.push(nonce as u32);
+    dst.push((nonce >> 32) as u32);
+}
+
+/// One sumcheck round in transcript order: every round polynomial, each
+/// followed by its folding-challenge PoW nonce when the round's folding draws
+/// are gated (`nonces` is then one per polynomial, empty otherwise).
+fn flatten_sumcheck<F: PrimeField, E: FieldExtension<F>>(
+    polys: &[[E; 3]],
+    nonces: &[u64],
+    dst: &mut Vec<u32>,
+) {
+    assert!(
+        nonces.is_empty() || nonces.len() == polys.len(),
+        "one folding PoW nonce per sumcheck polynomial, or none"
+    );
+    for (i, poly) in polys.iter().enumerate() {
+        flatten_field_els::<F, E>(poly.as_slice(), dst);
+        if let Some(nonce) = nonces.get(i) {
+            push_nonce(*nonce, dst);
+        }
+    }
+}
+
+/// A just-committed intermediate oracle's transcript entries: its cap, then
+/// its OOD sampling (the OOD PoW nonce when the draw is gated, then the
+/// claimed evaluations).
+fn flatten_commitment_and_ood<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+>(
+    oracle: &WhirIntermediateCommitmentAndQueries<F, E, T>,
+    dst: &mut Vec<u32>,
+) {
+    oracle.commitment.cap.add_into_buffer(dst);
+    if let Some(nonce) = oracle.ood_pow_nonce {
+        push_nonce(nonce, dst);
+    }
+    flatten_field_els::<F, E>(&oracle.ood_samples, dst);
+}
+
+fn flatten_intermediate_queries<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+>(
+    oracle: &WhirIntermediateCommitmentAndQueries<F, E, T>,
+    multiproof: bool,
+    dst: &mut Vec<u32>,
+) {
+    let (perm, sorted) = sorting_permutation(oracle.queries.iter().map(|q| q.index));
+    let mut stack_levels = Vec::new();
+    for (j, &p) in perm.iter().enumerate() {
+        let query = &oracle.queries[p];
+        flatten_field_els::<F, E>(&query.leaf_values_concatenated, dst);
+        push_siblings(&sorted, j, &query.path, multiproof, &mut stack_levels, dst);
+    }
+    assert!(stack_levels.is_empty());
+}
+
+/// The permutation of draw positions that sorts a round's queries by tree
+/// index (stable, so equal indices keep their draw order, as the verifier's
+/// `sort_queries_by_tree_index` does), and the indices along it: the order
+/// every round ships and verifies its openings in.
+fn sorting_permutation(tree_indices: impl Iterator<Item = usize>) -> (Vec<usize>, Vec<usize>) {
+    let indices: Vec<usize> = tree_indices.collect();
+    let mut perm: Vec<usize> = (0..indices.len()).collect();
+    perm.sort_by_key(|&p| indices[p]);
+    let sorted = perm.iter().map(|&p| indices[p]).collect();
+    (perm, sorted)
+}
+
+/// The siblings the verifier reads for the `j`-th sorted query: its whole
+/// path, or under a pruned multiproof only the levels the walk ships
+/// ([`crate::whir::multiproof::shipped_sibling_levels`]).
+fn push_siblings(
+    sorted: &[usize],
+    j: usize,
+    path: &[[u32; DIGEST_SIZE_U32_WORDS]],
+    multiproof: bool,
+    stack_levels: &mut Vec<usize>,
+    dst: &mut Vec<u32>,
+) {
+    if !multiproof {
+        for sibling in path {
+            dst.extend_from_slice(sibling);
+        }
+        return;
+    }
+    let depth = path.len();
+    for level in crate::whir::multiproof::shipped_sibling_levels(sorted, j, depth, stack_levels) {
+        dst.extend_from_slice(&path[level]);
+    }
+}
+
+/// The non-determinism word stream of `proof` for a verifier of
+/// `compiled_circuit` built with `blake` (which decides, per WHIR round,
+/// whether the query openings are pruned into a Merkle multiproof:
+/// `WhirSchedule::merkle_multiproof_for_round`). Every round's openings are
+/// in tree order, the order the verifier sorts its draws into.
 pub fn flatten_gkr_proof_for_nds<F: PrimeField, E: FieldExtension<F> + Field, T>(
     proof: &GKRProof<F, E, T>,
     compiled_circuit: &GKRCircuitArtifact<F>,
+    blake: BlakeMode,
 ) -> Vec<u32>
 where
     T: ColumnMajorMerkleTreeConstructor<F>,
@@ -50,9 +156,7 @@ where
 
     // Lookup-challenge PoW nonce: read by the verifier right after `commit_initial`, before
     // drawing the lookup challenges (and before reading the explicit evaluations below).
-    let lookup_nonce = proof.lookup_challenges_pow_nonce;
-    result.push(lookup_nonce as u32);
-    result.push((lookup_nonce >> 32) as u32);
+    push_nonce(proof.lookup_challenges_pow_nonce, &mut result);
 
     for pair in proof.final_explicit_evaluations.values() {
         flatten_field_els::<F, E>(&pair[0], &mut result);
@@ -94,109 +198,115 @@ where
         }
     }
 
-    // Batched-proximity (WHIR batching) PoW nonce: read by the verifier at the end of GKR, right
-    // before drawing the WHIR batching challenge and entering WHIR.
-    let batching_nonce = proof.batched_proximity_check_pow_nonce;
-    result.push(batching_nonce as u32);
-    result.push((batching_nonce >> 32) as u32);
-
     let whir = &proof.whir_proof;
     let whir_schedule = &whir.whir_schedule;
 
-    let num_rounds = whir
-        .ood_samples
-        .len()
-        .min(whir_schedule.whir_steps_schedule.len());
-    let mut sumcheck_poly_cursor = 0;
+    // WHIR batching-challenge PoW nonce (the batched-proximity PoW, or the initial-folding
+    // PoW under virtual packing): read by the verifier at the end of GKR, right before
+    // drawing the batching challenge and entering WHIR.
+    push_nonce(whir.batching_challenge_pow_nonce, &mut result);
 
-    for round in 0..num_rounds {
-        let fold_steps = whir_schedule.whir_steps_schedule[round];
+    let oracles = &whir.intermediate_whir_oracles;
+    assert_eq!(
+        oracles.len(),
+        whir_schedule.internal_rounds.len(),
+        "one committed intermediate oracle per internal round"
+    );
+    assert!(!oracles.is_empty());
 
-        for i in 0..fold_steps {
-            flatten_field_els::<F, E>(
-                whir.sumcheck_polys[sumcheck_poly_cursor + i].as_slice(),
-                &mut result,
-            );
-        }
-        sumcheck_poly_cursor += fold_steps;
-
-        if round < whir.intermediate_whir_oracles.len() {
-            whir.intermediate_whir_oracles[round]
-                .commitment
-                .cap
-                .add_into_buffer(&mut result);
-        }
-
-        flatten_field_els::<F, E>(&[whir.ood_samples[round]], &mut result);
-
-        let nonce = whir.pow_nonces[round];
-        result.push(nonce as u32);
-        result.push((nonce >> 32) as u32);
-
-        if round == 0 {
-            let values_per_leaf = 1usize << whir_schedule.whir_steps_schedule[0];
-            let base_oracles = [
-                &whir.memory_commitment,
-                &whir.witness_commitment,
-                &whir.setup_commitment,
-            ];
-            let num_queries = base_oracles
-                .iter()
-                .map(|o| o.queries.len())
-                .max()
-                .unwrap_or(0);
-            for q in 0..num_queries {
-                for oracle in &base_oracles {
-                    if q < oracle.queries.len() {
-                        let leaf = &oracle.queries[q].leaf_values_concatenated;
-                        let num_cols = leaf.len() / values_per_leaf;
-                        for col in 0..num_cols {
-                            for pos in 0..values_per_leaf {
-                                result.push(leaf[pos * num_cols + col].as_u32_raw_repr_reduced());
-                            }
-                        }
-                        for sibling in &oracle.queries[q].path {
-                            result.extend_from_slice(sibling);
-                        }
-                    }
+    // Round 0: the base sumcheck (none under virtual packing), intermediate
+    // oracle 0 with its OOD sampling, the base query draw and the base-oracle
+    // openings.
+    flatten_sumcheck::<F, E>(
+        &whir.base_sumcheck_polys,
+        &whir.base_folding_pow_nonces,
+        &mut result,
+    );
+    flatten_commitment_and_ood(&oracles[0], &mut result);
+    push_nonce(whir.base_queries_pow_nonce, &mut result);
+    {
+        let values_per_leaf = whir_schedule.base_values_per_leaf();
+        let base_oracles = [
+            &whir.memory_commitment,
+            &whir.witness_commitment,
+            &whir.setup_commitment,
+        ];
+        let num_queries = base_oracles
+            .iter()
+            .map(|o| o.queries.len())
+            .max()
+            .unwrap_or(0);
+        let push_leaf = |leaf: &[F], result: &mut Vec<u32>| {
+            let num_cols = leaf.len() / values_per_leaf;
+            for col in 0..num_cols {
+                for pos in 0..values_per_leaf {
+                    result.push(leaf[pos * num_cols + col].as_u32_raw_repr_reduced());
                 }
             }
-        } else {
-            let oracle = &whir.intermediate_whir_oracles[round - 1];
-            for query in oracle.queries.iter() {
-                flatten_field_els::<F, E>(&query.leaf_values_concatenated, &mut result);
-                for sibling in query.path.iter() {
-                    result.extend_from_slice(sibling);
-                }
-            }
-        }
-    }
-
-    let final_round_idx = whir_schedule.whir_steps_schedule.len() - 1;
-    if num_rounds < whir_schedule.whir_steps_schedule.len() {
-        let fold_steps = whir_schedule.whir_steps_schedule[final_round_idx];
-
-        for i in 0..fold_steps {
-            flatten_field_els::<F, E>(
-                whir.sumcheck_polys[sumcheck_poly_cursor + i].as_slice(),
-                &mut result,
+        };
+        // One sorting for the base trees: they share the query indices
+        // (same domain, same draw).
+        let multiproof = whir_schedule.merkle_multiproof_for_round(blake, 0);
+        let opened: Vec<_> = base_oracles
+            .iter()
+            .filter(|o| !o.queries.is_empty())
+            .collect();
+        let reference: Vec<usize> = opened
+            .first()
+            .map(|o| o.queries.iter().map(|q| q.index).collect())
+            .unwrap_or_default();
+        assert_eq!(reference.len(), num_queries);
+        for oracle in &opened {
+            assert!(
+                oracle
+                    .queries
+                    .iter()
+                    .map(|q| q.index)
+                    .eq(reference.iter().copied()),
+                "base oracles must open the same tree indices"
             );
         }
-
-        flatten_field_els::<F, E>(&whir.final_monomials, &mut result);
-
-        let nonce = whir.pow_nonces[final_round_idx];
-        result.push(nonce as u32);
-        result.push((nonce >> 32) as u32);
-
-        let last_oracle = whir.intermediate_whir_oracles.last().unwrap();
-        for query in last_oracle.queries.iter() {
-            flatten_field_els::<F, E>(&query.leaf_values_concatenated, &mut result);
-            for sibling in query.path.iter() {
-                result.extend_from_slice(sibling);
+        let (perm, sorted) = sorting_permutation(reference.iter().copied());
+        let mut stack_levels: Vec<Vec<usize>> = opened.iter().map(|_| Vec::new()).collect();
+        for (j, &p) in perm.iter().enumerate() {
+            for (oracle, levels) in opened.iter().zip(stack_levels.iter_mut()) {
+                let query = &oracle.queries[p];
+                push_leaf(&query.leaf_values_concatenated, &mut result);
+                push_siblings(&sorted, j, &query.path, multiproof, levels, &mut result);
             }
         }
+        assert!(stack_levels.iter().all(|l| l.is_empty()));
     }
+
+    // Internal rounds: fold intermediate oracle `i`, commit (and OOD-sample)
+    // oracle `i + 1`, query oracle `i`.
+    for i in 0..oracles.len() - 1 {
+        let oracle = &oracles[i];
+        flatten_sumcheck::<F, E>(
+            &oracle.sumcheck_polys,
+            &oracle.folding_pow_nonces,
+            &mut result,
+        );
+        flatten_commitment_and_ood(&oracles[i + 1], &mut result);
+        push_nonce(oracle.queries_pow_nonce, &mut result);
+        flatten_intermediate_queries(
+            oracle,
+            whir_schedule.merkle_multiproof_for_round(blake, i + 1),
+            &mut result,
+        );
+    }
+
+    // Final round: fold the last oracle, ship the plain-text tail, query the
+    // last oracle.
+    let last = oracles.last().unwrap();
+    flatten_sumcheck::<F, E>(&last.sumcheck_polys, &last.folding_pow_nonces, &mut result);
+    flatten_field_els::<F, E>(&whir.final_monomials, &mut result);
+    push_nonce(last.queries_pow_nonce, &mut result);
+    flatten_intermediate_queries(
+        last,
+        whir_schedule.merkle_multiproof_for_round(blake, oracles.len()),
+        &mut result,
+    );
 
     result
 }

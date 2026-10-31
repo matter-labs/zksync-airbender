@@ -1,4 +1,7 @@
 use super::*;
+// Exact CPU nonce parity requires both deterministic PoW search legs.
+#[cfg(feature = "deterministic_pow")]
+mod packed_handoff;
 
 use std::alloc::Global;
 

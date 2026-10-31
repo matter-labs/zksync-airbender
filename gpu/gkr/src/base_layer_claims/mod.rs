@@ -76,10 +76,17 @@ enum DenseSource {
 }
 
 impl DenseSource {
-    fn from_address(address: GKRAddress) -> Self {
+    fn from_address(address: GKRAddress, merged_witness_offset: Option<usize>) -> Self {
         match address {
             GKRAddress::BaseLayerMemory(offset) => DenseSource::Memory(offset),
-            GKRAddress::BaseLayerWitness(offset) => DenseSource::Witness(offset),
+            GKRAddress::BaseLayerWitness(offset) => match merged_witness_offset {
+                None => DenseSource::Witness(offset),
+                Some(memory_columns) => DenseSource::Memory(
+                    memory_columns
+                        .checked_add(offset)
+                        .expect("merged claim offset overflow"),
+                ),
+            },
             GKRAddress::Setup(offset) => DenseSource::Setup(offset),
             other => {
                 panic!("unsupported dense source address {other:?} for cached relation dependency",)
@@ -90,13 +97,13 @@ impl DenseSource {
     fn read_from_slab(self, proof_layout: &ProofLayout, slab: &[u8]) -> E4 {
         match self {
             DenseSource::Memory(offset) => {
-                proof_layout.whir_base_evals_host(slab, WhirBaseLayerKind::Memory)[offset]
+                proof_layout.whir_base_logical_evals_host(slab, WhirBaseLayerKind::Memory)[offset]
             }
             DenseSource::Witness(offset) => {
-                proof_layout.whir_base_evals_host(slab, WhirBaseLayerKind::Witness)[offset]
+                proof_layout.whir_base_logical_evals_host(slab, WhirBaseLayerKind::Witness)[offset]
             }
             DenseSource::Setup(offset) => {
-                proof_layout.whir_base_evals_host(slab, WhirBaseLayerKind::Setup)[offset]
+                proof_layout.whir_base_logical_evals_host(slab, WhirBaseLayerKind::Setup)[offset]
             }
         }
     }
@@ -109,14 +116,14 @@ impl DenseSource {
         let slab_base = proof_slab.as_ptr() as *mut u8;
         let (base, len) = match self {
             DenseSource::Memory(offset) => {
-                let (ptr, len) =
-                    proof_layout.whir_base_evals_device_mut(slab_base, WhirBaseLayerKind::Memory);
+                let (ptr, len) = proof_layout
+                    .whir_base_logical_evals_device_mut(slab_base, WhirBaseLayerKind::Memory);
                 assert!(offset < len, "memory dense source offset out of slab range");
                 (ptr, len)
             }
             DenseSource::Witness(offset) => {
-                let (ptr, len) =
-                    proof_layout.whir_base_evals_device_mut(slab_base, WhirBaseLayerKind::Witness);
+                let (ptr, len) = proof_layout
+                    .whir_base_logical_evals_device_mut(slab_base, WhirBaseLayerKind::Witness);
                 assert!(
                     offset < len,
                     "witness dense source offset out of slab range"
@@ -124,8 +131,8 @@ impl DenseSource {
                 (ptr, len)
             }
             DenseSource::Setup(offset) => {
-                let (ptr, len) =
-                    proof_layout.whir_base_evals_device_mut(slab_base, WhirBaseLayerKind::Setup);
+                let (ptr, len) = proof_layout
+                    .whir_base_logical_evals_device_mut(slab_base, WhirBaseLayerKind::Setup);
                 assert!(offset < len, "setup dense source offset out of slab range");
                 (ptr, len)
             }
@@ -151,7 +158,11 @@ struct BaseLayerExtrasPlan {
 }
 
 impl BaseLayerExtrasPlan {
-    fn new(layer_desc: &GKRLayerDescription, initial_addresses: &[GKRAddress]) -> Self {
+    fn new(
+        layer_desc: &GKRLayerDescription,
+        initial_addresses: &[GKRAddress],
+        merged_witness_offset: Option<usize>,
+    ) -> Self {
         let mut already_present: BTreeSet<GKRAddress> = initial_addresses.iter().copied().collect();
         already_present.extend(VIRTUAL_SETUP_ADDRESSES.iter().copied());
         let mut missing: BTreeSet<GKRAddress> = BTreeSet::new();
@@ -170,7 +181,7 @@ impl BaseLayerExtrasPlan {
         let addresses: Box<[GKRAddress]> = missing.iter().copied().collect();
         let sources: Box<[DenseSource]> = addresses
             .iter()
-            .map(|addr| DenseSource::from_address(*addr))
+            .map(|addr| DenseSource::from_address(*addr, merged_witness_offset))
             .collect();
         Self { addresses, sources }
     }
@@ -209,7 +220,7 @@ fn schedule_reduce_trace_holder_claims(
     eq_sizes: GkrEqSizes,
     // The column-sums kernel writes straight into the slab's
     // `whir.{kind}.evals` range (raw `(ptr, len)` resolved by the caller via
-    // `proof_layout.whir_base_evals_device_mut`).
+    // `proof_layout.whir_base_logical_evals_device_mut`).
     slab_claims_dst: (*mut E4, usize),
     tracing_ranges: &mut Vec<Range>,
     context: &ProverContext,
@@ -285,6 +296,7 @@ pub fn schedule_prepare_base_layer_claims_with_sources(
     setup_trace_holder: &TraceHolder<BF>,
     memory_trace_holder: &TraceHolder<BF>,
     witness_trace_holder: &TraceHolder<BF>,
+    merged_witness_offset: Option<usize>,
     // `batch_reduce` writes the per-column claims directly into the slab's
     // `whir.{setup,memory,witness}.evals` ranges. Cached-relation extras are
     // gathered from those slab ranges on device.
@@ -338,7 +350,7 @@ pub fn schedule_prepare_base_layer_claims_with_sources(
     // the terminal D2H.
     let slab_claims_dst = |kind: WhirBaseLayerKind| -> (*mut E4, usize) {
         let (ptr, len) = unsafe {
-            proof_layout.whir_base_evals_device_mut(proof_slab.as_ptr() as *mut u8, kind)
+            proof_layout.whir_base_logical_evals_device_mut(proof_slab.as_ptr() as *mut u8, kind)
         };
         (ptr as *mut E4, len)
     };
@@ -370,7 +382,8 @@ pub fn schedule_prepare_base_layer_claims_with_sources(
         context,
     )?;
 
-    let extras_plan = BaseLayerExtrasPlan::new(&layer_desc, initial_addresses);
+    let extras_plan =
+        BaseLayerExtrasPlan::new(&layer_desc, initial_addresses, merged_witness_offset);
     drop(layer_desc);
     let extras_addresses_accessor =
         gpu_core::primitives::context::UnsafeAccessor::<[GKRAddress]>::new(
@@ -411,4 +424,30 @@ pub fn schedule_prepare_base_layer_claims_with_sources(
         _extras_plan: extras_plan,
         shared_state,
     })
+}
+
+#[cfg(test)]
+mod cpu_merged_address_tests {
+    use super::*;
+
+    #[test]
+    fn cpu_merged_dense_witness_sources_follow_memory() {
+        for (address, expected) in [
+            (GKRAddress::BaseLayerMemory(224), DenseSource::Memory(224)),
+            (GKRAddress::BaseLayerWitness(0), DenseSource::Memory(225)),
+            (GKRAddress::BaseLayerWitness(537), DenseSource::Memory(762)),
+            (GKRAddress::Setup(5), DenseSource::Setup(5)),
+        ] {
+            assert_eq!(DenseSource::from_address(address, Some(225)), expected);
+        }
+        assert_eq!(
+            DenseSource::from_address(GKRAddress::BaseLayerWitness(537), None),
+            DenseSource::Witness(537)
+        );
+        assert!(std::panic::catch_unwind(|| DenseSource::from_address(
+            GKRAddress::BaseLayerWitness(1),
+            Some(usize::MAX)
+        ))
+        .is_err());
+    }
 }

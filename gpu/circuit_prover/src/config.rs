@@ -1,17 +1,25 @@
 //! Prover configuration policy.
 //!
-//! Maps a `CircuitType` + `SecurityLevel` to the canonical upstream
-//! `ProverConfig`, and owns the GPU-supported-security-level contract. The
-//! canonical configs are UNPACKED (`ProverConfig::pack_log2 == 0`); the GPU
-//! prover does not implement base-commitment packing, and every GPU entry that
-//! takes a `ProverConfig` rejects a packed one first
-//! (`gpu_trace::trace::memory::assert_unpacked_prover_config`). Lives in
+//! Maps a `CircuitType` + `ProvingSelection` (security level and soundness
+//! mode) to the canonical upstream `ProverConfig`, and owns the
+//! GPU-supported-security-level contract. The
+//! canonical configs include virtual packing, with independent physical
+//! packing in the Blake compression default. The proof backend qualifies
+//! separate physical-only configurations and the qualified merged Blake shape
+//! through shared geometry admission.
+//! Workers retain one resolved CPU config for setup and both request phases;
+//! virtual defaults remain closed at that execution boundary. The qualified
+//! physical merged Blake shape uses the same immutable config binding.
+//! Lives in
 //! the prover layer because `ProverConfig` is a `prove()` input (see
 //! `proof/mod.rs`): `execution` calls down into this and threads the result
 //! into `prove()`. The low `witness::circuit_type` enum stays a pure
 //! domain type with no `ProverConfig`/`SecurityLevel` coupling.
 
-use crate::upstream::{pow_bits, GKRCircuitArtifact, ProverConfig, SecurityLevel};
+use crate::upstream::{
+    pow_bits, BaseCommitmentGeometry, ConfigSelectionError, GKRCircuitArtifact, ProverConfig,
+    ProvingSelection, SecurityLevel,
+};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_trace::witness::circuit_type::CircuitType;
 
@@ -35,11 +43,24 @@ impl std::fmt::Display for UnsupportedGpuSecurityLevel {
 
 impl std::error::Error for UnsupportedGpuSecurityLevel {}
 
-/// Canonical `ProverConfig` for `circuit_type` at `security_level`. Delegates to
-/// the CPU's `config_for_security_level_under_pessimistic_conjecture` so GPU and
-/// CPU agree on the production WHIR schedule (the per-circuit lookup-challenge
-/// and WHIR-batching PoWs are ground on device — see
-/// [`lookup_challenges_pow_bits`] / [`batched_proximity_check_pow_bits`]).
+/// Canonical `ProverConfig` for `circuit_type` under `selection`, resolved from
+/// the compiled circuit's committed columns. Delegates to the CPU resolver
+/// (`CircuitType::try_prover_config_in_mode`) so GPU and CPU agree on the WHIR
+/// schedule in every soundness mode (the per-circuit lookup-challenge and
+/// WHIR-batching PoWs are ground on device — see [`lookup_challenges_pow_bits`] /
+/// [`batched_proximity_check_pow_bits_for_geometry`] — and so are the
+/// folding-challenge and OOD PoWs a schedule carries).
+pub fn prover_config_for_selection(
+    circuit_type: CircuitType,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    selection: ProvingSelection,
+) -> Result<ProverConfig, ConfigSelectionError> {
+    circuit_type.try_prover_config_in_mode(compiled_circuit, selection)
+}
+
+/// Pessimistic-conjecture `ProverConfig` for `circuit_type` at
+/// `security_level`: the circuit definition's own config, equal to
+/// [`prover_config_for_selection`] in that mode.
 ///
 /// The `Result` is retained for API stability (`SecurityLevel` currently has no
 /// unsupported variant, so both arms are `Ok`).
@@ -73,48 +94,17 @@ pub(crate) fn lookup_challenges_pow_bits(
     )
 }
 
-/// PoW bit count for the WHIR base batching challenge, derived per-circuit from
-/// the config's `security_level` — matching the CPU
-/// `draw_random_field_els_with_pow` site. Fed to the pow-aware batching draw in
-/// `proof/orchestration/whir.rs`.
-pub(crate) fn batched_proximity_check_pow_bits(
-    prover_config: &ProverConfig,
-    compiled_circuit: &GKRCircuitArtifact<BF>,
+/// Override-aware batching over the preflight's single physical count authority.
+pub(crate) fn batched_proximity_check_pow_bits_for_geometry(
+    config: &ProverConfig,
+    geometry: &BaseCommitmentGeometry,
 ) -> u32 {
-    pow_bits::batched_proximity_check_pow_bits::<BF, E4>(
-        prover_config.security_level.security_bits(),
-        prover_config.whir_message_size_log2(),
-        prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
-        // the PHYSICALLY committed column count (separate memory/witness sets)
-        pow_bits::committed_base_oracle_columns(compiled_circuit, prover_config.pack_log2, false),
+    config.base_round().batching_pow_bits::<BF, E4>(
+        config.security_level.security_bits(),
+        geometry.message_size_log2(),
+        geometry.total_physical_columns(),
     )
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::upstream::config_for_security_level_under_pessimistic_conjecture;
-    use gpu_trace::witness::circuit_type::UnrolledCircuitType;
-
-    #[test]
-    fn cpu_builds_prover_config_for_all_supported_security_levels() {
-        let circuit_type = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns);
-        for &level in GPU_SUPPORTED_SECURITY_LEVELS.iter() {
-            let cfg = prover_config(circuit_type, level).unwrap();
-            assert_eq!(cfg.security_level, level);
-            // the GPU prover implements only the unpacked base commitment
-            assert_eq!(cfg.pack_log2, 0);
-            gpu_trace::trace::memory::assert_unpacked_prover_config(&cfg);
-        }
-    }
-
-    #[test]
-    fn unified_uses_its_canonical_schedule() {
-        let circuit = CircuitType::Unrolled(UnrolledCircuitType::Unified);
-        for &level in GPU_SUPPORTED_SECURITY_LEVELS.iter() {
-            let actual = prover_config(circuit, level).unwrap();
-            let expected = config_for_security_level_under_pessimistic_conjecture(23, level);
-            assert_eq!(actual.whir_schedule, expected.whir_schedule);
-        }
-    }
-}
+mod tests;

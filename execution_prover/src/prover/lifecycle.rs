@@ -9,6 +9,19 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
     pub fn with_configuration(
         configuration: ExecutionProverConfiguration<B::Configuration>,
     ) -> Self {
+        Self::try_with_configuration(configuration).unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    pub fn selection(&self) -> crate::config::ProvingSelection {
+        self.configuration.selection()
+    }
+
+    /// Reject unsupported selections before creating workers or allocating backend resources.
+    pub fn try_with_configuration(
+        configuration: ExecutionProverConfiguration<B::Configuration>,
+    ) -> Result<Self, crate::config::SelectionError> {
+        let selection = configuration.selection();
+        B::validate_selection(selection)?;
         let ExecutionProverConfiguration {
             max_thread_pool_threads,
             expected_concurrent_jobs,
@@ -16,7 +29,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             host_allocator_backing_allocation_size,
             host_allocators_per_job_count,
             min_free_host_allocators_per_job: _,
-            security_level,
+            security_level: _,
+            soundness_mode: _,
             ram_config,
             assume_canonical_mop_inputs: _,
             backend: _,
@@ -64,15 +78,15 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let common_precomputations: BTreeMap<_, _> = build_common_setups(&worker)
             .into_iter()
             .map(|(circuit_type, setup)| {
-                (
+                Ok((
                     circuit_type,
-                    backend.prepare(circuit_type, setup, security_level),
-                )
+                    backend.prepare_with_selection(circuit_type, setup, selection)?,
+                ))
             })
-            .collect();
+            .collect::<Result<_, crate::config::SelectionError>>()?;
         let pending_setup_initialization = request_setup_initialization(
             &backend,
-            security_level,
+            selection,
             common_precomputations
                 .iter()
                 .map(|(circuit_type, precomputations)| (*circuit_type, precomputations.clone()))
@@ -94,7 +108,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         }
         pending_setup_initialization.wait();
         info!("PROVER initialized");
-        Self {
+        Ok(Self {
             configuration,
             backend,
             worker,
@@ -107,7 +121,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             common_precomputations,
             free_allocators_sender,
             free_allocators_receiver,
-        }
+        })
     }
 
     pub(super) fn free_inits_and_teardowns(

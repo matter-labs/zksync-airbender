@@ -139,13 +139,14 @@ fn coset_recompute_commitment<
             prover_config.trace_len_log2
         );
     }
-    let whir_first_fold_step_log2 =
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize;
-    if prover_config.pack_log2 == 0 {
+    let whir_first_fold_step_log2 = prover_config
+        .base_oracles_values_per_leaf()
+        .trailing_zeros() as usize;
+    if prover_config.pack_log2() == 0 {
         CosetByCosetBaseCommitment::<F, T>::commit(
             inputs,
             twiddles,
-            prover_config.lde_factor,
+            prover_config.lde_factor(),
             whir_first_fold_step_log2,
             prover_config.cap_size,
             prover_config.trace_len_log2,
@@ -159,11 +160,11 @@ fn coset_recompute_commitment<
         CosetByCosetBaseCommitment::<F, T>::commit_packed(
             inputs,
             twiddles,
-            prover_config.lde_factor,
+            prover_config.lde_factor(),
             whir_first_fold_step_log2,
             prover_config.cap_size,
             prover_config.trace_len_log2,
-            prover_config.pack_log2,
+            prover_config.pack_log2(),
             worker,
         )
     }
@@ -183,9 +184,9 @@ fn commit_trace_part_recompute<
 ) -> ColumnMajorBaseOracleForLDE<F, T> {
     if inputs.is_empty() {
         return ColumnMajorBaseOracleForLDE::empty(
-            prover_config.base_oracles_values_per_leaf,
+            prover_config.base_oracles_values_per_leaf(),
             prover_config.whir_message_size_log2(),
-            prover_config.lde_factor,
+            prover_config.lde_factor(),
         );
     }
     ColumnMajorBaseOracleForLDE::CosetRecompute(coset_recompute_commitment::<F, T>(

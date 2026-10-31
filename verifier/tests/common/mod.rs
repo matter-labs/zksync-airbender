@@ -10,6 +10,7 @@ use prover::gkr::prover::GKRProof;
 use prover::merkle_trees::DefaultTreeConstructor;
 use verifier_common::errors::{DebugErrorCreator, VerificationError};
 use verifier_common::gkr::flatten::flatten_gkr_proof_for_nds;
+use verifier_common::BlakeMode;
 
 pub const VERIFIER_STACK_SIZE: usize = 1 << 27;
 
@@ -17,14 +18,21 @@ macro_rules! define_dispatch {
     ($($name:ident; $prod_path:expr),* $(,)?) => {
         macro_rules! with_circuit {
             ($circuit_name:expr, $level:expr, |$m:ident| $body:expr) => {
-                match ($circuit_name, $level) {
+                with_circuit!($circuit_name, $level, ::prover::gkr::prover_config::SoundnessMode::DEFAULT, |$m| $body)
+            };
+            ($circuit_name:expr, $level:expr, $mode:expr, |$m:ident| $body:expr) => {
+                match ($circuit_name, $level, $mode) {
                     $(
-                        (stringify!($name), ::prover::definitions::SecurityLevel::Sec100) => {
-                            use verifier::$name::sec_100 as $m;
+                        (stringify!($name), ::prover::definitions::SecurityLevel::Sec100, ::prover::gkr::prover_config::SoundnessMode::PessimisticConjecture) => {
+                            use verifier::$name::pessimistic_conjecture as $m;
+                            $body
+                        }
+                        (stringify!($name), ::prover::definitions::SecurityLevel::Sec100, ::prover::gkr::prover_config::SoundnessMode::EthproofsSoundnessCalc) => {
+                            use verifier::$name::ethproofs_soundcalc as $m;
                             $body
                         }
                     )*
-                    (other, _) => panic!("unknown or disabled circuit/level: {}", other),
+                    (other, _, _) => panic!("unknown or disabled circuit/level: {}", other),
                 }
             };
         }
@@ -32,17 +40,35 @@ macro_rules! define_dispatch {
 }
 verifier_common::gkr_circuits!(define_dispatch);
 
+pub use prover::gkr::prover_config::SoundnessMode;
 pub use verifier_common::test_circuits::SecurityLevel;
 
+/// The fixture's ND stream for a verifier built with `blake`
+/// (`verifier_common::BLAKE_MODE` for the verifier compiled into this test
+/// binary, the ELF's build feature for a RISC-V program).
 pub fn load_nds(
     name: &str,
     level: SecurityLevel,
+    blake: BlakeMode,
 ) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
-    circuit_by_name(name).load_nds_for(level)
+    circuit_by_name(name).load_nds_for(level, blake)
 }
 
-pub fn binary_paths(name: &str, level: SecurityLevel) -> (String, String, String) {
-    circuit_by_name(name).binary_paths_for(level)
+pub fn load_nds_in_mode(
+    name: &str,
+    level: SecurityLevel,
+    mode: SoundnessMode,
+    blake: BlakeMode,
+) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
+    circuit_by_name(name).load_nds_for_mode(level, mode, blake)
+}
+
+pub fn elf_path(name: &str, level: SecurityLevel) -> String {
+    circuit_by_name(name).elf_path_for(level)
+}
+
+pub fn elf_path_in_mode(name: &str, level: SecurityLevel, mode: SoundnessMode) -> String {
+    circuit_by_name(name).elf_path_for_mode(level, mode)
 }
 
 pub fn circuit_by_name(name: &str) -> &'static CircuitData {
@@ -285,7 +311,7 @@ pub fn assert_rejects_corrupted_nds(
     corrupt: impl FnOnce(&mut Vec<u32>),
     expected: impl FnOnce(&VerifyRejection) -> bool,
 ) {
-    let (mut nds, external_challenges) = load_nds(name, level);
+    let (mut nds, external_challenges) = load_nds(name, level, verifier_common::BLAKE_MODE);
     corrupt(&mut nds);
     match verify_nds(name, level, &external_challenges, nds) {
         Ok(()) => panic!("{}: should reject {}", name, label),
@@ -310,7 +336,9 @@ pub fn proof_to_nds(
     //     .map(|i| i as u32)
     //     .collect();
     let nds = flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-        proof, &compiled,
+        proof,
+        &compiled,
+        verifier_common::BLAKE_MODE,
     );
     let external_challenges = proof.external_challenges;
 
@@ -378,20 +406,4 @@ pub fn assert_rejects_any(
     if verify_nds(name, level, &external_challenges, nds).is_ok() {
         panic!("{}: should reject {}", name, label);
     }
-}
-
-pub fn load_binary_section(path: &str) -> Vec<u32> {
-    let bytes = std::fs::read(path).unwrap_or_else(|_| {
-        panic!(
-            "Missing {} — run `cd tools/gkr_verifier && ./dump_bin.sh` first",
-            path
-        )
-    });
-    assert!(bytes.len().is_multiple_of(4));
-    bytes
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect()
 }

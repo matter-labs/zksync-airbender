@@ -296,10 +296,10 @@ run_recursion() {
   case "$from" in circuits|generator|binaries) cstage="base" ;; esac
   # clears the named stage AND everything downstream (explicit cascade; no bash-4 `;&`)
   clear_caches() {
-    local base="$pe/base_proofs.bin $pe/base_setups.bin"
-    local unrolled="$pe/recursion_layer_*.bin"
-    local bridge="$pe/bridge_proof*.bin $pe/bridge_setups*.bin"
-    local final="$pe/final_proof*.bin $pe/final_setups*.bin"
+    local base="$pe/base_proofs.json.zlib $pe/base_setups.json.zlib"
+    local unrolled="$pe/recursion_layer_*.json.zlib"
+    local bridge="$pe/bridge_proof*.json.zlib $pe/bridge_setups*.json.zlib"
+    local final="$pe/final_layer_*.json.zlib"
     case "$1" in
       base)     $runner "rm -f $base $unrolled $bridge $final" ;;
       unrolled) $runner "rm -f $unrolled $bridge $final" ;;
@@ -337,8 +337,8 @@ case "$1" in
   *) die "first arg must be 'per_family', 'unified', or 'recursion'. Got: $1 (run with --help)" ;;
 esac
 
-[[ -f Cargo.toml && -d tools/gkr_verifier/src/bin ]] \
-  || die "must run from airbender repo root (Cargo.toml + tools/gkr_verifier/src/bin not found)"
+[[ -f Cargo.toml && -d tools/gkr_verifier/src/bin/circuit_verifiers ]] \
+  || die "must run from airbender repo root (Cargo.toml + tools/gkr_verifier/src/bin/circuit_verifiers not found)"
 
 # Recursion is a self-contained path (its own options + cache-driven stages); it
 # does not use the per_family/unified circuit-set + step machinery below.
@@ -408,15 +408,18 @@ case "$SECURITY_LEVEL" in
   100)  LEVELS=(sec_100) ;;
 esac
 
-# Single supported level, so a level test-filter is always set.
+# Single supported level, so a level test-filter is always set (prover test names).
 LEVEL_TEST_FILTER="_${LEVELS[0]}"
+# The verifier binaries / native and transpiler tests are per soundness mode; the pipeline
+# exercises the production (pessimistic-conjecture) mode.
+SOUNDNESS_MODE="pessimistic_conjecture"
+MODE_TEST_FILTER="_${SOUNDNESS_MODE}"
 
-# CIRCUITS = (base × level), filtered by which bin files actually exist.
+# CIRCUITS = base circuits of the mode (cargo bin names `<base>_<mode>`), filtered by which
+# bin files actually exist.
 CIRCUITS=()
 for base in "${BASE_CIRCUITS[@]}"; do
-  for lvl in "${LEVELS[@]}"; do
-    [[ -f "tools/gkr_verifier/src/bin/${base}_${lvl}.rs" ]] && CIRCUITS+=("${base}_${lvl}")
-  done
+  [[ -f "tools/gkr_verifier/src/bin/circuit_verifiers/${SOUNDNESS_MODE}/${base}.rs" ]] && CIRCUITS+=("${base}_${SOUNDNESS_MODE}")
 done
 
 # ============================================================================
@@ -488,8 +491,8 @@ fi
 GENERATOR_FILTERS=("${BASE_CIRCUITS[@]}")
 CORRUPTION_FILTERS=("${BASE_CIRCUITS[@]}")
 TEST_FILTERS=()
-if [[ -n "$LEVEL_TEST_FILTER" ]]; then
-  for c in "${BASE_CIRCUITS[@]}"; do TEST_FILTERS+=("${c}${LEVEL_TEST_FILTER}"); done
+if [[ -n "$MODE_TEST_FILTER" ]]; then
+  for c in "${BASE_CIRCUITS[@]}"; do TEST_FILTERS+=("${c}${MODE_TEST_FILTER}"); done
 else
   TEST_FILTERS=("${BASE_CIRCUITS[@]}")
 fi
@@ -625,7 +628,7 @@ step_corruption() {
 step_binaries() {
   if [[ ${#CIRCUITS[@]} -eq 0 ]]; then
     echo "ERROR: no bin files found for security-level=${SECURITY_LEVEL}, circuits=${SELECTED_CIRCUITS[*]:-all in $MODE}" >&2
-    echo "  expected tools/gkr_verifier/src/bin/<base>_<level>.rs for level(s): ${LEVELS[*]}" >&2
+    echo "  expected tools/gkr_verifier/src/bin/circuit_verifiers/${SOUNDNESS_MODE}/<base>.rs" >&2
     exit 3
   fi
   run_step "Build RISC-V binaries (blake=${BLAKE}, variant=${VARIANT})" \

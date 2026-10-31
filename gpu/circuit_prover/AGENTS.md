@@ -74,13 +74,35 @@ summary — the contract document is the source of truth.
   `#[cfg(test)]` `test_utils`/`tests`).
 - `src/config.rs`: prover configuration policy — maps a `CircuitType` +
   `SecurityLevel` to the canonical upstream `ProverConfig`, and owns
-  `GPU_SUPPORTED_SECURITY_LEVELS` / `UnsupportedGpuSecurityLevel`. The GPU
-  prover implements only the unpacked base commitment: `prove()`, its DR
-  preflight and `gpu_trace`'s memory commitments reject
-  `ProverConfig::pack_log2 != 0` via
-  `gpu_trace::trace::memory::assert_unpacked_prover_config` before enqueuing
-  any commitment or proof kernel (the preflight before constructing transfers).
+  `GPU_SUPPORTED_SECURITY_LEVELS` / `UnsupportedGpuSecurityLevel`. The proof
+  entry and DR preflight admit separate physical `(trace log, pack log)` shapes
+  `(20,4)`, `(20,2)` and `(23,1)`, independent of circuit type, with base fold1.
+  Virtual base fold0 is admitted at `(n,k)=(22,0)` and `(20,2)` with the qualified
+  m22 `[0,6,5,5,5]` schedule. Memory policies are admitted by their representation,
+  MAIN omission bounds and actual per-role backend constraints, not by membership
+  in a default or preset tuple. Presets select defaults only; regenerated presets
+  still require per-circuit CPU-byte parity and exact-arena replay. The current
+  witness storage contract and direct-holder/backend limits are documented in
+  [`../execution_prover/docs/memory_policies.md`](../execution_prover/docs/memory_policies.md).
+  Physical merge is keyed on k independently of the zero-fold protocol. No
+  canonical #584 default is physical-only. `ProofPreflight<F>` binds config,
+  geometry, artifact identity, policy, PoW and DR resources before transfers.
+  Legacy k0/f1 holders and policies retain their existing route. Config-driven
+  memory commitments share the qualified base geometry. Setup warmup produces
+  geometry-bearing entries for physical or virtual packing, including pure
+  virtual k0; geometry-None entries cannot supply either. Execution worker/probe
+  requests validate virtual geometry and the same immutable resolved config
+  before H2D. The proof entry additionally admits physical merged Blake compression at `(20,4,f1)`
+  with the same policy-validity checks. Its explicit merged-cap producer concatenates
+  memory then witness and pads only the end. Worker and memory-sweep requests
+  dispatch that producer from the same immutable resolved config, after the
+  qualified shape/circuit, cache and cap identity checks. The lower trace
+  memory-only producer remains separate-only. No canonical BF config selects
+  merged mode, so this execution branch is structurally open but unreachable
+  from current defaults.
 - `src/proof/`:
+  - `merged_commitment.rs`: explicit geometry-bound BF merged cap production;
+    cap-only transfer ownership, with no persisted-tree or profile options.
   - `inputs.rs`: the consolidated H2D transfer bundle
     (`GpuGKRProofTransfer`) — one shared `Transfer` (from `gpu_prover_context`)
     for every pre-prove H2D piece.
@@ -119,8 +141,9 @@ clearly-marked `#[cfg(test)]` section of the same manifest file.
 
 This crate's own module DAG is small: `config` and `proof::inputs` are leaves;
 `proof::orchestration` drives `gpu_trace`/`gpu_gkr`/`gpu_whir` directly.
-`proof::prove()` is the only production entry point exposed upward to
-`gpu_execution_prover`.
+`proof::prove()` is the proof entry point exposed upward to
+`gpu_execution_prover`; merged memory jobs use
+`proof::merged_commitment::commit_merged_from_transfers_for_geometry`.
 
 The crate stack itself — which modules became `gpu_core` / `gpu_ntt` /
 `gpu_ops` / `gpu_hash` / `gpu_prover_context` / `gpu_trace` /

@@ -51,8 +51,10 @@ fn gkr_run_basic_unrolled_test_sec_100() {
             super::orchestration::common::ProgramConfig::hashed_fibonacci_blake_compression()
         }
         Some("bigint_with_control") => super::orchestration::common::ProgramConfig {
-            binary_path: "../examples/bigint_with_control/app.bin".into(),
-            text_section_path: "../examples/bigint_with_control/app.text".into(),
+            program: riscv_transpiler::elf::ProgramSource::legacy_binaries(
+                "../examples/bigint_with_control/app.bin",
+                "../examples/bigint_with_control/app.text",
+            ),
             non_determinism_reads: vec![],
             cycles_bound: 1 << 20,
             ram_bound_bytes: RAM_BOUND_BYTES,
@@ -82,60 +84,6 @@ fn gkr_run_basic_unrolled_test_sec_100() {
     );
 }
 
-/// The Blake delegation circuit (2^20 rows) proved with a PACKED base
-/// commitment: `pack_log2 = 4` packs every committed column set into
-/// `2^24`-variate polynomials, so the WHIR run uses the 2^24 schedule. Runs
-/// the Blake-compression hashed-fibonacci program (real Blake calls) and
-/// proves only that delegation circuit; the proof lands in
-/// `test_proofs/blake2_with_extended_control_sec_100_pack4_gkr_proof.json`
-/// (the fixture of the packed CPU-verifier test).
-#[test]
-fn gkr_blake_delegation_packed_test_sec_100() {
-    gkr_blake_delegation_packed_impl(SecurityLevel::Sec100, 4);
-}
-
-pub fn gkr_blake_delegation_packed_impl(level: SecurityLevel, pack_log2: usize) {
-    type CountersT = riscv_transpiler::vm::DelegationsAndFamiliesCounters;
-    let proof_suffix = level.dir_suffix();
-    let worker = Worker::new_with_num_threads(8);
-
-    let mut config =
-        super::orchestration::common::ProgramConfig::hashed_fibonacci_blake_compression();
-    config.ram_bound_bytes = RAM_BOUND_BYTES;
-    let vm = super::orchestration::common::run_vm_and_capture::<
-        CountersT,
-        FullUnsignedMachineDecoderConfig,
-    >(&config, &worker);
-    let expected_final_state = vm.expected_final_state();
-    let counters = vm.counters;
-    assert!(
-        counters.blake_calls > 0,
-        "the program must make Blake calls"
-    );
-
-    let external_challenges = super::orchestration::common::hardcoded_external_challenges();
-    let out = super::orchestration::delegations::prove_delegation_blake_with_packing::<CountersT>(
-        &vm.snapshotter,
-        &vm.tape,
-        &expected_final_state,
-        vm.cycles_bound,
-        counters.blake_calls,
-        &external_challenges,
-        level,
-        pack_log2,
-        PROVE_EMPTY,
-        false,
-        &None,
-        proof_suffix,
-        &worker,
-        super::blake2_with_extended_control::witness_eval_fn,
-    );
-    assert!(
-        out.proof.is_some(),
-        "the packed Blake proof must be produced"
-    );
-}
-
 pub fn gkr_run_basic_unrolled_test_impl(
     level: SecurityLevel,
     mut config: super::orchestration::common::ProgramConfig,
@@ -143,7 +91,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
     _maybe_gpu_unrolled_comparison_hook: Option<Box<dyn Fn()>>,
     _maybe_gpu_delegation_comparison_hook: Option<Box<dyn Fn()>>,
 ) {
-    let proof_suffix = level.dir_suffix();
+    // `sec_100` in the default soundness mode, `sec_100_<mode>` otherwise
+    let proof_suffix = super::orchestration::common::proof_suffix(level);
+    let proof_suffix = proof_suffix.as_str();
     type CountersT = riscv_transpiler::vm::DelegationsAndFamiliesCounters;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;

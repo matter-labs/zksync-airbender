@@ -13,6 +13,11 @@ use super::{
     hypercube_three_pass, select_ntt_strategy, shared, NttDirection, NttKernelKind, OMEGA_LOG_ORDER,
 };
 
+/// Generated exact-aliasing transforms are available for these domain sizes.
+pub fn log_size_supports_in_place(log_n: usize) -> bool {
+    (13..=24).contains(&log_n)
+}
+
 /// Replace natural monomials with bitreversed evaluations of one shifted coset.
 pub fn monomials_to_coset_in_place(
     values: &mut DeviceSlice<BF>,
@@ -42,7 +47,7 @@ fn monomials_to_coset_in_place_impl(
     stream: &CudaStream,
     hypercube_final4: bool,
 ) -> CudaResult<()> {
-    assert!((20..=24).contains(&log_n));
+    assert!(log_size_supports_in_place(log_n));
     assert!(log_n + log_lde_factor <= OMEGA_LOG_ORDER as usize);
     assert!(coset_index < 1usize << log_lde_factor);
     let n = 1usize << log_n;
@@ -125,13 +130,44 @@ fn monomials_to_coset_in_place_impl(
                     16384 + 8192,
                 )
             } else {
-                assert_eq!(log_n, 20);
-                (
-                    ab_natural_monomials_to_bitrev_evals_last_12_stages_compact_kernel
-                        as NaturalToBitrevFinalSignature,
-                    4096,
-                    4096,
-                )
+                let last_stages = log_n - 8;
+                let last = match last_stages {
+                    5 => {
+                        ab_natural_monomials_to_bitrev_evals_last_5_stages_compact_kernel
+                            as NaturalToBitrevFinalSignature
+                    }
+                    6 => {
+                        ab_natural_monomials_to_bitrev_evals_last_6_stages_compact_kernel
+                            as NaturalToBitrevFinalSignature
+                    }
+                    7 => {
+                        ab_natural_monomials_to_bitrev_evals_last_7_stages_compact_kernel
+                            as NaturalToBitrevFinalSignature
+                    }
+                    8 => {
+                        ab_natural_monomials_to_bitrev_evals_last_8_stages_compact_kernel
+                            as NaturalToBitrevFinalSignature
+                    }
+                    9 => {
+                        ab_natural_monomials_to_bitrev_evals_last_9_stages_compact_kernel
+                            as NaturalToBitrevFinalSignature
+                    }
+                    10 => {
+                        ab_natural_monomials_to_bitrev_evals_last_10_stages_compact_kernel
+                            as NaturalToBitrevFinalSignature
+                    }
+                    11 => {
+                        ab_natural_monomials_to_bitrev_evals_last_11_stages_compact_kernel
+                            as NaturalToBitrevFinalSignature
+                    }
+                    12 => {
+                        ab_natural_monomials_to_bitrev_evals_last_12_stages_compact_kernel
+                            as NaturalToBitrevFinalSignature
+                    }
+                    _ => unreachable!("compact natural-to-bitrev tail requires 5..=12 stages"),
+                };
+                let values = 1usize << last_stages;
+                (last, values, values)
             };
             let last = NaturalToBitrevFinalFunction(last);
             let mut config =
@@ -157,14 +193,14 @@ pub fn hypercube_to_coset_in_place(
     properties: &DeviceProperties,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert!((20..=24).contains(&log_n));
+    assert!(log_size_supports_in_place(log_n));
     assert!(log_n + log_lde_factor <= OMEGA_LOG_ORDER as usize);
     assert!(coset_index < 1usize << log_lde_factor);
     let n = 1usize << log_n;
     assert_eq!(values.len() % n, 0);
     assert_eq!(values.as_ptr() as usize % 16, 0);
     let columns = values.len() / n;
-    if !hypercube_three_pass(log_n, properties) {
+    if log_n < 20 || !hypercube_three_pass(log_n, properties) {
         for column in 0..columns {
             // SAFETY: passes read each block-owned row set before overwriting
             // it, with their existing barriers; this column is within the slab.
@@ -175,7 +211,11 @@ pub fn hypercube_to_coset_in_place(
                     MutPtrAndStride::new(ptr, n),
                 )
             };
-            if log_n == 20 {
+            if log_n < 20 {
+                super::hypercube::launch_hypercube_compact_column(
+                    input, input, output, log_n, stream,
+                )?;
+            } else if log_n == 20 {
                 super::hypercube::launch_nonfinal_passes(input, input, output, log_n, stream)?;
             } else {
                 super::hypercube::launch_hypercube_two_pass_column(
@@ -266,7 +306,7 @@ pub fn coset_to_monomials_in_place(
     properties: &DeviceProperties,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert!((20..=24).contains(&log_n));
+    assert!(log_size_supports_in_place(log_n));
     assert!(log_n + log_lde_factor <= OMEGA_LOG_ORDER as usize);
     assert!(coset_index < 1usize << log_lde_factor);
     let n = 1usize << log_n;
@@ -278,8 +318,12 @@ pub fn coset_to_monomials_in_place(
     }
     // This inverse has the bitrev-to-natural DIF address network. The usual
     // Inverse selector describes natural-to-bitrev DIT and cannot be used.
-    let strategy = select_ntt_strategy(NttDirection::Forward, log_n, columns, 1, properties)
-        .expect("in-place inverse requires bitrev-to-natural pass geometry");
+    let strategy = if log_n < 20 {
+        super::strategy::compact_dif_strategy(log_n, columns, 1, properties)
+    } else {
+        select_ntt_strategy(NttDirection::Forward, log_n, columns, 1, properties)
+            .expect("in-place inverse requires bitrev-to-natural pass geometry")
+    };
     let factor = (coset_index << (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor)) as u32;
     for first_column in (0..columns).step_by(strategy.columns_per_launch) {
         let count = (columns - first_column).min(strategy.columns_per_launch);
@@ -318,6 +362,27 @@ pub fn coset_to_monomials_in_place(
                 NttKernelKind::MonomialsToEvalsInitial { stages }
                 | NttKernelKind::MonomialsToEvalsFirstCompact { stages } => {
                     let signature = match pass.kernel {
+                        NttKernelKind::MonomialsToEvalsFirstCompact { stages: 5 } => {
+                            ab_coset_to_monomials_first_5_stages_compact_kernel
+                        }
+                        NttKernelKind::MonomialsToEvalsFirstCompact { stages: 6 } => {
+                            ab_coset_to_monomials_first_6_stages_compact_kernel
+                        }
+                        NttKernelKind::MonomialsToEvalsFirstCompact { stages: 7 } => {
+                            ab_coset_to_monomials_first_7_stages_compact_kernel
+                        }
+                        NttKernelKind::MonomialsToEvalsFirstCompact { stages: 8 } => {
+                            ab_coset_to_monomials_first_8_stages_compact_kernel
+                        }
+                        NttKernelKind::MonomialsToEvalsFirstCompact { stages: 9 } => {
+                            ab_coset_to_monomials_first_9_stages_compact_kernel
+                        }
+                        NttKernelKind::MonomialsToEvalsFirstCompact { stages: 10 } => {
+                            ab_coset_to_monomials_first_10_stages_compact_kernel
+                        }
+                        NttKernelKind::MonomialsToEvalsFirstCompact { stages: 11 } => {
+                            ab_coset_to_monomials_first_11_stages_compact_kernel
+                        }
                         NttKernelKind::MonomialsToEvalsFirstCompact { stages: 12 } => {
                             ab_coset_to_monomials_first_12_stages_compact_kernel
                         }
@@ -407,4 +472,24 @@ pub fn coset_to_monomials_in_place(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod cpu_compact_range_tests {
+    #[test]
+    fn cpu_compact_in_place_and_retained_ranges() {
+        for log_n in 0..=27 {
+            let supported = (13..=24).contains(&log_n);
+            assert_eq!(
+                super::log_size_supports_in_place(log_n),
+                supported,
+                "InPlace m={log_n}"
+            );
+            assert_eq!(
+                super::super::log_size_supports_retained_monomials(log_n),
+                supported,
+                "retained m={log_n}"
+            );
+        }
+    }
 }

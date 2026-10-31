@@ -1,0 +1,150 @@
+{
+  "trace_len_log2": 24,
+  "cap_size": 16,
+  "sumcheck_explicit_output_size_log_2": 4,
+  "security_level": "Sec100",
+  "whir_schedule": {
+    "cap_size": 16,
+    "base_round": {
+      "lde_factor_log2": 1,
+      "physical_packing_log2": 0,
+      "fold_log2": 1,
+      "batching_pow_bits": 9,
+      "folding_pow_bits": 0,
+      "num_queries": 174,
+      "queries_pow_bits": 28
+    },
+    "internal_rounds": [
+      {
+        "lde_factor_log2": 4,
+        "folding_log2": 5,
+        "num_queries": 39,
+        "queries_pow_bits": 26,
+        "folding_pow_bits": 24,
+        "num_ood_samples": 1,
+        "ood_pow_bits": 9
+      },
+      {
+        "lde_factor_log2": 8,
+        "folding_log2": 5,
+        "num_queries": 20,
+        "queries_pow_bits": 25,
+        "folding_pow_bits": 22,
+        "num_ood_samples": 1,
+        "ood_pow_bits": 5
+      },
+      {
+        "lde_factor_log2": 10,
+        "folding_log2": 5,
+        "num_queries": 16,
+        "queries_pow_bits": 24,
+        "folding_pow_bits": 22,
+        "num_ood_samples": 1,
+        "ood_pow_bits": 2
+      },
+      {
+        "lde_factor_log2": 12,
+        "folding_log2": 4,
+        "num_queries": 13,
+        "queries_pow_bits": 25,
+        "folding_pow_bits": 22,
+        "num_ood_samples": 1,
+        "ood_pow_bits": 0
+      },
+      {
+        "lde_factor_log2": 14,
+        "folding_log2": 3,
+        "num_queries": 11,
+        "queries_pow_bits": 26,
+        "folding_pow_bits": 23,
+        "num_ood_samples": 1,
+        "ood_pow_bits": 0
+      }
+    ]
+  },
+  "same_size_sumcheck_schedule": [
+    {
+      "WindowInitial": {
+        "window": 3
+      }
+    },
+    {
+      "FoldInitial": {
+        "width": 3
+      }
+    },
+    {
+      "WindowContinuing": {
+        "window": 3
+      }
+    },
+    {
+      "FoldContinuing": {
+        "width": 3
+      }
+    },
+    {
+      "WindowContinuing": {
+        "window": 3
+      }
+    },
+    {
+      "FoldContinuing": {
+        "width": 3
+      }
+    },
+    {
+      "WindowContinuing": {
+        "window": 3
+      }
+    },
+    {
+      "FoldContinuing": {
+        "width": 3
+      }
+    },
+    {
+      "WindowContinuing": {
+        "window": 3
+      }
+    },
+    {
+      "FoldContinuing": {
+        "width": 3
+      }
+    },
+    {
+      "WindowContinuing": {
+        "window": 3
+      }
+    },
+    {
+      "FoldContinuing": {
+        "width": 3
+      }
+    },
+    {
+      "WindowContinuing": {
+        "window": 3
+      }
+    },
+    {
+      "FoldContinuing": {
+        "width": 3
+      }
+    },
+    {
+      "WindowContinuing": {
+        "window": 3
+      }
+    },
+    {
+      "FoldContinuing": {
+        "width": 3
+      }
+    },
+    "Tail"
+  ],
+  "dimension_reducing_sumcheck_schedule": {},
+  "commitment_mode": "SeparateMemoryAndWitness"
+}

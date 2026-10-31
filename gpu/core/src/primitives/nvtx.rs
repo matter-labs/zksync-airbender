@@ -219,8 +219,53 @@ use stubs::{
     gpu_core_nvtx_registered_range_start,
 };
 
+/// A started NVTX range. NVTX closes a range only with the end call of the
+/// domain it was started in: `nvtxDomainRangeEnd` for a named-domain range,
+/// `nvtxRangeEnd` for a default-domain one. A domain range ended through the
+/// default domain stays open, so tools filtering on it (`ncu --nvtx-include`)
+/// keep selecting work launched after the intended end.
 #[derive(Clone, Copy)]
-pub struct RangeId(u64);
+pub struct RangeId {
+    id: u64,
+    domain: RangeDomain,
+}
+
+/// The domain handle a range was started in; null for the default domain.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct RangeDomain(NvtxDomainHandle);
+
+// SAFETY: same as `DomainEntry`: an NVTX domain handle is an immutable
+// process-global handle after creation, and `RangeDomain` only passes it back
+// to NVTX. This keeps `RangeId` `Send + Sync`, as it was as a plain `u64`.
+unsafe impl Send for RangeDomain {}
+unsafe impl Sync for RangeDomain {}
+
+/// The NVTX call that closes a range: the default domain's or its own domain's.
+#[derive(Debug, PartialEq, Eq)]
+enum RangeEnd {
+    Default(u64),
+    Domain(NvtxDomainHandle, u64),
+}
+
+impl RangeId {
+    /// `start_range` opens the range in `registration.domain` (registered or
+    /// ASCII message) when that handle is non-null, and in the default domain
+    /// otherwise; record exactly that domain.
+    fn started(registration: &Registration, id: u64) -> Self {
+        Self {
+            id,
+            domain: RangeDomain(registration.domain),
+        }
+    }
+
+    fn end_call(self) -> RangeEnd {
+        if self.domain.0.is_null() {
+            RangeEnd::Default(self.id)
+        } else {
+            RangeEnd::Domain(self.domain.0, self.id)
+        }
+    }
+}
 
 struct Registration {
     domain_name: Option<String>,
@@ -325,13 +370,15 @@ pub fn start_range(domain: Option<&str>, message: &str) -> RangeId {
         // SAFETY: `message` is NUL-terminated and lives for 'static.
         unsafe { gpu_core_nvtx_ascii_range_start(reg.message.as_ptr()) }
     };
-    RangeId(id)
+    RangeId::started(reg, id)
 }
 
 pub fn end_range(id: RangeId) {
-    // SAFETY: `id` was returned by a matching `start_range` call.
-    unsafe {
-        gpu_core_nvtx_range_end(id.0);
+    match id.end_call() {
+        // SAFETY: `id` was returned by a matching default-domain `start_range` call.
+        RangeEnd::Default(id) => unsafe { gpu_core_nvtx_range_end(id) },
+        // SAFETY: `domain` is the live handle `start_range` opened this range in.
+        RangeEnd::Domain(domain, id) => unsafe { gpu_core_nvtx_domain_range_end(domain, id) },
     }
 }
 
@@ -550,4 +597,90 @@ pub fn mem_counter_register(name: &str) -> u64 {
 pub fn mem_counter_sample(counter_id: u64, value: i64) {
     // SAFETY: `counter_id` came from `mem_counter_register` in the same domain.
     unsafe { gpu_core_nvtx_counter_sample_i64(mem_domain(), counter_id, value) }
+}
+
+#[cfg(test)]
+mod cpu_tests {
+    use super::*;
+
+    /// Profiler target: a named-domain range around a default-domain range,
+    /// then a second range in the same domain. Under `nsys --trace=nvtx` the
+    /// first domain range must close before the second one starts.
+    #[test]
+    fn cpu_nvtx_domain_range_capture_target() {
+        let outer = scoped_range(Some("ab.nvtx.pairing"), "pairing.domain");
+        {
+            let _inner = scoped_range(None, "pairing.default");
+        }
+        drop(outer);
+        let _after = scoped_range(Some("ab.nvtx.pairing"), "pairing.after");
+    }
+
+    fn registration(domain: NvtxDomainHandle) -> Registration {
+        Registration {
+            domain_name: None,
+            message: CString::new("pairing").unwrap(),
+            domain,
+            registered: ptr::null_mut(),
+        }
+    }
+
+    /// A range started in a named domain ends with `nvtxDomainRangeEnd` in
+    /// that same domain; a default-domain range keeps `nvtxRangeEnd`.
+    #[test]
+    fn cpu_nvtx_range_end_uses_the_start_domain() {
+        // Never dereferenced: only compared and returned.
+        let domain = ptr::NonNull::<NvtxDomainRegistration>::dangling().as_ptr();
+        assert_eq!(
+            RangeId::started(&registration(domain), 7).end_call(),
+            RangeEnd::Domain(domain, 7)
+        );
+        assert_eq!(
+            RangeId::started(&registration(ptr::null_mut()), 9).end_call(),
+            RangeEnd::Default(9)
+        );
+    }
+
+    /// `start_range` records the domain handle it opened the range in: the
+    /// registry's handle for a named domain (null when no tool is attached,
+    /// which also selects the default-domain start), and null without one.
+    #[test]
+    fn cpu_nvtx_start_range_records_its_domain() {
+        let named = start_range(Some("ab.nvtx.pairing"), "pairing.recorded");
+        assert_eq!(
+            named.domain,
+            RangeDomain(get_or_create_domain("ab.nvtx.pairing"))
+        );
+        end_range(named);
+        let default = start_range(None, "pairing.recorded");
+        assert_eq!(default.domain, RangeDomain(ptr::null_mut()));
+        end_range(default);
+    }
+
+    fn assert_send_sync<T: Send + Sync>() {}
+
+    #[test]
+    fn cpu_nvtx_range_id_stays_send_and_sync() {
+        assert_send_sync::<RangeId>();
+        assert_send_sync::<ScopedRange>();
+    }
+}
+
+#[cfg(all(test, feature = "bench"))]
+mod profiler_tests {
+    use super::*;
+    use era_cudart::stream::CudaStream;
+
+    /// ncu target: one kernel inside a named-domain range, one after it.
+    /// `--nvtx-include` on that range must select only the first launch.
+    #[test]
+    fn nvtx_domain_range_scopes_kernel_launches() {
+        let stream = CudaStream::default();
+        {
+            let _range = scoped_range(Some("ab.nvtx.pairing"), "pairing.kernel");
+            crate::bench::bench_add_bf(&stream).unwrap();
+        }
+        crate::bench::bench_mul_bf(&stream).unwrap();
+        stream.synchronize().unwrap();
+    }
 }

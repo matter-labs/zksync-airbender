@@ -21,6 +21,22 @@ impl TraceHolder<BF> {
         paths: &mut DeviceSlice<u32>,
         context: &ProverContext,
     ) -> CudaResult<()> {
+        if let Some((geometry, _)) = self.base_geometry {
+            let mode = match self.trees {
+                TreesHolder::Full(_) => TreesCacheMode::CacheFull,
+                TreesHolder::Partial(_) => TreesCacheMode::CachePartial,
+                TreesHolder::None => TreesCacheMode::CacheNone,
+            };
+            validate_baby_bear_base_opening(
+                &geometry,
+                self.opening_policy,
+                mode,
+                context
+                    .ntt_device_context()
+                    .whir_leaf_transform_params()
+                    .omega_log_order,
+            );
+        }
         assert!(!self.cosets_materialized);
         assert!(matches!(self.cosets, CosetsHolder::None(_)));
         assert!(matches!(
@@ -28,7 +44,7 @@ impl TraceHolder<BF> {
             TreesHolder::None | TreesHolder::Partial(_)
         ));
         assert_ne!(self.opening_policy, OpeningStrategy::AllCosets);
-        if self.columns_count == 0 || queries.is_empty() {
+        if self.committed_columns_count() == 0 || queries.is_empty() {
             return Ok(());
         }
         let in_place = self.opening_policy == OpeningStrategy::InPlace;
@@ -38,7 +54,7 @@ impl TraceHolder<BF> {
             .take()
             .or_else(|| self.opening_raw.take())
             .expect("initial batching must transfer an opening source");
-        let log_n = self.log_domain_size;
+        let log_n = self.commitment_log_domain_size();
         let log_f = self.log_lde_factor;
         let log_subtree_cap = self.log_tree_cap_size - log_f;
         let layers = log_n - self.log_rows_per_leaf - log_subtree_cap;
@@ -133,7 +149,7 @@ impl TraceHolder<BF> {
                     0,
                     self.log_rows_per_leaf,
                     log_subtree_cap,
-                    self.columns_count,
+                    self.committed_columns_count(),
                     1,
                     stream,
                 )?;
@@ -175,6 +191,25 @@ impl TraceHolder<BF> {
         cap_dst: Option<&mut DeviceSlice<u32>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
+        if self.is_empty_base_oracle() {
+            return match cap_dst {
+                Some(dst) => self.commit_all_into(dst, context),
+                None => self.commit_all(context),
+            };
+        }
+        if self.base_geometry.is_some() {
+            assert!(
+                matches!(self.cosets, CosetsHolder::None(_))
+                    && matches!(self.trees, TreesHolder::Partial(_)),
+                "geometry-backed retained commitments require PerCoset storage with partial trees"
+            );
+            assert!(
+                gpu_ntt::ntt::log_size_supports_retained_monomials(
+                    self.commitment_log_domain_size() as usize
+                ),
+                "geometry-backed PerCoset commitments require the retained-monomial dispatch family"
+            );
+        }
         if let Some(dst) = cap_dst {
             return self.commit_with_monomials_into(dst, context);
         }
@@ -198,11 +233,11 @@ impl TraceHolder<BF> {
         assert!(matches!(self.trees, TreesHolder::Partial(_)));
         assert!(self.opening_monomials.is_none());
         let source = self.raw_hypercube_backing();
-        let log_n = self.log_domain_size;
+        let log_n = self.commitment_log_domain_size();
         let log_f = self.log_lde_factor;
         let log_rows = self.log_rows_per_leaf;
         let log_subcap = self.log_tree_cap_size - log_f;
-        let columns = self.columns_count;
+        let columns = self.committed_columns_count();
         assert!(columns != 0);
         let mut monomials = context.alloc(source.len(), AllocationPlacement::Bottom)?;
         let all_cosets = matches!(self.cosets, CosetsHolder::Full(_));
@@ -267,6 +302,12 @@ impl TraceHolder<BF> {
     }
 
     pub fn retain_after_commitment(&mut self, storage: WitnessPostCommitStorage) {
+        if self.is_empty_base_oracle() {
+            if storage != WitnessPostCommitStorage::RawAndCosets {
+                self.release_cosets();
+            }
+            return;
+        }
         match storage {
             WitnessPostCommitStorage::RawEvaluations => {
                 self.opening_monomials = None;
@@ -296,6 +337,18 @@ impl TraceHolder<BF> {
         cap_dst: Option<&mut DeviceSlice<u32>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
+        if self.is_empty_base_oracle() {
+            return match cap_dst {
+                Some(dst) => self.commit_all_into(dst, context),
+                None => self.commit_all(context),
+            };
+        }
+        if self.base_geometry.is_some() {
+            assert!(
+                gpu_ntt::ntt::log_size_supports_in_place(self.commitment_log_domain_size() as usize),
+                "in-place commitments require the generated transform domain"
+            );
+        }
         if let Some(dst) = cap_dst {
             return self.commit_in_place_into(dst, context);
         }
@@ -325,11 +378,11 @@ impl TraceHolder<BF> {
             .expect("raw hypercube values");
         let values = std::sync::Arc::get_mut(&mut backing)
             .expect("in-place commitment requires exclusive raw backing");
-        let log_n = self.log_domain_size;
+        let log_n = self.commitment_log_domain_size();
         let log_f = self.log_lde_factor;
         let log_rows = self.log_rows_per_leaf;
         let log_subcap = self.log_tree_cap_size - log_f;
-        let columns = self.columns_count;
+        let columns = self.committed_columns_count();
         assert!(columns != 0);
         let stream = context.get_exec_stream();
         let properties = context.get_device_properties();

@@ -42,15 +42,32 @@ impl<'a> GpuGKRSetupTransfer<'a> {
 
 impl<'a> GpuGKRSetupTransfer<'a> {
     pub fn new(host: Arc<GpuGKRSetupHost>, context: &ProverContext) -> CudaResult<Self> {
-        let mut trace_holder = TraceHolder::<BF>::new_without_cosets(
-            host.log_domain_size,
-            host.log_lde_factor,
-            host.log_rows_per_leaf,
-            host.log_tree_cap_size,
-            host.columns_count,
-            TreesCacheMode::CachePartial,
-            context,
-        )?;
+        let mut trace_holder = if let Some(geometry) = host.base_commitment_geometry() {
+            host.validate_for_geometry(&geometry);
+            gpu_trace::trace::holder::validate_baby_bear_base_geometry(
+                &geometry,
+                context
+                    .ntt_device_context()
+                    .whir_leaf_transform_params()
+                    .omega_log_order,
+            );
+            TraceHolder::<BF>::new_base_without_cosets(
+                geometry,
+                crate::upstream::BaseOracleRole::Setup,
+                TreesCacheMode::CachePartial,
+                context,
+            )?
+        } else {
+            TraceHolder::<BF>::new_without_cosets(
+                host.log_domain_size,
+                host.log_lde_factor,
+                host.log_rows_per_leaf,
+                host.log_tree_cap_size,
+                host.columns_count,
+                TreesCacheMode::CachePartial,
+                context,
+            )?
+        };
         // Allocate the cap up front so `schedule_transfer` has a stable destination.
         let cap_size = 1usize << host.log_tree_cap_size;
         let unified_cap = context.alloc::<Digest>(cap_size, AllocationPlacement::BestFit)?;
@@ -317,6 +334,7 @@ pub(crate) fn bootstrap_storage_from_trace_holders<E>(
     log_tree_cap_size: u32,
     memory_trace_holder: &TraceHolder<BF>,
     witness_trace_holder: &TraceHolder<BF>,
+    merged_witness_offset: Option<usize>,
 ) -> CudaResult<GpuGKRStorage<BF, E>> {
     for (label, trace_holder) in [
         ("memory", memory_trace_holder),
@@ -371,16 +389,38 @@ pub(crate) fn bootstrap_storage_from_trace_holders<E>(
     if let Some(setup_trace_holder) = setup_trace_holder {
         bind_trace_holder_columns_into_storage(setup_trace_holder, &mut storage, GKRAddress::Setup);
     }
-    bind_trace_holder_columns_into_storage(
+    let memory_columns = merged_witness_offset.unwrap_or(memory_trace_holder.columns_count);
+    bind_trace_holder_column_range_into_storage(
         memory_trace_holder,
+        0,
+        memory_columns,
         &mut storage,
         GKRAddress::BaseLayerMemory,
     );
-    bind_trace_holder_columns_into_storage(
-        witness_trace_holder,
-        &mut storage,
-        GKRAddress::BaseLayerWitness,
-    );
+    match merged_witness_offset {
+        None => bind_trace_holder_columns_into_storage(
+            witness_trace_holder,
+            &mut storage,
+            GKRAddress::BaseLayerWitness,
+        ),
+        Some(memory_columns) => {
+            assert_eq!(
+                witness_trace_holder.columns_count, 0,
+                "merged witness holder must be empty"
+            );
+            let witness_columns = memory_trace_holder
+                .columns_count
+                .checked_sub(memory_columns)
+                .expect("merged memory width exceeds the holder");
+            bind_trace_holder_column_range_into_storage(
+                memory_trace_holder,
+                memory_columns,
+                witness_columns,
+                &mut storage,
+                GKRAddress::BaseLayerWitness,
+            );
+        }
+    }
 
     Ok(storage)
 }
@@ -482,7 +522,7 @@ pub(super) fn precompute_partial_tree_cache(
     columns_count: usize,
     context: &ProverContext,
 ) -> CudaResult<(Vec<StaticPinnedBox<Digest>>, StaticPinnedBox<Digest>)> {
-    let mut trace_holder = TraceHolder::<BF>::new(
+    let trace_holder = TraceHolder::<BF>::new(
         log_domain_size,
         log_lde_factor,
         log_rows_per_leaf,
@@ -491,6 +531,20 @@ pub(super) fn precompute_partial_tree_cache(
         TreesCacheMode::CachePartial,
         context,
     )?;
+    precompute_partial_tree_cache_in_holder(raw_hypercube_evals, trace_holder, context)
+}
+
+pub(super) fn precompute_partial_tree_cache_in_holder(
+    raw_hypercube_evals: &StaticPinnedBox<BF>,
+    mut trace_holder: TraceHolder<BF>,
+    context: &ProverContext,
+) -> CudaResult<(Vec<StaticPinnedBox<Digest>>, StaticPinnedBox<Digest>)> {
+    assert_eq!(
+        raw_hypercube_evals.len(),
+        trace_holder.get_hypercube_evals().len(),
+        "pinned setup copy must contain only logical columns"
+    );
+    let log_tree_cap_size = trace_holder.log_tree_cap_size;
     memory_copy_async(
         trace_holder.get_uninit_hypercube_evals_mut(),
         &raw_hypercube_evals[..],

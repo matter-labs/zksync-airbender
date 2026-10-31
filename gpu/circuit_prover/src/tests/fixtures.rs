@@ -23,8 +23,7 @@ pub(super) fn build_delegation_replay_fixture_for_workload<OPT: DecodingOptions>
     text_path: &str,
     non_determinism_reads: &[u32],
 ) -> DelegationReplayFixture {
-    let binary = read_test_words(binary_path);
-    let text_section = read_test_words(text_path);
+    let (binary, text_section) = load_test_program(binary_path, text_path);
     let instructions: Vec<Instruction> = preprocess_bytecode::<OPT, true>(&text_section);
     let tape = SimpleTape::new(&instructions);
     let mut ram = RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(&binary, 1 << 30);
@@ -133,6 +132,26 @@ pub(super) fn replay_delegation_trace_buffer_for_workload<W: Clone, OPT: Decodin
 pub(super) fn delegation_prover_config(circuit_type: DelegationCircuitType) -> ProverConfig {
     crate::config::prover_config(CircuitType::Delegation(circuit_type), SecurityLevel::Sec100)
         .unwrap()
+}
+
+/// `circuit_type`'s prover config under `mode` at `level`. The default mode is
+/// the circuit's own config; another mode is the production
+/// [`crate::config::prover_config_for_selection`] for `compiled_circuit`.
+pub(super) fn prover_config_in_mode(
+    circuit_type: CircuitType,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    level: SecurityLevel,
+    mode: circuit_common::SoundnessMode,
+) -> ProverConfig {
+    if mode == circuit_common::SoundnessMode::DEFAULT {
+        return crate::config::prover_config(circuit_type, level).unwrap();
+    }
+    let selection = ProvingSelection {
+        security_level: level,
+        soundness_mode: mode,
+    };
+    crate::config::prover_config_for_selection(circuit_type, compiled_circuit, selection)
+        .unwrap_or_else(|error| panic!("{circuit_type:?}/{mode:?}: {error}"))
 }
 
 pub(super) fn test_external_challenges() -> GKRExternalChallenges<BF, E4> {

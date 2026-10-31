@@ -27,7 +27,12 @@ explicit preset with an explicit block count is rejected. An arena below the
 smallest preset is rejected. Each preset must cover every circuit with the
 largest follower's complete inputs resident. Context, driver allocations and NTT tables are outside the arena.
 
-The sweep compares supported policy combinations, including retained-monomial
+Presets select defaults; they are not a capability allowlist. Direct proof calls
+may use any policy satisfying the representation and backend constraints below,
+within the currently admitted commitment geometry and the actual arena capacity.
+There is no preset-membership check or estimated-memory rejection.
+
+The sweep compares valid policy combinations, including retained-monomial
 and in-place recomputation. It uses maximum-capacity synthetic inputs, warmup
 proofs and interleaved timing rounds. Its proof fingerprints must agree across
 policies; CPU-proof parity is checked separately.
@@ -44,6 +49,125 @@ Witness has three choices: commitment strategy (`AllCosets`, `PerCoset`,
 batching. Setup and memory each have only an opening strategy. `PerCoset` uses
 monomials plus one reusable coset workspace; it does not imply retaining
 monomials between commitment and WHIR.
+
+## Policy compatibility
+
+The same preflight validates direct proofs and execution worker/sweep requests
+before constructing H2D transfers. It checks the actual setup, memory and witness
+representations, including empty roles. The immutable config, artifact, setup-cache
+and cap geometry must agree; choosing a different memory policy cannot change that
+identity or the proof protocol.
+
+For `GkrMemoryPolicy::Recompute`, at least one omission count must be nonzero,
+`value_layers` must be smaller than the runtime circuit's MAIN layer count, and
+`cache_layers` must not exceed that count. One validator is shared by preflight
+and the replay plan. The final MAIN value layer and required carry/producer
+closure must remain available. These requirements apply to legacy, physical,
+virtual and merged commitments alike; they do not depend on preset membership.
+See [`GkrMemoryPolicy`](../../gkr/src/forward/recompute.rs) and
+[`RecomputePlan`](../../gkr/src/forward/recompute_plan.rs).
+
+The witness representation contract is:
+
+| Commitment | Storage after commitment | Opening |
+| --- | --- | --- |
+| AllCosets | RawAndCosets | ReuseCosets |
+| AllCosets | RawEvaluations or RawAndMonomials | Recompute(AllCosets, PerCoset or InPlace) |
+| PerCoset | RawEvaluations or RawAndMonomials | Recompute(AllCosets, PerCoset or InPlace) |
+| InPlace | RawEvaluations | Recompute(AllCosets, PerCoset or InPlace) |
+
+ReuseCosets needs retained cosets. PerCoset does not retain all cosets, and InPlace
+restores raw evaluations without retaining monomials. Recomputed openings require
+no materialized cosets at the destructive handoff; therefore RawAndCosets with
+Recompute is outside the current representation contract, even though a different
+lifecycle could compute it. These are storage dependencies, not statements of
+algebraic impossibility or measured dominance. The source of truth is
+[`WitnessMemoryPolicy::is_valid`](../../circuit_prover/src/proof/memory_policy.rs).
+
+Setup and memory independently accept AllCosets, PerCoset or InPlace openings.
+Witness commitment and opening may use different strategies according to the
+table. A merged proof concatenates memory then witness before packing; its
+combined oracle uses the memory opening strategy, and its separate witness oracle
+is empty. No transform is required for an empty role. GKR continues reading
+logical columns while WHIR batches the padded physical columns. InPlace
+commitment restores the raw backing before logical readers; destructive query
+reconstruction runs only after those readers and initial WHIR batching release
+the raw owner. The same ownership checks apply to merged aliases.
+
+### Backend and direct-holder constraints
+
+These limits describe the current implementation, independently of memory-policy
+selection. They do not add a policy allowlist to an admitted geometry.
+
+| Constraint | Reason and source |
+| --- | --- |
+| InPlace transform domain log 13..24 | Existing compact inverse/forward passes and the addition-stage restore cover 13..19; the 20..24 routes are preserved. The shared `gpu_ntt::ntt::log_size_supports_in_place` predicate is checked at the BabyBear boundary before cap/workspace allocation or taking the raw owner. |
+| Geometry-backed retained-monomial PerCoset domain log 13..24 | The compact raw-to-monomials and coset-regeneration paths cover the smaller domains; it checks aligned whole columns and root order. See [`retained_monomials.rs`](../../ntt/src/ntt/retained_monomials.rs). |
+| Geometry-backed base transform message log 13..24, codeword log at most 27 and at most the live twiddle capacity | Natural-order coefficient labeling and the BabyBear root order must match the committed domain. The small legacy MSB route is not a substitute. The limits follow the generated transform family, not a fixed message tuple. |
+| Cap at least LDE; Partial trees require room for the fixed 32-leaf boundary | Per-coset cap arithmetic and the cached partial-tree layout require these dimensions. The field-free holder validation owns them. |
+| Recomputed direct-holder queries require None or Partial trees | The current gather reconstructs paths through partial-tree boundary roots; a Full tree needs a different gather. Current proof policies never construct Full trees. |
+| Direct packed retained commit requires None cosets and Partial trees | Its outer entry selects the partial-tree representation; None/Full tree variants need other transient/tree handling. The inner Full-coset/Partial branch does not make the outer packed entry callable in that state. Current stage1 starts with None cosets and Partial trees. |
+| Raw take requires a unique owner and the required retained source | Destructive transforms cannot race logical readers or merged aliases. RawAndMonomials/RawAndCosets require their producer to have retained that source; assertions remain in the holder. |
+
+See [`holder`](../../trace/src/trace/holder/mod.rs) and
+[`openings`](../../trace/src/trace/holder/openings.rs) for these direct-holder
+checks. BabyBear capability checks stay at the instantiated backend boundary;
+structural holder and geometry interfaces remain field-generic.
+
+### Geometry and protocol scope
+
+Geometry admission follows the actual field, kernel, storage and ownership
+requirements in [commitment geometry](../../docs/commitment_geometry.md).
+The old physical/virtual tuple, circuit, message22, LDE2, cap16 and fold-ladder
+qualification lists are removed. Presets select defaults; they do not restrict
+callable policies or geometries that satisfy those requirements.
+
+The generated base batching reader supports fold log 0 or 1. Recursive route
+selection, partial-tree dimensions, field/root order and context capacity are
+validated independently. Physical claim merging supports k1..5; k0 bypasses
+the one-warp merge kernel. The memory-only producer remains separate-only;
+merged jobs use the concatenating producer.
+
+The GPU validates the configured same-size schedule but ignores it for window
+selection: execution uses compiled windows. F13 establishes fresh Naive-CPU byte
+parity and the same-pin Windowed control has identical main/DR dispatch. Short
+positive DR chains use the existing tower from round zero. Execution workers
+request explicit output log 4, which preflight binds to the config; other output
+logs are available through the direct circuit-prover API.
+
+Internal-round folding PoW and OOD PoW are implemented (the ethproofs-soundcalc
+schedules use both). Schedules with base-round folding PoW or more than one OOD
+sample per oracle remain rejected with named errors: the GPU proof
+layout/scheduler handles one OOD tuple per oracle and grinds no base-round
+folding nonce. These protocol limits are outside memory-policy compatibility. See
+[`recursive schedule admission`](../../whir/src/lib.rs) and
+[`proof layout inputs`](../../gkr/src/proof_layout/build_inputs.rs).
+
+### Verification scope and fit
+
+The positive policy suites compare full serialized GPU proofs with fresh CPU
+proofs, keep two GPU jobs pending, and require the allocator to return to baseline
+after every pair. They vary setup×memory openings, witness representations and GKR
+omission counts using the existing candidate families. Primitive tests separately
+compare caps, leaves, paths, restored raw data and zero tails. This is family
+coverage, not the complete Cartesian product. GKR replay on physical Blake
+`(20,2,1)` has the same logical views and k2 padded backing as virtual Blake
+`(20,2,0)`; only WHIR's base fold differs. That is a source-level equivalence
+argument, not a measured physical-f1 GKR candidate run.
+
+A paired-proof allocation failure describes that exact arena and pending work;
+it does not establish a single-proof incompatibility. In particular, the measured
+BigInt Materialize/AllCosets pair exceeds a 30 GiB arena. Its opening/witness
+family tests use the existing 30 GiB preset GKR policy while varying those
+families. Materialize remains callable. Allocation failures must retain the
+policy tuple, arena, stage and requested bytes; parity, dispatch or ownership
+failures must not be classified as non-fit. No policy is pruned as dominated.
+
+Preset replay checks fit and stable GPU fingerprints with the largest follower's
+inputs resident, in both allocation directions. It is separate from the
+independent CPU-byte oracle. A Cartesian `--fit-only` map is tuning work, not a
+prerequisite or a claim of this compatibility change. Regenerating presets still
+requires the per-circuit CPU policy parity and exact-arena replay checks.
 
 ## Measure and install a preset
 

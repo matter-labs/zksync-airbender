@@ -63,7 +63,11 @@ fn load_base_layer() -> (Vec<u32>, Vec<u32>) {
 fn marks_are_monotonic_and_one_per_stream_word() {
     let (bin, text) = load_base_layer();
     let (setups, proof) = trace::load_calibration_proof("base");
-    let stream = full_statement_verifier::host_utils::build_unrolled_stream(&setups, &proof);
+    let stream = full_statement_verifier::host_utils::build_unrolled_stream(
+        &setups,
+        &proof,
+        BlakeMode::Compression,
+    );
     let expected_reads = stream.len();
 
     let t = trace::trace_verifier(&bin, &text, stream);
@@ -85,7 +89,11 @@ fn marks_are_monotonic_and_one_per_stream_word() {
 fn total_cycles_matches_the_uninstrumented_measurement() {
     let (bin, text) = load_base_layer();
     let (setups, proof) = trace::load_calibration_proof("base");
-    let stream = full_statement_verifier::host_utils::build_unrolled_stream(&setups, &proof);
+    let stream = full_statement_verifier::host_utils::build_unrolled_stream(
+        &setups,
+        &proof,
+        BlakeMode::Compression,
+    );
 
     let instrumented = trace::trace_verifier(&bin, &text, stream.clone()).total_cycles;
     let plain = trace::measure_verifier_cycles(&bin, &text, stream);
@@ -106,7 +114,11 @@ fn stream_plan_matches_the_actual_stream() {
     } in &all_fixtures()
     {
         let (setups, proof) = trace::load_calibration_proof(fixture);
-        let stream = full_statement_verifier::host_utils::build_unrolled_stream(&setups, &proof);
+        let stream = full_statement_verifier::host_utils::build_unrolled_stream(
+            &setups,
+            &proof,
+            BlakeMode::Compression,
+        );
         let plan = trace::plan::plan_unrolled_stream(&setups, &proof, *program);
 
         assert_eq!(
@@ -197,7 +209,11 @@ fn proof_counts_matches_the_planned_regions() {
 fn every_fixture_verifies_natively() {
     for Fixture { name, program, .. } in &all_fixtures() {
         let (setups, proof) = trace::load_calibration_proof(name);
-        let stream = full_statement_verifier::host_utils::build_unrolled_stream(&setups, &proof);
+        let stream = full_statement_verifier::host_utils::build_unrolled_stream(
+            &setups,
+            &proof,
+            BlakeMode::Compression,
+        );
         full_statement_verifier::host_utils::native_verify_unrolled(
             stream,
             *program == FsvProgram::UnrolledBaseLayer,
@@ -233,7 +249,11 @@ fn estimate_matches_measurement_on_every_fixture() {
             BlakeMode::Compression,
         );
         let (setups, proof) = trace::load_calibration_proof(name);
-        let stream = full_statement_verifier::host_utils::build_unrolled_stream(&setups, &proof);
+        let stream = full_statement_verifier::host_utils::build_unrolled_stream(
+            &setups,
+            &proof,
+            BlakeMode::Compression,
+        );
         let measured = trace::measure_verifier_cycles(&bin, &text, stream);
         let estimate = estimate_verifier_cycles(&proof, *program, BlakeMode::Compression).unwrap();
         let error = estimate.abs_diff(measured);

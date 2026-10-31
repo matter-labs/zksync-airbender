@@ -17,17 +17,31 @@ usage() {
     echo "  --blake MODE    blake2_with_compression (default), blake2_g_function, mop_extension"
     echo "  --variant VAR   no_caches (default) or caches"
     echo "  --sec LEVEL     only 100 bits is accepted"
+    echo "  --mode MODE     per-circuit verifiers of one soundness mode only"
+    echo "                  (pessimistic_conjecture | ethproofs_soundcalc); default: both."
+    echo "                  pessimistic_conjecture also drops the ethproofs_soundcalc full"
+    echo "                  statement verifiers"
     echo "  --warnings      show compiler warnings (suppressed by default)"
     echo "  -h, --help      show this message"
     echo ""
-    echo "Circuits:"
-    ls src/bin/*.rs 2>/dev/null | sed 's|.*/||;s|\.rs||;s|^|  |'
+    echo "Binaries (cargo bin names):"
+    echo "  full statement verifiers -> full_statement_verifiers/<name>.elf:"
+    ls src/bin/full_statement_verifiers/*.rs 2>/dev/null | sed 's|.*/||;s|\.rs||;s|^|    |'
+    echo "  ethproofs_soundcalc full statement verifiers <name>_ethproofs_soundcalc"
+    echo "    -> full_statement_verifiers/ethproofs_soundcalc/<name>.elf:"
+    ls src/bin/full_statement_verifiers/ethproofs_soundcalc/*.rs 2>/dev/null | sed 's|.*/||;s|\.rs||;s|^|    |;s|$|_ethproofs_soundcalc|'
+    echo "  per-circuit verifiers <circuit>_<mode> -> circuit_verifiers/<mode>/<circuit>.elf:"
+    for m in src/bin/circuit_verifiers/*/; do
+        m=$(basename "$m")
+        ls "src/bin/circuit_verifiers/$m"/*.rs 2>/dev/null | sed "s|.*/||;s|\.rs||;s|^|    |;s|\$|_$m|"
+    done
     echo ""
     echo "Examples:"
     echo "  $0                                                # all circuits, defaults"
     echo "  $0 --sec 100                                       # only the 100-bit security level individual verifiers"
     echo "  $0 --blake mop_extension                          # all circuits, mop_extension"
-    echo "  $0 --blake mop_extension blake2_with_extended_control  # single circuit"
+    echo "  $0 --mode pessimistic_conjecture                   # only the production-mode circuit verifiers"
+    echo "  $0 --blake mop_extension blake2_with_extended_control_pessimistic_conjecture  # single binary"
     echo "  $0 --variant caches                               # all circuits, cached variant"
     exit 1
 }
@@ -35,6 +49,7 @@ usage() {
 BLAKE_MODE="blake2_with_compression"
 VARIANT="no_caches"
 SEC="100"
+MODE_FILTER=""
 SHOW_WARNINGS=false
 
 while [ $# -gt 0 ]; do
@@ -43,6 +58,7 @@ while [ $# -gt 0 ]; do
         --blake) BLAKE_MODE="$2"; shift 2 ;;
         --variant) VARIANT="$2"; shift 2 ;;
         --sec) SEC="$2"; shift 2 ;;
+        --mode) MODE_FILTER="$2"; shift 2 ;;
         --warnings) SHOW_WARNINGS=true; shift ;;
         *) break ;;
     esac
@@ -53,14 +69,37 @@ case "$SEC" in
     *) echo "ERROR: --sec currently supports only 100 (got '$SEC')" >&2; exit 1 ;;
 esac
 
-# Remaining args are circuits, or default to all (filtered by --sec).
+# Binary name -> output path. Per-circuit verifiers are named `<circuit>_<mode>` and land in
+# `circuit_verifiers/<mode>/<circuit>.elf`; pessimistic-conjecture full statement verifiers keep
+# their name in `full_statement_verifiers/`, ethproofs-soundcalc ones (`fsv_<name>_ethproofs_soundcalc`)
+# land in `full_statement_verifiers/ethproofs_soundcalc/fsv_<name>.elf`.
+out_path() {
+    case "$1" in
+        fsv_*_ethproofs_soundcalc) echo "full_statement_verifiers/ethproofs_soundcalc/${1%_ethproofs_soundcalc}.elf" ;;
+        fsv_*) echo "full_statement_verifiers/$1.elf" ;;
+        *_pessimistic_conjecture) echo "circuit_verifiers/pessimistic_conjecture/${1%_pessimistic_conjecture}.elf" ;;
+        *_ethproofs_soundcalc) echo "circuit_verifiers/ethproofs_soundcalc/${1%_ethproofs_soundcalc}.elf" ;;
+        *) echo "ERROR: unknown binary naming for $1" >&2; exit 1 ;;
+    esac
+}
+
+# Remaining args are binaries (cargo bin names), or default to every binary of the level
+# (every full statement verifier and the per-circuit verifiers of every soundness mode, or of
+# `--mode` only).
 if [ $# -gt 0 ]; then
     CIRCUITS="$@"
 else
-    ALL=$(ls src/bin/*.rs | sed 's|.*/||;s|\.rs||')
-    case "$SEC" in
-        100)  CIRCUITS=$(echo "$ALL" | grep '_sec_100$') ;;
-    esac
+    FSV=$(ls src/bin/full_statement_verifiers/*.rs | sed 's|.*/||;s|\.rs||' | grep "_sec_${SEC}")
+    if [ "$MODE_FILTER" != "pessimistic_conjecture" ]; then
+        FSV="$FSV $(ls src/bin/full_statement_verifiers/ethproofs_soundcalc/*.rs | sed 's|.*/||;s|\.rs||;s|$|_ethproofs_soundcalc|' | grep "_sec_${SEC}_")"
+    fi
+    PER_CIRCUIT=""
+    for m in src/bin/circuit_verifiers/*/; do
+        m=$(basename "$m")
+        if [ -n "$MODE_FILTER" ] && [ "$m" != "$MODE_FILTER" ]; then continue; fi
+        PER_CIRCUIT="$PER_CIRCUIT $(ls "src/bin/circuit_verifiers/$m"/*.rs | sed "s|.*/||;s|\.rs||;s|\$|_$m|")"
+    done
+    CIRCUITS="$FSV $PER_CIRCUIT"
 fi
 
 FEATURES="${BLAKE_MODE}"
@@ -132,7 +171,7 @@ if [ -n "$PROFILED_BIN_FLAGS" ]; then
     CARGO_TARGET_DIR="$PROFILED_TARGET_DIR" cargo build $COMMON_FLAGS $PROFILED_FLAGS $PROFILED_BIN_FLAGS
 fi
 
-# Extract .bin / .elf / .text in parallel
+# Extract the ELFs in parallel (the host reads .text and the flat ROM image from them)
 echo "==> Extracting binaries"
 log_dir=$(mktemp -d)
 pids=""
@@ -144,12 +183,12 @@ for circuit in $CIRCUITS; do
             EXTRA_FLAGS="$PROFILED_FLAGS"
             export CARGO_TARGET_DIR="$PROFILED_TARGET_DIR"
         fi
-        rm -f ${circuit}.bin ${circuit}.elf ${circuit}.text
-        cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -O binary ${circuit}.bin
+        out=$(out_path "$circuit")
+        mkdir -p "$(dirname "$out")"
+        rm -f "$out"
         # .comment holds the rustc/LLD build strings, which differ between the dist
         # toolchains of different hosts; drop it so the .elf is reproducible too.
-        cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -R .text -R .comment ${circuit}.elf
-        cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -O binary --only-section=.text ${circuit}.text
+        cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -R .comment "$out"
     ) > "${log_dir}/${circuit}.log" 2>&1 &
     pids="${pids} $!"
 done
@@ -162,7 +201,7 @@ done
 if [ "$rc" -ne 0 ]; then
     echo "ERROR: binary extraction failed." >&2
     for circuit in $CIRCUITS; do
-        if [ ! -s "${circuit}.bin" ] || [ ! -s "${circuit}.elf" ] || [ ! -s "${circuit}.text" ]; then
+        if [ ! -s "$(out_path "$circuit")" ]; then
             echo "  --- ${circuit} ---" >&2
             tail -n 10 "${log_dir}/${circuit}.log" >&2
         fi

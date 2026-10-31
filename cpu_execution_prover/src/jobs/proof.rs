@@ -14,7 +14,6 @@ use crate::upstream::{
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{ProofRequest, ProofResult};
-use execution_prover::prover_config;
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType,
@@ -42,10 +41,12 @@ pub(super) fn run<A: HostTraceAllocator>(
         tracing_data,
         external_challenges,
         memory_caps,
-        security_level,
+        selection,
     } = request;
-    let config = prover_config(circuit_type, security_level);
-    let twiddles = jobs.twiddles(precomputations.trace_len, worker);
+    let config = precomputations
+        .config_for_request(circuit_type, selection)
+        .unwrap_or_else(|error| panic!("{error}"));
+    let twiddles = jobs.twiddles(1usize << config.whir_message_size_log2(), worker);
     let setup_commitment = precomputations
         .setup_commitment
         .get()
@@ -71,7 +72,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         &precomputations.setup,
         setup_commitment,
         &*twiddles,
-        &config,
+        config,
         OperationMode::MultipleChunks,
         top_bits,
         precomputations.trace_len,
@@ -83,7 +84,7 @@ pub(super) fn run<A: HostTraceAllocator>(
     // `SeparateMemoryAndWitness` re-commits memory while proving, and that
     // second commitment is the one the verifier checks: it must equal the cap
     // published in the memory pass, or the two passes proved different traces.
-    let committed = join_memory_caps(&memory_caps, config.lde_factor, config.cap_size);
+    let committed = join_memory_caps(&memory_caps, config.lde_factor(), config.cap_size);
     assert!(
         proof.whir_proof.memory_commitment.commitment.cap.cap == committed.cap,
         "memory commitment produced while proving {circuit_type:?}[{sequence_id}] \

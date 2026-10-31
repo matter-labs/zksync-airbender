@@ -2,6 +2,7 @@ extern crate alloc;
 
 use crate::definitions::DELEGATION_TYPES;
 use crate::recursion_chain::RecursionChain;
+use ::verifier_common::BlakeMode;
 use alloc::collections::BTreeMap;
 use common_constants::{
     ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX, JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX,
@@ -75,9 +76,10 @@ impl ProgramProof {
     pub fn build_unrolled_stream<'a>(
         &self,
         flattened_setup_caps: impl Iterator<Item = &'a [u32]>,
+        blake: BlakeMode,
     ) -> Vec<u32> {
         let mut stream: Vec<u32> = flattened_setup_caps.flatten().copied().collect();
-        stream.extend(self.flatten_for_verification());
+        stream.extend(self.flatten_for_verification(blake));
         stream
     }
 
@@ -87,13 +89,17 @@ impl ProgramProof {
     pub fn build_unified_stream<'a>(
         &self,
         flattened_setup_caps: impl Iterator<Item = &'a [u32]>,
+        blake: BlakeMode,
     ) -> Vec<u32> {
         let mut stream: Vec<u32> = flattened_setup_caps.flatten().copied().collect();
-        stream.extend(self.flatten_unified_for_verification());
+        stream.extend(self.flatten_unified_for_verification(blake));
         stream
     }
 
-    pub fn flatten_for_verification(&self) -> Vec<u32> {
+    /// The proof's ND words for a verifier program built with `blake`
+    /// (every inner proof's WHIR openings are laid out for that build:
+    /// `verifier_common::gkr::flatten::flatten_gkr_proof_for_nds`).
+    pub fn flatten_for_verification(&self, blake: BlakeMode) -> Vec<u32> {
         let mut responses = Vec::with_capacity(32 + 32 * 2);
 
         assert_eq!(self.register_final_values.len(), 32);
@@ -143,6 +149,7 @@ impl ProgramProof {
                             ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
                                 proof,
                                 compiled_circuit,
+                                blake,
                             ),
                         );
                     }
@@ -164,6 +171,7 @@ impl ProgramProof {
                 responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
                     proof,
                     compiled_circuit,
+                    blake,
                 ));
             }
         } else {
@@ -179,6 +187,7 @@ impl ProgramProof {
                     responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
                         proof,
                         compiled_circuit,
+                        blake,
                     ));
                 }
             } else {
@@ -202,7 +211,8 @@ impl ProgramProof {
     /// (the verifier reads it first via `read_setup_cap`). This mirrors `flatten_for_verification`
     /// for the unrolled path. Passing this stream to the verifier without the prepended setup
     /// cap is malformed.
-    pub fn flatten_unified_for_verification(&self) -> Vec<u32> {
+    /// [`Self::flatten_for_verification`] of a unified proof.
+    pub fn flatten_unified_for_verification(&self, blake: BlakeMode) -> Vec<u32> {
         let mut responses = Vec::with_capacity(32 + 32 * 2);
 
         assert_eq!(self.register_final_values.len(), 32);
@@ -248,6 +258,7 @@ impl ProgramProof {
             responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
                 proof,
                 compiled_circuit,
+                blake,
             ));
         }
 
@@ -266,6 +277,7 @@ impl ProgramProof {
                             ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
                                 proof,
                                 compiled_circuit,
+                                blake,
                             ),
                         );
                     }

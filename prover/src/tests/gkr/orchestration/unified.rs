@@ -12,10 +12,9 @@ use crate::definitions::{
 };
 use crate::gkr::prover::prove_configured_with_gkr_with_backends;
 use crate::gkr::prover::setup::GKRSetup;
-use crate::gkr::prover::stages::commitment_utils::commit_trace_part;
+use crate::gkr::prover::stages::commitment_utils::commit_trace_part_for_config;
 use crate::gkr::prover::OperationMode;
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
-use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::family_circuits::{
     build_unified_table_driver, evaluate_gkr_memory_witness_for_executor_family,
     evaluate_gkr_witness_for_executor_family, GKRMemoryOnlyWitnessTrace,
@@ -220,7 +219,12 @@ where
             .iter()
             .map(|c| &c[..])
             .collect();
-        let unified_memory_cap = commit_memory_cap(&unified_memory_columns, level, worker);
+        let unified_memory_cap = commit_memory_cap(
+            &unified_memory_columns,
+            "unified_reduced_machine",
+            level,
+            worker,
+        );
         derive_unified_fiat_shamir_challenges::<C>(
             &vm,
             &unified_memory_cap,
@@ -385,31 +389,29 @@ where
     }
 }
 
-/// Memory-only commitment for a set of column-major memory-trace columns, returning the
-/// memory tree cap. Uses the same params (`config_for_security_level_under_pessimistic_conjecture`
-/// for `trace_len`) that `prove_configured_with_gkr` uses for its in-prove `stage1` memory
-/// commitment, so the cap returned here is bit-identical to the one embedded in the proof.
+/// Memory-only commitment for a set of column-major memory-trace columns of `circuit`,
+/// returning the memory tree cap. Uses `circuit`'s config of the current soundness mode
+/// (what its prove uses for the in-prove `stage1` memory commitment: LDE factor, leaf size,
+/// cap AND the physical packing — the delegations are packed / virtually packed), so the cap
+/// returned here is bit-identical to the one embedded in the proof.
 fn commit_memory_cap(
     columns: &[&[BabyBearField]],
+    circuit: &str,
     level: SecurityLevel,
     worker: &Worker,
 ) -> MerkleTreeCapVarLength {
     let trace_len = columns[0].len();
     assert!(trace_len.is_power_of_two());
     let trace_len_log2 = trace_len.trailing_zeros() as usize;
-    let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
-        trace_len_log2,
-        level,
-    );
-    let twiddles: Twiddles<BabyBearField, Global> = Twiddles::new(trace_len, worker);
-    let mem = commit_trace_part::<BabyBearField, BabyBearField, DefaultTreeConstructor, _>(
+    let prover_config = super::common::fixture_prover_config(circuit, level);
+    assert_eq!(prover_config.trace_len_log2, trace_len_log2, "{circuit}");
+    let twiddles: Twiddles<BabyBearField, Global> =
+        Twiddles::new(1 << prover_config.whir_message_size_log2(), worker);
+    let mem = commit_trace_part_for_config::<BabyBearField, BabyBearField, DefaultTreeConstructor, _>(
         &crate::gkr::prover::backend::NaiveBackend,
         columns,
         &twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        trace_len_log2,
+        &prover_config,
         &crate::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
@@ -470,13 +472,15 @@ where
     // (`in_filter && (prove_empty || calls > 0)`) — the same predicate `prove_delegation_*` uses.
     let mut delegation_caps: Vec<(u32, MerkleTreeCapVarLength)> = Vec::new();
     let mut collect =
-        |csr: u32, memory_trace: &GKRMemoryOnlyWitnessTrace<BabyBearField, Global, Global>| {
+        |csr: u32,
+         circuit: &str,
+         memory_trace: &GKRMemoryOnlyWitnessTrace<BabyBearField, Global, Global>| {
             let columns: Vec<&[BabyBearField]> = memory_trace
                 .column_major_trace
                 .iter()
                 .map(|c| &c[..])
                 .collect();
-            delegation_caps.push((csr, commit_memory_cap(&columns, level, worker)));
+            delegation_caps.push((csr, commit_memory_cap(&columns, circuit, level, worker)));
         };
 
     if let Some(eval_fn) = delegation_eval_fns.blake {
@@ -498,7 +502,11 @@ where
                 worker,
                 eval_fn,
             );
-            collect(BLAKE2S_DELEGATION_CSR_REGISTER, &out.memory_trace);
+            collect(
+                BLAKE2S_DELEGATION_CSR_REGISTER,
+                "blake2_with_extended_control",
+                &out.memory_trace,
+            );
         }
     }
     if let Some(eval_fn) = delegation_eval_fns.bigint {
@@ -520,7 +528,11 @@ where
                 worker,
                 eval_fn,
             );
-            collect(BIGINT_OPS_WITH_CONTROL_CSR_REGISTER, &out.memory_trace);
+            collect(
+                BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
+                "bigint_with_extended_control",
+                &out.memory_trace,
+            );
         }
     }
     if let Some(eval_fn) = delegation_eval_fns.keccak {
@@ -542,7 +554,11 @@ where
                 worker,
                 eval_fn,
             );
-            collect(KECCAK_SPECIAL5_CSR_REGISTER, &out.memory_trace);
+            collect(
+                KECCAK_SPECIAL5_CSR_REGISTER,
+                "keccak_special5",
+                &out.memory_trace,
+            );
         }
     }
     if let Some(eval_fn) = delegation_eval_fns.blake_g_function {
@@ -566,6 +582,7 @@ where
             );
             collect(
                 BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
+                "blake2_g_function",
                 &out.memory_trace,
             );
         }
@@ -862,10 +879,9 @@ pub fn prove_built_unified_trace(
 ) {
     let trace_len: usize = unified_circuit.trace_len;
 
-    let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
-        trace_len.trailing_zeros() as usize,
-        level,
-    );
+    // the circuit definition's config of the current soundness mode
+    let prover_config = super::common::fixture_prover_config("unified_reduced_machine", level);
+    assert_eq!(1usize << prover_config.trace_len_log2, trace_len);
     let unified_twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
     let unified_setup = GKRSetup::construct(
         unified_table_driver,

@@ -1,4 +1,4 @@
-use verifier::add_sub_lui_auipc_mop::sec_100::common::{
+use verifier::add_sub_lui_auipc_mop::pessimistic_conjecture::common::{
     compute_claim, eval_multilinear_with_monomial_tensor, fold_whir_accumulator,
     precompute_monomial_tensor, push_whir_base_pow_entry, push_whir_pow_entry,
 };

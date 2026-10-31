@@ -1,6 +1,6 @@
 use field::baby_bear::{base::BabyBearField as F, ext4::BabyBearExt4 as E};
 use field::{FieldExtension, PrimeField};
-use verifier::add_sub_lui_auipc_mop::sec_100::common::{
+use verifier::add_sub_lui_auipc_mop::pessimistic_conjecture::common::{
     eval_multilinear_with_monomial_tensor, precompute_monomial_tensor,
 };
 use verifier_common::blake2s_u32::AlignedArray64;

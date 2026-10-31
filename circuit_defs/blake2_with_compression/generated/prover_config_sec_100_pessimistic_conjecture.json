@@ -1,0 +1,121 @@
+{
+  "trace_len_log2": 20,
+  "cap_size": 16,
+  "sumcheck_explicit_output_size_log_2": 4,
+  "security_level": "Sec100",
+  "whir_schedule": {
+    "cap_size": 16,
+    "base_round": {
+      "lde_factor_log2": 1,
+      "physical_packing_log2": 2,
+      "fold_log2": 0,
+      "batching_pow_bits": null,
+      "folding_pow_bits": 0,
+      "num_queries": 89,
+      "queries_pow_bits": 26
+    },
+    "internal_rounds": [
+      {
+        "lde_factor_log2": 5,
+        "folding_log2": 6,
+        "num_queries": 18,
+        "queries_pow_bits": 26,
+        "folding_pow_bits": 0,
+        "num_ood_samples": 1,
+        "ood_pow_bits": 0
+      },
+      {
+        "lde_factor_log2": 11,
+        "folding_log2": 5,
+        "num_queries": 8,
+        "queries_pow_bits": 27,
+        "folding_pow_bits": 0,
+        "num_ood_samples": 1,
+        "ood_pow_bits": 0
+      },
+      {
+        "lde_factor_log2": 13,
+        "folding_log2": 5,
+        "num_queries": 7,
+        "queries_pow_bits": 25,
+        "folding_pow_bits": 0,
+        "num_ood_samples": 1,
+        "ood_pow_bits": 0
+      },
+      {
+        "lde_factor_log2": 14,
+        "folding_log2": 5,
+        "num_queries": 7,
+        "queries_pow_bits": 21,
+        "folding_pow_bits": 0,
+        "num_ood_samples": 1,
+        "ood_pow_bits": 0
+      }
+    ]
+  },
+  "same_size_sumcheck_schedule": [
+    {
+      "WindowInitial": {
+        "window": 3
+      }
+    },
+    {
+      "FoldInitial": {
+        "width": 3
+      }
+    },
+    {
+      "WindowContinuing": {
+        "window": 3
+      }
+    },
+    {
+      "FoldContinuing": {
+        "width": 3
+      }
+    },
+    {
+      "WindowContinuing": {
+        "window": 3
+      }
+    },
+    {
+      "FoldContinuing": {
+        "width": 3
+      }
+    },
+    {
+      "WindowContinuing": {
+        "window": 3
+      }
+    },
+    {
+      "FoldContinuing": {
+        "width": 3
+      }
+    },
+    {
+      "WindowContinuing": {
+        "window": 3
+      }
+    },
+    {
+      "FoldContinuing": {
+        "width": 3
+      }
+    },
+    {
+      "WindowContinuing": {
+        "window": 3
+      }
+    },
+    {
+      "FoldContinuing": {
+        "width": 3
+      }
+    },
+    "Tail"
+  ],
+  "dimension_reducing_sumcheck_schedule": {},
+  "commitment_mode": "SeparateMemoryAndWitness"
+}

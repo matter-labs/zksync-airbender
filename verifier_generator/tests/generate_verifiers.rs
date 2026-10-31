@@ -1,7 +1,8 @@
 use std::io::Write;
 
 use prover::field::baby_bear::base::BabyBearField;
-use verifier_common::test_circuits::{CircuitData, SecurityLevel, CIRCUITS};
+use prover::gkr::prover_config::SoundnessMode;
+use verifier_common::test_circuits::{verifier_dir_name, CircuitData, SecurityLevel, CIRCUITS};
 use verifier_generator::field_wrapper::FieldWrapper;
 use verifier_generator::gkr::GKRGeneratedFiles;
 use verifier_generator::{gkr, utils, whir, DefaultBabyBearField};
@@ -39,11 +40,12 @@ fn generate_common<MW: FieldWrapper>() {
     let max_fold_steps = CIRCUITS
         .iter()
         .flat_map(|c| {
-            LEVELS_TO_GENERATE
-                .iter()
-                .flat_map(move |&level| c.whir_schedule_for(level).whir_steps_schedule.iter())
+            LEVELS_TO_GENERATE.iter().flat_map(move |&level| {
+                SoundnessMode::ALL
+                    .iter()
+                    .flat_map(move |&mode| c.whir_schedule_for_mode(level, mode).fold_steps())
+            })
         })
-        .copied()
         .max()
         .unwrap();
 
@@ -116,7 +118,7 @@ fn generate_whir_verifier<MW: FieldWrapper>(
     let whir_final = whir::generate_whir_final_round::<MW>(whir_schedule, message_size_log2);
 
     // Compute max hash buf size across all WHIR rounds (padded to 16-word boundary)
-    let initial_vpf = 1usize << whir_schedule.whir_steps_schedule[0];
+    let initial_vpf = whir_schedule.base_values_per_leaf();
     let initial_hbs = gkr_files
         .oracles
         .values()
@@ -125,18 +127,15 @@ fn generate_whir_verifier<MW: FieldWrapper>(
         .unwrap_or(0)
         .div_ceil(16)
         * 16;
-    let num_whir_rounds = whir_schedule.whir_steps_schedule.len();
+    let fold_steps = whir_schedule.fold_steps();
+    let num_whir_rounds = fold_steps.len();
     let internal_hbs = if num_whir_rounds > 2 {
-        let max_fold = *whir_schedule.whir_steps_schedule[1..num_whir_rounds - 1]
-            .iter()
-            .max()
-            .unwrap();
+        let max_fold = *fold_steps[1..num_whir_rounds - 1].iter().max().unwrap();
         ((1usize << max_fold) * 4).div_ceil(16) * 16
     } else {
         0
     };
-    let final_hbs =
-        ((1usize << whir_schedule.whir_steps_schedule[num_whir_rounds - 1]) * 4).div_ceil(16) * 16;
+    let final_hbs = ((1usize << fold_steps[num_whir_rounds - 1]) * 4).div_ceil(16) * 16;
     let whir_hash_buf_size = initial_hbs.max(internal_hbs).max(final_hbs);
 
     let whir_verify = whir::generate_whir_verify::<MW>(whir_hash_buf_size);
@@ -157,12 +156,19 @@ fn ensure_common() {
     });
 }
 
+/// The verifier of `circuit` for the config of `mode` at `level`, generated
+/// into `verifier/src/generated/<circuit>/<mode>/`.
 fn generate_verifier_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
     circuit: &CircuitData,
     level: SecurityLevel,
+    mode: SoundnessMode,
 ) {
-    let prover_config = circuit.prover_config_for(level);
-    generate_verifier_for_circuit_with_config::<MW>(circuit, prover_config, level.dir_suffix());
+    let prover_config = circuit.prover_config_for_mode(level, mode);
+    generate_verifier_for_circuit_with_config::<MW>(
+        circuit,
+        prover_config,
+        verifier_dir_name(mode),
+    );
 }
 
 /// Like [`generate_verifier_for_circuit`] but with an EXPLICIT prover config,
@@ -230,7 +236,8 @@ fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBe
 /// BabyBear's two-adicity cap (base LDE 16; round-0 queries 87 -> 21), the
 /// schedule terminates at a plain-text 2^3 tail, and the base commitment is
 /// the MERGED memory+witness tree (one Merkle path per round-0 query instead
-/// of two). Generated into `.../unified_reduced_machine/sec_100_l1_feeder`.
+/// of two). Generated into `.../unified_reduced_machine/pessimistic_conjecture_l1_feeder`
+/// (a pessimistic-conjecture variant; no soundcalc twin has been designed).
 #[test]
 fn unified_reduced_machine_l1_feeder() {
     let circuit = CIRCUITS
@@ -246,27 +253,36 @@ fn unified_reduced_machine_l1_feeder() {
     generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
         circuit,
         &prover_config,
-        "sec_100_l1_feeder",
+        "pessimistic_conjecture_l1_feeder",
     );
 }
 
-/// Packed base commitment: the `blake2_with_extended_control` 2^20 circuit
-/// with `pack_log2 = 4` (2^24 WHIR message, the 2^24 WHIR schedule). Generated
-/// into `.../blake2_with_extended_control/sec_100_pack4`; the proof fixture
-/// is verified by `tests/packed_verify.rs`.
+/// ONE-OFF: generate a verifier for `ONE_OFF_CIRCUIT` from the prover config
+/// file `ONE_OFF_CONFIG` (e.g. the `test_proofs/<circuit>_<suffix>_prover_config.json`
+/// a `GKR_BASE_PACKING_OVERRIDE` prover run writes) into
+/// `verifier/src/generated/<circuit>/<ONE_OFF_DIR_SUFFIX>/`.
 #[test]
-fn blake2_with_extended_control_pack4() {
-    use verifier_common::test_circuits::packed_fixture;
-    let circuit = packed_fixture::circuit();
-    let prover_config = packed_fixture::prover_config();
+#[ignore = "one-off experiments; driven by ONE_OFF_CIRCUIT / ONE_OFF_CONFIG / ONE_OFF_DIR_SUFFIX"]
+fn one_off_from_prover_config_file() {
+    let name = std::env::var("ONE_OFF_CIRCUIT").expect("ONE_OFF_CIRCUIT");
+    let config_path = std::env::var("ONE_OFF_CONFIG").expect("ONE_OFF_CONFIG");
+    let dir_suffix = std::env::var("ONE_OFF_DIR_SUFFIX").expect("ONE_OFF_DIR_SUFFIX");
+    let circuit = CIRCUITS
+        .iter()
+        .find(|c| c.name == name)
+        .expect("registered circuit");
+    let file = std::fs::File::open(&config_path).unwrap_or_else(|e| panic!("{config_path}: {e}"));
+    let prover_config: prover::gkr::prover_config::ProverConfig =
+        serde_json::from_reader(std::io::BufReader::new(file)).unwrap();
     assert_eq!(
         circuit.compiled_circuit().trace_len.trailing_zeros() as usize,
         prover_config.trace_len_log2,
     );
+    prover_config.validate_for_whir_message_size(prover_config.whir_message_size_log2());
     generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
         circuit,
         &prover_config,
-        packed_fixture::DIR_SUFFIX,
+        &dir_suffix,
     );
 }
 
@@ -277,7 +293,9 @@ macro_rules! generate_circuit_tests {
             fn $name() {
                 let circuit = CIRCUITS.iter().find(|c| c.name == stringify!($name)).unwrap();
                 for level in LEVELS_TO_GENERATE {
-                    generate_verifier_for_circuit::<DefaultBabyBearField>(circuit, *level);
+                    for mode in SoundnessMode::ALL {
+                        generate_verifier_for_circuit::<DefaultBabyBearField>(circuit, *level, *mode);
+                    }
                 }
             }
         )*

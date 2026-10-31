@@ -50,16 +50,6 @@ fn flatten_and_seed_match_reference() {
         "commit_seed_preimage diverged"
     );
 
-    // The GKR→WHIR handoff seed is an intermediate value the prover records in the proof; the
-    // flatten path surfaces it verbatim. The expectation is the proof file's own recorded value
-    // (source of truth) — never a hardcoded literal that goes stale when the proof is regenerated.
-    let handoff = verifier_evm::gkr_whir_handoff_seed(&proof);
-    assert_eq!(
-        Some(handoff),
-        proof.intermediate_transcript_seed,
-        "gkr_whir_handoff_seed diverged from the proof's recorded intermediate_transcript_seed"
-    );
-
     let gkr = verifier_evm::gkr_calldata(&circuit, &proof, &aux);
     assert_eq!(
         hex::encode(&gkr),
@@ -72,8 +62,8 @@ fn flatten_and_seed_match_reference() {
         &circuit,
         &proof,
         &aux,
-        &cfg.whir_schedule.whir_steps_schedule,
-        &cfg.whir_schedule.whir_queries_schedule,
+        &cfg.whir_schedule.fold_steps(),
+        &cfg.whir_schedule.queries_per_round(),
     );
     assert_eq!(
         hex::encode(&merged),

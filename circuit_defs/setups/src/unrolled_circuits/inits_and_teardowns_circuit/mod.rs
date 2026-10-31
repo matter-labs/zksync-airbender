@@ -15,6 +15,7 @@ pub fn inits_and_teardowns_circuit_setup<A: GoodAllocator>(
 
     CircuitSetup {
         family_idx: u8::MAX,
+        geometry: ::inits_and_teardowns::geometry(),
         trace_len: 1 << ::inits_and_teardowns::TRACE_LEN_LOG2,
         compiled_circuit: circuit,
         table_driver,

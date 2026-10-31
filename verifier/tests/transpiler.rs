@@ -1,28 +1,31 @@
 mod common;
 
-use common::SecurityLevel;
+use common::{SecurityLevel, SoundnessMode};
 use field::baby_bear::base::BabyBearField;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::*;
 use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 use riscv_transpiler::vm::*;
+use verifier_common::BlakeMode;
 
-fn run_transpiler(name: &str, level: SecurityLevel) {
-    let (nds, external_challenges) = common::load_nds(name, level);
-    let (bin_path, text_path, elf_path) = common::binary_paths(name, level);
+/// The circuit's proof fixture of `mode` on its RISC-V verifier program of
+/// `mode` (`tools/gkr_verifier/circuit_verifiers/<mode>/<circuit>.elf`); the
+/// flamegraph is `gkr_flamegraph_<circuit>_<mode>.svg`.
+fn run_transpiler(name: &str, level: SecurityLevel, mode: SoundnessMode) {
+    // the tracked per-circuit ELFs are the `blake2_with_compression` builds
+    let (nds, external_challenges) =
+        common::load_nds_in_mode(name, level, mode, BlakeMode::Compression);
+    let elf_path = common::elf_path_in_mode(name, level, mode);
     run_transpiler_on(
-        &format!("{}_{}", name, level.dir_suffix()),
+        &format!("{}_{}", name, mode.file_suffix()),
         nds,
         external_challenges,
-        bin_path,
-        text_path,
         elf_path,
     );
 }
 
-/// Run the RISC-V verifier binary at `bin_path`/`text_path` (symbols from
-/// `elf_path`) on the flattened proof `nds`, asserting success and printing the
-/// exact cycle count + a flamegraph.
+/// [`run_transpiler_on_with_output`] writing `gkr_flamegraph_<name>.svg` into
+/// the current directory (the tracked per-circuit flamegraphs).
 fn run_transpiler_on(
     name: &str,
     nds: Vec<u32>,
@@ -30,14 +33,31 @@ fn run_transpiler_on(
         BabyBearField,
         field::baby_bear::ext4::BabyBearExt4,
     >,
-    bin_path: String,
-    text_path: String,
     elf_path: String,
-) {
+) -> u64 {
+    let output_path = std::env::current_dir()
+        .unwrap()
+        .join(format!("gkr_flamegraph_{}.svg", name));
+    run_transpiler_on_with_output(name, nds, external_challenges, elf_path, output_path)
+}
+
+/// Run the RISC-V verifier program `elf_path` (its ROM image and symbols) on
+/// the flattened proof `nds`, asserting success and printing the exact cycle
+/// count + writing a flamegraph to `output_path`. Returns the cycle count.
+fn run_transpiler_on_with_output(
+    name: &str,
+    nds: Vec<u32>,
+    external_challenges: prover::definitions::GKRExternalChallenges<
+        BabyBearField,
+        field::baby_bear::ext4::BabyBearExt4,
+    >,
+    elf_path: String,
+    output_path: std::path::PathBuf,
+) -> u64 {
     println!("{}: oracle data length: {} u32 words", name, nds.len());
 
-    let binary = common::load_binary_section(&bin_path);
-    let text_section = common::load_binary_section(&text_path);
+    let (binary, text_section) =
+        riscv_transpiler::elf::load_legacy_program(std::path::Path::new(&elf_path));
 
     let mut oracle_responses = vec![];
     external_challenges.flatten_into_buffer(&mut oracle_responses);
@@ -61,9 +81,9 @@ fn run_transpiler_on(
     let mut non_determinism = QuasiUARTSource::new_with_reads(oracle_responses);
 
     let symbols_path = std::path::PathBuf::from(&elf_path);
-    let output_path = std::env::current_dir()
-        .unwrap()
-        .join(format!("gkr_flamegraph_{}.svg", name));
+    if let Some(dir) = output_path.parent() {
+        std::fs::create_dir_all(dir).unwrap();
+    }
     let mut fg_config =
         riscv_transpiler::vm::FlamegraphConfig::new(symbols_path, output_path.clone());
     fg_config.frequency_recip = 1;
@@ -132,6 +152,51 @@ fn run_transpiler_on(
 
     println!("{}: completed successfully in transpiler", name);
     println!("Flamegraph written to {}", output_path.display());
+    exact_cycles
+}
+
+/// ONE-OFF: run the proof `prover/test_proofs/<ONE_OFF_CIRCUIT>_<ONE_OFF_PROOF_SUFFIX>_gkr_proof.json`
+/// on the verifier program `ONE_OFF_ELF`; the flamegraph is
+/// `gkr_flamegraph_<circuit>_<suffix>.svg`.
+#[test]
+#[ignore = "one-off experiments; driven by ONE_OFF_CIRCUIT / ONE_OFF_PROOF_SUFFIX / ONE_OFF_ELF"]
+fn one_off_from_env() {
+    let name = std::env::var("ONE_OFF_CIRCUIT").expect("ONE_OFF_CIRCUIT");
+    let suffix = std::env::var("ONE_OFF_PROOF_SUFFIX").expect("ONE_OFF_PROOF_SUFFIX");
+    let elf_path = std::env::var("ONE_OFF_ELF").expect("ONE_OFF_ELF");
+    // `ONE_OFF_BLAKE`: the ELF's blake build (`dump_bin.sh --blake`), default
+    // `blake2_with_compression`
+    let blake = std::env::var("ONE_OFF_BLAKE")
+        .ok()
+        .map(|v| BlakeMode::parse(&v).unwrap_or_else(|| panic!("unknown ONE_OFF_BLAKE `{v}`")))
+        .unwrap_or(BlakeMode::Compression);
+    let circuit = common::circuit_by_name(&name);
+    let proof_path = format!(
+        "{}/../prover/test_proofs/{}_{}_gkr_proof.json",
+        env!("CARGO_MANIFEST_DIR"),
+        name,
+        suffix
+    );
+    let proof: prover::gkr::prover::GKRProof<
+        BabyBearField,
+        field::baby_bear::ext4::BabyBearExt4,
+        prover::merkle_trees::DefaultTreeConstructor,
+    > = serde_json::from_reader(std::io::BufReader::new(
+        std::fs::File::open(&proof_path).unwrap_or_else(|e| panic!("{proof_path}: {e}")),
+    ))
+    .unwrap();
+    let compiled = circuit.compiled_circuit();
+    let nds = verifier_common::gkr::flatten::flatten_gkr_proof_for_nds::<
+        BabyBearField,
+        field::baby_bear::ext4::BabyBearExt4,
+        prover::merkle_trees::DefaultTreeConstructor,
+    >(&proof, &compiled, blake);
+    run_transpiler_on(
+        &format!("{}_{}", name, suffix),
+        nds,
+        proof.external_challenges,
+        elf_path,
+    );
 }
 
 macro_rules! generate_transpiler_tests {
@@ -140,44 +205,16 @@ macro_rules! generate_transpiler_tests {
             $(
                 #[test]
                 #[ignore = "requires RISC-V binaries from tools/gkr_verifier"]
-                fn [<$name _sec_100>]() {
-                    run_transpiler(stringify!($name), SecurityLevel::Sec100);
+                fn [<$name _pessimistic_conjecture>]() {
+                    run_transpiler(stringify!($name), SecurityLevel::Sec100, SoundnessMode::PessimisticConjecture);
+                }
+                #[test]
+                #[ignore = "requires RISC-V binaries from tools/gkr_verifier and the ethproofs_soundcalc proof fixture"]
+                fn [<$name _ethproofs_soundcalc>]() {
+                    run_transpiler(stringify!($name), SecurityLevel::Sec100, SoundnessMode::EthproofsSoundnessCalc);
                 }
             )*
         }
     };
 }
 verifier_common::gkr_circuits!(generate_transpiler_tests);
-
-/// The PACKED-base-commitment fixture (`blake2_with_extended_control` proved
-/// with `pack_log2 = 4`, see `verifier_common::test_circuits::packed_fixture`)
-/// on its own RISC-V verifier binary
-/// `tools/gkr_verifier/blake2_with_extended_control_sec_100_pack4.*`
-/// (build it with `dump_bin.sh blake2_with_extended_control_sec_100_pack4`).
-/// Compare its cycle count with `blake2_with_extended_control_sec_100`.
-#[test]
-#[ignore = "requires RISC-V binaries from tools/gkr_verifier"]
-fn blake2_with_extended_control_sec_100_pack4() {
-    use verifier_common::test_circuits::packed_fixture;
-    let (nds, external_challenges) = packed_fixture::load_nds();
-    let (bin_path, text_path, elf_path) =
-        common::binary_paths(packed_fixture::CIRCUIT_NAME, SecurityLevel::Sec100);
-    let packed = |path: String| -> String {
-        let suffix = format!("_{}", packed_fixture::DIR_SUFFIX);
-        let replaced = path.replace("_sec_100", &suffix);
-        assert_ne!(replaced, path, "unexpected binary path layout: {path}");
-        replaced
-    };
-    run_transpiler_on(
-        &format!(
-            "{}_{}",
-            packed_fixture::CIRCUIT_NAME,
-            packed_fixture::DIR_SUFFIX
-        ),
-        nds,
-        external_challenges,
-        packed(bin_path),
-        packed(text_path),
-        packed(elf_path),
-    );
-}

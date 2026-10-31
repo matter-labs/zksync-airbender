@@ -61,7 +61,9 @@ impl Default for GpuBackendConfiguration {
 }
 
 impl BackendConfiguration for GpuBackendConfiguration {
-    fn execution_defaults() -> ExecutionProverConfiguration<Self> {
+    fn execution_defaults(
+        selection: execution_prover::config::ProvingSelection,
+    ) -> ExecutionProverConfiguration<Self> {
         ExecutionProverConfiguration {
             max_thread_pool_threads: None,
             expected_concurrent_jobs: 1,
@@ -69,7 +71,8 @@ impl BackendConfiguration for GpuBackendConfiguration {
             host_allocator_backing_allocation_size: 1 << 26, // 64 MB
             host_allocators_per_job_count: 256,              // 16 GB
             min_free_host_allocators_per_job: 32,            // 2 GB
-            security_level: SecurityLevel::Sec100,
+            security_level: selection.security_level,
+            soundness_mode: selection.soundness_mode,
             ram_config: JitRunnerRam::Medium, // 1Gb
             assume_canonical_mop_inputs: true,
             backend: Self::default(),

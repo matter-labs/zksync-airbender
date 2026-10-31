@@ -14,9 +14,10 @@ use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 fn workload(directory: &str, stem: &str) -> (Vec<u32>, Vec<u32>) {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
     let base = root.join("examples").join(directory);
-    let (_, binary) = setups::read_and_pad_binary(&base.join(format!("{stem}.bin")));
-    let (_, text) = setups::read_and_pad_binary(&base.join(format!("{stem}.text")));
-    (binary, text)
+    riscv_transpiler::elf::load_legacy_binaries(
+        &base.join(format!("{stem}.bin")),
+        &base.join(format!("{stem}.text")),
+    )
 }
 
 fn prove(
@@ -36,7 +37,11 @@ fn prove(
 }
 
 fn assert_verifies_unrolled(proof: &ProgramProof, setups: &setups::Setups) {
-    let stream = full_statement_verifier::host_utils::build_unrolled_stream(setups, proof);
+    let stream = full_statement_verifier::host_utils::build_unrolled_stream(
+        setups,
+        proof,
+        verifier_common::BLAKE_MODE,
+    );
     let output = full_statement_verifier::host_utils::native_verify_unrolled(stream, true);
     assert_ne!(
         output, [0u32; 16],
@@ -145,10 +150,87 @@ fn a_unified_execution_proves_and_natively_verifies() {
         proof.num_it_circuits.is_some(),
         "a unified proof carries its inits-and-teardowns circuit count"
     );
-    let stream = full_statement_verifier::host_utils::build_unified_stream(&setups, &proof);
+    let stream = full_statement_verifier::host_utils::build_unified_stream(
+        &setups,
+        &proof,
+        verifier_common::BLAKE_MODE,
+    );
     let output = full_statement_verifier::host_utils::native_verify_unified(stream, true);
     assert_ne!(
         output, [0u32; 16],
         "native verification produced an empty output"
     );
+}
+
+/// First Task S resource gate: one standard ethproofs CPU base proof, followed
+/// by verification with the explicitly selected schedule. The optional private
+/// JSON bundle is versioned and includes selection; it is not a pipeline v3 artifact.
+#[test]
+#[ignore = "production circuit dimensions: measure time/RSS before scheduling recursion"]
+fn ethproofs_base_measurement() {
+    selected_base_measurement(prover::definitions::SoundnessMode::EthproofsSoundnessCalc);
+}
+
+/// Pessimistic counterpart with exactly the same inputs and execution configuration.
+#[test]
+#[ignore = "production circuit dimensions: measure time/RSS on the same workload as ethproofs"]
+fn pessimistic_base_measurement() {
+    selected_base_measurement(prover::definitions::SoundnessMode::PessimisticConjecture);
+}
+
+fn selected_base_measurement(soundness_mode: prover::definitions::SoundnessMode) {
+    use prover::definitions::ProvingSelection;
+    let selection = ProvingSelection {
+        soundness_mode,
+        ..ProvingSelection::default()
+    };
+    let (proof, setups) = {
+        let mut prover = CpuExecutionProver::try_with_configuration(
+            CpuExecutionProverConfiguration::for_selection(selection),
+        )
+        .expect("CPU must support the selected ethproofs schedule");
+        assert_eq!(prover.selection(), selection);
+        let (binary, text) = workload("basic_fibonacci", "app");
+        let handle = prover
+            .try_add_binary(
+                ExecutionKind::Unrolled,
+                MachineType::FullUnsigned,
+                binary,
+                text,
+                None,
+            )
+            .expect("basic Fibonacci configs must resolve in ethproofs mode");
+        let result = prover.commit_memory_and_prove(
+            1,
+            &handle,
+            QuasiUARTSource::new_with_reads(vec![15, 1]),
+        );
+        program_prover::assemble_program_proof(&prover.program_artifacts(&handle), result)
+    };
+    let proof_count: usize = proof.riscv_proofs.values().map(Vec::len).sum();
+    assert!(
+        proof_count > 0,
+        "measurement must produce actual base proofs"
+    );
+    let stream = full_statement_verifier::host_utils::build_unrolled_stream(
+        &setups,
+        &proof,
+        verifier_common::BLAKE_MODE,
+    );
+    let output = full_statement_verifier::host_utils::native_verify_unrolled_in_mode(
+        stream,
+        true,
+        selection.soundness_mode,
+    );
+    assert_ne!(output, [0u32; 16], "selected base proof must verify");
+    if let Ok(checkpoint) = std::env::var("TASK_S_BASE_PROOF_OUT") {
+        program_prover::bundle::write_program_proof_bundle(
+            std::path::Path::new(&checkpoint),
+            selection,
+            &proof,
+            &setups,
+        )
+        .expect("write the mode-tagged JSON measurement bundle");
+    }
+    println!("Task S CPU base measurement: {selection:?}, {proof_count} RISC-V proof chunks, native verification succeeded");
 }

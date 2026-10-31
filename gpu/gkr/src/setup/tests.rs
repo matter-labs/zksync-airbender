@@ -15,6 +15,95 @@ use crate::test_utils::make_test_context;
 use crate::upstream::{
     DefaultTreeConstructor, FieldExtension, MerkleTreeCapVarLength, PrimeField, VirtualSetupPoly,
 };
+
+mod packed;
+
+#[test]
+#[cfg(not(no_cuda))]
+fn merged_class_backings_preserve_logical_pointer_offsets() {
+    use gpu_trace::trace::holder::TreesCacheMode;
+    let context = make_test_context(64, 16);
+    let rows = 16usize;
+    let holder = |columns| {
+        TraceHolder::<BF>::new_without_cosets(
+            4,
+            1,
+            1,
+            1,
+            columns,
+            TreesCacheMode::CacheNone,
+            &context,
+        )
+        .unwrap()
+    };
+    let memory = holder(2);
+    let witness = holder(3);
+    let separate =
+        bootstrap_storage_from_trace_holders::<E4>(None, 0, 4, 1, 1, 1, &memory, &witness, None)
+            .unwrap();
+    for (address, expected) in [
+        (
+            GKRAddress::BaseLayerMemory(0),
+            memory.get_hypercube_evals().as_ptr(),
+        ),
+        (
+            GKRAddress::BaseLayerWitness(0),
+            witness.get_hypercube_evals().as_ptr(),
+        ),
+    ] {
+        let class = crate::gkr_address_audit::classify(&address, 0);
+        let backing = &separate.layers[0].base_class_backings[&class];
+        assert_eq!(backing.offset, 0);
+        assert_eq!(backing.backing.as_ptr(), expected);
+        assert_eq!(
+            separate.try_get_base_poly(address).unwrap().as_ptr(),
+            expected
+        );
+    }
+    let merged = holder(5);
+    let empty_witness = holder(0);
+    let storage = bootstrap_storage_from_trace_holders::<E4>(
+        None,
+        0,
+        4,
+        1,
+        1,
+        1,
+        &merged,
+        &empty_witness,
+        Some(2),
+    )
+    .unwrap();
+    let start = merged.get_hypercube_evals().as_ptr();
+    let witness_class = crate::gkr_address_audit::classify(&GKRAddress::BaseLayerWitness(0), 0);
+    let backing = &storage.layers[0].base_class_backings[&witness_class];
+    assert_eq!(backing.offset, 2 * rows);
+    assert_eq!(
+        backing.backing.as_ptr().wrapping_add(backing.offset),
+        start.wrapping_add(2 * rows)
+    );
+    assert_eq!(
+        storage
+            .try_get_base_poly(GKRAddress::BaseLayerMemory(0))
+            .unwrap()
+            .as_ptr(),
+        start
+    );
+    assert_eq!(
+        storage
+            .try_get_base_poly(GKRAddress::BaseLayerWitness(0))
+            .unwrap()
+            .as_ptr(),
+        start.wrapping_add(2 * rows)
+    );
+    assert_eq!(
+        storage
+            .try_get_base_poly(GKRAddress::BaseLayerWitness(2))
+            .unwrap()
+            .as_ptr(),
+        start.wrapping_add(4 * rows)
+    );
+}
 // test-only direct upstream imports (the `#[cfg(test)]` exemption of the upstream rule)
 use gpu_core::primitives::field::E4;
 use gpu_ops::simple::set_by_ref;
@@ -606,6 +695,7 @@ fn bootstrap_storage_without_uploaded_setup_leaves_virtual_setup_unmaterialized(
         log_tree_cap_size,
         &memory_trace_holder,
         &witness_trace_holder,
+        None,
     )
     .unwrap();
 

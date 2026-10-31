@@ -1,8 +1,13 @@
+use gpu_trace::trace::memory::uses_base_commitment_geometry;
 pub mod inputs;
 pub mod memory_policy;
+pub mod merged_commitment;
 
 use memory_policy::ProofMemoryPolicy;
 mod orchestration;
+
+#[cfg(test)]
+mod tests;
 
 use std::sync::Arc;
 
@@ -12,11 +17,14 @@ use era_cudart::stream::CudaStreamWaitEventFlags;
 use fft::GoodAllocator;
 
 use crate::proof::inputs::GpuGKRProofTransfer;
-use crate::upstream::{validate_sumcheck_schedule, ProverConfig, SumcheckScheduleClass};
+use crate::upstream::{
+    validate_sumcheck_schedule, BaseColumns, BaseCommitmentGeometry, GKRCircuitArtifact,
+    PrimeField, ProverConfig, SumcheckScheduleClass,
+};
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_tracing::Range;
-use gpu_core::primitives::field::E4;
+use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
 use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
 use gpu_gkr::GkrPrograms;
@@ -30,11 +38,9 @@ use orchestration::{
     Stage1AndForwardPreparation, WhirPhaseResult,
 };
 
-pub fn validate_windowed_schedule(gkr_programs: &GkrPrograms, prover_config: &ProverConfig) {
-    assert_eq!(
-        validated_schedule_class(gkr_programs, prover_config),
-        Some(SumcheckScheduleClass::Windowed)
-    );
+fn validate_same_size_schedule(gkr_programs: &GkrPrograms, prover_config: &ProverConfig) {
+    validated_schedule_class(gkr_programs, prover_config)
+        .expect("invalid GKR same-size sumcheck schedule");
 }
 
 fn validated_schedule_class(
@@ -52,6 +58,148 @@ fn main_folding_steps(gkr_programs: &GkrPrograms) -> usize {
     gkr_programs.compiled_circuit().trace_len.trailing_zeros() as usize
 }
 
+/// One immutable config/geometry/policy bound before transfers. Producer routing,
+/// storage representations and actual per-role backend constraints are checked
+/// independently of preset selection; execution jobs share the config.
+pub struct ProofPreflight<F: PrimeField> {
+    dr_tail: gpu_gkr::DrTailProofPlan,
+    circuit: Arc<GKRCircuitArtifact<F>>,
+    config: ProverConfig,
+    geometry: BaseCommitmentGeometry,
+    memory_policy: ProofMemoryPolicy,
+    batching_pow_bits: u32,
+    twiddle_domain_log2: u32,
+}
+
+impl<F: PrimeField> ProofPreflight<F> {
+    pub fn geometry(&self) -> BaseCommitmentGeometry {
+        self.geometry
+    }
+
+    pub fn memory_policy(&self) -> ProofMemoryPolicy {
+        self.memory_policy
+    }
+
+    #[cfg(test)]
+    pub(crate) fn batching_pow_bits_for_test(&self) -> u32 {
+        self.batching_pow_bits
+    }
+}
+
+/// Field-free protocol/policy admission. Backend transform checks are separate.
+pub(crate) fn validate_base_proof_geometry_policy(
+    geometry: &BaseCommitmentGeometry,
+    memory_policy: ProofMemoryPolicy,
+    main_layers: usize,
+) {
+    assert!(
+        memory_policy.witness.is_valid(),
+        "invalid witness memory policy"
+    );
+    memory_policy.gkr.validate_for_main_layers(main_layers);
+    if geometry.commitment_mode() == crate::upstream::CommitmentMode::MergedMemoryAndWitness {
+        merged_commitment::validate_merged_packed_geometry(geometry);
+    } else {
+        gpu_trace::trace::memory::validate_separate_base_commitment_geometry(geometry);
+    }
+}
+
+/// Validate the representations the BabyBear producers and query readers use.
+/// Legacy holders retain their existing transform path; empty roles do no work.
+fn validate_baby_bear_base_proof_policy(
+    geometry: &BaseCommitmentGeometry,
+    policy: ProofMemoryPolicy,
+    twiddle_domain_log2: u32,
+) {
+    use crate::upstream::BaseOracleRole as Role;
+    use gpu_trace::trace::holder::{validate_baby_bear_base_opening, TreesCacheMode};
+    use memory_policy::{
+        OpeningStrategy as Opening, WitnessCommitmentStrategy as Commit, WitnessOpeningStrategy,
+        WitnessPostCommitStorage as Store,
+    };
+    if !uses_base_commitment_geometry(geometry) {
+        return;
+    }
+    // Every base query consumes the partial-tree format, including Memory
+    // whose commitment phase carries only a cap into this proof.
+    gpu_trace::trace::holder::TraceHolder::<BF>::validate_base_layout(
+        geometry,
+        TreesCacheMode::CachePartial,
+    );
+    let validate = |role, opening, trees| {
+        if geometry.oracle(role).physical_columns() != 0 {
+            validate_baby_bear_base_opening(geometry, opening, trees, twiddle_domain_log2);
+        }
+    };
+    // Setup is transferred with Partial trees; memory carries only its cap.
+    validate(Role::Setup, policy.setup, TreesCacheMode::CachePartial);
+    validate(Role::Memory, policy.memory, TreesCacheMode::CacheNone);
+    // In merged mode the combined nonempty set is Memory; Witness is empty.
+    if geometry.oracle(Role::Witness).physical_columns() != 0 {
+        let commitment = match policy.witness.commitment {
+            Commit::AllCosets if policy.witness.post_commitment != Store::RawAndMonomials => {
+                Opening::AllCosets
+            }
+            Commit::AllCosets | Commit::PerCoset => Opening::PerCoset,
+            Commit::InPlace => Opening::InPlace,
+        };
+        validate(Role::Witness, commitment, TreesCacheMode::CachePartial);
+        let opening = match policy.witness.opening {
+            WitnessOpeningStrategy::ReuseCosets => Opening::AllCosets,
+            WitnessOpeningStrategy::Recompute(opening) => opening,
+        };
+        validate(Role::Witness, opening, TreesCacheMode::CachePartial);
+    }
+}
+
+/// Existing BabyBear proof backend's pre-transfer capability boundary. The
+/// capacity is supplied by the live context, never inferred from a constant.
+pub fn preflight_proof(
+    programs: &GkrPrograms,
+    config: &ProverConfig,
+    final_trace_log: u32,
+    device_id: i32,
+    memory_policy: ProofMemoryPolicy,
+    twiddle_domain_log2: u32,
+) -> CudaResult<ProofPreflight<BF>> {
+    assert_eq!(
+        config.trace_len_log2,
+        programs.compiled_circuit().trace_len.trailing_zeros() as usize,
+        "proof config trace length differs from compiled circuit"
+    );
+    assert_eq!(
+        final_trace_log as usize, config.sumcheck_explicit_output_size_log_2,
+        "GKR final trace size differs from configured explicit output size"
+    );
+    assert!(
+        (final_trace_log as usize) < config.trace_len_log2,
+        "GPU forward transcript handoff requires at least one dimension-reduction layer"
+    );
+    let geometry =
+        BaseCommitmentGeometry::from_config(config, BaseColumns::of(programs.compiled_circuit()))
+            .expect("invalid base commitment geometry");
+    validate_base_proof_geometry_policy(&geometry, memory_policy, programs.main_layers_count());
+    validate_baby_bear_base_proof_policy(&geometry, memory_policy, twiddle_domain_log2);
+    gpu_whir::validate_baby_bear_recursive_schedule(
+        u32::try_from(geometry.message_size_log2()).expect("message log2 exceeds u32"),
+        &config.whir_schedule,
+        twiddle_domain_log2,
+    );
+    validate_same_size_schedule(programs, config);
+    let batching_pow_bits =
+        crate::config::batched_proximity_check_pow_bits_for_geometry(config, &geometry);
+    let dr_tail = gpu_gkr::preflight_dr_tail_resources(programs, final_trace_log, device_id)?;
+    Ok(ProofPreflight {
+        dr_tail,
+        circuit: Arc::clone(programs.compiled_circuit()),
+        config: config.clone(),
+        geometry,
+        memory_policy,
+        batching_pow_bits,
+        twiddle_domain_log2,
+    })
+}
+
 /// What the DR preflight boundary needs in order to admit a proof request.
 ///
 /// `None` at the boundary means the request is not a proof, so neither the
@@ -62,22 +210,25 @@ pub struct DrTailPreflightRequest<'a> {
     pub prover_config: &'a ProverConfig,
     pub final_trace_size_log_2: u32,
     pub device_id: i32,
+    pub memory_policy: ProofMemoryPolicy,
+    pub twiddle_domain_log2: u32,
 }
 
 /// Preflight before constructing transfers so the plan can be owned by them.
 pub fn admit_dr_tail_before_transfers<T>(
     request: Option<DrTailPreflightRequest<'_>>,
-    construct_transfers: impl FnOnce(Option<gpu_gkr::DrTailProofPlan>) -> T,
+    construct_transfers: impl FnOnce(Option<ProofPreflight<BF>>) -> T,
 ) -> CudaResult<T> {
     let Some(request) = request else {
         return Ok(construct_transfers(None));
     };
-    gpu_trace::trace::memory::assert_unpacked_prover_config(request.prover_config);
-    validate_windowed_schedule(request.gkr_programs, request.prover_config);
-    let plan = gpu_gkr::preflight_dr_tail_resources(
+    let plan = preflight_proof(
         request.gkr_programs,
+        request.prover_config,
         request.final_trace_size_log_2,
         request.device_id,
+        request.memory_policy,
+        request.twiddle_domain_log2,
     )?;
     Ok(construct_transfers(Some(plan)))
 }
@@ -89,7 +240,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
-    dr_tail_plan: &gpu_gkr::DrTailProofPlan,
+    dr_tail_plan: &ProofPreflight<BF>,
     memory_policy: ProofMemoryPolicy,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
@@ -113,10 +264,16 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
     inputs: GpuGKRProofTransfer<'a, A>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
-    let dr_tail_plan = gpu_gkr::preflight_dr_tail_resources(
+    let dr_tail_plan = preflight_proof(
         gkr_programs,
+        prover_config,
         final_trace_size_log_2,
         era_cudart::device::get_device()?,
+        ProofMemoryPolicy::default(),
+        context
+            .ntt_device_context()
+            .whir_leaf_transform_params()
+            .omega_log_order,
     )?;
     prove_inner(
         gkr_programs,
@@ -135,24 +292,41 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
-    dr_tail_plan: &gpu_gkr::DrTailProofPlan,
+    dr_tail_plan: &ProofPreflight<BF>,
     memory_policy: ProofMemoryPolicy,
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
     assert!(
-        memory_policy.witness.is_valid(),
-        "invalid witness memory policy"
+        Arc::ptr_eq(&dr_tail_plan.circuit, gkr_programs.compiled_circuit()),
+        "proof preflight belongs to another circuit artifact"
     );
-    // the GPU prover implements only the unpacked base commitment; fail closed
-    // before enqueuing any proof kernel on a packed `ProverConfig`
-    gpu_trace::trace::memory::assert_unpacked_prover_config(prover_config);
-    dr_tail_plan.validate_before_enqueue(gkr_programs, final_trace_size_log_2, context);
-    let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
-    validate_windowed_schedule(gkr_programs, prover_config);
     assert_eq!(
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.whir_schedule.whir_steps_schedule[0]
+        &dr_tail_plan.config, prover_config,
+        "proof config differs from preflight"
+    );
+    assert_eq!(
+        dr_tail_plan.memory_policy, memory_policy,
+        "proof policy differs from preflight"
+    );
+    assert_eq!(
+        dr_tail_plan.twiddle_domain_log2,
+        context
+            .ntt_device_context()
+            .whir_leaf_transform_params()
+            .omega_log_order,
+        "proof context twiddle capacity differs from preflight"
+    );
+    dr_tail_plan
+        .dr_tail
+        .validate_before_enqueue(gkr_programs, final_trace_size_log_2, context);
+    let base_geometry = dr_tail_plan.geometry;
+    let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
+    assert_eq!(
+        prover_config
+            .base_oracles_values_per_leaf()
+            .trailing_zeros() as usize,
+        prover_config.whir_schedule.base_folding_log2()
     );
     let whir_schedule = &prover_config.whir_schedule;
 
@@ -167,14 +341,18 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         top_bits_host,
         external_challenges,
     } = inputs;
+    memory.host.validate_for_geometry(&base_geometry);
     if let Some(setup_transfer) = setup.as_ref() {
+        setup_transfer.host.validate_for_geometry(&base_geometry);
         assert_eq!(
             setup_transfer.trace_holder.log_lde_factor,
-            prover_config.lde_factor.trailing_zeros()
+            prover_config.lde_factor().trailing_zeros()
         );
         assert_eq!(
             setup_transfer.trace_holder.log_rows_per_leaf,
-            prover_config.base_oracles_values_per_leaf.trailing_zeros()
+            prover_config
+                .base_oracles_values_per_leaf()
+                .trailing_zeros()
         );
         assert_eq!(
             setup_transfer.trace_holder.log_tree_cap_size,
@@ -207,6 +385,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     } = prepare_stage1_and_forward_setup::<A>(
         gkr_programs,
         prover_config,
+        base_geometry,
         final_trace_size_log_2,
         whir_schedule,
         BundleDeviceRefs {
@@ -279,7 +458,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         backward_state,
         top_bits_host.clone(),
         Arc::clone(gkr_programs),
-        dr_tail_plan,
+        &dr_tail_plan.dr_tail,
         external_challenges.device.as_ptr(),
         d_seed,
         d_evaluation_point_and_batching,
@@ -292,14 +471,14 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         &mut callbacks,
         context,
     )?;
-    let batching_pow_bits =
-        crate::config::batched_proximity_check_pow_bits(prover_config, compiled_circuit);
+    let batching_pow_bits = dr_tail_plan.batching_pow_bits;
     let WhirPhaseResult {
         mut base_layer_claims_scheduled,
         base_layer_claims_shared_state,
         whir_scheduled,
     } = schedule_whir_phase(
         compiled_circuit,
+        base_geometry,
         whir_schedule,
         &mut setup,
         &mut synthetic_setup_trace_holder,
@@ -380,3 +559,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         },
     })
 }
+
+#[cfg(test)]
+pub(crate) use orchestration::schedule_base_commitment_handoff;

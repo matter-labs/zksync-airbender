@@ -9,15 +9,21 @@ use execution_prover::{
     BinaryHandle, CommitMemoryResult, ExecutionKind, ExecutionProver, MachineType,
 };
 use gpu_execution_prover::{ExecutionProverConfiguration as GpuConfiguration, GpuBackend};
-use prover::definitions::SecurityLevel;
+use prover::definitions::{SecurityLevel, SoundnessMode};
+use riscv_transpiler::elf::ProgramSource;
 use riscv_transpiler::jit::JitRunnerRam;
 use riscv_transpiler::vm::FlatResponsesSource;
-use setups::read_binary;
 
 // Both backends must use identical execution and proof parameters.
 const RAM: JitRunnerRam = JitRunnerRam::Medium;
 const CYCLES_BOUND: u32 = 1 << 20;
 const SECURITY: SecurityLevel = SecurityLevel::Sec100;
+
+type CircuitProof = prover::gkr::prover::GKRProof<
+    field::baby_bear::base::BabyBearField,
+    field::baby_bear::ext4::BabyBearExt4,
+    prover::merkle_trees::DefaultTreeConstructor,
+>;
 
 struct Workload {
     directory: &'static str,
@@ -47,9 +53,11 @@ fn workspace_root() -> std::path::PathBuf {
 
 fn load(workload: &Workload) -> (Vec<u32>, Vec<u32>) {
     let root = workspace_root().join("examples").join(workload.directory);
-    let (_, bin) = read_binary(&root.join(format!("{}.bin", workload.stem)));
-    let (_, text) = read_binary(&root.join(format!("{}.text", workload.stem)));
-    (bin, text)
+    ProgramSource::legacy_binaries(
+        root.join(format!("{}.bin", workload.stem)),
+        root.join(format!("{}.text", workload.stem)),
+    )
+    .load_unpadded()
 }
 
 fn commit<B>(
@@ -181,4 +189,303 @@ fn compare_commitments(kind: ExecutionKind, machine: MachineType, workload: &Wor
     );
 }
 
+/// The shared CPU execution backend is the reference, including its independent
+/// memory pass. Drop each backend before constructing the next one.
+fn prove<B: execution_prover::backend::ExecutionBackend>(
+    mut prover: ExecutionProver<B>,
+    kind: ExecutionKind,
+    machine: MachineType,
+    workload: &Workload,
+) -> execution_prover::ProveResult {
+    let (binary, text) = load(workload);
+    let handle = prover.add_binary(kind, machine, binary, text, Some(CYCLES_BOUND));
+    prover.commit_memory_and_prove(
+        0,
+        &handle,
+        FlatResponsesSource::new_with_reads(workload.non_determinism.to_vec()),
+    )
+}
+
+fn compare_execution(
+    kind: ExecutionKind,
+    machine: MachineType,
+    workload: &Workload,
+    expected_delegations: &[execution_prover_model::circuit_type::DelegationCircuitType],
+) {
+    compare_execution_in_mode(
+        kind,
+        machine,
+        workload,
+        expected_delegations,
+        SoundnessMode::DEFAULT,
+    );
+}
+
+fn compare_execution_in_mode(
+    kind: ExecutionKind,
+    machine: MachineType,
+    workload: &Workload,
+    expected_delegations: &[execution_prover_model::circuit_type::DelegationCircuitType],
+    soundness_mode: SoundnessMode,
+) {
+    use gpu_execution_prover::{GpuBackendConfiguration, MemoryPreset};
+    let _ = env_logger::builder().is_test(true).try_init();
+    let cpu = ExecutionProver::<CpuBackend>::with_configuration(CpuExecutionProverConfiguration {
+        ram_config: RAM,
+        security_level: SECURITY,
+        soundness_mode,
+        ..Default::default()
+    });
+    let expected = prove(cpu, kind, machine, workload);
+    for delegation in expected_delegations {
+        assert!(
+            !expected.delegation_proofs[&(delegation.get_delegation_type_id() as u32)].is_empty(),
+            "the reference must actually prove {delegation:?}"
+        );
+    }
+    if soundness_mode == SoundnessMode::EthproofsSoundnessCalc {
+        // The mode really gates every internal folding challenge and the first OOD draw.
+        let proofs = expected
+            .circuit_families_proofs
+            .values()
+            .chain(expected.delegation_proofs.values())
+            .flatten()
+            .chain(&expected.inits_and_teardowns_proofs);
+        for proof in proofs {
+            let oracles = &proof.whir_proof.intermediate_whir_oracles;
+            assert!(oracles.iter().all(|o| !o.folding_pow_nonces.is_empty()));
+            assert!(oracles[0].ood_pow_nonce.is_some());
+        }
+    }
+    for preset in [MemoryPreset::GiB21, MemoryPreset::GiB30] {
+        let gpu = ExecutionProver::<GpuBackend>::with_configuration(GpuConfiguration {
+            ram_config: RAM,
+            security_level: SECURITY,
+            soundness_mode,
+            assume_canonical_mop_inputs: false,
+            backend: GpuBackendConfiguration {
+                memory_preset: preset,
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        let actual = prove(gpu, kind, machine, workload);
+        assert_eq!(actual.register_final_values, expected.register_final_values);
+        assert_eq!(actual.final_pc, expected.final_pc);
+        assert_eq!(actual.final_timestamp, expected.final_timestamp);
+        assert_eq!(actual.pow_challenge, expected.pow_challenge);
+        assert_eq!(
+            actual.num_unified_it_circuits,
+            expected.num_unified_it_circuits
+        );
+        assert_eq!(
+            actual.circuit_families_proofs.keys().collect::<Vec<_>>(),
+            expected.circuit_families_proofs.keys().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            actual.delegation_proofs.keys().collect::<Vec<_>>(),
+            expected.delegation_proofs.keys().collect::<Vec<_>>()
+        );
+        let mut compared = 0;
+        let mut compare = |label: &str, actual: &[CircuitProof], expected: &[CircuitProof]| {
+            assert_eq!(actual.len(), expected.len(), "{label} proof count");
+            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                assert_eq!(actual.external_challenges, expected.external_challenges);
+                assert_eq!(
+                    actual.whir_proof.memory_commitment.commitment.cap.cap,
+                    expected.whir_proof.memory_commitment.commitment.cap.cap
+                );
+                let actual_bytes = serde_json::to_vec(actual).unwrap();
+                let expected_bytes = serde_json::to_vec(expected).unwrap();
+                assert!(
+                    actual_bytes == expected_bytes,
+                    "{label}[{index}] differs at {preset:?} {soundness_mode:?}"
+                );
+                eprintln!(
+                    "execution CPU/GPU bytes equal: preset={preset:?} mode={soundness_mode:?} {label}[{index}] bytes={}",
+                    actual_bytes.len()
+                );
+                compared += 1;
+            }
+        };
+        for (family, proofs) in &actual.circuit_families_proofs {
+            compare(
+                &format!("family {family}"),
+                proofs,
+                &expected.circuit_families_proofs[family],
+            );
+        }
+        compare(
+            "inits/teardowns",
+            &actual.inits_and_teardowns_proofs,
+            &expected.inits_and_teardowns_proofs,
+        );
+        for (delegation, proofs) in &actual.delegation_proofs {
+            compare(
+                &format!("delegation {delegation}"),
+                proofs,
+                &expected.delegation_proofs[delegation],
+            );
+        }
+        assert!(compared > 0, "execution proof comparison must not be empty");
+    }
+}
+
+#[test]
+#[ignore = "CPU execution reference and both production GPU arenas"]
+fn test_cpu_gpu_agree_on_blake_execution_proof_bytes() {
+    use execution_prover_model::circuit_type::DelegationCircuitType as D;
+    compare_execution(
+        ExecutionKind::Unrolled,
+        MachineType::FullUnsigned,
+        &Workload {
+            directory: "hashed_fibonacci",
+            stem: "app_blake2_with_compression",
+            non_determinism: &[100, 5],
+        },
+        &[D::Blake2WithCompression],
+    );
+}
+
+#[test]
+#[ignore = "CPU execution reference and both production GPU arenas"]
+fn test_cpu_gpu_agree_on_blake_execution_proof_bytes_ethproofs() {
+    use execution_prover_model::circuit_type::DelegationCircuitType as D;
+    compare_execution_in_mode(
+        ExecutionKind::Unrolled,
+        MachineType::FullUnsigned,
+        &Workload {
+            directory: "hashed_fibonacci",
+            stem: "app_blake2_with_compression",
+            non_determinism: &[100, 5],
+        },
+        &[D::Blake2WithCompression],
+        SoundnessMode::EthproofsSoundnessCalc,
+    );
+}
+
+#[test]
+#[ignore = "CPU execution reference and both production GPU arenas"]
+fn test_cpu_gpu_agree_on_bigint_execution_proof_bytes() {
+    use execution_prover_model::circuit_type::DelegationCircuitType as D;
+    compare_execution(
+        ExecutionKind::Unrolled,
+        MachineType::FullUnsigned,
+        &Workload {
+            directory: "bigint_with_control",
+            stem: "app",
+            non_determinism: &[],
+        },
+        &[D::BigIntWithControl],
+    );
+}
+
+#[test]
+#[ignore = "CPU execution reference and both production GPU arenas"]
+fn test_cpu_gpu_agree_on_bigint_execution_proof_bytes_ethproofs() {
+    use execution_prover_model::circuit_type::DelegationCircuitType as D;
+    compare_execution_in_mode(
+        ExecutionKind::Unrolled,
+        MachineType::FullUnsigned,
+        &Workload {
+            directory: "bigint_with_control",
+            stem: "app",
+            non_determinism: &[],
+        },
+        &[D::BigIntWithControl],
+        SoundnessMode::EthproofsSoundnessCalc,
+    );
+}
+
+#[test]
+#[ignore = "CPU execution reference and both production GPU arenas"]
+fn test_cpu_gpu_agree_on_keccak_execution_proof_bytes() {
+    use execution_prover_model::circuit_type::DelegationCircuitType as D;
+    compare_execution(
+        ExecutionKind::Unrolled,
+        MachineType::FullUnsigned,
+        &Workload {
+            directory: "keccak",
+            stem: "app",
+            non_determinism: &[],
+        },
+        &[D::KeccakChi5, D::KeccakColumnParity, D::KeccakThetaRho],
+    );
+}
+
+#[test]
+#[ignore = "CPU execution reference and both production GPU arenas"]
+fn test_cpu_gpu_agree_on_keccak_execution_proof_bytes_ethproofs() {
+    use execution_prover_model::circuit_type::DelegationCircuitType as D;
+    compare_execution_in_mode(
+        ExecutionKind::Unrolled,
+        MachineType::FullUnsigned,
+        &Workload {
+            directory: "keccak",
+            stem: "app",
+            non_determinism: &[],
+        },
+        &[D::KeccakChi5, D::KeccakColumnParity, D::KeccakThetaRho],
+        SoundnessMode::EthproofsSoundnessCalc,
+    );
+}
+
+#[test]
+#[ignore = "CPU execution reference and both production GPU arenas"]
+fn test_cpu_gpu_agree_on_unified_execution_proof_bytes() {
+    use execution_prover_model::circuit_type::DelegationCircuitType as D;
+    compare_execution(
+        ExecutionKind::Unified,
+        MachineType::Reduced,
+        UNIFIED_WORKLOAD,
+        &[D::Blake2WithCompression],
+    );
+}
+
+#[test]
+#[ignore = "CPU execution reference and both production GPU arenas"]
+fn test_cpu_gpu_agree_on_unified_execution_proof_bytes_ethproofs() {
+    use execution_prover_model::circuit_type::DelegationCircuitType as D;
+    compare_execution_in_mode(
+        ExecutionKind::Unified,
+        MachineType::Reduced,
+        UNIFIED_WORKLOAD,
+        &[D::Blake2WithCompression],
+        SoundnessMode::EthproofsSoundnessCalc,
+    );
+}
+
 gpu_core::force_serial_libtest!();
+
+#[test]
+#[ignore = "CPU execution reference and both production GPU arenas"]
+fn test_cpu_gpu_agree_on_special5_execution_proof_bytes() {
+    use execution_prover_model::circuit_type::DelegationCircuitType as D;
+    compare_execution(
+        ExecutionKind::Unrolled,
+        MachineType::FullUnsigned,
+        &Workload {
+            directory: "../riscv_transpiler/examples/keccak_f1600",
+            stem: "app",
+            non_determinism: &[15, 1],
+        },
+        &[D::KeccakSpecial5],
+    );
+}
+
+#[test]
+#[ignore = "CPU execution reference and both production GPU arenas"]
+fn test_cpu_gpu_agree_on_special5_execution_proof_bytes_ethproofs() {
+    use execution_prover_model::circuit_type::DelegationCircuitType as D;
+    compare_execution_in_mode(
+        ExecutionKind::Unrolled,
+        MachineType::FullUnsigned,
+        &Workload {
+            directory: "../riscv_transpiler/examples/keccak_f1600",
+            stem: "app",
+            non_determinism: &[15, 1],
+        },
+        &[D::KeccakSpecial5],
+        SoundnessMode::EthproofsSoundnessCalc,
+    );
+}

@@ -14,7 +14,11 @@ pub fn trace_fixture(name: &str, program: FsvProgram) -> (Trace, StreamPlan) {
         BlakeMode::Compression,
     );
     let (setups, proof) = load_calibration_proof(name);
-    let stream = full_statement_verifier::host_utils::build_unrolled_stream(&setups, &proof);
+    let stream = full_statement_verifier::host_utils::build_unrolled_stream(
+        &setups,
+        &proof,
+        BlakeMode::Compression,
+    );
     let plan = plan_unrolled_stream(&setups, &proof, program);
     assert_eq!(
         plan.total_words,

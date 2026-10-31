@@ -6,7 +6,6 @@ use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::OperationMode;
 use crate::gkr::prover::{prove_configured_with_gkr_with_storage_and_backend, WhirOracleStorage};
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
-use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use crate::gkr::witness_gen::delegation_circuits::{
     evaluate_gkr_memory_witness_for_delegation_circuit, evaluate_gkr_witness_for_delegation_circuit,
@@ -66,11 +65,35 @@ impl DelegationProveOutput {
     }
 }
 
-/// Common prove-side logic shared by all four delegations.
-/// Prove one delegation circuit. `pack_log2 > 0` commits the memory, witness
-/// and setup columns PACKED (`ProverConfig::pack_log2`, see
-/// `packed_config_for_security_level_under_pessimistic_conjecture`): the WHIR
-/// message is `2^(log2(num_delegation_cycles) + pack_log2)`.
+/// Which base-round geometry a delegation test proves with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BaseCommitmentVariant {
+    /// The circuit definition's own config in the current soundness mode
+    /// (`common::fixture_prover_config`): the production fixture, plain
+    /// proof name.
+    Production,
+}
+
+impl BaseCommitmentVariant {
+    pub const DEFAULT: Self = Self::Production;
+
+    pub fn prover_config(
+        self,
+        stem: &str,
+        trace_len_log2: usize,
+        level: SecurityLevel,
+    ) -> crate::gkr::prover_config::ProverConfig {
+        match self {
+            Self::Production => {
+                let config = super::common::fixture_prover_config(stem, level);
+                assert_eq!(config.trace_len_log2, trace_len_log2, "{stem}");
+                config
+            }
+        }
+    }
+}
+
+/// Common prove-side logic using each delegation circuit's production config.
 fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
     circuit: &GKRCircuitArtifact<BabyBearField>,
     table_driver: &TableDriver<BabyBearField>,
@@ -79,7 +102,8 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
     num_delegation_cycles: usize,
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
     level: SecurityLevel,
-    pack_log2: usize,
+    stem: &str,
+    variant: BaseCommitmentVariant,
     should_prove: bool,
     proof_path: &str,
     worker: &Worker,
@@ -123,11 +147,8 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
     }
 
     let prover_config =
-        example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
-            num_delegation_cycles.trailing_zeros() as usize,
-            pack_log2,
-            level,
-        );
+        variant.prover_config(stem, num_delegation_cycles.trailing_zeros() as usize, level);
+    let pack_log2 = prover_config.pack_log2();
     // the packed commitment interpolates over the enlarged 2^(N + pack_log2) domain
     let twiddles: Twiddles<_, Global> =
         Twiddles::new(1usize << prover_config.whir_message_size_log2(), worker);
@@ -135,7 +156,7 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
     let setup_commitment = setup.commit_for_config(&twiddles, &prover_config, worker);
 
     println!(
-        "Trying to prove (pack_log2 = {pack_log2}, WHIR message 2^{})",
+        "Trying to prove ({variant:?}, pack_log2 = {pack_log2}, WHIR message 2^{})",
         prover_config.whir_message_size_log2()
     );
     let now = std::time::Instant::now();
@@ -231,7 +252,7 @@ where
         num_calls,
         external_challenges,
         level,
-        0,
+        BaseCommitmentVariant::DEFAULT,
         prove_empty,
         compute_only,
         circuits_filter,
@@ -241,11 +262,9 @@ where
     )
 }
 
-/// [`prove_delegation_blake`] with a PACKED base commitment when
-/// `pack_log2 > 0` (`ProverConfig::pack_log2`): the 2^20 Blake trace columns
-/// are committed as `2^(20 + pack_log2)`-variate packed polynomials. The proof
-/// is written to `test_proofs/blake2_with_extended_control_{suffix}_pack{pack_log2}_gkr_proof.json`
-/// (the unpacked name when `pack_log2 == 0`).
+/// Prove the Blake delegation with its production fixture config. The common
+/// callers use `BaseCommitmentVariant::DEFAULT`; the config itself determines
+/// physical and virtual packing. The proof keeps its plain production suffix.
 pub fn prove_delegation_blake_with_packing<C>(
     snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
     tape: &SimpleTape,
@@ -254,7 +273,7 @@ pub fn prove_delegation_blake_with_packing<C>(
     num_calls: usize,
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
     level: SecurityLevel,
-    pack_log2: usize,
+    variant: BaseCommitmentVariant,
     prove_empty: bool,
     compute_only: bool,
     circuits_filter: &Option<std::collections::HashSet<String>>,
@@ -311,19 +330,10 @@ where
         BLAKE_NUM_DELEGATION_CYCLES,
         external_challenges,
         level,
-        pack_log2,
+        "blake2_with_extended_control",
+        variant,
         should_prove,
-        &if pack_log2 == 0 {
-            format!(
-                "test_proofs/blake2_with_extended_control_{}_gkr_proof.json",
-                proof_suffix
-            )
-        } else {
-            format!(
-                "test_proofs/blake2_with_extended_control_{}_pack{}_gkr_proof.json",
-                proof_suffix, pack_log2
-            )
-        },
+        &format!("test_proofs/blake2_with_extended_control_{proof_suffix}_gkr_proof.json"),
         worker,
     );
 
@@ -399,7 +409,8 @@ where
         BIGINT_NUM_DELEGATION_CYCLES,
         external_challenges,
         level,
-        0,
+        "bigint_with_extended_control",
+        BaseCommitmentVariant::DEFAULT,
         should_prove,
         &format!(
             "test_proofs/bigint_with_extended_control_{}_gkr_proof.json",
@@ -480,7 +491,8 @@ where
         KECCAK_NUM_DELEGATION_CYCLES,
         external_challenges,
         level,
-        0,
+        "keccak_special5",
+        BaseCommitmentVariant::DEFAULT,
         should_prove,
         &format!(
             "test_proofs/keccak_special5_{}_gkr_proof.json",
@@ -565,7 +577,8 @@ where
         BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES,
         external_challenges,
         level,
-        0,
+        "blake2_g_function",
+        BaseCommitmentVariant::DEFAULT,
         should_prove,
         &format!(
             "test_proofs/blake2_g_function_{}_gkr_proof.json",
@@ -666,7 +679,8 @@ where
         circuit.trace_len,
         external_challenges,
         level,
-        0,
+        stem,
+        BaseCommitmentVariant::DEFAULT,
         should_prove,
         &format!("test_proofs/{stem}_{proof_suffix}_gkr_proof.json"),
         worker,

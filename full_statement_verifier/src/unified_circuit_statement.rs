@@ -2,7 +2,7 @@ use super::*;
 use crate::delegation_params::*;
 use crate::imports::{DelegationCircuitOutput, UnifiedCircuitOutput};
 use crate::statement_common::{
-    read_setup_cap, FINAL_PC_BUFFER_PC_IDX, FINAL_PC_BUFFER_TS_HIGH_IDX, FINAL_PC_BUFFER_TS_LOW_IDX,
+    FINAL_PC_BUFFER_PC_IDX, FINAL_PC_BUFFER_TS_HIGH_IDX, FINAL_PC_BUFFER_TS_LOW_IDX,
 };
 use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
 use prover::definitions::DEFAULT_CAP_SIZE;
@@ -370,26 +370,22 @@ where
     Ok(output)
 }
 
-pub fn verify_unified_circuit_base_layer_sec_100<
-    I: NonDeterminismSource<BabyBearField>,
-    E: ErrorCreator,
-    const REDUCED_ROUNDS: bool,
->(
-    nd_source: &mut I,
-) -> Result<[u32; 16], E::Error> {
-    unsafe {
-        let unified_setup =
-            read_setup_cap::<I, { prover::definitions::DEFAULT_CAP_SIZE }>(nd_source);
-        verify_full_statement_for_unified_circuit::<I, E, true, REDUCED_ROUNDS, _, _>(
-            &unified_setup,
-            crate::imports::unified_reduced_machine_sec_100::verify::<I, E>,
-            &crate::constants::DELEGATION_CIRCUITS_SETUP_PARAMS,
-            &crate::delegation_params::all_delegation_circuit_verifiers_sec_100::<I, E>(),
-            nd_source,
-        )
-    }
+macro_rules! dispatch_on_mode {
+    ($f:ident, $nd:expr, $level:expr, $mode:expr) => {{
+        use prover::definitions::{SecurityLevel, SoundnessMode};
+        match ($level, $mode) {
+            (SecurityLevel::Sec100, SoundnessMode::PessimisticConjecture) => {
+                crate::pessimistic_conjecture::$f::<I, E, REDUCED_ROUNDS>($nd)
+            }
+            (SecurityLevel::Sec100, SoundnessMode::EthproofsSoundnessCalc) => {
+                crate::ethproofs_soundcalc::$f::<I, E, REDUCED_ROUNDS>($nd)
+            }
+        }
+    }};
 }
 
+/// The per-mode entry points (`crate::<mode>::verify_unified_circuit_base_layer`
+/// etc.), dispatched on the soundness mode.
 pub fn verify_unified_circuit_base_layer<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
@@ -397,32 +393,14 @@ pub fn verify_unified_circuit_base_layer<
 >(
     nd_source: &mut I,
     security_level: prover::definitions::SecurityLevel,
+    mode: prover::definitions::SoundnessMode,
 ) -> Result<[u32; 16], E::Error> {
-    match security_level {
-        prover::definitions::SecurityLevel::Sec100 => {
-            verify_unified_circuit_base_layer_sec_100::<I, E, REDUCED_ROUNDS>(nd_source)
-        }
-    }
-}
-
-pub fn verify_unified_circuit_recursion_layer_sec_100<
-    I: NonDeterminismSource<BabyBearField>,
-    E: ErrorCreator,
-    const REDUCED_ROUNDS: bool,
->(
-    nd_source: &mut I,
-) -> Result<[u32; 16], E::Error> {
-    unsafe {
-        let unified_setup =
-            read_setup_cap::<I, { prover::definitions::DEFAULT_CAP_SIZE }>(nd_source);
-        verify_full_statement_for_unified_circuit::<I, E, false, REDUCED_ROUNDS, _, _>(
-            &unified_setup,
-            crate::imports::unified_reduced_machine_sec_100::verify::<I, E>,
-            &crate::constants::DELEGATION_CIRCUITS_SETUP_PARAMS,
-            &crate::delegation_params::all_delegation_circuit_verifiers_sec_100::<I, E>(),
-            nd_source,
-        )
-    }
+    dispatch_on_mode!(
+        verify_unified_circuit_base_layer,
+        nd_source,
+        security_level,
+        mode
+    )
 }
 
 pub fn verify_unified_circuit_recursion_layer<
@@ -432,74 +410,14 @@ pub fn verify_unified_circuit_recursion_layer<
 >(
     nd_source: &mut I,
     security_level: prover::definitions::SecurityLevel,
+    mode: prover::definitions::SoundnessMode,
 ) -> Result<[u32; 16], E::Error> {
-    match security_level {
-        prover::definitions::SecurityLevel::Sec100 => {
-            verify_unified_circuit_recursion_layer_sec_100::<I, E, REDUCED_ROUNDS>(nd_source)
-        }
-    }
-}
-
-/// [`verify_unified_circuit_recursion_layer_sec_100`] against the high-LDE
-/// "L1 feeder" unified verifier (base LDE 16, round-0 queries 22 — see
-/// `prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23`).
-/// Verifies proofs of the FINAL BabyBear recursion layer(s), whose cheap
-/// verification is what the L1 (Proth120) 2^22 wrapper circuit executes.
-/// Same circuit, same delegation table, same 100-bit target — only the
-/// commitment parameters embedded in the generated verify function differ.
-pub fn verify_unified_circuit_recursion_layer_sec_100_l1_feeder<
-    I: NonDeterminismSource<BabyBearField>,
-    E: ErrorCreator,
-    const REDUCED_ROUNDS: bool,
->(
-    nd_source: &mut I,
-) -> Result<[u32; 16], E::Error> {
-    unsafe {
-        let unified_setup =
-            read_setup_cap::<I, { prover::definitions::DEFAULT_CAP_SIZE }>(nd_source);
-        verify_full_statement_for_unified_circuit::<I, E, false, REDUCED_ROUNDS, _, _>(
-            &unified_setup,
-            crate::imports::unified_reduced_machine_sec_100_l1_feeder::verify::<I, E>,
-            &crate::constants::DELEGATION_CIRCUITS_SETUP_PARAMS,
-            &crate::delegation_params::all_delegation_circuit_verifiers_sec_100::<I, E>(),
-            nd_source,
-        )
-    }
-}
-
-pub fn verify_unrolled_or_unified_circuit_recursion_layer_sec_100<
-    I: NonDeterminismSource<BabyBearField>,
-    E: ErrorCreator,
-    const REDUCED_ROUNDS: bool,
->(
-    nd_source: &mut I,
-) -> Result<[u32; 16], E::Error> {
-    // we just branch
-    let op_type = nd_source.read_word();
-    use crate::definitions::*;
-    match op_type {
-        OP_VERIFY_UNROLLED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT => {
-            #[cfg(feature = "verifiers")]
-            {
-                crate::unrolled_proof_statement::verify_unrolled_recursion_layer_sec_100::<
-                    I,
-                    E,
-                    REDUCED_ROUNDS,
-                >(nd_source)
-            }
-            #[cfg(not(feature = "verifiers"))]
-            {
-                let _ = nd_source;
-                panic!("Unrolled recursion layer verification is not available. Enable `verifiers` feature.");
-            }
-        }
-        OP_VERIFY_UNIFIED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT => {
-            verify_unified_circuit_recursion_layer_sec_100::<I, E, REDUCED_ROUNDS>(nd_source)
-        }
-        _ => {
-            panic!("Unknown op");
-        }
-    }
+    dispatch_on_mode!(
+        verify_unified_circuit_recursion_layer,
+        nd_source,
+        security_level,
+        mode
+    )
 }
 
 pub fn verify_unrolled_or_unified_circuit_recursion_layer<
@@ -509,12 +427,12 @@ pub fn verify_unrolled_or_unified_circuit_recursion_layer<
 >(
     nd_source: &mut I,
     security_level: prover::definitions::SecurityLevel,
+    mode: prover::definitions::SoundnessMode,
 ) -> Result<[u32; 16], E::Error> {
-    match security_level {
-        prover::definitions::SecurityLevel::Sec100 => {
-            verify_unrolled_or_unified_circuit_recursion_layer_sec_100::<I, E, REDUCED_ROUNDS>(
-                nd_source,
-            )
-        }
-    }
+    dispatch_on_mode!(
+        verify_unrolled_or_unified_circuit_recursion_layer,
+        nd_source,
+        security_level,
+        mode
+    )
 }

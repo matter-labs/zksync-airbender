@@ -1,5 +1,18 @@
 pub mod cost_model;
 pub mod fixture_codec;
+mod fsv;
+mod fsv_execution;
+
+pub use fsv::{
+    canonical_fsv_dir, fsv_digest, fsv_manifest, fsv_manifest_entry, load_fsv_exact,
+    load_fsv_program, render_fsv_manifest, FsvDigest, FsvLoadError, FsvManifestEntry,
+    VerifiedFsvProgram, FSV_DIGEST_RECIPE, FSV_MANIFEST_FILE,
+};
+pub use fsv_execution::{
+    append_fsv_ledger, fsv_ledger_row, fsv_stream, fsv_stream_digest, measure_fsv_blake_variants,
+    measure_fsv_execution, FsvExecutionError, FsvExecutionFailure, FsvExecutionRecord,
+    FSV_EXECUTION_CYCLES_LIMIT,
+};
 
 use crate::program_proof::ProgramProof;
 use crate::recursion_chain::{self, RecursionChain};
@@ -7,6 +20,8 @@ use setups::Setups;
 use std::path::Path;
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 use verifier_common::prover::definitions::MerkleTreeCap;
+#[cfg(feature = "verifiers")]
+use verifier_common::prover::definitions::{SecurityLevel, SoundnessMode};
 use verifier_common::USE_REDUCED_BLAKE2_ROUNDS;
 
 /// The recursion chain as hashed by the deployed fsv binaries.
@@ -22,14 +37,18 @@ pub fn compute_end_params(setups: &Setups, final_pc: u32) -> [u32; 8] {
     )
 }
 
+/// The ND stream of an unrolled proof for a full-statement verifier built
+/// with `blake` (the mode its guest was loaded for, or
+/// `verifier_common::BLAKE_MODE` for the native verifier of this process).
 #[must_use]
-pub fn build_unrolled_stream(setups: &Setups, proof: &ProgramProof) -> Vec<u32> {
-    proof.build_unrolled_stream(flattened_caps(setups))
+pub fn build_unrolled_stream(setups: &Setups, proof: &ProgramProof, blake: BlakeMode) -> Vec<u32> {
+    proof.build_unrolled_stream(flattened_caps(setups), blake)
 }
 
+/// [`build_unrolled_stream`] of a unified proof.
 #[must_use]
-pub fn build_unified_stream(setups: &Setups, proof: &ProgramProof) -> Vec<u32> {
-    proof.build_unified_stream(flattened_caps(setups))
+pub fn build_unified_stream(setups: &Setups, proof: &ProgramProof, blake: BlakeMode) -> Vec<u32> {
+    proof.build_unified_stream(flattened_caps(setups), blake)
 }
 
 fn flattened_caps(setups: &Setups) -> impl Iterator<Item = &[u32]> {
@@ -38,112 +57,134 @@ fn flattened_caps(setups: &Setups) -> impl Iterator<Item = &[u32]> {
         .map(|params| MerkleTreeCap::flatten_single(&params.setup_caps))
 }
 
+/// Failure of a mode-explicit native verifier. Invalid input never selects another mode.
+#[cfg(feature = "verifiers")]
+#[derive(Debug)]
+pub enum NativeVerificationError {
+    Spawn(std::io::Error),
+    InvalidProof(String),
+    ThreadPanicked,
+}
+
+#[cfg(feature = "verifiers")]
+impl std::fmt::Display for NativeVerificationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Spawn(error) => write!(f, "cannot start native verifier: {error}"),
+            Self::InvalidProof(error) => write!(f, "invalid proof: {error}"),
+            Self::ThreadPanicked => write!(f, "native verifier rejected input with a panic"),
+        }
+    }
+}
+
+#[cfg(feature = "verifiers")]
+impl std::error::Error for NativeVerificationError {}
+
+#[cfg(feature = "verifiers")]
+fn run_native_verifier(
+    name: &str,
+    verify: impl FnOnce() -> Result<[u32; 16], String> + Send + 'static,
+) -> Result<[u32; 16], NativeVerificationError> {
+    std::thread::Builder::new()
+        .name(name.to_owned())
+        .stack_size(1 << 27)
+        .spawn(verify)
+        .map_err(NativeVerificationError::Spawn)?
+        .join()
+        .map_err(|_| NativeVerificationError::ThreadPanicked)?
+        .map_err(NativeVerificationError::InvalidProof)
+}
+
+/// Pessimistic compatibility wrapper for a proof expected to be valid.
 #[cfg(feature = "verifiers")]
 pub fn native_verify_unrolled(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
-    use verifier_common::errors::DebugErrorCreator;
-    std::thread::Builder::new()
-        .name("unrolled verifier".to_string())
-        .stack_size(1 << 27)
-        .spawn(move || {
-            let mut it = stream.into_iter();
-            let result = if is_base {
-                crate::unrolled_proof_statement::verify_unrolled_base_layer_sec_100::<
-                    _,
-                    DebugErrorCreator,
-                    USE_REDUCED_BLAKE2_ROUNDS,
-                >(&mut it)
-            } else {
-                crate::unrolled_proof_statement::verify_unrolled_recursion_layer_sec_100::<
-                    _,
-                    DebugErrorCreator,
-                    USE_REDUCED_BLAKE2_ROUNDS,
-                >(&mut it)
-            };
-            result.expect("unrolled proof must verify")
-        })
-        .expect("spawn verifier thread")
-        .join()
-        .expect("verifier thread must not panic")
+    native_verify_unrolled_in_mode(stream, is_base, SoundnessMode::PessimisticConjecture)
 }
 
 #[cfg(feature = "verifiers")]
-pub fn native_verify_unified(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
+pub fn native_verify_unrolled_in_mode(
+    stream: Vec<u32>,
+    is_base: bool,
+    mode: SoundnessMode,
+) -> [u32; 16] {
+    try_native_verify_unrolled_in_mode(stream, is_base, mode).expect("unrolled proof must verify")
+}
+
+/// Verify under the caller-selected schedule, returning malformed/invalid proof errors.
+#[cfg(feature = "verifiers")]
+pub fn try_native_verify_unrolled_in_mode(
+    stream: Vec<u32>,
+    is_base: bool,
+    mode: SoundnessMode,
+) -> Result<[u32; 16], NativeVerificationError> {
     use verifier_common::errors::DebugErrorCreator;
-    std::thread::Builder::new()
-        .name("unified verifier".to_string())
-        .stack_size(1 << 27)
-        .spawn(move || {
-            let mut it = stream.into_iter();
-            let result = if is_base {
-                crate::unified_circuit_statement::verify_unified_circuit_base_layer_sec_100::<
-                    _,
-                    DebugErrorCreator,
-                    USE_REDUCED_BLAKE2_ROUNDS,
-                >(&mut it)
-            } else {
-                crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100::<
-                    _,
-                    DebugErrorCreator,
-                    USE_REDUCED_BLAKE2_ROUNDS,
-                >(&mut it)
-            };
-            result.expect("unified proof must verify")
-        })
-        .expect("spawn verifier thread")
-        .join()
-        .expect("verifier thread must not panic")
+    run_native_verifier("unrolled verifier", move || {
+        let mut it = stream.into_iter();
+        let result = if is_base {
+            crate::unrolled_proof_statement::verify_unrolled_base_layer::<
+                _,
+                DebugErrorCreator,
+                USE_REDUCED_BLAKE2_ROUNDS,
+            >(&mut it, SecurityLevel::Sec100, mode)
+        } else {
+            crate::unrolled_proof_statement::verify_unrolled_recursion_layer::<
+                _,
+                DebugErrorCreator,
+                USE_REDUCED_BLAKE2_ROUNDS,
+            >(&mut it, SecurityLevel::Sec100, mode)
+        };
+        result.map_err(|error| format!("{error:?}"))
+    })
 }
 
-#[must_use]
-pub fn load_program(bin_path: &Path, text_path: &Path) -> (Vec<u32>, Vec<u32>) {
-    let (_, binary_image) = setups::read_and_pad_binary(bin_path);
-    let (_, text_section) = setups::read_and_pad_binary(text_path);
-    (binary_image, text_section)
+/// Pessimistic compatibility wrapper for a proof expected to be valid.
+#[cfg(feature = "verifiers")]
+pub fn native_verify_unified(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
+    native_verify_unified_in_mode(stream, is_base, SoundnessMode::PessimisticConjecture)
 }
 
+#[cfg(feature = "verifiers")]
+pub fn native_verify_unified_in_mode(
+    stream: Vec<u32>,
+    is_base: bool,
+    mode: SoundnessMode,
+) -> [u32; 16] {
+    try_native_verify_unified_in_mode(stream, is_base, mode).expect("unified proof must verify")
+}
+
+/// Verify under the caller-selected schedule, returning malformed/invalid proof errors.
+#[cfg(feature = "verifiers")]
+pub fn try_native_verify_unified_in_mode(
+    stream: Vec<u32>,
+    is_base: bool,
+    mode: SoundnessMode,
+) -> Result<[u32; 16], NativeVerificationError> {
+    use verifier_common::errors::DebugErrorCreator;
+    run_native_verifier("unified verifier", move || {
+        let mut it = stream.into_iter();
+        let result = if is_base {
+            crate::unified_circuit_statement::verify_unified_circuit_base_layer::<
+                _,
+                DebugErrorCreator,
+                USE_REDUCED_BLAKE2_ROUNDS,
+            >(&mut it, SecurityLevel::Sec100, mode)
+        } else {
+            crate::unified_circuit_statement::verify_unified_circuit_recursion_layer::<
+                _,
+                DebugErrorCreator,
+                USE_REDUCED_BLAKE2_ROUNDS,
+            >(&mut it, SecurityLevel::Sec100, mode)
+        };
+        result.map_err(|error| format!("{error:?}"))
+    })
+}
+
+/// Load a guest from its linked ELF (legacy read mode: `.text` followed in ROM by the
+/// `.rodata`/`.data` init images): `(flat ROM image, text section)`, both padded to the ROM
+/// size for proving.
 #[must_use]
-pub fn load_fsv_program(
-    dir: impl AsRef<Path>,
-    program: FsvProgram,
-    blake: BlakeMode,
-) -> (Vec<u32>, Vec<u32>) {
-    let dir = dir.as_ref();
-    let stem = program.file_stem(blake);
-    println!("Trying to load `{}` verifier", stem);
-    let bin_path = dir.join(format!("{stem}.bin"));
-    let exists = match bin_path.try_exists() {
-        Ok(res) => res,
-        Err(err) => {
-            if let Some(err) = err.get_ref() {
-                println!("Failed to probe path `{}`: {}", bin_path.display(), err);
-            } else {
-                println!("Failed to probe path `{}`", bin_path.display());
-            }
-            false
-        }
-    };
-    if exists {
-        load_program(
-            &dir.join(format!("{stem}.bin")),
-            &dir.join(format!("{stem}.text")),
-        )
-    } else {
-        println!(
-            "Verifier binary `{}` doesn't exist at path {}, using fallback naming mode",
-            stem,
-            bin_path.display(),
-        );
-        assert!(
-            blake == BlakeMode::Compression,
-            "missing variant binary {} — run `cd tools/gkr_verifier && ./dump_recursive_verifiers.sh`",
-            dir.join(format!("{stem}.bin")).display()
-        );
-        let base = program.base_name();
-        load_program(
-            &dir.join(format!("{base}.bin")),
-            &dir.join(format!("{base}.text")),
-        )
-    }
+pub fn load_program(elf_path: &Path) -> (Vec<u32>, Vec<u32>) {
+    riscv_transpiler::elf::load_legacy_program(elf_path)
 }
 
 fn blake_mode_from_env(vars: &[&str], program: FsvProgram, default: BlakeMode) -> BlakeMode {
@@ -219,4 +260,19 @@ pub fn unified_switch_cycles() -> u64 {
          recursion loop"
     );
     cycles
+}
+
+#[cfg(all(test, feature = "verifiers"))]
+mod native_mode_tests {
+    use super::*;
+
+    #[test]
+    fn malformed_native_proofs_return_errors_in_each_mode() {
+        for &mode in SoundnessMode::ALL {
+            for is_base in [true, false] {
+                assert!(try_native_verify_unrolled_in_mode(Vec::new(), is_base, mode).is_err());
+                assert!(try_native_verify_unified_in_mode(Vec::new(), is_base, mode).is_err());
+            }
+        }
+    }
 }

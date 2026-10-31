@@ -19,7 +19,10 @@ use gpu_hash::blake2s::Digest;
 use gpu_prover_context::transfer::TransferKeepalive;
 use gpu_prover_context::ProverContext;
 
-use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, ProverConfig};
+use crate::upstream::{
+    BaseColumns, BaseCommitmentGeometry, BaseOracleRole, CommitmentMode, GKRCircuitArtifact,
+    MerkleTreeCapVarLength, ProverConfig,
+};
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -27,6 +30,7 @@ use era_cudart::slice::DeviceSlice;
 use fft::GoodAllocator;
 
 pub struct MemoryCommitmentJob<'a> {
+    geometry: Option<BaseCommitmentGeometry>,
     is_finished_event: CudaEvent,
     callbacks: Callbacks<'a>,
     inputs: Option<TransferKeepalive<'a>>,
@@ -35,8 +39,12 @@ pub struct MemoryCommitmentJob<'a> {
 }
 
 impl<'a> MemoryCommitmentJob<'a> {
+    pub fn base_commitment_geometry(&self) -> Option<BaseCommitmentGeometry> {
+        self.geometry
+    }
     pub fn finish(self) -> CudaResult<(Vec<MerkleTreeCapVarLength>, f32)> {
         let Self {
+            geometry: _,
             is_finished_event,
             callbacks,
             inputs,
@@ -52,26 +60,88 @@ impl<'a> MemoryCommitmentJob<'a> {
     }
 }
 
-/// The GPU prover commits every base column set over the circuit's own
-/// `2^trace_len_log2` domain (one committed column per base column) and starts
-/// WHIR from that size: it does not implement the base-commitment packing of
-/// `ProverConfig::pack_log2` (`2^pack_log2` consecutive columns per committed
-/// polynomial, WHIR message `2^(trace_len_log2 + pack_log2)`, `pack_log2` extra
-/// claim-point coordinates drawn after the GKR phase). Every GPU entry that
-/// takes a `ProverConfig` (the memory commitments here, `prove()` and the DR
-/// preflight in `gpu_circuit_prover`) calls this before enqueuing any
-/// commitment or proof kernel (the preflight rejects before transfers are
-/// even constructed), so a packed config fails closed instead of yielding an
-/// unpacked proof that the verifier generated from the same config rejects.
-pub fn assert_unpacked_prover_config(prover_config: &ProverConfig) {
-    assert_eq!(
-        prover_config.pack_log2,
-        0,
-        "GPU prover does not implement base-commitment packing: ProverConfig::pack_log2 = {} \
-         (WHIR message 2^{}); prove packed configs with the CPU prover",
-        prover_config.pack_log2,
-        prover_config.whir_message_size_log2(),
+/// Whether base storage must carry the resolved commitment geometry.
+/// Cross-crate producers preserve the legacy k0/f1 separate allocation path,
+/// while virtual or merged commitments also carry geometry at pad zero.
+pub fn uses_base_commitment_geometry(geometry: &BaseCommitmentGeometry) -> bool {
+    geometry.pack_log2() != 0
+        || geometry.is_virtual_packing()
+        || geometry.commitment_mode() == CommitmentMode::MergedMemoryAndWitness
+}
+
+/// Field-free admission shared by config-driven memory and proof entries.
+/// The generated base opening verifier has one or two accumulators (f0/f1).
+pub fn validate_separate_base_commitment_geometry(geometry: &BaseCommitmentGeometry) {
+    assert!(
+        geometry.values_per_leaf() <= 2,
+        "GPU base opening verifier supports only fold_log2<=1 (one or two accumulators)"
     );
+    assert_eq!(
+        geometry.commitment_mode(),
+        CommitmentMode::SeparateMemoryAndWitness,
+        "memory-only producer requires separate memory and witness commitments"
+    );
+}
+
+/// Check the immutable config/geometry pair against its logical producer.
+/// Legacy k0/f1 does not enter the packed holder's transform/policy validators.
+pub fn validate_memory_commitment_config<F: crate::upstream::PrimeField>(
+    config: &ProverConfig,
+    geometry: &BaseCommitmentGeometry,
+    circuit: &GKRCircuitArtifact<F>,
+) {
+    let expected = BaseCommitmentGeometry::from_config(config, BaseColumns::of(circuit))
+        .expect("invalid memory commitment config");
+    assert_eq!(
+        *geometry, expected,
+        "memory commitment config/geometry mismatch"
+    );
+    assert_eq!(
+        1usize << geometry.trace_len_log2(),
+        circuit.trace_len,
+        "memory commitment config trace length mismatch"
+    );
+    validate_separate_base_commitment_geometry(geometry);
+    if uses_base_commitment_geometry(geometry) {
+        validate_memory_commitment_geometry(geometry, circuit);
+    }
+}
+
+#[derive(Clone, Copy)]
+enum MemoryCommitmentShape<'a> {
+    Unpacked(&'a ProverConfig),
+    Geometry(BaseCommitmentGeometry),
+}
+
+/// Bind protocol geometry to the existing logical memory producer before transfers.
+pub fn validate_memory_commitment_geometry<F: crate::upstream::PrimeField>(
+    geometry: &BaseCommitmentGeometry,
+    compiled_circuit: &GKRCircuitArtifact<F>,
+) {
+    assert_eq!(
+        geometry.commitment_mode(),
+        CommitmentMode::SeparateMemoryAndWitness,
+        "memory precommit requires separate memory and witness commitments"
+    );
+    validate_stage1_commitment_geometry(geometry, compiled_circuit);
+}
+
+/// Field-independent shape binding for separate or concatenated stage1 storage.
+pub fn validate_stage1_commitment_geometry<F: crate::upstream::PrimeField>(
+    geometry: &BaseCommitmentGeometry,
+    compiled_circuit: &GKRCircuitArtifact<F>,
+) {
+    assert_eq!(
+        geometry.logical_columns(),
+        BaseColumns::of(compiled_circuit),
+        "memory precommit columns disagree with compiled circuit"
+    );
+    assert_eq!(
+        1usize << geometry.trace_len_log2(),
+        compiled_circuit.trace_len,
+        "memory precommit trace length disagrees with compiled circuit"
+    );
+    TraceHolder::<F>::validate_base_layout(geometry, TreesCacheMode::CachePartial);
 }
 
 fn commit_memory_inner<'a>(
@@ -80,217 +150,267 @@ fn commit_memory_inner<'a>(
     decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
     inits_and_teardowns: Option<&crate::witness::trace_unrolled::InitsAndTeardownsTraceDevice>,
     tracing_data: Option<&TracingDataDevice>,
-    prover_config: &ProverConfig,
+    shape: MemoryCommitmentShape<'_>,
     inputs: Option<TransferKeepalive<'a>>,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
-    assert_unpacked_prover_config(prover_config);
-    assert_eq!(
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.whir_schedule.whir_steps_schedule[0]
-    );
-    let log_lde_factor = prover_config.lde_factor.trailing_zeros();
-    let log_rows_per_leaf = prover_config.base_oracles_values_per_leaf.trailing_zeros();
-    let log_tree_cap_size = prover_config.cap_size.trailing_zeros();
     let trace_len = compiled_circuit.trace_len;
     assert!(trace_len.is_power_of_two());
     let log_domain_size = trace_len.trailing_zeros();
-    let memory_columns_count = compiled_circuit.memory_layout.total_width;
-    let mut memory_holder = TraceHolder::new(
-        log_domain_size,
-        log_lde_factor,
-        log_rows_per_leaf,
-        log_tree_cap_size,
-        memory_columns_count,
-        TreesCacheMode::CachePartial,
-        context,
-    )?;
+    let producing_geometry = match shape {
+        MemoryCommitmentShape::Unpacked(_) => None,
+        MemoryCommitmentShape::Geometry(geometry) => Some(geometry),
+    };
+    let mut memory_holder = match shape {
+        MemoryCommitmentShape::Unpacked(config) => TraceHolder::new(
+            log_domain_size,
+            config.lde_factor().trailing_zeros(),
+            config.base_oracles_values_per_leaf().trailing_zeros(),
+            config.cap_size.trailing_zeros(),
+            compiled_circuit.memory_layout.total_width,
+            TreesCacheMode::CachePartial,
+            context,
+        )?,
+        MemoryCommitmentShape::Geometry(geometry) => {
+            validate_memory_commitment_geometry(&geometry, compiled_circuit);
+            crate::trace::holder::validate_baby_bear_base_geometry(
+                &geometry,
+                context
+                    .ntt_device_context()
+                    .whir_leaf_transform_params()
+                    .omega_log_order,
+            );
+            TraceHolder::new_base(
+                geometry,
+                BaseOracleRole::Memory,
+                TreesCacheMode::CachePartial,
+                context,
+            )?
+        }
+    };
     let range = Range::new("commit_memory")?;
     let stream = context.get_exec_stream();
     range.start(stream)?;
-    let evaluations = memory_holder.get_uninit_hypercube_evals_mut();
-    let memory = &mut DeviceMatrixMut::new(evaluations, trace_len);
-    match (circuit_type, tracing_data.as_ref()) {
-        (
-            CircuitType::Delegation(circuit_type),
-            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::BigIntWithControl(
-                trace,
-            ))),
-        ) => {
-            assert_eq!(
-                circuit_type,
-                crate::witness::circuit_type::DelegationCircuitType::BigIntWithControl
-            );
-            generate_memory_values_delegation::<
-                _,
-                { crate::witness::circuit_type::DelegationCircuitType::BigIntWithControl as u16 },
-            >(compiled_circuit, trace, memory, stream)?;
-        }
-        (
-            CircuitType::Delegation(circuit_type),
-            Some(TracingDataDevice::Delegation(
-                DelegationTracingDataDevice::Blake2WithCompression(trace),
-            )),
-        ) => {
-            assert_eq!(
-                circuit_type,
-                crate::witness::circuit_type::DelegationCircuitType::Blake2WithCompression
-            );
-            generate_memory_values_delegation::<
-                _,
-                {
+    if producing_geometry.is_none() || memory_holder.columns_count != 0 {
+        let evaluations = memory_holder.get_uninit_hypercube_evals_mut();
+        let memory = &mut DeviceMatrixMut::new(evaluations, trace_len);
+        match (circuit_type, tracing_data.as_ref()) {
+            (
+                CircuitType::Delegation(circuit_type),
+                Some(TracingDataDevice::Delegation(
+                    DelegationTracingDataDevice::BigIntWithControl(trace),
+                )),
+            ) => {
+                assert_eq!(
+                    circuit_type,
+                    crate::witness::circuit_type::DelegationCircuitType::BigIntWithControl
+                );
+                generate_memory_values_delegation::<
+                    _,
+                    {
+                        crate::witness::circuit_type::DelegationCircuitType::BigIntWithControl
+                            as u16
+                    },
+                >(compiled_circuit, trace, memory, stream)?;
+            }
+            (
+                CircuitType::Delegation(circuit_type),
+                Some(TracingDataDevice::Delegation(
+                    DelegationTracingDataDevice::Blake2WithCompression(trace),
+                )),
+            ) => {
+                assert_eq!(
+                    circuit_type,
                     crate::witness::circuit_type::DelegationCircuitType::Blake2WithCompression
-                        as u16
-                },
-            >(compiled_circuit, trace, memory, stream)?;
+                );
+                generate_memory_values_delegation::<
+                    _,
+                    {
+                        crate::witness::circuit_type::DelegationCircuitType::Blake2WithCompression
+                            as u16
+                    },
+                >(compiled_circuit, trace, memory, stream)?;
+            }
+            (
+                CircuitType::Delegation(circuit_type),
+                Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::Blake2GFunction(
+                    trace,
+                ))),
+            ) => {
+                assert_eq!(
+                    circuit_type,
+                    crate::witness::circuit_type::DelegationCircuitType::Blake2GFunction
+                );
+                generate_memory_values_delegation::<
+                    _,
+                    { crate::witness::circuit_type::DelegationCircuitType::Blake2GFunction as u16 },
+                >(compiled_circuit, trace, memory, stream)?;
+            }
+            (
+                CircuitType::Delegation(circuit_type),
+                Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakSpecial5(
+                    trace,
+                ))),
+            ) => {
+                assert_eq!(
+                    circuit_type,
+                    crate::witness::circuit_type::DelegationCircuitType::KeccakSpecial5
+                );
+                generate_memory_values_delegation::<
+                    _,
+                    { crate::witness::circuit_type::DelegationCircuitType::KeccakSpecial5 as u16 },
+                >(compiled_circuit, trace, memory, stream)?;
+            }
+            (
+                CircuitType::Delegation(circuit_type),
+                Some(TracingDataDevice::Delegation(
+                    DelegationTracingDataDevice::KeccakColumnParity(trace),
+                )),
+            ) => {
+                assert_eq!(
+                    circuit_type,
+                    crate::witness::circuit_type::DelegationCircuitType::KeccakColumnParity
+                );
+                generate_memory_values_delegation::<
+                    _,
+                    {
+                        crate::witness::circuit_type::DelegationCircuitType::KeccakColumnParity
+                            as u16
+                    },
+                >(compiled_circuit, trace, memory, stream)?;
+            }
+            (
+                CircuitType::Delegation(circuit_type),
+                Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakThetaRho(
+                    trace,
+                ))),
+            ) => {
+                assert_eq!(
+                    circuit_type,
+                    crate::witness::circuit_type::DelegationCircuitType::KeccakThetaRho
+                );
+                generate_memory_values_delegation::<
+                    _,
+                    { crate::witness::circuit_type::DelegationCircuitType::KeccakThetaRho as u16 },
+                >(compiled_circuit, trace, memory, stream)?;
+            }
+            (
+                CircuitType::Delegation(circuit_type),
+                Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakChi5(trace))),
+            ) => {
+                assert_eq!(
+                    circuit_type,
+                    crate::witness::circuit_type::DelegationCircuitType::KeccakChi5
+                );
+                generate_memory_values_delegation::<
+                    _,
+                    { crate::witness::circuit_type::DelegationCircuitType::KeccakChi5 as u16 },
+                >(compiled_circuit, trace, memory, stream)?;
+            }
+            (
+                CircuitType::Unrolled(UnrolledCircuitType::NonMemory(circuit_type)),
+                Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(trace))),
+            ) => {
+                generate_memory_values_unrolled_non_memory(
+                    circuit_type,
+                    &compiled_circuit.memory_layout,
+                    decoder_table.expect("non-memory circuits require a decoder table"),
+                    trace,
+                    memory,
+                    stream,
+                )?;
+            }
+            (
+                CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type)),
+                Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Memory(trace))),
+            ) => {
+                generate_memory_values_unrolled_memory(
+                    circuit_type,
+                    &compiled_circuit.memory_layout,
+                    decoder_table.expect("memory circuits require a decoder table"),
+                    trace,
+                    memory,
+                    stream,
+                )?;
+            }
+            (CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns), None) => {
+                let inits_and_teardowns = inits_and_teardowns
+                    .as_ref()
+                    .expect("standalone init/teardown circuit requires init/teardown data");
+                generate_memory_and_witness_values_unrolled_inits_and_teardowns(
+                    &compiled_circuit.memory_layout,
+                    log_domain_size,
+                    PAGE_SIZE_LOG2,
+                    inits_and_teardowns,
+                    memory,
+                    stream,
+                )?;
+            }
+            (
+                CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(trace))),
+            ) => {
+                // Inline i/t paged sweep FIRST (page-based-reuse): it zeroes the
+                // whole matrix (set_to_zero) then writes the teardown columns; the per-row unified
+                // memory-values launch below fills machine_state + shuffle_ram. Mirrors the standalone
+                // InitsAndTeardowns arm above. A TRIVIAL (dummy) chunk has no pages, so its
+                // i/t columns stay all zero, as the CPU reference commits them.
+                generate_memory_and_witness_values_unrolled_inits_and_teardowns(
+                    &compiled_circuit.memory_layout,
+                    log_domain_size,
+                    PAGE_SIZE_LOG2,
+                    inits_and_teardowns.expect("unified circuit requires init/teardown buffers"),
+                    memory,
+                    stream,
+                )?;
+                generate_memory_values_unrolled_unified(
+                    &compiled_circuit.memory_layout,
+                    decoder_table.expect("unified circuit requires a decoder table"),
+                    trace,
+                    memory,
+                    stream,
+                )?;
+            }
+            _ => unimplemented!(
+                "commit_memory received an unsupported witness shape for circuit {circuit_type:?}"
+            ),
         }
-        (
-            CircuitType::Delegation(circuit_type),
-            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::Blake2GFunction(
-                trace,
-            ))),
-        ) => {
-            assert_eq!(
-                circuit_type,
-                crate::witness::circuit_type::DelegationCircuitType::Blake2GFunction
-            );
-            generate_memory_values_delegation::<
-                _,
-                { crate::witness::circuit_type::DelegationCircuitType::Blake2GFunction as u16 },
-            >(compiled_circuit, trace, memory, stream)?;
-        }
-        (
-            CircuitType::Delegation(circuit_type),
-            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakSpecial5(trace))),
-        ) => {
-            assert_eq!(
-                circuit_type,
-                crate::witness::circuit_type::DelegationCircuitType::KeccakSpecial5
-            );
-            generate_memory_values_delegation::<
-                _,
-                { crate::witness::circuit_type::DelegationCircuitType::KeccakSpecial5 as u16 },
-            >(compiled_circuit, trace, memory, stream)?;
-        }
-        (
-            CircuitType::Delegation(circuit_type),
-            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakColumnParity(
-                trace,
-            ))),
-        ) => {
-            assert_eq!(
-                circuit_type,
-                crate::witness::circuit_type::DelegationCircuitType::KeccakColumnParity
-            );
-            generate_memory_values_delegation::<
-                _,
-                { crate::witness::circuit_type::DelegationCircuitType::KeccakColumnParity as u16 },
-            >(compiled_circuit, trace, memory, stream)?;
-        }
-        (
-            CircuitType::Delegation(circuit_type),
-            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakThetaRho(trace))),
-        ) => {
-            assert_eq!(
-                circuit_type,
-                crate::witness::circuit_type::DelegationCircuitType::KeccakThetaRho
-            );
-            generate_memory_values_delegation::<
-                _,
-                { crate::witness::circuit_type::DelegationCircuitType::KeccakThetaRho as u16 },
-            >(compiled_circuit, trace, memory, stream)?;
-        }
-        (
-            CircuitType::Delegation(circuit_type),
-            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakChi5(trace))),
-        ) => {
-            assert_eq!(
-                circuit_type,
-                crate::witness::circuit_type::DelegationCircuitType::KeccakChi5
-            );
-            generate_memory_values_delegation::<
-                _,
-                { crate::witness::circuit_type::DelegationCircuitType::KeccakChi5 as u16 },
-            >(compiled_circuit, trace, memory, stream)?;
-        }
-        (
-            CircuitType::Unrolled(UnrolledCircuitType::NonMemory(circuit_type)),
-            Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(trace))),
-        ) => {
-            generate_memory_values_unrolled_non_memory(
-                circuit_type,
-                &compiled_circuit.memory_layout,
-                decoder_table.expect("non-memory circuits require a decoder table"),
-                trace,
-                memory,
-                stream,
-            )?;
-        }
-        (
-            CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type)),
-            Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Memory(trace))),
-        ) => {
-            generate_memory_values_unrolled_memory(
-                circuit_type,
-                &compiled_circuit.memory_layout,
-                decoder_table.expect("memory circuits require a decoder table"),
-                trace,
-                memory,
-                stream,
-            )?;
-        }
-        (CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns), None) => {
-            let inits_and_teardowns = inits_and_teardowns
-                .as_ref()
-                .expect("standalone init/teardown circuit requires init/teardown data");
-            generate_memory_and_witness_values_unrolled_inits_and_teardowns(
-                &compiled_circuit.memory_layout,
-                log_domain_size,
-                PAGE_SIZE_LOG2,
-                inits_and_teardowns,
-                memory,
-                stream,
-            )?;
-        }
-        (
-            CircuitType::Unrolled(UnrolledCircuitType::Unified),
-            Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(trace))),
-        ) => {
-            // Inline i/t paged sweep FIRST (page-based-reuse): it zeroes the
-            // whole matrix (set_to_zero) then writes the teardown columns; the per-row unified
-            // memory-values launch below fills machine_state + shuffle_ram. Mirrors the standalone
-            // InitsAndTeardowns arm above. A TRIVIAL (dummy) chunk has no pages, so its
-            // i/t columns stay all zero, as the CPU reference commits them.
-            generate_memory_and_witness_values_unrolled_inits_and_teardowns(
-                &compiled_circuit.memory_layout,
-                log_domain_size,
-                PAGE_SIZE_LOG2,
-                inits_and_teardowns.expect("unified circuit requires init/teardown buffers"),
-                memory,
-                stream,
-            )?;
-            generate_memory_values_unrolled_unified(
-                &compiled_circuit.memory_layout,
-                decoder_table.expect("unified circuit requires a decoder table"),
-                trace,
-                memory,
-                stream,
-            )?;
-        }
-        _ => unimplemented!(
-            "commit_memory received an unsupported witness shape for circuit {circuit_type:?}"
-        ),
     }
-    let _ = evaluations;
     memory_holder.commit_all(context)?;
-    // Schedule a D2H of the unified device cap into a pinned host buffer; the
-    // callback below slices that single contiguous cap into per-coset
-    // `MerkleTreeCapVarLength` entries (canonical bit-reversed coset order).
-    let log_lde = memory_holder.log_lde_factor;
+    schedule_memory_cap_readback(
+        memory_holder.unified_device_cap(),
+        memory_holder
+            .base_commitment_geometry()
+            .map(|(geometry, _)| geometry),
+        memory_holder.log_lde_factor,
+        Callbacks::new(),
+        inputs,
+        range,
+        context,
+    )
+}
+
+/// Cap readback shared by separate and merged commitment producers.
+/// Public for gpu_circuit_prover; field values stay at each commit boundary.
+pub fn schedule_memory_cap_readback<'a>(
+    unified_cap: &DeviceSlice<Digest>,
+    producing_geometry: Option<BaseCommitmentGeometry>,
+    log_lde: u32,
+    mut callbacks: Callbacks<'a>,
+    inputs: Option<TransferKeepalive<'a>>,
+    range: Range,
+    context: &ProverContext,
+) -> CudaResult<MemoryCommitmentJob<'a>> {
+    let stream = context.get_exec_stream();
+    // Schedule a D2H of the unified device cap (canonical bit-reversed coset
+    // order) into a pinned host buffer; the callback below slices it into
+    // per-coset `MerkleTreeCapVarLength` entries in natural coset order.
     let lde_factor = 1usize << log_lde;
-    let cap_size = 1usize << log_tree_cap_size;
+    let cap_size = unified_cap.len();
     let mut cap_host = unsafe { context.alloc_host_uninit_slice::<Digest>(cap_size) };
-    memory_copy_async(&mut cap_host, memory_holder.unified_device_cap(), stream)?;
+    if cap_size != 0 {
+        memory_copy_async(&mut cap_host, unified_cap, stream)?;
+    }
     let cap_host_accessor = cap_host.get_accessor();
     let mut tree_caps = Box::new(None);
     let dst_tree_caps_accessor = UnsafeMutAccessor::new(tree_caps.as_mut());
@@ -312,7 +432,6 @@ fn commit_memory_inner<'a>(
             .replace(per_coset_caps)
             .is_none());
     };
-    let mut callbacks = Callbacks::new();
     callbacks.schedule(transform_tree_caps_fn, stream)?;
     // `cap_host` (pool-backed pinned host buffer) drops at end of this function;
     // the callback above has already been scheduled, so the contract's
@@ -322,6 +441,7 @@ fn commit_memory_inner<'a>(
     let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     is_finished_event.record(stream)?;
     let job = MemoryCommitmentJob {
+        geometry: producing_geometry,
         is_finished_event,
         callbacks,
         inputs,
@@ -346,10 +466,32 @@ pub fn commit_memory<'a>(
         decoder_table,
         None,
         Some(tracing_data),
-        prover_config,
+        config_memory_shape(prover_config, compiled_circuit),
         None,
         context,
     )
+}
+
+fn config_memory_shape<'a>(
+    config: &'a ProverConfig,
+    circuit: &GKRCircuitArtifact<BF>,
+) -> MemoryCommitmentShape<'a> {
+    let geometry = BaseCommitmentGeometry::from_config(config, BaseColumns::of(circuit))
+        .expect("invalid memory commitment config");
+    memory_shape_for_geometry(config, geometry, circuit)
+}
+
+fn memory_shape_for_geometry<'a>(
+    config: &'a ProverConfig,
+    geometry: BaseCommitmentGeometry,
+    circuit: &GKRCircuitArtifact<BF>,
+) -> MemoryCommitmentShape<'a> {
+    validate_memory_commitment_config(config, &geometry, circuit);
+    if uses_base_commitment_geometry(&geometry) {
+        MemoryCommitmentShape::Geometry(geometry)
+    } else {
+        MemoryCommitmentShape::Unpacked(config)
+    }
 }
 
 pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
@@ -359,8 +501,38 @@ pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
     prover_config: &ProverConfig,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
-    // reject a packed config before touching the streams
-    assert_unpacked_prover_config(prover_config);
+    let geometry =
+        BaseCommitmentGeometry::from_config(prover_config, BaseColumns::of(compiled_circuit))
+            .expect("invalid memory commitment config");
+    commit_memory_from_transfers_for_geometry(
+        circuit_type,
+        compiled_circuit,
+        inputs,
+        prover_config,
+        geometry,
+        context,
+    )
+}
+
+/// Use the worker's already resolved config/geometry without another CPU lookup.
+pub fn commit_memory_from_transfers_for_geometry<'a, A: GoodAllocator + 'a>(
+    circuit_type: CircuitType,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    inputs: super::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>,
+    prover_config: &ProverConfig,
+    geometry: BaseCommitmentGeometry,
+    context: &ProverContext,
+) -> CudaResult<MemoryCommitmentJob<'a>> {
+    let shape = memory_shape_for_geometry(prover_config, geometry, compiled_circuit);
+    if geometry.pack_log2() != 0 {
+        crate::trace::holder::validate_baby_bear_base_geometry(
+            &geometry,
+            context
+                .ntt_device_context()
+                .whir_leaf_transform_params()
+                .omega_log_order,
+        );
+    }
     // One exec-stream wait covers every H2D bundled by `inputs` (decoder,
     // inits_and_teardowns, tracing_data).
     inputs.ensure_transferred(context)?;
@@ -378,38 +550,54 @@ pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
         decoder.as_ref().map(|t| &t.data_device[..]),
         inits_and_teardowns.as_ref().map(|t| &t.data_device),
         tracing_data.as_ref().map(|t| &t.data_device),
-        prover_config,
+        shape,
         Some(transfer.into_keepalive()),
         context,
     )
 }
 
 #[cfg(test)]
-mod tests {
-    use super::assert_unpacked_prover_config;
+mod tests;
+
+#[cfg(test)]
+mod cpu_geometry_routing {
+    use super::*;
     use prover::definitions::SecurityLevel;
-    use prover::gkr::prover_config::example_configs::{
-        config_for_security_level_under_pessimistic_conjecture,
-        packed_config_for_security_level_under_pessimistic_conjecture,
-    };
+    use prover::gkr::prover::WhirSchedule;
 
     #[test]
-    fn cpu_unpacked_prover_config_is_accepted() {
-        let config =
-            config_for_security_level_under_pessimistic_conjecture(20, SecurityLevel::Sec100);
-        assert_eq!(config.pack_log2, 0);
-        assert_unpacked_prover_config(&config);
-    }
-
-    #[test]
-    #[should_panic(expected = "GPU prover does not implement base-commitment packing")]
-    fn cpu_packed_prover_config_is_rejected() {
-        let config = packed_config_for_security_level_under_pessimistic_conjecture(
-            20,
-            4,
-            SecurityLevel::Sec100,
-        );
-        assert_eq!(config.pack_log2, 4);
-        assert_unpacked_prover_config(&config);
+    fn cpu_nonlegacy_base_routing_includes_pure_virtual_and_empty_sets() {
+        for k in [0, 2] {
+            for fold in [0, 1] {
+                let config = ProverConfig::whir_only(
+                    22 - k,
+                    WhirSchedule::from_legacy_arrays(2, 16, k, &[fold, 5], &[1, 1], &[2], &[0, 0]),
+                    SecurityLevel::Sec100,
+                );
+                for columns in [
+                    BaseColumns {
+                        memory: 1,
+                        witness: 0,
+                        setup: 0,
+                    },
+                    BaseColumns {
+                        memory: 0,
+                        witness: 0,
+                        setup: 0,
+                    },
+                ] {
+                    let geometry = BaseCommitmentGeometry::from_config(&config, columns).unwrap();
+                    assert_eq!(
+                        uses_base_commitment_geometry(&geometry),
+                        k != 0 || fold == 0
+                    );
+                    assert_eq!(
+                        geometry.oracle(BaseOracleRole::Witness).physical_columns(),
+                        0
+                    );
+                    assert_eq!(geometry.oracle(BaseOracleRole::Setup).physical_columns(), 0);
+                }
+            }
+        }
     }
 }
