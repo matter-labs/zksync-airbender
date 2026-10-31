@@ -346,14 +346,16 @@ mod tests {
             let challenges = (0..count)
                 .map(|_| E4::random_element(&mut rng()))
                 .collect::<Vec<_>>();
-            let mut d_indexes = DeviceAllocation::alloc(count).unwrap();
-            let mut d_challenges = DeviceAllocation::alloc(count).unwrap();
-            memory_copy_async(&mut d_indexes, &indexes[..], stream).unwrap();
-            memory_copy_async(&mut d_challenges, &challenges[..], stream).unwrap();
+            // cudaMalloc(0) returns a null pointer, which a DeviceAllocation cannot
+            // hold; an empty batch uses an empty prefix of a one-element allocation.
+            let mut d_indexes = DeviceAllocation::alloc(count.max(1)).unwrap();
+            let mut d_challenges = DeviceAllocation::alloc(count.max(1)).unwrap();
+            memory_copy_async(&mut d_indexes[..count], &indexes[..], stream).unwrap();
+            memory_copy_async(&mut d_challenges[..count], &challenges[..], stream).unwrap();
             let end = offset + count;
             add_terms(
-                &d_indexes[..],
-                &d_challenges[..],
+                &d_indexes[..count],
+                &d_challenges[..count],
                 query_domain_log2,
                 generator,
                 &mut device.weights[offset..end],
@@ -789,8 +791,10 @@ mod tests {
     fn leaf_width_above_block_interleave_is_rejected_before_launch() {
         let context = make_test_context(64, 16);
         let coeffs = DeviceAllocation::<BF>::alloc(1).unwrap();
-        let indexes = DeviceAllocation::<u32>::alloc(0).unwrap();
-        let mut leaves = DeviceAllocation::<E4>::alloc(0).unwrap();
+        // Empty inputs as empty prefixes: a zero-length DeviceAllocation would wrap
+        // the null pointer cudaMalloc(0) returns.
+        let indexes = DeviceAllocation::<u32>::alloc(1).unwrap();
+        let mut leaves = DeviceAllocation::<E4>::alloc(1).unwrap();
         let params = context.ntt_device_context().whir_leaf_transform_params();
         let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             leaves_from_monomials(
@@ -799,8 +803,8 @@ mod tests {
                 9,
                 1,
                 9,
-                &indexes,
-                &mut leaves,
+                &indexes[..0],
+                &mut leaves[..0],
                 context.get_exec_stream(),
             )
         }))
