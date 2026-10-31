@@ -2865,3 +2865,29 @@ The production OS binary comparison and verified checker rollout also
 remain open. No native circuit, Rust source or imported value changed.
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Program parameter migration: native decoder adapters
+
+All 14 CPU profiles now prove the native decoder tuple and its active weight.
+Their proofs use native arithmetic and the imported decoder expressions.
+Each profile then derives public decoder membership from its exact lookup
+argument. Both row registries expose this result. Their trace wrappers derive
+`UnrolledDecoderExactLookup` and `UnifiedDecoderExactLookup` from the actual
+row certificates. Native state and constraint proofs must supply the PC range.
+The adapters assume no decoded instruction or retained decoder equality.
+
+All 28 case modules passed focused kernel checks in 72 seconds. Peak physical
+memory was 451 MiB. The registry and trace wrappers passed in four seconds.
+All 60 new roots passed direct axiom checks in three seconds. They use only
+the three allowed axioms. The inventory has 17,459 roots. It retains all
+17,399 prior roots. Generator freshness and mutation controls passed. The
+controls reject changes to each lookup binding and each native decoder tuple.
+Each guard cleaned its owned children.
+
+ROM constraint transport and the legacy compiler execution migration remain
+open. These must also derive the PC range from native acceptance. The
+production OS binary comparison and verified checker rollout remain open.
+Both cache modes remain required. No native circuit, Rust source or imported
+value changed. Full frontend validation, environment audit, baseline refresh,
+transitive replay and Linux qualification did not run.

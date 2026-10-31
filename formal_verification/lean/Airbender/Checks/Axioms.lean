@@ -1,3 +1,32 @@
+import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup
+import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.UnifiedCached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.UnifiedUncached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.SubwordMemoryCached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.SubwordMemoryUncached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.WordMemoryCached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.WordMemoryUncached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.ShiftBinopCached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.ShiftBinopUncached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.MulDivCached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.MulDivUncached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.JumpBranchCached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.JumpBranchUncached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.AddSubCached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.AddSubUncached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.UnifiedCached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.UnifiedUncached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.SubwordMemoryCached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.SubwordMemoryUncached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.WordMemoryCached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.WordMemoryUncached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.ShiftBinopCached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.ShiftBinopUncached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.MulDivCached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.MulDivUncached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.JumpBranchCached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.JumpBranchUncached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.AddSubCached
+import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.AddSubUncached
 import Airbender.Proofs.GKRProtocol.NativePublicDecoder
 import Airbender.Proofs.GKRProtocol.ProgramSetupNative
 import Airbender.Proofs.GKRProtocol.ProgramLogicalRows
@@ -18920,3 +18949,66 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.NativeProgramSetup.active_decoder_payload
 #print axioms Airbender.Compiler.NativeProgramSetup.unrolled_decoder_lookup
 #print axioms Airbender.Compiler.NativeProgramSetup.unified_decoder_lookup
+
+#print axioms Airbender.Compiler.ProgramDecoderNative.AddSubUncached.decoder_tuple
+#print axioms Airbender.Compiler.ProgramDecoderNative.AddSubUncached.decoder_enabled
+#print axioms Airbender.Compiler.ProgramDecoderNative.AddSubUncached.decoder_member
+#print axioms Airbender.Compiler.ProgramDecoderNative.AddSubCached.decoder_tuple
+#print axioms Airbender.Compiler.ProgramDecoderNative.AddSubCached.decoder_enabled
+#print axioms Airbender.Compiler.ProgramDecoderNative.AddSubCached.decoder_member
+#print axioms Airbender.Compiler.ProgramDecoderNative.JumpBranchUncached.decoder_tuple
+#print axioms Airbender.Compiler.ProgramDecoderNative.JumpBranchUncached.decoder_enabled
+#print axioms Airbender.Compiler.ProgramDecoderNative.JumpBranchUncached.decoder_member
+#print axioms Airbender.Compiler.ProgramDecoderNative.JumpBranchCached.decoder_tuple
+#print axioms Airbender.Compiler.ProgramDecoderNative.JumpBranchCached.decoder_enabled
+#print axioms Airbender.Compiler.ProgramDecoderNative.JumpBranchCached.decoder_member
+#print axioms Airbender.Compiler.ProgramDecoderNative.MulDivUncached.decoder_tuple
+#print axioms Airbender.Compiler.ProgramDecoderNative.MulDivUncached.decoder_enabled
+#print axioms Airbender.Compiler.ProgramDecoderNative.MulDivUncached.decoder_member
+#print axioms Airbender.Compiler.ProgramDecoderNative.MulDivCached.decoder_tuple
+#print axioms Airbender.Compiler.ProgramDecoderNative.MulDivCached.decoder_enabled
+#print axioms Airbender.Compiler.ProgramDecoderNative.MulDivCached.decoder_member
+#print axioms Airbender.Compiler.ProgramDecoderNative.ShiftBinopUncached.decoder_tuple
+#print axioms Airbender.Compiler.ProgramDecoderNative.ShiftBinopUncached.decoder_enabled
+#print axioms Airbender.Compiler.ProgramDecoderNative.ShiftBinopUncached.decoder_member
+#print axioms Airbender.Compiler.ProgramDecoderNative.ShiftBinopCached.decoder_tuple
+#print axioms Airbender.Compiler.ProgramDecoderNative.ShiftBinopCached.decoder_enabled
+#print axioms Airbender.Compiler.ProgramDecoderNative.ShiftBinopCached.decoder_member
+#print axioms Airbender.Compiler.ProgramDecoderNative.WordMemoryUncached.decoder_tuple
+#print axioms Airbender.Compiler.ProgramDecoderNative.WordMemoryUncached.decoder_enabled
+#print axioms Airbender.Compiler.ProgramDecoderNative.WordMemoryUncached.decoder_member
+#print axioms Airbender.Compiler.ProgramDecoderNative.WordMemoryCached.decoder_tuple
+#print axioms Airbender.Compiler.ProgramDecoderNative.WordMemoryCached.decoder_enabled
+#print axioms Airbender.Compiler.ProgramDecoderNative.WordMemoryCached.decoder_member
+#print axioms Airbender.Compiler.ProgramDecoderNative.SubwordMemoryUncached.decoder_tuple
+#print axioms Airbender.Compiler.ProgramDecoderNative.SubwordMemoryUncached.decoder_enabled
+#print axioms Airbender.Compiler.ProgramDecoderNative.SubwordMemoryUncached.decoder_member
+#print axioms Airbender.Compiler.ProgramDecoderNative.SubwordMemoryCached.decoder_tuple
+#print axioms Airbender.Compiler.ProgramDecoderNative.SubwordMemoryCached.decoder_enabled
+#print axioms Airbender.Compiler.ProgramDecoderNative.SubwordMemoryCached.decoder_member
+#print axioms Airbender.Compiler.ProgramDecoderNative.UnifiedUncached.decoder_tuple
+#print axioms Airbender.Compiler.ProgramDecoderNative.UnifiedUncached.decoder_enabled
+#print axioms Airbender.Compiler.ProgramDecoderNative.UnifiedUncached.decoder_member
+#print axioms Airbender.Compiler.ProgramDecoderNative.UnifiedCached.decoder_tuple
+#print axioms Airbender.Compiler.ProgramDecoderNative.UnifiedCached.decoder_enabled
+#print axioms Airbender.Compiler.ProgramDecoderNative.UnifiedCached.decoder_member
+
+#print axioms Airbender.Compiler.ProgramDecoderLookup.AddSubUncached.decoder_lookup
+#print axioms Airbender.Compiler.ProgramDecoderLookup.AddSubCached.decoder_lookup
+#print axioms Airbender.Compiler.ProgramDecoderLookup.JumpBranchUncached.decoder_lookup
+#print axioms Airbender.Compiler.ProgramDecoderLookup.JumpBranchCached.decoder_lookup
+#print axioms Airbender.Compiler.ProgramDecoderLookup.MulDivUncached.decoder_lookup
+#print axioms Airbender.Compiler.ProgramDecoderLookup.MulDivCached.decoder_lookup
+#print axioms Airbender.Compiler.ProgramDecoderLookup.ShiftBinopUncached.decoder_lookup
+#print axioms Airbender.Compiler.ProgramDecoderLookup.ShiftBinopCached.decoder_lookup
+#print axioms Airbender.Compiler.ProgramDecoderLookup.WordMemoryUncached.decoder_lookup
+#print axioms Airbender.Compiler.ProgramDecoderLookup.WordMemoryCached.decoder_lookup
+#print axioms Airbender.Compiler.ProgramDecoderLookup.SubwordMemoryUncached.decoder_lookup
+#print axioms Airbender.Compiler.ProgramDecoderLookup.SubwordMemoryCached.decoder_lookup
+#print axioms Airbender.Compiler.ProgramDecoderLookup.UnifiedUncached.decoder_lookup
+#print axioms Airbender.Compiler.ProgramDecoderLookup.UnifiedCached.decoder_lookup
+
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.decoder_lookup
+#print axioms Airbender.Compiler.PooledExecution.decoder_exact_lookup
+#print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate.decoder_lookup
+#print axioms Airbender.Compiler.UnifiedExecution.decoder_exact_lookup
