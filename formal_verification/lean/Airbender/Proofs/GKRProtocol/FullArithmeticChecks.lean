@@ -105,4 +105,13 @@ theorem gate_at {n m : Nat} {F : Type} [CommRing F] [DecidableEq F] [BEq F] [Law
   List.all_eq_true.mp (checked_parts addresses artifact certificate checked).2.2 _
     (List.getElem_mem index.isLt)
 
+/-- Keep the original source shape before an imported field expression reduces. -/
+theorem source_at_original {n m : Nat} {F : Type} [CommRing F] [DecidableEq F] [BEq F] [LawfulBEq F]
+    (addresses : List GKRAddress) (artifact : ArithmeticExtension n m F)
+    (certificate : Certificate artifact.translation)
+    (checked : check addresses artifact certificate = true) (index : Fin artifact.source.length) :
+    equal (rename artifact.projection (artifact.source.get index))
+      (combination artifact.translation.lowered (certificate.backward index)) = true :=
+  source_at addresses artifact certificate checked index
+
 end Airbender.Compiler.FullArithmeticChecks
