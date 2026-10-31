@@ -19,6 +19,7 @@ class LookupPremiseGeneration(unittest.TestCase):
                              'Airbender/Proofs/GKRProtocol/DecoderArgumentsNative',
                              'Airbender/Proofs/GKRProtocol/ProgramDecoderNative',
                              'Airbender/Proofs/GKRProtocol/ProgramDecoderLookup',
+                             'Airbender/Proofs/GKRProtocol/ProgramFixedLookup',
                              'Airbender/Proofs/GKRProtocol/HelperNative'):
                 destination = scratch / relative
                 destination.mkdir(parents=True)
