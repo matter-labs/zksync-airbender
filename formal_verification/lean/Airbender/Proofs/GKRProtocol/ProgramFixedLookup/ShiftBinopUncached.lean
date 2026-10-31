@@ -1,4 +1,4 @@
-import Airbender.Proofs.GKRProtocol.LogicalRows.ShiftBinopUncached
+import Airbender.Proofs.GKRProtocol.ProgramNativeTransport.ShiftBinopUncached
 import Airbender.Proofs.GKRProtocol.ProgramSetupNative
 import Airbender.Proofs.GKRProtocol.NativeProgramQueries
 

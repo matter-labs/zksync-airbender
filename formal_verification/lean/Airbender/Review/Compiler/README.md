@@ -1,5 +1,7 @@
 # Compiler preservation
 
+<!-- lean-context: Airbender.Proofs.GKRProtocol.ProgramNativeTransport.AddSubUncached -->
+
 Start with the three [machine targets](MachineTargets.lean). Each target lists
 its public setup, native acceptance and exact matching premises. The
 [validation status](../../../VERIFICATION_STATUS.md#validation-evidence) records
@@ -56,7 +58,7 @@ It does not prove Rust decoder equivalence for every possible program.
 [Physical bindings](../../Import/Compiler/Rows/AddSubUncached.lean) select the
 captured addresses. [Native requests](../../Import/Compiler/LogicalRows/AddSubUncached.lean)
 use the actual encoding fields and leaf weights. The
-[transport proof](../../Proofs/GKRProtocol/LogicalRows/AddSubUncached.lean)
+[transport proof](../../Proofs/GKRProtocol/ProgramNativeTransport/AddSubUncached.lean)
 checks arithmetic identities, operand coverage and setup-column bindings.
 [Lookup operands](LookupOperands.lean) and the [logical argument](LookupArgument.lean)
 state the remaining interpretations.

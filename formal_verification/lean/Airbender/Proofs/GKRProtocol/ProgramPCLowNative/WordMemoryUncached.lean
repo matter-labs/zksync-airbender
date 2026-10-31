@@ -1,4 +1,5 @@
 import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.WordMemoryUncached
+import Airbender.Proofs.Constraints
 
 namespace Airbender.Compiler.ProgramPCLowNative.WordMemoryUncached
 open Airbender Airbender.Compiler Airbender.Compiler.PooledRowNative.WordMemoryUncached

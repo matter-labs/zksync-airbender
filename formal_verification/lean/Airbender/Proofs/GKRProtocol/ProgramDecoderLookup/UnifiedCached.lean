@@ -1,5 +1,5 @@
 import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.UnifiedCached
-import Airbender.Proofs.GKRProtocol.LogicalRows.UnifiedCached
+import Airbender.Proofs.GKRProtocol.ProgramNativeTransport.UnifiedCached
 import Airbender.Proofs.GKRProtocol.NativePublicDecoder
 
 namespace Airbender.Compiler.ProgramDecoderLookup.UnifiedCached

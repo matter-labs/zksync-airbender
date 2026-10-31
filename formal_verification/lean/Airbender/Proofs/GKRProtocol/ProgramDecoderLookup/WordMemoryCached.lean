@@ -1,5 +1,5 @@
 import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.WordMemoryCached
-import Airbender.Proofs.GKRProtocol.LogicalRows.WordMemoryCached
+import Airbender.Proofs.GKRProtocol.ProgramNativeTransport.WordMemoryCached
 import Airbender.Proofs.GKRProtocol.NativePublicDecoder
 
 namespace Airbender.Compiler.ProgramDecoderLookup.WordMemoryCached

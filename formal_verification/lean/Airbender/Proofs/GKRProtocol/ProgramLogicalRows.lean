@@ -1,5 +1,5 @@
 import Airbender.Review.Compiler.ProgramLogicalRows
-import Airbender.Proofs.GKRProtocol.LogicalRows
+import Airbender.Proofs.GKRProtocol.ProgramNativeTransport
 
 namespace Airbender.Compiler
 set_option warningAsError true

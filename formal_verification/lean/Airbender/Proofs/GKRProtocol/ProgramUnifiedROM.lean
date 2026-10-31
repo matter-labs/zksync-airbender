@@ -1,5 +1,6 @@
 import Airbender.Proofs.GKRProtocol.NativeProgramQueries
-import Airbender.Proofs.GKRProtocol.ROMNative.UnifiedFullPublic
+import Airbender.Proofs.GKRProtocol.ROMNative.UnifiedBoundary
+import Airbender.Proofs.UnifiedReduced.Tables.ImportedROMRows
 import Airbender.Proofs.GKRProtocol.PhysicalClosedNative.UnifiedUncached
 import Airbender.Proofs.GKRProtocol.PhysicalClosedNative.UnifiedCached
 

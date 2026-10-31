@@ -1,5 +1,5 @@
 import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.AddSubCached
-import Airbender.Proofs.GKRProtocol.LogicalRows.AddSubCached
+import Airbender.Proofs.GKRProtocol.ProgramNativeTransport.AddSubCached
 import Airbender.Proofs.GKRProtocol.NativePublicDecoder
 
 namespace Airbender.Compiler.ProgramDecoderLookup.AddSubCached

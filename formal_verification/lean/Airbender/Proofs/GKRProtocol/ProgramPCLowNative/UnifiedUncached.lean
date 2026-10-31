@@ -1,4 +1,5 @@
 import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.UnifiedUncached
+import Airbender.Proofs.Constraints
 
 namespace Airbender.Compiler.ProgramPCLowNative.UnifiedUncached
 open Airbender Airbender.Compiler Airbender.Compiler.UnifiedRowNative.UnifiedUncached

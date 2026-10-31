@@ -1,6 +1,6 @@
 import Airbender.Review.Helpers.Decoder.ProgramRows
 import Airbender.Proofs.GKRProtocol.TextImage
-import Airbender.Proofs.GKRProtocol.PublicProgram
+import Airbender.Proofs.GKRProtocol.PublicProgramImage
 
 namespace Airbender.Trace.NativeDecoder.ProgramRows.Proofs
 open Airbender.Trace.NativeDecoder.ProgramRows
