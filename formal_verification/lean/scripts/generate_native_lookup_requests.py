@@ -1416,6 +1416,78 @@ packed_table_roots = ['Airbender.Setup.packedByte',
  'Airbender.Verification.ShiftPackedCertificate.coverage',
  'Airbender.UnifiedReduced.Setup.nativeAndDataPackedColumn2']
 
+packed_setup_roots = ['Airbender.Compiler.PackedSetupEquality.bytes',
+ 'Airbender.Compiler.PackedSetupEquality.ArrayCode.decode',
+ 'Airbender.Compiler.PackedSetupEquality.BlockCode.decode',
+ 'Airbender.Compiler.PackedSetupEquality.ArrayCode.length',
+ 'Airbender.Compiler.PackedSetupEquality.BlockCode.length',
+ 'Airbender.Compiler.PackedSetupEquality.bytes_length',
+ 'Airbender.Compiler.PackedSetupEquality.ArrayCode.decode_length',
+ 'Airbender.Compiler.PackedSetupEquality.BlockCode.decode_length',
+ 'Airbender.Compiler.PackedSetupEquality.rowCount',
+ 'Airbender.Compiler.PackedSetupEquality.rowCount_eq',
+ 'Airbender.Compiler.PackedSetupEquality.check',
+ 'Airbender.Compiler.PackedSetupEquality.check_sound',
+ 'Airbender.Compiler.PackedSetupEquality.checkWithLengths',
+ 'Airbender.Compiler.PackedSetupEquality.checkWithLengths_sound',
+ 'Airbender.Compiler.PackedSetupEquality.select_middle',
+ 'Airbender.Compiler.PackedSetupEquality.ArrayCode',
+ 'Airbender.Compiler.PackedSetupEquality.ArrayCode.literal',
+ 'Airbender.Compiler.PackedSetupEquality.ArrayCode.append',
+ 'Airbender.Compiler.PackedSetupEquality.ArrayCode.constant',
+ 'Airbender.Compiler.PackedSetupEquality.ArrayCode.range',
+ 'Airbender.Compiler.PackedSetupEquality.ArrayCode.linear',
+ 'Airbender.Compiler.PackedSetupEquality.ArrayCode.rotate',
+ 'Airbender.Compiler.PackedSetupEquality.ArrayCode.linearRuns',
+ 'Airbender.Compiler.PackedSetupEquality.ArrayCode.lookupRuns',
+ 'Airbender.Compiler.PackedSetupEquality.ArrayCode.packedBytes',
+ 'Airbender.Compiler.PackedSetupEquality.BlockCode',
+ 'Airbender.Compiler.PackedSetupEquality.BlockCode.affine',
+ 'Airbender.Compiler.PackedSetupEquality.BlockCode.dense',
+ 'Airbender.Compiler.PackedSetupEquality.BlockCode.periodic',
+ 'Airbender.Compiler.PackedSetupEquality.LengthCheck',
+ 'Airbender.Compiler.PackedSetupEquality.LengthCheck.mk',
+ 'Airbender.Compiler.PackedSetupEquality.LengthCheck.first',
+ 'Airbender.Compiler.PackedSetupEquality.LengthCheck.count',
+ 'Airbender.Compiler.PackedSetupEquality.LengthCheck.expected',
+ 'Airbender.Compiler.UnifiedPackedEquality.sourceCode',
+ 'Airbender.Compiler.UnifiedPackedEquality.xorCode',
+ 'Airbender.Compiler.UnifiedPackedEquality.orCode',
+ 'Airbender.Compiler.UnifiedPackedEquality.andCode',
+ 'Airbender.Compiler.UnifiedPackedEquality.targetCode',
+ 'Airbender.Compiler.UnifiedPackedEquality.lengthChecks',
+ 'Airbender.Compiler.UnifiedPackedEquality.rawPrefix',
+ 'Airbender.Compiler.UnifiedPackedEquality.rawOriginal',
+ 'Airbender.Compiler.UnifiedPackedEquality.rawSuffix',
+ 'Airbender.Compiler.UnifiedPackedEquality.sourceLayout',
+ 'Airbender.Compiler.UnifiedPackedEquality.raw_source_binding',
+ 'Airbender.Compiler.UnifiedPackedEquality.source_binding',
+ 'Airbender.Compiler.UnifiedPackedEquality.rawXorPrefix',
+ 'Airbender.Compiler.UnifiedPackedEquality.rawXor',
+ 'Airbender.Compiler.UnifiedPackedEquality.xorLayout',
+ 'Airbender.Compiler.UnifiedPackedEquality.rawOr',
+ 'Airbender.Compiler.UnifiedPackedEquality.orLayout',
+ 'Airbender.Compiler.UnifiedPackedEquality.rawAnd',
+ 'Airbender.Compiler.UnifiedPackedEquality.andLayout',
+ 'Airbender.Compiler.UnifiedPackedEquality.raw_target_binding',
+ 'Airbender.Compiler.UnifiedPackedEquality.target_binding',
+ 'Airbender.Compiler.UnifiedPackedEquality.ok',
+ 'Airbender.Compiler.UnifiedPackedEquality.fixed_column_blocks',
+ 'Airbender.Compiler.UnifiedPackedEquality.row_counts',
+ 'Tests.PackedSetupEquality.literal_bytes',
+ 'Tests.PackedSetupEquality.constant_array',
+ 'Tests.PackedSetupEquality.range_array',
+ 'Tests.PackedSetupEquality.linear_array',
+ 'Tests.PackedSetupEquality.rotated_array',
+ 'Tests.PackedSetupEquality.repeated_runs',
+ 'Tests.PackedSetupEquality.indexed_runs',
+ 'Tests.PackedSetupEquality.adopted_byte_array',
+ 'Tests.PackedSetupEquality.signed_stride',
+ 'Tests.PackedSetupEquality.changed_stride_rejected',
+ 'Tests.PackedSetupEquality.changed_byte_rejected',
+ 'Tests.PackedSetupEquality.row_count_checked',
+ 'Tests.PackedSetupEquality.changed_row_count_rejected']
+
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
 program_import = 'import Airbender.Proofs.GKRProtocol.ProgramLogicalRows'
@@ -1433,6 +1505,12 @@ if public_constraints_import not in content.splitlines():
 unified_constraints_import = 'import Airbender.Proofs.GKRProtocol.ProgramUnifiedConstraints'
 if unified_constraints_import not in content.splitlines():
     content = unified_constraints_import + '\n' + content
+setup_packed_import = 'import Airbender.Proofs.GKRProtocol.UnifiedPackedEqualityCertificate'
+if setup_packed_import not in content.splitlines():
+    content = setup_packed_import + '\n' + content
+setup_packed_test_import = 'import Tests.PackedSetupEquality'
+if setup_packed_test_import not in content.splitlines():
+    content = setup_packed_test_import + '\n' + content
 packed_import = 'import Airbender.Proofs.Tables.ShiftAndPackedCertificate'
 if packed_import not in content.splitlines():
     content = packed_import + '\n' + content
@@ -1452,7 +1530,7 @@ for name in NAMES:
     if constraint_import not in content.splitlines():
         content = constraint_import + '\n' + content
 roots = []
-for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots + public_row_roots + word_roots + unified_roots + acceptance_roots + decode_roots + packed_table_roots:
+for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots + public_row_roots + word_roots + unified_roots + acceptance_roots + decode_roots + packed_table_roots + packed_setup_roots:
     root = f'#print axioms {name}'
     if root not in content.splitlines():
         roots.append(root)

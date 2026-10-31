@@ -185,7 +185,8 @@ block and complete column decoding. A negative control changes one retained
 block and keeps the source bytes fixed. The kernel rejects that control.
 The AND result now follows from a proved packed checker for the original Block
 statement. See the [selected measurements](VERIFICATION_STATUS.md#verified-checker-measurements).
-The setup-column pilot and broader rollout remain open.
+The setup-column pilot proves exact block equality with a second kernel-checked
+certificate. Its public chunk adoption and broader rollout remain open.
 
 Sail generation uses the pinned upstream compiler and selected original roots.
 The normal four-byte nextPC assignment is extracted verbatim from the normal

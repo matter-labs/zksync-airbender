@@ -1,3 +1,5 @@
+import Tests.PackedSetupEquality
+import Airbender.Proofs.GKRProtocol.UnifiedPackedEqualityCertificate
 import Tests.PackedTableCertificates
 import Airbender.Proofs.Tables.ShiftAndPackedCertificate
 import Airbender.Proofs.GKRProtocol.NativeMachineAcceptance
@@ -19316,3 +19318,76 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 
 
 #print axioms Airbender.UnifiedReduced.Setup.nativeAndDataPackedColumn2
+
+#print axioms Airbender.Compiler.PackedSetupEquality.bytes
+#print axioms Airbender.Compiler.PackedSetupEquality.ArrayCode.decode
+#print axioms Airbender.Compiler.PackedSetupEquality.BlockCode.decode
+#print axioms Airbender.Compiler.PackedSetupEquality.check
+#print axioms Airbender.Compiler.PackedSetupEquality.check_sound
+#print axioms Airbender.Compiler.PackedSetupEquality.select_middle
+#print axioms Airbender.Compiler.PackedSetupEquality.ArrayCode
+#print axioms Airbender.Compiler.PackedSetupEquality.ArrayCode.literal
+#print axioms Airbender.Compiler.PackedSetupEquality.ArrayCode.append
+#print axioms Airbender.Compiler.PackedSetupEquality.ArrayCode.constant
+#print axioms Airbender.Compiler.PackedSetupEquality.ArrayCode.range
+#print axioms Airbender.Compiler.PackedSetupEquality.ArrayCode.linear
+#print axioms Airbender.Compiler.PackedSetupEquality.ArrayCode.rotate
+#print axioms Airbender.Compiler.PackedSetupEquality.ArrayCode.linearRuns
+#print axioms Airbender.Compiler.PackedSetupEquality.ArrayCode.lookupRuns
+#print axioms Airbender.Compiler.PackedSetupEquality.ArrayCode.packedBytes
+#print axioms Airbender.Compiler.PackedSetupEquality.BlockCode
+#print axioms Airbender.Compiler.PackedSetupEquality.BlockCode.affine
+#print axioms Airbender.Compiler.PackedSetupEquality.BlockCode.dense
+#print axioms Airbender.Compiler.PackedSetupEquality.BlockCode.periodic
+#print axioms Airbender.Compiler.UnifiedPackedEquality.sourceCode
+#print axioms Airbender.Compiler.UnifiedPackedEquality.xorCode
+#print axioms Airbender.Compiler.UnifiedPackedEquality.orCode
+#print axioms Airbender.Compiler.UnifiedPackedEquality.andCode
+#print axioms Airbender.Compiler.UnifiedPackedEquality.targetCode
+#print axioms Airbender.Compiler.UnifiedPackedEquality.rawPrefix
+#print axioms Airbender.Compiler.UnifiedPackedEquality.rawOriginal
+#print axioms Airbender.Compiler.UnifiedPackedEquality.rawSuffix
+#print axioms Airbender.Compiler.UnifiedPackedEquality.sourceLayout
+#print axioms Airbender.Compiler.UnifiedPackedEquality.raw_source_binding
+#print axioms Airbender.Compiler.UnifiedPackedEquality.source_binding
+#print axioms Airbender.Compiler.UnifiedPackedEquality.rawXorPrefix
+#print axioms Airbender.Compiler.UnifiedPackedEquality.rawXor
+#print axioms Airbender.Compiler.UnifiedPackedEquality.xorLayout
+#print axioms Airbender.Compiler.UnifiedPackedEquality.rawOr
+#print axioms Airbender.Compiler.UnifiedPackedEquality.orLayout
+#print axioms Airbender.Compiler.UnifiedPackedEquality.rawAnd
+#print axioms Airbender.Compiler.UnifiedPackedEquality.andLayout
+#print axioms Airbender.Compiler.UnifiedPackedEquality.raw_target_binding
+#print axioms Airbender.Compiler.UnifiedPackedEquality.target_binding
+#print axioms Airbender.Compiler.UnifiedPackedEquality.ok
+#print axioms Airbender.Compiler.UnifiedPackedEquality.fixed_column_blocks
+#print axioms Tests.PackedSetupEquality.literal_bytes
+#print axioms Tests.PackedSetupEquality.constant_array
+#print axioms Tests.PackedSetupEquality.range_array
+#print axioms Tests.PackedSetupEquality.linear_array
+#print axioms Tests.PackedSetupEquality.rotated_array
+#print axioms Tests.PackedSetupEquality.repeated_runs
+#print axioms Tests.PackedSetupEquality.indexed_runs
+#print axioms Tests.PackedSetupEquality.adopted_byte_array
+#print axioms Tests.PackedSetupEquality.signed_stride
+#print axioms Tests.PackedSetupEquality.changed_stride_rejected
+#print axioms Tests.PackedSetupEquality.changed_byte_rejected
+
+#print axioms Airbender.Compiler.PackedSetupEquality.ArrayCode.length
+#print axioms Airbender.Compiler.PackedSetupEquality.BlockCode.length
+#print axioms Airbender.Compiler.PackedSetupEquality.bytes_length
+#print axioms Airbender.Compiler.PackedSetupEquality.ArrayCode.decode_length
+#print axioms Airbender.Compiler.PackedSetupEquality.BlockCode.decode_length
+#print axioms Airbender.Compiler.PackedSetupEquality.rowCount
+#print axioms Airbender.Compiler.PackedSetupEquality.rowCount_eq
+#print axioms Airbender.Compiler.PackedSetupEquality.checkWithLengths
+#print axioms Airbender.Compiler.PackedSetupEquality.checkWithLengths_sound
+#print axioms Airbender.Compiler.PackedSetupEquality.LengthCheck
+#print axioms Airbender.Compiler.PackedSetupEquality.LengthCheck.mk
+#print axioms Airbender.Compiler.PackedSetupEquality.LengthCheck.first
+#print axioms Airbender.Compiler.PackedSetupEquality.LengthCheck.count
+#print axioms Airbender.Compiler.PackedSetupEquality.LengthCheck.expected
+#print axioms Airbender.Compiler.UnifiedPackedEquality.lengthChecks
+#print axioms Airbender.Compiler.UnifiedPackedEquality.row_counts
+#print axioms Tests.PackedSetupEquality.row_count_checked
+#print axioms Tests.PackedSetupEquality.changed_row_count_rejected
