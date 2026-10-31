@@ -73,10 +73,6 @@ impl<F: PrimeField> ResolvedProverConfig<F> {
             gpu_circuit_prover::proof::merged_commitment::validate_merged_packed_geometry(
                 &self.geometry,
             );
-            gpu_circuit_prover::proof::merged_commitment::validate_merged_circuit_type(
-                circuit_type,
-                &self.geometry,
-            );
         }
     }
 }
@@ -203,18 +199,20 @@ impl CircuitPrecomputations {
         let circuit = self.gkr_programs.compiled_circuit();
         let resolved = &self.resolved_config;
         resolved.validate_request(circuit_type, security_level, circuit);
-        assert_eq!(self.gkr_programs.circuit_type(), circuit_type);
+        assert_eq!(
+            self.gkr_programs.circuit_type(),
+            circuit_type,
+            "request circuit differs from GKR programs"
+        );
         let config = resolved.config();
         let geometry = resolved.geometry();
         self.setup_host
             .validate_config(config, BaseColumns::of(circuit));
         if config.commitment_mode == CommitmentMode::MergedMemoryAndWitness {
             use gpu_circuit_prover::proof::merged_commitment::{
-                validate_merged_circuit_type, validate_merged_commitment_geometry,
-                validate_merged_packed_geometry,
+                validate_merged_commitment_geometry, validate_merged_packed_geometry,
             };
             validate_merged_packed_geometry(&geometry);
-            validate_merged_circuit_type(circuit_type, &geometry);
             validate_merged_commitment_geometry(config, &geometry, circuit);
         } else {
             gpu_trace::trace::memory::validate_memory_commitment_config(config, &geometry, circuit);

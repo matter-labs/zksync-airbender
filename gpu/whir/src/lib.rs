@@ -148,22 +148,18 @@ pub fn validate_baby_bear_recursive_schedule(
         schedule.base_round.fold_log2 <= 1,
         "unsupported GPU base fold"
     );
-    if schedule.base_round.fold_log2 == 0 {
-        assert_eq!(message_log, 22, "unqualified virtual message size");
-        // Qualify the zero-fold ladder, not security tuning: query counts,
-        // query PoW and the batching override do not change kernel capability.
-        assert_eq!(
-            schedule.fold_steps(),
-            [0, 6, 5, 5, 5],
-            "unqualified virtual fold ladder"
-        );
-        assert_eq!(
-            schedule.base_lde_factor_log2(),
-            1,
-            "unqualified virtual base LDE"
-        );
-        assert_eq!(schedule.cap_size, 16, "unqualified virtual base cap");
-    }
+    let mut previous_lde =
+        u32::try_from(schedule.base_lde_factor_log2()).expect("base LDE log2 exceeds u32");
+    let base_query_log = message_log
+        .checked_sub(schedule.base_round.fold_log2 as u32)
+        .and_then(|log| log.checked_add(previous_lde))
+        .expect("WHIR base query domain overflow");
+    // CPU in_domain::add requires a query subgroup strictly below two-adicity;
+    // f0 does not shrink the base RS domain before adding its symbolic terms.
+    assert!(
+        base_query_log < gpu_ntt::ntt_twiddles::OMEGA_LOG_ORDER,
+        "BabyBear WHIR query domain must be strictly below field two-adicity for symbolic terms"
+    );
     assert_eq!(
         schedule.base_round.folding_pow_bits, 0,
         "GPU prover: no folding PoW"
@@ -180,13 +176,24 @@ pub fn validate_baby_bear_recursive_schedule(
         log_n = log_n
             .checked_sub(u32::try_from(previous_fold).expect("fold log2 exceeds u32"))
             .expect("WHIR schedule exceeds message domain");
+        let log_lde = u32::try_from(round.lde_factor_log2).expect("LDE log2 exceeds u32");
+        // Positive query sets retain the preceding oracle's subgroup after
+        // the same folds as the polynomial. A smaller LDE factor cannot contain it
+        // (fold/in_domain.rs::start_round and the CPU SymbolicTerm contract).
+        assert!(
+            previous_lde <= log_lde,
+            "symbolic term outside current oracle domain: required subgroup log {}, available {}",
+            log_n + previous_lde,
+            log_n + log_lde,
+        );
         admit_baby_bear_recursive_oracle_shape(
             log_n,
             u32::try_from(round.folding_log2).expect("fold log2 exceeds u32"),
-            u32::try_from(round.lde_factor_log2).expect("LDE log2 exceeds u32"),
+            log_lde,
             schedule.cap_size.trailing_zeros(),
             twiddle_domain_log2,
         );
+        previous_lde = log_lde;
         previous_fold = round.folding_log2;
     }
 }
@@ -804,14 +811,36 @@ mod cpu_recursive_shapes {
             tuned.internal_rounds[0].num_queries += 1;
             tuned.internal_rounds[0].queries_pow_bits -= 1;
             super::validate_baby_bear_recursive_schedule(22, &tuned, 27);
-            for change in 0..5 {
+            for change in 0..3 {
+                let mut additional = schedule.clone();
+                match change {
+                    0 => additional.base_round.lde_factor_log2 += 1,
+                    1 => {
+                        additional.internal_rounds[0].folding_log2 = 5;
+                        // One fewer early fold leaves one more variable in
+                        // each later oracle. Preserve its evaluation-domain
+                        // size instead of exceeding the field's root order.
+                        for round in additional.internal_rounds.iter_mut().skip(1) {
+                            round.lde_factor_log2 -= 1;
+                        }
+                    }
+                    _ => additional.cap_size *= 2,
+                }
+                let mut candidate = config.clone();
+                candidate.cap_size = additional.cap_size;
+                candidate.whir_schedule = additional.clone();
+                candidate.validate_for_whir_message_size(22);
+                super::validate_baby_bear_recursive_schedule(22, &additional, 27);
+            }
+            for change in 0..3 {
                 let mut bad = schedule.clone();
                 match change {
-                    0 => bad.base_round.lde_factor_log2 += 1,
-                    1 => bad.internal_rounds[0].folding_log2 = 5,
-                    2 => bad.internal_rounds[0].lde_factor_log2 += 1,
-                    3 => bad.internal_rounds[2].num_ood_samples = 2,
-                    _ => bad.cap_size *= 2,
+                    0 => bad.internal_rounds[0].lde_factor_log2 += 1,
+                    1 => bad.internal_rounds[2].num_ood_samples = 2,
+                    _ => {
+                        bad.base_round.lde_factor_log2 = 2;
+                        bad.internal_rounds[0].lde_factor_log2 = 1;
+                    }
                 }
                 assert!(
                     std::panic::catch_unwind(|| super::validate_baby_bear_recursive_schedule(
@@ -820,6 +849,71 @@ mod cpu_recursive_shapes {
                     .is_err()
                 );
             }
+        }
+    }
+
+    #[test]
+    fn cpu_schedule_rejects_symbolic_subgroup_and_query_field_bounds() {
+        use prover::definitions::SecurityLevel;
+        use prover::gkr::prover_config::commitment_geometry::BaseCommitmentGeometry;
+        use prover::gkr::prover_config::{BaseColumns, ProverConfig, WhirSchedule};
+        for (trace_log, schedule, reason) in [
+            (
+                12,
+                WhirSchedule::from_legacy_arrays(
+                    4,
+                    16,
+                    1,
+                    &[0, 5, 4, 3],
+                    &[1, 1, 1, 1],
+                    &[2, 64, 512],
+                    &[0, 0, 0, 0],
+                ),
+                "symbolic term outside current oracle domain",
+            ),
+            (
+                24,
+                WhirSchedule::from_legacy_arrays(
+                    8,
+                    16,
+                    0,
+                    &[0, 6, 5, 5, 5],
+                    &[1, 1, 1, 1, 1],
+                    &[8, 512, 4096, 32768],
+                    &[0, 0, 0, 0, 0],
+                ),
+                "strictly below field two-adicity",
+            ),
+        ] {
+            let config = ProverConfig::whir_only(trace_log, schedule, SecurityLevel::Sec100);
+            let message_log = config.whir_message_size_log2();
+            config.validate_for_whir_message_size(message_log);
+            BaseCommitmentGeometry::from_config(
+                &config,
+                BaseColumns {
+                    memory: 1,
+                    witness: 0,
+                    setup: 0,
+                },
+            )
+            .unwrap();
+            let error = std::panic::catch_unwind(|| {
+                super::validate_baby_bear_recursive_schedule(
+                    u32::try_from(message_log).unwrap(),
+                    &config.whir_schedule,
+                    27,
+                );
+            })
+            .expect_err("the backend must reject before constructing an oracle");
+            let message = error
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| error.downcast_ref::<&str>().copied())
+                .unwrap();
+            assert!(
+                message.contains(reason),
+                "{message:?} should name {reason:?}"
+            );
         }
     }
 

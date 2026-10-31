@@ -135,12 +135,7 @@ fn cpu_resolved_request_rejects_identity_and_mode_before_transfers() {
     let mut merged = config;
     merged.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
     let merged = ResolvedProverConfig::new(kind, Arc::clone(&circuit), merged);
-    assert!(std::panic::catch_unwind(|| merged.validate_request(
-        kind,
-        SecurityLevel::Sec100,
-        &circuit
-    ))
-    .is_err());
+    merged.validate_request(kind, SecurityLevel::Sec100, &circuit);
 }
 
 #[test]
@@ -399,41 +394,60 @@ fn cpu_worker_virtual_requests_require_geometry_setup_before_transfers() {
 }
 
 #[test]
-fn cpu_resolved_merged_request_accepts_only_qualified_blake_geometry() {
+fn cpu_resolved_merged_request_binds_config_and_artifact_geometry() {
     use gpu_trace::witness::circuit_type::DelegationCircuitType as D;
     use prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture as packed_config;
+    for (delegation, name, n, packs) in [
+        (
+            D::Blake2WithCompression,
+            "blake2_with_extended_control",
+            20,
+            &[0, 1, 2, 3, 4][..],
+        ),
+        (
+            D::BigIntWithControl,
+            "bigint_with_extended_control",
+            22,
+            &[0, 1, 2][..],
+        ),
+    ] {
+        let kind = CircuitType::Delegation(delegation);
+        let circuit = artifact(name);
+        let canonical = kind.prover_config(SecurityLevel::Sec100);
+        let mut configs: Vec<_> = packs
+            .iter()
+            .map(|&k| packed_config(n, k, SecurityLevel::Sec100))
+            .collect();
+        configs.push(canonical.clone());
+        for mut config in configs {
+            config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+            let resolved = ResolvedProverConfig::new(kind, Arc::clone(&circuit), config.clone());
+            resolved.validate_request(kind, SecurityLevel::Sec100, &circuit);
+            gpu_circuit_prover::proof::merged_commitment::validate_merged_commitment_geometry(
+                resolved.config(),
+                &resolved.geometry(),
+                &circuit,
+            );
+            assert_eq!(kind.prover_config(SecurityLevel::Sec100), canonical);
+            assert_ne!(config, canonical, "no canonical BF route is overridden");
+            if n == 20 && config.pack_log2() == 4 {
+                assert_eq!(resolved.geometry().total_physical_columns(), 49);
+            }
+        }
+    }
     let kind = CircuitType::Delegation(D::Blake2WithCompression);
     let circuit = artifact("blake2_with_extended_control");
-    let canonical = kind.prover_config(SecurityLevel::Sec100);
-    let mut config = packed_config(20, 4, SecurityLevel::Sec100);
+    let mut config = packed_config(23, 1, SecurityLevel::Sec100);
     config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
-    let resolved = ResolvedProverConfig::new(kind, Arc::clone(&circuit), config.clone());
-    resolved.validate_request(kind, SecurityLevel::Sec100, &circuit);
-    assert_eq!(resolved.geometry().total_physical_columns(), 49);
-    gpu_circuit_prover::proof::merged_commitment::validate_merged_commitment_geometry(
-        resolved.config(),
-        &resolved.geometry(),
-        &circuit,
-    );
-    assert_eq!(kind.prover_config(SecurityLevel::Sec100), canonical);
-    assert_ne!(config, canonical, "no canonical BF route is overridden");
-    for (n, k, wrong_kind) in [
-        (20, 0, kind),
-        (20, 2, kind),
-        (23, 1, kind),
-        (20, 4, CircuitType::Delegation(D::Blake2GFunction)),
-    ] {
-        let mut wrong = packed_config(n, k, SecurityLevel::Sec100);
-        wrong.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
-        let resolved = ResolvedProverConfig::new(wrong_kind, Arc::clone(&circuit), wrong);
-        let constructed = std::cell::Cell::new(false);
-        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            resolved.validate_request(wrong_kind, SecurityLevel::Sec100, &circuit);
-            constructed.set(true);
-        }))
-        .is_err());
-        assert!(!constructed.get());
-    }
+    let resolved = ResolvedProverConfig::new(kind, Arc::clone(&circuit), config);
+    assert!(std::panic::catch_unwind(|| {
+        gpu_circuit_prover::proof::merged_commitment::validate_merged_commitment_geometry(
+            resolved.config(),
+            &resolved.geometry(),
+            &circuit,
+        );
+    })
+    .is_err());
 }
 
 #[test]
@@ -490,7 +504,7 @@ fn cpu_worker_merged_admission_rejects_before_transfer_construction() {
                     Arc::clone(&circuit),
                     config.clone(),
                 ));
-                "unqualified packed merged circuit"
+                "request circuit differs from GKR programs"
             }
             2 => {
                 wrong.gkr_programs =
@@ -514,17 +528,17 @@ fn cpu_worker_merged_admission_rejects_before_transfer_construction() {
                     Arc::clone(&circuit),
                     virtual_config,
                 ));
-                "virtual merged commitment is not admitted"
+                "setup cache commitment geometry mismatch"
             }
             5 => {
-                let mut unqualified = packed_config(20, 2, SecurityLevel::Sec100);
-                unqualified.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+                let mut additional = packed_config(20, 2, SecurityLevel::Sec100);
+                additional.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
                 wrong.resolved_config = Arc::new(ResolvedProverConfig::new(
                     kind,
                     Arc::clone(&circuit),
-                    unqualified,
+                    additional,
                 ));
-                "unqualified packed merged shape"
+                "setup cache commitment geometry mismatch"
             }
             6 => {
                 let mut separate = config.clone();

@@ -38,11 +38,9 @@ use orchestration::{
     Stage1AndForwardPreparation, WhirPhaseResult,
 };
 
-pub fn validate_windowed_schedule(gkr_programs: &GkrPrograms, prover_config: &ProverConfig) {
-    assert_eq!(
-        validated_schedule_class(gkr_programs, prover_config),
-        Some(SumcheckScheduleClass::Windowed)
-    );
+fn validate_same_size_schedule(gkr_programs: &GkrPrograms, prover_config: &ProverConfig) {
+    validated_schedule_class(gkr_programs, prover_config)
+        .expect("invalid GKR same-size sumcheck schedule");
 }
 
 fn validated_schedule_class(
@@ -60,12 +58,9 @@ fn main_folding_steps(gkr_programs: &GkrPrograms) -> usize {
     gkr_programs.compiled_circuit().trace_len.trailing_zeros() as usize
 }
 
-/// One immutable config/geometry/policy bound before transfers. Separate physical
-/// admission is f=1 at (n,k)=(20,4)/(20,2)/(23,1), and virtual admission is f=0
-/// at (22,0)/(20,2) with the qualified m22 schedule. Separate admission is keyed
-/// by shape; merged admission also binds the circuit type. Memory representations
-/// are checked per role, independently of preset selection; execution jobs share
-/// the config.
+/// One immutable config/geometry/policy bound before transfers. Producer routing,
+/// storage representations and actual per-role backend constraints are checked
+/// independently of preset selection; execution jobs share the config.
 pub struct ProofPreflight<F: PrimeField> {
     dr_tail: gpu_gkr::DrTailProofPlan,
     circuit: Arc<GKRCircuitArtifact<F>>,
@@ -125,6 +120,12 @@ fn validate_baby_bear_base_proof_policy(
     if !uses_base_commitment_geometry(geometry) {
         return;
     }
+    // Every base query consumes the partial-tree format, including Memory
+    // whose commitment phase carries only a cap into this proof.
+    gpu_trace::trace::holder::TraceHolder::<BF>::validate_base_layout(
+        geometry,
+        TreesCacheMode::CachePartial,
+    );
     let validate = |role, opening, trees| {
         if geometry.oracle(role).physical_columns() != 0 {
             validate_baby_bear_base_opening(geometry, opening, trees, twiddle_domain_log2);
@@ -166,20 +167,25 @@ pub fn preflight_proof(
         programs.compiled_circuit().trace_len.trailing_zeros() as usize,
         "proof config trace length differs from compiled circuit"
     );
+    assert_eq!(
+        final_trace_log as usize, config.sumcheck_explicit_output_size_log_2,
+        "GKR final trace size differs from configured explicit output size"
+    );
+    assert!(
+        (final_trace_log as usize) < config.trace_len_log2,
+        "GPU forward transcript handoff requires at least one dimension-reduction layer"
+    );
     let geometry =
         BaseCommitmentGeometry::from_config(config, BaseColumns::of(programs.compiled_circuit()))
             .expect("invalid base commitment geometry");
     validate_base_proof_geometry_policy(&geometry, memory_policy, programs.main_layers_count());
-    if geometry.commitment_mode() == crate::upstream::CommitmentMode::MergedMemoryAndWitness {
-        merged_commitment::validate_merged_circuit_type(programs.circuit_type(), &geometry);
-    }
     validate_baby_bear_base_proof_policy(&geometry, memory_policy, twiddle_domain_log2);
     gpu_whir::validate_baby_bear_recursive_schedule(
         u32::try_from(geometry.message_size_log2()).expect("message log2 exceeds u32"),
         &config.whir_schedule,
         twiddle_domain_log2,
     );
-    validate_windowed_schedule(programs, config);
+    validate_same_size_schedule(programs, config);
     let batching_pow_bits =
         crate::config::batched_proximity_check_pow_bits_for_geometry(config, &geometry);
     let dr_tail = gpu_gkr::preflight_dr_tail_resources(programs, final_trace_log, device_id)?;

@@ -70,39 +70,17 @@ pub fn uses_base_commitment_geometry(geometry: &BaseCommitmentGeometry) -> bool 
 }
 
 /// Field-free admission shared by config-driven memory and proof entries.
-/// Primitive holder construction remains independent of e2e qualification.
+/// The generated base opening verifier has one or two accumulators (f0/f1).
 pub fn validate_separate_base_commitment_geometry(geometry: &BaseCommitmentGeometry) {
-    if geometry.is_virtual_packing() {
-        assert!(
-            matches!(
-                (geometry.trace_len_log2(), geometry.pack_log2()),
-                (22, 0) | (20, 2)
-            ),
-            "unqualified virtual base commitment shape"
-        );
-        assert_eq!(geometry.lde_factor(), 2, "unqualified virtual base LDE");
-        assert_eq!(geometry.cap_size(), 16, "unqualified virtual base cap");
-    } else {
-        assert_eq!(
-            geometry.values_per_leaf(),
-            2,
-            "GPU physical base round requires fold_log2=1"
-        );
-    }
+    assert!(
+        geometry.values_per_leaf() <= 2,
+        "GPU base opening verifier supports only fold_log2<=1 (one or two accumulators)"
+    );
     assert_eq!(
         geometry.commitment_mode(),
         CommitmentMode::SeparateMemoryAndWitness,
-        "merged base commitments are not admitted yet"
+        "memory-only producer requires separate memory and witness commitments"
     );
-    if geometry.pack_log2() != 0 {
-        assert!(
-            matches!(
-                (geometry.trace_len_log2(), geometry.pack_log2()),
-                (20, 2) | (20, 4) | (23, 1)
-            ),
-            "physical proof shape has not passed e2e qualification"
-        );
-    }
 }
 
 /// Check the immutable config/geometry pair against its logical producer.

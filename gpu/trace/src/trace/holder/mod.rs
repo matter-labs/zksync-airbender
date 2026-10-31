@@ -6,9 +6,7 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 
-use crate::upstream::{
-    BaseCommitmentGeometry, BaseOracleRole, CommitmentMode, MerkleTreeCapVarLength,
-};
+use crate::upstream::{BaseCommitmentGeometry, BaseOracleRole, MerkleTreeCapVarLength};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::context::HostAllocation;
@@ -86,14 +84,14 @@ pub fn validate_baby_bear_base_opening(
             "in-place openings require partial or uncached trees"
         );
     }
-    if geometry.pack_log2() > 0 && policy == OpeningStrategy::PerCoset {
+    if policy == OpeningStrategy::PerCoset {
         assert!(
             gpu_ntt::ntt::log_size_supports_retained_monomials(geometry.message_size_log2()),
-            "packed PerCoset openings require the retained-monomial dispatch family"
+            "geometry-backed PerCoset openings require the retained-monomial dispatch family"
         );
         assert!(
             !matches!(trees_mode, TreesCacheMode::CacheFull),
-            "packed PerCoset openings require partial or uncached trees"
+            "geometry-backed PerCoset openings require partial or uncached trees"
         );
     }
 }
@@ -191,19 +189,9 @@ impl<T> TraceHolder<T> {
         self.base_geometry.is_some() && self.committed_columns_count() == 0
     }
 
-    fn is_packed_base_oracle(&self) -> bool {
-        self.base_geometry
-            .is_some_and(|(geometry, _)| geometry.pack_log2() > 0)
-    }
-
     /// Storage checks are field-independent; backend capability checks belong
     /// at the instantiated commitment entry before constructing this holder.
     pub fn validate_base_layout(geometry: &BaseCommitmentGeometry, trees_mode: TreesCacheMode) {
-        assert!(
-            geometry.commitment_mode() == CommitmentMode::SeparateMemoryAndWitness
-                || !geometry.is_virtual_packing(),
-            "virtual merged base holders are not admitted"
-        );
         assert!(
             geometry.cap_size() >= geometry.lde_factor(),
             "holder requires at least one cap node per LDE coset"
@@ -589,10 +577,10 @@ impl<T> TraceHolder<T> {
                 "in-place openings require partial or uncached trees"
             );
         }
-        if self.is_packed_base_oracle() && policy == OpeningStrategy::PerCoset {
+        if self.base_geometry.is_some() && policy == OpeningStrategy::PerCoset {
             assert!(
                 matches!(self.trees, TreesHolder::None | TreesHolder::Partial(_)),
-                "packed PerCoset openings require partial or uncached trees"
+                "geometry-backed PerCoset openings require partial or uncached trees"
             );
         }
         assert!(!self.cosets_materialized);

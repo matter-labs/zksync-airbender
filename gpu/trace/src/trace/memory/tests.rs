@@ -15,6 +15,12 @@ fn geometry(config: &ProverConfig) -> BaseCommitmentGeometry {
 }
 
 #[test]
+fn cpu_g4_nonlisted_physical_geometry_is_admitted() {
+    let config = packed_config(20, 1, SecurityLevel::Sec100);
+    validate_separate_base_commitment_geometry(&geometry(&config));
+}
+
+#[test]
 fn cpu_merged_identity_storage_cannot_take_the_separate_legacy_route() {
     let mut config = packed_config(20, 0, SecurityLevel::Sec100);
     assert!(!uses_base_commitment_geometry(&geometry(&config)));
@@ -30,24 +36,19 @@ fn cpu_merged_identity_storage_cannot_take_the_separate_legacy_route() {
 }
 
 #[test]
-fn cpu_separate_commitment_admits_only_qualified_physical_shapes() {
+fn cpu_separate_commitment_admits_physical_geometries() {
     for (n, k) in [(20, 0), (20, 2), (20, 4), (23, 1)] {
         let config = packed_config(n, k, SecurityLevel::Sec100);
         validate_separate_base_commitment_geometry(&geometry(&config));
     }
     for (n, k) in [(20, 1), (21, 3)] {
         let config = packed_config(n, k, SecurityLevel::Sec100);
-        assert!(
-            std::panic::catch_unwind(|| validate_separate_base_commitment_geometry(&geometry(
-                &config
-            )))
-            .is_err()
-        );
+        validate_separate_base_commitment_geometry(&geometry(&config));
     }
 }
 
 #[test]
-fn cpu_virtual_commitment_shapes_and_merged_reject_before_construction() {
+fn cpu_virtual_commitment_geometry_and_separate_producer_routing() {
     use crate::witness::circuit_type::DelegationCircuitType as D;
     for circuit in [D::BigIntWithControl, D::Blake2WithCompression] {
         let config = CircuitType::Delegation(circuit).prover_config(SecurityLevel::Sec100);
@@ -57,13 +58,7 @@ fn cpu_virtual_commitment_shapes_and_merged_reject_before_construction() {
         let mut config = packed_config(n, k, SecurityLevel::Sec100);
         config.whir_schedule.base_round.fold_log2 = 0;
         let shape = geometry(&config);
-        let constructed = std::cell::Cell::new(false);
-        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            validate_separate_base_commitment_geometry(&shape);
-            constructed.set(true);
-        }))
-        .is_err());
-        assert!(!constructed.get());
+        validate_separate_base_commitment_geometry(&shape);
     }
     let mut config = packed_config(20, 4, SecurityLevel::Sec100);
     config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;

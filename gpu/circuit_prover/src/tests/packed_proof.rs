@@ -61,7 +61,7 @@ fn packed_merged_commit_unpacked_cpu_parity() {
     assert_eq!(base.context.get_used_mem_current(), baseline);
 }
 
-fn gpu_memory_caps(
+pub(super) fn gpu_memory_caps(
     base: &BasicUnrolledFixture,
     geometry: BaseCommitmentGeometry,
 ) -> Vec<MerkleTreeCapVarLength> {

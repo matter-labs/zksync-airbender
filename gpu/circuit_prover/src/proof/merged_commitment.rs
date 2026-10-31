@@ -19,41 +19,16 @@ use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::holder::{WitnessCommitmentStrategy, WitnessPostCommitStorage};
 use gpu_trace::trace::memory::{schedule_memory_cap_readback, MemoryCommitmentJob};
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
-use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType};
-
-/// Field-free admission for the qualified physical merged proof/request shape.
+/// Field-free merged routing and the generated base reader's f0/f1 limit.
 pub fn validate_merged_packed_geometry(geometry: &BaseCommitmentGeometry) {
     assert_eq!(
         geometry.commitment_mode(),
         CommitmentMode::MergedMemoryAndWitness
     );
     assert!(
-        !geometry.is_virtual_packing(),
-        "virtual merged commitment is not admitted"
+        geometry.values_per_leaf() <= 2,
+        "GPU base opening verifier supports only fold_log2<=1 (one or two accumulators)"
     );
-    assert_eq!(
-        geometry.values_per_leaf(),
-        2,
-        "merged proof requires fold_log2=1"
-    );
-    assert_eq!(
-        (geometry.trace_len_log2(), geometry.pack_log2()),
-        (20, 4),
-        "unqualified packed merged shape"
-    );
-    assert_eq!(geometry.lde_factor(), 2, "unqualified merged LDE");
-    assert_eq!(geometry.cap_size(), 16, "unqualified merged cap");
-}
-
-/// Bind packed merged admission to the circuit qualified by full CPU parity.
-pub fn validate_merged_circuit_type(circuit_type: CircuitType, geometry: &BaseCommitmentGeometry) {
-    if geometry.pack_log2() != 0 {
-        assert_eq!(
-            circuit_type,
-            CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression),
-            "unqualified packed merged circuit"
-        );
-    }
 }
 
 /// Shared H2D ownership for the existing BF memory-and-witness generator.
@@ -116,23 +91,12 @@ pub fn validate_merged_commitment_geometry<F: PrimeField>(
         *geometry, expected,
         "merged commitment config/geometry mismatch"
     );
-    assert!(
-        !geometry.is_virtual_packing(),
-        "virtual merged commitment is not admitted"
-    );
-    assert_eq!(
-        geometry.values_per_leaf(),
-        2,
-        "merged primitive requires fold_log2=1"
-    );
-    if geometry.pack_log2() != 0 {
-        validate_merged_packed_geometry(geometry);
-    }
+    validate_merged_packed_geometry(geometry);
     gpu_trace::trace::memory::validate_stage1_commitment_geometry(geometry, circuit);
 }
 
 /// Commit one concatenated memory/witness set using an explicitly bound shape.
-/// The existing config-driven memory and worker entries remain separate-only.
+/// Config-driven merged memory and worker entries use this same producer.
 pub fn commit_merged_from_transfers_for_geometry<'a, A: GoodAllocator + 'a>(
     gkr_programs: &GkrPrograms,
     config: &ProverConfig,
@@ -141,7 +105,6 @@ pub fn commit_merged_from_transfers_for_geometry<'a, A: GoodAllocator + 'a>(
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     validate_merged_commitment_geometry(config, &geometry, gkr_programs.compiled_circuit());
-    validate_merged_circuit_type(gkr_programs.circuit_type(), &geometry);
     inputs.setup.host.validate_for_geometry(&geometry);
     gpu_trace::trace::holder::validate_baby_bear_base_geometry(
         &geometry,

@@ -269,3 +269,78 @@ pub(crate) fn admit_dr_tail_resources<F: PrimeField>(
         window_programs,
     })
 }
+
+#[cfg(test)]
+mod cpu_short_dr {
+    use super::*;
+    use crate::backward::kernels::MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN;
+    use gpu_core::primitives::field::BF;
+    use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType};
+    use prover::definitions::SecurityLevel;
+    use prover::gkr::prover_config::commitment_geometry::BaseCommitmentGeometry;
+    use prover::gkr::prover_config::BaseColumns;
+    use std::sync::Arc;
+
+    #[test]
+    fn cpu_trace20_output14_fits_existing_capacity_and_layout() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json");
+        let artifact: GKRCircuitArtifact<BF> =
+            serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap();
+        let programs = crate::GkrPrograms::compile(
+            CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression),
+            Arc::new(artifact),
+        )
+        .unwrap();
+        let mut config = prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
+            20, 2, SecurityLevel::Sec100,
+        );
+        config.sumcheck_explicit_output_size_log_2 = 14;
+        config.validate_for_whir_message_size(22);
+        // A conservative static bound, not a measured attribute. The existing
+        // megakernel's small fixed arrays fit well below this; live resource
+        // admission still queries the linked kernel and the actual device.
+        let static_bound = 32 << 10;
+        let device_bound = 48 << 10;
+        let plans = plan_dr_tail_layers(
+            programs.runtime_circuit().as_ref(),
+            14,
+            static_bound,
+            device_bound,
+        );
+        let widths: Vec<_> = plans.iter().map(|layer| layer.folding_steps).collect();
+        assert_eq!(widths, [19, 18, 17, 16, 15, 14]);
+        for layer in &plans {
+            assert!(layer.folding_steps >= 2);
+            assert!(layer.folding_steps + 2 <= MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN);
+            assert!((1..=super::super::kernels::DR_TAIL_MAX_SOURCES)
+                .contains(&layer.canonical_sources.len()));
+            assert_eq!(layer.capacity.dynamic_smem_bytes, 4096);
+            assert!(static_bound + layer.capacity.dynamic_smem_bytes <= device_bound);
+        }
+        let geometry = BaseCommitmentGeometry::from_config(
+            &config,
+            BaseColumns::of(programs.compiled_circuit()),
+        )
+        .unwrap();
+        let layout = crate::proof_layout::build_proof_layout_inputs_for_geometry(
+            &programs,
+            &config.whir_schedule,
+            14,
+            geometry,
+        );
+        assert!(!layout.output_evaluations.is_empty());
+        assert!(layout
+            .output_evaluations
+            .values()
+            .all(|lengths| *lengths == [16384, 16384]));
+        eprintln!(
+            "G4 short DR metadata: widths={widths:?}, claim_capacity={}, plans={:?}",
+            MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN,
+            plans
+                .iter()
+                .map(|layer| (layer.canonical_sources.len(), layer.capacity))
+                .collect::<Vec<_>>()
+        );
+    }
+}

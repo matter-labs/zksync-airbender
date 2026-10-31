@@ -30,6 +30,8 @@ fn config(k: usize) -> ProverConfig {
 
 fn layout(config: &ProverConfig, geometry: BaseCommitmentGeometry) -> ProofLayout {
     let schedule = &config.whir_schedule;
+    let fold_steps = schedule.fold_steps();
+    let total_folding_steps = fold_steps.iter().sum::<usize>();
     let base = |role| {
         let columns = geometry.oracle(role).physical_columns();
         WhirBaseLayerDims {
@@ -74,10 +76,14 @@ fn layout(config: &ProverConfig, geometry: BaseCommitmentGeometry) -> ProofLayou
             memory: base(BaseOracleRole::Memory),
             witness: base(BaseOracleRole::Witness),
             intermediate,
-            num_ood_samples: 4,
-            total_sumcheck_polys: 21,
-            pow_rounds: 5,
-            final_monomials_len: 2,
+            num_ood_samples: schedule
+                .internal_rounds
+                .iter()
+                .map(|round| round.num_ood_samples)
+                .sum(),
+            total_sumcheck_polys: total_folding_steps,
+            pow_rounds: schedule.num_rounds(),
+            final_monomials_len: 1 << (geometry.message_size_log2() - total_folding_steps),
         },
     })
 }
@@ -136,13 +142,21 @@ fn cpu_virtual_slab_schema_and_claim_aliases() {
 }
 
 fn standalone(k: usize) {
-    let context = make_test_context_with_device_allocator_block_log_size(None, 256, 20);
-    let baseline = context.get_used_mem_current();
-    let worker = Worker::new_with_num_threads(4);
     let mut config = config(k);
     if k == 0 {
         config.whir_schedule.base_round.batching_pow_bits = Some(13);
     }
+    standalone_for_config(&config, 64);
+}
+
+fn standalone_for_config(config: &ProverConfig, first_leaf_values: usize) {
+    let k = config.pack_log2();
+    let message_log = config.whir_message_size_log2();
+    let message_log_u32 = u32::try_from(message_log).unwrap();
+    config.validate_for_whir_message_size(message_log);
+    let context = make_test_context_with_device_allocator_block_log_size(None, 256, 20);
+    let baseline = context.get_used_mem_current();
+    let worker = Worker::new_with_num_threads(4);
     let pack = 1usize << k;
     let widths = if k == 0 {
         [1, 0, 0]
@@ -150,7 +164,7 @@ fn standalone(k: usize) {
         [pack + 1, 2 * pack + 1, 1]
     };
     let geometry = BaseCommitmentGeometry::from_config(
-        &config,
+        config,
         BaseColumns {
             memory: widths[0],
             witness: widths[1],
@@ -158,7 +172,7 @@ fn standalone(k: usize) {
         },
     )
     .unwrap();
-    gpu_whir::validate_baby_bear_recursive_schedule(22, &config.whir_schedule, 27);
+    gpu_whir::validate_baby_bear_recursive_schedule(message_log_u32, &config.whir_schedule, 27);
     let rows = 1usize << config.trace_len_log2;
     let raw: [Vec<BF>; 3] = std::array::from_fn(|role| {
         (0..rows * widths[role])
@@ -193,7 +207,7 @@ fn standalone(k: usize) {
             })
             .collect()
     });
-    let twiddles = Twiddles::<BF, Global>::new(1 << 22, &worker);
+    let twiddles = Twiddles::<BF, Global>::new(1 << message_log, &worker);
     let pool = GenericAllocationPool::proxy();
     let [mem, wit, setup] = std::array::from_fn(|role| {
         let cols: Vec<_> = raw[role].chunks_exact(rows).collect();
@@ -237,7 +251,7 @@ fn standalone(k: usize) {
         GKRStorage {
             layers: vec![layer],
         },
-        &config,
+        config,
         point.clone(),
         &twiddles,
         seed,
@@ -247,7 +261,7 @@ fn standalone(k: usize) {
         &pool,
         &worker,
     );
-    let layout = layout(&config, geometry);
+    let layout = layout(config, geometry);
     let slab = context
         .alloc::<E4>(
             layout.total_bytes.div_ceil(std::mem::size_of::<E4>()),
@@ -320,7 +334,7 @@ fn standalone(k: usize) {
         &layout,
         config.base_round().batching_pow_bits::<BF, E4>(
             config.security_level.security_bits(),
-            22,
+            message_log,
             geometry.total_physical_columns(),
         ),
         &context,
@@ -345,7 +359,7 @@ fn standalone(k: usize) {
             config.whir_schedule.intermediate_lde_factors(),
             config.whir_schedule.queries_pow_bits_per_round(),
             config.cap_size,
-            22,
+            message_log_u32,
             true,
             &slab,
             &layout,
@@ -393,7 +407,7 @@ fn standalone(k: usize) {
         gpu.intermediate_whir_oracles[0].queries[0]
             .leaf_values_concatenated
             .len(),
-        64
+        first_leaf_values
     );
     assert_eq!(gpu.final_monomials.len(), 2);
     assert_eq!(context.get_used_mem_current(), baseline);
@@ -409,4 +423,70 @@ fn virtual_whir_k0_empty_roles_cpu_parity() {
 #[ignore = "full-domain physical plus virtual zero-fold protocol"]
 fn virtual_whir_k2_tail_groups_cpu_parity() {
     standalone(2);
+}
+
+fn bounded_virtual_config() -> ProverConfig {
+    // Synthetic protocol parity only: keep the query and PoW work bounded.
+    let mut config = ProverConfig::whir_only(
+        12,
+        prover::gkr::prover_config::WhirSchedule::from_legacy_arrays(
+            4,
+            32,
+            1,
+            &[0, 5, 4, 3],
+            &[4, 4, 4, 4],
+            &[4, 64, 512],
+            &[0, 0, 0, 0],
+        ),
+        SecurityLevel::Sec100,
+    );
+    config.whir_schedule.base_round.batching_pow_bits = Some(4);
+    config
+}
+
+#[test]
+fn cpu_g4_nondefault_virtual_slab_schema() {
+    let config = bounded_virtual_config();
+    assert_eq!(config.whir_message_size_log2(), 13);
+    config.validate_for_whir_message_size(13);
+    let geometry = BaseCommitmentGeometry::from_config(
+        &config,
+        BaseColumns {
+            memory: 3,
+            witness: 5,
+            setup: 1,
+        },
+    )
+    .unwrap();
+    let layout = layout(&config, geometry);
+    let aligned = vec![E4::ZERO; layout.total_bytes.div_ceil(std::mem::size_of::<E4>())];
+    // SAFETY: initialized E4 storage provides every parser field alignment.
+    let bytes =
+        unsafe { std::slice::from_raw_parts(aligned.as_ptr().cast::<u8>(), layout.total_bytes) };
+    let proof = layout.parse_whir_proof(bytes, &config.whir_schedule);
+    assert!(proof.base_sumcheck_polys.is_empty());
+    assert!(proof.base_folding_pow_nonces.is_empty());
+    assert_eq!(proof.intermediate_whir_oracles.len(), 3);
+    assert_eq!(
+        proof
+            .intermediate_whir_oracles
+            .iter()
+            .map(|round| round.sumcheck_polys.len())
+            .collect::<Vec<_>>(),
+        [5, 4, 3]
+    );
+    assert_eq!(proof.final_monomials.len(), 2);
+    assert_eq!(proof.memory_commitment.queries.len(), 4);
+    assert_eq!(
+        proof.memory_commitment.queries[0]
+            .leaf_values_concatenated
+            .len(),
+        2
+    );
+}
+
+#[test]
+#[ignore = "bounded nondefault zero-fold ladder with physical packing, LDE4 and cap32"]
+fn geometry_guard_g_virtual_whir_m13_nondefault_cpu_parity() {
+    standalone_for_config(&bounded_virtual_config(), 32);
 }

@@ -688,7 +688,8 @@ where
     O: cs::oracle::Oracle<BF>,
     W: gpu_trace::trace::tracing_data::DelegationTracingDataHostSource,
 {
-    const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
+    let final_trace_size_log_2 = u32::try_from(prover_config.sumcheck_explicit_output_size_log_2)
+        .expect("fixture explicit-output log2 exceeds u32");
     const HOST_POOL_SIZE_MB: usize = 1024;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
 
@@ -789,7 +790,7 @@ where
         compiled_circuit,
         external_challenges,
         prover_config,
-        final_trace_size_log_2: FINAL_TRACE_SIZE_LOG_2,
+        final_trace_size_log_2,
         gpu_setup_host: Some(gpu_setup_host),
         decoder_table_host,
         tracing_data_host,

@@ -197,17 +197,17 @@ impl TraceHolder<BF> {
                 None => self.commit_all(context),
             };
         }
-        if self.is_packed_base_oracle() {
+        if self.base_geometry.is_some() {
             assert!(
                 matches!(self.cosets, CosetsHolder::None(_))
                     && matches!(self.trees, TreesHolder::Partial(_)),
-                "packed retained commitments require PerCoset storage with partial trees"
+                "geometry-backed retained commitments require PerCoset storage with partial trees"
             );
             assert!(
                 gpu_ntt::ntt::log_size_supports_retained_monomials(
                     self.commitment_log_domain_size() as usize
                 ),
-                "packed PerCoset commitments require the retained-monomial dispatch family"
+                "geometry-backed PerCoset commitments require the retained-monomial dispatch family"
             );
         }
         if let Some(dst) = cap_dst {

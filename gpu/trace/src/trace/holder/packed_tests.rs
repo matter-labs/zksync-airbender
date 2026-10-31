@@ -1,5 +1,5 @@
 use super::*;
-use crate::upstream::{BaseColumns, Field};
+use crate::upstream::{BaseColumns, CommitmentMode, Field};
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::field::E4;
@@ -921,7 +921,10 @@ fn cpu_packed_base_geometry_admission_is_cuda_free() {
         PARTIAL_TREE_REDUCTION_LAYERS,
     );
     merged.whir_schedule.base_round.fold_log2 = 0;
-    invalid.push(merged);
+    validate_test_geometry(
+        &geometry(&merged, BaseOracleRole::Memory, 1),
+        PARTIAL_TREE_REDUCTION_LAYERS,
+    );
     let mut cap = test_config(20, 1);
     cap.cap_size = 1;
     cap.whir_schedule.cap_size = 1;
@@ -1074,10 +1077,13 @@ fn cpu_baby_bear_capability_checks_transform_domain_and_context_separately() {
 // Each family/k is a separately discovered test. CPU packing sees the unpadded
 // concatenation, so a GPU implementation that pads each side cannot match it.
 fn merged_matrix(k: usize, policy: usize) {
-    use crate::upstream::CommitmentMode;
+    merged_matrix_for_base_fold(k, policy, 1);
+}
+
+fn merged_matrix_for_base_fold(k: usize, policy: usize, fold: usize) {
     let context = super::tests::make_test_context(256, 16);
     let worker = Worker::new_with_num_threads(4);
-    let mut config = test_config(if policy == 0 { 13 } else { 20 }, k);
+    let mut config = test_config_with_base_fold(if policy == 0 { 13 } else { 20 }, k, fold);
     config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
     let pack = 1usize << k;
     let rows = 1usize << config.trace_len_log2;
@@ -1172,7 +1178,7 @@ fn merged_matrix(k: usize, policy: usize) {
         }
     }
     assert_eq!(cases, [36, 6, 12][policy]);
-    eprintln!("merged_packed_base_cpu_parity k={k} policy={policy}: {cases} cases passed; empty sets, boundary, tail; cap16/LDE2");
+    eprintln!("merged_packed_base_cpu_parity k={k} policy={policy} fold={fold}: {cases} cases passed; empty sets, boundary, tail; cap16/LDE2");
 }
 
 macro_rules! merged_tests {
@@ -1199,6 +1205,36 @@ merged_tests! {
     merged_packed_base_cpu_parity_recompute_k2: (2, 2),
     merged_packed_base_cpu_parity_recompute_k3: (3, 2),
     merged_packed_base_cpu_parity_recompute_k4: (4, 2),
+}
+
+#[test]
+fn virtual_merged_base_cpu_parity_materialized_k0() {
+    merged_matrix_for_base_fold(0, 0, 0);
+}
+
+#[test]
+fn virtual_merged_base_cpu_parity_materialized_k2() {
+    merged_matrix_for_base_fold(2, 0, 0);
+}
+
+#[test]
+fn virtual_merged_base_cpu_parity_retained_k0() {
+    merged_matrix_for_base_fold(0, 1, 0);
+}
+
+#[test]
+fn virtual_merged_base_cpu_parity_retained_k2() {
+    merged_matrix_for_base_fold(2, 1, 0);
+}
+
+#[test]
+fn virtual_merged_base_cpu_parity_recompute_k0() {
+    merged_matrix_for_base_fold(0, 2, 0);
+}
+
+#[test]
+fn virtual_merged_base_cpu_parity_recompute_k2() {
+    merged_matrix_for_base_fold(2, 2, 0);
 }
 
 fn merged_blake20_production(policy: usize) {
@@ -1457,13 +1493,19 @@ fn cpu_in_place_geometry_checks_domain_and_tree_before_work() {
         ))
         .is_err());
     }
-    let config = test_config(13, 1);
-    let shape = geometry(&config, BaseOracleRole::Witness, 3);
-    assert!(std::panic::catch_unwind(|| validate_baby_bear_base_opening(
-        &shape,
-        OpeningStrategy::InPlace,
-        TreesCacheMode::CachePartial,
-        27
-    ))
-    .is_err());
+    // This is a geometry-path check even at k0, independent of the legacy
+    // holder route. G-6 will wire the compact transform lifecycle.
+    for (k, fold) in [(0, 0), (0, 1), (1, 0), (1, 1)] {
+        let config = test_config_with_base_fold(13, k, fold);
+        let shape = geometry(&config, BaseOracleRole::Witness, (1usize << k) + 1);
+        for opening in [OpeningStrategy::InPlace, OpeningStrategy::PerCoset] {
+            assert!(std::panic::catch_unwind(|| validate_baby_bear_base_opening(
+                &shape,
+                opening,
+                TreesCacheMode::CachePartial,
+                27
+            ))
+            .is_err());
+        }
+    }
 }

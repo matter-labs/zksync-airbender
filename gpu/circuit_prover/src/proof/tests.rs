@@ -24,62 +24,110 @@ fn geometry(config: &ProverConfig) -> BaseCommitmentGeometry {
 }
 
 #[test]
-fn cpu_merged_proof_admission_is_physical_blake_only() {
-    let mut config = physical_config(20, 4);
-    config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
-    let shape = geometry(&config);
-    validate_base_proof_geometry_policy(&shape, ProofMemoryPolicy::default(), 4);
-    assert_eq!(shape.total_physical_columns(), 49);
-    super::merged_commitment::validate_merged_circuit_type(
+#[should_panic(expected = "GKR final trace size differs from configured explicit output size")]
+fn cpu_preflight_rejects_explicit_output_identity_before_device_admission() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json");
+    let artifact: GKRCircuitArtifact<BF> =
+        serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap();
+    let programs = GkrPrograms::compile(
         CircuitType::Delegation(D::Blake2WithCompression),
-        &shape,
+        Arc::new(artifact),
+    )
+    .unwrap();
+    // An invalid device id would fail if admission reached any CUDA query.
+    let _ = preflight_proof(
+        &programs,
+        &physical_config(20, 2),
+        14,
+        -1,
+        ProofMemoryPolicy::default(),
+        27,
     );
-    assert!(
-        std::panic::catch_unwind(|| super::merged_commitment::validate_merged_circuit_type(
-            CircuitType::Delegation(D::Blake2GFunction),
-            &shape,
-        ))
-        .is_err()
+}
+
+#[test]
+#[should_panic(
+    expected = "GPU forward transcript handoff requires at least one dimension-reduction layer"
+)]
+fn cpu_preflight_rejects_empty_reduction_before_device_admission() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json");
+    let artifact: GKRCircuitArtifact<BF> =
+        serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap();
+    let programs = GkrPrograms::compile(
+        CircuitType::Delegation(D::Blake2WithCompression),
+        Arc::new(artifact),
+    )
+    .unwrap();
+    let mut config = physical_config(20, 2);
+    config.sumcheck_explicit_output_size_log_2 = 20;
+    config.validate_for_whir_message_size(config.whir_message_size_log2());
+    let _ = preflight_proof(&programs, &config, 20, -1, ProofMemoryPolicy::default(), 27);
+}
+
+#[test]
+#[should_panic(expected = "base partial tree exceeds the commitment domain")]
+fn cpu_memory_only_proof_still_requires_partial_query_geometry() {
+    let config = ProverConfig::whir_only(
+        13,
+        prover::gkr::prover_config::WhirSchedule::from_legacy_arrays(
+            2,
+            1024,
+            0,
+            &[0, 5],
+            &[1, 1],
+            &[128],
+            &[0, 0],
+        ),
+        SecurityLevel::Sec100,
     );
-    for (n, k) in [(20, 0), (20, 2), (23, 1)] {
-        let mut config = physical_config(n, k);
-        config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
-        assert!(
-            std::panic::catch_unwind(|| validate_base_proof_geometry_policy(
-                &geometry(&config),
-                ProofMemoryPolicy::default(),
-                4,
-            ))
-            .is_err()
-        );
+    config.validate_for_whir_message_size(13);
+    let shape = BaseCommitmentGeometry::from_config(
+        &config,
+        BaseColumns {
+            memory: 1,
+            witness: 0,
+            setup: 0,
+        },
+    )
+    .unwrap();
+    validate_baby_bear_base_proof_policy(&shape, ProofMemoryPolicy::default(), 27);
+}
+
+#[test]
+fn cpu_merged_proof_admission_uses_base_geometry() {
+    let mut configs: Vec<_> = [(20, 0), (20, 1), (20, 2), (20, 4), (23, 1)]
+        .map(|(n, k)| physical_config(n, k))
+        .into();
+    for circuit in [D::BigIntWithControl, D::Blake2WithCompression] {
+        configs.push(CircuitType::Delegation(circuit).prover_config(SecurityLevel::Sec100));
     }
-    let mut virtual_config =
-        CircuitType::Delegation(D::Blake2WithCompression).prover_config(SecurityLevel::Sec100);
-    virtual_config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
-    assert!(
-        std::panic::catch_unwind(|| validate_base_proof_geometry_policy(
-            &geometry(&virtual_config),
-            ProofMemoryPolicy::default(),
-            4,
-        ))
-        .is_err()
-    );
-    let nondefault = ProofMemoryPolicy {
-        memory: memory_policy::OpeningStrategy::PerCoset,
-        ..Default::default()
-    };
-    validate_base_proof_geometry_policy(&shape, nondefault, 4);
-    validate_baby_bear_base_proof_policy(&shape, nondefault, 27);
-    assert!(std::panic::catch_unwind(|| {
-        gpu_trace::trace::memory::validate_separate_base_commitment_geometry(&shape)
-    })
-    .is_err());
+    for mut config in configs {
+        config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+        let shape = geometry(&config);
+        validate_base_proof_geometry_policy(&shape, ProofMemoryPolicy::default(), 4);
+        validate_baby_bear_base_proof_policy(&shape, ProofMemoryPolicy::default(), 27);
+        if config.trace_len_log2 == 20 && config.pack_log2() == 4 {
+            assert_eq!(shape.total_physical_columns(), 49);
+        }
+        let nondefault = ProofMemoryPolicy {
+            memory: memory_policy::OpeningStrategy::PerCoset,
+            ..Default::default()
+        };
+        validate_base_proof_geometry_policy(&shape, nondefault, 4);
+        validate_baby_bear_base_proof_policy(&shape, nondefault, 27);
+        assert!(std::panic::catch_unwind(|| {
+            gpu_trace::trace::memory::validate_separate_base_commitment_geometry(&shape)
+        })
+        .is_err());
+    }
 }
 
 #[test]
 fn cpu_physical_proof_admission_checks_full_schedule_and_policy() {
     let policy = ProofMemoryPolicy::default();
-    for (n, k) in [(20, 4), (20, 2), (23, 1)] {
+    for (n, k) in [(20, 0), (20, 1), (20, 2), (20, 3), (20, 4), (23, 1)] {
         let config = physical_config(n, k);
         let geometry = geometry(&config);
         validate_base_proof_geometry_policy(&geometry, policy, 4);
@@ -113,15 +161,13 @@ fn cpu_physical_proof_admission_checks_full_schedule_and_policy() {
         })
         .is_err());
     }
-    let unqualified = geometry(&physical_config(21, 3));
-    assert!(
-        std::panic::catch_unwind(|| validate_base_proof_geometry_policy(&unqualified, policy, 4))
-            .is_err()
-    );
+    let additional = geometry(&physical_config(21, 3));
+    validate_base_proof_geometry_policy(&additional, policy, 4);
+    validate_baby_bear_base_proof_policy(&additional, policy, 27);
 }
 
 #[test]
-fn cpu_virtual_admission_checks_shape_policy_and_merged_mode() {
+fn cpu_virtual_admission_checks_geometry_policy_and_merged_mode() {
     for circuit in [D::BigIntWithControl, D::Blake2WithCompression] {
         let config = CircuitType::Delegation(circuit).prover_config(SecurityLevel::Sec100);
         let geometry = geometry(&config);
@@ -136,26 +182,14 @@ fn cpu_virtual_admission_checks_shape_policy_and_merged_mode() {
     for (n, k) in [(20, 0), (21, 1), (20, 4)] {
         let mut config = physical_config(n, k);
         config.whir_schedule.base_round.fold_log2 = 0;
-        assert!(
-            std::panic::catch_unwind(|| validate_base_proof_geometry_policy(
-                &geometry(&config),
-                ProofMemoryPolicy::default(),
-                4,
-            ))
-            .is_err()
-        );
+        validate_base_proof_geometry_policy(&geometry(&config), ProofMemoryPolicy::default(), 4);
+        validate_baby_bear_base_proof_policy(&geometry(&config), ProofMemoryPolicy::default(), 27);
     }
     let mut config =
         CircuitType::Delegation(D::Blake2WithCompression).prover_config(SecurityLevel::Sec100);
     config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
-    assert!(
-        std::panic::catch_unwind(|| validate_base_proof_geometry_policy(
-            &geometry(&config),
-            ProofMemoryPolicy::default(),
-            4,
-        ))
-        .is_err()
-    );
+    validate_base_proof_geometry_policy(&geometry(&config), ProofMemoryPolicy::default(), 4);
+    validate_baby_bear_base_proof_policy(&geometry(&config), ProofMemoryPolicy::default(), 27);
 }
 
 #[test]
@@ -252,7 +286,7 @@ fn cpu_semantic_policy_failures_precede_transfer_construction() {
         serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap();
     let circuit = CircuitType::Delegation(D::Blake2WithCompression);
     let config = circuit.prover_config(SecurityLevel::Sec100);
-    let final_trace_log = artifact.trace_len.trailing_zeros();
+    let final_trace_log = u32::try_from(config.sumcheck_explicit_output_size_log_2).unwrap();
     let programs = GkrPrograms::compile(circuit, Arc::new(artifact)).unwrap();
     let layers = programs.main_layers_count();
     let mut invalid: Vec<_> = [

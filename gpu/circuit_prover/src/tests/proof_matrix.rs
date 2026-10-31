@@ -592,7 +592,7 @@ fn run_load_store_subword_only_profile_test() {
 // Tests are kept `#[ignore]`d (heavy GPU) — run with `--ignored`.
 // ===========================================================================
 
-const BIGINT_DELEGATION_LAYOUT_PATH: &str =
+pub(super) const BIGINT_DELEGATION_LAYOUT_PATH: &str =
     "cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json";
 const BIGINT_WITH_CONTROL_BINARY_PATH: &str = "examples/bigint_with_control/app.bin";
 const BIGINT_WITH_CONTROL_TEXT_PATH: &str = "examples/bigint_with_control/app.text";
@@ -617,7 +617,7 @@ const BLAKE2_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 /// bigint delegation call via the bigint CSR ABI; it takes no non-determinism
 /// input, so the nd array below is unused padding), so `bigint_calls > 0` and
 /// the fixture drives a REAL bigint delegation proof.
-fn replay_bigint_delegation_buffer() -> (Vec<BigintDelegationWitness>, TableDriver<BF>) {
+pub(super) fn replay_bigint_delegation_buffer() -> (Vec<BigintDelegationWitness>, TableDriver<BF>) {
     let buffer = replay_delegation_trace_buffer_for_workload::<_, FullUnsignedMachineDecoderConfig>(
         BIGINT_WITH_CONTROL_BINARY_PATH,
         BIGINT_WITH_CONTROL_TEXT_PATH,

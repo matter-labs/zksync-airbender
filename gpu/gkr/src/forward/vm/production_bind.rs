@@ -244,6 +244,11 @@ fn bind_fused_reduction_prefix(
         assert_eq!(outputs.len(), prepared.slot_initial_inputs.len());
     }
 
+    if prepared.fused_prefix_rounds() == 0 {
+        desc.reduction_pair_count = 0;
+        return;
+    }
+
     let mut slot = 0usize;
     let mut pair = 0usize;
     while slot < prepared.slot_output_types.len() {
@@ -453,6 +458,47 @@ mod tests {
             slot_initial_inputs,
             slot_output_types: types,
             per_round_slot_outputs,
+        }
+    }
+
+    #[test]
+    fn cpu_short_reduction_prefix_leaves_partial_chains_for_the_tower() {
+        use crate::upstream::OutputType::*;
+
+        for rounds in 1..=FUSED_REDUCTION_ROUNDS {
+            let mut prepared =
+                prepared_for_types(vec![PermutationProduct, PermutationProduct, Lookup16Bits]);
+            prepared.total_rounds = rounds as u32;
+            prepared.per_round_slot_outputs.truncate(rounds);
+            let mut desc: FwdVmDesc = unsafe { core::mem::zeroed() };
+            desc.count = 1024;
+
+            bind_fused_reduction_prefix(&mut desc, &prepared);
+
+            if rounds < FUSED_REDUCTION_ROUNDS {
+                assert_eq!(prepared.fused_prefix_rounds(), 0);
+                assert_eq!(desc.reduction_pair_count, 0);
+                assert!(desc.reduction_pairs.iter().all(|pair| {
+                    pair.input.iter().all(|pointer| pointer.is_null())
+                        && pair
+                            .round_outputs
+                            .iter()
+                            .flatten()
+                            .all(|pointer| pointer.is_null())
+                }));
+            } else {
+                // The complete seven-round prefix keeps its old descriptor.
+                assert_eq!(prepared.fused_prefix_rounds(), 7);
+                assert_eq!(desc.reduction_pair_count, 2);
+                assert_eq!(
+                    desc.reduction_pairs[0].round_outputs[6].map(|ptr| ptr as usize),
+                    [0x71000, 0x72000]
+                );
+                assert_eq!(
+                    desc.reduction_pairs[1].round_outputs[6].map(|ptr| ptr as usize),
+                    [0x73000, 0x73080]
+                );
+            }
         }
     }
 
