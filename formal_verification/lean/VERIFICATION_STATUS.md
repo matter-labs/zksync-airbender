@@ -11,7 +11,7 @@ request and RAM matching remain explicit. The final full validation is pending.
 
 | Setup machine | Current target status |
 | --- | --- |
-| Unrolled full unsigned | Open. Native execution, public supported-use induction and initialization are kernel checked. Chi and theta represented-source membership are proved. Parity byte-iota, slots, control, XOR-five keys and fixed fields are proved. Complete the parity XOR-five source output and all three original source-string bindings. The parser, exact columns and padding cases pass kernel checks. Chi5 uses its native query tags. The target excludes special5 calls. |
+| Unrolled full unsigned | Open. Native execution, public supported-use induction and initialization are kernel checked. Parity and theta have complete represented-source membership proofs. Chi membership uses its native query-tag guard. Bind all three original source strings at the original interface. The parser, exact columns and padding cases pass kernel checks. The target excludes special5 calls. |
 | Unrolled reduced | Proved by `MachineTargets.Proofs.unrolled_reduced_soundness`. The theorem has exactly the `UnrolledReduced` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. |
 | Unified | Proved by `MachineTargets.Proofs.unified_soundness`. The theorem has exactly the `Unified` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. The target excludes special5 calls. |
 
@@ -2488,6 +2488,38 @@ Only the source output field remains for parity XOR-five membership. All
 three original source-string bindings remain open. FullUnsigned is not yet
 proved. Design items 2 and 3 follow the targets. The native artifacts and
 packed checker pilot stay intact.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
+
+
+### Full unsigned complete parity source membership
+
+The parity source-row obligation is closed. All 1,048,576 XOR-five source
+outputs equal their original native values. The other seven fields were
+already proved. The new `split_parity_real_rows` theorem covers every real
+parity source row. The new `parity_source_rows` theorem also includes padding.
+
+A balanced scalar partition retains all 106,187 original block indices.
+Every split enters an ordinary kernel proof. Sixty-five bounded intervals
+cover the output rows after the initial zero row. Each interval has at most
+16,384 rows. Seventeen modules hold these checks. Generic block rules join
+their results. The initial overlapping zero row is proved separately. No
+source-membership assumption is added. The packed checker pilot stays intact.
+
+The partition passed in four seconds and used 309 MiB of physical memory.
+The first interval group passed in 23 seconds. The remaining groups passed
+in 277 seconds and used 1,246 MiB. The complete output and membership assembly
+passed in 135 seconds and used 1,125 MiB. All guards cleaned their owned
+children. No resource cap increased. All 102 new roots passed direct axiom
+checks. They use only the three allowed axioms. The inventory has 14,527
+roots. It retains all 14,425 previous roots.
+
+All three split tables now have represented-source membership proofs. Chi
+membership keeps its native query-tag guard. The three original source-string
+bindings remain open. FullUnsigned is not yet proved. Design items 2 and 3
+follow the targets. Native artifacts, production circuits and production Rust
+stay intact.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
