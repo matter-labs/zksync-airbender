@@ -1,3 +1,5 @@
+import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.AddSubCached
+import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.AddSubUncached
 import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.UnifiedCached
 import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.UnifiedUncached
 import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.SubwordMemoryCached
@@ -19069,3 +19071,6 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.ProgramFixedLookup.UnifiedCached.fixed_group_member
 #print axioms Airbender.Compiler.ProgramFixedLookup.UnifiedCached.range_from_arguments
 #print axioms Airbender.Compiler.ProgramFixedLookup.UnifiedCached.helpers_from_arguments
+
+#print axioms Airbender.Compiler.ProgramConstraintsNative.AddSubUncached.input_constraints
+#print axioms Airbender.Compiler.ProgramConstraintsNative.AddSubCached.input_constraints
