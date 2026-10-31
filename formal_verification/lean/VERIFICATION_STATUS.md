@@ -63,7 +63,8 @@ checks pass for all 93 new roots and the original output theorem. They use only
 remain. That checkpoint has 17,692 explicit roots. The setup pilot adds 71
 roots. Its adoption adds six helpers. That checkpoint has 17,769 explicit roots. The column 5 rollout adds 85 roots.
 That checkpoint has 17,854 explicit roots. The next three fixed-column
-families add 131 roots. The current explicit inventory has 17,985 roots.
+families add 131 roots. That checkpoint has 17,985 explicit roots. The arithmetic pilot adds 38 roots.
+The current explicit inventory has 18,023 roots.
 
 The complete ordinary AND data has the same serialized values before and
 after this change. Its SHA-256 is
@@ -224,10 +225,62 @@ The replay and axiom group takes 147.78 s. Its peak physical footprint is
 in these selected replay runs. Full transitive replay remains pending.
 No worker remains.
 
-The current explicit inventory retains all 17,854 established roots and adds
-131 roots. Declaration origins move from the old modules to the projection
+That checkpoint retains all 17,854 established roots and adds 131 roots. Declaration origins move from the old modules to the projection
 modules. The environment audit and baseline refresh remain pending. The wider
 fact-family rollout remains open.
+
+### Arithmetic pilot
+
+Both AddSub captures now have one closed kernel checker result. The checker
+proves address uniqueness, input projection, all source and forward polynomial
+identities, and every gate check. Generic soundness proofs derive the original
+Boolean facts. The original finalizer and public soundness statements stay the
+same. Numeric address keys replace repeated address comparisons. Proved Boolean
+polynomial comparisons preserve the original normalizer result.
+
+This pilot removes 10 fact modules. The two captures now use four modules,
+including their data foundations. No pilot module raises `maxHeartbeats`.
+The kernel accepts all 338 old public theorem types against the new proofs.
+All 158 imported public data values are identical. All 496 public declarations
+remain. The checker adds two capture declarations. Data and circuit equations
+do not change.
+
+The following measurements use cached imports on this Mac. Each previous proof
+uses six modules. Each new proof uses one. The common data foundations and the
+shared checker modules are outside these per-capture times.
+
+| Capture | Previous build | New build | Previous selected replay | New selected replay |
+| --- | ---: | ---: | ---: | ---: |
+| AddSub uncached | 12.24 s | 4.77 s | 11.46 s | 3.18 s |
+| AddSub cached | 12.32 s | 5.46 s | 11.62 s | 3.30 s |
+
+The eight-module source group passes in 25.47 s. Its peak physical footprint is
+755.66 MiB. Four direct functional and clean-arithmetic consumers also pass.
+Selected replay passes for both capture modules and all three shared checker
+modules. Replay uses the standard 32 MiB thread stack and trusts imports.
+No safe replay declaration depends on a skipped helper. All 534 direct axiom
+controls pass. They use only `propext`, `Classical.choice` and `Quot.sound`.
+Seven kernel controls check an identity, address constructors, duplicate
+addresses, missing backward and forward witnesses, a changed gate and a changed
+input projection. All pass. Ten Python generator controls pass. CI checks both
+pilot captures. All 17,985 established explicit roots remain. The inventory
+now has 18,023 roots.
+
+The broader `GKRProtocol` import check does not pass with retained objects. It
+reports duplicate ownership of
+`Airbender.WordMemory.importedConstraintsTraceColumns.eq_1`. A control with the
+previous arithmetic objects reports the same WordMemory import collision. The
+final frontend rebuild and environment audit must resolve this cache state.
+This checkpoint does not claim that the aggregate import passes.
+
+The large Blake-round capture still exceeds the 2560 MiB physical-footprint
+limit during whole-capture polynomial checks. Numeric coefficient and variable
+conversion at check time does not remove that cost. Those variants remain
+outside the adopted source tree. Direct numeric capture data and its proved
+binding remain open. The other 20 arithmetic captures still use their current
+proofs. Both cache modes remain required. No worker remains. Full validation,
+cold measurements, environment audit and baseline refresh, transitive replay,
+and Linux runtime and cache qualification remain pending for review.
 
 ## Rebase checks
 
@@ -557,11 +610,7 @@ with reviewed deltas. A direct report is a smoke check, not that audit.
    dropping public declarations, audit roots, imported values or assumptions.
 2. Finish whole-environment auditing, independent transitive replay and isolated
    false-proof controls; measure Linux cold/warm and CI feasibility.
-3. Complete the three production machine targets: compose stream-aware instruction
-   and caller relations with initialization; bind compiler setup to arbitrary
-   public text; prove the blessed split Keccak path for full unsigned; and
-   demonstrate committed verifier programs.
-4. Convert measured per-capture fact families to once-proved Boolean checkers,
+3. Convert measured per-capture fact families to once-proved Boolean checkers,
    then qualify build and replay cost. Cryptographic soundness, universal Rust
    compiler correctness and completeness remain in the
    [deferred milestone register](FORMAL_VERIFICATION_PLAN.md#deferred-milestones).

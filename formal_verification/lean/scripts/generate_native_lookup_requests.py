@@ -1712,8 +1712,50 @@ packed_setup_roots += ['Airbender.Compiler.UnifiedPackedEquality.Column4.sourceC
  'Airbender.Compiler.UnifiedPackedEquality.Column7.fixed_column_blocks',
  'Airbender.Compiler.UnifiedPackedEquality.Column7.row_counts']
 
+packed_arithmetic_roots = ['Airbender.Compiler.AddressUniqueChecks.addressCode',
+ 'Airbender.Compiler.AddressUniqueChecks.ascendingFrom',
+ 'Airbender.Compiler.AddressUniqueChecks.ascendingFrom_sound',
+ 'Airbender.Compiler.AddressUniqueChecks.ascending',
+ 'Airbender.Compiler.AddressUniqueChecks.ascending_sound',
+ 'Airbender.Compiler.AddressUniqueChecks.check',
+ 'Airbender.Compiler.AddressUniqueChecks.check_sound',
+ 'Airbender.Compiler.AddressUniqueChecks.distinctAt_complete',
+ 'Airbender.Compiler.FastPolynomialChecks.insertTerm',
+ 'Airbender.Compiler.FastPolynomialChecks.insertTerm_eq',
+ 'Airbender.Compiler.FastPolynomialChecks.normalize',
+ 'Airbender.Compiler.FastPolynomialChecks.normalize_eq',
+ 'Airbender.Compiler.FastPolynomialChecks.equal',
+ 'Airbender.Compiler.FastPolynomialChecks.equal_eq',
+ 'Airbender.Compiler.FullArithmeticChecks.allFin',
+ 'Airbender.Compiler.FullArithmeticChecks.allFin_eq',
+ 'Airbender.Compiler.FullArithmeticChecks.translationCheck',
+ 'Airbender.Compiler.FullArithmeticChecks.translationCheck_eq',
+ 'Airbender.Compiler.FullArithmeticChecks.check',
+ 'Airbender.Compiler.FullArithmeticChecks.checked_parts',
+ 'Airbender.Compiler.FullArithmeticChecks.check_sound',
+ 'Airbender.Compiler.FullArithmeticChecks.unique_at',
+ 'Airbender.Compiler.FullArithmeticChecks.relation_at',
+ 'Airbender.Compiler.FullArithmeticChecks.source_at',
+ 'Airbender.Compiler.FullArithmeticChecks.gate_at',
+ 'Tests.PackedArithmeticChecks.identityArtifact',
+ 'Tests.PackedArithmeticChecks.identityCertificate',
+ 'Tests.PackedArithmeticChecks.identity_accepted',
+ 'Tests.PackedArithmeticChecks.duplicate_address_rejected',
+ 'Tests.PackedArithmeticChecks.address_constructors_distinct',
+ 'Tests.PackedArithmeticChecks.missing_backward_rejected',
+ 'Tests.PackedArithmeticChecks.missing_forward_rejected',
+ 'Tests.PackedArithmeticChecks.changedGate',
+ 'Tests.PackedArithmeticChecks.changed_gate_rejected',
+ 'Tests.PackedArithmeticChecks.changedProjection',
+ 'Tests.PackedArithmeticChecks.changed_projection_rejected',
+ 'Airbender.Compiler.FullArithmeticNative.AddSubCached.native.captureChecked',
+ 'Airbender.Compiler.FullArithmeticNative.AddSubUncached.native.captureChecked']
+
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
+arithmetic_import = 'import Tests.PackedArithmeticChecks'
+if arithmetic_import not in content.splitlines():
+    content = arithmetic_import + '\n' + content
 program_import = 'import Airbender.Proofs.GKRProtocol.ProgramLogicalRows'
 if program_import not in content.splitlines():
     content = program_import + '\n' + content
@@ -1764,7 +1806,7 @@ for name in NAMES:
     if constraint_import not in content.splitlines():
         content = constraint_import + '\n' + content
 roots = []
-for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots + public_row_roots + word_roots + unified_roots + acceptance_roots + decode_roots + packed_table_roots + packed_setup_roots:
+for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots + public_row_roots + word_roots + unified_roots + acceptance_roots + decode_roots + packed_table_roots + packed_setup_roots + packed_arithmetic_roots:
     root = f'#print axioms {name}'
     if root not in content.splitlines():
         roots.append(root)

@@ -1,3 +1,4 @@
+import Tests.PackedArithmeticChecks
 import Airbender.Proofs.GKRProtocol.UnifiedPackedEquality.Column7.Certificate
 import Airbender.Proofs.GKRProtocol.UnifiedPackedEquality.Column6.Certificate
 import Airbender.Proofs.GKRProtocol.UnifiedPackedEquality.Column4.Certificate
@@ -19626,3 +19627,42 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.UnifiedPackedEquality.Column7.chunk_length_at
 #print axioms Airbender.Compiler.UnifiedPackedEquality.Column7.fixed_column_blocks
 #print axioms Airbender.Compiler.UnifiedPackedEquality.Column7.row_counts
+
+#print axioms Airbender.Compiler.AddressUniqueChecks.addressCode
+#print axioms Airbender.Compiler.AddressUniqueChecks.ascendingFrom
+#print axioms Airbender.Compiler.AddressUniqueChecks.ascendingFrom_sound
+#print axioms Airbender.Compiler.AddressUniqueChecks.ascending
+#print axioms Airbender.Compiler.AddressUniqueChecks.ascending_sound
+#print axioms Airbender.Compiler.AddressUniqueChecks.check
+#print axioms Airbender.Compiler.AddressUniqueChecks.check_sound
+#print axioms Airbender.Compiler.AddressUniqueChecks.distinctAt_complete
+#print axioms Airbender.Compiler.FastPolynomialChecks.insertTerm
+#print axioms Airbender.Compiler.FastPolynomialChecks.insertTerm_eq
+#print axioms Airbender.Compiler.FastPolynomialChecks.normalize
+#print axioms Airbender.Compiler.FastPolynomialChecks.normalize_eq
+#print axioms Airbender.Compiler.FastPolynomialChecks.equal
+#print axioms Airbender.Compiler.FastPolynomialChecks.equal_eq
+#print axioms Airbender.Compiler.FullArithmeticChecks.allFin
+#print axioms Airbender.Compiler.FullArithmeticChecks.allFin_eq
+#print axioms Airbender.Compiler.FullArithmeticChecks.translationCheck
+#print axioms Airbender.Compiler.FullArithmeticChecks.translationCheck_eq
+#print axioms Airbender.Compiler.FullArithmeticChecks.check
+#print axioms Airbender.Compiler.FullArithmeticChecks.checked_parts
+#print axioms Airbender.Compiler.FullArithmeticChecks.check_sound
+#print axioms Airbender.Compiler.FullArithmeticChecks.unique_at
+#print axioms Airbender.Compiler.FullArithmeticChecks.relation_at
+#print axioms Airbender.Compiler.FullArithmeticChecks.source_at
+#print axioms Airbender.Compiler.FullArithmeticChecks.gate_at
+#print axioms Tests.PackedArithmeticChecks.identityArtifact
+#print axioms Tests.PackedArithmeticChecks.identityCertificate
+#print axioms Tests.PackedArithmeticChecks.identity_accepted
+#print axioms Tests.PackedArithmeticChecks.duplicate_address_rejected
+#print axioms Tests.PackedArithmeticChecks.address_constructors_distinct
+#print axioms Tests.PackedArithmeticChecks.missing_backward_rejected
+#print axioms Tests.PackedArithmeticChecks.missing_forward_rejected
+#print axioms Tests.PackedArithmeticChecks.changedGate
+#print axioms Tests.PackedArithmeticChecks.changed_gate_rejected
+#print axioms Tests.PackedArithmeticChecks.changedProjection
+#print axioms Tests.PackedArithmeticChecks.changed_projection_rejected
+#print axioms Airbender.Compiler.FullArithmeticNative.AddSubCached.native.captureChecked
+#print axioms Airbender.Compiler.FullArithmeticNative.AddSubUncached.native.captureChecked
