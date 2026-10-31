@@ -64,7 +64,8 @@ remain. That checkpoint has 17,692 explicit roots. The setup pilot adds 71
 roots. Its adoption adds six helpers. That checkpoint has 17,769 explicit roots. The column 5 rollout adds 85 roots.
 That checkpoint has 17,854 explicit roots. The next three fixed-column
 families add 131 roots. That checkpoint has 17,985 explicit roots. The arithmetic pilot adds 38 roots.
-The current explicit inventory has 18,023 roots.
+The numeric arithmetic rollout adds 434 roots.
+The current explicit inventory has 18,457 roots.
 
 The complete ordinary AND data has the same serialized values before and
 after this change. Its SHA-256 is
@@ -273,14 +274,82 @@ previous arithmetic objects reports the same WordMemory import collision. The
 final frontend rebuild and environment audit must resolve this cache state.
 This checkpoint does not claim that the aggregate import passes.
 
-The large Blake-round capture still exceeds the 2560 MiB physical-footprint
-limit during whole-capture polynomial checks. Numeric coefficient and variable
-conversion at check time does not remove that cost. Those variants remain
-outside the adopted source tree. Direct numeric capture data and its proved
-binding remain open. The other 20 arithmetic captures still use their current
-proofs. Both cache modes remain required. No worker remains. Full validation,
-cold measurements, environment audit and baseline refresh, transitive replay,
-and Linux runtime and cache qualification remain pending for review.
+The earlier typed Blake round check exceeded the 2560 MiB footprint limit.
+Conversion at check time did not remove that cost. The numeric rollout below
+replaces those unadopted variants. Other arithmetic captures still need migration.
+
+### Numeric arithmetic rollout
+
+Both Blake round captures use direct numeric data. Separate kernel equalities
+bind all source expressions, lowered residuals, computed extensions and
+certificate rows to the original imports. Further bindings check normalized
+source rows, both normalized gate sides and sorted address keys. The exporter
+supplies untrusted numbers. Its hashes supply no proof.
+
+For regeneration, first use `gkr_full_arithmetic_certificate.py` with
+`--family blake-round --foundations-only --write`. Rebuild those two foundations
+with the serial builder. Then run `gkr_numeric_arithmetic.py --write`. Finally,
+run the full arithmetic generator with `--family blake-round --write`. The
+normal `--check` gate requires complete payload provenance and dimensions.
+
+Bounded leaves hold at most 16 rows. The flat payload and the lookup tree share
+those leaves. The kernel checks each complete tree layout and each branch size.
+The checker reads the materialized trees. It does not rebuild a tree for each
+lookup. It reuses the bound source normal forms for unit certificate rows.
+A proved equality preserves the original comparison, including its fallback
+for other factors and noncanonical coefficients.
+
+Each capture has one closed kernel result. Generic soundness derives the exact
+original `FullArithmeticChecks.check` statement. All old per-index declarations
+remain as corollaries. A direct adapter derives the aggregate public facts from
+the same result. It avoids the old finite aggregate assembly.
+
+The rollout retires 84 old fact modules. Both captures now use ten modules in
+total, including the two original data foundations. No capture module raises
+`maxHeartbeats`. The numerical circuit data and production Rust stay the same.
+
+The following source measurements use retained imports on this Mac. They
+include data bindings and all public corollaries. They exclude the unchanged
+data foundations and the shared checker modules.
+
+| Blake round capture | Four capture modules | Closed kernel result | Selected result replay |
+| --- | ---: | ---: | ---: |
+| Cached | 65.67 s | 8.10 s | 8.19 s |
+| Uncached | 56.97 s | 7.70 s | 7.44 s |
+
+The source and selected result replay group passes in 145.73 s. It peaks at
+2433.97 MiB. Replay uses the standard 32 MiB thread stack. Both source
+foundations pass with default heartbeats. Both AddSub public modules and four
+direct Blake functional and clean arithmetic consumers also pass. These checks
+trust retained imports. They do not constitute a cold build or transitive replay.
+
+The kernel accepts all 3,169 original Blake public theorem types. All 929
+imported public data values are identical. All 4,098 original declarations
+remain. The same control still accepts all 338 AddSub theorem types and all
+158 original AddSub data values.
+
+All 16 selected replay modules pass. They cover the five shared checkers,
+both Blake data, binding, result and public modules, both AddSub public modules
+and the numeric controls. No safe declaration uses a skipped dependency.
+The preservation, mutation, axiom and selected replay group takes 148.61 s.
+It peaks at 2169.89 MiB. These runs trust imported objects. Full transitive
+replay remains pending.
+
+All 4,532 direct axiom checks pass. They use only `propext`, `Classical.choice`
+and `Quot.sound`. Kernel controls cover coefficients, variables, monomial
+order, missing witnesses, changed normal forms, gates, duplicate keys and
+forged tree sizes. Five exact binding and proof controls pass. The kernel
+rejects all five changed controls. All 14 Python generator controls pass.
+Generation, provenance, boundary, program graph and workflow syntax checks
+pass. CI checks both capture modes and runs the kernel binding controls after
+the Lean source build. All 18,023 established explicit roots remain. The
+inventory now has 18,457 roots. No worker remains.
+
+Both cache modes remain required. The other 18 arithmetic captures still need
+migration. Other fact families and unlimited heartbeat settings also remain.
+The full frontend, environment audit and baseline refresh, full transitive
+replay, cold full measurements, and Linux runtime and cache qualification stay
+pending for implementation review.
 
 ## Rebase checks
 

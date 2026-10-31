@@ -16,6 +16,7 @@ import subprocess
 from gkr_arithmetic_certificate import synthesis as old_synthesis, PRIME, atom, const, plus, times, expression, coefficient, key, packed
 from export_gkr_translations import FAMILIES, LEAN
 from gkr_wiring_instances import CASES
+from gkr_numeric_arithmetic import NUMERIC_CAPTURES, modules as numeric_modules, check_payload
 
 def synthesize(pair,snapshot):
     base=old_synthesis(pair)
@@ -168,7 +169,7 @@ def synthesize(pair,snapshot):
 
 
 
-CHECKER_CAPTURES = {"AddSubCached", "AddSubUncached"}
+CHECKER_CAPTURES = {"AddSubCached", "AddSubUncached"} | NUMERIC_CAPTURES
 
 
 def modules(name, case, result):
@@ -192,6 +193,13 @@ def modules(name, case, result):
     result_modules = [(foundation, wrap(["Airbender.Import.GKRProtocol.FullArithmeticImport"],
         f'import_full_compiler_arithmetic native from "artifacts/compiler/{name}.json"\n'
         f'  source "artifacts/compiler/{name}-source.json"\n  selectors {selectors}'))]
+    if case in NUMERIC_CAPTURES:
+        result_modules.extend(numeric_modules(name, case, result, foundation, wrap))
+        result_modules.append((prefix, wrap([foundation, prefix + "NumericCertificate",
+            "Airbender.Import.GKRProtocol.FullArithmeticCheckImport"],
+            f'certify_full_compiler_arithmetic native {dimensions} using numericFullChecked\n\n'
+            f'finalize_checked_full_compiler_arithmetic native inputs {len(result["inputs"])} variables {len(result["addresses"])}')))
+        return result_modules
     if case in CHECKER_CAPTURES:
         result_modules.append((prefix, wrap([foundation,
             "Airbender.Import.GKRProtocol.FullArithmeticCheckImport"],
@@ -247,6 +255,8 @@ def main():
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--build", action="store_true")
+    parser.add_argument("--foundations-only", action="store_true",
+                        help="prepare native data imports before numeric payload regeneration")
     args = parser.parse_args()
     root = LEAN / "artifacts/compiler"
     for family, stem in zip(FAMILIES, CASES, strict=True):
@@ -258,8 +268,12 @@ def main():
             name, case = family + "-" + mode, stem + mode.title()
             result = synthesize(json.loads((root / (name + ".json")).read_text()),
                                 json.loads((root / (name + "-source.json")).read_text()))
+            if case in NUMERIC_CAPTURES and not args.foundations_only:
+                check_payload(LEAN, name, result)
             targets = modules(name, case, result)
-            retired = retired_checker_parts(LEAN, case, targets)
+            if args.foundations_only:
+                targets = targets[:1]
+            retired = [] if args.foundations_only else retired_checker_parts(LEAN, case, targets)
             if args.check and retired:
                 raise ValueError(f"retired arithmetic parts remain: {case}")
             for module, content in targets:

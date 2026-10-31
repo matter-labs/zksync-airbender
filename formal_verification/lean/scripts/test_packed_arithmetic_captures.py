@@ -12,8 +12,9 @@ import gkr_full_arithmetic_certificate as generator
 
 class PackedArithmeticCaptureTests(unittest.TestCase):
     def test_both_modes_use_one_whole_capture(self):
-        self.assertEqual(generator.CHECKER_CAPTURES, {"AddSubCached", "AddSubUncached"})
-        for case in sorted(generator.CHECKER_CAPTURES):
+        self.assertEqual(generator.CHECKER_CAPTURES,
+                         {"AddSubCached", "AddSubUncached", "BlakeRoundCached", "BlakeRoundUncached"})
+        for case in ["AddSubCached", "AddSubUncached"]:
             path = generator.LEAN / f"Airbender/Proofs/GKRProtocol/FullArithmeticNative/{case}Foundation.lean"
             quoted = re.search(r'\bselectors\s+("(?:[^"\\]|\\.)*")', path.read_text()).group(1)
             result = json.loads(json.loads(quoted))
@@ -24,6 +25,23 @@ class PackedArithmeticCaptureTests(unittest.TestCase):
             self.assertNotIn(" start ", root)
             self.assertNotIn(" stop ", root)
             self.assertNotIn("maxHeartbeats", root)
+
+    def test_both_large_captures_use_bound_numeric_data(self):
+        for case in ["BlakeRoundCached", "BlakeRoundUncached"]:
+            path = generator.LEAN / f"Airbender/Proofs/GKRProtocol/FullArithmeticNative/{case}Foundation.lean"
+            quoted = re.search(r'\bselectors\s+("(?:[^"\\]|\\.)*")', path.read_text()).group(1)
+            result = json.loads(json.loads(quoted))
+            modules = generator.modules("blake-round-" + case.removeprefix("BlakeRound").lower(), case, result)
+            self.assertEqual(len(modules), 5)
+            certificate = modules[-2][1]
+            self.assertEqual(certificate.count("by decide +kernel"), 2)
+            self.assertIn("NumericArithmeticChecks.full_check", certificate)
+            self.assertIn("using numericFullChecked", modules[-1][1])
+            self.assertNotIn("LookupTable.ofList", modules[2][1])
+            self.assertIn("numericSource.tree", modules[2][1])
+            self.assertEqual(modules[1][1].count("numeric_data_binding"), 6)
+            self.assertEqual(modules[2][1].count("numeric_data_binding"), 3)
+            self.assertTrue(all("maxHeartbeats" not in text for _, text in modules))
 
     def test_untracked_retired_path_stops_before_mutation(self):
         with TemporaryDirectory() as directory:
