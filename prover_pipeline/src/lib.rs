@@ -39,10 +39,9 @@ mod unified_recursion;
 use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
 use full_statement_verifier::host_utils::{
     bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
-    final_blake_mode, fsv_digest, load_fsv_exact, load_l1_fsv_program,
-    native_verify_unified_in_mode, native_verify_unified_l1_feeder,
-    native_verify_unified_l1_feeder_a, native_verify_unrolled_in_mode, unified_switch_cycles,
-    unrolled_blake_mode, FsvRecursionChain,
+    final_blake_mode, fsv_digest, load_fsv_exact, native_verify_unified_in_mode,
+    native_verify_unified_l1_feeder, native_verify_unified_l1_feeder_a,
+    native_verify_unrolled_in_mode, unified_switch_cycles, unrolled_blake_mode, FsvRecursionChain,
 };
 use full_statement_verifier::program_proof::ProgramProof;
 use l1_wrap::{advance_l1_wrap, validate_artifact_envelope, validate_feeder_proof, L1_WRAP_KIND};
@@ -56,7 +55,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use unified_recursion::UnifiedProofShape;
-use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProgram};
+use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProfile, FsvProgram};
 
 /// Serde-friendly mirror of `prover::definitions::SecurityLevel` (which does
 /// not derive serde) for the persisted artifact.
@@ -614,6 +613,9 @@ impl FeederProfile {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct FeederStageSpec {
     program: FsvProgram,
+    /// F1 runs the standard special-opcodes unified verifier, every later layer the
+    /// L1 feeder A guest.
+    fsv_profile: FsvProfile,
     kind: ExecutionKind,
     profile: ProofProfile,
     setup_machine: SetupMachine,
@@ -621,9 +623,10 @@ struct FeederStageSpec {
 
 const fn feeder_stage(role: FeederRole, profile: FeederProfile) -> FeederStageSpec {
     FeederStageSpec {
-        program: match role {
-            FeederRole::First => FsvProgram::UnifiedRecursionLayer,
-            FeederRole::Recurrent => FsvProgram::UnifiedRecursionLayerL1FeederA,
+        program: FsvProgram::UnifiedRecursionLayer,
+        fsv_profile: match role {
+            FeederRole::First => FsvProfile::Standard,
+            FeederRole::Recurrent => FsvProfile::L1FeederA,
         },
         kind: profile.kind(),
         profile: profile.proof_profile(),
@@ -1110,7 +1113,7 @@ fn pipeline_registrations(
             FsvProgram::UnrolledRecursionLayer,
         ] {
             programs.push((
-                fsv.words(program, SetupMachine::UnrolledReduced)?,
+                fsv.words(program, FsvProfile::Standard, SetupMachine::UnrolledReduced)?,
                 ExecutionKind::Unrolled,
                 ProofProfile::Standard,
             ));
@@ -1123,7 +1126,7 @@ fn pipeline_registrations(
             FsvProgram::UnifiedRecursionLayer,
         ] {
             programs.push((
-                fsv.words(program, SetupMachine::Unified)?,
+                fsv.words(program, FsvProfile::Standard, SetupMachine::Unified)?,
                 ExecutionKind::Unified,
                 ProofProfile::Standard,
             ));
@@ -1482,8 +1485,8 @@ impl ProgramProver {
                         SetupMachine::UnrolledFullUnsigned,
                         (loaded.bin_u32.as_slice(), loaded.text_u32.as_slice()),
                     ),
-                    ChainProgram::Fsv(program, _, setup_machine) => {
-                        let (bin, text) = fsv.words(program, setup_machine)?;
+                    ChainProgram::Fsv(program, fsv_profile, _, setup_machine) => {
+                        let (bin, text) = fsv.words(program, fsv_profile, setup_machine)?;
                         let (kind, profile) = match setup_machine {
                             SetupMachine::Unified => {
                                 (ExecutionKind::Unified, ProofProfile::Standard)
@@ -2070,7 +2073,7 @@ fn chain_unrolled_layers(artifact: &ProofArtifact) -> Result<usize, String> {
 
 enum ChainProgram {
     User,
-    Fsv(FsvProgram, BlakeMode, SetupMachine),
+    Fsv(FsvProgram, FsvProfile, BlakeMode, SetupMachine),
 }
 
 /// End params recomputed from the supplied program and the checked-in fsv binaries.
@@ -2088,18 +2091,16 @@ fn recomputed_end_params<'a>(
             selection,
             worker,
         ),
-        ChainProgram::Fsv(FsvProgram::UnifiedRecursionLayerL1FeederA, blake, setup_machine) => {
-            let (bin, text) =
-                load_l1_fsv_program(&fsv_dir, FsvProgram::UnifiedRecursionLayerL1FeederA, blake);
-            trusted_end_params_in_mode(&bin, &text, setup_machine, selection, worker)
-        }
-        ChainProgram::Fsv(program, blake, setup_machine) => {
-            let descriptor = FsvDescriptor::new(
-                selection.security_level,
-                selection.soundness_mode,
-                program,
-                blake,
-            );
+        ChainProgram::Fsv(program, profile, blake, setup_machine) => {
+            let descriptor = FsvDescriptor {
+                profile,
+                ..FsvDescriptor::new(
+                    selection.security_level,
+                    selection.soundness_mode,
+                    program,
+                    blake,
+                )
+            };
             let guest = load_fsv_exact(&fsv_dir, &descriptor);
             trusted_end_params_in_mode(guest.bin(), guest.text(), setup_machine, selection, worker)
         }
@@ -2137,6 +2138,7 @@ fn expected_chain_end_params(
         };
         expected.push(end_params(ChainProgram::Fsv(
             program,
+            FsvProfile::Standard,
             unrolled_blake,
             SetupMachine::UnrolledReduced,
         ))?);
@@ -2156,6 +2158,7 @@ fn expected_chain_end_params(
     let bridge_blake = parse_blake_tag(blake_bridge, bridge_program)?;
     expected.push(end_params(ChainProgram::Fsv(
         bridge_program,
+        FsvProfile::Standard,
         bridge_blake,
         SetupMachine::Unified,
     ))?);
@@ -2164,6 +2167,7 @@ fn expected_chain_end_params(
     let final_blake = parse_blake_tag(blake_final, FsvProgram::UnifiedRecursionLayer)?;
     expected.push(end_params(ChainProgram::Fsv(
         FsvProgram::UnifiedRecursionLayer,
+        FsvProfile::Standard,
         final_blake,
         SetupMachine::Unified,
     ))?);
@@ -2184,6 +2188,7 @@ fn expected_chain_end_params(
             let spec = feeder_stage(role, profile);
             expected.push(end_params(ChainProgram::Fsv(
                 spec.program,
+                spec.fsv_profile,
                 BlakeMode::BlakeSpecialOpcodes,
                 spec.setup_machine,
             ))?);

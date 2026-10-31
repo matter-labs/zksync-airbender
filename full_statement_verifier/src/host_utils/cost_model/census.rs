@@ -421,7 +421,7 @@ mod tests {
                 Err(EstimateError::UnexpectedInitsAndTeardowns { found: 0 })
             );
             let feeder = FsvDescriptor {
-                profile: FsvProfile::L1Feeder,
+                profile: FsvProfile::L1FeederA,
                 ..priced
             };
             assert_eq!(

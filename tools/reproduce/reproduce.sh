@@ -37,15 +37,16 @@ cargo test --release -p verifier_generator --test generate_verifiers
 
 cd "$REPO_ROOT/tools/gkr_verifier"
 
+# Build the independent 512 KiB-ROM L1 wrap guest first: it is a registry row
+# (FsvProfile::L1FeederWrap), and the manifest regenerated below pins every registered guest on disk.
+bash ../gkr_verifier_l1_wrap/dump_bin.sh
+
 # Full-statement verifiers in every soundness mode and blake variant the recursion pipeline can
 # select (full_statement_verifiers/ and full_statement_verifiers/ethproofs_soundcalc/), then the
 # manifest pinning their decoded ROM images (full_statement_verifiers/fsv_manifest.txt). The
 # committed pessimistic_conjecture unified base layer guest is not rebuilt here; the manifest pins
 # the committed file.
 ./dump_recursive_verifiers.sh --soundness-mode all
-
-# Build the independent 512 KiB-ROM L1 wrap guest.
-bash ../gkr_verifier_l1_wrap/dump_bin.sh
 
 # Standalone per-circuit verifiers (both soundness modes; the pessimistic-conjecture set is the
 # one the cost-model drift guard consumes): every binary under src/bin/circuit_verifiers/.
