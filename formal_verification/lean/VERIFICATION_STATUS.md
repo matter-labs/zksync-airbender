@@ -2332,3 +2332,27 @@ unchanged.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned theta/rho low source fragments for shifts two through five
+
+Four more low output cases are closed. Each case covers all 65,536 source
+rows and equals its original native low-fragment value. Exact source suffixes
+bind their stored templates. The original parse premise supplies complete
+column coverage. Short cycle and template rules then supply every row value.
+
+The largest template check exceeded the physical memory cap. Eight bounded
+checks now cover its 4,096 template cells. The final focused group passed in
+eleven seconds. It used 752 MiB of physical memory. The guard cleaned every
+owned child. No limit increased. The native artifacts and the packed-checker
+pilot stay intact. All 22 new roots passed direct axiom checks. They use
+only the three allowed axioms. The inventory now has 14,354 roots. It
+retains all 14,332 previous roots.
+
+The low source fragment still needs shifts one, six and seven. The high
+source fragment remains open. Other theta/rho source cases are closed.
+Parity real-row membership and the original source-string bindings remain
+open. FullUnsigned is not yet proved. Design items 2 and 3 follow the targets.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.

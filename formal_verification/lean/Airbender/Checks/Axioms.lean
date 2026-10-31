@@ -1,3 +1,7 @@
+import Airbender.Proofs.FullUnsigned.ThetaSourceLowTwo
+import Airbender.Proofs.FullUnsigned.ThetaSourceLowThree
+import Airbender.Proofs.FullUnsigned.ThetaSourceLowFour
+import Airbender.Proofs.FullUnsigned.ThetaSourceLowFive
 import Airbender.Proofs.FullUnsigned.ThetaSourceLowZero
 import Airbender.Proofs.FullUnsigned.ThetaSourceSplitKeys
 import Airbender.Proofs.FullUnsigned.ThetaSourceXorMembership
@@ -15771,3 +15775,26 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Setup.ThetaLowZeroIndices.body_power
 #print axioms Airbender.Setup.ThetaLowZeroIndices.source_slice
 #print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_low_zero_get
+
+#print axioms Airbender.Setup.Proofs.uniform256_get
+#print axioms Airbender.Setup.Proofs.periodic_zero_get_mod
+#print axioms Airbender.Setup.ThetaLowTwoSuffix.skip
+#print axioms Airbender.Setup.ThetaLowTwoSuffix.entries
+#print axioms Airbender.Setup.ThetaLowTwoSuffix.matches
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_low_two_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_low_two_match
+#print axioms Airbender.Setup.ThetaLowThreeSuffix.skip
+#print axioms Airbender.Setup.ThetaLowThreeSuffix.entries
+#print axioms Airbender.Setup.ThetaLowThreeSuffix.matches
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_low_three_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_low_three_match
+#print axioms Airbender.Setup.ThetaLowFourSuffix.skip
+#print axioms Airbender.Setup.ThetaLowFourSuffix.entries
+#print axioms Airbender.Setup.ThetaLowFourSuffix.matches
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_low_four_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_low_four_match
+#print axioms Airbender.Setup.ThetaLowFiveSuffix.skip
+#print axioms Airbender.Setup.ThetaLowFiveSuffix.entries
+#print axioms Airbender.Setup.ThetaLowFiveSuffix.matches
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_low_five_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_low_five_match
