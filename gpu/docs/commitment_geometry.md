@@ -90,9 +90,14 @@ the config. Other output logs are available through the direct circuit-prover
 API. See [proof preflight](../circuit_prover/src/proof/mod.rs) and
 [forward DR](../gkr/src/forward/dimension_reducing.rs).
 
-Multiple OOD samples and folding/OOD PoW remain rejected on this head: their
-additional transcript, nonce-layout or grind steps are not wired here. These are
-protocol implementation constraints, independent of memory-policy selection.
+Internal-round folding-challenge PoW (one nonce per folding step) and OOD-draw
+PoW (one nonce per intermediate oracle) are implemented: the scheduler grinds
+them on device in transcript order and the proof layout carries their nonce
+slots. Base-round folding PoW and more than one OOD sample per oracle remain
+rejected before transfers, with the named errors "GPU prover: base-round folding
+PoW is not implemented" and "GPU prover: exactly one OOD sample per oracle is
+implemented"; no certified schedule uses either. These are protocol
+implementation constraints, independent of memory-policy selection.
 See [schedule admission](../whir/src/lib.rs) and
 [proof inputs](../gkr/src/proof_layout/build_inputs.rs).
 

@@ -135,10 +135,11 @@ positive DR chains use the existing tower from round zero. Execution workers
 request explicit output log 4, which preflight binds to the config; other output
 logs are available through the direct circuit-prover API.
 
-Schedules with multiple OOD samples, OOD PoW or folding PoW remain rejected. The
-GPU proof layout/scheduler handles one OOD tuple per oracle and does not implement
-the additional transcript/nonce steps for those schedules. These protocol limits
-are outside memory-policy compatibility. See
+Internal-round folding PoW and OOD PoW are implemented (the ethproofs-soundcalc
+schedules use both). Schedules with base-round folding PoW or more than one OOD
+sample per oracle remain rejected with named errors: the GPU proof
+layout/scheduler handles one OOD tuple per oracle and grinds no base-round
+folding nonce. These protocol limits are outside memory-policy compatibility. See
 [`recursive schedule admission`](../../whir/src/lib.rs) and
 [`proof layout inputs`](../../gkr/src/proof_layout/build_inputs.rs).
 
