@@ -1,3 +1,5 @@
+import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.ShiftBinopCached
+import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.ShiftBinopUncached
 import Airbender.Proofs.GKRProtocol.ProgramPCBounds
 import Airbender.Proofs.GKRProtocol.ProgramPCLowNative.UnifiedCached
 import Airbender.Proofs.GKRProtocol.ProgramPCLowNative.UnifiedUncached
@@ -19126,3 +19128,16 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate.final_pc_low
 #print axioms Airbender.Compiler.UnifiedExecution.native_query_pc_low
 #print axioms Airbender.Compiler.UnifiedExecution.decoder_exact_lookup_from_native
+
+#print axioms Airbender.Compiler.ProgramConstraintsNative.ShiftBinopUncached.FixedHelperTags
+#print axioms Airbender.Compiler.ProgramConstraintsNative.ShiftBinopUncached.helper_guards
+#print axioms Airbender.Compiler.ProgramConstraintsNative.ShiftBinopUncached.input_constraints
+#print axioms Airbender.Compiler.ProgramConstraintsNative.ShiftBinopCached.FixedHelperTags
+#print axioms Airbender.Compiler.ProgramConstraintsNative.ShiftBinopCached.helper_guards
+#print axioms Airbender.Compiler.ProgramConstraintsNative.ShiftBinopCached.input_constraints
+
+#print axioms Airbender.Compiler.public_program_full_fields
+#print axioms Airbender.Compiler.public_program_shift_source
+#print axioms Airbender.Compiler.shift_flags_of_assertions
+#print axioms Airbender.Compiler.shift_tag_equations_of_assertions
+#print axioms Airbender.Compiler.public_shift_helper_tags

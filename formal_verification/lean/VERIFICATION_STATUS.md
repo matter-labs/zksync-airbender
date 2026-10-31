@@ -2986,3 +2986,27 @@ OS binary comparison and verified checker rollout also remain open. Both
 cache modes remain required. No native circuit, Rust source or imported
 value changed. Full frontend validation, environment audit, baseline refresh,
 transitive replay and Linux qualification did not run.
+
+### Program parameter migration: Shift/Binop constraints
+
+Both Shift/Binop cache modes now prove their complete native row constraints
+for the public program setup. Native assertions bind the five helper tags
+to the selector bits. Public decoder matching fixes the selector and operation
+cases. These facts exclude the decoder, ROM and zero tags. Exact matching
+then transports each request to the fixed helper table. The proof derives
+all tag conditions. It adds no tag premise. The incoming PC bound comes
+from the existing exact state-matching adapter.
+
+The public tag proof and both native constraint adapters passed focused
+kernel checks. The last group passed in seven seconds. Peak physical memory
+was 462 MiB. All 11 new public roots passed direct axiom checks with only
+the three allowed axioms. The inventory has 17,544 roots. It retains all
+17,533 prior roots. Generator freshness and mutation controls passed.
+Each guard cleaned its owned children.
+
+Eight of the 14 native CPU constraint adapters are complete. Subword,
+word-memory and unified rows remain open in both cache modes. The legacy
+execution interfaces, production OS binary comparison and verified checker
+rollout also remain open. No native circuit, Rust source or imported value
+changed. Full frontend validation, environment audit, baseline refresh,
+transitive replay and Linux qualification did not run.
