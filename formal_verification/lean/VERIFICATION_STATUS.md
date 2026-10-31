@@ -1265,6 +1265,35 @@ and 3 follow the machine targets. The packed-checker pilot stays unchanged.
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
 
+### Program parameter migration: public query interpretation
+
+The native row factories now bind ROM words to the initial Sail state.
+The unrolled factory selects the public decoder columns by CPU family.
+The unified factory selects its public decoder columns in both cache modes.
+No factory takes a decoded instruction or expected worker result.
+
+Generic query proofs separate decoder, ROM and fixed helper tags. Decoder
+queries retain the full payload. An active PC rejects missing-row sentinels.
+ROM queries give the public word at a bounded native word index. Fixed helper
+queries retain the original captured row.
+
+The public setup masks now prove each decoder payload width from native
+metadata. These proofs cover all 14 CPU profiles. The public decoder lookup
+lemmas use these widths and reject decoder padding. Their operand equality
+is still a proof obligation for the native circuit adapters.
+
+All five new modules passed focused kernel checks. The last group passed
+in four seconds. Peak physical memory was 440 MiB. All 26 new roots passed
+direct axiom checks with only the three allowed axioms. The inventory has
+17,399 roots. It retains all 17,373 prior roots. Each guard cleaned its
+owned children.
+
+Native operand transport, ROM constraint transport and the legacy compiler
+execution migration remain open. The production OS binary comparison and
+verified checker rollout also remain open. Both cache modes remain required.
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
+
 ### Full unsigned native split caller-retirement obligation
 
 `unrolled_full_split_memory_call` connects each actual split caller window

@@ -1,3 +1,4 @@
+import Airbender.Proofs.GKRProtocol.NativePublicDecoder
 import Airbender.Proofs.GKRProtocol.ProgramSetupNative
 import Airbender.Proofs.GKRProtocol.ProgramLogicalRows
 import Airbender.Proofs.GKRProtocol.LookupSetupPartition
@@ -18892,3 +18893,30 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Reference.Compiler.ProgramSetup.packTagged_tag
 #print axioms Airbender.Reference.Compiler.ProgramSetup.packTagged_injective
 #print axioms Airbender.Reference.Compiler.ProgramSetup.decoderPadding_head
+
+#print axioms Airbender.Reference.Compiler.ProgramSetup.decoder_query_region
+#print axioms Airbender.Reference.Compiler.ProgramSetup.rom_query_region
+#print axioms Airbender.Reference.Compiler.ProgramSetup.fixed_query_region
+#print axioms Airbender.Reference.Compiler.ProgramSetup.decoder_payload_member
+#print axioms Airbender.Reference.Compiler.ProgramSetup.tagged_decoder_query_member
+#print axioms Airbender.Reference.Compiler.ProgramSetup.untagged_decoder_query_member
+#print axioms Airbender.Reference.Compiler.ProgramSetup.rom_query_payload
+#print axioms Airbender.Compiler.NativeProgramSetup.pooledFamily
+#print axioms Airbender.Compiler.NativeProgramSetup.unrolledDecoderColumns
+#print axioms Airbender.Compiler.NativeProgramSetup.unifiedDecoderColumns
+#print axioms Airbender.Compiler.NativeProgramSetup.unrolledLookupRows
+#print axioms Airbender.Compiler.NativeProgramSetup.unifiedLookupRows
+#print axioms Airbender.Compiler.NativeProgramSetup.tagged_decoder_member
+#print axioms Airbender.Compiler.NativeProgramSetup.untagged_decoder_member
+#print axioms Airbender.Compiler.NativeProgramSetup.rom_member
+#print axioms Airbender.Compiler.NativeProgramSetup.fixed_member
+#print axioms Airbender.Compiler.NativeProgramSetup.mask_row_width
+#print axioms Airbender.Compiler.NativeProgramSetup.unrolled_mask_eq
+#print axioms Airbender.Compiler.NativeProgramSetup.unified_mask_eq
+#print axioms Airbender.Compiler.NativeProgramSetup.unrolled_native_mask_width
+#print axioms Airbender.Compiler.NativeProgramSetup.unified_native_mask_width
+#print axioms Airbender.Compiler.NativeProgramSetup.unrolled_column_width
+#print axioms Airbender.Compiler.NativeProgramSetup.unified_column_width
+#print axioms Airbender.Compiler.NativeProgramSetup.active_decoder_payload
+#print axioms Airbender.Compiler.NativeProgramSetup.unrolled_decoder_lookup
+#print axioms Airbender.Compiler.NativeProgramSetup.unified_decoder_lookup
