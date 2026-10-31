@@ -88,6 +88,24 @@ pub(super) fn drive_final_rounds<S>(
     }
 }
 
+/// Unrolled recursion continues while the estimated cost of the next verifier run is at or
+/// above the switch threshold; each further layer must lower it. A threshold below the
+/// recursion verifier's fixed point would otherwise never stop the loop.
+pub(super) fn check_unrolled_progress(
+    previous_cycles: Option<u64>,
+    cycles: u64,
+    switch_cycles: u64,
+) -> Result<(), PipelineError> {
+    match previous_cycles {
+        Some(previous) if cycles >= previous => Err(PipelineError::Operation(format!(
+            "NoProgress: unrolled recursion did not lower the estimated verifier cost \
+             ({previous} -> {cycles} cycles) while at or above the switch threshold \
+             {switch_cycles}"
+        ))),
+        _ => Ok(()),
+    }
+}
+
 pub(super) fn finish_operation<B, T>(
     backend: &mut Option<B>,
     result: Result<T, PipelineError>,
@@ -399,5 +417,19 @@ mod tests {
                 "the final program must still run once after the bridge"
             );
         }
+    }
+
+    #[test]
+    fn unrolled_recursion_must_lower_the_estimate() {
+        assert!(check_unrolled_progress(None, 70_000_000, 52_000_000).is_ok());
+        assert!(check_unrolled_progress(Some(70_000_000), 60_000_000, 52_000_000).is_ok());
+        let error = check_unrolled_progress(Some(20_000_000), 20_000_000, 16_777_216)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.starts_with("NoProgress: unrolled recursion"),
+            "{error}"
+        );
+        assert!(check_unrolled_progress(Some(20_000_000), 21_000_000, 16_777_216).is_err());
     }
 }

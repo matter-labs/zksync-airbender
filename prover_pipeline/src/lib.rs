@@ -25,7 +25,9 @@ mod recursion_progress;
 pub use artifact::{ProofArtifact, ARTIFACT_SCHEMA_VERSION};
 use guests::{fsv_input, unrolled_verifier_cost, FsvPrograms};
 pub use prover::definitions::SoundnessMode;
-use recursion_progress::{drive_final_rounds, finish_operation, FinalRoundSummary};
+use recursion_progress::{
+    check_unrolled_progress, drive_final_rounds, finish_operation, FinalRoundSummary,
+};
 pub use recursion_progress::{FinalProofShape, PipelineError};
 
 use clap::ValueEnum;
@@ -411,6 +413,7 @@ fn advance_to_target(
     let switch_cycles = unified_switch_cycles();
 
     // === Unrolled recursion layers. ===
+    let mut previous_cycles = None;
     loop {
         let program = if state.input_is_base {
             FsvProgram::UnrolledBaseLayer
@@ -418,19 +421,14 @@ fn advance_to_target(
             FsvProgram::UnrolledRecursionLayer
         };
         let guest = fsv.get(program, SetupMachine::UnrolledReduced)?;
-        let label = format!("batch-{batch_id}-unrolled-{}", state.chain_end_params.len());
-        let cost = unrolled_verifier_cost(guest, &state.setups, &state.proof, &label)?;
-        log::debug!(
-            "selected verifier cost {} cycles vs switch threshold {switch_cycles}",
-            cost.cycles
-        );
-        if cost.cycles < switch_cycles {
+        let cycles = unrolled_verifier_cost(guest, &state.proof)?;
+        log::debug!("selected verifier cost {cycles} cycles vs switch threshold {switch_cycles}");
+        if cycles < switch_cycles {
             break;
         }
-        let nd_words = match cost.measured_input {
-            Some(words) => words,
-            None => fsv_input(guest, &state.setups, &state.proof, &label)?,
-        };
+        check_unrolled_progress(previous_cycles, cycles, switch_cycles)?;
+        previous_cycles = Some(cycles);
+        let nd_words = fsv_input(guest, &state.setups, &state.proof)?;
         let start = Instant::now();
         let (mut new_proof, new_setups) = backend.prove(ProveRequest {
             batch_id,
@@ -466,12 +464,7 @@ fn advance_to_target(
         FsvProgram::UnrolledRecursionLayer
     };
     let bridge = fsv.get(bridge_program, SetupMachine::Unified)?;
-    let nd_words = fsv_input(
-        bridge,
-        &state.setups,
-        &state.proof,
-        &format!("batch-{batch_id}-bridge"),
-    )?;
+    let nd_words = fsv_input(bridge, &state.setups, &state.proof)?;
     let start = Instant::now();
     let (mut bridge_proof, bridge_setups) = backend.prove(ProveRequest {
         batch_id,
@@ -500,12 +493,7 @@ fn advance_to_target(
         (bridge_proof, bridge_setups),
         final_mode,
         |(proof, setups), round| {
-            let nd_words = fsv_input(
-                final_guest,
-                &setups,
-                &proof,
-                &format!("batch-{batch_id}-unified-{rounds}"),
-            )?;
+            let nd_words = fsv_input(final_guest, &setups, &proof)?;
             let start = Instant::now();
             let (mut new_proof, new_setups) = backend.prove(ProveRequest {
                 batch_id,

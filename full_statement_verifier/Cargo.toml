@@ -43,6 +43,9 @@ verifier_stats = ["verifier_common/verifier_stats"]
 # digest-checked fsv binary loading). Implies `proof_utils` (std build + `ProgramProof`); the
 # native_verify_* wrappers additionally need `verifiers` + a security level.
 host_utils = ["proof_utils", "dep:setups", "dep:flate2", "dep:serde_json", "dep:riscv_transpiler", "dep:sha3"]
+# Offline guest execution in the interpreter (cycle measurement, returned words, execution
+# ledger): a calibration and regression oracle, not a proving-path dependency.
+fsv_execution = ["host_utils"]
 default = ["verifiers", "proof_utils"]
 
 [lints]

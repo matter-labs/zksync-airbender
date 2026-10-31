@@ -1,15 +1,13 @@
-//! Execution of digest-verified full-statement verifier guests in the RISC-V interpreter: the
-//! cycle count a recursion layer will prove, the verifier's returned words, and ledger rows
-//! that record both per guest.
+//! Offline execution of digest-verified full-statement verifier guests in the RISC-V
+//! interpreter: the cycle count a recursion layer will prove, the verifier's returned words, and
+//! ledger rows that record both per guest. A calibration and regression oracle; proving
+//! estimates cycles from the census instead.
 //!
 //! [`measure_fsv_execution`] runs the interpreter procedure of the recursion examples
 //! (`program_prover::unrolled::run_unrolled_machine_in_full` on the reduced machine) over the
 //! exact words [`load_fsv_exact`](super::load_fsv_exact) verified, without recording snapshots.
 
-use super::{
-    build_unified_stream, build_unrolled_stream, load_fsv_exact, FsvDigest, FsvLoadError,
-    VerifiedFsvProgram,
-};
+use super::{fsv_stream, load_fsv_exact, FsvDigest, FsvLoadError, VerifiedFsvProgram};
 use crate::program_proof::ProgramProof;
 use common_constants::{INITIAL_TIMESTAMP, ROM_SECOND_WORD_BITS, TIMESTAMP_STEP};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
@@ -24,8 +22,7 @@ use std::fmt;
 use std::path::Path;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::fsv_binaries::{
-    BlakeMode, FsvDescriptor, FsvProfile, FsvProgram, SecurityLevel, SoundnessMode,
-    UnsupportedFsvVariant, FSV_REGISTRY,
+    BlakeMode, FsvDescriptor, FsvProfile, FsvProgram, SecurityLevel, SoundnessMode, FSV_REGISTRY,
 };
 
 /// The most cycles one guest execution may take: the 32-bit timestamp bound
@@ -211,24 +208,6 @@ fn execute(
         output,
         stream_words,
         stream_digest,
-    })
-}
-
-/// The ND stream the guest of `descriptor` reads for `proof`: the unrolled layers verify an
-/// unrolled proof, the unified layers a unified one, flattened for `descriptor.blake`.
-pub fn fsv_stream(
-    setups: &Setups,
-    proof: &ProgramProof,
-    descriptor: &FsvDescriptor,
-) -> Result<Vec<u32>, UnsupportedFsvVariant> {
-    descriptor.registry_entry()?;
-    Ok(match descriptor.program {
-        FsvProgram::UnrolledBaseLayer | FsvProgram::UnrolledRecursionLayer => {
-            build_unrolled_stream(setups, proof, descriptor.blake)
-        }
-        FsvProgram::UnifiedBaseLayer | FsvProgram::UnifiedRecursionLayer => {
-            build_unified_stream(setups, proof, descriptor.blake)
-        }
     })
 }
 

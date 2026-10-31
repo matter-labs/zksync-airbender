@@ -1,6 +1,7 @@
 pub mod cost_model;
 pub mod fixture_codec;
 mod fsv;
+#[cfg(feature = "fsv_execution")]
 mod fsv_execution;
 
 pub use fsv::{
@@ -8,8 +9,9 @@ pub use fsv::{
     load_fsv_program, render_fsv_manifest, FsvDigest, FsvLoadError, FsvManifestEntry,
     VerifiedFsvProgram, FSV_DIGEST_RECIPE, FSV_MANIFEST_FILE,
 };
+#[cfg(feature = "fsv_execution")]
 pub use fsv_execution::{
-    append_fsv_ledger, fsv_ledger_row, fsv_stream, fsv_stream_digest, measure_fsv_blake_variants,
+    append_fsv_ledger, fsv_ledger_row, fsv_stream_digest, measure_fsv_blake_variants,
     measure_fsv_execution, FsvExecutionError, FsvExecutionFailure, FsvExecutionRecord,
     FSV_EXECUTION_CYCLES_LIMIT,
 };
@@ -18,7 +20,7 @@ use crate::program_proof::ProgramProof;
 use crate::recursion_chain::{self, RecursionChain};
 use setups::Setups;
 use std::path::Path;
-use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
+use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProgram, UnsupportedFsvVariant};
 use verifier_common::prover::definitions::MerkleTreeCap;
 #[cfg(feature = "verifiers")]
 use verifier_common::prover::definitions::{SecurityLevel, SoundnessMode};
@@ -49,6 +51,24 @@ pub fn build_unrolled_stream(setups: &Setups, proof: &ProgramProof, blake: Blake
 #[must_use]
 pub fn build_unified_stream(setups: &Setups, proof: &ProgramProof, blake: BlakeMode) -> Vec<u32> {
     proof.build_unified_stream(flattened_caps(setups), blake)
+}
+
+/// The ND stream the guest of `descriptor` reads for `proof`: the unrolled layers verify an
+/// unrolled proof, the unified layers a unified one, flattened for `descriptor.blake`.
+pub fn fsv_stream(
+    setups: &Setups,
+    proof: &ProgramProof,
+    descriptor: &FsvDescriptor,
+) -> Result<Vec<u32>, UnsupportedFsvVariant> {
+    descriptor.registry_entry()?;
+    Ok(match descriptor.program {
+        FsvProgram::UnrolledBaseLayer | FsvProgram::UnrolledRecursionLayer => {
+            build_unrolled_stream(setups, proof, descriptor.blake)
+        }
+        FsvProgram::UnifiedBaseLayer | FsvProgram::UnifiedRecursionLayer => {
+            build_unified_stream(setups, proof, descriptor.blake)
+        }
+    })
 }
 
 fn flattened_caps(setups: &Setups) -> impl Iterator<Item = &[u32]> {

@@ -152,18 +152,11 @@ takes the same flag and rejects `ethproofs-soundcalc` before reading its input:
 the L1 feeder/wrap/EVM profile is deferred and exists only in
 `pessimistic-conjecture`.
 
-In `ethproofs-soundcalc`, recursion chooses between unrolled and unified layers
-from the measured cycle count of the selected verifier guest, not from the
-pessimistic census, and requires the guest's output to equal the native
-verifier's. Set `FSV_EXECUTION_LEDGER=<path>` to append one JSON line per such
-guest execution: unrolled cost probes (`batch-<id>-unrolled-<chain length>`,
-the number of chain layers so far), bridge inputs (`batch-<id>-bridge`) and
-final rounds (`batch-<id>-unified-<round>`, from 0).
-Each row records the guest's descriptor, its pinned ROM digest, the input
-stream's digest and length, and the cycles and returned words or the failure.
-A row records the execution only: a cost probe below the switch threshold is
-not followed by a proof. `pessimistic-conjecture` uses the calibrated census and
-writes no rows.
+Recursion chooses between unrolled and unified layers from the census estimate
+of the selected verifier guest's cycles
+(`full_statement_verifier::host_utils::cost_model`). Each soundness mode is
+priced from tables calibrated on its own guests; proving does not execute a
+guest to measure it.
 
 ```bash
 cargo run --release -p cli -- verify \

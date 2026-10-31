@@ -340,7 +340,7 @@ fn unified_base_layer_transpiler_accepts_valid_proof() {
 /// The pinned unified base-layer guest, run through `host_utils::measure_fsv_execution`,
 /// returns what the native verifier returns; tampering the proof body, the setup-cap VK or the
 /// final register state never yields a success record.
-#[cfg(feature = "host_utils")]
+#[cfg(feature = "fsv_execution")]
 #[test]
 fn unified_base_layer_guest_execution_is_measured_and_rejects_tampering() {
     use full_statement_verifier::host_utils::{
