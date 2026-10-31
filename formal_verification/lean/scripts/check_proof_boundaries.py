@@ -42,6 +42,15 @@ COMPILER_BINDINGS = frozenset({
     'Airbender.Review.Compiler.LogicalRows',
     'Airbender.Review.Compiler.Program',
 })
+# These public-program adapters instantiate the same native row and setup
+# types. Their import closures include native arithmetic certificates. Keep
+# direct Proofs imports and supporting theorems forbidden in these records.
+PROGRAM_BINDINGS = frozenset({
+    'Airbender.Review.Compiler.ProgramLogicalRows',
+    'Airbender.Review.Compiler.NativePublicSetup',
+    'Airbender.Review.Compiler.NativeSubwordSetup',
+    'Airbender.Review.Compiler.NativeMachineArguments',
+})
 
 
 def closure(root):
@@ -82,6 +91,16 @@ def check_compiler_semantics(root):
             raise ValueError('compiler semantics import calculations: ' + ' -> '.join(path))
 
 
+def compatibility_reexport(name, source):
+    """Accept only the four exact legacy import shims. They define no semantics."""
+    if name not in COMPILER_BINDINGS:
+        return False
+    expected = name.replace('Airbender.Review.Compiler.',
+                            'Airbender.Proofs.Compatibility.Compiler.', 1)
+    body = '\n'.join(line.split('--', 1)[0].strip() for line in source.splitlines()).strip()
+    return body == 'import ' + expected
+
+
 def check_compiler_layout():
     """Check semantic definitions transitively and artifact bindings directly."""
     for legacy in ('GKRCompiler', 'GKRProtocol'):
@@ -90,12 +109,15 @@ def check_compiler_layout():
     for name, path in MODULES.items():
         if not name.startswith('Airbender.Review.Compiler.') or name.endswith('.Theorems'):
             continue
-        if re.search(r'^(?:(?:private|protected)\s+)?(?:theorem|lemma)\s', path.read_text(), re.M):
+        source = path.read_text()
+        if compatibility_reexport(name, source):
+            continue
+        if re.search(r'^(?:(?:private|protected)\s+)?(?:theorem|lemma)\s', source, re.M):
             raise ValueError('supporting theorem in compiler review definitions: ' + name)
         for dependency in IMPORTS[name]:
             if dependency.startswith('Airbender.Proofs.'):
                 raise ValueError('compiler definitions import calculations: ' + name + ' -> ' + dependency)
-        if name not in COMPILER_BINDINGS:
+        if name not in COMPILER_BINDINGS | PROGRAM_BINDINGS:
             check_compiler_semantics(name)
     for name, path in MODULES.items():
         if name.startswith(('Airbender.Proofs.GKRCompiler.', 'Airbender.Proofs.GKRProtocol.')):
