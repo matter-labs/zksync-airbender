@@ -2,6 +2,7 @@ import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.AddSubCached
 
 namespace Airbender.Compiler.ProgramConstraintsNative.AddSubCached
 open Airbender Airbender.Compiler Airbender.Compiler.PooledRowNative.AddSubCached
+open Airbender.Compiler.PhysicalClosedNative.AddSubCached
 set_option warningAsError true
 set_option Elab.async false
 
@@ -101,7 +102,7 @@ private theorem range_lookup5
   rw [same]
   exact Airbender.Compiler.CleanScalarNative.AddSubCached.native.range16_clean_refinement _ valid _
 
-/-- Native ADD/SUB constraints hold for any public program setup rows. -/
+/-- Native CPU constraints hold for any public program setup rows. -/
 theorem input_constraints
     (decoder : Configuration → List (List Source.BaseField))
     (wordAt : Nat → BitVec 32) (input : Input)

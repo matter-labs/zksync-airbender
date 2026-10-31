@@ -1,5 +1,6 @@
 import Airbender.Proofs.GKRProtocol.LogicalRows.SubwordMemoryUncached
 import Airbender.Proofs.GKRProtocol.ProgramSetupNative
+import Airbender.Proofs.GKRProtocol.NativeProgramQueries
 
 namespace Airbender.Compiler.ProgramFixedLookup.SubwordMemoryUncached
 open Airbender Airbender.Compiler Airbender.Compiler.PooledRowNative.SubwordMemoryUncached

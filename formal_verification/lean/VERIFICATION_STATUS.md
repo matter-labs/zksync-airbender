@@ -2932,3 +2932,32 @@ and ROM lookup transport. The legacy execution interfaces, production OS
 binary comparison and verified checker rollout also remain open. Both cache
 modes remain required. Full frontend validation, environment audit, baseline
 refresh, transitive replay and Linux qualification did not run.
+
+
+### Program parameter migration: fixed helper CPU constraints
+
+Jump/Branch and MUL/DIV now prove their complete native row constraints
+with program setup rows as parameters. Both cache modes derive fixed helper
+membership from exact matching. Kernel proofs check the helper tags against
+zero, decoder and ROM tags. The result holds for any pooled setup. It needs
+no retained image or decoder equality. Together with ADD/SUB, six of the
+14 CPU profiles now have this constraint adapter.
+
+The fixed helper membership lemmas also cover Shift/Binop. Its constraint
+adapter still needs a native arithmetic proof for the variable helper tags.
+The failed prototype stays outside the repository. It added no premise.
+The completed statements and references stay unchanged.
+
+All six native constraint adapters passed focused kernel checks. The last
+61-module group passed in 18 seconds. It reused modules from the preceding
+focused passes. Peak physical memory was 458 MiB. All ten new public roots
+passed direct axiom checks with only the three allowed axioms. The inventory
+has 17,513 roots. It retains all 17,503 prior roots. Generator freshness and
+mutation controls passed. Each guard cleaned its owned children.
+
+Shift/Binop, subword, word-memory and unified constraint adapters remain
+open. They need variable helper tag or ROM transport. The legacy execution
+interfaces, production OS binary comparison and verified checker rollout
+also remain open. Both cache modes remain required. No native circuit, Rust
+source or imported value changed. Full frontend validation, environment
+audit, baseline refresh, transitive replay and Linux qualification did not run.

@@ -1,3 +1,7 @@
+import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.MulDivCached
+import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.MulDivUncached
+import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.JumpBranchCached
+import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.JumpBranchUncached
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.AddSubCached
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.AddSubUncached
 import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.UnifiedCached
@@ -19074,3 +19078,14 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 
 #print axioms Airbender.Compiler.ProgramConstraintsNative.AddSubUncached.input_constraints
 #print axioms Airbender.Compiler.ProgramConstraintsNative.AddSubCached.input_constraints
+
+#print axioms Airbender.Compiler.ProgramFixedLookup.JumpBranchUncached.generic_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.JumpBranchCached.generic_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.MulDivUncached.generic_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.MulDivCached.generic_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.ShiftBinopUncached.generic_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.ShiftBinopCached.generic_from_arguments
+#print axioms Airbender.Compiler.ProgramConstraintsNative.JumpBranchUncached.input_constraints
+#print axioms Airbender.Compiler.ProgramConstraintsNative.JumpBranchCached.input_constraints
+#print axioms Airbender.Compiler.ProgramConstraintsNative.MulDivUncached.input_constraints
+#print axioms Airbender.Compiler.ProgramConstraintsNative.MulDivCached.input_constraints

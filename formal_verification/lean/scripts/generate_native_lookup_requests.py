@@ -623,6 +623,7 @@ def program_fixed_interfaces():
                                   'fixed_group_member decoder wordAt input arguments 2 (by decide +kernel)')
         code = f'''import Airbender.Proofs.GKRProtocol.LogicalRows.{name}
 import Airbender.Proofs.GKRProtocol.ProgramSetupNative
+import Airbender.Proofs.GKRProtocol.NativeProgramQueries
 
 namespace Airbender.Compiler.ProgramFixedLookup.{name}
 open Airbender Airbender.Compiler {case}
@@ -652,16 +653,38 @@ theorem range_from_arguments
     (query.materialized {coordinates}) ?_ enabled
   exact List.mem_map.mpr ⟨query, member, rfl⟩
 
-{helpers}end Airbender.Compiler.ProgramFixedLookup.{name}
+{helpers}'''
+        if name.startswith(('JumpBranch', 'MulDiv', 'ShiftBinop')):
+            fields = f'query.fields.map (fun field => field.value {coordinates})'
+            code += f'''
+/-- Program rows cannot alter a lookup with a fixed helper tag. -/
+theorem generic_from_arguments
+    {parameters} (query : SourceLookupQuery) (member : query ∈ {source}.genericQueries)
+    (nonzeroTag : ({fields}).getLast?.getD 0 ≠ 0)
+    (notDecoder : ({fields}).getLast?.getD 0 ≠ 46)
+    (notROM : ({fields}).getLast?.getD 0 ≠ 34)
+    (enabled : query.weight (RingHom.id _) {coordinates} ≠ 0) :
+    {model}.Contains Airbender.Compiler.TableNative.{name}.native.genericSetupColumns
+      ({fields}) := by
+  obtain ⟨index, equal⟩ := source_member_with {tables} input arguments 0
+    (query.materialized {coordinates}) (List.mem_map.mpr ⟨query, member, rfl⟩) enabled
+  have matched : ({fields}) = NativeProgramSetup.rows decoder wordAt .{constructor} 0 index.val := equal
+  have fixedRow := NativeProgramSetup.fixed_member decoder wordAt .{constructor} _ rfl rfl
+    index.val ({fields}) matched nonzeroTag notDecoder notROM
+  refine ⟨index, ?_⟩
+  simpa [NativeProgramSetup.retainedRows, index.isLt] using fixedRow
+'''
+            roots.append(f'Airbender.Compiler.ProgramFixedLookup.{name}.generic_from_arguments')
+        code += f'''end Airbender.Compiler.ProgramFixedLookup.{name}
 '''
         emit(Path('Airbender/Proofs/GKRProtocol/ProgramFixedLookup') / f'{name}.lean', code)
         roots.extend(f'Airbender.Compiler.ProgramFixedLookup.{name}.{theorem}'
                      for theorem in ['fixed_group_member', 'range_from_arguments', 'helpers_from_arguments'])
     return roots
 
-def program_add_sub_constraints():
+def program_fixed_cpu_constraints():
     roots = []
-    for name in ['AddSubUncached', 'AddSubCached']:
+    for name in [name for name in NAMES if name.startswith(('AddSub', 'JumpBranch', 'MulDiv'))]:
         constructor = name[0].lower() + name[1:]
         case = f'Airbender.Compiler.PooledRowNative.{name}'
         tables = f'(fun group index => NativeProgramSetup.rows decoder wordAt .{constructor} group index.val)'
@@ -670,11 +693,12 @@ def program_add_sub_constraints():
     (arguments : LookupArgumentsWith {tables} input)'''
         source = (ROOT / 'Airbender/Proofs/GKRProtocol/PhysicalClosedNative' / (name + '.lean')).read_text()
         ranges = source[source.index('theorem range_lookup0'):source.index('theorem retained_clock_from_physical')]
-        entries = re.split(r'(?=theorem range_lookup\d+\n)', ranges)
+        entries = re.split(r'(?=theorem (?:range|generic)_lookup\d+\n)', ranges)
         code = f'''import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.{name}
 
 namespace Airbender.Compiler.ProgramConstraintsNative.{name}
 open Airbender Airbender.Compiler {case}
+open Airbender.Compiler.PhysicalClosedNative.{name}
 set_option warningAsError true
 set_option Elab.async false
 
@@ -682,22 +706,27 @@ set_option Elab.async false
         for entry in entries:
             if not entry.strip():
                 continue
-            theorem = re.search(r'^theorem (range_lookup\d+)', entry)[1]
-            target = entry[entry.index('    (Verification.range16'):]
+            theorem = re.search(r'^theorem ((?:range|generic)_lookup\d+)', entry)[1]
+            target = entry[entry.index(' :\n', entry.index('(authored')) + len(' :\n'):]
             target = re.sub(r'\bphysical\b', 'input.physical', target)
             target = re.sub(r'\barithmetic\b', 'input.arithmetic', target)
             target = target.replace('authored.2 query',
                                     f'ProgramFixedLookup.{name}.range_from_arguments decoder wordAt input arguments query')
+            target = target.replace('authored.1 query',
+                                    f'ProgramFixedLookup.{name}.generic_from_arguments decoder wordAt input arguments query')
+            if theorem.startswith('generic_'):
+                target = '\n'.join(line + ' (by exact of_decide_eq_true rfl) (by exact of_decide_eq_true rfl) (by exact of_decide_eq_true rfl)'
+                                   if line.startswith('  have member :=') else line for line in target.splitlines()) + '\n\n'
             code += f'private theorem {theorem}\n    {parameters} (data : ProverData Source.BaseField) :\n' + target
         body = source[source.index('theorem retained_clock_from_physical'):]
         body = body[body.index(' := by\n') + len(' := by\n'):body.index('\nend ')]
-        body = re.sub(r'(range_lookup\d+) physical data arithmetic authored',
+        body = re.sub(r'((?:range|generic)_lookup\d+) physical data arithmetic authored',
                       r'\1 decoder wordAt input arguments (fun _ _ => #[])', body)
         body = re.sub(r'\bphysical\b', 'input.physical', body)
         body = re.sub(r'\barithmetic\b', 'input.arithmetic', body)
         body = re.sub(r'\bdata\b', '(fun _ _ => #[])', body)
         body = body.replace('clock_lookup_inventory', f'Airbender.Compiler.PhysicalClosedNative.{name}.clock_lookup_inventory')
-        code += f'''/-- Native ADD/SUB constraints hold for any public program setup rows. -/
+        code += f'''/-- Native CPU constraints hold for any public program setup rows. -/
 theorem input_constraints
     {parameters} (setup : Trace.PooledSetup babyBearModulus) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (inputRow input).assignment)
@@ -716,7 +745,7 @@ program_roots = program_row_interfaces()
 setup_roots = program_setup_interfaces()
 decoder_roots = program_decoder_interfaces()
 fixed_roots = program_fixed_interfaces()
-constraint_roots = program_add_sub_constraints()
+constraint_roots = program_fixed_cpu_constraints()
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
@@ -731,7 +760,7 @@ decoder_imports = '\n'.join('import Airbender.Proofs.GKRProtocol.' + tree + '.' 
 for decoder_import in decoder_imports.splitlines():
     if decoder_import not in content.splitlines():
         content = decoder_import + '\n' + content
-for name in ['AddSubUncached', 'AddSubCached']:
+for name in [name for name in NAMES if name.startswith(('AddSub', 'JumpBranch', 'MulDiv'))]:
     constraint_import = 'import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.' + name
     if constraint_import not in content.splitlines():
         content = constraint_import + '\n' + content
