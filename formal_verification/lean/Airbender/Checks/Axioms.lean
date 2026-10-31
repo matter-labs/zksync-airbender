@@ -1,3 +1,8 @@
+import Airbender.Proofs.FullUnsigned.SourceBlockTrimming
+import Airbender.Proofs.FullUnsigned.ThetaSourceHighOne
+import Airbender.Proofs.FullUnsigned.ThetaSourceHighTwo
+import Airbender.Proofs.FullUnsigned.ThetaSourceHighSeven
+import Airbender.Proofs.FullUnsigned.ThetaSourceMembership
 import Airbender.Proofs.FullUnsigned.SourceUniformChunks
 import Airbender.Proofs.FullUnsigned.ThetaSourceHighThree
 import Airbender.Proofs.FullUnsigned.ThetaSourceHighFour
@@ -15837,3 +15842,20 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_high_five_match
 #print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_high_six_get
 #print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_high_six_match
+
+#print axioms Airbender.Setup.Proofs.skip_constant_head
+#print axioms Airbender.Setup.Proofs.shorten_constant_tail
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_high_one_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_high_one_match
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_high_two_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_high_two_match
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_high_seven_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_high_seven_match
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_low_zero_match
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_low_match
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_high_match
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_columns_match
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_rows
+#print axioms Airbender.Compiler.MachineTargets.Proofs.theta_source_split_member
+#print axioms Airbender.Compiler.MachineTargets.Proofs.split_theta_real_rows
+#print axioms Airbender.Compiler.MachineTargets.Proofs.theta_source_rows

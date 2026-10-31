@@ -2418,3 +2418,31 @@ stays intact.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned theta/rho source membership
+
+Complete represented-source membership is closed for theta/rho. The final
+three overflow cases equal their original native values. Exact constant
+trimming and scaled blocks prove shifts one and two. Thirty-two bounded
+kernel checks prove shift seven. All eight low and high output cases now
+compose with the source keys, padding fields, tags, control rows and slots.
+
+The new `split_theta_real_rows` theorem proves all 590,066 real rows. The
+new `theta_source_rows` theorem also includes the proved physical padding.
+The original parse and row-value premises stay explicit. No source-membership
+assumption is added. The original raw source string still needs its equality
+with the represented source. This binding remains open.
+
+The final three overflow modules passed focused kernel checks. Their group
+used 1,362 MiB of physical memory. The final assembly passed in four seconds
+and used 429 MiB. Each guard cleaned all owned children. All sixteen new
+roots passed direct axiom checks. They use only the three allowed axioms.
+The inventory has 14,396 roots. It retains all 14,380 previous roots.
+
+Parity real-row membership and all three original source-string bindings
+remain open. FullUnsigned is not yet proved. Design items 2 and 3 follow
+the machine targets. The native artifacts and packed checker pilot stay intact.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
