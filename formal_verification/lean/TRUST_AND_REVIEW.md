@@ -51,6 +51,12 @@ Keccak. All 14 CPU profiles have native public-program constraint and decoder
 adapters. The [native acceptance adapter](Airbender/Proofs/GKRProtocol/NativeMachineAcceptance.lean)
 closes the CPU and decoder premises. The earlier captured-program interfaces
 remain in the compatibility proof layer with their original contracts.
+The boundary guard accepts only the four exact legacy import shims. They
+declare no values or statements. Four named public-program binding modules
+instantiate native row and setup types. They may import native certificates
+through those types. They may not import proofs directly or declare supporting
+theorems. The canonical public-program graph excludes compatibility modules.
+All six boundary controls and the current graph check pass.
 The pinned public OS decoder differential passed all 14 full and unified
 comparisons in both cache modes. It does not prove OS execution: the targets
 exclude special5 calls. The verified checker rollout remains open.
