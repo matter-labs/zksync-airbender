@@ -27,4 +27,9 @@ noncomputable def programRows (decoder : Configuration → List (List Source.Bas
       else retainedRows configuration group index
     | _ => rows decoder wordAt configuration group index
 
+/-- Bind all unrolled program regions to public decoder columns and bytes. -/
+noncomputable def unrolledProgramLookupRows (initial : Reference.RiscV.Sail.State)
+    (columns : Trace.PooledFamily → List (List Source.BaseField)) : ProgramLookupRows :=
+  programRows (unrolledDecoderColumns columns) (Trace.ROM.words initial)
+
 end Airbender.Compiler.NativeProgramSetup
