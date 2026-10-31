@@ -190,6 +190,17 @@ impl ProofArtifact {
             }
             version => return Err(unsupported_version(version)),
         }
+        // L1 artifacts exist only in PessimisticConjecture: neither an ethproofs request nor
+        // an ethproofs label reaches an L1 verifier or continuation.
+        for mode in [expected, self.soundness_mode] {
+            super::validate_target_selection(
+                self.target,
+                prover::definitions::ProvingSelection {
+                    security_level: self.security_level.to_prover(),
+                    soundness_mode: mode,
+                },
+            )?;
+        }
         if self.soundness_mode != expected {
             return Err(format!(
                 "SoundnessModeMismatch: expected {expected:?}, artifact is {:?}",

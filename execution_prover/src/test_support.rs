@@ -168,11 +168,16 @@ impl ExecutionBackend for TestBackend {
                                 false,
                                 request.profile,
                             ));
-                            let config = crate::prover_config(
-                                request.circuit_type,
-                                request.profile,
-                                request.selection.security_level,
-                            );
+                            let config = match request.profile {
+                                ProofProfile::Standard => crate::prover_config(
+                                    request.circuit_type,
+                                    request.selection.security_level,
+                                ),
+                                l1 => l1.prover_config(
+                                    request.circuit_type.get_domain_size_log2() as usize,
+                                    request.selection,
+                                ),
+                            };
                             WorkResult::MemoryCommitment(MemoryCommitmentResult {
                                 batch_id: request.batch_id,
                                 circuit_type: request.circuit_type,

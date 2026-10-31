@@ -28,12 +28,28 @@ impl ProofProfile {
         matches!(self, Self::L1Feeder | Self::L1FeederA)
     }
 
+    /// The named special-config profile this proof profile is selected under.
+    pub fn config_profile(self) -> crate::definitions::ProverConfigProfile {
+        use crate::definitions::ProverConfigProfile;
+        match self {
+            Self::Standard => ProverConfigProfile::Standard,
+            Self::L1Feeder | Self::L1FeederA => ProverConfigProfile::L1Feeder,
+            Self::L1Wrap => ProverConfigProfile::EvmProductionPacked,
+        }
+    }
+
+    /// The special config of an L1 profile under `selection`. The L1 profiles exist only under
+    /// [`SoundnessMode::PessimisticConjecture`] (Ethproofs L1 feeder/wrap/EVM is deferred product
+    /// scope): another mode panics with
+    /// [`ProverConfigProfile::mode_refusal`](crate::definitions::ProverConfigProfile::mode_refusal)'s
+    /// text. `Standard` resolves through the circuit's own config.
     pub fn prover_config(
         self,
         trace_len_log2: usize,
-        security_level: SecurityLevel,
+        selection: crate::definitions::ProvingSelection,
     ) -> ProverConfig {
-        match self {
+        self.config_profile().assert_supports(selection);
+        let config = match self {
             Self::Standard => {
                 panic!("ProofProfile::Standard resolves through the circuit's own prover_config")
             }
@@ -57,9 +73,14 @@ impl ProofProfile {
                     example_configs::l1_wrap_2p21::TRACE_LEN_LOG2,
                     "ProofProfile::L1Wrap requires the 2^21 Proth120 unified circuit"
                 );
-                example_configs::l1_wrap_2p21::packed_prover_config(security_level)
+                example_configs::l1_wrap_2p21::packed_prover_config(selection.security_level)
             }
-        }
+        };
+        assert_eq!(
+            config.security_level, selection.security_level,
+            "the {self:?} config must match the requested security level"
+        );
+        config
     }
 }
 

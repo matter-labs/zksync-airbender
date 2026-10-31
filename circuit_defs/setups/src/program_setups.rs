@@ -143,9 +143,13 @@ pub fn compute_unified_program_setups_for_profile<A: GoodAllocator + 'static>(
 fn setup_prover_config(profile: ProofProfile, circuit_config: &ProverConfig) -> ProverConfig {
     match profile {
         ProofProfile::Standard => circuit_config.clone(),
-        ProofProfile::L1Feeder | ProofProfile::L1FeederA => {
-            profile.prover_config(circuit_config.trace_len_log2, circuit_config.security_level)
-        }
+        ProofProfile::L1Feeder | ProofProfile::L1FeederA => profile.prover_config(
+            circuit_config.trace_len_log2,
+            prover::definitions::ProvingSelection {
+                security_level: circuit_config.security_level,
+                soundness_mode: SoundnessMode::PessimisticConjecture,
+            },
+        ),
         ProofProfile::L1Wrap => panic!("L1Wrap setups use the Proth120 circuit"),
     }
 }

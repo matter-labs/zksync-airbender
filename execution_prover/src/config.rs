@@ -1,30 +1,43 @@
-use crate::upstream::{ProverConfig, SecurityLevel};
+use crate::upstream::{GKRCircuitArtifact, ProverConfig, SecurityLevel, BF};
 use crate::{CommitmentMode, ExecutionKind, ProofProfile};
 use execution_prover_model::circuit_type::CircuitType;
 pub use prover::definitions::{ProvingSelection, SoundnessMode};
 use riscv_transpiler::jit::JitRunnerRam;
 
-/// Commitments and proofs use the circuit's own config unless an L1 profile overrides it.
-pub fn prover_config(
+/// Commitments and proofs must use the same geometry on both backends: the circuit definition's
+/// own config (`CircuitType::prover_config`), resolved without compiled columns.
+pub fn prover_config(circuit_type: CircuitType, security_level: SecurityLevel) -> ProverConfig {
+    circuit_type.prover_config(security_level)
+}
+
+/// The config of `circuit_type` under `profile` and `selection`: `Standard` resolves the selected
+/// mode from the compiled columns, the L1 profiles use their special configs
+/// ([`ProofProfile::prover_config`], Pessimistic only).
+pub fn prover_config_in_mode(
     circuit_type: CircuitType,
+    compiled: &GKRCircuitArtifact<BF>,
     profile: ProofProfile,
-    security_level: SecurityLevel,
+    selection: ProvingSelection,
 ) -> ProverConfig {
     match profile {
-        ProofProfile::Standard => circuit_type.prover_config(security_level),
-        l1 => l1.prover_config(circuit_type.get_domain_size_log2() as usize, security_level),
+        ProofProfile::Standard => circuit_type.prover_config_in_mode(compiled, selection),
+        l1 => l1.prover_config(circuit_type.get_domain_size_log2() as usize, selection),
     }
 }
 
-/// Unified executions take their mode from the selected circuit configuration.
-/// Per-family unrolled executions only support separate commitments.
-pub fn execution_commitment_mode(
+/// Unified executions take their mode from the selected circuit configuration; `compiled`
+/// returns the unified circuit's compiled columns. Per-family unrolled executions only
+/// support separate commitments.
+pub fn execution_commitment_mode<'a>(
     kind: ExecutionKind,
     profile: ProofProfile,
-    security_level: SecurityLevel,
+    selection: ProvingSelection,
+    compiled: impl FnOnce(CircuitType) -> &'a GKRCircuitArtifact<BF>,
 ) -> CommitmentMode {
     match kind.unified_circuit() {
-        Some(circuit) => prover_config(circuit, profile, security_level).commitment_mode,
+        Some(circuit) => {
+            prover_config_in_mode(circuit, compiled(circuit), profile, selection).commitment_mode
+        }
         None => {
             assert_eq!(profile, ProofProfile::Standard);
             CommitmentMode::SeparateMemoryAndWitness

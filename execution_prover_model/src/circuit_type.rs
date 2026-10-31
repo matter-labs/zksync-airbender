@@ -67,6 +67,10 @@ impl CircuitType {
         compiled: &GKRCircuitArtifact<BabyBearField>,
         selection: ProvingSelection,
     ) -> ProverConfig {
+        if self.is_l1_wrap() {
+            return ProofProfile::L1Wrap
+                .prover_config(self.get_domain_size_log2() as usize, selection);
+        }
         self.geometry()
             .prover_config(compiled, selection.security_level, selection.soundness_mode)
     }
@@ -79,9 +83,13 @@ impl CircuitType {
         match self {
             Self::Delegation(delegation_type) => delegation_type.prover_config(level),
             Self::Unrolled(unrolled_type) => unrolled_type.prover_config(level),
-            Self::L1Wrap21 => {
-                ProofProfile::L1Wrap.prover_config(self.get_domain_size_log2() as usize, level)
-            }
+            Self::L1Wrap21 => ProofProfile::L1Wrap.prover_config(
+                self.get_domain_size_log2() as usize,
+                ProvingSelection {
+                    security_level: level,
+                    soundness_mode: circuit_common::SoundnessMode::PessimisticConjecture,
+                },
+            ),
         }
     }
 

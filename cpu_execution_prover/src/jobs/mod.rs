@@ -68,7 +68,7 @@ impl CpuJobs {
         if circuit_type.is_l1_wrap() {
             let l1_wrap = precomputations.l1_wrap();
             assert_eq!(circuit_type, l1_wrap.circuit_type);
-            l1_wrap.initialize_setup(selection.security_level, worker);
+            l1_wrap.initialize_setup(selection, worker);
         } else {
             let message_size_log2 =
                 precomputations.whir_message_size_log2_for_request(circuit_type, selection);

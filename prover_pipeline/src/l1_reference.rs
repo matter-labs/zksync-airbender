@@ -653,10 +653,9 @@ fn export_l1_wrap_setup_frontier() {
     setups::pad_bytecode_for_proving_with_rom(&mut binary, circuit_type.rom());
     setups::pad_bytecode_for_proving_with_rom(&mut text, circuit_type.rom());
     let setup = unified_reduced_machine_proth120::l1_wrap_2p21::l1_wrap_setup(&binary, &text);
-    let config = execution_prover::config::prover_config(
-        circuit_type,
-        ProofProfile::L1Wrap,
-        ::prover::definitions::SecurityLevel::Sec100,
+    let config = ProofProfile::L1Wrap.prover_config(
+        circuit_type.get_domain_size_log2() as usize,
+        crate::selection_in_mode(SoundnessMode::PessimisticConjecture),
     );
     let pack_log2 = config.pack_log2();
     let worker = Worker::new();

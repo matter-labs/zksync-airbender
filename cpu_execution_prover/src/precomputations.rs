@@ -1,13 +1,13 @@
 use crate::upstream::{
     CircuitSetup, ColumnMajorBaseOracleForLDE, CosetByCosetBaseCommitment, CpuGKRSetup,
     DefaultTreeConstructor, GKRCircuitArtifact, Keccak256MerkleTreeWithCap, L1WrapSetup,
-    MerkleTreeCapVarLength, Proth120, ProverConfig, SecurityLevel, SetupCommitment, TableDriver,
-    TwiddleSetOps, Twiddles, UnrolledCircuitWitnessEvalFn, BF,
+    MerkleTreeCapVarLength, Proth120, ProverConfig, SetupCommitment, TableDriver, TwiddleSetOps,
+    Twiddles, UnrolledCircuitWitnessEvalFn, BF,
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::config::ProvingSelection;
 use execution_prover::setup::CanonicalCircuitSetup;
-use execution_prover::{prover_config, ProofProfile};
+use execution_prover::ProofProfile;
 use execution_prover_model::circuit_type::CircuitType;
 use std::alloc::Global;
 use std::collections::BTreeMap;
@@ -36,8 +36,9 @@ pub(crate) struct L1WrapCommittedSetup {
 }
 
 impl L1WrapPrecomputed {
-    pub(crate) fn initialize_setup(&self, security_level: SecurityLevel, worker: &Worker) {
-        let config = prover_config(self.circuit_type, ProofProfile::L1Wrap, security_level);
+    pub(crate) fn initialize_setup(&self, selection: ProvingSelection, worker: &Worker) {
+        let config = ProofProfile::L1Wrap
+            .prover_config(self.circuit_type.get_domain_size_log2() as usize, selection);
         self.committed
             .get_or_init(|| L1WrapCommittedSetup::new(&self.setup.setup, config, worker));
     }
@@ -114,7 +115,14 @@ impl CpuCircuitPrecomputations {
         profiles: &[ProofProfile],
     ) -> Self {
         let configs = match &setup {
-            CanonicalCircuitSetup::L1Wrap(_) => BTreeMap::new(),
+            CanonicalCircuitSetup::L1Wrap(_) => {
+                // The wrap's config is resolved at setup initialization; refuse an
+                // unsupported selection here, before any setup work.
+                ProofProfile::L1Wrap
+                    .config_profile()
+                    .assert_supports(selection);
+                BTreeMap::new()
+            }
             CanonicalCircuitSetup::Riscv(CircuitSetup {
                 compiled_circuit, ..
             }) => profile_configs(circuit_type, compiled_circuit, selection, profiles),
@@ -278,10 +286,12 @@ fn profile_configs(
     profiles
         .iter()
         .map(|&profile| {
-            let config = match profile {
-                ProofProfile::Standard => circuit_type.prover_config_in_mode(compiled, selection),
-                l1 => prover_config(circuit_type, l1, selection.security_level),
-            };
+            let config = execution_prover::config::prover_config_in_mode(
+                circuit_type,
+                compiled,
+                profile,
+                selection,
+            );
             (profile, config)
         })
         .collect()
@@ -376,6 +386,26 @@ mod tests {
             CircuitType::Delegation(DelegationCircuitType::BigIntWithControl),
             selection,
             ProofProfile::Standard,
+        );
+    }
+
+    /// The wrap's precomputations refuse ethproofs with the deferred-scope refusal.
+    #[test]
+    #[should_panic(
+        expected = "UnsupportedSpecialConfigMode: ethproofs soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope); requested EvmProductionPacked"
+    )]
+    fn ethproofs_l1_wrap_precomputation_is_rejected() {
+        let program = vec![0x0001_2083, 0xffdf_f06f];
+        let setup = crate::upstream::l1_wrap_2p21::l1_wrap_setup(&program, &program);
+        let selection = ProvingSelection {
+            soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
+            ..ProvingSelection::default()
+        };
+        CpuCircuitPrecomputations::from_canonical(
+            CircuitType::L1Wrap21,
+            CanonicalCircuitSetup::L1Wrap(setup),
+            selection,
+            &[ProofProfile::L1Wrap],
         );
     }
 }

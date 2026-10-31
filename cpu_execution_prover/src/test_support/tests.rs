@@ -95,11 +95,8 @@ pub(super) fn capture_regular(
         .expect("regular capture receiver")
         .send(outcome)
         .unwrap();
-    let config = execution_prover::prover_config(
-        request.circuit_type,
-        request.profile,
-        request.selection.security_level,
-    );
+    let config =
+        execution_prover::prover_config(request.circuit_type, request.selection.security_level);
     assert!(config.cap_size.is_multiple_of(config.lde_factor()));
     MemoryCommitmentResult {
         batch_id: request.batch_id,

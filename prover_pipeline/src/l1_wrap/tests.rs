@@ -82,7 +82,10 @@ fn malformed_l1_envelopes_fail_verify_and_continuation_before_loading_programs()
         )
         .unwrap_err()
         .contains(expected));
-        assert!(validate_continuation_request(&checkpoint, ProofTarget::L1)
+        // A continuation accepts the artifact (schema and mode) before its request checks.
+        assert!(checkpoint
+            .validate_expected_mode(SoundnessMode::PessimisticConjecture)
+            .and_then(|()| validate_continuation_request(&checkpoint, ProofTarget::L1))
             .unwrap_err()
             .contains(expected));
         // The session's own verify checks the same envelope before it reads its source or

@@ -374,6 +374,29 @@ mod selection_tests {
         ] {
             assert!(profile.supports(SoundnessMode::PessimisticConjecture));
         }
+        // Every L1 profile's config resolver refuses ethproofs with its profile's refusal,
+        // before building anything.
+        let selection = ProvingSelection {
+            soundness_mode: mode,
+            ..ProvingSelection::default()
+        };
+        for (profile, log2) in [
+            (crate::gkr::prover_config::ProofProfile::L1Feeder, 22),
+            (crate::gkr::prover_config::ProofProfile::L1FeederA, 23),
+            (
+                crate::gkr::prover_config::ProofProfile::L1Wrap,
+                l1_wrap_2p21::TRACE_LEN_LOG2,
+            ),
+        ] {
+            let payload = std::panic::catch_unwind(|| profile.prover_config(log2, selection))
+                .map(|_| panic!("{profile:?} resolved an ethproofs config"))
+                .unwrap_err();
+            assert_eq!(
+                payload.downcast_ref::<String>(),
+                profile.config_profile().mode_refusal(mode).as_ref(),
+                "{profile:?}"
+            );
+        }
     }
 
     #[test]
@@ -385,5 +408,27 @@ mod selection_tests {
             soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
             ..ProvingSelection::default()
         });
+    }
+
+    /// Under PessimisticConjecture every L1 profile resolves to its plain special config.
+    #[test]
+    fn pessimistic_l1_profile_configs_are_the_special_configs() {
+        use crate::gkr::prover_config::ProofProfile;
+        let selection = ProvingSelection {
+            soundness_mode: SoundnessMode::PessimisticConjecture,
+            ..ProvingSelection::default()
+        };
+        assert_eq!(
+            ProofProfile::L1Feeder.prover_config(22, selection),
+            l1_feeder_config_for_2_22()
+        );
+        assert_eq!(
+            ProofProfile::L1FeederA.prover_config(23, selection),
+            l1_feeder_a_config_for_2_23()
+        );
+        assert_eq!(
+            ProofProfile::L1Wrap.prover_config(l1_wrap_2p21::TRACE_LEN_LOG2, selection),
+            l1_wrap_2p21::packed_prover_config(selection.security_level)
+        );
     }
 }
