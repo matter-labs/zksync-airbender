@@ -1,3 +1,8 @@
+import Airbender.Proofs.FullUnsigned.SetupSourcePrefixes
+import Airbender.Proofs.FullUnsigned.ParityControlPrefixes
+import Airbender.Proofs.FullUnsigned.ParitySourcePrefixRead
+import Airbender.Proofs.FullUnsigned.ParitySourceIota
+import Airbender.Proofs.FullUnsigned.ParitySourceControlSlots
 import Airbender.Proofs.FullUnsigned.SourceBlockTrimming
 import Airbender.Proofs.FullUnsigned.ThetaSourceHighOne
 import Airbender.Proofs.FullUnsigned.ThetaSourceHighTwo
@@ -15859,3 +15864,28 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.MachineTargets.Proofs.theta_source_split_member
 #print axioms Airbender.Compiler.MachineTargets.Proofs.split_theta_real_rows
 #print axioms Airbender.Compiler.MachineTargets.Proofs.theta_source_rows
+
+#print axioms Airbender.Setup.SourceBankCertificate.take_encoded
+#print axioms Airbender.Setup.ParityControlPrefix.Column0.entries
+#print axioms Airbender.Setup.ParityControlPrefix.Column0.matches
+#print axioms Airbender.Setup.ParityControlPrefix.Column1.entries
+#print axioms Airbender.Setup.ParityControlPrefix.Column1.matches
+#print axioms Airbender.Setup.ParityControlPrefix.Column2.entries
+#print axioms Airbender.Setup.ParityControlPrefix.Column2.matches
+#print axioms Airbender.Setup.ParityControlPrefix.Column3.entries
+#print axioms Airbender.Setup.ParityControlPrefix.Column3.matches
+#print axioms Airbender.Setup.ParityControlPrefix.Column4.entries
+#print axioms Airbender.Setup.ParityControlPrefix.Column4.matches
+#print axioms Airbender.Setup.ParityControlPrefix.Column5.entries
+#print axioms Airbender.Setup.ParityControlPrefix.Column5.matches
+#print axioms Airbender.Setup.ParityControlPrefix.Column6.entries
+#print axioms Airbender.Setup.ParityControlPrefix.Column6.matches
+#print axioms Airbender.Setup.ParityControlPrefix.Column7.entries
+#print axioms Airbender.Setup.ParityControlPrefix.Column7.matches
+#print axioms Airbender.Setup.SourceCaptureParityProofs.prefixBlocks
+#print axioms Airbender.Setup.SourceCaptureParityProofs.source_prefix_get
+#print axioms Airbender.Setup.SourceCaptureParityProofs.source_iota_columns
+#print axioms Airbender.Setup.SourceCaptureParityProofs.source_iota_rows
+#print axioms Airbender.Setup.SourceCaptureParityProofs.source_control_slot_rows
+#print axioms Airbender.Compiler.MachineTargets.Proofs.parity_source_iota_member
+#print axioms Airbender.Compiler.MachineTargets.Proofs.parity_source_control_slot_member
