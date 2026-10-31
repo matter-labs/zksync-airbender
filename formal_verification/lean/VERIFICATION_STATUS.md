@@ -2398,3 +2398,23 @@ not yet proved. Design items 2 and 3 follow the targets.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned theta/rho overflow for shifts three through six
+
+Four more source overflow cases are closed. Direct source-template selection
+proves all 65,536 rows in each case. The results equal the complete original
+native values. No finite full-region row enumeration is required.
+
+The focused group passed in 19 seconds. It used 738 MiB of physical memory.
+The guard cleaned all owned children. All nine new roots passed direct axiom
+checks. They use only the three allowed axioms. The inventory has 14,380
+roots. It retains all 14,371 previous roots.
+
+Overflow cases one, two and seven remain open. Parity real-row membership
+and original source-string bindings remain open. FullUnsigned is not yet
+proved. Design items 2 and 3 follow the targets. The packed checker pilot
+stays intact.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
