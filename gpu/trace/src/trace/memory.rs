@@ -402,9 +402,9 @@ pub fn schedule_memory_cap_readback<'a>(
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     let stream = context.get_exec_stream();
-    // Schedule a D2H of the unified device cap into a pinned host buffer; the
-    // callback below slices that single contiguous cap into per-coset
-    // `MerkleTreeCapVarLength` entries (canonical bit-reversed coset order).
+    // Schedule a D2H of the unified device cap (canonical bit-reversed coset
+    // order) into a pinned host buffer; the callback below slices it into
+    // per-coset `MerkleTreeCapVarLength` entries in natural coset order.
     let lde_factor = 1usize << log_lde;
     let cap_size = unified_cap.len();
     let mut cap_host = unsafe { context.alloc_host_uninit_slice::<Digest>(cap_size) };
