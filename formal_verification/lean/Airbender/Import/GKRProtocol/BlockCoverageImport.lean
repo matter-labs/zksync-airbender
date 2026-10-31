@@ -114,7 +114,7 @@ elab "column_parts_cover " name:ident " from " column:term " parts " "[" parts:i
   for index in [:resolved.size] do
     let left := mkConst resolved[index]!
     let right := final.pieces[index]!.foldr (appendLists operation) (literal #[])
-    let proof ← liftTermElabM <| Meta.mkEqRefl left
+    let proof ← Setup.Proofs.listEqualityProof left right
     let shapeName := owner ++ Name.mkSimple s!"part{index}"
     let _ ← proveEquality shapeName left right proof
     shapes := shapes.push (mkIdent shapeName)

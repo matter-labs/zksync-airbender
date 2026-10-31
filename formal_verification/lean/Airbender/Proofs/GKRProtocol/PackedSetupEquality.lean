@@ -21,7 +21,7 @@ inductive ArrayCode where
   | linearRuns (length first step run : Nat)
   | lookupRuns (length run : Nat) (values : ArrayCode)
   | packedBytes (length payload : Nat)
-  deriving DecidableEq
+  deriving DecidableEq, BEq, ReflBEq, LawfulBEq
 
 abbrev ArrayCode.decode : ArrayCode → Array Nat
   | .literal length payload => (bytes length payload).toArray
@@ -40,7 +40,7 @@ inductive BlockCode where
   | affine (length first : Nat) (stride : Int)
   | dense (values : ArrayCode)
   | periodic (count : Nat) (stride : Int) (values : ArrayCode)
-  deriving DecidableEq
+  deriving DecidableEq, BEq, ReflBEq, LawfulBEq
 
 abbrev BlockCode.decode : BlockCode → Block
   | .affine length first stride => .affine length first stride

@@ -1,3 +1,6 @@
+import Tests.PackedSetupTreeLayout
+import Tests.PackedSetupTree
+import Airbender.Proofs.GKRProtocol.UnifiedPackedEquality.Column5.Certificate
 import Tests.PackedSetupEquality
 import Airbender.Proofs.GKRProtocol.UnifiedPackedEqualityCertificate
 import Tests.PackedTableCertificates
@@ -19398,3 +19401,93 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.UnifiedPackedEquality.blocks_eq
 #print axioms Airbender.Compiler.UnifiedPackedEquality.slice_eq
 #print axioms Airbender.Compiler.UnifiedPackedEquality.length_at
+
+#print axioms Airbender.Compiler.PackedSetupEquality.CodeTree
+#print axioms Airbender.Compiler.PackedSetupEquality.CodeTree.blocks
+#print axioms Airbender.Compiler.PackedSetupEquality.CodeTree.size
+#print axioms Airbender.Compiler.PackedSetupEquality.CodeTree.valid
+#print axioms Airbender.Compiler.PackedSetupEquality.CodeTree.size_sound
+#print axioms Airbender.Compiler.PackedSetupEquality.CodeTree.rowCount
+#print axioms Airbender.Compiler.PackedSetupEquality.CodeTree.rowCount_sound
+#print axioms Airbender.Compiler.PackedSetupEquality.checkTree
+#print axioms Airbender.Compiler.PackedSetupEquality.checkTree_sound
+#print axioms Tests.PackedSetupTree.valid_metadata
+#print axioms Tests.PackedSetupTree.changed_metadata_rejected
+#print axioms Tests.PackedSetupTree.complete_rows
+#print axioms Tests.PackedSetupTree.crossing_rows
+#print axioms Tests.PackedSetupTree.right_rows
+#print axioms Tests.PackedSetupTree.empty_rows
+#print axioms Tests.PackedSetupTree.clipped_rows
+#print axioms Tests.PackedSetupTree.past_end_rows
+#print axioms Tests.PackedSetupTree.wrong_rows_rejected
+#print axioms Tests.PackedSetupTree.changed_byte_rejected
+#print axioms Tests.PackedSetupTree.changed_stride_rejected
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.sourceCode
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.targetCode
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.lengthChecks
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.raw_source0_binding
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.raw_source1_binding
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.source0_binding
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.source1_binding
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.source_binding
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.raw_shift_binding
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.shift_binding
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.raw_rotate8_binding
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.rotate8_binding
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.raw_rotate7_binding
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.rotate7_binding
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.target_binding
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.source_tree_binding
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.target_tree_binding
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.ok
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.checked_facts
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.sourceBlocks
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.targetBlocks
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.blocks_eq
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.slice_eq
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.length_at
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.fixed_column_blocks
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.row_counts
+#print axioms Airbender.Compiler.PackedSetupEquality.CodeTree.leaf
+#print axioms Airbender.Compiler.PackedSetupEquality.CodeTree.branch
+#print axioms Airbender.Compiler.PackedSetupEquality.instBEqArrayCode
+#print axioms Airbender.Compiler.PackedSetupEquality.instReflBEqArrayCode
+#print axioms Airbender.Compiler.PackedSetupEquality.instLawfulBEqArrayCode
+#print axioms Airbender.Compiler.PackedSetupEquality.instBEqBlockCode
+#print axioms Airbender.Compiler.PackedSetupEquality.instReflBEqBlockCode
+#print axioms Airbender.Compiler.PackedSetupEquality.instLawfulBEqBlockCode
+#print axioms Airbender.Compiler.PackedSetupEquality.instBEqCodeTree
+#print axioms Airbender.Compiler.PackedSetupEquality.instReflBEqCodeTree
+#print axioms Airbender.Compiler.PackedSetupEquality.instLawfulBEqCodeTree
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.source0
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.source1
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.shiftCode
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.rotate8Code
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.rotate7Code
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.sourceTree
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.targetTree
+
+#print axioms Airbender.Compiler.PackedSetupEquality.CodeTree.chunk
+#print axioms Airbender.Compiler.PackedSetupEquality.decoded_row_sum
+#print axioms Airbender.Compiler.PackedSetupEquality.checkTree_codes_eq
+#print axioms Airbender.Compiler.PackedSetupEquality.checkTree_rows
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.sourceChunk
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.targetChunk
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.chunk_eq
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.tree_rows_at
+
+#print axioms Tests.PackedSetupTree.application_view_binding
+
+#print axioms Airbender.Compiler.PackedSetupEquality.checkTreeWithChunks
+#print axioms Airbender.Compiler.PackedSetupEquality.checkTreeWithChunks_base
+#print axioms Airbender.Compiler.PackedSetupEquality.checkTreeWithChunks_chunk_length
+#print axioms Airbender.Compiler.PackedSetupEquality.checkTreeWithChunks_sound
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.tree_ok
+#print axioms Airbender.Compiler.UnifiedPackedEquality.Column5.chunk_length_at
+#print axioms Tests.PackedSetupTree.projection_rows
+#print axioms Tests.PackedSetupTree.incomplete_leaf_rejected
+
+#print axioms Airbender.Compiler.PackedSetupEquality.take_drop_append
+#print axioms Tests.PackedSetupTreeLayout.tree
+#print axioms Tests.PackedSetupTreeLayout.exact_layout
+#print axioms Tests.PackedSetupTreeLayout.valid_layout

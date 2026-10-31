@@ -18,6 +18,26 @@ private partial def blockArray (value : Lean.Expr) : CommandElabM (Array Lean.Ex
   unless arguments.size == 2 do throwError "unexpected literal block array"
   Setup.Proofs.literalList arguments[1]!
 
+private def definePart (name : Name) (value : Lean.Expr) : CommandElabM Unit := do
+  let type := mkApp (mkConst ``List [Level.zero]) (mkConst ``Setup.Block)
+  let height := getMaxHeight (← getEnv) value + 1
+  liftCoreM <| addDecl (.defnDecl {
+    name, levelParams := [], type, value, hints := .regular height, safety := .safe })
+  modifyEnv (addNoncomputable · name)
+
+private def listValue (values : Array Lean.Expr) : Lean.Expr :=
+  let element := mkConst ``Setup.Block
+  values.foldr (fun block rest =>
+    mkApp3 (mkConst ``List.cons [Level.zero]) element block rest)
+    (mkApp (mkConst ``List.nil [Level.zero]) element)
+
+private partial def appendParts (parts : Array Lean.Expr) : Lean.Expr :=
+  if parts.size == 1 then parts[0]!
+  else
+    let middle := parts.size / 2
+    mkApp3 (mkConst ``List.append [Level.zero]) (mkConst ``Setup.Block)
+      (appendParts (parts.extract 0 middle)) (appendParts (parts.extract middle parts.size))
+
 /-- Name an unchanged span of the actual imported block expressions. A later
 kernel proof checks its relation to the source column and opposite encoding. -/
 elab "column_blocks_part " name:ident " from " column:term " start " first:num " stop " last:num : command => do
@@ -30,16 +50,15 @@ elab "column_blocks_part " name:ident " from " column:term " start " first:num "
   let stop := last.getNat
   unless start ≤ stop && stop ≤ blocks.size do throwError "block proof span is outside its source"
   let selected := blocks.extract start stop
-  let element := mkConst ``Setup.Block
-  let type := mkApp (mkConst ``List [Level.zero]) element
-  let value := selected.foldr (fun block rest =>
-    mkApp3 (mkConst ``List.cons [Level.zero]) element block rest)
-    (mkApp (mkConst ``List.nil [Level.zero]) element)
-  let height := getMaxHeight (← getEnv) value + 1
   let fullName := (← getCurrNamespace) ++ name.getId
-  liftCoreM <| addDecl (.defnDecl {
-    name := fullName, levelParams := [], type, value,
-    hints := .regular height, safety := .safe })
-  modifyEnv (addNoncomputable · fullName)
+  if selected.size ≤ 128 then definePart fullName (listValue selected)
+  else
+    -- Split data declarations. Keep one public span and its exact values.
+    let mut parts := #[]
+    for index in [:(selected.size + 127) / 128] do
+      let part := fullName ++ Name.mkSimple s!"data{index}"
+      definePart part (listValue (selected.extract (index * 128) (min selected.size ((index + 1) * 128))))
+      parts := parts.push (mkConst part)
+    definePart fullName (appendParts parts)
 
 end Airbender.Compiler.BlockPartsImport

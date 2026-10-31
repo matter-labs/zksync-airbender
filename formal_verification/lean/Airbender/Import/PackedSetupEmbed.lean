@@ -1,5 +1,5 @@
 import Airbender.Import.SetupRegionEmbed
-import Airbender.Proofs.GKRProtocol.PackedSetupEquality
+import Airbender.Proofs.GKRProtocol.PackedSetupTree
 
 namespace Airbender.Compiler.PackedSetupImport
 open Lean Elab Command Airbender.Setup Airbender.Compiler.PackedSetupEquality
@@ -108,8 +108,8 @@ private def emit (name : TSyntax `ident) (blocks : Array (TSyntax `term)) : Comm
     let value ← appendData parts
     withEnableInfoTree false <| elabCommand (← `(def $name : List BlockCode := $value))
 
-private def emitSpan (source : Artifact) (name : TSyntax `ident)
-    (physical first count id : Nat) : CommandElabM Unit := do
+private def spanBlocks (source : Artifact)
+    (physical first count id : Nat) : CommandElabM (Array (TSyntax `term)) := do
   let some column := source.columns[physical]? | throwError "source column is absent"
   let some region := source.tables.find? (fun region => region.id == id)
     | throwError "packed source region is absent"
@@ -122,10 +122,10 @@ private def emitSpan (source : Artifact) (name : TSyntax `ident)
       let packed := region.offset ≤ position && finish ≤ region.offset + region.length
       blocks := blocks.push (← blockCode block packed)
     position := finish
-  emit name blocks
+  return blocks
 
-private def emitRegion (source : Artifact) (name : TSyntax `ident)
-    (id physical first count packed : Nat) : CommandElabM Unit := do
+private def regionBlocks (source : Artifact)
+    (id physical first count packed : Nat) : CommandElabM (Array (TSyntax `term)) := do
   let some column := source.columns[physical]? | throwError "source column is absent"
   let some region := source.tables.find? (fun region => region.id == id)
     | throwError "source region is absent"
@@ -136,7 +136,7 @@ private def emitRegion (source : Artifact) (name : TSyntax `ident)
   unless first + count ≤ sliced.blocks.size do throwError "source block span is out of bounds"
   let blocks ← (sliced.blocks.extract first (first + count)).mapM
     (fun block => blockCode block (packed == 1))
-  emit name blocks
+  return blocks
 
 declare_syntax_cat setup_code_spec
 syntax ident " := " "column " num " block_start " num " block_count " num
@@ -152,11 +152,109 @@ elab "import_setup_code_capture " "from " path:str " [" specs:setup_code_spec,* 
     match spec with
     | `(setup_code_spec| $name:ident := column $physical:num block_start $first:num
         block_count $count:num packed_region $id:num) =>
-      emitSpan source name physical.getNat first.getNat count.getNat id.getNat
+      emit name (← spanBlocks source physical.getNat first.getNat count.getNat id.getNat)
     | `(setup_code_spec| $name:ident := region $id:num column $physical:num
         block_start $first:num block_count $count:num packed_bytes $packed:num) =>
-      emitRegion source name id.getNat physical.getNat first.getNat count.getNat packed.getNat
+      emit name (← regionBlocks source id.getNat physical.getNat first.getNat count.getNat packed.getNat)
     | _ => throwError "unknown setup code request"
+
+private structure CodePiece where
+  value : TSyntax `term
+  size : Nat
+
+private def literalSize (value : Lean.Expr) : CommandElabM Nat := do
+  let mut current ← liftTermElabM <| Meta.whnf value
+  let mut size := 0
+  while current.getAppFn.isConstOf ``List.cons do
+    size := size + 1
+    current ← liftTermElabM <| Meta.whnf current.getAppArgs[2]!
+  unless current.getAppFn.isConstOf ``List.nil do throwError "expected a bounded code list"
+  unless size ≤ 128 do throwError "code leaf exceeds the data bound"
+  return size
+
+private partial def codePieces (value : Lean.Expr) : CommandElabM (Array CodePiece × Array Name) := do
+  let value := value.consumeMData
+  if let .const name _ := value then
+    let raw := (← getConstInfoDefn name).value.consumeMData
+    let body ← if raw matches .letE .. then liftTermElabM <| Meta.whnf raw else pure raw
+    if body.getAppFn.isConstOf ``List.cons || body.getAppFn.isConstOf ``List.nil then
+      return (#[⟨mkIdent name, ← literalSize body⟩], #[])
+    let (pieces, roots) ← codePieces body
+    return (pieces, roots.push name)
+  let args := value.getAppArgs
+  let (left, right) ← if value.getAppFn.isConstOf ``List.append then
+      pure (args[1]!, args[2]!)
+    else if value.getAppFn.isConstOf ``HAppend.hAppend then pure (args[4]!, args[5]!)
+    else throwError "expected a named code capture or append"
+  let (first, firstRoots) ← codePieces left
+  let (second, secondRoots) ← codePieces right
+  return (first ++ second, firstRoots ++ secondRoots)
+
+private partial def pieceTree (pieces : Array CodePiece) : CommandElabM (TSyntax `term) := do
+  let size := pieces.foldl (fun total piece => total + piece.size) 0
+  if size ≤ 128 then
+    let mut value ← `(([] : List BlockCode))
+    for piece in pieces.reverse do value ← `(List.append $(piece.value) $value)
+    return ← `(CodeTree.leaf $value)
+  let middle := ((size + 127) / 128 / 2) * 128
+  let mut left := #[]
+  let mut right := #[]
+  let mut position := 0
+  for piece in pieces do
+    if position + piece.size ≤ middle then left := left.push piece
+    else if middle ≤ position then right := right.push piece
+    else
+      let count := middle - position
+      left := left.push ⟨← `(List.take $(quote count) $(piece.value)), count⟩
+      right := right.push ⟨← `(List.drop $(quote count) $(piece.value)), piece.size - count⟩
+    position := position + piece.size
+  `(CodeTree.branch $(quote middle) $(← pieceTree left) $(← pieceTree right))
+
+/-- Reuse bounded numeric data. Only append structure enters the layout proof. -/
+elab "setup_code_tree " name:ident " from " source:ident " => " binding:ident : command => do
+  let constant ← resolveGlobalConstNoOverload source
+  let (pieces, roots) ← codePieces (mkConst constant)
+  let value ← pieceTree pieces
+  withEnableInfoTree false <| elabCommand (← `(def $name : CodeTree := $value))
+  let rootNames := roots.map mkIdent
+  withEnableInfoTree false <| elabCommand (← `(theorem $binding : ($name).blocks = $source := by
+    simp only [$name:ident, CodeTree.blocks, $[$rootNames:ident],*, List.append_eq, List.append_assoc,
+      take_drop_append, List.take_append_drop, List.append_nil]))
+
+private partial def appendView (value : Lean.Expr) : CommandElabM (Option (Lean.Expr × Lean.Expr)) := do
+  let value := value.consumeMData
+  if value.getAppFn.isConstOf ``List.append then
+    let args := value.getAppArgs
+    return some (args[1]!, args[2]!)
+  if value.getAppFn.isConstOf ``HAppend.hAppend then
+    let args := value.getAppArgs
+    return some (args[4]!, args[5]!)
+  if let .const name _ := value then
+    if let .defnInfo info ← getConstInfo name then return ← appendView info.value
+  return none
+
+private partial def bindingProof (left right : Lean.Expr) : CommandElabM Lean.Expr := do
+  if right.getAppFn.isConstOf ``List.map then
+    let args := right.getAppArgs
+    if let some (leftFirst, leftSecond) ← appendView left then
+      if let some (rightFirst, rightSecond) ← appendView args[3]! then
+        let mapFirst := mkApp4 (mkConst ``List.map [Level.zero, Level.zero]) args[0]! args[1]! args[2]! rightFirst
+        let mapSecond := mkApp4 (mkConst ``List.map [Level.zero, Level.zero]) args[0]! args[1]! args[2]! rightSecond
+        let firstProof ← bindingProof leftFirst mapFirst
+        let secondProof ← bindingProof leftSecond mapSecond
+        return ← liftTermElabM do
+          let firstType ← Meta.mkEq leftFirst mapFirst
+          let secondType ← Meta.mkEq leftSecond mapSecond
+          Meta.withLetDecl `firstBinding firstType firstProof fun first =>
+            Meta.withLetDecl `secondBinding secondType secondProof fun second => do
+              let operation := mkApp (mkConst ``List.append [Level.zero]) args[1]!
+              let firstApplied ← Meta.mkCongrArg operation first
+              let joined ← Meta.mkCongr firstApplied second
+              let mapped := mkApp5 (mkConst ``List.map_append [Level.zero, Level.zero])
+                args[0]! args[1]! args[2]! rightFirst rightSecond
+              let result ← Meta.mkEqTrans joined (← Meta.mkEqSymm mapped)
+              Meta.mkLetFVars #[first, second] result
+  liftTermElabM <| Meta.mkEqRefl left
 
 /-- Supply a conversion proof. The kernel checks the complete claimed type;
 this command does not ask the elaborator to unfold literal arrays. -/
@@ -167,7 +265,7 @@ elab "setup_code_binding " name:ident " : " statement:term : command => do
     instantiateMVars value
   unless type.isAppOfArity ``Eq 3 do throwError "setup binding requires an equality"
   let left := type.getAppArgs[1]!
-  let proof ← liftTermElabM <| Meta.mkEqRefl left
+  let proof ← bindingProof left type.getAppArgs[2]!
   let fullName := (← getCurrNamespace) ++ name.getId
   liftCoreM <| addDecl (.thmDecl {name := fullName, levelParams := [], type, value := proof})
 
