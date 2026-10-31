@@ -216,7 +216,7 @@ theorem lookup_arguments_with_retained (input : Input) :
         end = text.index('\ndef inputRow', begin)
     text = text[:begin] + argument_block + text[end:]
     text = text.replace('/-- The emitted source-query operands interpreted at the actual physical wires.\nThe generic/range16 groups include their native nonzero masks. The timestamp\nhelper group uses the actual physical borrow and history coordinates. -/', '/-- Source-projected logical operands at the physical source, borrow and\nhistory coordinates. The public lookup argument matches nativeRequests; the\nsupporting proof transports that matching to this source interpretation. -/')
-    pp = Path(f'Airbender/Proofs/GKRProtocol/LogicalRows/{name}.lean')
+    pp = Path(f'Airbender/Proofs/GKRProtocol/ProgramNativeTransport/{name}.lean')
     ptext = (ROOT / pp).read_text()
     ptext = ptext.replace('(activeLookupFields (physicalRequests input group))) := rfl', '(activeLookupFields (nativeRequests input group))) := rfl')
     assert ptext.count('(activeLookupFields (nativeRequests input group))) := rfl') == 1
@@ -259,7 +259,7 @@ The public boundary binds these parameters to program and fixed setup data. -/
 abbrev ProgramLookupRows := Configuration → Fin 3 → Nat → List Source.BaseField
 '''
     proofs = '''import Airbender.Review.Compiler.ProgramLogicalRows
-import Airbender.Proofs.GKRProtocol.LogicalRows
+import Airbender.Proofs.GKRProtocol.ProgramNativeTransport
 
 namespace Airbender.Compiler
 set_option warningAsError true
@@ -572,7 +572,7 @@ end Airbender.Compiler.ProgramDecoderNative.{name}
     rfl rfl index.val _ typed
   rw [NativeProgramSetup.unrolled_mask_eq setup .{family}]'''
         code = f'''import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.{name}
-import Airbender.Proofs.GKRProtocol.LogicalRows.{name}
+import Airbender.Proofs.GKRProtocol.ProgramNativeTransport.{name}
 import Airbender.Proofs.GKRProtocol.NativePublicDecoder
 
 namespace Airbender.Compiler.ProgramDecoderLookup.{name}
@@ -616,12 +616,12 @@ def program_fixed_interfaces():
         parameters = f'''(decoder : Configuration → List (List Source.BaseField))
     (wordAt : Nat → BitVec 32) (input : Input)
     (arguments : LookupArgumentsWith {tables} input)'''
-        old = (ROOT / 'Airbender/Proofs/GKRProtocol/LogicalRows' / (name + '.lean')).read_text()
+        old = (ROOT / 'Airbender/Proofs/GKRProtocol/ProgramNativeTransport' / (name + '.lean')).read_text()
         helpers = old[old.index('theorem helpers_from_arguments'):old.index('theorem input_active')]
         helpers = helpers.replace('(input : Input) (arguments : LookupArguments input)', parameters)
         helpers = helpers.replace('physical_member input arguments 2',
                                   'fixed_group_member decoder wordAt input arguments 2 (by decide +kernel)')
-        code = f'''import Airbender.Proofs.GKRProtocol.LogicalRows.{name}
+        code = f'''import Airbender.Proofs.GKRProtocol.ProgramNativeTransport.{name}
 import Airbender.Proofs.GKRProtocol.ProgramSetupNative
 import Airbender.Proofs.GKRProtocol.NativeProgramQueries
 
@@ -1218,6 +1218,7 @@ def program_pc_bounds():
     (arguments : LookupArgumentsWith {tables} input)'''
         family = next((family for family in direct if name.startswith(family)), None)
         code = f'''import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.{name}
+import Airbender.Proofs.Constraints
 '''
         if family is None:
             code += f'''import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.{name}

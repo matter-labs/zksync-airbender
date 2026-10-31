@@ -3163,3 +3163,30 @@ The public native adapter still imports legacy decoder proofs through shared
 transport and ROM modules. That dependency cleanup, production OS differential
 coverage and checker rollout remain open. Full frontend validation, environment
 audit, baseline refresh, transitive replay and Linux qualification did not run.
+
+### Program parameter migration: independent public proof graph
+
+The native public-program adapter no longer imports decoder-tail proofs,
+per-capture decoder interpretation or retained-image contracts. Generic tuple
+transport now lives in one module per CPU profile. The original logical-row
+modules retain their captured-program corollaries and public names. Generic
+stateful program construction and ROM row facts also have independent modules.
+The native word padding proof reads the last fixed blocks directly. It does
+not use captured decoder-row interpretation. No premise or conclusion changed.
+
+The source guard checks all 2,773 modules in the public acceptance graph. It
+rejects captured decoder or compatibility imports. A mutation that adds an
+actual decoder-tail dependency was rejected. Review source and layer scans pass.
+All 17,596 explicit audit roots remain unchanged.
+
+The focused source group passed for 113 modules. This group includes every
+changed transport, its program adapters and native acceptance ancestors. It
+retains the unchanged finite-table cache. The final increment took eight
+seconds. Peak physical memory across the source groups was 559 MiB. All 157
+moved public transport and ROM declarations passed direct axiom checks with
+only the three allowed axioms. Generator freshness and both mutation families
+passed. Each guard cleaned its owned children.
+
+The production OS differential and verified checker rollout remain open. Full
+frontend validation, environment audit, baseline refresh, transitive replay and
+Linux qualification did not run.

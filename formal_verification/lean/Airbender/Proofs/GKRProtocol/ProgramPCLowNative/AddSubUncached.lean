@@ -1,4 +1,5 @@
 import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.AddSubUncached
+import Airbender.Proofs.Constraints
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.AddSubUncached
 import Airbender.Proofs.Tables.DecoderPCLow
 

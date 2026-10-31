@@ -1,5 +1,5 @@
 import Airbender.Proofs.GKRProtocol.NativeProgramQueries
-import Airbender.Proofs.GKRProtocol.ROMNative.WordFullPublic
+import Airbender.Proofs.GKRProtocol.ROMNative.WordFullRows
 import Airbender.Proofs.GKRProtocol.PhysicalClosedNative.WordMemoryUncached
 import Airbender.Proofs.GKRProtocol.PhysicalClosedNative.WordMemoryCached
 

@@ -269,6 +269,33 @@ def check_layers():
     return len(coupled)
 
 
+def check_public_program_graph(graph=None):
+    """Keep the public-program proof path independent of captured decoders."""
+    if graph is None:
+        graph = {'.'.join(path.relative_to(ROOT).with_suffix('').parts):
+                 re.findall(r'^import (\S+)$', path.read_text(), re.M)
+                 for path in (ROOT / 'Airbender').rglob('*.lean')}
+    entry = 'Airbender.Proofs.GKRProtocol.NativeMachineAcceptance'
+    if entry not in graph:
+        raise ValueError('Missing public native acceptance module')
+    pending, seen = deque([[entry]]), set()
+    while pending:
+        path = pending.popleft()
+        module = path[-1]
+        if module in seen:
+            continue
+        seen.add(module)
+        if ('.DecoderTail.' in module or module.startswith((
+                'Airbender.Proofs.Tables.Decoder.', 'Airbender.Proofs.Compatibility.',
+                'Airbender.Compatibility.'))):
+            raise ValueError('Captured-program dependency in public proof: ' + ' → '.join(path))
+        pending.extend(path + [dependency] for dependency in graph.get(module, []))
+    for path in (ROOT / 'Airbender/Review').rglob('*.lean'):
+        if re.search(r'NativeDecoder\.(?:pooledProgram|unifiedProgram)|ROM\.ImportedImage', path.read_text()):
+            raise ValueError('Captured-program premise in Review: ' + str(path.relative_to(ROOT)))
+    return len(seen)
+
+
 def verify_freshness_batches(snapshot, modules, checked):
     """Validate real aggregate receipts; no member is assigned fabricated metrics."""
     freshness = snapshot['freshness']
@@ -815,6 +842,7 @@ def main():
     print(f"PASS {reference_count} contextual guide declarations; compiled ambiguity/missing controls")
     print(f"PASS {check_links()} local guide links and heading anchors resolve")
     print(f"PASS context/trace separation; {check_layers()} documented proof-assembly dependencies")
+    print(f"PASS public-program proof graph; {check_public_program_graph()} modules without captured decoder contracts")
     if guide_hashes != {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in GUIDES}:
         raise ValueError('Guide contents changed during reference validation')
 

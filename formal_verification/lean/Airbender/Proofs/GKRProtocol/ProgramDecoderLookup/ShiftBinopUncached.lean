@@ -1,5 +1,5 @@
 import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.ShiftBinopUncached
-import Airbender.Proofs.GKRProtocol.LogicalRows.ShiftBinopUncached
+import Airbender.Proofs.GKRProtocol.ProgramNativeTransport.ShiftBinopUncached
 import Airbender.Proofs.GKRProtocol.NativePublicDecoder
 
 namespace Airbender.Compiler.ProgramDecoderLookup.ShiftBinopUncached

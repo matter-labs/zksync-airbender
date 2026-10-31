@@ -1,5 +1,5 @@
 import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.MulDivUncached
-import Airbender.Proofs.GKRProtocol.LogicalRows.MulDivUncached
+import Airbender.Proofs.GKRProtocol.ProgramNativeTransport.MulDivUncached
 import Airbender.Proofs.GKRProtocol.NativePublicDecoder
 
 namespace Airbender.Compiler.ProgramDecoderLookup.MulDivUncached

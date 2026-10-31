@@ -1,4 +1,4 @@
-import Airbender.Proofs.GKRProtocol.LogicalRows.AddSubUncached
+import Airbender.Proofs.GKRProtocol.ProgramNativeTransport.AddSubUncached
 import Airbender.Proofs.GKRProtocol.ProgramSetupNative
 import Airbender.Proofs.GKRProtocol.NativeProgramQueries
 

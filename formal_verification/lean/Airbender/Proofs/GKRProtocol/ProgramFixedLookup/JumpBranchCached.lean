@@ -1,4 +1,4 @@
-import Airbender.Proofs.GKRProtocol.LogicalRows.JumpBranchCached
+import Airbender.Proofs.GKRProtocol.ProgramNativeTransport.JumpBranchCached
 import Airbender.Proofs.GKRProtocol.ProgramSetupNative
 import Airbender.Proofs.GKRProtocol.NativeProgramQueries
 

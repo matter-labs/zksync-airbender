@@ -1,4 +1,5 @@
 import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.ShiftBinopCached
+import Airbender.Proofs.Constraints
 
 namespace Airbender.Compiler.ProgramPCLowNative.ShiftBinopCached
 open Airbender Airbender.Compiler Airbender.Compiler.PooledRowNative.ShiftBinopCached

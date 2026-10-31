@@ -15,6 +15,7 @@ class LookupPremiseGeneration(unittest.TestCase):
             scratch = Path(directory)
             for relative in ('Airbender/Import/Compiler/LogicalRows',
                              'Airbender/Proofs/GKRProtocol/LogicalRows',
+                             'Airbender/Proofs/GKRProtocol/ProgramNativeTransport',
                              'Airbender/Proofs/GKRProtocol/LookupSourceNative',
                              'Airbender/Proofs/GKRProtocol/DecoderArgumentsNative',
                              'Airbender/Proofs/GKRProtocol/ProgramDecoderNative',

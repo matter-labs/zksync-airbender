@@ -1,5 +1,5 @@
 import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.JumpBranchUncached
-import Airbender.Proofs.GKRProtocol.LogicalRows.JumpBranchUncached
+import Airbender.Proofs.GKRProtocol.ProgramNativeTransport.JumpBranchUncached
 import Airbender.Proofs.GKRProtocol.NativePublicDecoder
 
 namespace Airbender.Compiler.ProgramDecoderLookup.JumpBranchUncached
