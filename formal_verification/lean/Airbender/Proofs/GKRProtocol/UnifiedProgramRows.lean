@@ -12,7 +12,7 @@ theorem rows_length {p : Nat} (initial : Reference.RiscV.Sail.State)
   omega
 
 /-- Each noncaller entry accepted by the unified public-text model is the
-actual pure Sail decode of the supplied bytes at its indexed PC. -/
+actual Sail decode of the supplied bytes at its indexed PC. -/
 theorem ordinary_sources (initial : Reference.RiscV.Sail.State)
     (text : List (BitVec 32)) (image : ROM.TextImage initial text)
     (size : text.length ≤ ROM.limit / 4) :
@@ -44,9 +44,9 @@ theorem ordinary_sources (initial : Reference.RiscV.Sail.State)
     cases caller : callerEntryWith delegationCSR initial bits index with
     | some found => simp [caller] at source
     | none =>
-      cases decoded : SailRV32.Functions.encdec_backwards bits with
-      | impure call continuation => simp [caller, decoded] at source
-      | pure instruction =>
+      cases decoded : decodeWord initial bits with
+      | none => simp [caller, decoded] at source
+      | some instruction =>
         cases fields : decoderFields instruction with
         | none => simp [caller, decoded, fields] at source
         | some data =>
@@ -54,7 +54,7 @@ theorem ordinary_sources (initial : Reference.RiscV.Sail.State)
           change (some (Sum.inl ⟨BitVec.ofNat 32 (4 * index), bits,
             instruction, data⟩) : Option Entry) = some (Sum.inl decodedEntry) at source
           cases source
-          exact ⟨bytes, by rw [decoded]; rfl, fields⟩
+          exact ⟨bytes, ProgramRows.Proofs.decode_word_sound decoded, fields⟩
 
 /-- The public ordinary unified program can be reconstructed by stateful Sail
 reads. The virtual CSR callers are checked by their separate registry. -/
@@ -84,9 +84,9 @@ theorem native_caller_iff (initial : Reference.RiscV.Sail.State)
     cases decoded : callerEntryWith delegationCSR initial bits index with
     | none =>
       simp only [entry, decoded, Option.map_none, Option.none_or] at selected
-      cases sail : SailRV32.Functions.encdec_backwards bits with
-      | impure call continuation => simp [sail] at selected
-      | pure instruction =>
+      cases sail : decodeWord initial bits with
+      | none => simp [sail] at selected
+      | some instruction =>
         cases fields : decoderFields instruction with
         | none => simp [sail, fields] at selected
         | some data => simp [sail, fields] at selected

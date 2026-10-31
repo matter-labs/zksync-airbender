@@ -49,6 +49,13 @@ profiles in both cache modes. They derive source constraints and public decoder
 membership from physical row certificates and exact matching.
 The [native acceptance adapter](Airbender/Proofs/GKRProtocol/NativeMachineAcceptance.lean)
 closes the CPU and decoder target premises.
+The pinned [public OS fixture](artifacts/programs/README.md) passed all 14
+full and unified decoder comparisons in both cache modes. The five committed
+verifier programs passed all 22 comparisons. The new MUL/DIV regression passed
+all 22 comparisons. Stateful decoding now reads the public misa state. A kernel
+proof shows that successful decoding preserves that state. These tests bind
+the decoder model to the tested native exports. They do not prove OS execution.
+
 Earlier [captured-program boundaries](Airbender/Proofs/Compatibility/Compiler/Program.lean)
 retain their structural decoder equality and image contracts for compatibility.
 Explicit Airbender-platform wrappers retain their device configuration.

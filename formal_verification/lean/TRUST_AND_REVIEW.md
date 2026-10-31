@@ -51,7 +51,9 @@ Keccak. All 14 CPU profiles have native public-program constraint and decoder
 adapters. The [native acceptance adapter](Airbender/Proofs/GKRProtocol/NativeMachineAcceptance.lean)
 closes the CPU and decoder premises. The earlier captured-program interfaces
 remain in the compatibility proof layer with their original contracts.
-Production OS differential coverage and checker rollout remain open.
+The pinned public OS decoder differential passed all 14 full and unified
+comparisons in both cache modes. It does not prove OS execution: the targets
+exclude special5 calls. The verified checker rollout remains open.
 Upstream #531 merged as `06c15f275` and is in this base. The unified base
 entrypoint now returns the verified registers. New-base runtime validation
 remains pending.

@@ -71,8 +71,6 @@ theorem reduced_initialization_inputs
   have seed : trace.initialMemory = ROMView.nativeBootImage (Initialization.cells geometry windows) :=
     initializationBoundary.1.trans (Initialization.Proofs.computed_seed trace
       Initialization.standalone.layout geometry windows embed additive weights boundary.raw terminalRegisters)
-  have entries : NativeDecoder.ProgramRows.programOf .reduced initial text =
-      FullUnsigned.entriesWith NativeDecoder.ProgramRows.Config.reduced.fields text := rfl
   refine {
     registers := ExternalBoundary.Initialization.Proofs.all_registers (windows.selection geometry)
     ordinary := profile.ordinary
@@ -90,7 +88,6 @@ theorem reduced_initialization_inputs
     subwordSetup := subwordSetup
     verifierBoundary := stateClosure }
   change ∀ entry ∈ NativeDecoder.ProgramRows.programOf .reduced initial text, _
-  rw [entries]
-  exact text_caller_code NativeDecoder.ProgramRows.Config.reduced.fields text programSetup.size
+  exact NativeDecoder.ProgramRows.Proofs.program_code .reduced initial text programSetup.size
 
 end Airbender.Compiler.MachineTargets.Proofs

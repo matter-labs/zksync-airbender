@@ -23,6 +23,7 @@ FAMILIES = POOLED_FAMILIES + ("unified",)
 SMALL_PROGRAMS = {
     "one": (0x13, 0x00408093, 0x6F, 0x007181B3),
     "two": (0x13, 0x00408113, 0x6F, 0x007181B3),
+    "muldiv": (0x02E585B3, 0x02E5B5B3, 0x02E5D5B3, 0x02E5F5B3, 0x13),
     "blake-caller": (0x7C701073,) * 7 + (0x13,),
     "split-keccak": tuple(
         ((0x7CD if index == 360 or index % 15 < 5 else

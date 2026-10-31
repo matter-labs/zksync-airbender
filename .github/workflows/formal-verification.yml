@@ -302,7 +302,7 @@ jobs:
           test -x "$exporter"
           test -x "$oracle"
           python3 scripts/test_program_decoder_rows.py
-          for name in one two blake-caller split-keccak; do
+          for name in one two muldiv blake-caller split-keccak; do
             fv "decoder-small-$name" env -u CI -u RUST_MIN_STACK python3 scripts/check_program_decoder_rows.py \
               --exporter "$exporter" --oracle "$oracle" --small-program "$name"
           done
@@ -321,6 +321,11 @@ jobs:
               --exporter "$exporter" --oracle "$oracle" --program "$text" \
               --configs "$config" --families "$families"
           done
+          production="$FV_ROOT/production-os"
+          python3 scripts/fetch_production_program.py --destination "$production"
+          fv decoder-production-os env -u CI -u RUST_MIN_STACK python3 scripts/check_program_decoder_rows.py \
+            --exporter "$exporter" --oracle "$oracle" \
+            --program "$production/multiblock_batch.text" --configs full,unified
           FV_STAGE
       - name: Environment-origin proof inventory and standard axioms
         id: axiom-audit

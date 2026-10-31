@@ -1,3 +1,4 @@
+import Airbender.Proofs.GKRProtocol.StatefulDecode
 import Airbender.Review.Helpers.Decoder.ProgramRows
 import Airbender.Proofs.GKRProtocol.TextImage
 import Airbender.Proofs.GKRProtocol.PublicProgramImage
@@ -6,8 +7,8 @@ namespace Airbender.Trace.NativeDecoder.ProgramRows.Proofs
 open Airbender.Trace.NativeDecoder.ProgramRows
 
 /-- Every ordinary entry projected from admitted public text has its actual
-bytes and pure Sail decoding in the supplied initial state. Requiring a pure
-decoder result avoids silently dropping decoder state effects. -/
+bytes and successful Sail decoding in the supplied initial state.
+The decoder frame theorem proves that its state queries preserve that state. -/
 theorem program_sources (config : Config)
     (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
     (image : ROM.TextImage initial text) (size : text.length ≤ ROM.limit / 4) :
@@ -30,8 +31,9 @@ theorem program_sources (config : Config)
     simpa only [value] using ROM.Proofs.bytes_of_text_image initial text image size
       ⟨index, indexBound⟩
   unfold wordEntry at selected
-  cases decoded : SailRV32.Functions.encdec_backwards bits with
-  | pure instruction =>
+  cases decoded : decodeWord initial bits with
+  | none => simp [decoded] at selected
+  | some instruction =>
     cases fields : config.fields instruction with
     | none => simp [decoded, fields] at selected
     | some data =>
@@ -39,8 +41,7 @@ theorem program_sources (config : Config)
       change (some ⟨BitVec.ofNat 32 (4 * index), bits, instruction, data⟩ :
         Option PooledProgramEntry) = some entry at selected
       cases selected
-      exact ⟨bytes, by rw [decoded]; rfl, fields⟩
-  | impure call continuation => simp [decoded] at selected
+      exact ⟨bytes, decode_word_sound decoded, fields⟩
 
 /-- The whole ordinary program image is reconstructed by stateful Sail reads
 from public text. Unsupported words stay absent from the logical program. -/
@@ -52,6 +53,37 @@ theorem program_image (config : Config)
         some (programOf config initial text) :=
   Airbender.Compiler.PublicProgram.image_run _
     (program_sources config initial text image size)
+
+/-- The public word index gives an aligned PC in the readonly text region.
+The result applies to stateful and pure successful decoders alike. -/
+theorem program_code (config : Config) (initial : Reference.RiscV.Sail.State)
+    (text : List (BitVec 32)) (size : text.length ≤ ROM.limit / 4) :
+    ∀ entry ∈ programOf config initial text,
+      entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0 := by
+  intro entry member
+  obtain ⟨⟨bits, index⟩, inText, selected⟩ := List.mem_filterMap.mp member
+  have found : text[index]? = some bits := List.mk_mem_zipIdx_iff_getElem?.mp inText
+  have indexBound : index < text.length := by
+    by_contra notBound
+    have : text[index]? = none := by simp [Nat.le_of_not_gt notBound]
+    rw [this] at found
+    contradiction
+  have pcBound : 4 * index < ROM.limit := by omega
+  unfold wordEntry at selected
+  cases decoded : decodeWord initial bits with
+  | none => simp [decoded] at selected
+  | some instruction =>
+    cases fields : config.fields instruction with
+    | none => simp [decoded, fields] at selected
+    | some data =>
+      simp only [decoded, fields, bind, Option.bind] at selected
+      change (some ⟨BitVec.ofNat 32 (4 * index), bits, instruction, data⟩ :
+        Option PooledProgramEntry) = some entry at selected
+      cases selected
+      have wordBound : 4 * index < 2 ^ 32 :=
+        Nat.lt_trans pcBound (by decide +kernel)
+      simpa only [BitVec.toNat_ofNat, Nat.mod_eq_of_lt wordBound,
+        Nat.mul_mod_right] using And.intro pcBound (Nat.mul_mod_right 4 index)
 
 /-- The virtual CSR caller entries also come from actual public bytes and a
 pure Sail decode. Their complete call-group syntax and worker semantics are

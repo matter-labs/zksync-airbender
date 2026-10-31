@@ -21,14 +21,19 @@ def Config.fields (config : Config) :
         | .addSub | .jumpBranchSlt | .shiftBinop | .wordMemory => true
         | .mulDiv | .subwordMemory => false
 
+/-- Run the original Sail decoder in the public state. Some supported forms
+read misa. The proof layer shows that successful decoding preserves state. -/
+def decodeWord (initial : State) (bits : BitVec 32) : Option SailRV32.instruction :=
+  match run (SailRV32.Functions.encdec_backwards bits) initial with
+  | .ok instruction _ => some instruction
+  | .error _ _ => none
+
 /-- Decode one public text word at its native byte PC. Unsupported words have
 no entry. The original Sail instruction and native-family projection remain
 visible in the entry, independently of witness values. -/
-def wordEntry (config : Config) (_initial : State) (bits : BitVec 32)
+def wordEntry (config : Config) (initial : State) (bits : BitVec 32)
     (index : Nat) : Option PooledProgramEntry := do
-  let instruction ← match SailRV32.Functions.encdec_backwards bits with
-    | .pure instruction => some instruction
-    | .impure _ _ => none
+  let instruction ← decodeWord initial bits
   let data ← config.fields instruction
   pure ⟨BitVec.ofNat 32 (4 * index), bits, instruction, data⟩
 

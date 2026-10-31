@@ -91,9 +91,9 @@ theorem native_inr_member (initial : Reference.RiscV.Sail.State)
   cases parsed : callerEntryWith delegationCSR initial bits index with
   | none =>
     simp [entry, parsed] at selected
-    cases decoded : SailRV32.Functions.encdec_backwards bits with
-    | impure call continuation => simp [decoded] at selected
-    | pure instruction =>
+    cases decoded : ProgramRows.decodeWord initial bits with
+    | none => simp [decoded] at selected
+    | some instruction =>
       cases fields : decoderFields instruction with
       | none => simp [decoded, fields] at selected
       | some data => simp [decoded, fields] at selected

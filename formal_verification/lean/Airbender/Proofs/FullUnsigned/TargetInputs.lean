@@ -79,8 +79,6 @@ theorem unrolled_full_initialization_inputs
   have seed : trace.initialMemory = ROMView.nativeBootImage (Initialization.cells geometry windows) :=
     initializationBoundary.1.trans (Initialization.Proofs.computed_seed trace
       Initialization.standalone.layout geometry windows embed additive weights boundary.raw terminalRegisters)
-  have entries : NativeDecoder.ProgramRows.programOf .fullUnsigned initial text =
-      FullUnsigned.entriesWith NativeDecoder.ProgramRows.Config.fullUnsigned.fields text := rfl
   refine {
     registers := ExternalBoundary.Initialization.Proofs.all_registers (windows.selection geometry)
     ordinary := profile.ordinary
@@ -98,7 +96,6 @@ theorem unrolled_full_initialization_inputs
     subwordSetup := subwordSetup
     verifierBoundary := stateClosure }
   change ∀ entry ∈ NativeDecoder.ProgramRows.programOf .fullUnsigned initial text, _
-  rw [entries]
-  exact text_caller_code NativeDecoder.ProgramRows.Config.fullUnsigned.fields text programSetup.size
+  exact NativeDecoder.ProgramRows.Proofs.program_code .fullUnsigned initial text programSetup.size
 
 end Airbender.Compiler.MachineTargets.Proofs

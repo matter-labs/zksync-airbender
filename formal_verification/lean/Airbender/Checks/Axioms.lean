@@ -19212,3 +19212,8 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.MachineTargets.UnifiedNativeArguments
 #print axioms Airbender.Compiler.MachineTargets.unrolled_acceptance_from_native
 #print axioms Airbender.Compiler.MachineTargets.unified_acceptance_from_native
+
+#print axioms Airbender.Trace.NativeDecoder.ProgramRows.decodeWord
+#print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.decode_word_sound
+
+#print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.program_code
