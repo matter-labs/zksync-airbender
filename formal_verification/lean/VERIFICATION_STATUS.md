@@ -2912,3 +2912,23 @@ verified checker rollout remain open. Both cache modes remain required.
 No native circuit, Rust source or imported value changed. Full frontend
 validation, environment audit, baseline refresh, transitive replay and Linux
 qualification did not run.
+
+
+### Program parameter migration: ADD/SUB native constraints
+
+ADD/SUB now proves its complete native row constraints with decoder rows
+and the ROM word function as parameters. Both cache modes derive every
+range and timestamp lookup from exact matching. The result holds for any
+pooled setup. It needs no retained image or decoder equality.
+
+The two modules passed focused kernel checks in ten seconds. Peak physical
+memory was 436 MiB. Both public roots passed direct axiom checks with only
+the three allowed axioms. The inventory has 17,503 roots. It retains all
+17,501 prior roots. Generator freshness and mutation controls passed. Each
+guard cleaned its owned children.
+
+The other native CPU constraint adapters remain open. They need fixed helper
+and ROM lookup transport. The legacy execution interfaces, production OS
+binary comparison and verified checker rollout also remain open. Both cache
+modes remain required. Full frontend validation, environment audit, baseline
+refresh, transitive replay and Linux qualification did not run.

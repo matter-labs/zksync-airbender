@@ -659,12 +659,64 @@ theorem range_from_arguments
                      for theorem in ['fixed_group_member', 'range_from_arguments', 'helpers_from_arguments'])
     return roots
 
+def program_add_sub_constraints():
+    roots = []
+    for name in ['AddSubUncached', 'AddSubCached']:
+        constructor = name[0].lower() + name[1:]
+        case = f'Airbender.Compiler.PooledRowNative.{name}'
+        tables = f'(fun group index => NativeProgramSetup.rows decoder wordAt .{constructor} group index.val)'
+        parameters = f'''(decoder : Configuration → List (List Source.BaseField))
+    (wordAt : Nat → BitVec 32) (input : Input)
+    (arguments : LookupArgumentsWith {tables} input)'''
+        source = (ROOT / 'Airbender/Proofs/GKRProtocol/PhysicalClosedNative' / (name + '.lean')).read_text()
+        ranges = source[source.index('theorem range_lookup0'):source.index('theorem retained_clock_from_physical')]
+        entries = re.split(r'(?=theorem range_lookup\d+\n)', ranges)
+        code = f'''import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.{name}
+
+namespace Airbender.Compiler.ProgramConstraintsNative.{name}
+open Airbender Airbender.Compiler {case}
+set_option warningAsError true
+set_option Elab.async false
+
+'''
+        for entry in entries:
+            if not entry.strip():
+                continue
+            theorem = re.search(r'^theorem (range_lookup\d+)', entry)[1]
+            target = entry[entry.index('    (Verification.range16'):]
+            target = re.sub(r'\bphysical\b', 'input.physical', target)
+            target = re.sub(r'\barithmetic\b', 'input.arithmetic', target)
+            target = target.replace('authored.2 query',
+                                    f'ProgramFixedLookup.{name}.range_from_arguments decoder wordAt input arguments query')
+            code += f'private theorem {theorem}\n    {parameters} (data : ProverData Source.BaseField) :\n' + target
+        body = source[source.index('theorem retained_clock_from_physical'):]
+        body = body[body.index(' := by\n') + len(' := by\n'):body.index('\nend ')]
+        body = re.sub(r'(range_lookup\d+) physical data arithmetic authored',
+                      r'\1 decoder wordAt input arguments (fun _ _ => #[])', body)
+        body = re.sub(r'\bphysical\b', 'input.physical', body)
+        body = re.sub(r'\barithmetic\b', 'input.arithmetic', body)
+        body = re.sub(r'\bdata\b', '(fun _ _ => #[])', body)
+        body = body.replace('clock_lookup_inventory', f'Airbender.Compiler.PhysicalClosedNative.{name}.clock_lookup_inventory')
+        code += f'''/-- Native ADD/SUB constraints hold for any public program setup rows. -/
+theorem input_constraints
+    {parameters} (setup : Trace.PooledSetup babyBearModulus) :
+    FlatOperation.ConstraintsHoldFlat (Verification.environment (inputRow input).assignment)
+      ((inputRow input).constraints setup) := by
+  have helpers := ProgramFixedLookup.{name}.helpers_from_arguments decoder wordAt input arguments
+{body}
+end Airbender.Compiler.ProgramConstraintsNative.{name}
+'''
+        emit(Path('Airbender/Proofs/GKRProtocol/ProgramConstraintsNative') / (name + '.lean'), code)
+        roots.append(f'Airbender.Compiler.ProgramConstraintsNative.{name}.input_constraints')
+    return roots
+
 for name in NAMES:
     prepared(name)
 program_roots = program_row_interfaces()
 setup_roots = program_setup_interfaces()
 decoder_roots = program_decoder_interfaces()
 fixed_roots = program_fixed_interfaces()
+constraint_roots = program_add_sub_constraints()
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
@@ -679,8 +731,12 @@ decoder_imports = '\n'.join('import Airbender.Proofs.GKRProtocol.' + tree + '.' 
 for decoder_import in decoder_imports.splitlines():
     if decoder_import not in content.splitlines():
         content = decoder_import + '\n' + content
+for name in ['AddSubUncached', 'AddSubCached']:
+    constraint_import = 'import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.' + name
+    if constraint_import not in content.splitlines():
+        content = constraint_import + '\n' + content
 roots = []
-for name in program_roots + setup_roots + decoder_roots + fixed_roots:
+for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots:
     root = f'#print axioms {name}'
     if root not in content.splitlines():
         roots.append(root)
