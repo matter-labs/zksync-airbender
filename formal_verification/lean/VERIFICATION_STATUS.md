@@ -2446,3 +2446,27 @@ the machine targets. The native artifacts and packed checker pilot stay intact.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned parity byte-iota, slots and control source rows
+
+All 65,536 byte-iota source rows now equal the original native rows. Both
+122-row control regions also have canonical membership. A proved source-index
+prefix rule retains the exact blocks from all eight stored source columns.
+It avoids the large XOR-five source suffix. Every proposed prefix and scalar
+witness enters an ordinary kernel proof.
+
+The complete finite control check exceeded the physical memory cap. Eight
+bounded checks now prove the same row statement. The final focused group
+passed in 31 seconds. It used 1,034 MiB of physical memory. The guard cleaned
+all owned children. No limit increased. All twenty-four new roots passed
+direct axiom checks. They use only the three allowed axioms. The inventory
+has 14,420 roots. It retains all 14,396 previous roots.
+
+Parity XOR-five source membership and all three original source-string
+bindings remain open. FullUnsigned is not yet proved. Design items 2 and 3
+follow the machine targets. The native artifacts and packed checker pilot
+stay intact.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
