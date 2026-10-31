@@ -1,3 +1,5 @@
+import Airbender.Proofs.FullUnsigned.Source.ChiLiteral
+import Airbender.Proofs.FullUnsigned.Source.ParityLiteral
 import Airbender.Proofs.FullUnsigned.Source.ParityBank
 import Airbender.Proofs.FullUnsigned.Source.ParityBytes
 import Airbender.Proofs.FullUnsigned.Source.ChiBank
@@ -18759,3 +18761,15 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Setup.SourceCaptureChiBytes.text_bytes_eq
 #print axioms Airbender.Setup.SourceCaptureChiBytes.token_bytes
 #print axioms Airbender.Setup.SourceCaptureChiBytes.token_bytes_eq
+
+#print axioms Airbender.Setup.SourceCharacters.Tree.compose
+#print axioms Airbender.Setup.SourceCaptureChiLiteral.original
+#print axioms Airbender.Setup.SourceCaptureChiLiteral.characters
+#print axioms Airbender.Setup.SourceCaptureChiLiteral.forced_characters
+#print axioms Airbender.Setup.SourceCaptureChiLiteral.forced_eq_characters
+#print axioms Airbender.Setup.SourceCaptureChiLiteral.literal_checked
+#print axioms Airbender.Setup.SourceCaptureParityLiteral.original
+#print axioms Airbender.Setup.SourceCaptureParityLiteral.characters
+#print axioms Airbender.Setup.SourceCaptureParityLiteral.forced_characters
+#print axioms Airbender.Setup.SourceCaptureParityLiteral.forced_eq_characters
+#print axioms Airbender.Setup.SourceCaptureParityLiteral.literal_checked

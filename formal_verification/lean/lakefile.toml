@@ -24,6 +24,9 @@ srcDir = "generated/sail-rv32"
 
 [[lean_lib]]
 name = "Airbender"
+# Kernel comparison of the complete source literals needs this virtual stack.
+# The verification guard still caps physical memory and bounded resident memory.
+moreLeanArgs = ["--tstack=2097152"]
 needs = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson", "shiftBinopJson", "wordMemoryJson", "subwordMemoryJson", "unifiedReducedJson", "blakeGJson", "blakeRoundJson", "bigintJson", "keccakJson", "setupSmokeJson", "setupAddSubJson", "setupBigintJson", "setupBlakeGJson", "setupKeccakJson", "setupBlakeRoundJson", "setupJumpBranchJson", "setupMulDivJson", "setupShiftBinopJson", "setupWordMemoryJson", "setupSubwordMemoryJson", "setupUnifiedJson", "setupInitsJson", "initializationJson", "keccakColumnParityJson", "keccakColumnParityCachedJson", "keccakThetaRhoJson", "keccakThetaRhoCachedJson", "keccakChi5Json", "keccakChi5CachedJson", "setupKeccakColumnParityJson", "setupKeccakThetaRhoJson", "setupKeccakChi5Json"]
 
 [[lean_lib]]

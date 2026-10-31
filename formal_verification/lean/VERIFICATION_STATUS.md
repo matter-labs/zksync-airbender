@@ -2580,8 +2580,8 @@ roots. It retains all 14,607 prior roots. Each guard cleaned its owned children.
 The original parity and chi string bindings remain open. FullUnsigned is
 not yet proved. Whole-literal parity comparisons reached a kernel recursion
 limit. Separate data builds passed. The complete literal model did not pass.
-Diagnostic tools and alternate literal representations remain outside the
-repository. They supply no proof or validation result. No resource cap increased.
+Earlier diagnostic tools and failed literal representations remain outside
+the repository. They supply no proof or validation result. No resource cap increased.
 
 Design items 2 and 3 follow the targets. The packed checker pilot stays intact.
 Production circuits, production Rust and native imported values stay intact.
@@ -2589,3 +2589,38 @@ Cached and uncached captures remain required.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned original-literal model obligations
+
+The parity and chi literal-model obligations are closed. The kernel proves
+`SourceCaptureParityLiteral.literal_checked` and
+`SourceCaptureChiLiteral.literal_checked`. These proofs bind all 6,307,780
+parity characters and all 4,762,907 chi characters to the original JSON strings.
+They add no premise to the machine target.
+
+Each model has checked character segments and a balanced function tree.
+The kernel proves each tree join and the complete original-literal model.
+The data group passed in 46 seconds. Peak physical memory was 1,768 MiB.
+Both complete models passed in six seconds. Peak physical memory was
+2,035 MiB. The models used a 2 GiB virtual Lean thread stack. The library
+now selects that stack. The 2,560 MiB physical-memory and 5,120 MiB
+bounded-resident caps stay the same.
+
+All 11 new public roots passed direct axiom checks in two seconds.
+They use only the three allowed axioms. The explicit inventory has 17,268
+roots. It retains all 17,257 prior roots. Each guard cleaned its owned children.
+
+The original parity and chi renderer equalities remain open. FullUnsigned
+is not yet proved. An earlier chi interval check hit the physical-memory cap.
+A narrow diagnostic found matching characters at the slow interval. An uncommitted direct-fold renderer and its soundness proofs passed
+focused checks in the working tree. Its byte certificates also passed.
+The complete renderer equality remains under test.
+
+Design items 2 and 3 follow the targets. The packed checker pilot stays intact.
+Production circuits, production Rust and native imported values stay intact.
+Cached and uncached captures remain required.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run. The separate replay stack has
+not qualified these new literal proofs.
