@@ -57,4 +57,17 @@ theorem fixed_member (decoder : Configuration → List (List Source.BaseField))
     (decoder configuration) wordAt index tagged query ?_ nonzero notDecoder notROM
   simpa [rows, selected, ProgramSetup.groupRows] using same
 
+/-- A query outside the two program tags retains a fixed row or zero padding. -/
+theorem fixed_or_zero_member (decoder : Configuration → List (List Source.BaseField))
+    (wordAt : Nat → BitVec 32) (configuration : Configuration) (layout : ProgramSetup.Layout)
+    (selected : layouts configuration = some layout) (tagged : layout.tagged = true)
+    (index : Nat) (query : List Source.BaseField)
+    (same : query = rows decoder wordAt configuration 0 index)
+    (notDecoder : query.getLast?.getD 0 ≠ 46)
+    (notROM : query.getLast?.getD 0 ≠ 34) :
+    query = retainedRows configuration 0 index ∨ query = List.replicate layout.width 0 := by
+  apply ProgramSetup.fixed_query_or_zero layout (retainedRows configuration 0)
+    (decoder configuration) wordAt index tagged query ?_ notDecoder notROM
+  simpa [rows, selected, ProgramSetup.groupRows] using same
+
 end Airbender.Compiler.NativeProgramSetup

@@ -98,6 +98,21 @@ theorem fixed_query_region (layout : Layout) (fixed : Nat → List F)
   · exact (nonzero (by simpa only [same, selected] using zero_tag (F := F) layout.width)).elim
   · exact same.trans selected
 
+/-- A query outside the decoder and ROM tags is fixed or zero padding. -/
+theorem fixed_query_or_zero (layout : Layout) (fixed : Nat → List F)
+    (decoder : List (List F)) (wordAt : Nat → BitVec 32) (index : Nat)
+    (tagged : layout.tagged = true) (query : List F)
+    (same : query = genericRows layout fixed decoder wordAt index)
+    (notDecoder : query.getLast?.getD 0 ≠ 46)
+    (notROM : query.getLast?.getD 0 ≠ 34) :
+    query = fixed index ∨ query = List.replicate layout.width 0 := by
+  rcases tagged_cases layout fixed decoder wordAt index tagged with
+    ⟨_, selected⟩ | ⟨_, _, _, selected⟩ | selected | ⟨_, _, selected⟩
+  · exact (notDecoder (by simp [same, selected, packTagged])).elim
+  · exact (notROM (by simp [same, selected, packTagged])).elim
+  · exact Or.inr (same.trans selected)
+  · exact Or.inl (same.trans selected)
+
 omit [DecidableEq F] in
 /-- An active decoder payload cannot come from the missing-row sentinel. -/
 theorem decoder_payload_member (decoder : List (List F)) (index count : Nat)

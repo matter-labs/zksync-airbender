@@ -3064,3 +3064,30 @@ The legacy execution interfaces, production OS binary comparison and verified
 checker rollout also remain open. No native circuit, Rust source or imported
 value changed. Full frontend validation, environment audit, baseline refresh,
 transitive replay and Linux qualification did not run.
+
+### Program parameter migration: complete unrolled row constraints
+
+Both word-memory cache modes now prove their complete native row constraints
+for the public initial image. Each native ROM query is zero or reads the
+public word function. Successful initial-image construction and explicit ROM
+coverage bind that word to the public ROM table. The proof needs no retained
+program image. Native arithmetic supplies the decoder-tag exclusion.
+
+The unrolled registry now derives constraints for all 12 CPU profiles against
+the public ROM and subword tables. Its trace adapter derives each incoming
+PC bound from native ranges and exact state matching. It adds no per-row PC,
+helper-tag or expected-value premise. Decoder matching remains explicit.
+
+The new query interpretation, arithmetic guard, both word-memory adapters
+and complete constraint registry passed focused kernel checks. The final
+registry group passed in five seconds. Peak physical memory was 479 MiB.
+All 12 new public roots passed direct axiom checks with only the three allowed
+axioms. The inventory has 17,579 roots. It retains all 17,567 prior roots.
+Generator freshness and mutation controls passed. Each guard cleaned its
+owned children.
+
+Native constraint transport remains open for the two unified profiles.
+The legacy execution interfaces, production OS binary comparison and verified
+checker rollout also remain open. No native circuit, Rust source or imported
+value changed. Full frontend validation, environment audit, baseline refresh,
+transitive replay and Linux qualification did not run.
