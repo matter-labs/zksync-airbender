@@ -61,7 +61,7 @@ affine and periodic blocks, the last row and domain bounds. Direct axiom
 checks pass for all 93 new roots and the original output theorem. They use only
 `propext`, `Classical.choice` and `Quot.sound`. All 17,599 established roots
 remain. That checkpoint has 17,692 explicit roots. The setup pilot adds 71
-roots. The current explicit inventory has 17,763 roots.
+roots. Its adoption adds six helpers. The current explicit inventory has 17,769 roots.
 
 The complete ordinary AND data has the same serialized values before and
 after this change. Its SHA-256 is
@@ -73,8 +73,8 @@ proof term. The generator check, mutation control, static scan, boundary
 controls and canonical program-graph check pass. No worker remains.
 
 Evidence is in `/tmp/airbender-review-round/checker-pilot-2026-10-31/`.
-The setup-column pilot below proves the second fact family. Adoption and the
-broader rollout remain open. Both cache modes stay
+The setup-column pilot below proves the second fact family. Column 2 now uses
+that certificate. The broader rollout remains open. Both cache modes stay
 required. The cold full build, full frontend checks, environment audit and
 baseline refresh, transitive replay, and Linux runtime and cache qualification
 remain pending for implementation review.
@@ -90,12 +90,12 @@ conclusions from the established chunk declarations.
 Separate kernel bindings connect both encodings to the actual native columns.
 They use the existing generic array-layout lemmas to avoid whole-array reduction.
 
-| Selected setup equality family | Six existing modules | Three capture modules |
-| --- | ---: | ---: |
-| Lean build | 33.18 s | 22.41 s |
-| Exact module replay, summed | 32.16 s | 8.54 s |
-| Build peak physical footprint | 1101.80 MiB | 856.97 MiB |
-| Replay peak physical footprint | 1522.79 MiB | 1278.55 MiB |
+| Selected setup equality family | Six old modules | Three capture modules | Adopted family, four modules |
+| --- | ---: | ---: | ---: |
+| Lean build | 33.18 s | 22.41 s | 20.29 s |
+| Exact module replay, summed | 32.16 s | 8.54 s | 10.37 s |
+| Build peak physical footprint | 1101.80 MiB | 856.97 MiB | 860.02 MiB |
+| Replay peak physical footprint | 1522.79 MiB | 1278.55 MiB | 1276.91 MiB |
 
 Both sides use retained imports. The new build total includes data generation,
 source bindings and the capture proof. The shared codec and reader need one
@@ -112,9 +112,17 @@ control remains in that gate. It has not rerun for this checkpoint.
 The capture and both bindings use default heartbeats. Only the data importer
 raises the limit for its complete 2,584-block declaration.
 
-The existing public chunk theorems still use their earlier proofs. Their
-replacement by projections of this certificate is the next adoption step.
-The broader rollout and final full validation remain open.
+The adopted family includes one public projection module. It replaces all six
+old equality shards. It preserves 107 declaration names and all 42 theorem
+statements. The prefix assembly proves the exact source and target data
+coverage with those projections. Its 15-module focused group passes. Selected
+projection replay and 113 preserved-declaration and helper axiom checks pass.
+The axiom set stays within the three allowed axioms. Three generator controls
+check the public names, reject scope drift before writes, and preserve an
+untracked file at a retired path. All equality and prefix generator checks pass.
+The declaration origins move to the projection module. The pending environment
+audit must record that move. Other setup columns and fact families still need
+migration. The broader rollout and final full validation remain open.
 
 ## Rebase checks
 
@@ -377,7 +385,7 @@ must qualify all 22 capture configurations.
 
 The adopted AND checker and its measurements appear above. The earlier packed
 OR, XOR and unified XOR8 pilots remain available. Their production Block and
-setup-prefix facts still need migration. The setup-column pilot is proved. Its adoption remains open.
+setup-prefix facts still need migration. The setup-column pilot is proved and adopted for column 2.
 
 ## Supporting proved results
 
@@ -421,7 +429,7 @@ than repeated in the guides. Changes after a checkpoint require their own checks
 | Split Keccak imports | All six worker constraint imports and both cache modes passed focused checks on the current base. The derived-borrow, clock, control and memory-order proofs also pass. The full unsigned target proves the blessed sequence under its stated supported-use and exact-matching premises. Final frontend and transitive replay remain pending. |
 | Setup provenance | All 16 setup artifacts and all 22 compiler captures regenerated for the current base. Setup identity, source hashes, freshness, padding and decoder comparisons passed. Fresh reconstruction covered 551 native dep-info inputs and the manifest covers 731 source files. See the rebase checks above. |
 | Public-text decoder row model | Native public-program adapters cover all 14 CPU profiles. They bind native constraints, caller metadata, decoder queries and ROM/PC facts to independently supplied public text. Exact lookup and RAM matching stay explicit. The stateful Sail decoder theorem preserves the public initial state. The canonical acceptance graph excludes captured decoder-tail and retained-image contracts. Compatibility APIs keep their original declarations. The final environment audit remains pending. |
-| Packed checker pilot | The original AND Block statement now follows from one kernel-checked packed certificate and its proved soundness theorem. The native setup consumers pass focused checks. See [the measurements and cache trust](#verified-checker-measurements). The setup-column pilot is proved. Its adoption, broader rollout and cold full measurements remain open. |
+| Packed checker pilot | The original AND Block statement now follows from one kernel-checked packed certificate and its proved soundness theorem. The native setup consumers pass focused checks. See [the measurements and cache trust](#verified-checker-measurements). The setup-column pilot is adopted for column 2. Broader rollout and cold full measurements remain open. |
 | Decoder differential | The state-aware oracle matches all 14 applicable public OS comparisons in both cache modes. The MUL/DIV regression and all 22 committed-verifier comparisons pass in both modes. Earlier small-program matrices cover ordinary instructions, BLAKE2 callers and the blessed split caller. The focused oracle relink trusts retained dependency objects. Normal executable dependency freshness remains pending. These checks prove decoder agreement for the tested programs. They do not prove OS execution. |
 | Reduced setup export tooling | The exporter accepts `--reduced` for the four shared unrolled CPU families. `cargo check --locked -p execution_prover --example export_setup_json` and the source-pinned manifest check pass. The executable build succeeded with `CARGO_PROFILE_DEV_DEBUG=0`, avoiding the local LLVM DWARF SIGBUS; focused native exports then completed. |
 | Complete source/runtime/review frontend | Passed on Mac at f0b059fe6412: 4,862 modules, 219 concrete Tests, five retained Sail modules, 3,509 runtime native modules, library and both executables. Normal Lake freshness, artifact hashes, direct axiom comparison, importer runtime and review checks passed. The 23 guarded jobs took 260.14 seconds from a normally built cache; peak footprint 855.31 MiB and resident 4279.14 MiB; no surviving workers. This is historical evidence for the source before the Review reorganization. |

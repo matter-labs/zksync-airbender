@@ -36,7 +36,8 @@ def column_module(column):
         last=min(first+CHUNK,stop);k=first//CHUNK
         (equal if all(e['mode']=='identical' for group in groups[first:last] for e in group) else special).append(k)
     name=f'Airbender.Proofs.GKRProtocol.UnifiedAllPrefix.Column{column}';owner=f'Airbender.Compiler.UnifiedAllPrefix.Column{column}'
-    text=''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column{column}.Part{i}\n' for i in range((len(equal)+PER_MODULE-1)//PER_MODULE))
+    text=('import Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column2.Projected\n' if column == 2 else
+          ''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column{column}.Part{i}\n' for i in range((len(equal)+PER_MODULE-1)//PER_MODULE)))
     text+=''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedSpecialNative.Column{column}.Chunk{k}\n' for k in special)
     text+=''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedSpecialLengths.Column{column}.Chunk{k}\n' for k in special)
     text+='import Airbender.Import.GKRProtocol.BlockCoverageImport\nimport Airbender.Proofs.GKRProtocol.ChunkSpans\n\nnamespace '+owner+'\n'

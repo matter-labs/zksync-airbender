@@ -19391,3 +19391,10 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.UnifiedPackedEquality.row_counts
 #print axioms Tests.PackedSetupEquality.row_count_checked
 #print axioms Tests.PackedSetupEquality.changed_row_count_rejected
+
+#print axioms Airbender.Compiler.PackedSetupEquality.slice_split
+#print axioms Airbender.Compiler.UnifiedPackedEquality.sourceBlocks
+#print axioms Airbender.Compiler.UnifiedPackedEquality.targetBlocks
+#print axioms Airbender.Compiler.UnifiedPackedEquality.blocks_eq
+#print axioms Airbender.Compiler.UnifiedPackedEquality.slice_eq
+#print axioms Airbender.Compiler.UnifiedPackedEquality.length_at

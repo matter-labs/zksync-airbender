@@ -122,4 +122,9 @@ theorem select_middle (values front middle tail : List Block) (first count : Nat
   rw [layout, ← frontSize, ← width]
   simp
 
+theorem slice_split (values : List Block) (offset first second : Nat) :
+    (values.drop offset).take (first + second) =
+      (values.drop offset).take first ++ (values.drop (offset + first)).take second := by
+  rw [List.take_add, List.drop_drop]
+
 end Airbender.Compiler.PackedSetupEquality
