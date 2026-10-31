@@ -62,7 +62,8 @@ checks pass for all 93 new roots and the original output theorem. They use only
 `propext`, `Classical.choice` and `Quot.sound`. All 17,599 established roots
 remain. That checkpoint has 17,692 explicit roots. The setup pilot adds 71
 roots. Its adoption adds six helpers. That checkpoint has 17,769 explicit roots. The column 5 rollout adds 85 roots.
-The current explicit inventory has 17,854 roots.
+That checkpoint has 17,854 explicit roots. The next three fixed-column
+families add 131 roots. The current explicit inventory has 17,985 roots.
 
 The complete ordinary AND data has the same serialized values before and
 after this change. Its SHA-256 is
@@ -180,6 +181,53 @@ No worker remains. Full RLE mutation control is outside this focused run.
 The broader rollout remains open. Both cache modes stay required. Full frontend
 validation, environment auditing and baseline refresh, transitive replay, cold
 full measurements, and Linux runtime and cache qualification remain pending.
+
+### Additional fixed columns
+
+The same checker now covers complete fixed equality captures for columns 4, 6
+and 7. A shared generator emits their data, append layouts, native bindings and
+capture certificates. It rejects a program ROM region or a changed leaf width.
+Each capture has one closed kernel result. Public projections select bounded
+leaves from that result.
+
+| Unified column | Native blocks | Row-count conclusions | Old fact modules | Preserved declarations | Preserved theorem types |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 4 | 25,216 | 197 | 50 | 986 | 394 |
+| 6 | 24,064 | 188 | 47 | 940 | 376 |
+| 7 | 24,448 | 191 | 48 | 955 | 382 |
+
+One projection module replaces the old fact modules for each column. All 2,881
+declaration names and all 1,152 theorem statement types stay the same. Kernel
+coverage proofs check both original native sides. The source spans exclude the
+program ROM region. Their gaps and target positions stay explicit.
+
+All nine capture modules pass focused source builds. Their three-module totals
+are 101.55 s, 92.95 s and 94.70 s. A 46-module consumer group passes in 228.15 s.
+Its peak physical footprint is 1938.57 MiB. It includes both adopted columns and
+all three new column assemblies and their region consumers. These checks trust
+retained imports and reuse source and import hash records for unchanged modules.
+The earlier column 6 run stopped on unused simp arguments. The generator now
+omits those arguments for single-span captures.
+
+Seven Python generator controls pass. They cover complete fixed scopes,
+program-region rejection, one closed result, public names, source gaps, scope
+drift and untracked files. All capture, projection and prefix generator checks
+pass. CI now runs these checks before native exports. The workflow YAML parses.
+The full CI run and Linux qualification remain pending.
+
+All 15 selected replay modules pass with the standard 32 MiB thread stack.
+They cover data, native bindings, capture certificates, public projections and
+column assemblies. No safe declaration uses a skipped compiler helper.
+The replay and axiom group takes 147.78 s. Its peak physical footprint is
+2359.13 MiB. All 3,012 direct axiom checks pass. The axiom set stays within
+`propext`, `Classical.choice` and `Quot.sound`. Imported objects remain trusted
+in these selected replay runs. Full transitive replay remains pending.
+No worker remains.
+
+The current explicit inventory retains all 17,854 established roots and adds
+131 roots. Declaration origins move from the old modules to the projection
+modules. The environment audit and baseline refresh remain pending. The wider
+fact-family rollout remains open.
 
 ## Rebase checks
 
