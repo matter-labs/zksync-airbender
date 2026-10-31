@@ -66,7 +66,7 @@ impl CpuJobs {
         } = request;
         if circuit_type.is_l1_wrap() {
             let l1_wrap = precomputations.l1_wrap();
-            l1_wrap.initialize_setup(crate::upstream::SecurityLevel::Sec100, worker);
+            l1_wrap.initialize_setup(worker);
         } else {
             let message_size_log2 = precomputations.max_whir_message_size_log2();
             let twiddles = self.twiddles(1usize << message_size_log2, worker);

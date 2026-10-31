@@ -301,6 +301,8 @@ fn parse_input_data(
     }
 }
 
+/// Construct the prover configuration. The library entry asserts unsupported L1
+/// soundness modes before reading inputs or loading a backend.
 fn make_prover_config(
     soundness_mode: SoundnessMode,
     target: ProofTarget,
@@ -464,9 +466,9 @@ fn run_cli() {
             soundness: SoundnessArgs { soundness_mode },
             settings,
         } => {
+            let prover_config = make_prover_config(soundness_mode, target, backend, settings);
             let input_artifact = read_artifact(&proof);
             let source = program_source(bin, text, elf);
-            let prover_config = make_prover_config(soundness_mode, target, backend, settings);
 
             let mut prover =
                 ProgramProver::for_continuation(source, prover_config, &input_artifact)

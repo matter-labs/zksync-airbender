@@ -4,7 +4,8 @@ use std::sync::{Arc, Mutex};
 use riscv_transpiler::vm::SimpleTape;
 use type_map::concurrent::TypeMap;
 
-use crate::backend::ExecutionBackend;
+use crate::backend::{CircuitPrecomputation, ExecutionBackend};
+use crate::upstream::{GKRCircuitArtifact, BF};
 use crate::ProofProfile;
 use common_constants::rom::RomGeometry;
 use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
@@ -66,4 +67,14 @@ pub(super) struct BinaryHolder<B: ExecutionBackend> {
     pub(super) instruction_tape: Arc<SimpleTape>,
     pub(super) precomputations: HashMap<UnrolledCircuitType, B::Precomputations>,
     pub(super) l1_wrap_precomputations: Option<B::Precomputations>,
+}
+
+impl<B: ExecutionBackend> BinaryHolder<B> {
+    /// The compiled columns of this binary's RISC-V family `circuit`.
+    pub(super) fn compiled_circuit(&self, circuit: CircuitType) -> &GKRCircuitArtifact<BF> {
+        let CircuitType::Unrolled(family) = circuit else {
+            panic!("{circuit:?} is not a RISC-V family of this binary")
+        };
+        self.precomputations[&family].compiled_circuit()
+    }
 }

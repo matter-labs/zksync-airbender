@@ -1,22 +1,38 @@
+use crate::upstream::{GKRCircuitArtifact, BF};
 use crate::{CommitmentMode, ExecutionKind, ProofProfile};
-use prover::definitions::SecurityLevel;
+use execution_prover_model::circuit_type::CircuitType;
 pub use prover::definitions::SoundnessMode;
+use prover::gkr::prover_config::ProverConfig;
 use riscv_transpiler::jit::JitRunnerRam;
 
-/// Unified executions take their mode from the selected circuit configuration.
-/// Per-family unrolled executions only support separate commitments.
-pub fn execution_commitment_mode(
+/// The config of `circuit_type` under `profile` and `soundness_mode`: `Standard` resolves the selected
+/// mode from the compiled columns, the L1 profiles use their special configs
+/// ([`ProofProfile::prover_config`], Pessimistic only).
+pub fn prover_config_in_mode(
+    circuit_type: CircuitType,
+    compiled: &GKRCircuitArtifact<BF>,
+    profile: ProofProfile,
+    soundness_mode: SoundnessMode,
+) -> ProverConfig {
+    match profile {
+        ProofProfile::Standard => circuit_type.prover_config_in_mode(compiled, soundness_mode),
+        l1 => l1.prover_config(circuit_type.get_domain_size_log2() as usize, soundness_mode),
+    }
+}
+
+/// Unified executions take their mode from the selected circuit configuration; `compiled`
+/// returns the unified circuit's compiled columns. Per-family unrolled executions only
+/// support separate commitments.
+pub fn execution_commitment_mode<'a>(
     kind: ExecutionKind,
     profile: ProofProfile,
-    security_level: SecurityLevel,
+    soundness_mode: SoundnessMode,
+    compiled: impl FnOnce(CircuitType) -> &'a GKRCircuitArtifact<BF>,
 ) -> CommitmentMode {
     match kind.unified_circuit() {
         Some(circuit) => {
-            match profile {
-                ProofProfile::Standard => circuit.prover_config(security_level),
-                l1 => l1.prover_config(circuit.get_domain_size_log2() as usize, security_level),
-            }
-            .commitment_mode
+            prover_config_in_mode(circuit, compiled(circuit), profile, soundness_mode)
+                .commitment_mode
         }
         None => {
             assert_eq!(profile, ProofProfile::Standard);

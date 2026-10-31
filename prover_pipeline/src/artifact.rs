@@ -66,9 +66,14 @@ fn deserialize_artifact_version<'de, D: serde::Deserializer<'de>>(
 }
 
 impl ProofArtifact {
-    /// Check the caller's soundness mode before source loading or backend work. Decoding
-    /// already rejects any other schema version.
+    /// Check the caller's soundness mode before source loading or backend work, asserting
+    /// that an L1 artifact is pessimistic only. Decoding already enforces the schema rules.
     pub fn validate_expected_mode(&self, expected: SoundnessMode) -> Result<(), String> {
+        // L1 artifacts exist only in PessimisticConjecture: neither an ethproofs request nor
+        // an ethproofs label reaches an L1 verifier or continuation.
+        for mode in [expected, self.soundness_mode] {
+            super::assert_target_mode(self.target, mode);
+        }
         if self.soundness_mode != expected {
             return Err(format!(
                 "SoundnessModeMismatch: expected {expected:?}, artifact is {:?}",

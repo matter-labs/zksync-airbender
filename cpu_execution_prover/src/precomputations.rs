@@ -1,8 +1,8 @@
 use crate::upstream::{
     CircuitSetup, ColumnMajorBaseOracleForLDE, CosetByCosetBaseCommitment, CpuGKRSetup,
     DefaultTreeConstructor, GKRCircuitArtifact, Keccak256MerkleTreeWithCap, L1WrapSetup,
-    MerkleTreeCapVarLength, Proth120, ProverConfig, SecurityLevel, SetupCommitment, TableDriver,
-    TwiddleSetOps, Twiddles, UnrolledCircuitWitnessEvalFn, BF,
+    MerkleTreeCapVarLength, Proth120, ProverConfig, SetupCommitment, TableDriver, TwiddleSetOps,
+    Twiddles, UnrolledCircuitWitnessEvalFn, BF,
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::config::SoundnessMode;
@@ -25,6 +25,7 @@ enum CpuPrecomputed {
 
 pub(crate) struct L1WrapPrecomputed {
     pub(crate) setup: L1WrapSetup,
+    config: ProverConfig,
     committed: OnceLock<L1WrapCommittedSetup>,
 }
 
@@ -35,10 +36,10 @@ pub(crate) struct L1WrapCommittedSetup {
 }
 
 impl L1WrapPrecomputed {
-    pub(crate) fn initialize_setup(&self, security_level: SecurityLevel, worker: &Worker) {
-        let config = CircuitType::L1Wrap21.prover_config(security_level);
-        self.committed
-            .get_or_init(|| L1WrapCommittedSetup::new(&self.setup.setup, config, worker));
+    pub(crate) fn initialize_setup(&self, worker: &Worker) {
+        self.committed.get_or_init(|| {
+            L1WrapCommittedSetup::new(&self.setup.setup, self.config.clone(), worker)
+        });
     }
 
     pub(crate) fn committed(&self) -> &L1WrapCommittedSetup {
@@ -107,17 +108,27 @@ impl CpuCircuitPrecomputations {
     pub(crate) fn from_canonical(
         circuit_type: CircuitType,
         setup: CanonicalCircuitSetup,
-        selection: SoundnessMode,
+        soundness_mode: SoundnessMode,
         profiles: &[ProofProfile],
     ) -> Self {
         let configs = match &setup {
-            CanonicalCircuitSetup::L1Wrap(_) => BTreeMap::new(),
+            CanonicalCircuitSetup::L1Wrap(_) => {
+                // The wrap's config is resolved at setup initialization; refuse an
+                // unsupported soundness_mode here, before any setup work.
+                ProofProfile::L1Wrap
+                    .config_profile()
+                    .assert_supports(soundness_mode);
+                BTreeMap::new()
+            }
             CanonicalCircuitSetup::Riscv(CircuitSetup {
                 compiled_circuit, ..
-            }) => profile_configs(circuit_type, compiled_circuit, selection, profiles),
-            CanonicalCircuitSetup::Delegation(setup) => {
-                profile_configs(circuit_type, &setup.compiled_circuit, selection, profiles)
-            }
+            }) => profile_configs(circuit_type, compiled_circuit, soundness_mode, profiles),
+            CanonicalCircuitSetup::Delegation(setup) => profile_configs(
+                circuit_type,
+                &setup.compiled_circuit,
+                soundness_mode,
+                profiles,
+            ),
         };
         let precomputed = match setup {
             CanonicalCircuitSetup::L1Wrap(setup) => {
@@ -134,6 +145,10 @@ impl CpuCircuitPrecomputations {
                 );
                 return Self(Arc::new(CpuPrecomputed::L1Wrap(Box::new(
                     L1WrapPrecomputed {
+                        config: ProofProfile::L1Wrap.prover_config(
+                            circuit_type.get_domain_size_log2() as usize,
+                            soundness_mode,
+                        ),
                         setup,
                         committed: OnceLock::new(),
                     },
@@ -236,19 +251,18 @@ impl CpuCircuitPrecomputations {
 fn profile_configs(
     circuit_type: CircuitType,
     compiled: &GKRCircuitArtifact<BF>,
-    selection: SoundnessMode,
+    soundness_mode: SoundnessMode,
     profiles: &[ProofProfile],
 ) -> BTreeMap<ProofProfile, ProverConfig> {
     profiles
         .iter()
         .map(|&profile| {
-            let config = match profile {
-                ProofProfile::Standard => circuit_type.prover_config_in_mode(compiled, selection),
-                l1 => l1.prover_config(
-                    circuit_type.get_domain_size_log2() as usize,
-                    SecurityLevel::Sec100,
-                ),
-            };
+            let config = execution_prover::config::prover_config_in_mode(
+                circuit_type,
+                compiled,
+                profile,
+                soundness_mode,
+            );
             (profile, config)
         })
         .collect()

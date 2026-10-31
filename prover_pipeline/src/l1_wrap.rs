@@ -78,21 +78,19 @@ impl L1Bundle {
 /// The setup cap every entry of an artifact's `setups` must carry: the
 /// profile config's `cap_size` of the artifact's final proof layer.
 pub(super) fn expected_setup_cap_size(target: ProofTarget) -> usize {
-    let (profile, circuit) = if target >= ProofTarget::L1Feeder {
-        (ProofProfile::L1Feeder, UnrolledCircuitType::Unified22)
+    if target >= ProofTarget::L1Feeder {
+        ProofProfile::L1Feeder
+            .prover_config(
+                CircuitType::Unrolled(UnrolledCircuitType::Unified22).get_domain_size_log2()
+                    as usize,
+                SoundnessMode::PessimisticConjecture,
+            )
+            .cap_size
     } else {
-        (ProofProfile::Standard, UnrolledCircuitType::Unified)
-    };
-    match profile {
-        ProofProfile::Standard => {
-            CircuitType::Unrolled(circuit).prover_config(COMPILED_SECURITY_LEVEL.to_prover())
-        }
-        l1 => l1.prover_config(
-            CircuitType::Unrolled(circuit).get_domain_size_log2() as usize,
-            COMPILED_SECURITY_LEVEL.to_prover(),
-        ),
+        CircuitType::Unrolled(UnrolledCircuitType::Unified)
+            .prover_config(COMPILED_SECURITY_LEVEL.to_prover())
+            .cap_size
     }
-    .cap_size
 }
 
 pub(super) fn validate_artifact_envelope(artifact: &ProofArtifact) -> Result<(), String> {

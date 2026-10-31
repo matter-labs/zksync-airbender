@@ -70,6 +70,9 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             ),
             ExecutionKind::Unrolled | ExecutionKind::L1Wrap21 => {}
         }
+            for profile in &profiles {
+                profile.config_profile().assert_supports(self.configuration.soundness_mode);
+            }
             self.backend.admit_binary(execution_kind, machine_type, &profiles);
             (execution_kind, machine_type, profiles)
         }).collect();
@@ -201,5 +204,117 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             handles.push(BinaryHandle(key));
         }
         handles
+    }
+}
+
+#[cfg(all(test, target_arch = "x86_64"))]
+mod tests {
+    use super::*;
+    use crate::config::SoundnessMode;
+    use crate::messages::WorkBatch;
+    use crate::setup::CanonicalCircuitSetup;
+    use crate::test_support::{TestBackend, TestConfiguration};
+    use riscv_transpiler::jit::JitRunnerRam;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use worker::Worker;
+
+    /// `TestBackend` that counts admissions and preparations, so the L1 capability check in
+    /// `add_binary` is observable without CUDA or a real backend.
+    struct ProbeBackend {
+        inner: TestBackend,
+        admitted: AtomicUsize,
+        prepared: AtomicUsize,
+    }
+
+    impl ExecutionBackend for ProbeBackend {
+        type Configuration = TestConfiguration;
+        type Allocator = <TestBackend as ExecutionBackend>::Allocator;
+        type Memory = <TestBackend as ExecutionBackend>::Memory;
+        type Snapshot = <TestBackend as ExecutionBackend>::Snapshot;
+        type Precomputations = <TestBackend as ExecutionBackend>::Precomputations;
+
+        fn initialize(
+            config: &ExecutionProverConfiguration<TestConfiguration>,
+            worker: Arc<Worker>,
+        ) -> Self {
+            Self {
+                inner: TestBackend::initialize(config, worker),
+                admitted: AtomicUsize::new(0),
+                prepared: AtomicUsize::new(0),
+            }
+        }
+        fn allocate_trace_block(&self, bytes: usize) -> Self::Allocator {
+            self.inner.allocate_trace_block(bytes)
+        }
+        fn allocate_memory(&self, ram: JitRunnerRam) -> Self::Memory {
+            self.inner.allocate_memory(ram)
+        }
+        fn allocate_snapshot(&self) -> Self::Snapshot {
+            self.inner.allocate_snapshot()
+        }
+        fn admit_binary(
+            &self,
+            execution_kind: ExecutionKind,
+            machine_type: MachineType,
+            profiles: &[ProofProfile],
+        ) {
+            self.admitted.fetch_add(1, Ordering::SeqCst);
+            self.inner
+                .admit_binary(execution_kind, machine_type, profiles);
+        }
+        fn prepare(
+            &self,
+            circuit: CircuitType,
+            setup: CanonicalCircuitSetup,
+            soundness_mode: SoundnessMode,
+            profiles: &[ProofProfile],
+        ) -> Self::Precomputations {
+            self.prepared.fetch_add(1, Ordering::SeqCst);
+            self.inner.prepare(circuit, setup, soundness_mode, profiles)
+        }
+        fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {
+            self.inner.submit(batch)
+        }
+    }
+
+    /// Every L1 profile under ethproofs panics with the profile's mode assert before the
+    /// backend admits the binary or prepares a setup, and no binary is registered.
+    #[test]
+    fn ethproofs_l1_binary_is_rejected_before_admission() {
+        let soundness_mode = SoundnessMode::EthproofsSoundnessCalc;
+        let mut prover = ExecutionProver::<ProbeBackend>::with_configuration(
+            ExecutionProverConfiguration::for_mode(soundness_mode),
+        );
+        let prepared = prover.backend().prepared.load(Ordering::SeqCst);
+        assert!(prepared > 0, "the probe counts the common preparations");
+        let program = vec![0x0001_2083, 0xffdf_f06f];
+        for (kind, profile) in [
+            (ExecutionKind::Unified22, ProofProfile::L1Feeder),
+            (ExecutionKind::Unified, ProofProfile::L1FeederA),
+            (ExecutionKind::L1Wrap21, ProofProfile::L1Wrap),
+        ] {
+            let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                prover.add_binary_variants(
+                    program.clone(),
+                    program.clone(),
+                    &[(kind, MachineType::Reduced, &[profile])],
+                    Some(32),
+                )
+            }))
+            .map(|handle| panic!("{profile:?}: registered as {handle:?}"))
+            .unwrap_err();
+            let message = payload
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .unwrap_or_default();
+            assert!(
+                message.contains("supports only the pessimistic-conjecture soundness mode"),
+                "{profile:?}: {message}"
+            );
+            assert_eq!(prover.backend().admitted.load(Ordering::SeqCst), 0);
+            assert_eq!(prover.backend().prepared.load(Ordering::SeqCst), prepared);
+            assert_eq!(prover.next_binary_id, 0);
+            assert!(prover.binary_holders.is_empty());
+        }
     }
 }

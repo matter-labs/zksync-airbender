@@ -12,9 +12,7 @@ pub(crate) use field::baby_bear::ext4::BabyBearExt4 as E4;
 pub(crate) use field::{Field, PrimeField, Proth120};
 
 pub(crate) use prover::allocation_pool::GenericAllocationPool;
-pub(crate) use prover::definitions::{
-    GKRExternalChallenges, SecurityLevel, USE_REDUCED_BLAKE2_ROUNDS,
-};
+pub(crate) use prover::definitions::{GKRExternalChallenges, USE_REDUCED_BLAKE2_ROUNDS};
 pub(crate) use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 pub(crate) use prover::gkr::witness_gen::delegation_circuits::evaluate_gkr_witness_for_delegation_circuit;
 pub(crate) use prover::gkr::witness_gen::family_circuits::{

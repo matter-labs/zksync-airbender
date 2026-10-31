@@ -67,6 +67,10 @@ impl CircuitType {
         compiled: &GKRCircuitArtifact<BabyBearField>,
         soundness_mode: SoundnessMode,
     ) -> ProverConfig {
+        if self.is_l1_wrap() {
+            return ProofProfile::L1Wrap
+                .prover_config(self.get_domain_size_log2() as usize, soundness_mode);
+        }
         self.geometry()
             .prover_config(compiled, SecurityLevel::Sec100, soundness_mode)
     }
@@ -74,9 +78,10 @@ impl CircuitType {
     /// This circuit's default-mode config at `level`, from its geometry alone.
     pub fn prover_config(&self, level: SecurityLevel) -> ProverConfig {
         match self {
-            Self::L1Wrap21 => {
-                ProofProfile::L1Wrap.prover_config(self.get_domain_size_log2() as usize, level)
-            }
+            Self::L1Wrap21 => ProofProfile::L1Wrap.prover_config(
+                self.get_domain_size_log2() as usize,
+                SoundnessMode::PessimisticConjecture,
+            ),
             _ => self.geometry().default_mode_prover_config(level),
         }
     }

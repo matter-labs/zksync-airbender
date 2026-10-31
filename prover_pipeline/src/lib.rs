@@ -134,6 +134,20 @@ pub struct ProgramProverConfig {
     pub replay_threads: Option<usize>,
 }
 
+/// The deferred L1 scope: the ethproofs L1 feeder, wrap and EVM profiles are not implemented.
+/// Every L1 entry asserts this before it loads a guest, reads an input or creates a backend;
+/// there is no fallback to another mode and no mixed-mode chain. The assert is the profile's
+/// [`ProverConfigProfile::assert_supports`](prover::definitions::ProverConfigProfile::assert_supports).
+fn assert_target_mode(target: ProofTarget, soundness_mode: prover::definitions::SoundnessMode) {
+    use prover::definitions::ProverConfigProfile;
+    if target >= ProofTarget::L1Feeder {
+        ProverConfigProfile::L1Feeder.assert_supports(soundness_mode);
+    }
+    if target == ProofTarget::L1 {
+        ProverConfigProfile::EvmProductionPacked.assert_supports(soundness_mode);
+    }
+}
+
 impl Default for ProgramProverConfig {
     fn default() -> Self {
         Self {
@@ -297,6 +311,13 @@ fn register_binary<H>(
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Backends this thread started to construct: the probe that capability rejections
+    /// precede backend initialization.
+    static BACKEND_CONSTRUCTIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 struct PipelineBackend<B: execution_prover::backend::ExecutionBackend> {
     prover: execution_prover::ExecutionProver<B>,
     handles: BTreeMap<HandleKey, RegisteredBinary<BinaryHandle>>,
@@ -321,6 +342,8 @@ impl<B: execution_prover::backend::ExecutionBackend> PipelineBackend<B> {
     }
 
     fn new(config: &ProgramProverConfig) -> Self {
+        #[cfg(test)]
+        BACKEND_CONSTRUCTIONS.with(|count| count.set(count.get() + 1));
         let prover =
             execution_prover::ExecutionProver::with_configuration(Self::configuration(config));
         Self {
@@ -494,7 +517,7 @@ struct RecursionState {
     proof: ProgramProof,
     setups: Setups,
     chain_end_params: Vec<[u32; 8]>,
-    /// Whether `proof` is a base-layer proof (drives fsv-program selection and
+    /// Whether `proof` is a base-layer proof (drives fsv-program soundness_mode and
     /// stream/verification flavor).
     input_is_base: bool,
     timings: ProofTimingsMs,
@@ -566,9 +589,8 @@ impl FeederProfile {
 
     fn config(self) -> prover::gkr::prover_config::ProverConfig {
         self.proof_profile().prover_config(
-            execution_prover_model::circuit_type::CircuitType::Unrolled(self.circuit())
-                .get_domain_size_log2() as usize,
-            COMPILED_SECURITY_LEVEL.to_prover(),
+            self.circuit().get_domain_size_log2() as usize,
+            SoundnessMode::PessimisticConjecture,
         )
     }
 
@@ -1394,6 +1416,7 @@ impl ProgramProver {
         config: ProgramProverConfig,
         artifact: &ProofArtifact,
     ) -> Result<Self, String> {
+        assert_target_mode(config.target, config.soundness_mode);
         artifact.validate_expected_mode(config.soundness_mode)?;
         validate_continuation_request(artifact, config.target)?;
         load_and_validate_program(&source, artifact)?;
@@ -1407,6 +1430,7 @@ impl ProgramProver {
         blake: PipelineBlakeModes,
         start: Option<ProofTarget>,
     ) -> Result<Self, String> {
+        assert_target_mode(config.target, config.soundness_mode);
         if config.backend == ProverBackend::Gpu {
             match config.target {
                 ProofTarget::L1 => {
@@ -2105,6 +2129,7 @@ fn recompute_program_setups(
             )
         }
         SetupMachine::L1Feeder(profile) => {
+            prover::definitions::ProverConfigProfile::L1Feeder.assert_supports(soundness_mode);
             setups::program_setups::compute_unified_program_setups_for_profile::<Global>(
                 &padded_bin,
                 &padded_text,
@@ -2669,6 +2694,89 @@ mod program_source_tests {
         assert_eq!(loaded.bin_u32.len() * 4, loaded.bin_bytes.len());
         assert_eq!(loaded.text_u32.len() * 4, loaded.text_bytes.len());
         assert_ne!(keccak256(&loaded.bin_bytes), keccak256(&loaded.text_bytes));
+    }
+}
+
+/// The deferred-scope boundary of the L1 targets: ethproofs is rejected before any guest, input
+/// or backend is touched; pessimistic L1 entries pass it unchanged.
+#[cfg(test)]
+mod l1_capability_tests {
+    use super::*;
+    use prover::definitions::SoundnessMode;
+
+    const L1_TARGETS: [ProofTarget; 2] = [ProofTarget::L1Feeder, ProofTarget::L1];
+
+    fn missing() -> ProgramSource {
+        let source = ProgramSource::elf("must-not-read-l1-capability-input.elf");
+        assert!(matches!(&source, ProgramSource::Elf(path) if !path.exists()));
+        source
+    }
+
+    fn backend_constructions() -> usize {
+        BACKEND_CONSTRUCTIONS.with(std::cell::Cell::get)
+    }
+
+    /// The profile assert's message for `entry`, which must panic.
+    fn refusal<T>(entry: impl FnOnce() -> T) -> String {
+        let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(entry))
+            .map(|_| ())
+            .expect_err("ethproofs L1 entries must be rejected");
+        payload
+            .downcast_ref::<String>()
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// CPU and GPU entries: the rejection precedes guest loading, the (missing) source and
+    /// backend construction, so no CUDA is reached even in a `gpu` build.
+    #[test]
+    fn ethproofs_l1_prover_entries_reject_before_inputs_and_backends() {
+        let before = backend_constructions();
+        let checkpoint = crate::l1_feeder_tests::artifact(ProofTarget::RecursionUnified, 3);
+        for target in L1_TARGETS {
+            for backend in [ProverBackend::Cpu, ProverBackend::Gpu] {
+                let config = ProgramProverConfig {
+                    target,
+                    backend,
+                    soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
+                    ..Default::default()
+                };
+                for error in [
+                    refusal(|| ProgramProver::new(missing(), config.clone())),
+                    refusal(|| {
+                        ProgramProver::for_continuation(missing(), config.clone(), &checkpoint)
+                    }),
+                ] {
+                    assert!(
+                        error.contains("supports only the pessimistic-conjecture soundness mode"),
+                        "{target:?} on {backend:?}: {error}"
+                    );
+                }
+            }
+        }
+        assert_eq!(backend_constructions(), before);
+    }
+
+    /// The pessimistic L1 entries pass the check and reach the source as before.
+    #[test]
+    fn pessimistic_l1_entries_are_unchanged() {
+        let before = backend_constructions();
+        for target in L1_TARGETS {
+            let config = ProgramProverConfig {
+                target,
+                backend: ProverBackend::Cpu,
+                ..Default::default()
+            };
+            let error = ProgramProver::new(missing(), config)
+                .err()
+                .expect("a missing source must be reported");
+            assert!(error.starts_with("failed to load program"), "{error}");
+            // Past the mode check, verification fails later (envelope or source).
+            let artifact = crate::l1_feeder_tests::feeder_artifact(target, 6, 3);
+            verify_artifact_in_mode(&artifact, &missing(), SoundnessMode::PessimisticConjecture)
+                .unwrap_err();
+        }
+        assert_eq!(backend_constructions(), before);
     }
 }
 

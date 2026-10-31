@@ -168,12 +168,12 @@ impl ExecutionBackend for TestBackend {
                                 request.profile,
                             ));
                             let config = match request.profile {
-                                crate::ProofProfile::Standard => request
+                                ProofProfile::Standard => request
                                     .circuit_type
                                     .prover_config(prover::definitions::SecurityLevel::Sec100),
                                 l1 => l1.prover_config(
                                     request.circuit_type.get_domain_size_log2() as usize,
-                                    prover::definitions::SecurityLevel::Sec100,
+                                    prover::definitions::SoundnessMode::PessimisticConjecture,
                                 ),
                             };
                             WorkResult::MemoryCommitment(MemoryCommitmentResult {
