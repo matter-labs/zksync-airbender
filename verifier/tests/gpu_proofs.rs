@@ -77,7 +77,12 @@ fn gpu_ethproofs_proofs_verify_and_reject_tampered_pow_nonces() {
         verify(name, &proof).unwrap_or_else(|e| panic!("{name}: GPU proof rejected: {e}"));
 
         let mut tampered = 0;
-        for (i, oracle) in proof.whir_proof.intermediate_whir_oracles.iter().enumerate() {
+        for (i, oracle) in proof
+            .whir_proof
+            .intermediate_whir_oracles
+            .iter()
+            .enumerate()
+        {
             for k in 0..oracle.folding_pow_nonces.len() {
                 let mut bad = proof.clone();
                 bad.whir_proof.intermediate_whir_oracles[i].folding_pow_nonces[k] ^= 1;
@@ -97,7 +102,10 @@ fn gpu_ethproofs_proofs_verify_and_reject_tampered_pow_nonces() {
                 tampered += 1;
             }
         }
-        assert!(tampered > 0, "{name}: proof carries no folding/OOD PoW nonce");
+        assert!(
+            tampered > 0,
+            "{name}: proof carries no folding/OOD PoW nonce"
+        );
         println!("{name}: GPU proof accepted; {tampered} tampered PoW nonces rejected");
         checked += 1;
     }
