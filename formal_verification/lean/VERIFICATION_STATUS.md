@@ -11,7 +11,7 @@ request and RAM matching remain explicit. The final full validation is pending.
 
 | Setup machine | Current target status |
 | --- | --- |
-| Unrolled full unsigned | Open. Native execution, public supported-use induction and initialization are kernel checked. Parity and theta have complete represented-source membership proofs. Chi membership uses its native query-tag guard. Bind all three original source strings at the original interface. The parser, exact columns and padding cases pass kernel checks. The target excludes special5 calls. |
+| Unrolled full unsigned | Open. Native execution, public supported-use induction and initialization are kernel checked. Parity and theta have complete represented-source membership proofs. Chi membership uses its native query-tag guard. The original theta source binding is kernel checked. Bind the original parity and chi source strings at the original interface. The parser, exact columns and padding cases pass kernel checks. The target excludes special5 calls. |
 | Unrolled reduced | Proved by `MachineTargets.Proofs.unrolled_reduced_soundness`. The theorem has exactly the `UnrolledReduced` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. |
 | Unified | Proved by `MachineTargets.Proofs.unified_soundness`. The theorem has exactly the `Unified` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. The target excludes special5 calls. |
 
@@ -2520,6 +2520,41 @@ membership keeps its native query-tag guard. The three original source-string
 bindings remain open. FullUnsigned is not yet proved. Design items 2 and 3
 follow the targets. Native artifacts, production circuits and production Rust
 stay intact.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
+
+
+### Full unsigned original theta source binding
+
+The original theta source obligation is closed. The new
+`SourceCaptureThetaProofs.source_eq` theorem proves exact equality with all
+909,925 characters of the original JSON. The new `theta_original_source_rows`
+theorem proves row membership for that original source. The target statement
+keeps its original source and premises.
+
+The kernel checks 424 string encodings and 396 number encodings. It checks
+all 3,015 stored source indices against their original packed representation.
+A complete bank equality preserves every source node. The renderer uses these
+proved representations. Its soundness theorem connects it to the original
+source interpreter.
+
+The final source proof uses 445 intervals. Each interval has at most 2,048
+characters. The kernel checks every interval and both final empty tails.
+Earlier small intervals retained too many large cursor declarations and hit
+the memory guard. The larger intervals passed. No resource cap increased.
+The complete source equality passed in a 200-second focused run and used
+849 MiB of physical memory. That run then found a namespace error in the row
+adapter. The repaired adapter passed in three seconds and used 483 MiB.
+
+All 80 new roots passed direct axiom checks. They use only `propext`,
+`Classical.choice` and `Quot.sound`. The explicit inventory has 14,607 roots.
+It retains all 14,527 previous roots. Production circuits, production Rust
+and imported native values stay intact.
+
+The original parity and chi source bindings remain open. FullUnsigned is
+not yet proved. Design items 2 and 3 follow the targets. The packed checker
+pilot stays intact. Cached and uncached captures remain required.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
