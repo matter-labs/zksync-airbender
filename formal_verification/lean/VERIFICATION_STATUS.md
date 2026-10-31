@@ -2356,3 +2356,24 @@ open. FullUnsigned is not yet proved. Design items 2 and 3 follow the targets.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned theta/rho low source fragments for shifts six and seven
+
+Both cases are closed. Each source fragment equals its original native value
+on all 65,536 rows. One periodic template supplies each case. List-based
+source templates keep the equality check bounded. The original parse premise
+supplies the complete source coverage.
+
+The focused group passed in six seconds. It used 465 MiB of physical memory.
+The guard cleaned all owned children. The native artifacts and the packed
+checker pilot stay intact. All ten new roots passed direct axiom checks.
+They use only the three allowed axioms. The inventory has 14,364 roots.
+It retains all 14,354 previous roots.
+
+Shift one is the last open low-fragment source case. The high fragment,
+parity real-row membership and the original source-string bindings remain
+open. FullUnsigned is not yet proved. Design items 2 and 3 follow the targets.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
