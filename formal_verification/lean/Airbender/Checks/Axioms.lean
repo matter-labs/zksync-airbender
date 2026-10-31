@@ -18840,3 +18840,27 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate
 #print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate.row
 #print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate.row_active
+
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.configuration
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.sourceRequests
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.source_member
+#print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate.configuration
+#print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate.sourceRequests
+#print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate.source_member
+#print axioms Airbender.Compiler.PooledRowNative.AddSubUncached.source_member_with
+#print axioms Airbender.Compiler.PooledRowNative.AddSubCached.source_member_with
+#print axioms Airbender.Compiler.PooledRowNative.JumpBranchUncached.source_member_with
+#print axioms Airbender.Compiler.PooledRowNative.JumpBranchCached.source_member_with
+#print axioms Airbender.Compiler.PooledRowNative.MulDivUncached.source_member_with
+#print axioms Airbender.Compiler.PooledRowNative.MulDivCached.source_member_with
+#print axioms Airbender.Compiler.PooledRowNative.ShiftBinopUncached.source_member_with
+#print axioms Airbender.Compiler.PooledRowNative.ShiftBinopCached.source_member_with
+#print axioms Airbender.Compiler.PooledRowNative.WordMemoryUncached.source_member_with
+#print axioms Airbender.Compiler.PooledRowNative.WordMemoryCached.source_member_with
+#print axioms Airbender.Compiler.PooledRowNative.SubwordMemoryUncached.source_member_with
+#print axioms Airbender.Compiler.PooledRowNative.SubwordMemoryCached.source_member_with
+#print axioms Airbender.Compiler.UnifiedRowNative.UnifiedUncached.source_member_with
+#print axioms Airbender.Compiler.UnifiedRowNative.UnifiedCached.source_member_with
+
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.lookupLength
+#print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate.lookupLength

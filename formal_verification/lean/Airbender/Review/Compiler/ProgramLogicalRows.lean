@@ -64,6 +64,53 @@ def ProgramLogicalRowCertificate.row {tables : ProgramLookupRows} :
   | .subwordMemoryUncached input _ => PooledRowNative.SubwordMemoryUncached.inputRow input
   | .subwordMemoryCached input _ => PooledRowNative.SubwordMemoryCached.inputRow input
 
+def ProgramLogicalRowCertificate.configuration {tables : ProgramLookupRows} :
+    ProgramLogicalRowCertificate tables → Configuration
+  | .addSubUncached _ _ => .addSubUncached
+  | .addSubCached _ _ => .addSubCached
+  | .jumpBranchUncached _ _ => .jumpBranchUncached
+  | .jumpBranchCached _ _ => .jumpBranchCached
+  | .mulDivUncached _ _ => .mulDivUncached
+  | .mulDivCached _ _ => .mulDivCached
+  | .shiftBinopUncached _ _ => .shiftBinopUncached
+  | .shiftBinopCached _ _ => .shiftBinopCached
+  | .wordMemoryUncached _ _ => .wordMemoryUncached
+  | .wordMemoryCached _ _ => .wordMemoryCached
+  | .subwordMemoryUncached _ _ => .subwordMemoryUncached
+  | .subwordMemoryCached _ _ => .subwordMemoryCached
+
+def ProgramLogicalRowCertificate.lookupLength {tables : ProgramLookupRows} :
+    ProgramLogicalRowCertificate tables → Nat
+  | .addSubUncached _ _ => Airbender.Compiler.MaterializedNative.AddSubUncached.native.model.imported.data.length
+  | .addSubCached _ _ => Airbender.Compiler.MaterializedNative.AddSubCached.native.model.imported.data.length
+  | .jumpBranchUncached _ _ => Airbender.Compiler.MaterializedNative.JumpBranchUncached.native.model.imported.data.length
+  | .jumpBranchCached _ _ => Airbender.Compiler.MaterializedNative.JumpBranchCached.native.model.imported.data.length
+  | .mulDivUncached _ _ => Airbender.Compiler.MaterializedNative.MulDivUncached.native.model.imported.data.length
+  | .mulDivCached _ _ => Airbender.Compiler.MaterializedNative.MulDivCached.native.model.imported.data.length
+  | .shiftBinopUncached _ _ => Airbender.Compiler.MaterializedNative.ShiftBinopUncached.native.model.imported.data.length
+  | .shiftBinopCached _ _ => Airbender.Compiler.MaterializedNative.ShiftBinopCached.native.model.imported.data.length
+  | .wordMemoryUncached _ _ => Airbender.Compiler.MaterializedNative.WordMemoryUncached.native.model.imported.data.length
+  | .wordMemoryCached _ _ => Airbender.Compiler.MaterializedNative.WordMemoryCached.native.model.imported.data.length
+  | .subwordMemoryUncached _ _ => Airbender.Compiler.MaterializedNative.SubwordMemoryUncached.native.model.imported.data.length
+  | .subwordMemoryCached _ _ => Airbender.Compiler.MaterializedNative.SubwordMemoryCached.native.model.imported.data.length
+
+/-- Source tuples projected from the actual native input coordinates. -/
+noncomputable def ProgramLogicalRowCertificate.sourceRequests {tables : ProgramLookupRows}
+    (cert : ProgramLogicalRowCertificate tables) (group : Fin 3) : List MaterializedQuery :=
+  match cert with
+  | .addSubUncached input _ => PooledRowNative.AddSubUncached.physicalRequests input group
+  | .addSubCached input _ => PooledRowNative.AddSubCached.physicalRequests input group
+  | .jumpBranchUncached input _ => PooledRowNative.JumpBranchUncached.physicalRequests input group
+  | .jumpBranchCached input _ => PooledRowNative.JumpBranchCached.physicalRequests input group
+  | .mulDivUncached input _ => PooledRowNative.MulDivUncached.physicalRequests input group
+  | .mulDivCached input _ => PooledRowNative.MulDivCached.physicalRequests input group
+  | .shiftBinopUncached input _ => PooledRowNative.ShiftBinopUncached.physicalRequests input group
+  | .shiftBinopCached input _ => PooledRowNative.ShiftBinopCached.physicalRequests input group
+  | .wordMemoryUncached input _ => PooledRowNative.WordMemoryUncached.physicalRequests input group
+  | .wordMemoryCached input _ => PooledRowNative.WordMemoryCached.physicalRequests input group
+  | .subwordMemoryUncached input _ => PooledRowNative.SubwordMemoryUncached.physicalRequests input group
+  | .subwordMemoryCached input _ => PooledRowNative.SubwordMemoryCached.physicalRequests input group
+
 end PooledExecution
 
 namespace UnifiedExecution
@@ -82,6 +129,23 @@ def ProgramLogicalRowCertificate.row {tables : ProgramLookupRows} :
     ProgramLogicalRowCertificate tables → Trace.Row babyBearModulus Trace.UnifiedFamily
   | .unifiedUncached input _ => UnifiedRowNative.UnifiedUncached.inputRow input
   | .unifiedCached input _ => UnifiedRowNative.UnifiedCached.inputRow input
+
+def ProgramLogicalRowCertificate.configuration {tables : ProgramLookupRows} :
+    ProgramLogicalRowCertificate tables → Configuration
+  | .unifiedUncached _ _ => .unifiedUncached
+  | .unifiedCached _ _ => .unifiedCached
+
+def ProgramLogicalRowCertificate.lookupLength {tables : ProgramLookupRows} :
+    ProgramLogicalRowCertificate tables → Nat
+  | .unifiedUncached _ _ => Airbender.Compiler.MaterializedNative.UnifiedUncached.native.model.imported.data.length
+  | .unifiedCached _ _ => Airbender.Compiler.MaterializedNative.UnifiedCached.native.model.imported.data.length
+
+/-- Source tuples projected from the actual native input coordinates. -/
+noncomputable def ProgramLogicalRowCertificate.sourceRequests {tables : ProgramLookupRows}
+    (cert : ProgramLogicalRowCertificate tables) (group : Fin 3) : List MaterializedQuery :=
+  match cert with
+  | .unifiedUncached input _ => UnifiedRowNative.UnifiedUncached.physicalRequests input group
+  | .unifiedCached input _ => UnifiedRowNative.UnifiedCached.physicalRequests input group
 
 end UnifiedExecution
 

@@ -314,6 +314,19 @@ theorem nativeSetupColumns_binding (group : Fin 3) :
   · exact Airbender.Compiler.TableNative.SubwordMemoryCached.native.range16SetupColumnsPreserved
   · exact Airbender.Compiler.TableNative.SubwordMemoryCached.native.timestampSetupColumnsPreserved
 
+/-- Exact native matching supplies every enabled source tuple in the supplied
+setup rows. Native arithmetic proves the operand transport. -/
+theorem source_member_with
+    (tables : Fin 3 → Fin Airbender.Compiler.MaterializedNative.SubwordMemoryCached.native.model.imported.data.length →
+      List Source.BaseField) (input : Input) (arguments : LookupArgumentsWith tables input)
+    (group : Fin 3) (query : MaterializedQuery)
+    (member : query ∈ physicalRequests input group) (enabled : query.weight ≠ 0) :
+    ∃ index, query.fields = tables group index := by
+  apply LookupArgument.member (arguments group)
+  change query.fields ∈ activeLookupFields (nativeRequests input group)
+  rw [nativeRequests_source input group]
+  exact activeLookupFields.member member enabled
+
 private noncomputable def sourceArguments (input : Input) (arguments : LookupArguments input)
     (group : Fin 3) : LookupArgument
       (Airbender.Compiler.MaterializedNative.SubwordMemoryCached.native.model.fields
