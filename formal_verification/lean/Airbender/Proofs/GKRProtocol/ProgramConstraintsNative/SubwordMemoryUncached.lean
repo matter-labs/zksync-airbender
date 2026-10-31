@@ -1,6 +1,9 @@
 import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.SubwordMemoryUncached
 import Airbender.Proofs.GKRProtocol.ProgramSubwordSetup
 import Airbender.Proofs.GKRProtocol.ProgramSubwordTags
+import Airbender.Proofs.GKRProtocol.ProgramSubwordDecoder
+import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.SubwordMemoryUncached
+import Airbender.Proofs.Tables.DecoderPCLow
 
 namespace Airbender.Compiler.ProgramConstraintsNative.SubwordMemoryUncached
 open Airbender Airbender.Compiler Airbender.Compiler.PooledRowNative.SubwordMemoryUncached
@@ -238,5 +241,38 @@ theorem input_constraints
   apply Airbender.Compiler.CleanLinksNative.SubwordMemoryUncached.retained_clock_constraints (Verification.subwordTable wordAt) input.physical (fun _ _ => #[]) input.arithmetic
   rw [clock_lookup_inventory]
   exact PredicateChecks.all (PredicateChecks.cons (range_lookup0 decoder wordAt input arguments (fun _ _ => #[])) (PredicateChecks.cons (range_lookup1 decoder wordAt input arguments (fun _ _ => #[])) (PredicateChecks.cons (range_lookup2 decoder wordAt input arguments (fun _ _ => #[])) (PredicateChecks.cons (range_lookup3 decoder wordAt input arguments (fun _ _ => #[])) (PredicateChecks.cons (range_lookup4 decoder wordAt input arguments (fun _ _ => #[])) (PredicateChecks.cons (generic_lookup0 decoder wordAt input arguments notDecoder (fun _ _ => #[])) (PredicateChecks.cons (generic_lookup1 decoder wordAt input arguments notDecoder (fun _ _ => #[])) (PredicateChecks.cons (clean_timestamp_lookup Airbender.Compiler.CleanArgumentsNative.SubwordMemoryUncached.native.timestampExpression0 (Airbender.Compiler.CleanArithmeticNative.SubwordMemoryUncached.native.environment input.physical (fun _ _ => #[])) (Airbender.Compiler.CleanArgumentsNative.SubwordMemoryUncached.native.timestamp_bound0 input.physical (fun _ _ => #[]) input.arithmetic helpers)) (PredicateChecks.cons (clean_timestamp_lookup Airbender.Compiler.CleanArgumentsNative.SubwordMemoryUncached.native.timestampExpression1 (Airbender.Compiler.CleanArithmeticNative.SubwordMemoryUncached.native.environment input.physical (fun _ _ => #[])) (Airbender.Compiler.CleanArgumentsNative.SubwordMemoryUncached.native.timestamp_bound1 input.physical (fun _ _ => #[]) input.arithmetic helpers)) (PredicateChecks.cons (clean_timestamp_lookup Airbender.Compiler.CleanArgumentsNative.SubwordMemoryUncached.native.timestampExpression2 (Airbender.Compiler.CleanArithmeticNative.SubwordMemoryUncached.native.environment input.physical (fun _ _ => #[])) (Airbender.Compiler.CleanArgumentsNative.SubwordMemoryUncached.native.timestamp_bound2 input.physical (fun _ _ => #[]) input.arithmetic helpers)) (PredicateChecks.cons (clean_timestamp_lookup Airbender.Compiler.CleanArgumentsNative.SubwordMemoryUncached.native.timestampExpression3 (Airbender.Compiler.CleanArithmeticNative.SubwordMemoryUncached.native.environment input.physical (fun _ _ => #[])) (Airbender.Compiler.CleanArgumentsNative.SubwordMemoryUncached.native.timestamp_bound3 input.physical (fun _ _ => #[]) input.arithmetic helpers)) (PredicateChecks.cons (clean_timestamp_lookup Airbender.Compiler.CleanArgumentsNative.SubwordMemoryUncached.native.timestampExpression4 (Airbender.Compiler.CleanArithmeticNative.SubwordMemoryUncached.native.environment input.physical (fun _ _ => #[])) (Airbender.Compiler.CleanArgumentsNative.SubwordMemoryUncached.native.timestamp_bound4 input.physical (fun _ _ => #[]) input.arithmetic helpers)) (PredicateChecks.cons (clean_timestamp_lookup Airbender.Compiler.CleanArgumentsNative.SubwordMemoryUncached.native.timestampExpression5 (Airbender.Compiler.CleanArithmeticNative.SubwordMemoryUncached.native.environment input.physical (fun _ _ => #[])) (Airbender.Compiler.CleanArgumentsNative.SubwordMemoryUncached.native.timestamp_bound5 input.physical (fun _ _ => #[]) input.arithmetic helpers)) (PredicateChecks.cons (clean_timestamp_lookup Airbender.Compiler.CleanArgumentsNative.SubwordMemoryUncached.native.timestampExpression6 (Airbender.Compiler.CleanArithmeticNative.SubwordMemoryUncached.native.environment input.physical (fun _ _ => #[])) (Airbender.Compiler.CleanArgumentsNative.SubwordMemoryUncached.native.timestamp_bound6 input.physical (fun _ _ => #[]) input.arithmetic helpers)) (PredicateChecks.cons (clean_timestamp_lookup Airbender.Compiler.CleanArgumentsNative.SubwordMemoryUncached.native.timestampExpression7 (Airbender.Compiler.CleanArithmeticNative.SubwordMemoryUncached.native.environment input.physical (fun _ _ => #[])) (Airbender.Compiler.CleanArgumentsNative.SubwordMemoryUncached.native.timestamp_bound7 input.physical (fun _ _ => #[]) input.arithmetic helpers)) PredicateChecks.nil)))))))))))))))
+
+
+/-- Native range matching bounds the outgoing PC for the complete program factory. -/
+theorem final_pc_low
+    (decoder : Configuration → List (List Source.BaseField))
+    (wordAt : Nat → BitVec 32) (input : Input)
+    (arguments : LookupArgumentsWith (fun group index => NativeProgramSetup.programRows decoder wordAt .subwordMemoryUncached group index.val) input) : (inputRow input).finish.word.lo < 65536 :=
+  Trace.NativeDecoder.Proofs.pooled_final_pc_low (by decide +kernel) (inputRow input)
+    (⟨Verification.subwordTable wordAt, Verification.subwordTable wordAt⟩ : Trace.PooledSetup babyBearModulus)
+    (input_constraints decoder wordAt input arguments (Verification.subwordTable wordAt))
+
+/-- Exact native decoder matching uses the complete public subword setup. -/
+theorem decoder_lookup
+    {config : Trace.NativeDecoder.ProgramRows.Config} {initial : Reference.RiscV.Sail.State}
+    {text : List (BitVec 32)} {capacity : Nat}
+    {masks : Trace.PooledFamily → Trace.NativeDecoder.ProgramRows.Mask}
+    {columns : Trace.PooledFamily → List (List Source.BaseField)}
+    (setup : UnrolledProgramSetup config initial text capacity masks columns)
+    (input : Input)
+    (arguments : LookupArgumentsWith (fun group index =>
+      NativeProgramSetup.unrolledProgramLookupRows initial columns .subwordMemoryUncached group index.val) input)
+    (typed : (inputRow input).decoderQuery[0].val < 65536) :
+    Trace.NativeDecoder.ProgramRows.maskRow (masks .subwordMemory) (inputRow input).decoderQuery ∈ columns .subwordMemory := by
+  obtain ⟨index, matched⟩ := source_member_with (fun group index =>
+    NativeProgramSetup.unrolledProgramLookupRows initial columns .subwordMemoryUncached group index.val)
+    input arguments 0 (Airbender.Compiler.LookupSourceNative.SubwordMemoryUncached.native.query12.materialized ((input.physical ∘ Airbender.Compiler.LookupSourceNative.SubwordMemoryUncached.native.bank.address) ∘ Airbender.Compiler.LookupNative.SubwordMemoryUncached.native.sourcePlacement))
+    (ProgramDecoderNative.SubwordMemoryUncached.decoder_member input) (ProgramDecoderNative.SubwordMemoryUncached.decoder_enabled input)
+  have equal : Airbender.Compiler.LookupSourceNative.SubwordMemoryUncached.native.query12.fields.map (fun field => field.value ((input.physical ∘ Airbender.Compiler.LookupSourceNative.SubwordMemoryUncached.native.bank.address) ∘ Airbender.Compiler.LookupNative.SubwordMemoryUncached.native.sourcePlacement)) =
+      NativeProgramSetup.unrolledProgramLookupRows initial columns .subwordMemoryUncached 0 index.val := matched
+  apply NativeProgramSetup.unrolled_subword_decoder_lookup setup .subwordMemoryUncached
+    (Or.inl rfl) index.val _ typed
+  rw [NativeProgramSetup.unrolled_mask_eq setup .subwordMemory]
+  exact (ProgramDecoderNative.SubwordMemoryUncached.decoder_tuple input).symm.trans equal
 
 end Airbender.Compiler.ProgramConstraintsNative.SubwordMemoryUncached

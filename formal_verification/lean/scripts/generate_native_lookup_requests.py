@@ -855,6 +855,9 @@ def program_subword_constraints():
         code = f'''import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.{name}
 import Airbender.Proofs.GKRProtocol.ProgramSubwordSetup
 import Airbender.Proofs.GKRProtocol.ProgramSubwordTags
+import Airbender.Proofs.GKRProtocol.ProgramSubwordDecoder
+import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.{name}
+import Airbender.Proofs.Tables.DecoderPCLow
 
 namespace Airbender.Compiler.ProgramConstraintsNative.{name}
 open Airbender Airbender.Compiler {case}
@@ -945,10 +948,43 @@ theorem input_constraints
       ({arithmetic}.arithmetic_preserved input.physical (fun _ _ => #[]) input.arithmetic)
   have notDecoder := subword_helper_not_decoder _ _ assertions
 {body}
+
+/-- Native range matching bounds the outgoing PC for the complete program factory. -/
+theorem final_pc_low
+    {parameters} : (inputRow input).finish.word.lo < 65536 :=
+  Trace.NativeDecoder.Proofs.pooled_final_pc_low (by decide +kernel) (inputRow input)
+    (⟨Verification.subwordTable wordAt, Verification.subwordTable wordAt⟩ : Trace.PooledSetup babyBearModulus)
+    (input_constraints decoder wordAt input arguments (Verification.subwordTable wordAt))
+
+/-- Exact native decoder matching uses the complete public subword setup. -/
+theorem decoder_lookup
+    {{config : Trace.NativeDecoder.ProgramRows.Config}} {{initial : Reference.RiscV.Sail.State}}
+    {{text : List (BitVec 32)}} {{capacity : Nat}}
+    {{masks : Trace.PooledFamily → Trace.NativeDecoder.ProgramRows.Mask}}
+    {{columns : Trace.PooledFamily → List (List Source.BaseField)}}
+    (setup : UnrolledProgramSetup config initial text capacity masks columns)
+    (input : Input)
+    (arguments : LookupArgumentsWith (fun group index =>
+      NativeProgramSetup.unrolledProgramLookupRows initial columns .{constructor} group index.val) input)
+    (typed : (inputRow input).decoderQuery[0].val < 65536) :
+    Trace.NativeDecoder.ProgramRows.maskRow (masks .subwordMemory) (inputRow input).decoderQuery ∈ columns .subwordMemory := by
+  obtain ⟨index, matched⟩ := source_member_with (fun group index =>
+    NativeProgramSetup.unrolledProgramLookupRows initial columns .{constructor} group index.val)
+    input arguments 0 ({source_model}.query12.materialized {values})
+    (ProgramDecoderNative.{name}.decoder_member input) (ProgramDecoderNative.{name}.decoder_enabled input)
+  have equal : {source_model}.query12.fields.map (fun field => field.value {values}) =
+      NativeProgramSetup.unrolledProgramLookupRows initial columns .{constructor} 0 index.val := matched
+  apply NativeProgramSetup.unrolled_subword_decoder_lookup setup .{constructor}
+    ({"Or.inl" if name.endswith("Uncached") else "Or.inr"} rfl) index.val _ typed
+  rw [NativeProgramSetup.unrolled_mask_eq setup .subwordMemory]
+  exact (ProgramDecoderNative.{name}.decoder_tuple input).symm.trans equal
+
 end Airbender.Compiler.ProgramConstraintsNative.{name}
 '''
         emit(Path('Airbender/Proofs/GKRProtocol/ProgramConstraintsNative') / (name + '.lean'), code)
         roots.append(f'Airbender.Compiler.ProgramConstraintsNative.{name}.input_constraints')
+        roots += [f'Airbender.Compiler.ProgramConstraintsNative.{name}.{suffix}'
+                  for suffix in ['final_pc_low', 'decoder_lookup']]
     return roots
 
 
@@ -1031,6 +1067,14 @@ subword_roots = ['Airbender.Compiler.NativeProgramSetup.' + name for name in [
     'subword_query_member', 'program_rows_fixed_group']]
 subword_roots += ['Airbender.SubwordMemory.Proofs.subword_flags_of_assertions',
                   'Airbender.Compiler.subword_helper_not_decoder']
+subword_roots += ['Airbender.Compiler.NativeProgramSetup.' + name for name in [
+    'unrolledProgramLookupRows', 'subword_prefix_not_decoder',
+    'subword_decoder_member', 'unrolled_subword_decoder_lookup']]
+public_row_roots = ['Airbender.Compiler.PooledExecution.' + name for name in [
+    'ProgramLogicalRowCertificate.program_decoder_lookup',
+    'program_decoder_exact_lookup',
+    'ProgramLogicalRowCertificate.program_final_pc_low',
+    'program_native_query_pc_low', 'program_decoder_exact_lookup_from_native']]
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
@@ -1040,6 +1084,9 @@ if program_import not in content.splitlines():
 setup_import = 'import Airbender.Proofs.GKRProtocol.ProgramSetupNative'
 if setup_import not in content.splitlines():
     content = setup_import + '\n' + content
+public_row_import = 'import Airbender.Proofs.GKRProtocol.ProgramPublicRows'
+if public_row_import not in content.splitlines():
+    content = public_row_import + '\n' + content
 decoder_imports = '\n'.join('import Airbender.Proofs.GKRProtocol.' + tree + '.' + name
                           for tree in ['ProgramDecoderNative', 'ProgramDecoderLookup', 'ProgramFixedLookup', 'ProgramPCLowNative'] for name in NAMES)
 for decoder_import in decoder_imports.splitlines():
@@ -1050,7 +1097,7 @@ for name in [name for name in NAMES if name.startswith(('AddSub', 'JumpBranch', 
     if constraint_import not in content.splitlines():
         content = constraint_import + '\n' + content
 roots = []
-for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots:
+for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots + public_row_roots:
     root = f'#print axioms {name}'
     if root not in content.splitlines():
         roots.append(root)

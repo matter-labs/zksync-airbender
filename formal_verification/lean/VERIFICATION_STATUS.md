@@ -3038,3 +3038,29 @@ The legacy execution interfaces, production OS binary comparison and verified
 checker rollout also remain open. No native circuit, Rust source or imported
 value changed. Full frontend validation, environment audit, baseline refresh,
 transitive replay and Linux qualification did not run.
+
+### Program parameter migration: complete unrolled row registry
+
+The unrolled row registry now uses the complete public program factory.
+Both subword cache modes derive decoder membership from that factory.
+The proof excludes fixed helper and ROM rows from the decoder tag. It also
+rejects decoder padding through the incoming PC bound. Native range matching
+and exact state matching supply that bound for every row.
+
+All 12 unrolled CPU profiles now derive exact public decoder matching
+with this factory. The trace adapter needs the public setup, native row
+certificates, exact state matching and the public initial PC bound.
+It adds no per-row PC or decoded-instruction premise.
+
+The decoder interpretation, both subword adapters and complete unrolled
+registry passed focused kernel checks. The last group passed in ten seconds.
+Peak physical memory was 479 MiB. All 13 new public roots passed direct
+axiom checks with only the three allowed axioms. The inventory has 17,567
+roots. It retains all 17,554 prior roots. Generator freshness and mutation
+controls passed. Each guard cleaned its owned children.
+
+Word-memory and unified constraint adapters remain open in both cache modes.
+The legacy execution interfaces, production OS binary comparison and verified
+checker rollout also remain open. No native circuit, Rust source or imported
+value changed. Full frontend validation, environment audit, baseline refresh,
+transitive replay and Linux qualification did not run.
