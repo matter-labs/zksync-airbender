@@ -56,6 +56,9 @@ use std::time::Instant;
 use unified_recursion::UnifiedProofShape;
 use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProfile, FsvProgram};
 
+#[cfg(feature = "gpu")]
+pub use gpu_execution_prover::MemoryPreset;
+
 /// Serde-friendly mirror of `prover::definitions::SecurityLevel` (which does
 /// not derive serde) for the persisted artifact.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -131,6 +134,9 @@ pub struct ProgramProverConfig {
     pub worker_threads: Option<usize>,
     /// `None` keeps the backend's default.
     pub replay_threads: Option<usize>,
+    /// GPU device arena preset; Auto selects according to available device memory.
+    #[cfg(feature = "gpu")]
+    pub gpu_memory_preset: MemoryPreset,
 }
 
 /// The deferred L1 scope (Task S REVISION 3): the ethproofs L1 feeder, wrap and EVM profiles
@@ -169,6 +175,8 @@ impl Default for ProgramProverConfig {
             ram_size: RamSize::default(),
             worker_threads: None,
             replay_threads: None,
+            #[cfg(feature = "gpu")]
+            gpu_memory_preset: MemoryPreset::Auto,
         }
     }
 }
@@ -384,11 +392,17 @@ impl<B: execution_prover::backend::ExecutionBackend> PipelineBackend<B> {
     }
 
     fn new(config: &ProgramProverConfig) -> Result<Self, String> {
+        Self::with_configuration(config, Self::configuration(config))
+    }
+
+    fn with_configuration(
+        config: &ProgramProverConfig,
+        configuration: execution_prover::ExecutionProverConfiguration<B::Configuration>,
+    ) -> Result<Self, String> {
         #[cfg(test)]
         BACKEND_CONSTRUCTIONS.with(|count| count.set(count.get() + 1));
-        let prover =
-            execution_prover::ExecutionProver::try_with_configuration(Self::configuration(config))
-                .map_err(|error| error.to_string())?;
+        let prover = execution_prover::ExecutionProver::try_with_configuration(configuration)
+            .map_err(|error| error.to_string())?;
         assert_eq!(prover.selection(), config.selection());
         Ok(Self {
             prover,
@@ -807,6 +821,42 @@ impl FeederVerifier for ProductionFeederVerifier {
     }
 }
 
+/// Admission of a private feeder checkpoint before anything is proven:
+/// `1..=MAX_FEEDER_LAYERS` feeder layers, setups at the feeder cap, a feeder proof of
+/// any positive A instance count or one terminal C instance,
+/// and a history equal to the trusted chain of the program (`end_params`
+/// recomputes it). The proof's native verification and its binding to this
+/// history follow in `run_feeder_layers`.
+#[cfg(test)]
+fn validate_feeder_checkpoint(
+    state: &RecursionState,
+    blake: PipelineBlakeModes,
+    end_params: &mut dyn FnMut(ChainProgram) -> Result<[u32; 8], String>,
+) -> Result<(), String> {
+    if !(1..=MAX_FEEDER_LAYERS).contains(&state.feeder_layers) || state.input_is_base {
+        return Err(format!(
+            "feeder checkpoint must hold 1..={MAX_FEEDER_LAYERS} feeder layers, got {}",
+            state.feeder_layers
+        ));
+    }
+    let profile = validate_feeder_proof(&state.proof, None)?;
+    setups::validate_setups_cap_size(&state.setups, profile.cap_size())?;
+    let expected = expected_chain_end_params(
+        ProofTarget::L1Feeder,
+        state.chain_end_params.len(),
+        state.feeder_layers,
+        Some(profile),
+        blake.unrolled.tag(),
+        blake.bridge.tag(),
+        blake.final_layer.tag(),
+        end_params,
+    )?;
+    if expected != state.chain_end_params {
+        return Err("feeder checkpoint history does not match the trusted chain".into());
+    }
+    Ok(())
+}
+
 fn delegation_calls(counters: &riscv_transpiler::vm::DelegationsAndUnifiedCounters) -> usize {
     counters.blake_calls
         + counters.bigint_calls
@@ -910,6 +960,22 @@ fn feeder_proof_instances(proof: &ProgramProof, expected: Option<usize>) -> Resu
 fn run_feeder_layers(
     backend: &mut dyn ProveBackend,
     fsv: &FsvPrograms,
+    state: RecursionState,
+    batch_id: u64,
+    observer: &mut dyn FeederObserver,
+    nd: &dyn Fn(&Setups, &ProgramProof) -> Vec<u32>,
+    verifier: &dyn FeederVerifier,
+) -> Result<(RecursionState, [u32; 16]), String> {
+    assert_eq!(
+        state.feeder_layers, 0,
+        "production feeder entry must start at layer zero"
+    );
+    run_feeder_layers_inner(backend, fsv, state, batch_id, observer, nd, verifier)
+}
+
+fn run_feeder_layers_inner(
+    backend: &mut dyn ProveBackend,
+    fsv: &FsvPrograms,
     mut state: RecursionState,
     batch_id: u64,
     observer: &mut dyn FeederObserver,
@@ -917,10 +983,21 @@ fn run_feeder_layers(
     verifier: &dyn FeederVerifier,
 ) -> Result<(RecursionState, [u32; 16]), String> {
     let mut chain = rebuild_chain(&state.chain_end_params)?;
-    assert_eq!(state.feeder_layers, 0);
-    let mut layer = 0;
-    let mut input_output = verifier.native_verify_standard(nd(&state.setups, &state.proof))?;
-    let mut previous_instances = None;
+    let mut layer = state.feeder_layers;
+    let (mut input_output, mut previous_instances) = if layer == 0 {
+        (
+            verifier.native_verify_standard(nd(&state.setups, &state.proof))?,
+            None,
+        )
+    } else {
+        let profile = validate_feeder_proof(&state.proof, None)?;
+        let output = verifier.native_verify(profile, nd(&state.setups, &state.proof))?;
+        ensure_recursion_chain_binds_program(&output, &chain.hash())?;
+        if profile == FeederProfile::C {
+            return Ok((state, output));
+        }
+        (output, Some(feeder_proof_instances(&state.proof, None)?))
+    };
     loop {
         if layer >= MAX_FEEDER_LAYERS {
             return Err(format!(
@@ -1439,17 +1516,6 @@ impl ProgramProver {
     ) -> Result<Self, String> {
         validate_target_selection(config.target, config.selection())
             .map_err(|error| error.to_string())?;
-        if config.backend == ProverBackend::Gpu {
-            match config.target {
-                ProofTarget::L1 => {
-                    return Err("ProofTarget::L1 is not supported by the GPU backend".into())
-                }
-                ProofTarget::L1Feeder => {
-                    return Err("ProofTarget::L1Feeder is not supported by the GPU backend".into());
-                }
-                _ => {}
-            }
-        }
         let fsv = FsvPrograms::load(config.target, config.selection(), blake)?;
         assert_eq!(fsv.selection, config.selection());
         // Resolve source errors before creating the backend's worker pools and buffers.
@@ -1459,7 +1525,10 @@ impl ProgramProver {
             ProverBackend::Gpu => {
                 #[cfg(feature = "gpu")]
                 {
-                    BackendImpl::Gpu(PipelineBackend::new(&config)?)
+                    let mut configuration =
+                        PipelineBackend::<gpu_execution_prover::GpuBackend>::configuration(&config);
+                    configuration.backend.memory_preset = config.gpu_memory_preset;
+                    BackendImpl::Gpu(PipelineBackend::with_configuration(&config, configuration)?)
                 }
                 #[cfg(not(feature = "gpu"))]
                 {
@@ -1522,6 +1591,7 @@ impl ProgramProver {
             artifact.target,
             artifact.chain_end_params.len(),
             artifact.feeder_layers,
+            None,
             fsv.unrolled_blake.tag(),
             fsv.bridge_blake.tag(),
             fsv.final_blake.tag(),
@@ -1670,6 +1740,59 @@ impl ProgramProver {
         self.continue_artifact_observed(artifact, &mut NoopObserver)
     }
 
+    #[cfg(all(test, feature = "gpu"))]
+    fn for_feeder_checkpoint(
+        source: ProgramSource,
+        config: ProgramProverConfig,
+        blake: PipelineBlakeModes,
+    ) -> Result<Self, String> {
+        assert_eq!(config.target, ProofTarget::L1Feeder);
+        Self::with_registration(source, config, blake, Some(ProofTarget::RecursionUnified))
+    }
+
+    #[cfg(all(test, feature = "gpu"))]
+    fn resume_feeder_checkpoint(
+        &mut self,
+        state: RecursionState,
+        batch_id: u64,
+        observer: &mut dyn FeederObserver,
+    ) -> Result<ProofArtifact, String> {
+        let loaded = load_program(&self.source)?;
+        let worker = worker::Worker::new();
+        validate_feeder_checkpoint(
+            &state,
+            self.fsv.modes(),
+            &mut recomputed_end_params(&loaded, &worker, self.config.selection()),
+        )?;
+        let build_feeder_stream = |s: &Setups, p: &ProgramProof| {
+            build_unified_stream(s, p, BlakeMode::BlakeSpecialOpcodes)
+        };
+        let (state, native_output) = run_feeder_layers_inner(
+            pipeline_backend(&mut self.backend)?,
+            &self.fsv,
+            state,
+            batch_id,
+            observer,
+            &build_feeder_stream,
+            &ProductionFeederVerifier,
+        )?;
+        let (mut state, _prepared) = check_feeder_fit(
+            &self.fsv,
+            state,
+            native_output,
+            &build_feeder_stream,
+            &ProductionFeederVerifier,
+        )?;
+        state.stage = ProofTarget::L1Feeder;
+        Ok(finalize_artifact(
+            &self.fsv,
+            &self.config,
+            batch_id,
+            &loaded,
+            state,
+        ))
+    }
+
     fn continue_artifact_observed(
         &mut self,
         artifact: ProofArtifact,
@@ -1813,6 +1936,7 @@ pub fn unified_verification_chain_hashes_in_mode(
             ProofTarget::RecursionUnified,
             i + 3,
             0,
+            None,
             unrolled_blake.tag(),
             bridge_blake.tag(),
             final_blake.tag(),
@@ -1852,6 +1976,7 @@ pub fn verify_artifact_in_mode(
         artifact.target,
         artifact.chain_end_params.len(),
         artifact.feeder_layers,
+        None,
         &artifact.blake_unrolled,
         &artifact.blake_bridge,
         &artifact.blake_final,
@@ -2183,6 +2308,7 @@ fn expected_chain_end_params(
     target: ProofTarget,
     n: usize,
     feeder_layers: u32,
+    last_feeder_profile: Option<FeederProfile>,
     blake_unrolled: &str,
     blake_bridge: &str,
     blake_final: &str,
@@ -2250,7 +2376,7 @@ fn expected_chain_end_params(
                 FeederRole::Recurrent
             };
             let profile = if layer + 1 == feeder_layers {
-                FeederProfile::C
+                last_feeder_profile.unwrap_or(FeederProfile::C)
             } else {
                 FeederProfile::A
             };

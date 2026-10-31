@@ -385,7 +385,14 @@ fn materialized_case_for_geometry(
             .whir_leaf_transform_params()
             .omega_log_order,
     );
-    let mut holder = TraceHolder::<BF>::new_base(geometry, role, tree, context).unwrap();
+    let mut holder = TraceHolder::<BF>::new_base(
+        geometry,
+        role,
+        tree,
+        crate::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+        context,
+    )
+    .unwrap();
     assert_eq!(
         (holder.log_domain_size as usize, holder.columns_count),
         (geometry.trace_len_log2(), columns)
@@ -627,8 +634,14 @@ fn recomputed_case_for_geometry(
             .whir_leaf_transform_params()
             .omega_log_order,
     );
-    let mut holder =
-        TraceHolder::<BF>::new_base_without_cosets(geometry, role, tree, context).unwrap();
+    let mut holder = TraceHolder::<BF>::new_base_without_cosets(
+        geometry,
+        role,
+        tree,
+        crate::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+        context,
+    )
+    .unwrap();
     memory_copy_async(
         holder.get_uninit_hypercube_evals_mut(),
         raw,
@@ -965,6 +978,7 @@ fn packed_base_cpu_parity_rejects_domain_and_storage_before_work() {
         shape,
         BaseOracleRole::Memory,
         TreesCacheMode::CachePartial,
+        crate::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -1013,12 +1027,19 @@ fn packed_base_cpu_parity_rejects_domain_and_storage_before_work() {
         (false, TreesCacheMode::CacheFull),
     ] {
         let mut holder = if all_cosets {
-            TraceHolder::<BF>::new_base(geometry, BaseOracleRole::Memory, tree, &context)
+            TraceHolder::<BF>::new_base(
+                geometry,
+                BaseOracleRole::Memory,
+                tree,
+                crate::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                &context,
+            )
         } else {
             TraceHolder::<BF>::new_base_without_cosets(
                 geometry,
                 BaseOracleRole::Memory,
                 tree,
+                crate::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
                 &context,
             )
         }
@@ -1350,8 +1371,14 @@ fn in_place_case_for_geometry(
             .whir_leaf_transform_params()
             .omega_log_order,
     );
-    let mut holder =
-        TraceHolder::<BF>::new_base_without_cosets(geometry, role, tree, context).unwrap();
+    let mut holder = TraceHolder::<BF>::new_base_without_cosets(
+        geometry,
+        role,
+        tree,
+        crate::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+        context,
+    )
+    .unwrap();
     memory_copy_async(
         holder.get_uninit_hypercube_evals_mut(),
         raw,

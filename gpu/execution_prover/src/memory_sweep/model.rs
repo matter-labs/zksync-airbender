@@ -201,7 +201,14 @@ pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), Box<d
     )?;
     for (arena, policies) in selected {
         writeln!(output, "{arena} => match circuit {{")?;
-        writeln!(output, "CircuitType::L1Wrap21 | CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!(\"GPU backend does not support this CPU-only circuit type\"),")?;
+        writeln!(
+            output,
+            "CircuitType::L1Wrap21 => panic!(\"L1Wrap memory policy is hand-authored in presets::l1_wrap; the generated table does not cover it\"),"
+        )?;
+        writeln!(
+            output,
+            "CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!(\"Unified22 is L1Feeder-only; its policy is hand-authored in presets::l1_feeder\"),"
+        )?;
         let mut groups = BTreeMap::<String, Vec<&str>>::new();
         for &circuit in &circuits {
             let policy = policies[circuit_stable_name(circuit)];
@@ -264,6 +271,7 @@ pub fn policy_fields(policy: MemoryPolicy) -> (String, String, String, String, S
     let witness_opening = match policy.witness.opening {
         WitnessOpeningStrategy::ReuseCosets => "reuse_cosets",
         WitnessOpeningStrategy::Recompute(strategy) => opening(strategy),
+        WitnessOpeningStrategy::PackedCosetRecompute => "packed_coset_recompute",
     };
     (
         opening(policy.setup).into(),
@@ -302,15 +310,16 @@ fn policy_expression(policy: MemoryPolicy) -> String {
         WitnessOpeningStrategy::Recompute(strategy) => {
             format!("WitnessOpeningStrategy::Recompute(OpeningStrategy::{strategy:?})")
         }
+        WitnessOpeningStrategy::PackedCosetRecompute => {
+            "WitnessOpeningStrategy::PackedCosetRecompute".into()
+        }
     };
     format!("ProofMemoryPolicy {{ gkr: GkrMemoryPolicy::{:?}, setup: OpeningStrategy::{:?}, memory: OpeningStrategy::{:?}, witness: WitnessMemoryPolicy {{ commitment: WitnessCommitmentStrategy::{:?}, post_commitment: WitnessPostCommitStorage::{:?}, opening: {opening} }} }}", policy.gkr, policy.setup, policy.memory, policy.witness.commitment, policy.witness.post_commitment)
 }
 
 pub fn circuit_stable_name(circuit: CircuitType) -> &'static str {
     match circuit {
-        CircuitType::L1Wrap21 | CircuitType::Unrolled(UnrolledCircuitType::Unified22) => {
-            panic!("GPU backend does not support this CPU-only circuit type")
-        }
+        CircuitType::L1Wrap21 => panic!("L1Wrap is not enumerated by the all-circuit sweep; its capacity cases run through the bounded harness (tests/l1_memory.rs) and its policy is presets::l1_wrap"),
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
             "delegation_big_int_with_control"
         }
@@ -352,12 +361,13 @@ pub fn circuit_stable_name(circuit: CircuitType) -> &'static str {
             UnrolledNonMemoryCircuitType::ShiftBinary,
         )) => "unrolled_non_memory_shift_binary",
         CircuitType::Unrolled(UnrolledCircuitType::Unified) => "unrolled_unified",
+        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is not enumerated by the all-circuit sweep; it is L1Feeder-only, its capacity cases run through the bounded harness (tests/l1_memory.rs) and its policy is presets::l1_feeder"),
     }
 }
 
 fn circuit_pattern(circuit: CircuitType) -> &'static str {
     match circuit {
-        CircuitType::L1Wrap21 | CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("GPU backend does not support this CPU-only circuit type"),
+        CircuitType::L1Wrap21 => panic!("L1Wrap is not enumerated by the all-circuit sweep; its capacity cases run through the bounded harness (tests/l1_memory.rs) and its policy is presets::l1_wrap"),
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
             "CircuitType::Delegation(DelegationCircuitType::BigIntWithControl)"
         }
@@ -397,6 +407,7 @@ fn circuit_pattern(circuit: CircuitType) -> &'static str {
         CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
             "CircuitType::Unrolled(UnrolledCircuitType::Unified)"
         }
+        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is not enumerated by the all-circuit sweep; it is L1Feeder-only, its capacity cases run through the bounded harness (tests/l1_memory.rs) and its policy is presets::l1_feeder"),
     }
 }
 

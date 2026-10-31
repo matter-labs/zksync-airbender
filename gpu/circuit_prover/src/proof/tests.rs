@@ -42,6 +42,7 @@ fn cpu_preflight_rejects_explicit_output_identity_before_device_admission() {
         14,
         -1,
         ProofMemoryPolicy::default(),
+        PartialTreePolicy::DEFAULT,
         27,
     );
 }
@@ -63,7 +64,15 @@ fn cpu_preflight_rejects_empty_reduction_before_device_admission() {
     let mut config = physical_config(20, 2);
     config.sumcheck_explicit_output_size_log_2 = 20;
     config.validate_for_whir_message_size(config.whir_message_size_log2());
-    let _ = preflight_proof(&programs, &config, 20, -1, ProofMemoryPolicy::default(), 27);
+    let _ = preflight_proof(
+        &programs,
+        &config,
+        20,
+        -1,
+        ProofMemoryPolicy::default(),
+        PartialTreePolicy::DEFAULT,
+        27,
+    );
 }
 
 #[test]
@@ -259,7 +268,11 @@ fn cpu_virtual_proof_admission_accepts_production_preset_policies() {
             BaseCommitmentGeometry::from_config(&config, BaseColumns::of(&artifact)).unwrap();
         let main_layers = artifact.layers.len();
         for arena in [21usize << 30, 30usize << 30] {
-            let policy = memory_policy::presets::policy(circuit, arena);
+            let policy = memory_policy::presets::policy(
+                circuit,
+                crate::upstream::ProofProfile::Standard,
+                arena,
+            );
             validate_base_proof_geometry_policy(&geometry, policy, main_layers);
             validate_baby_bear_base_proof_policy(&geometry, policy, 27);
         }
@@ -331,6 +344,8 @@ fn cpu_semantic_policy_failures_precede_transfer_construction() {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             admit_dr_tail_before_transfers(
                 Some(DrTailPreflightRequest {
+                    partial_trees: gpu_trace::trace::holder::PartialTreePolicy::DEFAULT,
+
                     gkr_programs: &programs,
                     prover_config: &config,
                     final_trace_size_log_2: final_trace_log,
@@ -350,5 +365,107 @@ fn cpu_semantic_policy_failures_precede_transfer_construction() {
             .unwrap();
         assert!(message.contains(expected), "unexpected failure: {message}");
         assert!(!constructed.get());
+    }
+    for partial_trees in [
+        PartialTreePolicy {
+            setup: 0,
+            ..Default::default()
+        },
+        PartialTreePolicy {
+            memory: 0,
+            ..Default::default()
+        },
+        PartialTreePolicy {
+            witness: 0,
+            ..Default::default()
+        },
+    ] {
+        let constructed = std::cell::Cell::new(false);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            admit_dr_tail_before_transfers(
+                Some(DrTailPreflightRequest {
+                    gkr_programs: &programs,
+                    prover_config: &config,
+                    final_trace_size_log_2: final_trace_log,
+                    device_id: 0,
+                    memory_policy: ProofMemoryPolicy::default(),
+                    partial_trees,
+                    twiddle_domain_log2: 27,
+                }),
+                |_| constructed.set(true),
+            )
+        }));
+        let error = result.expect_err("invalid partial-tree depths must fail before transfers");
+        let message = error.downcast_ref::<String>().unwrap();
+        assert!(message.contains("partial-tree reduction layers"));
+        assert!(!constructed.get());
+    }
+}
+
+#[test]
+fn cpu_merged_pack0_feeder_admission() {
+    for (profile, log) in [
+        (crate::upstream::ProofProfile::L1Feeder, 22),
+        (crate::upstream::ProofProfile::L1FeederA, 23),
+    ] {
+        let config = profile.prover_config(log, SecurityLevel::Sec100);
+        let shape = geometry(&config);
+        assert_eq!(shape.pack_log2(), 0);
+        assert_eq!(
+            shape.commitment_mode(),
+            CommitmentMode::MergedMemoryAndWitness
+        );
+        assert_eq!(
+            shape
+                .oracle(crate::upstream::BaseOracleRole::Witness)
+                .physical_columns(),
+            0
+        );
+        validate_base_proof_geometry_policy(&shape, ProofMemoryPolicy::default(), 4);
+        validate_baby_bear_base_proof_policy(&shape, ProofMemoryPolicy::default(), 27);
+    }
+}
+
+#[test]
+fn cpu_packed_proth120_opening_rejected_at_preflight_for_every_base_geometry() {
+    let unpacked = ProverConfig::whir_only(
+        20,
+        prover::gkr::prover_config::WhirSchedule::from_legacy_arrays(
+            2,
+            16,
+            0,
+            &[1, 5],
+            &[1, 1],
+            &[2],
+            &[0, 0],
+        ),
+        SecurityLevel::Sec100,
+    );
+    let mut merged = unpacked.clone();
+    merged.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+    for config in [unpacked.clone(), physical_config(20, 2), merged] {
+        let shape = geometry(&config);
+        let policy = ProofMemoryPolicy {
+            witness: memory_policy::WitnessMemoryPolicy {
+                post_commitment:
+                    gpu_trace::trace::holder::WitnessPostCommitStorage::RawAndMonomials,
+                opening: WitnessOpeningStrategy::PackedCosetRecompute,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let reached_transfers = std::cell::Cell::new(false);
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            validate_base_proof_geometry_policy(&shape, policy, 4);
+            reached_transfers.set(true);
+        }))
+        .expect_err("preflight must reject Proth120-only openings");
+        let message = error
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| error.downcast_ref::<&str>().copied())
+            .unwrap();
+        assert!(message.contains("does not take WitnessOpeningStrategy::PackedCosetRecompute"));
+        assert!(!reached_transfers.get());
     }
 }

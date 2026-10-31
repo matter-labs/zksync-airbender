@@ -87,7 +87,12 @@ fn cpu_builds_prover_config_for_all_supported_security_levels() {
         let compiled = artifact(name);
         let columns = BaseColumns::of(&compiled);
         for level in GPU_SUPPORTED_SECURITY_LEVELS {
-            let cfg = prover_config(circuit, level).unwrap();
+            let cfg = prover_config(
+                circuit,
+                prover::gkr::prover_config::ProofProfile::Standard,
+                level,
+            )
+            .unwrap();
             assert_eq!(cfg, circuit.prover_config(level));
             assert_eq!(cfg.security_level, level);
             assert!(
@@ -183,7 +188,12 @@ fn cpu_current_configs_isolate_the_virtual_recursive_shape() {
 fn unified_uses_its_canonical_schedule() {
     let circuit = CircuitType::Unrolled(Unrolled::Unified);
     for &level in GPU_SUPPORTED_SECURITY_LEVELS.iter() {
-        let actual = prover_config(circuit, level).unwrap();
+        let actual = prover_config(
+            circuit,
+            prover::gkr::prover_config::ProofProfile::Standard,
+            level,
+        )
+        .unwrap();
         let expected = config_for_security_level_under_pessimistic_conjecture(23, level);
         assert_eq!(actual.whir_schedule, expected.whir_schedule);
     }
@@ -197,7 +207,12 @@ fn cpu_virtual_defaults_admit_proof_geometry_independently_of_physical_packing()
             continue;
         }
         for level in GPU_SUPPORTED_SECURITY_LEVELS {
-            let cfg = prover_config(circuit, level).unwrap();
+            let cfg = prover_config(
+                circuit,
+                prover::gkr::prover_config::ProofProfile::Standard,
+                level,
+            )
+            .unwrap();
             let compiled = artifact(name);
             let geometry =
                 BaseCommitmentGeometry::from_config(&cfg, BaseColumns::of(&compiled)).unwrap();
@@ -272,6 +287,68 @@ fn cpu_batching_pow_keeps_base_round_override_and_physical_count() {
         assert_eq!(
             batched_proximity_check_pow_bits_for_geometry(&cfg, &merged),
             13
+        );
+    }
+}
+
+/// The GPU-layer L1 configs exist only under `PessimisticConjecture`: under ethproofs each L1
+/// profile is refused with the deferred-scope error by this host-only resolver (no allocation
+/// or CUDA), and its pessimistic config is the profile's own. The L1 arm does not read the
+/// compiled columns, so one artifact serves every row.
+#[test]
+fn cpu_l1_profile_configs_are_pessimistic_only() {
+    use crate::upstream::{ConfigSelectionError, ProofProfile, ProvingSelection};
+    use prover::definitions::{ProverConfigProfile, SoundnessMode};
+    let compiled = artifact("unified_reduced_machine");
+    let ethproofs = ProvingSelection {
+        security_level: SecurityLevel::Sec100,
+        soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
+    };
+    let pessimistic = ProvingSelection {
+        soundness_mode: SoundnessMode::PessimisticConjecture,
+        ..ethproofs
+    };
+    for (circuit, profile, config_profile) in [
+        (
+            CircuitType::Unrolled(Unrolled::Unified22),
+            ProofProfile::L1Feeder,
+            ProverConfigProfile::L1Feeder,
+        ),
+        (
+            CircuitType::Unrolled(Unrolled::Unified),
+            ProofProfile::L1FeederA,
+            ProverConfigProfile::L1Feeder,
+        ),
+        (
+            CircuitType::L1Wrap21,
+            ProofProfile::L1Wrap,
+            ProverConfigProfile::EvmProductionPacked,
+        ),
+    ] {
+        let error = prover_config_for_profile_selection(circuit, &compiled, profile, ethproofs)
+            .unwrap_err();
+        assert_eq!(
+            error,
+            ConfigSelectionError::UnsupportedSpecialConfigMode {
+                profile: config_profile,
+                mode: SoundnessMode::EthproofsSoundnessCalc,
+            },
+            "{profile:?}"
+        );
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "UnsupportedSpecialConfigMode: ethproofs soundness mode is not implemented for the \
+                 L1 feeder/wrap/EVM profile (deferred product scope); requested {config_profile:?}"
+            )
+        );
+        assert_eq!(
+            prover_config_for_profile_selection(circuit, &compiled, profile, pessimistic).unwrap(),
+            profile.prover_config(
+                circuit.get_domain_size_log2() as usize,
+                SecurityLevel::Sec100
+            ),
+            "{profile:?}"
         );
     }
 }

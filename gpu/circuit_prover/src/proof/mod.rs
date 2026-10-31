@@ -3,7 +3,7 @@ pub mod inputs;
 pub mod memory_policy;
 pub mod merged_commitment;
 
-use memory_policy::ProofMemoryPolicy;
+use memory_policy::{PartialTreePolicy, ProofMemoryPolicy, WitnessOpeningStrategy};
 mod orchestration;
 
 #[cfg(test)]
@@ -68,6 +68,7 @@ pub struct ProofPreflight<F: PrimeField> {
     geometry: BaseCommitmentGeometry,
     memory_policy: ProofMemoryPolicy,
     batching_pow_bits: u32,
+    partial_trees: PartialTreePolicy,
     twiddle_domain_log2: u32,
 }
 
@@ -92,6 +93,11 @@ pub(crate) fn validate_base_proof_geometry_policy(
     memory_policy: ProofMemoryPolicy,
     main_layers: usize,
 ) {
+    assert_ne!(
+        memory_policy.witness.opening,
+        WitnessOpeningStrategy::PackedCosetRecompute,
+        "the BabyBear prover does not take WitnessOpeningStrategy::PackedCosetRecompute"
+    );
     assert!(
         memory_policy.witness.is_valid(),
         "invalid witness memory policy"
@@ -147,6 +153,9 @@ fn validate_baby_bear_base_proof_policy(
         let opening = match policy.witness.opening {
             WitnessOpeningStrategy::ReuseCosets => Opening::AllCosets,
             WitnessOpeningStrategy::Recompute(opening) => opening,
+            WitnessOpeningStrategy::PackedCosetRecompute => {
+                panic!("the BabyBear prover does not take WitnessOpeningStrategy::PackedCosetRecompute")
+            }
         };
         validate(Role::Witness, opening, TreesCacheMode::CachePartial);
     }
@@ -160,8 +169,10 @@ pub fn preflight_proof(
     final_trace_log: u32,
     device_id: i32,
     memory_policy: ProofMemoryPolicy,
+    partial_trees: PartialTreePolicy,
     twiddle_domain_log2: u32,
 ) -> CudaResult<ProofPreflight<BF>> {
+    partial_trees.assert_valid();
     assert_eq!(
         config.trace_len_log2,
         programs.compiled_circuit().trace_len.trailing_zeros() as usize,
@@ -196,6 +207,7 @@ pub fn preflight_proof(
         geometry,
         memory_policy,
         batching_pow_bits,
+        partial_trees,
         twiddle_domain_log2,
     })
 }
@@ -211,6 +223,7 @@ pub struct DrTailPreflightRequest<'a> {
     pub final_trace_size_log_2: u32,
     pub device_id: i32,
     pub memory_policy: ProofMemoryPolicy,
+    pub partial_trees: PartialTreePolicy,
     pub twiddle_domain_log2: u32,
 }
 
@@ -228,6 +241,7 @@ pub fn admit_dr_tail_before_transfers<T>(
         request.final_trace_size_log_2,
         request.device_id,
         request.memory_policy,
+        request.partial_trees,
         request.twiddle_domain_log2,
     )?;
     Ok(construct_transfers(Some(plan)))
@@ -242,6 +256,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     inputs: GpuGKRProofTransfer<'a, A>,
     dr_tail_plan: &ProofPreflight<BF>,
     memory_policy: ProofMemoryPolicy,
+    partial_trees: PartialTreePolicy,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
     prove_inner(
@@ -251,6 +266,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         inputs,
         dr_tail_plan,
         memory_policy,
+        partial_trees,
         None,
         context,
     )
@@ -270,6 +286,7 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
         final_trace_size_log_2,
         era_cudart::device::get_device()?,
         ProofMemoryPolicy::default(),
+        PartialTreePolicy::DEFAULT,
         context
             .ntt_device_context()
             .whir_leaf_transform_params()
@@ -282,6 +299,7 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
         inputs,
         &dr_tail_plan,
         ProofMemoryPolicy::default(),
+        PartialTreePolicy::DEFAULT,
         Some(Box::default()),
         context,
     )
@@ -294,9 +312,15 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     inputs: GpuGKRProofTransfer<'a, A>,
     dr_tail_plan: &ProofPreflight<BF>,
     memory_policy: ProofMemoryPolicy,
+    partial_trees: PartialTreePolicy,
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
+    partial_trees.assert_valid();
+    assert_eq!(
+        dr_tail_plan.partial_trees, partial_trees,
+        "proof partial-tree policy differs from preflight"
+    );
     assert!(
         Arc::ptr_eq(&dr_tail_plan.circuit, gkr_programs.compiled_circuit()),
         "proof preflight belongs to another circuit artifact"
@@ -336,7 +360,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         decoder,
         inits_and_teardowns,
         tracing_data,
-        memory,
+        mut memory,
         top_bits,
         top_bits_host,
         external_challenges,
@@ -398,12 +422,19 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         },
         tracing_data.as_ref(),
         memory_policy.witness,
+        partial_trees,
         context,
     )?;
     // Their final device readers are enqueued; Transfer still owns the H2D sources.
     drop(tracing_data);
     drop(inits_and_teardowns);
     drop(decoder);
+    // Persisted commitment trees replace the openings' per-coset tree rebuild.
+    if let Some((geometry, trees)) = memory.take_partial_trees() {
+        stage1_output
+            .memory_trace_holder
+            .install_transferred_partial_trees(geometry, trees);
+    }
 
     let output_evaluations_slab =
         unsafe { proof_layout.output_evaluations_device_mut(proof_slab.as_ptr() as *mut u8) }.map(

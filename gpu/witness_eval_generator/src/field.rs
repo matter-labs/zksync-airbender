@@ -1,6 +1,6 @@
 use super::*;
 
-impl Generator {
+impl<F: GpuWitnessField> Generator<F> {
     pub(crate) fn add_field_expr(&mut self, expr: &FieldNodeExpression<F>) {
         match expr {
             FieldNodeExpression::Place(variable) => {
@@ -10,7 +10,7 @@ impl Generator {
                 unreachable!("not supported at the upper level");
             }
             FieldNodeExpression::Constant(constant) => {
-                self.emit_constant("f", *constant);
+                F::push_field_constant(self, *constant);
             }
             FieldNodeExpression::FromInteger(expr) => {
                 let var_ident = self.integer_expr_into_var(expr);

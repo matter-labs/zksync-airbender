@@ -99,6 +99,7 @@ fn prove(
             tracing_data: Some(empty_trace()),
             external_challenges: challenges(),
             memory_caps: memory_caps(committed.merkle_tree_caps),
+            memory_partial_trees: None,
             selection: ProvingSelection {
                 security_level: SECURITY_LEVEL,
                 soundness_mode: SoundnessMode::DEFAULT,

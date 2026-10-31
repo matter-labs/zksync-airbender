@@ -58,6 +58,72 @@ pub fn validate_baby_bear_base_geometry(
 }
 
 #[doc(hidden)]
+pub const MAX_PARTIAL_TREE_REDUCTION_LAYERS: u32 =
+    gpu_hash::blake2s::MAX_PARTIAL_TREE_REDUCTION_LAYERS;
+
+#[doc(hidden)]
+pub fn assert_partial_tree_reduction_layers(requested: u32) {
+    assert!(
+        (PARTIAL_TREE_REDUCTION_LAYERS..=MAX_PARTIAL_TREE_REDUCTION_LAYERS).contains(&requested),
+        "partial-tree reduction layers {requested} outside {PARTIAL_TREE_REDUCTION_LAYERS}..={MAX_PARTIAL_TREE_REDUCTION_LAYERS}"
+    );
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PartialTreePolicy {
+    pub setup: u32,
+    pub memory: u32,
+    pub witness: u32,
+}
+
+impl PartialTreePolicy {
+    pub const DEFAULT: Self = Self::uniform(PARTIAL_TREE_REDUCTION_LAYERS);
+
+    pub const fn uniform(reduction_layers: u32) -> Self {
+        Self {
+            setup: reduction_layers,
+            memory: reduction_layers,
+            witness: reduction_layers,
+        }
+    }
+
+    pub fn assert_valid(self) {
+        assert_partial_tree_reduction_layers(self.setup);
+        assert_partial_tree_reduction_layers(self.memory);
+        assert_partial_tree_reduction_layers(self.witness);
+    }
+}
+
+impl Default for PartialTreePolicy {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+#[doc(hidden)]
+pub fn resolve_partial_tree_reduction_layers(
+    requested: u32,
+    log_domain_size: u32,
+    log_lde_factor: u32,
+    log_rows_per_leaf: u32,
+    log_tree_cap_size: u32,
+) -> u32 {
+    assert_partial_tree_reduction_layers(requested);
+    let log_coset_cap = log_tree_cap_size
+        .checked_sub(log_lde_factor)
+        .expect("partial trees require log_tree_cap_size >= log_lde_factor");
+    let available = log_domain_size
+        .checked_sub(log_rows_per_leaf + log_coset_cap)
+        .expect("partial trees require log_domain_size >= log_rows_per_leaf + log_coset_cap");
+    let resolved = requested.min(available);
+    assert!(
+        resolved >= PARTIAL_TREE_REDUCTION_LAYERS,
+        "partial tree needs {PARTIAL_TREE_REDUCTION_LAYERS} reduction layers below the coset cap, only {available} available"
+    );
+    resolved
+}
+
+#[doc(hidden)]
 #[derive(Copy, Clone)]
 pub enum TreesCacheMode {
     CacheNone,
@@ -149,6 +215,7 @@ pub struct TraceHolder<T> {
     pub log_tree_cap_size: u32,
     pub columns_count: usize,
     base_geometry: Option<(BaseCommitmentGeometry, BaseOracleRole)>,
+    partial_tree_reduction_layers: u32,
     raw_hypercube_evals: Option<std::sync::Arc<DeviceAllocation<T>>>,
     cosets_materialized: bool,
     opening_raw: Option<DeviceAllocation<T>>,
@@ -216,9 +283,11 @@ impl<T> TraceHolder<T> {
         geometry: BaseCommitmentGeometry,
         role: BaseOracleRole,
         trees_mode: TreesCacheMode,
+        partial_tree_reduction_layers: u32,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         Self::validate_base_layout(&geometry, trees_mode);
+        assert_partial_tree_reduction_layers(partial_tree_reduction_layers);
         let mut holder = Self::new_without_cosets_padded(
             u32::try_from(geometry.trace_len_log2()).expect("trace log2 exceeds u32"),
             geometry.lde_factor().trailing_zeros(),
@@ -227,6 +296,7 @@ impl<T> TraceHolder<T> {
             geometry.oracle(role).logical_columns(),
             u32::try_from(geometry.pack_log2()).expect("packing log2 exceeds u32"),
             TreesCacheMode::CacheNone,
+            partial_tree_reduction_layers,
             context,
         )?;
         holder.base_geometry = Some((geometry, role));
@@ -235,7 +305,7 @@ impl<T> TraceHolder<T> {
                 TreesCacheMode::CacheNone => TreesHolder::None,
                 TreesCacheMode::CachePartial => TreesHolder::Partial(allocate_trees(
                     1usize << holder.log_lde_factor,
-                    holder.commitment_log_domain_size() - PARTIAL_TREE_REDUCTION_LAYERS,
+                    holder.commitment_log_domain_size() - holder.partial_tree_reduction_layers(),
                     holder.log_rows_per_leaf,
                     context,
                 )?),
@@ -254,9 +324,16 @@ impl<T> TraceHolder<T> {
         geometry: BaseCommitmentGeometry,
         role: BaseOracleRole,
         trees_mode: TreesCacheMode,
+        partial_tree_reduction_layers: u32,
         context: &ProverContext,
     ) -> CudaResult<Self> {
-        let mut holder = Self::new_base_without_cosets(geometry, role, trees_mode, context)?;
+        let mut holder = Self::new_base_without_cosets(
+            geometry,
+            role,
+            trees_mode,
+            partial_tree_reduction_layers,
+            context,
+        )?;
         holder.cosets = CosetsHolder::Full(allocate_cosets(
             1usize << holder.log_lde_factor,
             holder.commitment_log_domain_size(),
@@ -266,6 +343,50 @@ impl<T> TraceHolder<T> {
         Ok(holder)
     }
 
+    pub fn install_partial_trees(&mut self, context: &ProverContext) -> CudaResult<()> {
+        assert!(
+            matches!(self.trees, TreesHolder::None),
+            "install_partial_trees requires TreesHolder::None"
+        );
+        assert!(
+            self.unified_device_cap.is_none() && !self.cosets_materialized,
+            "install_partial_trees requires an uncommitted trace"
+        );
+        self.trees = TreesHolder::Partial(allocate_trees(
+            1usize << self.log_lde_factor,
+            self.commitment_log_domain_size() - self.partial_tree_reduction_layers(),
+            self.log_rows_per_leaf,
+            context,
+        )?);
+        Ok(())
+    }
+
+    pub fn partial_tree_reduction_layers(&self) -> u32 {
+        resolve_partial_tree_reduction_layers(
+            self.partial_tree_reduction_layers,
+            self.commitment_log_domain_size(),
+            self.log_lde_factor,
+            self.log_rows_per_leaf,
+            self.log_tree_cap_size,
+        )
+    }
+
+    fn allocate_partial_tree_scratch(
+        &self,
+        context: &ProverContext,
+    ) -> CudaResult<Option<DeviceAllocation<Digest>>> {
+        if self.partial_tree_reduction_layers() == PARTIAL_TREE_REDUCTION_LAYERS {
+            return Ok(None);
+        }
+        let leaves = 1usize << (self.commitment_log_domain_size() - self.log_rows_per_leaf);
+        context
+            .alloc(
+                leaves >> PARTIAL_TREE_REDUCTION_LAYERS,
+                AllocationPlacement::BestFit,
+            )
+            .map(Some)
+    }
+
     pub fn new(
         log_domain_size: u32,
         log_lde_factor: u32,
@@ -273,6 +394,7 @@ impl<T> TraceHolder<T> {
         log_tree_cap_size: u32,
         columns_count: usize,
         trees_cache_mode: TreesCacheMode,
+        partial_tree_reduction_layers: u32,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let raw_hypercube_evals = std::sync::Arc::new(context.alloc(
@@ -286,6 +408,7 @@ impl<T> TraceHolder<T> {
             log_tree_cap_size,
             columns_count,
             trees_cache_mode,
+            partial_tree_reduction_layers,
             Some(raw_hypercube_evals),
             true,
             context,
@@ -302,6 +425,7 @@ impl<T> TraceHolder<T> {
         log_tree_cap_size: u32,
         columns_count: usize,
         trees_cache_mode: TreesCacheMode,
+        partial_tree_reduction_layers: u32,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         Self::new_with_raw_backing(
@@ -311,6 +435,7 @@ impl<T> TraceHolder<T> {
             log_tree_cap_size,
             columns_count,
             trees_cache_mode,
+            partial_tree_reduction_layers,
             None,
             true,
             context,
@@ -327,6 +452,7 @@ impl<T> TraceHolder<T> {
         log_tree_cap_size: u32,
         columns_count: usize,
         trees_cache_mode: TreesCacheMode,
+        partial_tree_reduction_layers: u32,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         Self::new_with_raw_backing(
@@ -336,6 +462,7 @@ impl<T> TraceHolder<T> {
             log_tree_cap_size,
             columns_count,
             trees_cache_mode,
+            partial_tree_reduction_layers,
             None,
             false,
             context,
@@ -349,6 +476,7 @@ impl<T> TraceHolder<T> {
         log_tree_cap_size: u32,
         columns_count: usize,
         trees_cache_mode: TreesCacheMode,
+        partial_tree_reduction_layers: u32,
         raw_hypercube_evals: Option<std::sync::Arc<DeviceAllocation<T>>>,
         allocate_coset_backing: bool,
         context: &ProverContext,
@@ -364,11 +492,19 @@ impl<T> TraceHolder<T> {
         } else {
             CosetsHolder::None(std::marker::PhantomData)
         };
+        assert_partial_tree_reduction_layers(partial_tree_reduction_layers);
         let trees = match trees_cache_mode {
             TreesCacheMode::CacheNone => TreesHolder::None,
             TreesCacheMode::CachePartial => TreesHolder::Partial(allocate_trees(
                 instances_count,
-                log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS,
+                log_domain_size
+                    - resolve_partial_tree_reduction_layers(
+                        partial_tree_reduction_layers,
+                        log_domain_size,
+                        log_lde_factor,
+                        log_rows_per_leaf,
+                        log_tree_cap_size,
+                    ),
                 log_rows_per_leaf,
                 context,
             )?),
@@ -385,6 +521,7 @@ impl<T> TraceHolder<T> {
             log_rows_per_leaf,
             log_tree_cap_size,
             columns_count,
+            partial_tree_reduction_layers,
             raw_hypercube_evals,
             base_geometry: None,
             cosets_materialized: false,
@@ -408,6 +545,7 @@ impl<T> TraceHolder<T> {
         log_tree_cap_size: u32,
         columns_count: usize,
         trees_cache_mode: TreesCacheMode,
+        partial_tree_reduction_layers: u32,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         Self::new_without_cosets_padded(
@@ -418,6 +556,7 @@ impl<T> TraceHolder<T> {
             columns_count,
             0,
             trees_cache_mode,
+            partial_tree_reduction_layers,
             context,
         )
     }
@@ -434,6 +573,7 @@ impl<T> TraceHolder<T> {
         columns_count: usize,
         pad_columns_to_log2: u32,
         trees_cache_mode: TreesCacheMode,
+        partial_tree_reduction_layers: u32,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let instances_count = 1usize << log_lde_factor;
@@ -463,11 +603,19 @@ impl<T> TraceHolder<T> {
             )?;
         }
         let raw_hypercube_evals = std::sync::Arc::new(backing);
+        assert_partial_tree_reduction_layers(partial_tree_reduction_layers);
         let trees = match trees_cache_mode {
             TreesCacheMode::CacheNone => TreesHolder::None,
             TreesCacheMode::CachePartial => TreesHolder::Partial(allocate_trees(
                 instances_count,
-                log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS,
+                log_domain_size
+                    - resolve_partial_tree_reduction_layers(
+                        partial_tree_reduction_layers,
+                        log_domain_size,
+                        log_lde_factor,
+                        log_rows_per_leaf,
+                        log_tree_cap_size,
+                    ),
                 log_rows_per_leaf,
                 context,
             )?),
@@ -484,6 +632,7 @@ impl<T> TraceHolder<T> {
             log_rows_per_leaf,
             log_tree_cap_size,
             columns_count,
+            partial_tree_reduction_layers,
             raw_hypercube_evals: Some(raw_hypercube_evals),
             base_geometry: None,
             cosets_materialized: false,
@@ -515,6 +664,33 @@ impl<T> TraceHolder<T> {
             "unified device cap was already installed",
         );
         self.unified_device_cap = Some(cap);
+    }
+
+    /// Installs partial trees transferred from this oracle's commitment, so the
+    /// openings read them instead of rebuilding every coset's tree.
+    pub fn install_transferred_partial_trees(
+        &mut self,
+        geometry: crate::trace::memory_transfer::PartialTreesGeometry,
+        trees: DeviceAllocation<Digest>,
+    ) {
+        assert!(
+            matches!(self.trees, TreesHolder::None),
+            "install_transferred_partial_trees requires TreesHolder::None"
+        );
+        assert!(
+            !self.cosets_materialized && self.columns_count != 0,
+            "install_transferred_partial_trees requires an unmaterialized, non-empty oracle"
+        );
+        assert_eq!(
+            geometry,
+            crate::trace::memory_transfer::PartialTreesGeometry::of_holder(self),
+            "transferred partial trees differ from this oracle's geometry"
+        );
+        assert_eq!(
+            trees.len(),
+            geometry.cosets_count() * geometry.coset_stride()
+        );
+        self.trees = TreesHolder::Partial(trees);
     }
 
     #[doc(hidden)]
@@ -653,7 +829,7 @@ impl<T> TraceHolder<T> {
             }
             TreesHolder::Partial(_) => {
                 let partial_log_domain =
-                    self.commitment_log_domain_size() - PARTIAL_TREE_REDUCTION_LAYERS;
+                    self.commitment_log_domain_size() - self.partial_tree_reduction_layers();
                 Some(1usize << (partial_log_domain + 1 - self.log_rows_per_leaf))
             }
             TreesHolder::None => None,
@@ -955,7 +1131,7 @@ impl TraceHolder<BF> {
         if self.committed_columns_count() != 0 && matches!(self.trees, TreesHolder::None) {
             self.trees = TreesHolder::Partial(allocate_trees(
                 1usize << self.log_lde_factor,
-                self.commitment_log_domain_size() - PARTIAL_TREE_REDUCTION_LAYERS,
+                self.commitment_log_domain_size() - self.partial_tree_reduction_layers(),
                 self.log_rows_per_leaf,
                 context,
             )?);
@@ -1031,6 +1207,14 @@ impl TraceHolder<BF> {
             unsafe { DeviceSlice::from_raw_parts(evals_ptr, evals_total_len) };
 
         let mut transient_tree_tops: Option<DeviceAllocation<Digest>> = None;
+        let reduction_layers = match self.trees {
+            TreesHolder::Partial(_) => self.partial_tree_reduction_layers(),
+            _ => PARTIAL_TREE_REDUCTION_LAYERS,
+        };
+        let mut boundary_scratch = match self.trees {
+            TreesHolder::Partial(_) => self.allocate_partial_tree_scratch(context)?,
+            _ => None,
+        };
 
         match &mut self.trees {
             TreesHolder::Full(backing) => {
@@ -1056,6 +1240,8 @@ impl TraceHolder<BF> {
                     log_tree_cap_size,
                     columns_count,
                     lde_factor,
+                    reduction_layers,
+                    boundary_scratch.as_deref_mut(),
                     stream,
                 )?;
             }
@@ -1153,6 +1339,8 @@ impl TraceHolder<BF> {
         let _per_coset_partial_len = self
             .per_coset_tree_len()
             .expect("build_and_cache_partial_trees requires allocated trees");
+        let reduction_layers = self.partial_tree_reduction_layers();
+        let mut boundary_scratch = self.allocate_partial_tree_scratch(context)?;
         // Snapshot cosets backing as raw pointer to dodge the simultaneous
         // &self.cosets + &mut self.trees borrow inside the loop.
         let evals_stride = columns_count << log_domain_size;
@@ -1180,6 +1368,8 @@ impl TraceHolder<BF> {
             log_tree_cap_size,
             columns_count,
             instances_count,
+            reduction_layers,
+            boundary_scratch.as_deref_mut(),
             stream,
         )?;
         Ok(())
@@ -1295,6 +1485,11 @@ impl TraceHolder<BF> {
                 )
             }
             TreesHolder::Partial(_) => {
+                assert_eq!(
+                    self.partial_tree_reduction_layers(),
+                    PARTIAL_TREE_REDUCTION_LAYERS,
+                    "schedule_query_merkle_paths_into_from_ntt: requires {PARTIAL_TREE_REDUCTION_LAYERS} reduction layers"
+                );
                 let cosets = self.get_consolidated_cosets();
                 let consolidated_tree = self
                     .get_consolidated_tree()
@@ -1406,6 +1601,7 @@ impl TraceHolder<BF> {
                     tree_bottom,
                     &mut d_merkle_paths,
                     layers_count,
+                    self.partial_tree_reduction_layers(),
                     stream,
                 )?;
             }
@@ -1631,7 +1827,8 @@ pub(crate) fn commit_trace_with_partial_tree_multi_coset(
 
 /// LSB sibling of [`commit_trace_with_partial_tree_multi_coset`]: each coset
 /// slab is the BITREVERSED-order codeword. The fused bottom-five-level kernel
-/// writes logical boundary roots, then the ordinary node builder materializes
+/// writes logical level-5 roots, folded to the boundary level when it is
+/// deeper, then the ordinary node builder materializes
 /// every cached level through the cap. The result and cached query subtree are
 /// byte-identical to [`commit_trace_with_partial_tree_multi_coset`] over the
 /// natural-order codeword.
@@ -1645,30 +1842,29 @@ pub fn build_partial_trees_from_physical(
     log_tree_cap_size: u32,
     columns_count: usize,
     cosets_in_tile: usize,
+    reduction_layers: u32,
+    boundary_scratch: Option<&mut DeviceSlice<Digest>>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert!(log_tree_cap_size >= log_lde_factor);
     let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
-    // At equality the bottom-five-level reduction produces the cap directly.
-    assert!(
-        log_domain_size
-            >= log_rows_per_leaf + PARTIAL_TREE_REDUCTION_LAYERS + log_coset_tree_cap_size
-    );
+    // At equality the bottom reduction layers produce the cap directly.
+    assert!(log_domain_size >= log_rows_per_leaf + reduction_layers + log_coset_tree_cap_size);
     let per_coset_evals_stride = columns_count << log_domain_size;
     let per_coset_leaves_count = 1usize << (log_domain_size - log_rows_per_leaf);
-    let per_coset_tree_stride = (per_coset_leaves_count << 1) >> PARTIAL_TREE_REDUCTION_LAYERS;
+    let per_coset_tree_stride = (per_coset_leaves_count << 1) >> reduction_layers;
     assert_eq!(evals_backing.len(), per_coset_evals_stride * cosets_in_tile);
     assert_eq!(tree_backing.len(), per_coset_tree_stride * cosets_in_tile);
-    let layers_count = log_domain_size + 1
-        - log_rows_per_leaf
-        - PARTIAL_TREE_REDUCTION_LAYERS
-        - log_coset_tree_cap_size;
+    let layers_count =
+        log_domain_size + 1 - log_rows_per_leaf - reduction_layers - log_coset_tree_cap_size;
     build_partial_merkle_tree_multi_coset_physical(
         evals_backing,
         tree_backing,
         log_rows_per_leaf,
         layers_count,
         cosets_in_tile,
+        reduction_layers,
+        boundary_scratch,
         stream,
     )
 }

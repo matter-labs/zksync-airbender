@@ -1,4 +1,4 @@
-use crate::proof::memory_policy::{WitnessMemoryPolicy, WitnessOpeningStrategy};
+use crate::proof::memory_policy::{PartialTreePolicy, WitnessMemoryPolicy, WitnessOpeningStrategy};
 use gpu_trace::trace::memory::uses_base_commitment_geometry;
 use std::sync::Arc;
 
@@ -8,7 +8,9 @@ use era_cudart::slice::DeviceSlice;
 use fft::GoodAllocator;
 
 use crate::proof::inputs::EXTERNAL_CHALLENGES_E4_LEN;
-use crate::upstream::{BaseCommitmentGeometry, BaseOracleRole, ProverConfig, WhirSchedule};
+use crate::upstream::{
+    BaseCommitmentGeometry, BaseOracleRole, CommitmentMode, ProverConfig, WhirSchedule,
+};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::{BF, E4};
@@ -78,6 +80,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
     bundle: BundleDeviceRefs<'_, 'a, A>,
     tracing_data_transfer: Option<&TracingDataTransfer<'a, A>>,
     witness_policy: WitnessMemoryPolicy,
+    partial_trees: PartialTreePolicy,
     context: &ProverContext,
 ) -> CudaResult<Stage1AndForwardPreparation> {
     let circuit_type = gkr_programs.circuit_type();
@@ -124,6 +127,17 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
         log_tree_cap_size: bundle.memory.host.log_tree_cap_size,
     };
     let witness_layer_geometry = setup_geometry;
+    let (memory_columns, witness_columns) = match prover_config.commitment_mode {
+        CommitmentMode::SeparateMemoryAndWitness => (
+            compiled_circuit.memory_layout.total_width,
+            compiled_circuit.witness_layout.total_width,
+        ),
+        CommitmentMode::MergedMemoryAndWitness => (
+            compiled_circuit.memory_layout.total_width
+                + compiled_circuit.witness_layout.total_width,
+            0,
+        ),
+    };
     let proof_layout_inputs = if uses_base_commitment_geometry(&base_geometry) {
         gpu_gkr::proof_layout::build_proof_layout_inputs_for_geometry(
             gkr_programs,
@@ -136,14 +150,8 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
             gkr_programs,
             whir_schedule,
             final_trace_size_log_2,
-            ProofLayoutBaseLayerGeometry::from_geometry(
-                memory_layer_geometry,
-                compiled_circuit.memory_layout.total_width,
-            ),
-            ProofLayoutBaseLayerGeometry::from_geometry(
-                witness_layer_geometry,
-                compiled_circuit.witness_layout.total_width,
-            ),
+            ProofLayoutBaseLayerGeometry::from_geometry(memory_layer_geometry, memory_columns),
+            ProofLayoutBaseLayerGeometry::from_geometry(witness_layer_geometry, witness_columns),
             ProofLayoutBaseLayerGeometry::from_geometry(setup_geometry, setup_columns_count),
         )
     };
@@ -209,12 +217,14 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
             Some(&mut witness_cap_dst),
             witness_policy.commitment,
             witness_policy.post_commitment,
+            partial_trees,
             context,
         )?
     } else {
         GpuGKRStage1Output::generate(
             circuit_type,
             compiled_circuit,
+            prover_config.commitment_mode,
             setup_geometry,
             bundle
                 .setup
@@ -228,13 +238,16 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
             Some(&mut witness_cap_dst),
             witness_policy.commitment,
             witness_policy.post_commitment,
+            partial_trees,
             context,
         )?
     };
-    if let WitnessOpeningStrategy::Recompute(opening) = witness_policy.opening {
-        stage1_output
+    match witness_policy.opening {
+        WitnessOpeningStrategy::ReuseCosets => {}
+        WitnessOpeningStrategy::Recompute(opening) => stage1_output
             .witness_trace_holder
-            .defer_materialization_until_queries(opening);
+            .defer_materialization_until_queries(opening),
+        WitnessOpeningStrategy::PackedCosetRecompute => reject_packed_coset_recompute(),
     }
     let synthetic_setup_trace_holder =
         if bundle.setup.is_none() && uses_base_commitment_geometry(&base_geometry) {
@@ -242,6 +255,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
                 base_geometry,
                 BaseOracleRole::Setup,
                 TreesCacheMode::CacheNone,
+                partial_trees.setup,
                 context,
             )?)
         } else if bundle.setup.is_none() {
@@ -252,6 +266,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
                 setup_geometry.log_tree_cap_size,
                 0,
                 TreesCacheMode::CachePartial,
+                partial_trees.setup,
                 context,
             )?)
         } else {
@@ -325,6 +340,27 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
         forward_setup,
         d_seed,
     })
+}
+
+fn reject_packed_coset_recompute() -> ! {
+    panic!("the BabyBear prover does not take WitnessOpeningStrategy::PackedCosetRecompute");
+}
+
+#[cfg(test)]
+mod cpu_tests {
+    #[test]
+    fn cpu_reject_packed_coset_recompute() {
+        let panic = std::panic::catch_unwind(super::reject_packed_coset_recompute).unwrap_err();
+        let message = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .unwrap();
+        assert_eq!(
+            message,
+            "the BabyBear prover does not take WitnessOpeningStrategy::PackedCosetRecompute"
+        );
+    }
 }
 
 #[cfg(test)]

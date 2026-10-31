@@ -32,6 +32,7 @@ fn merged_class_backings_preserve_logical_pointer_offsets() {
             1,
             columns,
             TreesCacheMode::CacheNone,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             &context,
         )
         .unwrap()
@@ -111,6 +112,8 @@ use prover::allocation_pool::GenericAllocationPool;
 use prover::gkr::prover::backend::NaiveBackend;
 use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
 use prover::gkr::prover::SetupCommitment;
+
+mod projection;
 
 fn make_test_cpu_setup(
     trace_len: usize,
@@ -208,6 +211,7 @@ fn materialize_trace_holder_from_values(
         log_tree_cap_size,
         columns_count,
         TreesCacheMode::CachePartial,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         context,
     )
     .unwrap();
@@ -290,7 +294,12 @@ fn launch_generic_lookup_preprocessing(
         )
         .unwrap(),
     );
-    let mut transfer = GpuGKRSetupTransfer::new(Arc::clone(&host), context).unwrap();
+    let mut transfer = GpuGKRSetupTransfer::new(
+        Arc::clone(&host),
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+        context,
+    )
+    .unwrap();
     let _h2d = gpu_prover_context::transfer::single_shot_h2d(
         |t| transfer.schedule_transfer(t, context),
         context,
@@ -463,7 +472,12 @@ fn setup_transfer_reuses_single_raw_backing_and_lazy_queries_match_fresh_commit(
         )
         .unwrap(),
     );
-    let mut transfer = GpuGKRSetupTransfer::new(host, &context).unwrap();
+    let mut transfer = GpuGKRSetupTransfer::new(
+        host,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+        &context,
+    )
+    .unwrap();
     let _h2d = gpu_prover_context::transfer::single_shot_h2d(
         |t| transfer.schedule_transfer(t, &context),
         &context,
@@ -503,6 +517,7 @@ fn setup_transfer_reuses_single_raw_backing_and_lazy_queries_match_fresh_commit(
         log_tree_cap_size,
         setup.hypercube_evals.len(),
         TreesCacheMode::CachePartial,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -574,7 +589,12 @@ fn bootstrap_storage_binds_setup_memory_and_witness_trace_holders() {
         )
         .unwrap(),
     );
-    let mut transfer = GpuGKRSetupTransfer::new(host, &context).unwrap();
+    let mut transfer = GpuGKRSetupTransfer::new(
+        host,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+        &context,
+    )
+    .unwrap();
     let _h2d = gpu_prover_context::transfer::single_shot_h2d(
         |t| transfer.schedule_transfer(t, &context),
         &context,
@@ -803,7 +823,12 @@ fn forward_setup_schedule_generic_lookup_matches_cpu() {
             )
             .unwrap(),
         );
-        let mut transfer = GpuGKRSetupTransfer::new(Arc::clone(&host), &context).unwrap();
+        let mut transfer = GpuGKRSetupTransfer::new(
+            Arc::clone(&host),
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+            &context,
+        )
+        .unwrap();
         let _h2d = gpu_prover_context::transfer::single_shot_h2d(
             |t| transfer.schedule_transfer(t, &context),
             &context,

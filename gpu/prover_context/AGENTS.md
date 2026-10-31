@@ -19,9 +19,10 @@ constructs and threads a `&ProverContext` through its scheduling functions.
 
 This crate **owns** the contract's subject matter — the streams
 (`exec_stream` and `h2d_stream` created at context creation), the stream-ordered
-device/host allocators, the H2D `Transfer` wrapper, and the fixed pinned
-staging buffer behind `Transfer::stage` (`gpu_core` owns the separate
-`SchedulerHostAllocator` pool the contract also documents).
+device/host allocators, the H2D `Transfer` wrapper, and the pinned staging
+buffer behind `Transfer::stage`, sized by `ProverContextConfig::h2d_staging_bytes`
+(`gpu_core` owns the separate `SchedulerHostAllocator` pool the contract also
+documents).
 Before editing `src/context.rs` or `src/transfer.rs`, read
 [`../docs/gpu_scheduling_contract.md`](../docs/gpu_scheduling_contract.md) in
 full. It governs the async stream-ordered model used by every crate above
@@ -52,13 +53,13 @@ truth.
 
 ## Upstream imports
 
-This crate has no upstream (`cs`/`prover`/`field`/`setups`) dependency at
-all — `context.rs` and `transfer.rs` consume only `gpu_core`, `gpu_ntt`, and
-`era_cudart*`/`log` directly. `src/upstream.rs` is still present and gates
-the crate the same way as every other crate in the cluster: it is
-intentionally empty today, documenting that fact; if a future change needs
-an upstream item, add it there (`pub(crate) use …;`) rather than importing
-directly from a consumer module.
+This crate has no normal upstream (`cs`/`prover`/`field`/`setups`) dependency
+— `context.rs` and `transfer.rs` consume only `gpu_core`, `gpu_ntt`, and
+`era_cudart*`/`log` directly. `fft`/`field`/`worker` are dev-dependencies for
+the Proth120 context test's CPU oracle, re-exported under `#[cfg(test)]` in
+`src/upstream.rs`, which gates the crate the same way as every other crate in
+the cluster; if a future change needs an upstream item, add it there
+(`pub(crate) use …;`) rather than importing directly from a consumer module.
 
 ## Widening convention
 

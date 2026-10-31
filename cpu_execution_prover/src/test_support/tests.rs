@@ -107,6 +107,7 @@ pub(super) fn capture_regular(
         sequence_id: request.sequence_id,
         inits_and_teardowns: request.inits_and_teardowns,
         tracing_data: request.tracing_data,
+        memory_partial_trees: None,
         merkle_tree_caps: vec![
             crate::upstream::MerkleTreeCapVarLength {
                 cap: vec![[0; 8]; config.cap_size / config.lde_factor()],

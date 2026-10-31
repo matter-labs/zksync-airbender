@@ -26,6 +26,20 @@ use worker::Worker;
 
 type CpuTwiddles = <DefaultBabyBearBackend as Backend<BF, E4>>::TwiddleSet;
 
+/// CPU production expansion used by `gpu_trace`'s Proth120 parity tests.
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub fn expand_inits_and_teardowns<A: HostTraceAllocator>(
+    trace: &InitsAndTeardownsTraceHost<A>,
+    num_sets: usize,
+    trace_len_log2: u32,
+) -> Vec<(
+    [Vec<crate::upstream::Proth120>; 2],
+    [Vec<crate::upstream::Proth120>; 2],
+)> {
+    inits_and_teardowns::expand::<crate::upstream::Proth120, A>(trace, num_sets, trace_len_log2)
+}
+
 #[derive(Default)]
 pub(crate) struct CpuJobs {
     backend: DefaultBabyBearBackend,

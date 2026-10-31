@@ -100,6 +100,22 @@ jobs:
           cargo +"$RUST_TOOLCHAIN" build -p cli --features gpu --release --target x86_64-unknown-linux-gnu --timings
           cp target/x86_64-unknown-linux-gnu/release/cli artifacts/cli
 
+      - name: Build the CLI L1 bundle comparison
+        shell: bash
+        run: |
+          cargo +"$RUST_TOOLCHAIN" test -p cli --features gpu --release --target x86_64-unknown-linux-gnu --test l1_bundle_parity --no-run --message-format=json > build-diagnostics/cli-l1-parity-build.json
+          python3 - <<'PYTHON'
+          import json, shutil
+          with open("build-diagnostics/cli-l1-parity-build.json") as source:
+              artifacts = [json.loads(line) for line in source]
+          executables = [a["executable"] for a in artifacts
+                         if a.get("reason") == "compiler-artifact"
+                         and a["target"]["name"] == "l1_bundle_parity"
+                         and a["profile"]["test"] and a.get("executable")]
+          assert len(executables) == 1, executables
+          shutil.copy2(executables[0], "artifacts/cli_l1_bundle_parity_tests")
+          PYTHON
+
       - name: Compile GPU tests
         shell: bash
         run: |
@@ -115,6 +131,18 @@ jobs:
           assert len(executables) == 1, executables
           shutil.copy2(executables[0], "artifacts/gpu_circuit_prover_tests")
           PYTHON
+
+      - name: Compile execution prover GPU tests
+        shell: bash
+        env:
+          CUDAARCHS: "80;89;90;120"
+        run: |
+          cargo +$RUST_TOOLCHAIN test -p gpu_execution_prover --release --target x86_64-unknown-linux-gnu --tests --features verifiers --no-run --message-format=json > build-diagnostics/execution-test-build.json
+
+      - name: GPU crate CPU tests
+        env:
+          CUDAARCHS: "80;89;90;120"
+        run: cargo +$RUST_TOOLCHAIN test -p gpu_execution_prover -p gpu_circuit_prover --release --target x86_64-unknown-linux-gnu --lib ::cpu_
 
       - name: Record compiler cache statistics
         if: always() && steps.sccache.outcome == 'success'
@@ -214,6 +242,29 @@ jobs:
           zksync-airbender-gpu/cli verify \
             --proof output/proof.json \
             --bin examples/hashed_fibonacci/app.bin
+
+      - name: Prove and verify the L1 wrap on GPU
+        shell: bash
+        env:
+          RUST_MIN_STACK: 1073741824
+        run: |
+          # The CI L4 has 23034 MiB; its 21 GiB arena leaves room for the context.
+          zksync-airbender-gpu/cli continue-proof \
+            --proof prover_pipeline/fixtures/l1_reference_2p21/l1_feeder.json \
+            --bin examples/basic_fibonacci/app.bin \
+            --target l1 \
+            --backend gpu \
+            --gpu-memory-preset 21gib \
+            --output-dir output/l1 \
+            --output-file proof.json
+          zksync-airbender-gpu/cli verify \
+            --proof output/l1/proof.json \
+            --bin examples/basic_fibonacci/app.bin
+          chmod +x zksync-airbender-gpu/cli_l1_bundle_parity_tests
+          AB_TEST_ARTIFACT_ROOT="$GITHUB_WORKSPACE" \
+          AB_L1_CLI_ARTIFACT=output/l1/proof.json \
+            zksync-airbender-gpu/cli_l1_bundle_parity_tests \
+            --exact cli_l1_bundle_matches_cpu_reference --ignored
 
   # Keep branch protection tied to one stable GPU check name even if we
   # split GPU coverage across multiple jobs or matrix entries later on.

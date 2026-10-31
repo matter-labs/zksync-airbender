@@ -130,8 +130,12 @@ pub(super) fn replay_delegation_trace_buffer_for_workload<W: Clone, OPT: Decodin
 }
 
 pub(super) fn delegation_prover_config(circuit_type: DelegationCircuitType) -> ProverConfig {
-    crate::config::prover_config(CircuitType::Delegation(circuit_type), SecurityLevel::Sec100)
-        .unwrap()
+    crate::config::prover_config(
+        CircuitType::Delegation(circuit_type),
+        ProofProfile::Standard,
+        SecurityLevel::Sec100,
+    )
+    .unwrap()
 }
 
 /// `circuit_type`'s prover config under `mode` at `level`. The default mode is
@@ -144,7 +148,7 @@ pub(super) fn prover_config_in_mode(
     mode: circuit_common::SoundnessMode,
 ) -> ProverConfig {
     if mode == circuit_common::SoundnessMode::DEFAULT {
-        return crate::config::prover_config(circuit_type, level).unwrap();
+        return crate::config::prover_config(circuit_type, ProofProfile::Standard, level).unwrap();
     }
     let selection = ProvingSelection {
         security_level: level,

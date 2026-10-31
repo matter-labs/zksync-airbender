@@ -372,6 +372,7 @@ fn expected_chain_ends_with_c_after_the_a_prefix() {
             ProofTarget::L1Feeder,
             3 + feeder_layers as usize,
             feeder_layers,
+            None,
             BlakeMode::Compression.tag(),
             BlakeMode::Compression.tag(),
             BlakeMode::Compression.tag(),
@@ -730,7 +731,12 @@ fn run_scripted(
     let mut backend = ScriptedChain::new(&state, script);
     let harness = backend.share();
     let mut layers = Layers(vec![]);
-    let result = run_feeder_layers(
+    let run = if state.feeder_layers == 0 {
+        run_feeder_layers
+    } else {
+        run_feeder_layers_inner
+    };
+    let result = run(
         &mut backend,
         &fsv,
         state,
@@ -955,4 +961,147 @@ fn feeder_proof_profile_requires_the_trace_and_every_instance_schedule() {
     assert!(l1_wrap::validate_last_feeder_proof(&proof)
         .unwrap_err()
         .contains("one C instance"));
+}
+
+#[test]
+fn feeder_resume_rejects_a_history_its_proof_does_not_authenticate() {
+    // a proven single-instance chain whose claimed history is then altered
+    let tampered = || {
+        let (state, _) = run_scripted(&[1], ScriptedChain::state());
+        let mut state = state.unwrap();
+        let backend = ScriptedChain::new(&state, &[1]);
+        state.chain_end_params[0][0] ^= 1;
+        (state, backend)
+    };
+    let fsv = modes_only(compression_modes());
+    let (state, mut backend) = tampered();
+    let verifier = backend.share();
+    let error = run_feeder_layers_inner(
+        &mut backend,
+        &fsv,
+        state,
+        0,
+        &mut NoopObserver,
+        &scripted_stream,
+        &verifier,
+    )
+    .err()
+    .unwrap();
+    assert!(error.contains("recursion chain"), "{error}");
+    assert_eq!(
+        *backend.proven.borrow(),
+        1,
+        "resume must not prove another layer"
+    );
+}
+
+#[test]
+fn feeder_loop_resumes_both_a_boundaries_and_stops_only_at_c() {
+    let script = [2usize, 1, 1];
+    let (full, _) = run_scripted(&script, ScriptedChain::state());
+    let full = full.unwrap();
+    // resume after layer 0 (two A instances): layers 1 and 2 remain
+    let mut after_first = ScriptedChain::state();
+    after_first.feeder_layers = 1;
+    after_first.proof = fake_feeder_proof_for_profile(1, 2, FeederProfile::A);
+    after_first
+        .proof
+        .set_recursion_chain(&rebuild_chain(&full.chain_end_params[..3]).unwrap());
+    after_first.chain_end_params = full.chain_end_params[..4].to_vec();
+    let (resumed, layers) = run_scripted(&script, after_first);
+    let resumed = resumed.unwrap();
+    assert_eq!(layers, vec![(1, 2, 1), (2, 3, 1)]);
+    assert_eq!(resumed.feeder_layers, full.feeder_layers);
+    assert_eq!(resumed.chain_end_params, full.chain_end_params);
+    assert_eq!(resumed.proof.final_pc, full.proof.final_pc);
+    // A single A instance must still be followed by C.
+    let mut after_second = ScriptedChain::state();
+    after_second.feeder_layers = 2;
+    after_second.proof = fake_feeder_proof_for_profile(2, 1, FeederProfile::A);
+    after_second
+        .proof
+        .set_recursion_chain(&rebuild_chain(&full.chain_end_params[..4]).unwrap());
+    after_second.chain_end_params = full.chain_end_params[..5].to_vec();
+    let (resumed, layers) = run_scripted(&script, after_second);
+    let resumed = resumed.unwrap();
+    assert_eq!(layers, vec![(2, 3, 1)]);
+    assert_eq!(resumed.chain_end_params, full.chain_end_params);
+    // C is terminal: nothing to prove.
+    let mut done = ScriptedChain::state();
+    done.feeder_layers = 3;
+    done.proof = full.proof.clone();
+    done.chain_end_params = full.chain_end_params.clone();
+    let (skipped, layers) = run_scripted(&[], done);
+    let skipped = skipped.unwrap();
+    assert!(layers.is_empty());
+    assert_eq!(skipped.feeder_layers, 3);
+    assert_eq!(skipped.chain_end_params, full.chain_end_params);
+    assert!(skipped.timings.l1_feeder_ms.is_empty());
+}
+
+/// The private feeder-checkpoint admission: feeder layer count, the feeder cap,
+/// setups, the feeder proof shape and the trusted history.
+
+#[test]
+fn cpu_resume_admission_checks_shape_caps_and_trusted_history() {
+    use prover::merkle_trees::MerkleTreeCapVarLength;
+    let trusted = |program: ChainProgram| -> Result<[u32; 8], String> {
+        Ok(match program {
+            ChainProgram::User => [1; 8],
+            ChainProgram::Fsv(
+                FsvProgram::UnifiedRecursionLayer,
+                FsvProfile::Standard,
+                _,
+                SetupMachine::L1Feeder(FeederProfile::A),
+            ) => [10; 8],
+            ChainProgram::Fsv(_, FsvProfile::L1FeederA, _, _) => [20; 8],
+            ChainProgram::Fsv(..) => [2; 8],
+        })
+    };
+    let caps = |leaves: usize| {
+        BTreeMap::from([(
+            128,
+            setups::UnrolledCircuitSetupParams {
+                family_idx: 128,
+                capacity: u32::try_from(FeederProfile::A.circuit().get_domain_size()).unwrap(),
+                setup_caps: MerkleTreeCapVarLength {
+                    cap: vec![[7; 8]; leaves],
+                },
+            },
+        )])
+    };
+    let checkpoint = || RecursionState {
+        stage: ProofTarget::L1Feeder,
+        l1: None,
+        proof: fake_feeder_proof_for_profile(2, 1, FeederProfile::A),
+        setups: caps(4),
+        chain_end_params: vec![[1; 8], [2; 8], [2; 8], [10; 8], [20; 8]],
+        input_is_base: false,
+        timings: ProofTimingsMs::default(),
+        program_cycles: 0,
+        feeder_layers: 2,
+    };
+    let admit = |state: &RecursionState| {
+        validate_feeder_checkpoint(state, compression_modes(), &mut |program| trusted(program))
+    };
+    admit(&checkpoint()).unwrap();
+    let mut wrong_history = checkpoint();
+    wrong_history.chain_end_params[3][0] ^= 1;
+    assert!(admit(&wrong_history).unwrap_err().contains("trusted chain"));
+    let mut wrong_caps = checkpoint();
+    wrong_caps.setups = caps(32);
+    assert!(admit(&wrong_caps).unwrap_err().contains("leafs"));
+    let mut no_layers = checkpoint();
+    no_layers.feeder_layers = 0;
+    assert!(admit(&no_layers).unwrap_err().contains("feeder layers"));
+    let mut wrong_count = checkpoint();
+    wrong_count.feeder_layers = 3;
+    assert!(admit(&wrong_count)
+        .unwrap_err()
+        .contains("must claim at least"));
+    let mut no_proof = checkpoint();
+    no_proof.proof = empty_proof();
+    assert!(admit(&no_proof)
+        .unwrap_err()
+        .contains("reduced-machine family"));
 }

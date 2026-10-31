@@ -415,6 +415,7 @@ mod cpu_tests {
         assert!(supported(9, 4));
         assert!(supported(7, 4));
         assert!(supported(6, 5));
+        assert!(supported(6, 3));
         assert!(supported(5, 4));
         assert!(supported(5, 3));
         assert!(!supported(6, 1));

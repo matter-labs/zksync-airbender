@@ -40,7 +40,7 @@ fn mem_read(arena: &mut ArenaBuilder, column: usize) -> ExprId {
 }
 
 /// A base-field `Constant`.
-fn constant(arena: &mut ArenaBuilder, value: u32) -> ExprId {
+fn constant(arena: &mut ArenaBuilder, value: u128) -> ExprId {
     let src = arena.intern_source(SourceKind::Constant { value });
     arena.source_expr(src)
 }
@@ -95,7 +95,7 @@ fn slot_for_address_high() -> PermutationSlot {
 pub(super) fn lower_memory_tuple(
     arena: &mut ArenaBuilder,
     rel: &SpecialMemoryContributionRelation,
-    minus_one: u32,
+    minus_one: u128,
 ) -> Result<ExprId, String> {
     let mut terms: Vec<ExprId> = Vec::with_capacity(8);
 
@@ -122,10 +122,10 @@ pub(super) fn lower_memory_tuple(
 fn address_space_term(
     arena: &mut ArenaBuilder,
     space: &CompiledAddressSpaceRelationStrict,
-    minus_one: u32,
+    minus_one: u128,
 ) -> ExprId {
     match space {
-        CompiledAddressSpaceRelationStrict::Constant(c) => constant(arena, *c),
+        CompiledAddressSpaceRelationStrict::Constant(c) => constant(arena, (*c).into()),
         CompiledAddressSpaceRelationStrict::IsRam(offset) => mem_read(arena, *offset),
         CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
             // 1 − bit, the register indicator.
@@ -138,7 +138,7 @@ fn address_space_term(
 }
 
 /// `(CHARACTERISTICS − 1) · term`, i.e. `−term`, encoded without a `Neg` node.
-fn scale_minus_one(arena: &mut ArenaBuilder, term: ExprId, minus_one: u32) -> ExprId {
+fn scale_minus_one(arena: &mut ArenaBuilder, term: ExprId, minus_one: u128) -> ExprId {
     let neg = constant(arena, minus_one);
     arena.mul(vec![neg, term])
 }
@@ -157,11 +157,11 @@ fn address_terms(
 ) -> Result<(), String> {
     match address {
         CompiledAddressStrict::ConstantU16(c) => {
-            let lo = constant(arena, *c as u32);
+            let lo = constant(arena, (*c).into());
             terms.push(challenge_scaled(arena, slot_for_address_low(), lo));
         }
         CompiledAddressStrict::Constant(c) => {
-            let lo = constant(arena, *c);
+            let lo = constant(arena, (*c).into());
             terms.push(challenge_scaled(arena, slot_for_address_low(), lo));
         }
         CompiledAddressStrict::U16Space(offset) => {
@@ -184,12 +184,12 @@ fn address_terms(
             let mut low_parts = Vec::with_capacity(3);
             low_parts.push(mem_read(arena, *low_base));
             if *low_offset != 0 {
-                low_parts.push(constant(arena, *low_offset));
+                low_parts.push(constant(arena, (*low_offset).into()));
             }
             if let Some((coeff, dyn_offset)) = low_dynamic_offset {
                 let dyn_read = mem_read(arena, *dyn_offset);
                 let scaled = {
-                    let c = constant(arena, *coeff as u32);
+                    let c = constant(arena, (*coeff as u32).into());
                     arena.mul(vec![c, dyn_read])
                 };
                 low_parts.push(scaled);
@@ -221,7 +221,7 @@ fn timestamp_terms(
             // low limb carries the constant timestamp offset.
             let lo_read = mem_read(arena, ts[0]);
             let lo_inner = if timestamp_offset != 0 {
-                let off = constant(arena, timestamp_offset);
+                let off = constant(arena, timestamp_offset.into());
                 arena.add(vec![lo_read, off])
             } else {
                 lo_read
@@ -263,7 +263,7 @@ fn value_terms(arena: &mut ArenaBuilder, value: &RamWordRepresentation, terms: &
 fn recompose_bytes(arena: &mut ArenaBuilder, lo_col: usize, hi_col: usize) -> ExprId {
     let lo = mem_read(arena, lo_col);
     let hi = mem_read(arena, hi_col);
-    let shift = constant(arena, BYTE_SHIFT);
+    let shift = constant(arena, BYTE_SHIFT.into());
     let hi_shifted = arena.mul(vec![shift, hi]);
     arena.add(vec![lo, hi_shifted])
 }
@@ -294,7 +294,7 @@ pub(super) fn mask_into_identity(
     arena: &mut ArenaBuilder,
     input: cs::definitions::GKRAddress,
     mask: cs::definitions::GKRAddress,
-    minus_one: u32,
+    minus_one: u128,
 ) -> ExprId {
     let input = read_addr(arena, input);
     let mask = read_addr(arena, mask);
@@ -364,7 +364,7 @@ fn inits_or_teardowns_tuple(
     terms.push(permutation_additive(arena));
 
     // address space is RAM (a base-field constant).
-    terms.push(constant(arena, AddressSpaceType::RAM as u32));
+    terms.push(constant(arena, AddressSpaceType::RAM as u128));
 
     // low address: ch(AddressLow) · VirtualSetup(InitsAndTeardownsLow).
     let addr_low = virtual_setup(arena, super::super::VirtualSetupKind::InitsAndTeardownsLow);

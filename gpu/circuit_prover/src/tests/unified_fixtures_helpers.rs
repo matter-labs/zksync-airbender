@@ -878,6 +878,7 @@ where
             None,
             &tracing_data_transfer.data_device,
             &prover_config,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             &context,
         )
         .unwrap();
@@ -912,7 +913,7 @@ where
 }
 
 pub(crate) fn prepare_unified_proof_fixture() -> BasicUnrolledProofFixture {
-    prepare_unified_proof_fixture_with_layout(UNIFIED_LAYOUT_PATH)
+    prepare_unified_proof_fixture_with_mode(CommitmentMode::SeparateMemoryAndWitness)
 }
 
 /// Unified fixture WITHOUT a CPU reference proof, for the profile test (which only
@@ -920,18 +921,22 @@ pub(crate) fn prepare_unified_proof_fixture() -> BasicUnrolledProofFixture {
 /// unified prove).
 pub(crate) fn prepare_unified_profiling_fixture() -> BasicUnrolledFixture {
     prepare_unified_fixture(
-        UNIFIED_LAYOUT_PATH,
         false,
         0,
+        ProofProfile::Standard,
         circuit_common::SoundnessMode::DEFAULT,
     )
     .0
 }
 
-pub(crate) fn prepare_unified_proof_fixture_with_layout(
-    layout_path: &str,
+pub(crate) fn prepare_unified_proof_fixture_with_mode(
+    commitment_mode: CommitmentMode,
 ) -> BasicUnrolledProofFixture {
-    prepare_unified_proof_fixture_for(layout_path, circuit_common::SoundnessMode::DEFAULT)
+    let profile = match commitment_mode {
+        CommitmentMode::SeparateMemoryAndWitness => ProofProfile::Standard,
+        CommitmentMode::MergedMemoryAndWitness => ProofProfile::L1FeederA,
+    };
+    prepare_unified_proof_fixture_for(profile, circuit_common::SoundnessMode::DEFAULT)
 }
 
 /// [`prepare_unified_proof_fixture`] with the CPU reference and the GPU proof
@@ -939,14 +944,14 @@ pub(crate) fn prepare_unified_proof_fixture_with_layout(
 pub(crate) fn prepare_unified_proof_fixture_in_mode(
     mode: circuit_common::SoundnessMode,
 ) -> BasicUnrolledProofFixture {
-    prepare_unified_proof_fixture_for(UNIFIED_LAYOUT_PATH, mode)
+    prepare_unified_proof_fixture_for(ProofProfile::Standard, mode)
 }
 
 fn prepare_unified_proof_fixture_for(
-    layout_path: &str,
+    profile: ProofProfile,
     mode: circuit_common::SoundnessMode,
 ) -> BasicUnrolledProofFixture {
-    let (base, expected_cpu_proof) = prepare_unified_fixture(layout_path, true, 0, mode);
+    let (base, expected_cpu_proof) = prepare_unified_fixture(true, 0, profile, mode);
     BasicUnrolledProofFixture {
         base,
         expected_cpu_proof: expected_cpu_proof
@@ -958,9 +963,9 @@ pub(super) fn prepare_unified_proof_fixture_with_packing(
     pack_log2: usize,
 ) -> BasicUnrolledProofFixture {
     let (base, expected_cpu_proof) = prepare_unified_fixture(
-        UNIFIED_LAYOUT_PATH,
         true,
         pack_log2,
+        ProofProfile::Standard,
         circuit_common::SoundnessMode::DEFAULT,
     );
     BasicUnrolledProofFixture {
@@ -970,9 +975,9 @@ pub(super) fn prepare_unified_proof_fixture_with_packing(
 }
 
 fn prepare_unified_fixture(
-    layout_path: &str,
     compute_cpu_reference: bool,
     pack_log2: usize,
+    profile: ProofProfile,
     mode: circuit_common::SoundnessMode,
 ) -> (
     BasicUnrolledFixture,
@@ -1024,7 +1029,7 @@ fn prepare_unified_fixture(
     let mut expected_final_state = state;
     expected_final_state.counters = Default::default();
 
-    let compiled_circuit: GKRCircuitArtifact<BF> = deserialize_json_for_test(layout_path);
+    let compiled_circuit: GKRCircuitArtifact<BF> = deserialize_json_for_test(UNIFIED_LAYOUT_PATH);
     let num_unified_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
     let num_calls = counters.get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
 
@@ -1069,12 +1074,22 @@ fn prepare_unified_fixture(
 
     let fixture_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::Unified);
     let prover_config = if pack_log2 == 0 {
-        prover_config_in_mode(
-            fixture_circuit_type,
-            &compiled_circuit,
-            SecurityLevel::Sec100,
-            mode,
-        )
+        if profile == ProofProfile::Standard {
+            prover_config_in_mode(
+                fixture_circuit_type,
+                &compiled_circuit,
+                SecurityLevel::Sec100,
+                mode,
+            )
+        } else {
+            assert_eq!(
+                mode,
+                circuit_common::SoundnessMode::DEFAULT,
+                "the L1 profiles exist only under PessimisticConjecture"
+            );
+            crate::config::prover_config(fixture_circuit_type, profile, SecurityLevel::Sec100)
+                .unwrap()
+        }
     } else {
         assert_eq!(mode, circuit_common::SoundnessMode::DEFAULT);
         prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(
@@ -1179,6 +1194,11 @@ fn prepare_unified_fixture(
         )
     } else {
         // No CPU reference -> derive caps from a one-shot GPU commit_memory.
+        assert_eq!(
+            prover_config.commitment_mode,
+            CommitmentMode::SeparateMemoryAndWitness,
+            "the merged fixture needs the CPU reference proof for its caps"
+        );
         // The unified arm requires the inits/teardowns bundle, so use
         // `commit_memory_from_transfers` (the 6-arg `commit_memory` hard-codes
         // `None` for i/t and panics on a unified circuit with "requires
@@ -1222,6 +1242,7 @@ fn prepare_unified_fixture(
             &compiled_circuit,
             bundle,
             &prover_config,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             &context,
         )
         .unwrap();

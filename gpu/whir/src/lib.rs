@@ -12,6 +12,7 @@ pub(crate) mod in_domain;
 pub(crate) mod kernels;
 mod oracle_commit;
 pub mod pow;
+pub mod proth120;
 pub(crate) mod upstream;
 
 #[cfg(test)]
@@ -259,7 +260,6 @@ impl GpuWhirExtensionOracle {
         let log_lde_factor = lde_factor.trailing_zeros();
         let log_values_per_leaf = values_per_leaf.trailing_zeros();
         let log_tree_cap_size = tree_cap_size.trailing_zeros();
-        assert!(trace_len_log2 >= log_values_per_leaf);
         let packed_leaf_count = trace_len / values_per_leaf;
         let packed_leaf_count_log2 = packed_leaf_count.trailing_zeros();
         let total_leaf_count_log2 = packed_leaf_count_log2 + log_lde_factor;
@@ -289,6 +289,7 @@ impl GpuWhirExtensionOracle {
             log_tree_cap_size,
             EXT4_DEGREE * values_per_leaf,
             TreesCacheMode::CachePartial,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             context,
         )?;
         // Retained oracles release the relabel scratch after all its readers
@@ -929,6 +930,44 @@ mod cpu_recursive_shapes {
             (22, 6, 0, 4, 27),
         ] {
             assert!(std::panic::catch_unwind(|| admit(n, v, lde, cap, capacity)).is_err());
+        }
+    }
+}
+
+#[cfg(test)]
+mod cpu_tests {
+    use super::admit_baby_bear_recursive_oracle_shape;
+    use crate::test_utils::l1_feeder_oracle_shapes;
+
+    #[test]
+    fn cpu_l1_feeder_whir_oracle_shapes_are_admitted() {
+        let shapes = l1_feeder_oracle_shapes();
+        assert!(!shapes.is_empty());
+        for (log_n, log_v, lde_factor, cap_size) in shapes {
+            let log_lde = lde_factor.trailing_zeros();
+            admit_baby_bear_recursive_oracle_shape(
+                log_n,
+                log_v,
+                log_lde,
+                cap_size.trailing_zeros(),
+                gpu_ntt::ntt_twiddles::OMEGA_LOG_ORDER,
+            );
+            let error = std::panic::catch_unwind(|| {
+                admit_baby_bear_recursive_oracle_shape(
+                    log_n,
+                    log_v,
+                    log_lde,
+                    cap_size.trailing_zeros(),
+                    log_n + log_lde - 1,
+                )
+            })
+            .expect_err("an undersized context must reject the feeder oracle");
+            let message = error
+                .downcast_ref::<&str>()
+                .copied()
+                .or_else(|| error.downcast_ref::<String>().map(String::as_str))
+                .unwrap();
+            assert!(message.contains("exceeds context twiddle capacity"));
         }
     }
 }

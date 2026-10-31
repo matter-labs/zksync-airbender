@@ -6,6 +6,8 @@
 //! layer). This self-contained copy mirrors that helper.
 
 use gpu_prover_context::{ProverContext, ProverContextConfig};
+use prover::definitions::SecurityLevel;
+use prover::gkr::prover_config::ProofProfile;
 
 const TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 20;
 
@@ -43,4 +45,28 @@ pub(crate) fn make_test_context_with_device_allocator_block_log_size(
         config.small_allocator_log_chunk_size = None;
     }
     ProverContext::new(&config).unwrap()
+}
+
+/// The intermediate WHIR oracles of the 2^22 L1 feeder, from its config:
+/// `(log_n, log_v, lde_factor, cap_size)` per oracle.
+pub(crate) fn l1_feeder_oracle_shapes() -> Vec<(u32, u32, usize, usize)> {
+    let config = ProofProfile::L1Feeder.prover_config(22, SecurityLevel::Sec100);
+    let schedule = &config.whir_schedule;
+    let steps = &schedule.fold_steps();
+    assert_eq!(steps.len(), schedule.intermediate_lde_factors().len() + 1);
+    let mut log_n = config.trace_len_log2 as u32;
+    schedule
+        .intermediate_lde_factors()
+        .iter()
+        .enumerate()
+        .map(|(round, &lde_factor)| {
+            log_n -= steps[round] as u32;
+            (
+                log_n,
+                steps[round + 1] as u32,
+                lde_factor,
+                schedule.cap_size,
+            )
+        })
+        .collect()
 }
