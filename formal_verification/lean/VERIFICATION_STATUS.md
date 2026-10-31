@@ -2724,3 +2724,34 @@ No native circuit, Rust source or imported value changed. Exact lookup and
 RAM assumptions stay explicit. Cached and uncached captures remain required.
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Program parameter migration: native lookup row parameters
+
+All 14 CPU profiles now define `LookupArgumentsWith`. Each definition takes
+independently supplied setup rows and matches the same emitted native tuples.
+The calling boundary must bind those rows to public text and fixed setup data.
+Every profile also proves `lookup_arguments_with_retained` by kernel reflexivity.
+This specialization gives exactly its existing lookup argument type.
+
+All 14 original `LookupArguments` definitions keep identical source text.
+The native operands, masks, setup columns and imported values stay intact.
+Cached and uncached profiles both remain required.
+
+The 14 imports, their 14 row-composition consumers and the import barrel
+passed focused kernel checks in 72 seconds. Peak physical memory was
+454 MiB. The group reused the unchanged finite-table cache. All 28 new
+roots passed direct axiom checks in four seconds. They use only the three
+allowed axioms. The explicit inventory has 17,305 roots. It retains all
+17,277 prior roots. The guards cleaned all owned children.
+
+The generator freshness check passed for all 14 profiles. Its existing
+mutation test also passed. It detects drift in each complete setup binding.
+
+The next steps bind the variable rows to each native program region and
+port the legacy compiler execution interfaces. Their retained-image and
+retained-decoder limits remain open. The production OS binary comparison
+and verified checker rollout also remain open.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
