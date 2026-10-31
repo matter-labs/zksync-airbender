@@ -682,9 +682,80 @@ theorem generic_from_arguments
                      for theorem in ['fixed_group_member', 'range_from_arguments', 'helpers_from_arguments'])
     return roots
 
+def program_shift_tag_guards(name):
+    constructor = name[0].lower() + name[1:]
+    source = f'Airbender.Compiler.LookupSourceNative.{name}.native'
+    clean = f'Airbender.Compiler.CleanGenericArgumentsNative.{name}.native'
+    arithmetic = f'Airbender.Compiler.CleanArithmeticNative.{name}.native'
+    code = f'''/-- The five helper requests use fixed tags, not decoder or ROM tags. -/
+def FixedHelperTags (input : Input) : Prop :=
+  ∀ index : Fin 5,
+    let query := {source}.genericQueries.get
+      ⟨index.val, by have small := index.isLt; change index.val < 6; omega⟩
+    let tag := (query.fields.map (fun field => field.value
+      ((input.physical ∘ {source}.bank.address) ∘
+        Airbender.Compiler.LookupNative.{name}.native.sourcePlacement))).getLast?.getD 0
+    tag ≠ 0 ∧ tag ≠ 46 ∧ tag ≠ 34
+
+/-- Public program decoding and native arithmetic derive all helper tags. -/
+theorem helper_guards
+    {{config : Trace.NativeDecoder.ProgramRows.Config}} {{initial : Reference.RiscV.Sail.State}}
+    {{text : List (BitVec 32)}} {{capacity : Nat}}
+    {{masks : Trace.PooledFamily → Trace.NativeDecoder.ProgramRows.Mask}}
+    {{columns : Trace.PooledFamily → List (List Source.BaseField)}}
+    (programSetup : UnrolledProgramSetup config initial text capacity masks columns)
+    (input : Input)
+    (arguments : LookupArgumentsWith (fun group index =>
+      NativeProgramSetup.unrolledLookupRows initial columns .{constructor} group index.val) input)
+    (typed : (inputRow input).decoderQuery[0].val < 65536) : FixedHelperTags input := by
+  have matched := ProgramDecoderLookup.{name}.decoder_lookup programSetup input arguments typed
+  have assertions : ∀ expression ∈ FlatOperation.constraints
+      (ShiftBinop.importedConstraints (p := babyBearModulus)),
+      expression.eval (Verification.environment (inputRow input).assignment) = 0 := by
+    rw [Airbender.Compiler.CleanLinksNative.{name}.arithmetic_inventory]
+    exact CleanExpression.assertions_only _ _
+      ({arithmetic}.arithmetic_preserved input.physical (fun _ _ => #[]) input.arithmetic)
+  have tags := public_shift_helper_tags programSetup (inputRow input).assignment matched typed assertions
+  have tagEquations := shift_tag_equations_of_assertions assertions
+  have firstTag : (8 * (inputRow input).assignment 11 + 3 * (inputRow input).assignment 12 ≠ 0) ∧
+      (8 * (inputRow input).assignment 11 + 3 * (inputRow input).assignment 12 ≠ 46) ∧
+      (8 * (inputRow input).assignment 11 + 3 * (inputRow input).assignment 12 ≠ 34) := by
+    rcases tags.1 with selected | selected
+    all_goals rw [selected]; exact of_decide_eq_true rfl
+  have otherTag : (9 * (inputRow input).assignment 11 + (inputRow input).assignment 10 * (inputRow input).assignment 12 ≠ 0) ∧
+      (9 * (inputRow input).assignment 11 + (inputRow input).assignment 10 * (inputRow input).assignment 12 ≠ 46) ∧
+      (9 * (inputRow input).assignment 11 + (inputRow input).assignment 10 * (inputRow input).assignment 12 ≠ 34) := by
+    rcases tags.2 with selected | selected | selected | selected
+    all_goals rw [selected]; exact of_decide_eq_true rfl
+  intro index
+  fin_cases index
+'''
+    for index in range(5):
+        code += f'''  · have same : ({clean}.part0.genericExpression{index}_9).eval
+        ({arithmetic}.environment input.physical (fun _ _ => #[])) =
+        ((({source}.genericQueries.get ⟨{index}, by decide⟩).fields.map (fun field => field.value
+          ((input.physical ∘ {source}.bank.address) ∘
+            Airbender.Compiler.LookupNative.{name}.native.sourcePlacement))).getLast?.getD 0) :=
+      {clean}.part0.generic_value{index}_9 input.physical (fun _ _ => #[]) input.arithmetic
+    dsimp only
+    rw [← same]
+    simp [{clean}.part0.genericExpression{index}_9, _root_.Expression.eval]
+    change (inputRow input).assignment {55 if index == 0 else 64 + 9 * (index - 1)} ≠ 0 ∧
+      (inputRow input).assignment {55 if index == 0 else 64 + 9 * (index - 1)} ≠ 46 ∧
+      (inputRow input).assignment {55 if index == 0 else 64 + 9 * (index - 1)} ≠ 34
+    have equation : (inputRow input).assignment {55 if index == 0 else 64 + 9 * (index - 1)} =
+        {"8 * (inputRow input).assignment 11 + 3 * (inputRow input).assignment 12" if index == 0 else "9 * (inputRow input).assignment 11 + (inputRow input).assignment 10 * (inputRow input).assignment 12"} :=
+      {"tagEquations.1" if index == 0 else f"tagEquations.2 ⟨{index - 1}, by decide⟩"}
+    rw [equation]
+    exact {"firstTag" if index == 0 else "otherTag"}
+'''
+    return code + '\n'
+
+
 def program_fixed_cpu_constraints():
     roots = []
-    for name in [name for name in NAMES if name.startswith(('AddSub', 'JumpBranch', 'MulDiv'))]:
+    for name in [name for name in NAMES if name.startswith(('AddSub', 'JumpBranch', 'MulDiv', 'ShiftBinop'))]:
+        shift = name.startswith('ShiftBinop')
         constructor = name[0].lower() + name[1:]
         case = f'Airbender.Compiler.PooledRowNative.{name}'
         tables = f'(fun group index => NativeProgramSetup.rows decoder wordAt .{constructor} group index.val)'
@@ -703,6 +774,10 @@ set_option warningAsError true
 set_option Elab.async false
 
 '''
+        if shift:
+            code = (f'import Airbender.Proofs.GKRProtocol.ProgramShiftTags\n'
+                    f'import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.{name}\n' + code)
+            code += program_shift_tag_guards(name)
         for entry in entries:
             if not entry.strip():
                 continue
@@ -715,9 +790,13 @@ set_option Elab.async false
             target = target.replace('authored.1 query',
                                     f'ProgramFixedLookup.{name}.generic_from_arguments decoder wordAt input arguments query')
             if theorem.startswith('generic_'):
-                target = '\n'.join(line + ' (by exact of_decide_eq_true rfl) (by exact of_decide_eq_true rfl) (by exact of_decide_eq_true rfl)'
+                index = int(theorem.removeprefix('generic_lookup'))
+                guards = (f' (guards ⟨{index}, by decide⟩).1 (guards ⟨{index}, by decide⟩).2.1 (guards ⟨{index}, by decide⟩).2.2'
+                          if shift else ' (by exact of_decide_eq_true rfl) (by exact of_decide_eq_true rfl) (by exact of_decide_eq_true rfl)')
+                target = '\n'.join(line + guards
                                    if line.startswith('  have member :=') else line for line in target.splitlines()) + '\n\n'
-            code += f'private theorem {theorem}\n    {parameters} (data : ProverData Source.BaseField) :\n' + target
+            guard_parameter = ' (guards : FixedHelperTags input)' if shift and theorem.startswith('generic_') else ''
+            code += f'private theorem {theorem}\n    {parameters}{guard_parameter} (data : ProverData Source.BaseField) :\n' + target
         body = source[source.index('theorem retained_clock_from_physical'):]
         body = body[body.index(' := by\n') + len(' := by\n'):body.index('\nend ')]
         body = re.sub(r'((?:range|generic)_lookup\d+) physical data arithmetic authored',
@@ -726,12 +805,33 @@ set_option Elab.async false
         body = re.sub(r'\barithmetic\b', 'input.arithmetic', body)
         body = re.sub(r'\bdata\b', '(fun _ _ => #[])', body)
         body = body.replace('clock_lookup_inventory', f'Airbender.Compiler.PhysicalClosedNative.{name}.clock_lookup_inventory')
+        if shift:
+            body = re.sub(r'(generic_lookup\d+ decoder wordAt input arguments) ', r'\1 guards ', body)
+            decoder = 'NativeProgramSetup.unrolledDecoderColumns columns'
+            word_at = 'Trace.ROM.words initial'
+            body = body.replace('decoder wordAt input arguments', f'({decoder}) ({word_at}) input arguments')
+            parameters = f'''{{config : Trace.NativeDecoder.ProgramRows.Config}} {{initial : Reference.RiscV.Sail.State}}
+    {{text : List (BitVec 32)}} {{capacity : Nat}}
+    {{masks : Trace.PooledFamily → Trace.NativeDecoder.ProgramRows.Mask}}
+    {{columns : Trace.PooledFamily → List (List Source.BaseField)}}
+    (programSetup : UnrolledProgramSetup config initial text capacity masks columns)
+    (input : Input)
+    (arguments : LookupArgumentsWith (fun group index =>
+      NativeProgramSetup.unrolledLookupRows initial columns .{constructor} group index.val) input)
+    (typed : (inputRow input).decoderQuery[0].val < 65536)'''
+            helpers = f'''  have helpers := ProgramFixedLookup.{name}.helpers_from_arguments
+    ({decoder}) ({word_at}) input arguments
+  have guards := helper_guards programSetup input arguments typed'''
+            roots += [f'Airbender.Compiler.ProgramConstraintsNative.{name}.{suffix}'
+                      for suffix in ['FixedHelperTags', 'helper_guards']]
+        else:
+            helpers = f'  have helpers := ProgramFixedLookup.{name}.helpers_from_arguments decoder wordAt input arguments'
         code += f'''/-- Native CPU constraints hold for any public program setup rows. -/
 theorem input_constraints
     {parameters} (setup : Trace.PooledSetup babyBearModulus) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (inputRow input).assignment)
       ((inputRow input).constraints setup) := by
-  have helpers := ProgramFixedLookup.{name}.helpers_from_arguments decoder wordAt input arguments
+{helpers}
 {body}
 end Airbender.Compiler.ProgramConstraintsNative.{name}
 '''
@@ -808,6 +908,10 @@ decoder_roots = program_decoder_interfaces()
 fixed_roots = program_fixed_interfaces()
 constraint_roots = program_fixed_cpu_constraints()
 pc_roots = program_pc_bounds()
+shift_roots = ['Airbender.Compiler.' + name for name in [
+    'public_program_full_fields', 'public_program_shift_source',
+    'shift_flags_of_assertions', 'shift_tag_equations_of_assertions',
+    'public_shift_helper_tags']]
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
@@ -822,12 +926,12 @@ decoder_imports = '\n'.join('import Airbender.Proofs.GKRProtocol.' + tree + '.' 
 for decoder_import in decoder_imports.splitlines():
     if decoder_import not in content.splitlines():
         content = decoder_import + '\n' + content
-for name in [name for name in NAMES if name.startswith(('AddSub', 'JumpBranch', 'MulDiv'))]:
+for name in [name for name in NAMES if name.startswith(('AddSub', 'JumpBranch', 'MulDiv', 'ShiftBinop'))]:
     constraint_import = 'import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.' + name
     if constraint_import not in content.splitlines():
         content = constraint_import + '\n' + content
 roots = []
-for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots:
+for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots:
     root = f'#print axioms {name}'
     if root not in content.splitlines():
         roots.append(root)
