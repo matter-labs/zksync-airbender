@@ -3,43 +3,32 @@
 //! partition total cycles. Standalone i&t is priced per proof; its verification
 //! work contributes to the same family and delegation dimensions.
 //!
-//! The committed table is calibrated for the Sec100 Compression verifier
-//! programs. Regenerate it locally via `emit_census_tables` when a guest
-//! changes; see that test for fixture generation. blake2 g-function is
-//! unpriced → `UnpricedCircuit`.
-//!
-//! Every `CENSUS_TABLES` row is calibrated for [`CENSUS_CALIBRATION`] and keyed by
-//! `(FsvProgram, BlakeMode)` within it. Lookups check a descriptor's security level,
-//! soundness mode and profile against [`CENSUS_CALIBRATION`] first, so another level
-//! or mode (ethproofs_soundcalc guests run different verifier code) gets
-//! `UnknownDescriptor`, never these coefficients. Pricing another one needs its own
-//! calibrated table.
+//! Every `CENSUS_TABLES` row is calibrated for the exact guest of its
+//! [`FsvDescriptor`]: security level, soundness mode, program, profile and blake
+//! mode. Each soundness mode's guests run different verifier code, so each has
+//! its own rows; a descriptor without a row is an error, never another row's
+//! coefficients. The rows cover the guests the unrolled-to-unified switch
+//! prices: the Sec100 standard unrolled base and recursion verifiers, built
+//! with `Compression`, in every soundness mode. Regenerate them locally via
+//! `emit_census_tables` when a guest changes; see that test for fixture
+//! generation. blake2 g-function is unpriced → `UnpricedCircuit`.
 
 use super::{proof_counts, CircuitId, EstimateError};
 use crate::program_proof::ProgramProof;
 use verifier_common::fsv_binaries::{
-    BlakeMode, FsvDescriptor, FsvProfile, FsvProgram, SecurityLevel, SoundnessMode,
+    BlakeMode, FsvDescriptor, FsvProgram, SecurityLevel, SoundnessMode,
 };
 
-/// The security level, soundness mode and profile of the guests `CENSUS_TABLES`
-/// was calibrated on.
-pub const CENSUS_CALIBRATION: (SecurityLevel, SoundnessMode, FsvProfile) = (
-    SecurityLevel::Sec100,
-    SoundnessMode::PessimisticConjecture,
-    FsvProfile::Standard,
-);
-
-/// The calibrated descriptor of `program` built with `mode`.
+/// The Sec100 pessimistic-conjecture standard-profile guest of `program` built with
+/// `mode`: what the legacy `(program, mode)` entry points price.
 #[must_use]
-pub const fn calibrated_descriptor(program: FsvProgram, mode: BlakeMode) -> FsvDescriptor {
-    let (security, soundness_mode, profile) = CENSUS_CALIBRATION;
-    FsvDescriptor {
-        security,
-        soundness_mode,
+pub const fn pessimistic_descriptor(program: FsvProgram, mode: BlakeMode) -> FsvDescriptor {
+    FsvDescriptor::new(
+        SecurityLevel::Sec100,
+        SoundnessMode::PessimisticConjecture,
         program,
-        profile,
-        blake: mode,
-    }
+        mode,
+    )
 }
 
 pub const NUM_CENSUS_DIMS: usize = 10;
@@ -62,6 +51,8 @@ pub const CENSUS_DIMS: [CircuitId; NUM_CENSUS_DIMS] = [
 ];
 
 pub struct CensusTable {
+    /// FSV manifest digest of the guest the table was calibrated on.
+    pub guest_digest: &'static str,
     pub c0: CensusVec,
     /// Frozen empirical max-deviation envelope emitted from calibration proofs:
     /// the ten census dimensions, then total family cycles. Accuracy gates use
@@ -92,36 +83,48 @@ pub fn estimate_verifier_census_for(
         .collect())
 }
 
-/// [`estimate_verifier_census_for`] the Sec100 pessimistic-conjecture guest of
-/// `program` built with `mode`.
+/// [`estimate_verifier_census_for`] the [`pessimistic_descriptor`] of `program` built
+/// with `mode`.
 pub fn estimate_verifier_census(
     proof: &ProgramProof,
     program: FsvProgram,
     mode: BlakeMode,
 ) -> Result<Vec<(CircuitId, u64)>, EstimateError> {
-    estimate_verifier_census_for(proof, &calibrated_descriptor(program, mode))
+    estimate_verifier_census_for(proof, &pessimistic_descriptor(program, mode))
+}
+
+/// The table calibrated for exactly `descriptor`. [`EstimateError::UnknownDescriptor`]
+/// if no table shares its security level, soundness mode and profile,
+/// [`EstimateError::UnknownBinary`] if only its program or blake mode is missing.
+pub fn census_table(descriptor: &FsvDescriptor) -> Result<&'static CensusTable, EstimateError> {
+    if let Some((_, table)) = CENSUS_TABLES.iter().find(|(d, _)| d == descriptor) {
+        return Ok(table);
+    }
+    let same_guest_family = |d: &FsvDescriptor| {
+        (d.security, d.soundness_mode, d.profile)
+            == (
+                descriptor.security,
+                descriptor.soundness_mode,
+                descriptor.profile,
+            )
+    };
+    if CENSUS_TABLES.iter().any(|(d, _)| same_guest_family(d)) {
+        Err(EstimateError::UnknownBinary {
+            program: descriptor.program,
+            mode: descriptor.blake,
+        })
+    } else {
+        Err(EstimateError::UnknownDescriptor {
+            descriptor: *descriptor,
+        })
+    }
 }
 
 pub(super) fn census_totals(
     proof: &ProgramProof,
     descriptor: &FsvDescriptor,
 ) -> Result<CensusVec, EstimateError> {
-    if (
-        descriptor.security,
-        descriptor.soundness_mode,
-        descriptor.profile,
-    ) != CENSUS_CALIBRATION
-    {
-        return Err(EstimateError::UnknownDescriptor {
-            descriptor: *descriptor,
-        });
-    }
-    let (program, mode) = (descriptor.program, descriptor.blake);
-    let table = CENSUS_TABLES
-        .iter()
-        .find(|(p, m, _)| *p == program && *m == mode)
-        .map(|(_, _, t)| t)
-        .ok_or(EstimateError::UnknownBinary { program, mode })?;
+    let table = census_table(descriptor)?;
     totals_from_counts(
         table,
         &proof_counts(proof),
@@ -153,112 +156,215 @@ fn totals_from_counts(
 }
 
 // Generated by `emit_census_tables`.
-pub static CENSUS_TABLES: &[(FsvProgram, BlakeMode, CensusTable)] = &[
+pub static CENSUS_TABLES: &[(FsvDescriptor, CensusTable)] = &[
     (
-        FsvProgram::UnrolledBaseLayer,
-        BlakeMode::Compression,
+        FsvDescriptor::new(
+            SecurityLevel::Sec100,
+            SoundnessMode::PessimisticConjecture,
+            FsvProgram::UnrolledBaseLayer,
+            BlakeMode::Compression,
+        ),
         CensusTable {
-            c0: [20537, 5419, 1028, 0, 87122, 0, 504, 0, 0, 0],
-            per_proof_spread: [123, 205, 235, 0, 0, 0, 0, 0, 0, 0, 500],
+            guest_digest: "e7f30eb9b95a6be9c9ee937e14d9c0effd3ea1bf922cb0a5da04837468d4ac90",
+            c0: [20342, 5605, 940, 0, 86776, 0, 476, 0, 0, 0],
+            per_proof_spread: [171, 197, 170, 0, 92, 0, 0, 0, 0, 0, 540],
             v: &[
                 (
                     CircuitId::Riscv(1),
-                    [484489, 54574, 35954, 0, 216287, 0, 55552, 0, 0, 0],
+                    [496006, 56449, 37693, 0, 220376, 0, 55797, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(2),
-                    [501029, 55801, 36029, 0, 224512, 0, 56833, 0, 0, 0],
+                    [512244, 57660, 37912, 0, 228672, 0, 57078, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(3),
-                    [509687, 56653, 36451, 0, 227650, 0, 56896, 0, 0, 0],
+                    [520950, 58490, 38199, 0, 231848, 0, 57141, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(4),
-                    [472050, 52457, 33690, 0, 210308, 0, 53144, 0, 0, 0],
+                    [481963, 54064, 35311, 0, 214831, 0, 53326, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(16),
-                    [475363, 53995, 35836, 0, 214190, 0, 55552, 0, 0, 0],
+                    [486165, 55855, 37554, 0, 218260, 0, 55797, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(17),
-                    [486620, 54800, 36148, 0, 219164, 0, 56210, 0, 0, 0],
+                    [497996, 56655, 38002, 0, 223259, 0, 56455, 0, 0, 0],
                 ),
                 (
                     CircuitId::InitsAndTeardowns,
-                    [342836, 39989, 28035, 0, 148426, 0, 27146, 0, 0, 0],
+                    [354524, 41913, 29969, 0, 156050, 0, 27391, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1991),
-                    [1631820, 141519, 48440, 0, 698465, 0, 102662, 0, 0, 0],
+                    [792546, 95075, 48349, 0, 371355, 0, 58821, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1994),
-                    [812501, 73824, 36556, 0, 354520, 0, 66255, 0, 0, 0],
+                    [697971, 78875, 38410, 0, 345185, 0, 59759, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1995),
-                    [813885, 74283, 36189, 0, 357523, 0, 66367, 0, 0, 0],
+                    [691711, 78728, 38161, 0, 339271, 0, 59248, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1996),
-                    [698168, 67765, 35341, 0, 302917, 0, 61194, 0, 0, 0],
+                    [613299, 72106, 37597, 0, 296998, 0, 56567, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1997),
-                    [623010, 62777, 34255, 0, 280103, 0, 58443, 0, 0, 0],
+                    [560970, 67335, 36785, 0, 272472, 0, 55062, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1998),
-                    [653822, 64498, 34033, 0, 290264, 0, 60816, 0, 0, 0],
+                    [575480, 69625, 36132, 0, 282973, 0, 56189, 0, 0, 0],
                 ),
             ],
         },
     ),
     (
-        FsvProgram::UnrolledRecursionLayer,
-        BlakeMode::Compression,
+        FsvDescriptor::new(
+            SecurityLevel::Sec100,
+            SoundnessMode::PessimisticConjecture,
+            FsvProgram::UnrolledRecursionLayer,
+            BlakeMode::Compression,
+        ),
         CensusTable {
-            c0: [17602, 4527, 949, 0, 79288, 0, 364, 0, 0, 0],
-            per_proof_spread: [94, 128, 129, 0, 0, 0, 0, 0, 0, 0, 351],
+            guest_digest: "406e0afd223c56b01032f48dc7b11ff0d0e1efaeb4a6f8a0baf952938479b3ef",
+            c0: [14274, 3417, 670, 0, 46194, 0, 364, 0, 0, 0],
+            per_proof_spread: [74, 114, 84, 0, 49, 0, 0, 0, 0, 0, 280],
             v: &[
                 (
                     CircuitId::Riscv(1),
-                    [484461, 54533, 35923, 0, 216287, 0, 55552, 0, 0, 0],
+                    [496002, 56463, 37701, 0, 220367, 0, 55797, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(2),
-                    [501016, 55774, 35971, 0, 224512, 0, 56833, 0, 0, 0],
+                    [512214, 57731, 37971, 0, 228674, 0, 57078, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(3),
-                    [509706, 56681, 36473, 0, 227650, 0, 56896, 0, 0, 0],
+                    [521044, 58612, 38338, 0, 231864, 0, 57141, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(16),
-                    [475371, 54023, 35879, 0, 214190, 0, 55552, 0, 0, 0],
+                    [486048, 55851, 37567, 0, 218241, 0, 55797, 0, 0, 0],
                 ),
                 (
                     CircuitId::InitsAndTeardowns,
-                    [342814, 39973, 28019, 0, 148426, 0, 27146, 0, 0, 0],
+                    [354372, 41868, 29961, 0, 156020, 0, 27391, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1991),
-                    [1631804, 141505, 48404, 0, 698466, 0, 102662, 0, 0, 0],
+                    [792533, 95060, 48348, 0, 371349, 0, 58821, 0, 0, 0],
                 ),
-                // K2 rows: special5's row scaled by layout size, not calibrated
+            ],
+        },
+    ),
+    (
+        FsvDescriptor::new(
+            SecurityLevel::Sec100,
+            SoundnessMode::EthproofsSoundnessCalc,
+            FsvProgram::UnrolledBaseLayer,
+            BlakeMode::Compression,
+        ),
+        CensusTable {
+            guest_digest: "9fc7694c913564e10d0d00d43555b0aa5eb358222752fbc9d690dec66f688617",
+            c0: [20512, 5803, 1332, 0, 86794, 0, 476, 0, 0, 0],
+            per_proof_spread: [358, 293, 241, 0, 142, 0, 0, 0, 0, 0, 908],
+            v: &[
                 (
-                    CircuitId::Delegation(1997),
-                    [805590, 82564, 44879, 0, 335103, 0, 61453, 0, 0, 0],
+                    CircuitId::Riscv(1),
+                    [823544, 99144, 66335, 0, 360674, 0, 103068, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Riscv(2),
+                    [853604, 101142, 66813, 0, 374241, 0, 105539, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Riscv(3),
+                    [865859, 102215, 66949, 0, 378386, 0, 105602, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Riscv(4),
+                    [772242, 91841, 60374, 0, 345257, 0, 97153, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Riscv(16),
+                    [806146, 97977, 66099, 0, 355550, 0, 103068, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Riscv(17),
+                    [825437, 99249, 66694, 0, 364255, 0, 104321, 0, 0, 0],
+                ),
+                (
+                    CircuitId::InitsAndTeardowns,
+                    [585841, 72429, 51259, 0, 246811, 0, 48482, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Delegation(1991),
+                    [1180664, 147711, 75591, 0, 565987, 0, 107387, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Delegation(1994),
+                    [1142011, 137001, 66464, 0, 564002, 0, 110705, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Delegation(1995),
+                    [1142187, 137662, 65998, 0, 567755, 0, 110194, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1996),
-                    [969650, 95042, 48588, 0, 404768, 0, 68866, 0, 0, 0],
+                    [1012802, 125428, 64886, 0, 495138, 0, 105133, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Delegation(1997),
+                    [929261, 117703, 63665, 0, 460661, 0, 102438, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1998),
-                    [837692, 85875, 45178, 0, 354250, 0, 63896, 0, 0, 0],
+                    [967119, 123077, 63774, 0, 478398, 0, 104755, 0, 0, 0],
+                ),
+            ],
+        },
+    ),
+    (
+        FsvDescriptor::new(
+            SecurityLevel::Sec100,
+            SoundnessMode::EthproofsSoundnessCalc,
+            FsvProgram::UnrolledRecursionLayer,
+            BlakeMode::Compression,
+        ),
+        CensusTable {
+            guest_digest: "ad956ef9e8ef96f3f7b55e0d518cb16628835bf72bcf6763c6ff80b7b50d40ed",
+            c0: [15396, 3902, 921, 0, 46771, 0, 364, 0, 0, 0],
+            per_proof_spread: [274, 191, 143, 0, 136, 0, 0, 0, 0, 0, 665],
+            v: &[
+                (
+                    CircuitId::Riscv(1),
+                    [823495, 99100, 66362, 0, 360652, 0, 103068, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Riscv(2),
+                    [853490, 101167, 66824, 0, 374255, 0, 105539, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Riscv(3),
+                    [865889, 102234, 66883, 0, 378391, 0, 105602, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Riscv(16),
+                    [805936, 97913, 66060, 0, 355534, 0, 103068, 0, 0, 0],
+                ),
+                (
+                    CircuitId::InitsAndTeardowns,
+                    [585730, 72566, 51504, 0, 246770, 0, 48482, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Delegation(1991),
+                    [1180663, 147719, 75619, 0, 565992, 0, 107387, 0, 0, 0],
                 ),
             ],
         },
@@ -292,6 +398,7 @@ mod tests {
 
     fn test_table() -> CensusTable {
         CensusTable {
+            guest_digest: "",
             c0: vec0(800),
             per_proof_spread: [0; NUM_CENSUS_DIMS + 1],
             v: &TEST_ROWS,
@@ -305,7 +412,8 @@ mod tests {
     }
 
     #[test]
-    fn only_the_calibrated_descriptor_is_priced() {
+    fn only_calibrated_descriptors_are_priced() {
+        use verifier_common::fsv_binaries::FsvProfile;
         let proof = ProgramProof {
             riscv_proofs: Default::default(),
             compiled_riscv_circuits: Default::default(),
@@ -322,44 +430,113 @@ mod tests {
             pow_challenge: 0,
             num_it_circuits: None,
         };
-        let calibrated =
-            calibrated_descriptor(FsvProgram::UnrolledBaseLayer, BlakeMode::Compression);
-        // Past the guard: the table is found and the (empty) proof is priced.
-        assert_eq!(
-            census_totals(&proof, &calibrated),
-            Err(EstimateError::UnexpectedInitsAndTeardowns { found: 0 })
-        );
-        let ethproofs = FsvDescriptor {
-            soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
-            ..calibrated
-        };
-        let feeder = FsvDescriptor {
-            profile: FsvProfile::L1Feeder,
-            ..calibrated
-        };
-        for descriptor in [ethproofs, feeder] {
-            assert_eq!(
-                census_totals(&proof, &descriptor),
-                Err(EstimateError::UnknownDescriptor { descriptor })
+        for &mode in SoundnessMode::ALL {
+            let priced = FsvDescriptor::new(
+                SecurityLevel::Sec100,
+                mode,
+                FsvProgram::UnrolledBaseLayer,
+                BlakeMode::Compression,
             );
+            // Past the lookup: the table is found and the (empty) proof is priced.
             assert_eq!(
-                super::super::estimate_verifier_cycles_for(&proof, &descriptor),
-                Err(EstimateError::UnknownDescriptor { descriptor })
+                census_totals(&proof, &priced),
+                Err(EstimateError::UnexpectedInitsAndTeardowns { found: 0 })
             );
-            assert!(estimate_verifier_census_for(&proof, &descriptor).is_err());
+            let feeder = FsvDescriptor {
+                profile: FsvProfile::L1Feeder,
+                ..priced
+            };
+            assert_eq!(
+                super::super::estimate_verifier_cycles_for(&proof, &feeder),
+                Err(EstimateError::UnknownDescriptor { descriptor: feeder })
+            );
+            assert!(estimate_verifier_census_for(&proof, &feeder).is_err());
+            let unified = FsvDescriptor {
+                program: FsvProgram::UnifiedRecursionLayer,
+                ..priced
+            };
+            assert_eq!(
+                super::super::estimate_verifier_cycles_for(&proof, &unified),
+                Err(EstimateError::UnknownBinary {
+                    program: FsvProgram::UnifiedRecursionLayer,
+                    mode: BlakeMode::Compression
+                })
+            );
         }
-        // The legacy entry points are the calibrated descriptor.
+        // The legacy entry points price the pessimistic descriptor.
         assert_eq!(
             super::super::estimate_verifier_cycles(
                 &proof,
-                FsvProgram::UnifiedRecursionLayer,
+                FsvProgram::UnrolledBaseLayer,
                 BlakeMode::Compression
             ),
-            Err(EstimateError::UnknownBinary {
-                program: FsvProgram::UnifiedRecursionLayer,
-                mode: BlakeMode::Compression
-            })
+            Err(EstimateError::UnexpectedInitsAndTeardowns { found: 0 })
         );
+    }
+
+    #[test]
+    fn every_switch_guest_has_its_own_table() {
+        use verifier_common::fsv_binaries::{FsvProfile, FSV_REGISTRY};
+        let switch_guests: Vec<FsvDescriptor> = FSV_REGISTRY
+            .iter()
+            .map(|entry| entry.descriptor)
+            .filter(|d| {
+                d.profile == FsvProfile::Standard
+                    && matches!(
+                        d.program,
+                        FsvProgram::UnrolledBaseLayer | FsvProgram::UnrolledRecursionLayer
+                    )
+            })
+            .collect();
+        assert_eq!(
+            switch_guests.len(),
+            2 * SoundnessMode::ALL.len(),
+            "one unrolled base and one unrolled recursion guest per soundness mode"
+        );
+        for descriptor in &switch_guests {
+            census_table(descriptor).unwrap_or_else(|error| panic!("{error}"));
+        }
+        assert_eq!(CENSUS_TABLES.len(), switch_guests.len());
+        for (descriptor, table) in CENSUS_TABLES {
+            let digest = crate::host_utils::fsv_manifest_entry(descriptor)
+                .unwrap()
+                .digest
+                .to_string();
+            assert_eq!(
+                table.guest_digest, digest,
+                "{descriptor}: the table was calibrated on another guest; recalibrate it"
+            );
+        }
+        for (descriptor, table) in CENSUS_TABLES {
+            let priced: Vec<CircuitId> = table.v.iter().map(|(circuit, _)| *circuit).collect();
+            let compiled = super::super::compiled_circuits(descriptor.program);
+            // The recursion verifiers reject every delegation but blake2s.
+            let accepted = compiled.iter().filter(|circuit| match circuit {
+                CircuitId::Delegation(csr) => {
+                    descriptor.program == FsvProgram::UnrolledBaseLayer
+                        || *csr == common_constants::BLAKE2S_DELEGATION_CSR_REGISTER
+                }
+                _ => true,
+            });
+            for circuit in accepted {
+                assert!(
+                    priced.contains(circuit),
+                    "{descriptor}: {circuit:?} is unpriced"
+                );
+            }
+            for circuit in &priced {
+                assert!(
+                    compiled.contains(circuit),
+                    "{descriptor}: {circuit:?} is not a circuit of this verifier"
+                );
+            }
+        }
+        for (i, (a, _)) in CENSUS_TABLES.iter().enumerate() {
+            assert!(
+                CENSUS_TABLES[..i].iter().all(|(b, _)| b != a),
+                "duplicate table for {a}"
+            );
+        }
     }
 
     #[test]
@@ -407,6 +584,7 @@ mod tests {
             (CircuitId::Delegation(7), vec0(50)),
         ];
         let table = CensusTable {
+            guest_digest: "",
             c0: vec0(0),
             per_proof_spread: [0; NUM_CENSUS_DIMS + 1],
             v: &ROWS,

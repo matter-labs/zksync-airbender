@@ -741,7 +741,10 @@ fn test_program_prover_recursive_pipeline_zksync_os() {
 }
 
 /// Generate the local, non-authoritative proof/setup inputs used to calibrate
-/// the Sec100 Compression verifier cost model. This deliberately proves two
+/// the Sec100 Compression verifier cost model of one soundness mode
+/// (`COST_MODEL_SOUNDNESS_MODE`, a `SoundnessMode::cli_name`, default
+/// `pessimistic-conjecture`; recorded in the output's `soundness_mode` file). Every
+/// proof is made and every recursion layer proves that mode's verifier guest. This deliberately proves two
 /// recursion layers instead of consulting the production scheduling threshold.
 /// The synthetic workloads repeat every circuit they exercise
 /// (`COST_MODEL_REPEATS`; i&t twice) so per-proof prices come from repeated
@@ -760,11 +763,24 @@ fn test_program_prover_recursive_pipeline_zksync_os() {
 #[ignore = "manual Sec100 cost-model fixture generation (large GPU run)"]
 fn test_generate_sec100_cost_model_fixtures() {
     use crate::upstream::{
-        compute_end_params, load_fsv_program, native_verify_unrolled, BlakeMode, FsvProgram,
-        FsvRecursionChain, SecurityLevel,
+        compute_end_params, BlakeMode, FsvProgram, FsvRecursionChain, SecurityLevel,
     };
+    use full_statement_verifier::host_utils::{
+        canonical_fsv_dir, load_fsv_exact, native_verify_unrolled_in_mode,
+    };
+    use prover::definitions::{ProvingSelection, SoundnessMode};
+    use verifier_common::fsv_binaries::FsvDescriptor;
 
     init_test_logger();
+    let soundness_mode = std::env::var("COST_MODEL_SOUNDNESS_MODE").map_or(
+        SoundnessMode::PessimisticConjecture,
+        |name| {
+            SoundnessMode::from_cli_name(&name)
+                .unwrap_or_else(|| panic!("unknown COST_MODEL_SOUNDNESS_MODE={name}"))
+        },
+    );
+    let native_verify_unrolled =
+        |stream, is_base| native_verify_unrolled_in_mode(stream, is_base, soundness_mode);
 
     let fixture_dir = std::env::var_os("COST_MODEL_FIXTURE_DIR")
         .map(std::path::PathBuf::from)
@@ -774,6 +790,11 @@ fn test_generate_sec100_cost_model_fixtures() {
         std::fs::read_dir(&fixture_dir).unwrap().next().is_none(),
         "fixture output directory must be empty"
     );
+    std::fs::write(
+        fixture_dir.join("soundness_mode"),
+        soundness_mode.cli_name(),
+    )
+    .expect("record the fixtures' soundness mode");
     let (base_binary, base_text, inputs) = if let Some(directory) =
         std::env::var_os("COST_MODEL_INPUT_DIR")
     {
@@ -803,10 +824,10 @@ fn test_generate_sec100_cost_model_fixtures() {
         (binary, text, vec![("default".to_owned(), witness)])
     };
 
-    let configuration = ExecutionProverConfiguration {
+    let configuration = ExecutionProverConfiguration::for_selection(ProvingSelection {
         security_level: SecurityLevel::Sec100,
-        ..Default::default()
-    };
+        soundness_mode,
+    });
     let mut prover = ExecutionProver::with_configuration(configuration);
     // Register each common binary once: add_binary retains precomputations,
     // so registering them anew for every block would grow resident RAM.
@@ -817,31 +838,27 @@ fn test_generate_sec100_cost_model_fixtures() {
         base_text,
         None,
     );
-    let fsv_dir = artifact_root().join("tools/gkr_verifier/full_statement_verifiers");
-    let (binary, text) = load_fsv_program(
-        &fsv_dir,
-        FsvProgram::UnrolledBaseLayer,
-        BlakeMode::Compression,
-    );
-    let base_verifier = prover.add_binary(
-        ExecutionKind::Unrolled,
-        MachineType::Reduced,
-        binary,
-        text,
-        None,
-    );
-    let (binary, text) = load_fsv_program(
-        &fsv_dir,
-        FsvProgram::UnrolledRecursionLayer,
-        BlakeMode::Compression,
-    );
-    let recursion_verifier = prover.add_binary(
-        ExecutionKind::Unrolled,
-        MachineType::Reduced,
-        binary,
-        text,
-        None,
-    );
+    let mut add_verifier = |program| {
+        let guest = load_fsv_exact(
+            canonical_fsv_dir(),
+            &FsvDescriptor::new(
+                SecurityLevel::Sec100,
+                soundness_mode,
+                program,
+                BlakeMode::Compression,
+            ),
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+        prover.add_binary(
+            ExecutionKind::Unrolled,
+            MachineType::Reduced,
+            guest.bin().to_vec(),
+            guest.text().to_vec(),
+            None,
+        )
+    };
+    let base_verifier = add_verifier(FsvProgram::UnrolledBaseLayer);
+    let recursion_verifier = add_verifier(FsvProgram::UnrolledRecursionLayer);
 
     let mut last_chain = None;
     for (i, (id, witness)) in inputs.into_iter().enumerate() {

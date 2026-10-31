@@ -12,12 +12,13 @@ pub enum CircuitId {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum EstimateError {
+    /// No table for this program or blake mode of an otherwise calibrated guest family.
     UnknownBinary {
         program: FsvProgram,
         mode: BlakeMode,
     },
-    /// The census is not calibrated for the descriptor's security level, soundness mode or
-    /// profile ([`census::CENSUS_CALIBRATION`]).
+    /// No table for the descriptor's security level, soundness mode and profile
+    /// ([`census::CENSUS_TABLES`]).
     UnknownDescriptor {
         descriptor: FsvDescriptor,
     },
@@ -41,9 +42,9 @@ impl core::fmt::Display for EstimateError {
             ),
             Self::UnknownDescriptor { descriptor } => write!(
                 f,
-                "no census table for {descriptor}: the census is calibrated only for \
-                 sec_100/pessimistic_conjecture standard-profile guests; measure the guest \
-                 with `host_utils::measure_fsv_execution` instead"
+                "no census table for {descriptor}; calibrate one with \
+                 `cargo test -p full_statement_verifier --features host_utils,verifiers \
+                 --test cost_model_trace -- --ignored`"
             ),
             Self::UnpricedCircuit { circuit } => write!(
                 f,
@@ -62,11 +63,10 @@ impl core::fmt::Display for EstimateError {
     }
 }
 
-/// Estimated cycles for verifying `proof` with the guest of `descriptor`. Valid
-/// canonical proofs only (the verifier returns early on content checks).
-/// Held to 0.05% of measurement on every calibration fixture. Only
-/// [`census::CENSUS_CALIBRATION`] guests are priced; any other descriptor is
-/// [`EstimateError::UnknownDescriptor`].
+/// Estimated cycles for verifying `proof` with the guest of `descriptor`, from that
+/// guest's own table. Valid canonical proofs only (the verifier returns early on
+/// content checks). Held to the frozen acceptance budget on every calibration
+/// fixture. A descriptor without a table is an error.
 pub fn estimate_verifier_cycles_for(
     proof: &ProgramProof,
     descriptor: &FsvDescriptor,
@@ -76,14 +76,14 @@ pub fn estimate_verifier_cycles_for(
     Ok(totals[..census::NUM_FAMILY_DIMS].iter().sum())
 }
 
-/// [`estimate_verifier_cycles_for`] the Sec100 pessimistic-conjecture guest of
-/// `program` built with `mode`.
+/// [`estimate_verifier_cycles_for`] the [`census::pessimistic_descriptor`] of `program`
+/// built with `mode`.
 pub fn estimate_verifier_cycles(
     proof: &ProgramProof,
     program: FsvProgram,
     mode: BlakeMode,
 ) -> Result<u64, EstimateError> {
-    estimate_verifier_cycles_for(proof, &census::calibrated_descriptor(program, mode))
+    estimate_verifier_cycles_for(proof, &census::pessimistic_descriptor(program, mode))
 }
 
 #[must_use]
@@ -158,32 +158,46 @@ mod order_tests {
 
     #[test]
     fn base_layer_riscv_order_matches_verifier_list() {
-        let actual: Vec<u32> =
-            crate::unrolled_circuit_params::pessimistic_conjecture::unrolled_circuit_verifiers_for_base_layer::<I, E>(
-            )
-            .iter()
-            .map(|(k, _, _)| *k)
-            .collect();
-        assert_eq!(
-            riscv_order(FsvProgram::UnrolledBaseLayer),
-            actual.as_slice()
-        );
+        macro_rules! check_mode {
+            ($mode:ident) => {{
+                let actual: Vec<u32> =
+                    crate::unrolled_circuit_params::$mode::unrolled_circuit_verifiers_for_base_layer::<
+                        I,
+                        E,
+                    >()
+                    .iter()
+                    .map(|(k, _, _)| *k)
+                    .collect();
+                assert_eq!(
+                    riscv_order(FsvProgram::UnrolledBaseLayer),
+                    actual.as_slice()
+                );
+            }};
+        }
+        check_mode!(pessimistic_conjecture);
+        check_mode!(ethproofs_soundcalc);
     }
 
     #[test]
     fn recursion_layer_riscv_order_matches_verifier_list() {
-        let actual: Vec<u32> =
-            crate::unrolled_circuit_params::pessimistic_conjecture::unrolled_circuit_verifiers_for_recursion_layer::<
-                I,
-                E,
-            >()
-            .iter()
-            .map(|(k, _, _)| *k)
-            .collect();
-        assert_eq!(
-            riscv_order(FsvProgram::UnrolledRecursionLayer),
-            actual.as_slice()
-        );
+        macro_rules! check_mode {
+            ($mode:ident) => {{
+                let actual: Vec<u32> =
+                    crate::unrolled_circuit_params::$mode::unrolled_circuit_verifiers_for_recursion_layer::<
+                        I,
+                        E,
+                    >()
+                    .iter()
+                    .map(|(k, _, _)| *k)
+                    .collect();
+                assert_eq!(
+                    riscv_order(FsvProgram::UnrolledRecursionLayer),
+                    actual.as_slice()
+                );
+            }};
+        }
+        check_mode!(pessimistic_conjecture);
+        check_mode!(ethproofs_soundcalc);
     }
 
     #[test]

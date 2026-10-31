@@ -236,14 +236,16 @@ pub fn final_blake_mode() -> BlakeMode {
 /// protocol constant — drivers may pick their own, and
 /// `RECURSION_UNIFIED_SWITCH_CYCLES` overrides it.
 ///
-/// Rounded heavy-block calibration for the Sec100 verifier.
+/// Rounded heavy-block calibration for the Sec100 verifier, shared by every soundness mode.
 /// Circuit-count boundaries make the crossover workload-dependent.
 pub const DEFAULT_UNIFIED_SWITCH_CYCLES: u64 = 52_000_000;
 
-/// The estimated verifier cost never drops below ~6.55M cycles (past the first
-/// layer, each unrolled recursion layer verifies another such layer), so lower
-/// thresholds never stop the unrolled recursion loop. 16Mi leaves
-/// recalibration margin.
+/// Past the first layer, each unrolled recursion layer verifies another such layer, so the
+/// estimated verifier cost falls to the recursion verifier's fixed point: at most ~5.25M
+/// cycles in pessimistic-conjecture and ~10.45M in ethproofs-soundcalc (census estimates of
+/// verifying the calibration fixtures' second recursion proofs;
+/// `recursion_fixed_point_is_below_the_switch_floor` in `tests/cost_model_trace.rs`). Lower
+/// thresholds may never stop the unrolled recursion loop. 16Mi is above every mode's bound.
 pub const MIN_UNIFIED_SWITCH_CYCLES: u64 = 16 * 1024 * 1024;
 
 #[must_use]
@@ -255,9 +257,9 @@ pub fn unified_switch_cycles() -> u64 {
     assert!(
         cycles >= MIN_UNIFIED_SWITCH_CYCLES,
         "unified switch threshold {cycles} is below the convergence floor \
-         {MIN_UNIFIED_SWITCH_CYCLES}: the estimated verifier cost never drops \
-         below ~6.55M cycles, so lower thresholds never stop the unrolled \
-         recursion loop"
+         {MIN_UNIFIED_SWITCH_CYCLES}: the estimated verifier cost falls only to the \
+         recursion verifier's fixed point (at most ~10.45M cycles), so lower \
+         thresholds may never stop the unrolled recursion loop"
     );
     cycles
 }

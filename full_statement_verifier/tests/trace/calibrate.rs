@@ -1,3 +1,4 @@
+use super::fixtures::Fixture;
 use super::plan::{plan_unrolled_stream, StreamPlan};
 use super::{fsv_dir, load_calibration_proof, trace_verifier, Trace};
 use full_statement_verifier::host_utils::cost_model::census::{
@@ -5,25 +6,27 @@ use full_statement_verifier::host_utils::cost_model::census::{
 };
 use full_statement_verifier::host_utils::cost_model::{compiled_circuits, CircuitId};
 use std::collections::BTreeMap;
-use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
+use verifier_common::fsv_binaries::{FsvDescriptor, FsvProfile};
 
-pub fn trace_fixture(name: &str, program: FsvProgram) -> (Trace, StreamPlan) {
-    let (bin, text) = full_statement_verifier::host_utils::load_fsv_program(
-        fsv_dir(),
-        program,
-        BlakeMode::Compression,
-    );
-    let (setups, proof) = load_calibration_proof(name);
-    let stream = full_statement_verifier::host_utils::build_unrolled_stream(
-        &setups,
-        &proof,
-        BlakeMode::Compression,
-    );
-    let plan = plan_unrolled_stream(&setups, &proof, program);
+/// The guest of `descriptor`, loaded and digest-checked like the prover loads it.
+pub fn load_guest(descriptor: &FsvDescriptor) -> (Vec<u32>, Vec<u32>) {
+    let guest = full_statement_verifier::host_utils::load_fsv_exact(fsv_dir(), descriptor)
+        .unwrap_or_else(|error| panic!("{descriptor}: {error}"));
+    (guest.bin().to_vec(), guest.text().to_vec())
+}
+
+pub fn trace_fixture(fixture: &Fixture) -> (Trace, StreamPlan) {
+    let (bin, text) = load_guest(&fixture.descriptor);
+    let (setups, proof) = load_calibration_proof(&fixture.name);
+    let stream =
+        full_statement_verifier::host_utils::fsv_stream(&setups, &proof, &fixture.descriptor)
+            .unwrap();
+    let plan = plan_unrolled_stream(&setups, &proof, fixture.program);
     assert_eq!(
         plan.total_words,
         stream.len(),
-        "{name}: stream plan disagrees with the stream"
+        "{}: stream plan disagrees with the stream",
+        fixture.name
     );
     let t = trace_verifier(&bin, &text, stream);
     (t, plan)
@@ -40,8 +43,8 @@ pub struct CensusCalibration {
     pub regions: Vec<RegionCensus>,
 }
 
-pub fn calibrate_census_fixture(name: &str, program: FsvProgram) -> CensusCalibration {
-    let (trace, plan) = trace_fixture(name, program);
+pub fn calibrate_census_fixture(fixture: &Fixture) -> CensusCalibration {
+    let (trace, plan) = trace_fixture(fixture);
     let regions = plan
         .regions
         .iter()
@@ -190,26 +193,39 @@ pub fn pool_census(cals: &[CensusCalibration]) -> PooledCensus {
     }
 }
 
-pub fn render_census_tables(program: FsvProgram, pooled: &PooledCensus) -> String {
+pub fn render_census_tables(descriptor: &FsvDescriptor, pooled: &PooledCensus) -> String {
     let fmt_vec = |v: &CensusVec| {
         let inner: Vec<String> = v.iter().map(|x| x.to_string()).collect();
         format!("[{}]", inner.join(", "))
     };
+    assert_eq!(descriptor.profile, FsvProfile::Standard);
     let mut out = String::new();
     let c0 = &pooled.c0;
     out.push_str(&format!(
         "    (
-        FsvProgram::{program:?},
-        BlakeMode::Compression,
+        FsvDescriptor::new(
+            SecurityLevel::{:?},
+            SoundnessMode::{:?},
+            FsvProgram::{:?},
+            BlakeMode::{:?},
+        ),
         CensusTable {{
+            guest_digest: \"{}\",
             c0: {},
             per_proof_spread: {:?},
             v: &[
 ",
+        descriptor.security,
+        descriptor.soundness_mode,
+        descriptor.program,
+        descriptor.blake,
+        full_statement_verifier::host_utils::fsv_manifest_entry(descriptor)
+            .unwrap()
+            .digest,
         fmt_vec(c0),
         pooled.spread,
     ));
-    for circuit in compiled_circuits(program) {
+    for circuit in compiled_circuits(descriptor.program) {
         if let Some(cost) = pooled.v.get(&circuit) {
             let id = match circuit {
                 CircuitId::Riscv(k) => format!("CircuitId::Riscv({k})"),
