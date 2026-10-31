@@ -21,6 +21,7 @@ class LookupPremiseGeneration(unittest.TestCase):
                              'Airbender/Proofs/GKRProtocol/ProgramDecoderLookup',
                              'Airbender/Proofs/GKRProtocol/ProgramFixedLookup',
                              'Airbender/Proofs/GKRProtocol/ProgramConstraintsNative',
+                             'Airbender/Proofs/GKRProtocol/ProgramPCLowNative',
                              'Airbender/Proofs/GKRProtocol/PhysicalClosedNative',
                              'Airbender/Proofs/GKRProtocol/HelperNative'):
                 destination = scratch / relative

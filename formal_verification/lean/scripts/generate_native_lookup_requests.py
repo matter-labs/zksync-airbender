@@ -739,6 +739,67 @@ end Airbender.Compiler.ProgramConstraintsNative.{name}
         roots.append(f'Airbender.Compiler.ProgramConstraintsNative.{name}.input_constraints')
     return roots
 
+def program_pc_bounds():
+    roots = []
+    direct = {'ShiftBinop': 0, 'WordMemory': 1, 'SubwordMemory': 3, 'Unified': 11}
+    for name in NAMES:
+        owner = 'UnifiedRowNative' if name.startswith('Unified') else 'PooledRowNative'
+        case = f'Airbender.Compiler.{owner}.{name}'
+        constructor = name[0].lower() + name[1:]
+        tables = f'(fun group index => NativeProgramSetup.rows decoder wordAt .{constructor} group index.val)'
+        parameters = f'''(decoder : Configuration → List (List Source.BaseField))
+    (wordAt : Nat → BitVec 32) (input : Input)
+    (arguments : LookupArgumentsWith {tables} input)'''
+        family = next((family for family in direct if name.startswith(family)), None)
+        code = f'''import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.{name}
+'''
+        if family is None:
+            code += f'''import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.{name}
+import Airbender.Proofs.Tables.DecoderPCLow
+'''
+        code += f'''
+namespace Airbender.Compiler.ProgramPCLowNative.{name}
+open Airbender Airbender.Compiler {case}
+set_option warningAsError true
+set_option Elab.async false
+
+'''
+        if family is not None:
+            decoder_source = (ROOT / 'Airbender/Proofs/GKRProtocol/DecoderArgumentsNative' / (name + '.lean')).read_text()
+            trace_columns = re.search(r'\btrace_columns (\S+)', decoder_source)[1]
+            source = (ROOT / 'Airbender/Proofs/GKRProtocol/PhysicalClosedNative' / (name + '.lean')).read_text()
+            wanted = direct[family]
+            entry = source[source.index(f'theorem range_lookup{wanted}\n'):]
+            entry = entry[:entry.index('\ntheorem ', 1)]
+            target = entry[entry.index(' :\n', entry.index('(authored')) + len(' :\n'):]
+            target = re.sub(r'\bphysical\b', 'input.physical', target)
+            target = re.sub(r'\barithmetic\b', 'input.arithmetic', target)
+            target = target.replace('authored.2 query',
+                                    f'ProgramFixedLookup.{name}.range_from_arguments decoder wordAt input arguments query')
+            code += f'private theorem final_range_lookup\n    {parameters} (data : ProverData Source.BaseField) :\n' + target
+            code += f'''
+/-- Exact native range matching bounds the outgoing PC before decoder use. -/
+theorem final_pc_low
+    {parameters} : (inputRow input).finish.word.lo < 65536 := by
+  change ((Airbender.Compiler.CleanArithmeticNative.{name}.native.environment input.physical
+    (fun _ _ => #[])).get {trace_columns}.finalPC[0]).val < 65536
+  simpa [Airbender.Compiler.CleanArgumentsNative.{name}.native.rangeExpression{wanted}, _root_.Expression.eval,
+    {trace_columns}, Arithmetic.limbBase] using
+    Verification.range16_bound (final_range_lookup decoder wordAt input arguments (fun _ _ => #[]))
+'''
+        else:
+            code += f'''
+theorem final_pc_low
+    {parameters} (setup : Trace.PooledSetup babyBearModulus) :
+    (inputRow input).finish.word.lo < 65536 :=
+  Trace.NativeDecoder.Proofs.pooled_final_pc_low (by decide +kernel) (inputRow input) setup
+    (ProgramConstraintsNative.{name}.input_constraints decoder wordAt input arguments setup)
+'''
+        code += f'\nend Airbender.Compiler.ProgramPCLowNative.{name}\n'
+        emit(Path('Airbender/Proofs/GKRProtocol/ProgramPCLowNative') / (name + '.lean'), code)
+        roots.append(f'Airbender.Compiler.ProgramPCLowNative.{name}.final_pc_low')
+    return roots
+
 for name in NAMES:
     prepared(name)
 program_roots = program_row_interfaces()
@@ -746,6 +807,7 @@ setup_roots = program_setup_interfaces()
 decoder_roots = program_decoder_interfaces()
 fixed_roots = program_fixed_interfaces()
 constraint_roots = program_fixed_cpu_constraints()
+pc_roots = program_pc_bounds()
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
@@ -756,7 +818,7 @@ setup_import = 'import Airbender.Proofs.GKRProtocol.ProgramSetupNative'
 if setup_import not in content.splitlines():
     content = setup_import + '\n' + content
 decoder_imports = '\n'.join('import Airbender.Proofs.GKRProtocol.' + tree + '.' + name
-                          for tree in ['ProgramDecoderNative', 'ProgramDecoderLookup', 'ProgramFixedLookup'] for name in NAMES)
+                          for tree in ['ProgramDecoderNative', 'ProgramDecoderLookup', 'ProgramFixedLookup', 'ProgramPCLowNative'] for name in NAMES)
 for decoder_import in decoder_imports.splitlines():
     if decoder_import not in content.splitlines():
         content = decoder_import + '\n' + content
@@ -765,7 +827,7 @@ for name in [name for name in NAMES if name.startswith(('AddSub', 'JumpBranch', 
     if constraint_import not in content.splitlines():
         content = constraint_import + '\n' + content
 roots = []
-for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots:
+for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots:
     root = f'#print axioms {name}'
     if root not in content.splitlines():
         roots.append(root)

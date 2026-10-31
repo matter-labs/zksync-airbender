@@ -1,3 +1,18 @@
+import Airbender.Proofs.GKRProtocol.ProgramPCBounds
+import Airbender.Proofs.GKRProtocol.ProgramPCLowNative.UnifiedCached
+import Airbender.Proofs.GKRProtocol.ProgramPCLowNative.UnifiedUncached
+import Airbender.Proofs.GKRProtocol.ProgramPCLowNative.SubwordMemoryCached
+import Airbender.Proofs.GKRProtocol.ProgramPCLowNative.SubwordMemoryUncached
+import Airbender.Proofs.GKRProtocol.ProgramPCLowNative.WordMemoryCached
+import Airbender.Proofs.GKRProtocol.ProgramPCLowNative.WordMemoryUncached
+import Airbender.Proofs.GKRProtocol.ProgramPCLowNative.ShiftBinopCached
+import Airbender.Proofs.GKRProtocol.ProgramPCLowNative.ShiftBinopUncached
+import Airbender.Proofs.GKRProtocol.ProgramPCLowNative.MulDivCached
+import Airbender.Proofs.GKRProtocol.ProgramPCLowNative.MulDivUncached
+import Airbender.Proofs.GKRProtocol.ProgramPCLowNative.JumpBranchCached
+import Airbender.Proofs.GKRProtocol.ProgramPCLowNative.JumpBranchUncached
+import Airbender.Proofs.GKRProtocol.ProgramPCLowNative.AddSubCached
+import Airbender.Proofs.GKRProtocol.ProgramPCLowNative.AddSubUncached
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.MulDivCached
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.MulDivUncached
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.JumpBranchCached
@@ -19089,3 +19104,25 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.ProgramConstraintsNative.JumpBranchCached.input_constraints
 #print axioms Airbender.Compiler.ProgramConstraintsNative.MulDivUncached.input_constraints
 #print axioms Airbender.Compiler.ProgramConstraintsNative.MulDivCached.input_constraints
+
+#print axioms Airbender.Compiler.ProgramPCLowNative.AddSubUncached.final_pc_low
+#print axioms Airbender.Compiler.ProgramPCLowNative.AddSubCached.final_pc_low
+#print axioms Airbender.Compiler.ProgramPCLowNative.JumpBranchUncached.final_pc_low
+#print axioms Airbender.Compiler.ProgramPCLowNative.JumpBranchCached.final_pc_low
+#print axioms Airbender.Compiler.ProgramPCLowNative.MulDivUncached.final_pc_low
+#print axioms Airbender.Compiler.ProgramPCLowNative.MulDivCached.final_pc_low
+#print axioms Airbender.Compiler.ProgramPCLowNative.ShiftBinopUncached.final_pc_low
+#print axioms Airbender.Compiler.ProgramPCLowNative.ShiftBinopCached.final_pc_low
+#print axioms Airbender.Compiler.ProgramPCLowNative.WordMemoryUncached.final_pc_low
+#print axioms Airbender.Compiler.ProgramPCLowNative.WordMemoryCached.final_pc_low
+#print axioms Airbender.Compiler.ProgramPCLowNative.SubwordMemoryUncached.final_pc_low
+#print axioms Airbender.Compiler.ProgramPCLowNative.SubwordMemoryCached.final_pc_low
+#print axioms Airbender.Compiler.ProgramPCLowNative.UnifiedUncached.final_pc_low
+#print axioms Airbender.Compiler.ProgramPCLowNative.UnifiedCached.final_pc_low
+
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.final_pc_low
+#print axioms Airbender.Compiler.PooledExecution.native_query_pc_low
+#print axioms Airbender.Compiler.PooledExecution.decoder_exact_lookup_from_native
+#print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate.final_pc_low
+#print axioms Airbender.Compiler.UnifiedExecution.native_query_pc_low
+#print axioms Airbender.Compiler.UnifiedExecution.decoder_exact_lookup_from_native
