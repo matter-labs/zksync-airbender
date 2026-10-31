@@ -29,7 +29,9 @@ compressed/sampled matching and physical multiplicity binding remain external.
 The three machine targets quantify over public text and initial state.
 Native program adapters cover all 14 CPU profiles in both cache modes.
 The earlier captured-program wrappers retain their original contracts in the
-compatibility proof layer. Production OS differential coverage remains open.
+compatibility proof layer. The pinned public OS decoder differential passed
+all 14 full and unified comparisons in both cache modes. This test does not
+prove OS execution. The targets exclude special5 calls.
 [Coverage and validation evidence](VERIFICATION_STATUS.md) states the precise
 scope, completed checks, measurements and pending gates. Cryptographic argument
 soundness and universal Rust compiler correctness remain outside the model.

@@ -22,8 +22,10 @@ initialization premises.
 Exact lookup matching and state/RAM permutations remain explicit.
 
 The three target proofs are complete. Work now follows design items 2 and 3.
-Legacy compiler interfaces still need the migration to a program parameter. The
-verified checker rollout and its measurements remain pending.
+Native public-program acceptance covers all 14 CPU profiles. Earlier compiler
+interfaces remain as compatibility declarations. The public proof graph excludes
+captured decoder interpretation and retained-image contracts. The verified
+checker rollout and its measurements remain pending.
 
 ## Rebase checks
 
@@ -3190,3 +3192,48 @@ passed. Each guard cleaned its owned children.
 The production OS differential and verified checker rollout remain open. Full
 frontend validation, environment audit, baseline refresh, transitive replay and
 Linux qualification did not run.
+
+### Program parameter migration: stateful decoding and public OS differential
+
+Public decoding now runs the original Sail decoder in the public initial state.
+The decoder can read misa for M-extension words. A kernel theorem proves that
+successful decoding preserves that state. The public program constructors and
+their source, image and initialization proofs use this result. No expected
+decoder result or state-frame premise was added.
+
+The public OS comparison found the earlier pure-only decoder error at word 38,
+`0x02e585b3` (MUL). The native decoder row was correct. The repaired Lean model
+now agrees with all 14 full and unified OS exports in both cache modes. The
+[pinned fixture](artifacts/programs/README.md) records the public release, commit,
+asset sizes and hashes. The fetcher rejects a changed cached asset. CI requires
+the OS comparisons and the new MUL/DIV regression. The OS uses special5 calls.
+These comparisons do not prove OS execution under the machine targets.
+
+The focused source group passed for 205 modules in 724 seconds. Peak physical
+memory was 2,388 MiB. The group includes all 14 native CPU adapters, acceptance
+and all three machine target proofs. Exact target-type checks passed. The three
+targets and three new decoder roots passed direct axiom checks with only the
+three allowed axioms. The inventory has 17,599 roots. It retains all 17,596 prior
+roots. The public acceptance graph has 2,774 modules and passes its source guard.
+
+The current native oracle recompiled six changed leaf modules and linked the
+retained package-qualified native objects. Its build record hashes all 1,826
+link inputs. This check explicitly trusts the retained native dependency cache.
+The relink took 34 seconds. Peak physical memory was 919 MiB. A separate fresh
+source check rebuilt the unchanged ROM-byte data object in 144 seconds. The
+normal dependency-refresh build reached its 900-second guard. It did not finish.
+No full executable freshness pass is claimed.
+
+The public OS differential passed in 213 seconds. Peak physical memory was
+2,229 MiB. All 22 new MUL/DIV comparisons and 21 committed verifier comparisons
+passed before the combined 900-second guard expired. The last cached reduced
+word-memory comparison passed in a separate run. Thus all 22 committed verifier
+comparisons passed. Both cache modes remain required. Each guard cleaned its
+owned children. The tests used the newly linked oracle.
+
+Generator freshness, both native-binding mutation families and six decoder
+controls passed. The guide check passed for 1,328 links. The source-layer check
+retains the same three established assembly exceptions. No production circuit,
+Rust source or imported value changed. Full frontend validation, normal native
+executable freshness, environment audit, baseline refresh, transitive replay
+and Linux qualification did not run to completion. Checker rollout remains open.

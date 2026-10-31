@@ -1318,6 +1318,9 @@ unified_roots += ['Airbender.Compiler.UnifiedExecution.' + name for name in [
 acceptance_roots = ['Airbender.Compiler.MachineTargets.' + name for name in [
     'UnrolledNativeArguments', 'UnifiedNativeArguments',
     'unrolled_acceptance_from_native', 'unified_acceptance_from_native']]
+decode_roots = ['Airbender.Trace.NativeDecoder.ProgramRows.decodeWord',
+                'Airbender.Trace.NativeDecoder.ProgramRows.Proofs.decode_word_sound',
+                'Airbender.Trace.NativeDecoder.ProgramRows.Proofs.program_code']
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
@@ -1349,7 +1352,7 @@ for name in NAMES:
     if constraint_import not in content.splitlines():
         content = constraint_import + '\n' + content
 roots = []
-for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots + public_row_roots + word_roots + unified_roots + acceptance_roots:
+for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots + public_row_roots + word_roots + unified_roots + acceptance_roots + decode_roots:
     root = f'#print axioms {name}'
     if root not in content.splitlines():
         roots.append(root)

@@ -59,9 +59,9 @@ theorem unified_program_code (initial : State) (text : List (BitVec 32))
         NativeDecoder.UnifiedProgramRows.delegationCSR initial bits index with
     | some found => simp [caller] at source
     | none =>
-      cases decoded : SailRV32.Functions.encdec_backwards bits with
-      | impure call continuation => simp [caller, decoded] at source
-      | pure instruction =>
+      cases decoded : NativeDecoder.ProgramRows.decodeWord initial bits with
+      | none => simp [caller, decoded] at source
+      | some instruction =>
         cases fields : NativeDecoder.UnifiedProgramRows.decoderFields instruction with
         | none => simp [caller, decoded, fields] at source
         | some data =>

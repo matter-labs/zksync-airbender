@@ -22,6 +22,11 @@ emits the native minus-one sentinel. The
 [unified row function](../Helpers/Decoder/UnifiedProgramRows.lean) includes the
 combined unified registry.
 
+Decoding runs in the public initial state. The
+[decoder frame proof](../../Proofs/GKRProtocol/StatefulDecode.lean) shows that
+successful decoding preserves that state. This includes the misa queries used
+by multiplication and division decoding. It adds no expected-result premise.
+
 [Public setup inputs](NativePublicSetup.lean) bind the decoder columns and
 initial ROM to the supplied text. The [complete unrolled factory](NativeSubwordSetup.lean)
 also replaces the program-derived subword ROM regions. Fixed helper, range

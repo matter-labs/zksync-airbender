@@ -32,9 +32,9 @@ theorem reduced_program_family (initial : State) (text : List (BitVec 32)) :
   intro entry member
   obtain ⟨⟨bits, index⟩, _, selected⟩ := List.mem_filterMap.mp member
   unfold wordEntry at selected
-  cases decoded : SailRV32.Functions.encdec_backwards bits with
-  | impure call continuation => simp [decoded] at selected
-  | pure instruction =>
+  cases decoded : decodeWord initial bits with
+  | none => simp [decoded] at selected
+  | some instruction =>
     cases fields : Config.reduced.fields instruction with
     | none => simp [decoded, fields] at selected
     | some data =>

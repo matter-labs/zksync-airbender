@@ -1161,6 +1161,26 @@ or change circuit constraints, generators or production layouts to make the
 current proof go through. A supported-use execution claim must explicitly leave
 the blessed Keccak path outside its *proved* scope until these obligations are met.
 
+## Public decoder model
+
+The production decoder comparison found a model gap at text word 38 of the
+pinned OS release. The word encodes MUL. Rust emitted a MUL/DIV row at PC 152.
+The earlier Lean model emitted the unsupported sentinel because the original
+Sail decoder queries misa. That model admitted only pure decoder trees.
+
+The [public decoder](Airbender/Review/Helpers/Decoder/ProgramRows.lean) now runs
+the original Sail decoder in the public initial state. The
+[frame proof](Airbender/Proofs/GKRProtocol/StatefulDecode.lean) proves that each
+successful decode preserves that state. It adds no expected-instruction or
+state-preservation premise. The original Sail clauses, native circuits and
+imported values stay the same.
+
+All 14 production decoder comparisons passed in both cache modes. A new small
+program checks MUL, MULHU, DIVU and REMU. Its two MUL/DIV comparisons passed.
+The [fixture manifest](artifacts/programs/zksync-os.json) pins the public release
+assets. This differential result does not establish execution of the OS: its
+special5 calls remain outside the machine targets.
+
 ## Remaining boundary register
 
 Review these assumptions for applicability. Several are supported public profiles
