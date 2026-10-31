@@ -4,7 +4,7 @@ open Airbender.Setup.SourceCharacters.Renderer
 namespace Airbender.Setup.SourceCharacters.Bytes
 set_option warningAsError true
 set_option Elab.async false
-def byteStep (strings numbers : Nat → List Char) (bank : Bank)
+noncomputable def byteStep (strings numbers : Nat → List Char) (bank : Bank)
     (previous : Nat → List Char → List Char) (index : Nat) (tail : List Char) : List Char :=
   match bank.get index with
   | .null => nullBytes ++ tail
@@ -16,7 +16,7 @@ def byteStep (strings numbers : Nat → List Char) (bank : Bank)
   | .object entries => '{' :: objectWith (fun entry => strings entry.1)
       (fun entry => previous entry.2) entries ('}' :: tail)
 
-def byteRender (strings numbers : Nat → List Char) (bank : Bank) :
+noncomputable def byteRender (strings numbers : Nat → List Char) (bank : Bank) :
     Nat → Nat → List Char → List Char :=
   Nat.rec (motive := fun _ => Nat → List Char → List Char)
     (fun _ tail => nullBytes ++ tail)

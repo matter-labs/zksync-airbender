@@ -11,7 +11,7 @@ request and RAM matching remain explicit. The final full validation is pending.
 
 | Setup machine | Current target status |
 | --- | --- |
-| Unrolled full unsigned | Open. Native execution, public supported-use induction and initialization are kernel checked. Parity and theta have complete represented-source membership proofs. Chi membership uses its native query-tag guard. The original theta source binding is kernel checked. Bind the original parity and chi source strings at the original interface. The parser, exact columns and padding cases pass kernel checks. The target excludes special5 calls. |
+| Unrolled full unsigned | Open. Native execution, public supported-use induction and initialization are kernel checked. Parity and theta have complete represented-source membership proofs. Chi membership uses its native query-tag guard. The original theta and chi source bindings are kernel checked. Bind the original parity source string at the original interface. The parser, exact columns and padding cases pass kernel checks. The target excludes special5 calls. |
 | Unrolled reduced | Proved by `MachineTargets.Proofs.unrolled_reduced_soundness`. The theorem has exactly the `UnrolledReduced` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. |
 | Unified | Proved by `MachineTargets.Proofs.unified_soundness`. The theorem has exactly the `Unified` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. The target excludes special5 calls. |
 
@@ -2624,3 +2624,38 @@ Cached and uncached captures remain required.
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run. The separate replay stack has
 not qualified these new literal proofs.
+
+
+### Full unsigned original chi source obligation
+
+The original chi source obligation is closed.
+`SourceCaptureChiProofs.source_eq` proves exact equality with all 4,762,907
+characters of the original JSON. `chi_original_source_rows` supplies the
+original-source row obligation of the FullUnsigned target. It retains the
+native query-tag guard. The target keeps its statement and premises.
+
+The renderer now uses primitive list folds. Its soundness proofs preserve
+the original source interpreter. The new interval proof checks a finite
+prefix and its exact suffix. It joins all 582 intervals and checks both
+final empty tails. This avoids the large recursion-history terms that
+stopped earlier attempts. No native circuit or Rust source changed.
+
+The renderer and all three byte-certificate modules passed focused checks
+in 71 seconds. Peak physical memory was 380 MiB. The complete chi character
+proof passed in 881 seconds. Peak physical memory was 696 MiB. The original
+chi adapter and refreshed theta binding passed in a 205-second group.
+That group used at most 854 MiB of physical memory. All guards kept the
+same physical-memory, resident-memory and time caps. They cleaned their
+owned children.
+
+All 17 focused roots passed direct axiom checks in three seconds. This
+includes the new chi roots, the changed renderer and the existing theta
+adapter. The proofs use only the three allowed axioms. The explicit
+inventory has 17,271 roots. It retains all 17,268 prior roots.
+
+The original parity source binding remains open. FullUnsigned is not yet
+proved. Design items 2 and 3 follow the targets. The packed checker pilot
+stays intact. Cached and uncached captures remain required.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.

@@ -7,11 +7,12 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 namespace Airbender.Setup.SourceCharacters.Renderer
 
-def contentsWith {α : Type} (render : α → List Char → List Char) :
-    List α → List Char → List Char
-  | [], tail => tail
-  | [entry], tail => render entry tail
-  | entry :: next :: rest, tail => render entry (',' :: contentsWith render (next :: rest) tail)
+noncomputable def contentsWith {α : Type} (render : α → List Char → List Char) :
+    List α → List Char → List Char :=
+  List.rec (motive := fun _ => List Char → List Char)
+    (fun tail => tail)
+    (fun entry rest previous tail =>
+      render entry (if rest.isEmpty then tail else ',' :: previous tail))
 
 theorem contentsWith_sound {α : Type} (render : α → List Char → List Char)
     (bytes : α → List Char) (sound : ∀ entry tail, render entry tail = bytes entry ++ tail)
@@ -23,7 +24,9 @@ theorem contentsWith_sound {α : Type} (render : α → List Char → List Char)
     cases rest with
     | nil => exact sound head tail
     | cons next rest =>
-      simp only [contentsWith, contents, sound, ih, List.append_assoc, List.cons_append]
+      change render head (',' :: contentsWith render (next :: rest) tail) = _
+      rw [sound, ih]
+      simp only [contents, List.append_assoc, List.cons_append]
 
 theorem contents_map {α β : Type} (bytes : β → List Char) (f : α → β) (entries : List α) :
     contents bytes (entries.map f) = contents (fun a => bytes (f a)) entries := by
@@ -34,12 +37,12 @@ theorem contents_map {α β : Type} (bytes : β → List Char) (f : α → β) (
     | nil => rfl
     | cons next rest => simpa only [List.map_cons, contents] using congrArg (fun tail => bytes (f head) ++ ',' :: tail) ih
 
-def objectWith {α : Type} (key : α → List Char) (render : α → List Char → List Char) :
-    List α → List Char → List Char
-  | [], tail => tail
-  | [entry], tail => key entry ++ ':' :: render entry tail
-  | entry :: next :: rest, tail =>
-    key entry ++ ':' :: render entry (',' :: objectWith key render (next :: rest) tail)
+noncomputable def objectWith {α : Type} (key : α → List Char) (render : α → List Char → List Char) :
+    List α → List Char → List Char :=
+  List.rec (motive := fun _ => List Char → List Char)
+    (fun tail => tail)
+    (fun entry rest previous tail =>
+      key entry ++ ':' :: render entry (if rest.isEmpty then tail else ',' :: previous tail))
 
 theorem objectWith_sound {α : Type} (key : α → List Char)
     (render : α → List Char → List Char) (bytes : α → List Char)
@@ -50,9 +53,14 @@ theorem objectWith_sound {α : Type} (key : α → List Char)
   | nil => rfl
   | cons head rest ih =>
     cases rest with
-    | nil => simp only [objectWith, objectContents, sound, List.append_assoc, List.cons_append]
+    | nil =>
+      change key head ++ ':' :: render head tail = _
+      rw [sound]
+      simp only [objectContents, List.append_assoc, List.cons_append]
     | cons next rest =>
-      simp only [objectWith, objectContents, sound, ih, List.append_assoc, List.cons_append]
+      change key head ++ ':' :: render head (',' :: objectWith key render (next :: rest) tail) = _
+      rw [sound, ih]
+      simp only [objectContents, List.append_assoc, List.cons_append]
 
 theorem objectContents_map {α β : Type} (keys bytes : β → List Char) (f : α → β) (entries : List α) :
     objectContents keys bytes (entries.map f) =
@@ -66,7 +74,7 @@ theorem objectContents_map {α β : Type} (keys bytes : β → List Char) (f : �
       simpa only [List.map_cons, objectContents] using
         congrArg (fun tail => keys (f head) ++ ':' :: (bytes (f head) ++ ',' :: tail)) ih
 
-def render (strings : Nat → String) (tokens : Nat → NumberToken) (bank : Bank) :
+noncomputable def render (strings : Nat → String) (tokens : Nat → NumberToken) (bank : Bank) :
     Nat → Nat → List Char → List Char
   | 0, _, tail => nullBytes ++ tail
   | fuel + 1, index, tail =>

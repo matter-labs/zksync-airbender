@@ -34,12 +34,55 @@ private theorem interval_join (before front after rawAfter rawBefore : List Char
     (characters : front ++ rawAfter = rawBefore) : before = rawBefore := by
   rw [step, rest, characters]
 
+private theorem interval_of_parts (size : Nat) (before front after : List Char)
+    (first : before.take size = front) (last : before.drop size = after) :
+    before = front ++ after := by
+  rw [← first, ← last]
+  exact (List.take_append_drop size before).symm
+
 private partial def explicitList (value : Lean.Expr) : MetaM Lean.Expr := do
   let value := value.consumeMData
   if value.isAppOf ``List.nil || value.isAppOf ``List.cons then return value
-  unless value.isConst do throwError "expected a retained character suffix"
-  let definition ← getConstInfoDefn value.constName!
-  explicitList definition.value
+  if value.isConst then
+    let definition ← getConstInfoDefn value.constName!
+    return ← explicitList definition.value
+  let expanded ← withTransparency .all <| whnf value
+  unless expanded.isAppOf ``List.nil || expanded.isAppOf ``List.cons do
+    throwError "expected a retained character suffix"
+  return expanded
+
+private partial def literalSegment (value : Lean.Expr) : MetaM (Lean.Expr × Lean.Expr × Nat) := do
+  if value.isConst then
+    return ← literalSegment (← getConstInfoDefn value.constName!).value
+  unless value.isApp && value.appFn!.isConst do
+    throwError "expected a retained literal segment application"
+  let function := value.appFn!
+  let definition ← getConstInfoDefn function.constName!
+  let .lam _ _ body _ := definition.value
+    | throwError "expected a retained literal segment function"
+  let mut body := body
+  let mut size := 0
+  while body.isAppOf ``List.cons do
+    size := size + 1
+    body := body.getAppArgs[2]!
+  unless body == mkBVar 0 && size > 0 do
+    throwError "expected a nonempty literal segment with its supplied tail"
+  return (function, value.appArg!, size)
+
+/-- Propose an interval from the existing literal segments. The interval and
+its exact tail are checked again by the ordinary kernel equalities below. -/
+private def literalFront (before : Lean.Expr) (size : Nat) : MetaM (Lean.Expr × Lean.Expr) := do
+  let mut after := before
+  let mut remaining := size
+  let mut segments : Array Lean.Expr := #[]
+  while remaining > 0 do
+    let (segment, tail, count) ← literalSegment after
+    unless count ≤ remaining do throwError "source interval must end at a literal segment boundary"
+    remaining := remaining - count
+    segments := segments.push segment
+    after := tail
+  let nil := mkApp (mkConst ``List.nil [Level.zero]) (mkConst ``Char)
+  return (segments.foldr mkApp nil, after)
 
 private theorem identity_continuation (bytes characters : List Char) :
     (bytes = characters) → bytes = characters := id
@@ -51,18 +94,10 @@ private theorem continue_interval (original characters before front after rawAft
   intro rest
   exact previous (interval_join before front after rawAfter rawBefore step rest matched)
 
-/-- Every interval and both final empty tails enter ordinary kernel checks.
-The byte and bank equalities connect the renderer to the original source. -/
-elab "certify_source_string_binding " target:ident " using " data:ident
-    " against " source:ident " with " literal:ident
-    " bytes " bytes:ident " bank " bank:ident : command =>
-    withEnableInfoTree false do
-  let target := target.getId
-  let data := data.getId
-  let source := source.getId
-  let literal := literal.getId
-  let bytes := bytes.getId
-  let bank := bank.getId
+/-- Check every renderer interval and both final empty tails. -/
+private def certifySourceBinding (target data source literal bytes bank : Name)
+    (chunkSize : Nat) (charactersOnly : Bool) : CommandElabM Unit := do
+  unless chunkSize > 0 do throwError "expected a positive source interval size"
   let progressPath ← liftIO <| IO.getEnv "AIRBENDER_SOURCE_BINDING_PROGRESS"
   let original ← getConstInfoDefn source
   let .lit (.strVal original) := original.value
@@ -96,6 +131,9 @@ elab "certify_source_string_binding " target:ident " using " data:ident
     if part = 0 then liftIO <| IO.eprintln "source binding: advance first interval"
     let before := cursor
     let rawBefore := rawCursor
+    let (front, proposedRawAfter) ← if charactersOnly then
+      liftTermElabM <| literalFront rawBefore size
+      else pure (characterPrefix (characters.extract offset (offset + size)) nil, rawBefore)
     let (after, rawAfter) ← liftTermElabM <|
         withOptions (fun options => options.setBool `smartUnfolding false) <|
         withTransparency .all do
@@ -105,9 +143,11 @@ elab "certify_source_string_binding " target:ident " using " data:ident
         let expanded ← whnf after
         unless expanded.isAppOf ``List.cons do throwError "captured source ended before character {offset}"
         after := expanded.getAppArgs[2]!
-        let rawExpanded ← explicitList rawAfter
-        unless rawExpanded.isAppOf ``List.cons do throwError "literal character data ended early"
-        rawAfter := rawExpanded.getAppArgs[2]!
+        unless charactersOnly do
+          let rawExpanded ← explicitList rawAfter
+          unless rawExpanded.isAppOf ``List.cons do throwError "literal character data ended early"
+          rawAfter := rawExpanded.getAppArgs[2]!
+      if charactersOnly then rawAfter := proposedRawAfter
       return (after, rawAfter)
     if part = 0 then liftIO <| IO.eprintln "source binding: first interval evaluated"
     if let some path := progressPath then
@@ -117,10 +157,23 @@ elab "certify_source_string_binding " target:ident " using " data:ident
     if part = 0 then liftIO <| IO.eprintln "source binding: first cursor data checked"
     cursor := mkConst suffix
     rawCursor := rawAfter
-    let front := characterPrefix (characters.extract offset (offset + size)) nil
     let proposed := mkApp3 (mkConst ``List.append [Level.zero]) charType front cursor
     let intervalType ← liftTermElabM <| mkEq before proposed
-    let intervalProof ← liftTermElabM <| mkEqRefl proposed
+    let intervalProof ← if charactersOnly then do
+      let amount := mkRawNatLit size
+      let prefixName ← privateName target s!"source_prefix_{part}"
+      let prefixType ← liftTermElabM <| mkEq
+        (mkApp3 (mkConst ``List.take [Level.zero]) charType amount before) front
+      let prefixProof ← liftTermElabM <| mkEqRefl front
+      checkedProof prefixName prefixType prefixProof
+      let suffixName ← privateName target s!"source_drop_{part}"
+      let suffixType ← liftTermElabM <| mkEq
+        (mkApp3 (mkConst ``List.drop [Level.zero]) charType amount before) cursor
+      let suffixProof ← liftTermElabM <| mkEqRefl cursor
+      checkedProof suffixName suffixType suffixProof
+      pure <| mkAppN (mkConst ``interval_of_parts)
+        #[amount, before, front, cursor, mkConst prefixName, mkConst suffixName]
+      else liftTermElabM <| mkEqRefl proposed
     let interval ← privateName target s!"source_interval_{part}"
     checkedProof interval intervalType intervalProof
     if part = 0 then liftIO <| IO.eprintln "source binding: first interval equality checked"
@@ -154,6 +207,9 @@ elab "certify_source_string_binding " target:ident " using " data:ident
         mkConst (bytes.str "token_bytes_eq"), fuel, index], renderedProof]
   if let some path := progressPath then liftIO <| IO.FS.writeFile path "verify complete source bytes theorem"
   checkedProof bytesName bytesType bytesProof
+  if charactersOnly then
+    logInfo m!"kernel checked all {characters.size} source characters in {count} intervals"
+    return
   let proof := mkAppN (mkConst ``source_of_characters)
     #[mkConst source, sourceBytes, rawCharacters, mkConst bytesName,
       mkConst (literal.str "literal_checked")]
@@ -161,5 +217,37 @@ elab "certify_source_string_binding " target:ident " using " data:ident
   if let some path := progressPath then liftIO <| IO.FS.writeFile path "verify original string equality"
   checkedProof (target.str "source_eq") type proof
   logInfo m!"kernel checked the complete original source-string binding in {count} intervals"
+
+/-- Check the complete source binding with the retained literal certificate. -/
+elab "certify_source_string_binding " target:ident " using " data:ident
+    " against " source:ident " with " literal:ident
+    " bytes " byteLibrary:ident " bank " bankData:ident : command =>
+    withEnableInfoTree false do
+  certifySourceBinding target.getId data.getId source.getId literal.getId byteLibrary.getId bankData.getId
+    chunkSize false
+
+/-- Check the character equality before the independent literal model. -/
+elab "certify_source_character_binding " target:ident " using " data:ident
+    " against " source:ident " with " literal:ident
+    " bytes " byteLibrary:ident " bank " bankData:ident " interval " amount:num : command =>
+    withEnableInfoTree false do
+  certifySourceBinding target.getId data.getId source.getId literal.getId byteLibrary.getId bankData.getId
+    amount.getNat true
+
+/-- Join the two kernel certificates at the original string interface. -/
+elab "close_source_string_binding " target:ident " using " data:ident
+    " against " source:ident " with " literal:ident : command =>
+    withEnableInfoTree false do
+  let target := target.getId
+  let source := mkConst source.getId
+  let data := data.getId
+  let literal := literal.getId
+  let sourceBytes := mkApp (mkConst ``SourceData.Node.bytes) (mkConst (data.str "root"))
+  let characters := mkConst (literal.str "characters")
+  let proof := mkAppN (mkConst ``source_of_characters)
+    #[source, sourceBytes, characters, mkConst (target.str "bytes_checked"),
+      mkConst (literal.str "literal_checked")]
+  let type ← liftTermElabM <| mkEq (mkConst (data.str "source")) source
+  checkedProof (target.str "source_eq") type proof
 
 end Airbender.Setup.SourceCharacters
