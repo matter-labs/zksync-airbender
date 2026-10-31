@@ -107,7 +107,7 @@ private partial def binaryPower (base count : Nat) : MetaM (Lean.Expr × Lean.Ex
       mkRawNatLit (count / 2), value, result, same, previous, proof])
 
 /-- Propose a logarithmic arithmetic proof. The kernel checks each product. -/
-elab "certify_index_power " name:ident " base " base:num " exponent " count:num : command => do
+elab "certify_index_power " name:ident " radix_value " base:num " power_count " count:num : command => do
   let fullName := (← getCurrNamespace) ++ name.getId
   let (value, proof) ← liftTermElabM <| binaryPower base.getNat count.getNat
   let type ← liftTermElabM <| mkEq
@@ -116,8 +116,8 @@ elab "certify_index_power " name:ident " base " base:num " exponent " count:num 
 
 /-- Build the ordinary grammar theorem with explicit scalar arguments. This
 avoids normalization of powers while the elaborator infers arguments. -/
-elab "index_word_grammar " front:ident cycle:ident tail:ident " count " count:num
-    " powers " fp:ident cp:ident " word " word:ident : tactic => do
+elab "index_word_grammar " front:ident cycle:ident tail:ident " repeat_count " count:num
+    " power_proofs " fp:ident cp:ident " word_proof " word:ident : tactic => do
   let a := mkConst (← resolveGlobalConstNoOverload front)
   let b := mkConst (← resolveGlobalConstNoOverload cycle)
   let c := mkConst (← resolveGlobalConstNoOverload tail)
