@@ -146,7 +146,20 @@ theorem nativeSetupColumns_binding (group : Fin 3) :
   · exact Airbender.Compiler.TableNative.{name}.native.range16SetupColumnsPreserved
   · exact Airbender.Compiler.TableNative.{name}.native.timestampSetupColumnsPreserved
 ''')
-    proof_parts.append(f'''private noncomputable def sourceArguments (input : Input) (arguments : LookupArguments input)
+    proof_parts.append(f'''/-- Exact native matching supplies every enabled source tuple in the supplied
+setup rows. Native arithmetic proves the operand transport. -/
+theorem source_member_with
+    (tables : Fin 3 → Fin Airbender.Compiler.MaterializedNative.{name}.native.model.imported.data.length →
+      List Source.BaseField) (input : Input) (arguments : LookupArgumentsWith tables input)
+    (group : Fin 3) (query : MaterializedQuery)
+    (member : query ∈ physicalRequests input group) (enabled : query.weight ≠ 0) :
+    ∃ index, query.fields = tables group index := by
+  apply LookupArgument.member (arguments group)
+  change query.fields ∈ activeLookupFields (nativeRequests input group)
+  rw [nativeRequests_source input group]
+  exact activeLookupFields.member member enabled
+
+private noncomputable def sourceArguments (input : Input) (arguments : LookupArguments input)
     (group : Fin 3) : LookupArgument
       (Airbender.Compiler.MaterializedNative.{name}.native.model.fields
         (Airbender.Compiler.MaterializedWitnessNative.{name}.setupColumns group))
@@ -215,8 +228,11 @@ theorem lookup_arguments_with_retained (input : Input) :
     else:
         assert ptext.count(needle) == 1
         ptext = ptext.replace(needle, proof_block + '\n' + needle)
-    ptext = ptext.replace('LookupArgument.member (arguments group)', 'LookupArgument.member (sourceArguments input arguments group)')
-    assert ptext.count('LookupArgument.member (sourceArguments input arguments group)') == 1
+    generated, consumers = ptext.split(PROOF_END, 1)
+    consumers = consumers.replace('LookupArgument.member (arguments group)',
+                                  'LookupArgument.member (sourceArguments input arguments group)')
+    assert consumers.count('LookupArgument.member (sourceArguments input arguments group)') == 1
+    ptext = generated + PROOF_END + consumers
     for path, content in [(ip,text),(pp,ptext)]:
         emit(path, content)
     return len(queries[0]), len(queries[1]), len(helpers)
@@ -278,6 +294,29 @@ def ProgramLogicalRowCertificate.row {{tables : ProgramLookupRows}} :
         for name in cases:
             constructor = name[0].lower() + name[1:]
             review += f'  | .{constructor} input _ => {native_namespace}.{name}.inputRow input\n'
+        review += '''
+def ProgramLogicalRowCertificate.configuration {tables : ProgramLookupRows} :
+    ProgramLogicalRowCertificate tables → Configuration
+'''
+        for name in cases:
+            constructor = name[0].lower() + name[1:]
+            review += f'  | .{constructor} _ _ => .{constructor}\n'
+        review += '''
+def ProgramLogicalRowCertificate.lookupLength {tables : ProgramLookupRows} :
+    ProgramLogicalRowCertificate tables → Nat
+'''
+        for name in cases:
+            constructor = name[0].lower() + name[1:]
+            review += f'  | .{constructor} _ _ => Airbender.Compiler.MaterializedNative.{name}.native.model.imported.data.length\n'
+        review += '''
+/-- Source tuples projected from the actual native input coordinates. -/
+noncomputable def ProgramLogicalRowCertificate.sourceRequests {tables : ProgramLookupRows}
+    (cert : ProgramLogicalRowCertificate tables) (group : Fin 3) : List MaterializedQuery :=
+  match cert with
+'''
+        for name in cases:
+            constructor = name[0].lower() + name[1:]
+            review += f'  | .{constructor} input _ => {native_namespace}.{name}.physicalRequests input group\n'
         review += f'\nend {execution}\n'
         proofs += f'''
 namespace {execution}
@@ -291,10 +330,30 @@ theorem ProgramLogicalRowCertificate.row_active {{tables : ProgramLookupRows}}
         for name in cases:
             constructor = name[0].lower() + name[1:]
             proofs += f'  | {constructor} input _arguments => exact {native_namespace}.{name}.input_active input\n'
+        proofs += '''
+/-- Exact matching and native operand transport supply the source tuple.
+The public setup interpretation remains a separate boundary. -/
+theorem ProgramLogicalRowCertificate.source_member {tables : ProgramLookupRows}
+    (cert : ProgramLogicalRowCertificate tables) (group : Fin 3) (query : MaterializedQuery)
+    (member : query ∈ cert.sourceRequests group) (enabled : query.weight ≠ 0) :
+    ∃ index : Fin cert.lookupLength, query.fields = tables cert.configuration group index.val := by
+  cases cert with
+'''
+        for name in cases:
+            constructor = name[0].lower() + name[1:]
+            proofs += f'''  | {constructor} input arguments =>
+    obtain ⟨index, same⟩ := {native_namespace}.{name}.source_member_with
+      (fun group index => tables .{constructor} group index.val) input arguments group query member enabled
+    exact ⟨index, same⟩
+'''
         proofs += f'\nend {execution}\n'
         roots += [f'Airbender.Compiler.{execution}.ProgramLogicalRowCertificate',
                   f'Airbender.Compiler.{execution}.ProgramLogicalRowCertificate.row',
-                  f'Airbender.Compiler.{execution}.ProgramLogicalRowCertificate.row_active']
+                  f'Airbender.Compiler.{execution}.ProgramLogicalRowCertificate.row_active',
+                  f'Airbender.Compiler.{execution}.ProgramLogicalRowCertificate.configuration',
+                  f'Airbender.Compiler.{execution}.ProgramLogicalRowCertificate.lookupLength',
+                  f'Airbender.Compiler.{execution}.ProgramLogicalRowCertificate.sourceRequests',
+                  f'Airbender.Compiler.{execution}.ProgramLogicalRowCertificate.source_member']
     review += '\nend Airbender.Compiler\n'
     proofs += '\nend Airbender.Compiler\n'
     emit(Path('Airbender/Review/Compiler/ProgramLogicalRows.lean'), review)
@@ -320,7 +379,8 @@ if '#print axioms Airbender.Compiler.GroupedLookupArguments' not in content.spli
 for name in NAMES:
     namespace = 'UnifiedRowNative' if name.startswith('Unified') else 'PooledRowNative'
     for theorem in ['LookupArgumentsWith', 'lookup_arguments_with_retained',
-                    'nativeRequests_source', 'nativeOperands_coverage', 'nativeSetupColumns_binding']:
+                    'nativeRequests_source', 'nativeOperands_coverage', 'nativeSetupColumns_binding',
+                    'source_member_with']:
         root = f'#print axioms Airbender.Compiler.{namespace}.{name}.{theorem}'
         if root not in content.splitlines():
             roots.append(root)

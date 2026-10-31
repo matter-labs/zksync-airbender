@@ -2785,3 +2785,30 @@ Cached and uncached captures remain required.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Program parameter migration: source query membership
+
+Every CPU profile now proves `source_member_with`. Exact native matching
+and the existing arithmetic operand transport derive membership for each
+enabled source tuple in the supplied setup rows. Both parameterized row
+registries expose this result as `ProgramLogicalRowCertificate.source_member`.
+They retain a finite index bounded by the actual native lookup length.
+The configuration and lookup length follow from the actual row constructor.
+
+The 14 case modules, their import barrel and both parameterized row modules
+passed focused kernel checks in 50 seconds. Peak physical memory was
+463 MiB. All 22 new roots passed direct axiom checks in four seconds.
+They use only the three allowed axioms. The explicit inventory has 17,348
+roots. It retains all 17,326 prior roots. The guards cleaned their owned
+children. Generator freshness and the existing mutation control passed.
+
+The setup interpretation is still separate. The next steps bind the rows
+to the native decoder and ROM regions, then port execution acceptance.
+No new decoded instruction, helper bound or expected operand is assumed.
+The legacy compiler migration, production OS binary comparison and verified
+checker rollout remain open. Cached and uncached captures remain required.
+
+No native circuit, Rust source or imported value changed. Exact lookup and
+RAM assumptions stay explicit. Full frontend validation, environment audit,
+baseline refresh, transitive replay and Linux qualification did not run.
