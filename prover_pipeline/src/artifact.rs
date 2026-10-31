@@ -126,6 +126,23 @@ mod tests {
     }
 
     #[test]
+    fn current_schema_supports_l1_targets_and_omits_absent_bundle() {
+        for target in [ProofTarget::L1Feeder, ProofTarget::L1] {
+            let mut original = artifact(SoundnessMode::PessimisticConjecture);
+            original.target = target;
+            let mut value = serde_json::to_value(&original).unwrap();
+            assert!(value.get("l1").is_none());
+            let decoded: ProofArtifact = serde_json::from_value(value.clone()).unwrap();
+            assert_eq!(decoded.schema_version, 5);
+            assert_eq!(decoded.target, target);
+            assert!(decoded.l1.is_none());
+            value["l1"] = serde_json::Value::Null;
+            let decoded: ProofArtifact = serde_json::from_value(value).unwrap();
+            assert!(decoded.l1.is_none());
+        }
+    }
+
+    #[test]
     fn transient_proving_metadata_is_not_stored() {
         let mut artifact = artifact(SoundnessMode::DEFAULT);
         artifact.timings_ms.total_ms = 123;
