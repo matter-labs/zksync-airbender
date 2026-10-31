@@ -67,6 +67,10 @@ impl CircuitType {
         compiled: &GKRCircuitArtifact<BabyBearField>,
         selection: ProvingSelection,
     ) -> Result<ProverConfig, ConfigSelectionError> {
+        if self.is_l1_wrap() {
+            return ProofProfile::L1Wrap
+                .try_prover_config(self.get_domain_size_log2() as usize, selection);
+        }
         self.geometry().try_prover_config(
             compiled,
             selection.security_level,

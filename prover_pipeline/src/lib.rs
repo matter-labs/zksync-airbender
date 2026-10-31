@@ -133,6 +133,23 @@ pub struct ProgramProverConfig {
     pub replay_threads: Option<usize>,
 }
 
+/// The deferred L1 scope (Task S REVISION 3): the ethproofs L1 feeder, wrap and EVM profiles
+/// are not implemented. Every L1 entry checks this before it loads a guest, reads an input or
+/// creates a backend; there is no fallback to another mode and no mixed-mode chain.
+pub fn validate_target_selection(
+    target: ProofTarget,
+    selection: prover::definitions::ProvingSelection,
+) -> Result<(), prover::gkr::prover_config::example_configs::ConfigSelectionError> {
+    use prover::definitions::ProverConfigProfile;
+    if target >= ProofTarget::L1Feeder {
+        ProverConfigProfile::L1Feeder.validate_selection(selection)?;
+    }
+    if target == ProofTarget::L1 {
+        ProverConfigProfile::EvmProductionPacked.validate_selection(selection)?;
+    }
+    Ok(())
+}
+
 impl ProgramProverConfig {
     pub fn selection(&self) -> prover::definitions::ProvingSelection {
         prover::definitions::ProvingSelection {
@@ -329,6 +346,13 @@ fn try_register_binary<H>(
     Ok(())
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Backends this thread started to construct: the probe that capability rejections
+    /// precede backend initialization.
+    static BACKEND_CONSTRUCTIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 struct PipelineBackend<B: execution_prover::backend::ExecutionBackend> {
     prover: execution_prover::ExecutionProver<B>,
     handles: BTreeMap<HandleKey, RegisteredBinary<BinaryHandle>>,
@@ -360,6 +384,8 @@ impl<B: execution_prover::backend::ExecutionBackend> PipelineBackend<B> {
     }
 
     fn new(config: &ProgramProverConfig) -> Result<Self, String> {
+        #[cfg(test)]
+        BACKEND_CONSTRUCTIONS.with(|count| count.set(count.get() + 1));
         let prover =
             execution_prover::ExecutionProver::try_with_configuration(Self::configuration(config))
                 .map_err(|error| error.to_string())?;
@@ -1392,6 +1418,8 @@ impl ProgramProver {
         config: ProgramProverConfig,
         artifact: &ProofArtifact,
     ) -> Result<Self, String> {
+        validate_target_selection(config.target, config.selection())
+            .map_err(|error| error.to_string())?;
         artifact.validate_expected_mode(config.soundness_mode)?;
         validate_continuation_request(artifact, config.target)?;
         load_and_validate_program(&source, artifact)?;
@@ -1405,6 +1433,8 @@ impl ProgramProver {
         blake: PipelineBlakeModes,
         start: Option<ProofTarget>,
     ) -> Result<Self, String> {
+        validate_target_selection(config.target, config.selection())
+            .map_err(|error| error.to_string())?;
         if config.backend == ProverBackend::Gpu {
             match config.target {
                 ProofTarget::L1 => {
@@ -1958,6 +1988,9 @@ fn recompute_program_setups(
             )
         }
         SetupMachine::L1Feeder(profile) => {
+            prover::definitions::ProverConfigProfile::L1Feeder
+                .validate_selection(selection)
+                .map_err(|error| error.to_string())?;
             Ok(setups::program_setups::compute_unified_program_setups_for_profile::<Global>(
                 &padded_bin,
                 &padded_text,
@@ -2552,6 +2585,155 @@ mod program_source_tests {
         assert_eq!(loaded.bin_u32.len() * 4, loaded.bin_bytes.len());
         assert_eq!(loaded.text_u32.len() * 4, loaded.text_bytes.len());
         assert_ne!(keccak256(&loaded.bin_bytes), keccak256(&loaded.text_bytes));
+    }
+}
+
+/// The deferred-scope boundary of the L1 targets (the pipeline counterpart of Task S's
+/// standalone L1 compression checks): ethproofs is rejected with the exact capability error
+/// before any guest, input or backend is touched; pessimistic L1 entries pass it unchanged.
+#[cfg(test)]
+mod l1_capability_tests {
+    use super::*;
+    use prover::definitions::{ProverConfigProfile, ProvingSelection};
+    use prover::gkr::prover_config::example_configs::ConfigSelectionError;
+
+    const L1_TARGETS: [ProofTarget; 2] = [ProofTarget::L1Feeder, ProofTarget::L1];
+
+    fn deferred() -> String {
+        ConfigSelectionError::UnsupportedSpecialConfigMode {
+            profile: ProverConfigProfile::L1Feeder,
+            mode: SoundnessMode::EthproofsSoundnessCalc,
+        }
+        .to_string()
+    }
+
+    fn missing() -> ProgramSource {
+        let source = ProgramSource::elf("must-not-read-l1-capability-input.elf");
+        assert!(matches!(&source, ProgramSource::Elf(path) if !path.exists()));
+        source
+    }
+
+    fn backend_constructions() -> usize {
+        BACKEND_CONSTRUCTIONS.with(std::cell::Cell::get)
+    }
+
+    #[test]
+    fn deferred_scope_error_keeps_the_task_s_wording() {
+        assert_eq!(
+            deferred(),
+            "UnsupportedSpecialConfigMode: ethproofs soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope); requested L1Feeder"
+        );
+        for target in L1_TARGETS {
+            for (mode, expected) in [
+                (
+                    SoundnessMode::EthproofsSoundnessCalc,
+                    Err(ConfigSelectionError::UnsupportedSpecialConfigMode {
+                        profile: ProverConfigProfile::L1Feeder,
+                        mode: SoundnessMode::EthproofsSoundnessCalc,
+                    }),
+                ),
+                (SoundnessMode::PessimisticConjecture, Ok(())),
+            ] {
+                let selection = ProvingSelection {
+                    soundness_mode: mode,
+                    ..ProvingSelection::default()
+                };
+                assert_eq!(validate_target_selection(target, selection), expected);
+            }
+        }
+        for target in [
+            ProofTarget::Base,
+            ProofTarget::RecursionUnrolled,
+            ProofTarget::RecursionUnified,
+        ] {
+            for &mode in SoundnessMode::ALL {
+                let selection = ProvingSelection {
+                    soundness_mode: mode,
+                    ..ProvingSelection::default()
+                };
+                validate_target_selection(target, selection).unwrap();
+            }
+        }
+    }
+
+    /// CPU and GPU entries: the rejection precedes guest loading, the (missing) source and
+    /// backend construction, so no CUDA is reached even in a `gpu` build.
+    #[test]
+    fn ethproofs_l1_prover_entries_reject_before_inputs_and_backends() {
+        let before = backend_constructions();
+        let checkpoint = crate::l1_feeder_tests::artifact(ProofTarget::RecursionUnified, 3);
+        for target in L1_TARGETS {
+            for backend in [ProverBackend::Cpu, ProverBackend::Gpu] {
+                let config = ProgramProverConfig {
+                    target,
+                    backend,
+                    soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
+                    ..Default::default()
+                };
+                let error = ProgramProver::new(missing(), config.clone())
+                    .err()
+                    .expect("ethproofs L1 proving must be rejected");
+                assert_eq!(error, deferred(), "{target:?} on {backend:?}");
+                let error = ProgramProver::for_continuation(missing(), config, &checkpoint)
+                    .err()
+                    .expect("ethproofs L1 continuation must be rejected");
+                assert_eq!(error, deferred(), "{target:?} on {backend:?}");
+            }
+        }
+        assert_eq!(backend_constructions(), before);
+    }
+
+    /// Verify and continue take the expected mode the way `verify_artifact_in_mode` does: an L1
+    /// artifact is pessimistic only, whether ethproofs is requested or claimed.
+    #[test]
+    fn l1_artifacts_are_pessimistic_only() {
+        for target in L1_TARGETS {
+            let pessimistic = crate::l1_feeder_tests::feeder_artifact(target, 6, 3);
+            let mut claimed = pessimistic.clone();
+            claimed.soundness_mode = SoundnessMode::EthproofsSoundnessCalc;
+            for (artifact, expected) in [
+                (&pessimistic, SoundnessMode::EthproofsSoundnessCalc),
+                (&claimed, SoundnessMode::EthproofsSoundnessCalc),
+                (&claimed, SoundnessMode::PessimisticConjecture),
+            ] {
+                assert_eq!(
+                    artifact.validate_expected_mode(expected).unwrap_err(),
+                    deferred()
+                );
+                assert_eq!(
+                    verify_artifact_in_mode(artifact, &missing(), expected).unwrap_err(),
+                    deferred()
+                );
+            }
+            pessimistic
+                .validate_expected_mode(SoundnessMode::PessimisticConjecture)
+                .unwrap();
+        }
+    }
+
+    /// The pessimistic L1 entries pass the check and reach the source as before.
+    #[test]
+    fn pessimistic_l1_entries_are_unchanged() {
+        let before = backend_constructions();
+        for target in L1_TARGETS {
+            let config = ProgramProverConfig {
+                target,
+                backend: ProverBackend::Cpu,
+                ..Default::default()
+            };
+            let error = ProgramProver::new(missing(), config)
+                .err()
+                .expect("a missing source must be reported");
+            assert!(error.starts_with("failed to load program"), "{error}");
+            // Past the mode check, verification fails later (envelope or source), never with
+            // the capability error.
+            let artifact = crate::l1_feeder_tests::feeder_artifact(target, 6, 3);
+            let error =
+                verify_artifact_in_mode(&artifact, &missing(), SoundnessMode::PessimisticConjecture)
+                    .unwrap_err();
+            assert!(!error.contains("deferred product scope"), "{error}");
+        }
+        assert_eq!(backend_constructions(), before);
     }
 }
 

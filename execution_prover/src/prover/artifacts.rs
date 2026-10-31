@@ -5,7 +5,8 @@
 //! prefixed with — neither of which `ProveResult` carries.
 
 use super::*;
-use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, SecurityLevel};
+use crate::config::ProvingSelection;
+use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength};
 
 /// `setup_cap` is the exact digest sequence the backend committed and every
 /// proof of this family binds.
@@ -22,11 +23,17 @@ impl RiscvFamilyArtifact {
         precomputations: &impl CircuitPrecomputation,
         circuit: UnrolledCircuitType,
         profile: ProofProfile,
-        security_level: SecurityLevel,
+        selection: ProvingSelection,
     ) -> Self {
         let compiled_circuit = Arc::clone(precomputations.compiled_circuit());
-        let setup_cap_size =
-            crate::prover_config(CircuitType::Unrolled(circuit), profile, security_level).cap_size;
+        let setup_cap_size = crate::config::try_prover_config_in_mode(
+            CircuitType::Unrolled(circuit),
+            &compiled_circuit,
+            profile,
+            selection,
+        )
+        .unwrap_or_else(|error| panic!("{error}"))
+        .cap_size;
         Self {
             compiled_circuit,
             setup_cap_size,
@@ -70,7 +77,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         precomputations,
                         *circuit_type,
                         profile,
-                        self.configuration.security_level,
+                        self.configuration.selection(),
                     ),
                 )
             })

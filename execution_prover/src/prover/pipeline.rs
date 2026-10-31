@@ -39,11 +39,13 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             binary_holder.profiles.contains(&profile),
             "ProofProfile::{profile:?} was not declared for this binary"
         );
-        let commitment_mode = crate::execution_commitment_mode(
+        let commitment_mode = crate::config::try_execution_commitment_mode(
             binary_holder.execution_kind,
             profile,
-            self.configuration.security_level,
-        );
+            self.configuration.selection(),
+            |circuit| binary_holder.compiled_circuit(circuit),
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
         let (work_results_sender, work_results_receiver) = unbounded();
         let (work_requests_sender, work_requests_receiver) = unbounded();
         let work_batch = WorkBatch {
@@ -552,11 +554,13 @@ mod tests {
         let proof_caps = BTreeMap::new();
         let context = RequestContext {
             proving: false,
-            commitment_mode: crate::execution_commitment_mode(
+            commitment_mode: crate::config::try_execution_commitment_mode(
                 kind,
                 profile,
-                prover.configuration.security_level,
-            ),
+                prover.configuration.selection(),
+                |circuit| prover.binary_holders[&handle.0].compiled_circuit(circuit),
+            )
+            .unwrap(),
             profile,
             batch_id: 1,
             binary_holder: &prover.binary_holders[&handle.0],

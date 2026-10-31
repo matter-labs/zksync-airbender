@@ -146,7 +146,11 @@ cargo run --release -p cli -- verify \
 Status: CPU proving in `ethproofs-soundcalc` is enabled; its end-to-end
 validation is still pending. The GPU backend rejects `ethproofs-soundcalc`
 before reading inputs, because it does not yet implement that mode's folding
-and OOD proof of work.
+and OOD proof of work. The L1 targets (`--target l1-feeder` and `--target l1`)
+exist only in `pessimistic-conjecture`: with `ethproofs-soundcalc` they are
+rejected before any input is read, because the L1 feeder/wrap/EVM profile is
+deferred product scope. `verify` and `continue-proof` reject an L1 artifact
+under `ethproofs-soundcalc` the same way.
 
 In `ethproofs-soundcalc`, recursion chooses between unrolled and unified layers
 from the measured cycle count of the selected verifier guest, not from the

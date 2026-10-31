@@ -28,11 +28,39 @@ impl ProofProfile {
         matches!(self, Self::L1Feeder | Self::L1FeederA)
     }
 
+    /// The named special-config profile this proof profile is selected under.
+    pub fn config_profile(self) -> crate::definitions::ProverConfigProfile {
+        use crate::definitions::ProverConfigProfile;
+        match self {
+            Self::Standard => ProverConfigProfile::Standard,
+            Self::L1Feeder | Self::L1FeederA => ProverConfigProfile::L1Feeder,
+            Self::L1Wrap => ProverConfigProfile::EvmProductionPacked,
+        }
+    }
+
+    /// Pessimistic compatibility wrapper of [`Self::try_prover_config`].
     pub fn prover_config(
         self,
         trace_len_log2: usize,
         security_level: SecurityLevel,
     ) -> ProverConfig {
+        self.try_prover_config(
+            trace_len_log2,
+            crate::definitions::ProvingSelection {
+                security_level,
+                soundness_mode: SoundnessMode::PessimisticConjecture,
+            },
+        )
+        .expect("the L1 profiles are defined under PessimisticConjecture")
+    }
+
+    /// The special config of an L1 profile under `selection`. Ethproofs L1 feeder/wrap/EVM
+    /// configs are deferred product scope and rejected.
+    pub fn try_prover_config(
+        self,
+        trace_len_log2: usize,
+        selection: crate::definitions::ProvingSelection,
+    ) -> Result<ProverConfig, example_configs::ConfigSelectionError> {
         match self {
             Self::Standard => {
                 panic!("ProofProfile::Standard resolves through the circuit's own prover_config")
@@ -42,14 +70,14 @@ impl ProofProfile {
                     trace_len_log2, 22,
                     "ProofProfile::L1Feeder requires the 2^22 unified circuit"
                 );
-                example_configs::l1_feeder_config_for_2_22()
+                example_configs::try_l1_feeder_config_for_2_22(selection)
             }
             Self::L1FeederA => {
                 assert_eq!(
                     trace_len_log2, 23,
                     "ProofProfile::L1FeederA requires the 2^23 unified circuit"
                 );
-                example_configs::l1_feeder_a_config_for_2_23()
+                example_configs::try_l1_feeder_a_config_for_2_23(selection)
             }
             Self::L1Wrap => {
                 assert_eq!(
@@ -57,7 +85,7 @@ impl ProofProfile {
                     example_configs::l1_wrap_2p21::TRACE_LEN_LOG2,
                     "ProofProfile::L1Wrap requires the 2^21 Proth120 unified circuit"
                 );
-                example_configs::l1_wrap_2p21::packed_prover_config(security_level)
+                example_configs::l1_wrap_2p21::try_packed_prover_config(selection)
             }
         }
     }

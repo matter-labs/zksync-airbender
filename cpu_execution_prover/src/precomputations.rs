@@ -114,7 +114,13 @@ impl CpuCircuitPrecomputations {
         profiles: &[ProofProfile],
     ) -> Result<Self, SelectionError> {
         let configs = match &setup {
-            CanonicalCircuitSetup::L1Wrap(_) => BTreeMap::new(),
+            CanonicalCircuitSetup::L1Wrap(_) => {
+                // The wrap's config is resolved at setup initialization; reject an
+                // unsupported selection here, before any setup work.
+                ProofProfile::L1Wrap
+                    .try_prover_config(circuit_type.get_domain_size_log2() as usize, selection)?;
+                BTreeMap::new()
+            }
             CanonicalCircuitSetup::Riscv(CircuitSetup {
                 compiled_circuit, ..
             }) => profile_configs(circuit_type, compiled_circuit, selection, profiles)?,
@@ -280,12 +286,12 @@ fn profile_configs(
     profiles
         .iter()
         .map(|&profile| {
-            let config = match profile {
-                ProofProfile::Standard => {
-                    circuit_type.try_prover_config_in_mode(compiled, selection)?
-                }
-                l1 => prover_config(circuit_type, l1, selection.security_level),
-            };
+            let config = execution_prover::config::try_prover_config_in_mode(
+                circuit_type,
+                compiled,
+                profile,
+                selection,
+            )?;
             Ok((profile, config))
         })
         .collect()
@@ -375,5 +381,33 @@ mod tests {
             ));
             assert!(prepared.setup_commitments.get().is_none());
         }
+    }
+
+    /// The wrap's precomputations reject ethproofs with the deferred-scope config error.
+    #[test]
+    fn ethproofs_l1_wrap_precomputation_is_rejected() {
+        use prover::definitions::ProverConfigProfile;
+        use prover::gkr::prover_config::example_configs::ConfigSelectionError;
+        let program = vec![0x0001_2083, 0xffdf_f06f];
+        let setup = crate::upstream::l1_wrap_2p21::l1_wrap_setup(&program, &program);
+        let selection = ProvingSelection {
+            soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
+            ..ProvingSelection::default()
+        };
+        let result = CpuCircuitPrecomputations::from_canonical(
+            CircuitType::L1Wrap21,
+            CanonicalCircuitSetup::L1Wrap(setup),
+            selection,
+            &[ProofProfile::L1Wrap],
+        );
+        assert!(matches!(
+            result,
+            Err(SelectionError::ConfigSelection(
+                ConfigSelectionError::UnsupportedSpecialConfigMode {
+                    profile: ProverConfigProfile::EvmProductionPacked,
+                    mode: SoundnessMode::EthproofsSoundnessCalc,
+                }
+            ))
+        ));
     }
 }

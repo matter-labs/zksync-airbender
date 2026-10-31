@@ -252,6 +252,18 @@ impl ProofArtifact {
     /// Validate the caller's acceptance policy before source loading or backend work.
     pub fn validate_expected_mode(&self, expected: SoundnessMode) -> Result<(), String> {
         self.validate_schema()?;
+        // L1 artifacts exist only in PessimisticConjecture: neither an ethproofs request nor
+        // an ethproofs label reaches an L1 verifier or continuation.
+        for mode in [expected, self.soundness_mode] {
+            super::validate_target_selection(
+                self.target,
+                prover::definitions::ProvingSelection {
+                    security_level: self.security_level.to_prover(),
+                    soundness_mode: mode,
+                },
+            )
+            .map_err(|error| error.to_string())?;
+        }
         if self.soundness_mode != expected {
             return Err(format!(
                 "SoundnessModeMismatch: expected {expected:?}, artifact is {:?}",

@@ -27,6 +27,30 @@ impl ProverConfigProfile {
     }
 }
 
+pub fn try_l1_feeder_config_for_2_22(
+    selection: ProvingSelection,
+) -> Result<ProverConfig, ConfigSelectionError> {
+    ProverConfigProfile::L1Feeder.validate_selection(selection)?;
+    let config = l1_feeder_config_for_2_22();
+    assert_eq!(
+        config.security_level, selection.security_level,
+        "the L1 feeder config must match the requested security level"
+    );
+    Ok(config)
+}
+
+pub fn try_l1_feeder_a_config_for_2_23(
+    selection: ProvingSelection,
+) -> Result<ProverConfig, ConfigSelectionError> {
+    ProverConfigProfile::L1Feeder.validate_selection(selection)?;
+    let config = l1_feeder_a_config_for_2_23();
+    assert_eq!(
+        config.security_level, selection.security_level,
+        "the L1 feeder A config must match the requested security level"
+    );
+    Ok(config)
+}
+
 pub fn try_evm_production_packed_prover_config(
     selection: ProvingSelection,
 ) -> Result<ProverConfig, ConfigSelectionError> {
@@ -258,6 +282,15 @@ pub mod l1_wrap_2p21 {
         )
     }
 
+    /// The Proth120 wrap is the EVM-facing packed profile: rejected outside
+    /// `PessimisticConjecture` (deferred product scope).
+    pub fn try_packed_prover_config(
+        selection: ProvingSelection,
+    ) -> Result<ProverConfig, ConfigSelectionError> {
+        ProverConfigProfile::EvmProductionPacked.validate_selection(selection)?;
+        Ok(packed_prover_config(selection.security_level))
+    }
+
     pub fn packed_prover_config(level: SecurityLevel) -> ProverConfig {
         const CAP_SIZE: usize = 8;
         let queries_and_pow = queries_and_pow(level);
@@ -371,6 +404,45 @@ mod selection_tests {
             .validate_selection(selection)
             .is_ok());
         assert!(try_evm_production_packed_prover_config(selection).is_err());
+        // Every L1 special-config constructor rejects ethproofs with the deferred-scope
+        // error of its profile, before building anything.
+        for (profile, result) in [
+            (
+                ProverConfigProfile::L1Feeder,
+                try_l1_feeder_config_for_2_22(selection),
+            ),
+            (
+                ProverConfigProfile::L1Feeder,
+                try_l1_feeder_a_config_for_2_23(selection),
+            ),
+            (
+                ProverConfigProfile::EvmProductionPacked,
+                l1_wrap_2p21::try_packed_prover_config(selection),
+            ),
+        ] {
+            let error = result.unwrap_err();
+            assert_eq!(
+                error,
+                ConfigSelectionError::UnsupportedSpecialConfigMode {
+                    profile,
+                    mode: SoundnessMode::EthproofsSoundnessCalc,
+                }
+            );
+            assert!(error.to_string().contains("ethproofs soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope)"));
+        }
+        for (profile, log2) in [
+            (crate::gkr::prover_config::ProofProfile::L1Feeder, 22),
+            (crate::gkr::prover_config::ProofProfile::L1FeederA, 23),
+            (crate::gkr::prover_config::ProofProfile::L1Wrap, l1_wrap_2p21::TRACE_LEN_LOG2),
+        ] {
+            assert_eq!(
+                profile.try_prover_config(log2, selection),
+                Err(ConfigSelectionError::UnsupportedSpecialConfigMode {
+                    profile: profile.config_profile(),
+                    mode: SoundnessMode::EthproofsSoundnessCalc,
+                })
+            );
+        }
     }
 
     #[test]
@@ -379,6 +451,18 @@ mod selection_tests {
         assert_eq!(
             try_evm_production_packed_prover_config(selection).unwrap(),
             evm_production_packed_prover_config(selection.security_level)
+        );
+        assert_eq!(
+            try_l1_feeder_config_for_2_22(selection).unwrap(),
+            l1_feeder_config_for_2_22()
+        );
+        assert_eq!(
+            try_l1_feeder_a_config_for_2_23(selection).unwrap(),
+            l1_feeder_a_config_for_2_23()
+        );
+        assert_eq!(
+            l1_wrap_2p21::try_packed_prover_config(selection).unwrap(),
+            l1_wrap_2p21::packed_prover_config(selection.security_level)
         );
     }
 }

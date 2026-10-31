@@ -1,4 +1,4 @@
-use crate::upstream::{ProverConfig, SecurityLevel};
+use crate::upstream::{GKRCircuitArtifact, ProverConfig, SecurityLevel, BF};
 use crate::{CommitmentMode, ExecutionKind, ProofProfile};
 use execution_prover_model::circuit_type::CircuitType;
 pub use prover::definitions::{ProvingSelection, SoundnessMode};
@@ -45,7 +45,22 @@ impl From<ConfigSelectionError> for SelectionError {
     }
 }
 
-/// Commitments and proofs use the circuit's own config unless an L1 profile overrides it.
+/// Commitments and proofs use the circuit's own config unless an L1 profile overrides it:
+/// `Standard` resolves the selected mode from the compiled columns, the L1 profiles use their
+/// special configs.
+pub fn try_prover_config_in_mode(
+    circuit_type: CircuitType,
+    compiled: &GKRCircuitArtifact<BF>,
+    profile: ProofProfile,
+    selection: ProvingSelection,
+) -> Result<ProverConfig, ConfigSelectionError> {
+    match profile {
+        ProofProfile::Standard => circuit_type.try_prover_config_in_mode(compiled, selection),
+        l1 => l1.try_prover_config(circuit_type.get_domain_size_log2() as usize, selection),
+    }
+}
+
+/// Pessimistic compatibility wrapper of [`try_prover_config_in_mode`].
 pub fn prover_config(
     circuit_type: CircuitType,
     profile: ProofProfile,
@@ -57,8 +72,30 @@ pub fn prover_config(
     }
 }
 
-/// Unified executions take their mode from the selected circuit configuration.
-/// Per-family unrolled executions only support separate commitments.
+/// Unified executions take their mode from the selected circuit configuration; `compiled`
+/// returns the unified circuit's compiled columns. Per-family unrolled executions only
+/// support separate commitments.
+pub fn try_execution_commitment_mode<'a>(
+    kind: ExecutionKind,
+    profile: ProofProfile,
+    selection: ProvingSelection,
+    compiled: impl FnOnce(CircuitType) -> &'a GKRCircuitArtifact<BF>,
+) -> Result<CommitmentMode, ConfigSelectionError> {
+    match kind.unified_circuit() {
+        Some(circuit) => {
+            Ok(
+                try_prover_config_in_mode(circuit, compiled(circuit), profile, selection)?
+                    .commitment_mode,
+            )
+        }
+        None => {
+            assert_eq!(profile, ProofProfile::Standard);
+            Ok(CommitmentMode::SeparateMemoryAndWitness)
+        }
+    }
+}
+
+/// Pessimistic compatibility wrapper of [`try_execution_commitment_mode`].
 pub fn execution_commitment_mode(
     kind: ExecutionKind,
     profile: ProofProfile,
