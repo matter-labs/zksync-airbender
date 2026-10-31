@@ -3138,3 +3138,28 @@ The legacy execution interfaces, production OS binary comparison and verified
 checker rollout remain open. No native circuit, Rust source or imported value
 changed. Full frontend validation, environment audit, baseline refresh,
 transitive replay and Linux qualification did not run.
+
+### Program parameter migration: Review compatibility cleanup
+
+The three machine targets remain the canonical Review API. Earlier captured
+program, image and execution declarations now live in the compatibility proof
+layer. The original paths forward to that layer. All ten moved declaration
+bodies have identical hashes. Each public name and statement stays the same.
+No Review statement refers to the retained program or imported-image premise.
+
+Public split schedule and complete-call reference definitions now live in the
+helper layer. This removes five high-level trace imports from circuit and
+helper modules. Their definitions and imported values stay the same. The source
+layer check passes with the same three established assembly exceptions.
+
+The focused source group passed for 55 modules in 91 seconds. It refreshed stale
+legacy decoder objects and reused unchanged finite-table checks. Peak physical
+memory was 594 MiB. All 28 moved public declarations passed direct axiom checks
+with only the three allowed axioms. All 17,596 explicit roots remain unchanged.
+The guide check passed for 1,324 links. Both successful guards cleaned their
+owned children. Earlier cache-repair failures also cleaned their owned children.
+
+The public native adapter still imports legacy decoder proofs through shared
+transport and ROM modules. That dependency cleanup, production OS differential
+coverage and checker rollout remain open. Full frontend validation, environment
+audit, baseline refresh, transitive replay and Linux qualification did not run.

@@ -26,9 +26,10 @@ Claims are conditional on explicit interfaces. Captured compiler preservation
 and physical-row logical execution retain exact lookup/state/RAM matching and
 public boundaries. Native field/mask/helper identities derive source obligations;
 compressed/sampled matching and physical multiplicity binding remain external.
-The retained compiler decoder tables describe four entries. The source/trace
-layer is program-parametric within each supported registry, but no combined
-native-to-execution theorem covers a committed verifier program.
+The three machine targets quantify over public text and initial state.
+Native program adapters cover all 14 CPU profiles in both cache modes.
+The earlier captured-program wrappers retain their original contracts in the
+compatibility proof layer. Production OS differential coverage remains open.
 [Coverage and validation evidence](VERIFICATION_STATUS.md) states the precise
 scope, completed checks, measurements and pending gates. Cryptographic argument
 soundness and universal Rust compiler correctness remain outside the model.

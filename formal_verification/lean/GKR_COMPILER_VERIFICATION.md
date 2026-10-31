@@ -17,16 +17,15 @@ Those are private-witness assumptions, not native enforcement or public-input
 validation. Production circuit changes made only to make proofs succeed are outside this effort.
 The [supported-use trace entrypoint](Airbender/Review/Trace/UnifiedReduced/SupportedUseExecution.lean)
 instead derives the bigint/hash worker contracts from public program safety and
-exact native prefixes for bigint, G and extended round. This does not enlarge the
-captured compiler/program registry or establish split-Keccak coverage.
+exact native prefixes for bigint, G and extended round.
 
-The Keccak captures and execution lemmas cover `keccak_special5`, whose complete
-protocol has 649 calls. The provided Keccak wrapper instead uses 361 calls to
-three split circuits with no current Lean coverage; the inspected unified setup
-also omits their CSRs. Those captures therefore do not establish compiler or
-execution coverage for the blessed Keccak path. Split modeling and integration
-are deferred; [F12](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage)
-records the agreed scope.
+The three [machine targets](Airbender/Review/Compiler/MachineTargets.lean) are
+proved. The full unsigned target includes the blessed 361-call split Keccak
+sequence. Its [proof](Airbender/Proofs/FullUnsigned/Target.lean) uses the three
+rebased split layouts and their derived borrow equations. It excludes
+`keccak_special5`. Unified and reduced use their own supported caller registries.
+The [earlier coverage finding](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage)
+records the historical gap and the current validation boundary.
 
 For 22 captured cached/uncached compilations, base-field arithmetic preservation
 is proved. Wiring/cache checks, 60 lookup-output reductions and 48 RAM-product
@@ -44,13 +43,16 @@ boundaries/seed remain explicit. Older framed entrypoints remain compatible.
 The [logical lookup argument](Airbender/Review/Compiler/LookupArgument.lean)
 uses natural multiplicities. The remaining final compressed/sampled
 sum-to-exact-matching step is not proved, and those multiplicities are not tied to
-physical field counters. [Supplied-program boundaries](Airbender/Review/Compiler/Program.lean)
-require structural decoder-table equality with the retained capture and the
-existing public execution inputs. The equality retains the same four-entry per-family tables even in the
-supplied-program wrapper. It does not admit an arbitrary different program or
-setup; fresh interpretation evidence is required. Explicit Airbender-platform wrappers select that device
-configuration; generic wrappers remain polymorphic. Generic source/trace execution
-already supports arbitrary programs under its stated contracts. See the
+physical field counters. The [machine targets](Airbender/Review/Compiler/MachineTargets.lean)
+take public text and a public program setup. Native adapters cover all 14 CPU
+profiles in both cache modes. They derive source constraints and public decoder
+membership from physical row certificates and exact matching.
+The [native acceptance adapter](Airbender/Proofs/GKRProtocol/NativeMachineAcceptance.lean)
+closes the CPU and decoder target premises.
+Earlier [captured-program boundaries](Airbender/Proofs/Compatibility/Compiler/Program.lean)
+retain their structural decoder equality and image contracts for compatibility.
+Explicit Airbender-platform wrappers retain their device configuration.
+Generic wrappers remain polymorphic in the platform. See the
 [execution premise table](Airbender/Review/Compiler/README.md#execution-premises).
 
 [Verification status](VERIFICATION_STATUS.md#validation-evidence) records completed
@@ -60,7 +62,7 @@ imported constructor-type dependencies and do not replace the environment audit.
 
 ## Arithmetic extension and logical arguments
 
-The [arithmetic claims](Airbender/Review/Compiler/Theorems.lean) distinguish
+The [arithmetic claims](Airbender/Proofs/Compatibility/Compiler/Theorems.lean) distinguish
 backward preservation from witness extension. Preservation derives every original
 source arithmetic assertion from the whole captured native base-field relation.
 Extension constructs an assignment satisfying only a certificate-selected native

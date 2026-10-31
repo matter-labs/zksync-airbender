@@ -1,5 +1,4 @@
 import Airbender.Review.Helpers.UnifiedReduced.RetirementProfile
-import Airbender.Review.Trace.UnifiedReduced.StreamCalls
 
 namespace Airbender.UnifiedReduced.Caller.Stream
 open Trace Reference.RiscV.Sail

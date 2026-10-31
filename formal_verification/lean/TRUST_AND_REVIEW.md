@@ -44,10 +44,14 @@ under the explicit F11 hash witness contracts and without an occurrence plan;
 [complete spans](Airbender/Review/Trace/UnifiedReduced/PathSpanExecution.lean)
 derive the full native worker partition/count and algorithms in one history
 under their per-trace occurrence plan and complete protocol coverage.
-The combined unified relation includes nondeterminism reads, modular MOPs and
-delegation calls. Its native soundness proof remains open. The compiler
-execution bridge still uses the retained four-entry decoder tables. No proved
-whole-execution theorem covers a committed production verifier program yet.
+The three [machine targets](Airbender/Review/Compiler/MachineTargets.lean)
+are proved. The unified relation includes external reads, modular MOPs and
+complete delegation calls. The full unsigned relation includes blessed split
+Keccak. All 14 CPU profiles have native public-program constraint and decoder
+adapters. The [native acceptance adapter](Airbender/Proofs/GKRProtocol/NativeMachineAcceptance.lean)
+closes the CPU and decoder premises. The earlier captured-program interfaces
+remain in the compatibility proof layer with their original contracts.
+Production OS differential coverage and checker rollout remain open.
 Upstream #531 merged as `06c15f275` and is in this base. The unified base
 entrypoint now returns the verified registers. New-base runtime validation
 remains pending.

@@ -1,5 +1,5 @@
 import Airbender.Review.Helpers.Decoder.Program
-import Airbender.Review.Trace.Workers.Keccak.SplitSchedule
+import Airbender.Review.Helpers.Keccak.SplitSchedule
 
 namespace Airbender.Keccak.Split.Caller
 open Airbender.Trace Reference.RiscV.Sail

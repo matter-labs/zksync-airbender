@@ -1,5 +1,5 @@
 import Airbender.Review.Helpers.Decoder.ModularExternal
-import Airbender.Review.Trace.Workers.Keccak.SplitSchedule
+import Airbender.Review.Helpers.Keccak.SplitSchedule
 
 namespace Airbender.Trace.NativeDecoder.ProgramRows
 open Reference.RiscV.Sail Reference.Sail Arithmetic

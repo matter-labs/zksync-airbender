@@ -1087,6 +1087,16 @@ establish full review/environment/replay assurance; see the current
 
 ## F12 — Blessed Keccak path is outside current proof coverage
 
+**Current status — 31 October 2026.** The full unsigned target now includes the
+blessed split path. Its [kernel proof](Airbender/Proofs/FullUnsigned/Target.lean)
+composes the three native worker layouts, exact shared RAM matching, public
+supported-use induction and initialization. The split source bindings use the
+rebased equations. Special5 remains excluded from the three machine targets.
+Full frontend validation and transitive replay remain pending. The text below
+records the earlier gap and does not describe current target coverage.
+
+### Historical gap
+
 **Status — 28 October 2026.** Required, open coverage gap for the unrolled full
 unsigned target. The conditional `keccak_special5` results remain, but they do
 not establish execution of the provided Keccak wrapper.
@@ -1165,7 +1175,7 @@ lower-level witness-conditional APIs:
 | Logical matching | [Accepted](Airbender/Review/Helpers/Context/Model.lean), worker matching and request matching are exact permutations of full tokens. | This is the intended premise for the noncryptographic memory-history result. Product/compression equality must not be silently substituted for it; actual global participation and token construction still need their implementation binding. |
 | Artifact/reference fidelity | [Import/generation boundary](TRUST_AND_REVIEW.md#import-and-generation-fidelity): richer no-cache import, original Sail generation and project-reference applicability. Base-field arithmetic preservation is proved for 22 captured cached/uncached instances. Physical-row APIs derive lookup/helper validity from exact emitted-tuple matching; natural multiplicities are not tied to physical counters. Supplied-program wrappers require retained decoder-table compatibility. [Validation evidence](VERIFICATION_STATUS.md#validation-evidence) records source/runtime checks and the independent pending assurance gates. | Captured-instance results do not prove universal Rust compiler correctness or cryptographic argument soundness; use the [compiler premise table](Airbender/Review/Compiler/README.md#execution-premises). |
 | Delegation-use domain | [F11](#f11--hash-witness-contracts-remain-unenforced) records the lower-level HashCommands fields. The public supported-use contract instead states wrapper shapes, entry safety and valid reference-prefix controls/pointers, including the blessed round masks' zero low limb. | Exact prefix matching derives the bigint/hash conditions for the new supported-use entrypoint. G separation remains explicit; arbitrary native enforcement and blessed split Keccak coverage are not claimed. |
-| Keccak wrapper coverage | [F12](#f12--blessed-keccak-path-is-outside-current-proof-coverage): proofs cover 649-call special5; the provided wrapper uses the unmodeled 361-call split protocol, whose CSRs are absent from the inspected unified setup. | Retain conditional special5 results; blessed Keccak execution and its setup integration are deferred. |
+| Keccak wrapper coverage | [Earlier gap](#f12--blessed-keccak-path-is-outside-current-proof-coverage). The full unsigned target now covers the blessed 361-call split protocol. | Full frontend validation and transitive replay remain pending. Special5 stays excluded from the targets. |
 | Worker clock ranges | [MemoryInputs](Airbender/Review/Helpers/Delegation/Memory.lean) retains clockRoom and invocationHigh: offset-two writes fit in the low limb and the invocation high limb is bounded. | Worker-only memory proofs have these range premises. Integrated caller/accounting claims derive them; no actual read value or pointer bound is supplied. |
 | Fields and coefficients | The public claims retain prime-field minima and serialized inverse equalities; bigint's integrated operation proof is BabyBear-specific. | These are arithmetic compatibility conditions, not proof defects. A generic field theorem does not establish the actual Proth120 artifact import. |
 
