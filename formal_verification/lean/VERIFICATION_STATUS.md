@@ -2377,3 +2377,24 @@ open. FullUnsigned is not yet proved. Design items 2 and 3 follow the targets.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned theta/rho complete low fragments and zero overflow
+
+The last low-fragment case is closed. One exact 32,768-row source cycle
+covers both halves of the shift-one region. Sixteen bounded kernel checks
+prove that cycle. All eight low source fragments now equal their original
+native values. The shift-zero high fragment is also closed. All seven new
+roots passed direct axiom checks. They use only the three allowed axioms.
+The inventory has 14,371 roots. It retains all 14,364 previous roots.
+
+The focused group passed in 24 seconds. It used 948 MiB of physical memory.
+The guard cleaned all owned children. No limit increased. The native artifacts
+and the packed checker pilot stay intact.
+
+The other seven high-fragment cases remain open. Parity real-row membership
+and the original source-string bindings also remain open. FullUnsigned is
+not yet proved. Design items 2 and 3 follow the targets.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
