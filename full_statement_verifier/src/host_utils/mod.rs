@@ -16,7 +16,6 @@ pub use fsv_execution::{
 
 use crate::program_proof::ProgramProof;
 use crate::recursion_chain::{self, RecursionChain};
-use riscv_transpiler::elf::{read_elf_from_path_with_rom, ElfImage, ElfReadError, ElfReadMode};
 use setups::Setups;
 use std::path::Path;
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
@@ -134,7 +133,6 @@ pub fn try_native_verify_unrolled_in_mode(
         result.map_err(|error| format!("{error:?}"))
     })
 }
-
 
 /// Native verification of an L1 feeder stream (the zero-delegation
 /// feeder statement) at a checked boundary: a verifier error, a structural
@@ -254,76 +252,6 @@ pub fn try_native_verify_unified_in_mode(
 #[must_use]
 pub fn load_program(elf_path: &Path) -> (Vec<u32>, Vec<u32>) {
     riscv_transpiler::elf::load_legacy_program(elf_path)
-}
-
-/// Read the selected FSV ELF with its circuit-owned ROM geometry.
-pub fn read_fsv_image(
-    dir: impl AsRef<Path>,
-    program: FsvProgram,
-    blake: BlakeMode,
-) -> Result<ElfImage, ElfReadError> {
-    let dir = dir.as_ref();
-    let stem = program.file_stem(blake);
-    println!("Trying to load `{}` verifier", stem);
-    let elf_path = dir.join(format!("{stem}.elf"));
-    let exists = match elf_path.try_exists() {
-        Ok(res) => res,
-        Err(err) => {
-            if let Some(err) = err.get_ref() {
-                println!("Failed to probe path `{}`: {}", elf_path.display(), err);
-            } else {
-                println!("Failed to probe path `{}`", elf_path.display());
-            }
-            false
-        }
-    };
-    let selected = if exists {
-        elf_path
-    } else {
-        println!(
-            "Verifier binary `{stem}` is absent at {}, using fallback naming mode",
-            elf_path.display()
-        );
-        assert!(blake == BlakeMode::Compression,
-            "missing variant binary {} — run `cd tools/gkr_verifier && ./dump_recursive_verifiers.sh`", elf_path.display());
-        dir.join(format!("{}.elf", program.base_name()))
-    };
-    read_elf_from_path_with_rom(&selected, ElfReadMode::Legacy, program.rom())
-}
-
-/// C1's geometry-aware loader of an L1 guest (feeder A or wrap): the unpadded ROM image and
-/// text. These guests are not registry rows yet, so the bytes are unpinned; the standard
-/// guests load through [`load_fsv_exact`].
-#[must_use]
-pub fn load_l1_fsv_program(
-    dir: impl AsRef<Path>,
-    program: FsvProgram,
-    blake: BlakeMode,
-) -> (Vec<u32>, Vec<u32>) {
-    assert!(
-        matches!(
-            program,
-            FsvProgram::UnifiedRecursionLayerL1FeederA
-                | FsvProgram::UnifiedRecursionLayerL1FeederWrap
-        ),
-        "{program:?} is a registry guest; load it with load_fsv_exact"
-    );
-    let image = read_fsv_image(dir, program, blake)
-        .unwrap_or_else(|error| panic!("failed to load FSV {}: {error}", program.file_stem(blake)));
-    let bin = image
-        .objcopy_binary_words()
-        .expect("legacy FSV image has a ROM image")
-        .to_vec();
-    let text = image.text;
-    assert!(
-        bin.len() <= program.rom().word_size(),
-        "FSV image exceeds selected ROM"
-    );
-    assert!(
-        text.len() <= program.rom().word_size(),
-        "FSV text exceeds selected ROM"
-    );
-    (bin, text)
 }
 
 fn blake_mode_from_env(vars: &[&str], program: FsvProgram, default: BlakeMode) -> BlakeMode {

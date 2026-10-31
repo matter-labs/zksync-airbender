@@ -63,12 +63,12 @@ struct ProgramIdentity {
     text_keccak256: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+/// A guest's identity is its registry `fsv-rom-digest-v1`, the one `load_fsv_exact` checks.
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct FsvIdentity {
     role: String,
     stem: String,
-    bin_keccak256: String,
-    text_keccak256: String,
+    fsv_rom_digest_v1: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -144,58 +144,62 @@ fn file_identity(dir: &Path, name: &str) -> Result<FileIdentity, String> {
 }
 
 fn fsv_identities(blake: PipelineBlakeModes) -> Result<Vec<FsvIdentity>, String> {
+    let standard = |program, mode| {
+        FsvDescriptor::new(
+            ::prover::definitions::SecurityLevel::Sec100,
+            SoundnessMode::PessimisticConjecture,
+            program,
+            mode,
+        )
+    };
     [
         (
             "unrolled_base",
-            FsvProgram::UnrolledBaseLayer,
-            blake.unrolled,
+            standard(FsvProgram::UnrolledBaseLayer, blake.unrolled),
         ),
         (
             "unrolled_recursion",
-            FsvProgram::UnrolledRecursionLayer,
-            blake.unrolled,
+            standard(FsvProgram::UnrolledRecursionLayer, blake.unrolled),
         ),
-        ("bridge_base", FsvProgram::UnrolledBaseLayer, blake.bridge),
+        (
+            "bridge_base",
+            standard(FsvProgram::UnrolledBaseLayer, blake.bridge),
+        ),
         (
             "bridge_recursion",
-            FsvProgram::UnrolledRecursionLayer,
-            blake.bridge,
+            standard(FsvProgram::UnrolledRecursionLayer, blake.bridge),
         ),
         (
             "unified",
-            FsvProgram::UnifiedRecursionLayer,
-            blake.final_layer,
+            standard(FsvProgram::UnifiedRecursionLayer, blake.final_layer),
         ),
         (
             "feeder_first",
-            FsvProgram::UnifiedRecursionLayer,
-            BlakeMode::BlakeSpecialOpcodes,
+            standard(
+                FsvProgram::UnifiedRecursionLayer,
+                BlakeMode::BlakeSpecialOpcodes,
+            ),
         ),
-        (
-            "feeder_a",
-            FsvProgram::UnifiedRecursionLayerL1FeederA,
-            BlakeMode::BlakeSpecialOpcodes,
-        ),
+        ("feeder_a", FsvDescriptor::l1_feeder(FsvProfile::L1FeederA)),
         (
             "feeder_wrap",
-            FsvProgram::UnifiedRecursionLayerL1FeederWrap,
-            BlakeMode::BlakeSpecialOpcodes,
+            FsvDescriptor::l1_feeder(FsvProfile::L1FeederWrap),
         ),
     ]
     .into_iter()
-    .map(|(role, program, mode)| {
-        let stem = program.file_stem(mode);
-        let path = fsv_dir().join(format!("{stem}.elf"));
-        let image = full_statement_verifier::host_utils::read_fsv_image(fsv_dir(), program, mode)
-            .map_err(|error| format!("FSV identity {}: {error}", path.display()))?;
-        let bin = image
-            .objcopy_binary()
-            .expect("legacy ELF mode has a ROM image");
+    .map(|(role, descriptor)| {
+        let guest = load_fsv_exact(fsv_dir(), &descriptor)
+            .map_err(|error| format!("FSV identity {role}: {error}"))?;
+        let stem = descriptor
+            .registry_entry()
+            .map_err(|error| error.to_string())?
+            .relative_path
+            .trim_end_matches(".elf")
+            .to_owned();
         Ok(FsvIdentity {
             role: role.into(),
-            bin_keccak256: hex_digest(&bin),
-            text_keccak256: hex_digest(&image.text_bytes()),
             stem,
+            fsv_rom_digest_v1: guest.digest().to_string(),
         })
     })
     .collect()
@@ -484,9 +488,15 @@ fn compare_files(reference: &Path, sink: &Path, inventory: &Inventory) -> Result
 
 /// `dir`'s manifest, with every listed file's length and hash checked
 /// against `dir`'s own copy.
-fn validated_manifest(dir: &Path) -> Result<ProofManifest, String> {
-    let manifest: ProofManifest = read_typed(&dir.join("manifest.json"))?;
-    for file in &manifest.files {
+/// The manifest's file inventory, checked against the files. It reads a manifest of any FSV
+/// identity format, so a regeneration can replace an older one.
+fn validated_inventory(dir: &Path) -> Result<Inventory, String> {
+    #[derive(Deserialize)]
+    struct Files {
+        files: Inventory,
+    }
+    let Files { files } = read_typed(&dir.join("manifest.json"))?;
+    for file in &files {
         let actual = file_identity(dir, &file.name)?;
         if actual.bytes != file.bytes || actual.keccak256 != file.keccak256 {
             return Err(format!(
@@ -495,6 +505,22 @@ fn validated_manifest(dir: &Path) -> Result<ProofManifest, String> {
                 file.name
             ));
         }
+    }
+    Ok(files)
+}
+
+/// The full manifest: its files are intact and its FSV identities are the registry's.
+fn validated_manifest(dir: &Path) -> Result<ProofManifest, String> {
+    validated_inventory(dir)?;
+    let manifest: ProofManifest = read_typed(&dir.join("manifest.json"))?;
+    let registry = fsv_identities(PipelineBlakeModes::from_env())?;
+    if manifest.fsv != registry {
+        return Err(format!(
+            "L1 reference manifest of {} records FSV identities {:?}; the registry has {:?}",
+            dir.display(),
+            manifest.fsv,
+            registry
+        ));
     }
     Ok(manifest)
 }
@@ -515,9 +541,8 @@ fn generate_l1_reference_seed() {
     let mut managed = BTreeSet::new();
     if reference.join("manifest.json").exists() {
         managed.extend(
-            validated_manifest(&reference)
+            validated_inventory(&reference)
                 .expect("previous L1 reference manifest")
-                .files
                 .into_iter()
                 .map(|file| file.name),
         );
@@ -645,11 +670,12 @@ fn export_l1_wrap_setup_frontier() {
     let setup_commitment = &bundle.proof.whir_proof.setup_commitment;
 
     let circuit_type = CircuitType::L1Wrap21;
-    let (mut binary, mut text) = full_statement_verifier::host_utils::load_l1_fsv_program(
+    let (mut binary, mut text) = load_fsv_exact(
         fsv_dir(),
-        FsvProgram::UnifiedRecursionLayerL1FeederWrap,
-        BlakeMode::BlakeSpecialOpcodes,
-    );
+        &FsvDescriptor::l1_feeder(FsvProfile::L1FeederWrap),
+    )
+    .expect("pinned L1 wrap guest")
+    .into_words();
     setups::pad_bytecode_for_proving_with_rom(&mut binary, circuit_type.rom());
     setups::pad_bytecode_for_proving_with_rom(&mut text, circuit_type.rom());
     let setup = unified_reduced_machine_proth120::l1_wrap_2p21::l1_wrap_setup(&binary, &text);
@@ -809,11 +835,12 @@ fn cpu_l1_feeder_profiles_and_capacity_margins() {
         BlakeMode::BlakeSpecialOpcodes,
     );
     let output = FeederProfile::C.native_verify(stream.clone()).unwrap();
-    let program = load_l1_fsv_program(
+    let program = load_fsv_exact(
         fsv_dir(),
-        FsvProgram::UnifiedRecursionLayerL1FeederWrap,
-        BlakeMode::BlakeSpecialOpcodes,
-    );
+        &FsvDescriptor::l1_feeder(FsvProfile::L1FeederWrap),
+    )
+    .expect("pinned L1 wrap guest")
+    .into_words();
     let report = ProductionFeederVerifier
         .wrap_run(&program, stream.clone())
         .unwrap();

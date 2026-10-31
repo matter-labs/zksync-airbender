@@ -433,7 +433,10 @@ mod selection_tests {
         for (profile, log2) in [
             (crate::gkr::prover_config::ProofProfile::L1Feeder, 22),
             (crate::gkr::prover_config::ProofProfile::L1FeederA, 23),
-            (crate::gkr::prover_config::ProofProfile::L1Wrap, l1_wrap_2p21::TRACE_LEN_LOG2),
+            (
+                crate::gkr::prover_config::ProofProfile::L1Wrap,
+                l1_wrap_2p21::TRACE_LEN_LOG2,
+            ),
         ] {
             assert_eq!(
                 profile.try_prover_config(log2, selection),

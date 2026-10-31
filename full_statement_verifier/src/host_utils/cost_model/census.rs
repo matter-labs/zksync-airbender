@@ -334,7 +334,7 @@ mod tests {
             ..calibrated
         };
         let feeder = FsvDescriptor {
-            profile: FsvProfile::L1Feeder,
+            profile: FsvProfile::L1FeederA,
             ..calibrated
         };
         for descriptor in [ethproofs, feeder] {

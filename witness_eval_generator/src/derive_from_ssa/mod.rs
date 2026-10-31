@@ -10,7 +10,7 @@ use cs::witness_placer::graph_description::{
     RawExpression,
 };
 use proc_macro2::*;
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 
 mod boolean;
 mod field;

@@ -107,7 +107,9 @@ if [ "$VARIANT" != "caches" ]; then
 fi
 
 # Regenerate the manifest from every registered guest on disk, with the workspace toolchain
-# (the host loader is part of the workspace, not of this guest crate).
+# (the host loader is part of the workspace, not of this guest crate). The L1 wrap guest
+# (FsvProfile::L1FeederWrap) is a registry row built by ../gkr_verifier_l1_wrap/dump_bin.sh:
+# run that first, or this pins the previous wrap ELF.
 echo "==> regenerating full_statement_verifiers/fsv_manifest.txt"
 cd ../..
 cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers --lib \

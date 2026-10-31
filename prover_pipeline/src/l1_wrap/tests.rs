@@ -123,6 +123,6 @@ fn wrap_circuit_matches_the_guest_geometry() {
     assert_eq!(circuit.get_domain_size(), L1_WRAP_PROGRAM_CYCLE_LIMIT);
     assert_eq!(
         circuit.rom(),
-        FsvProgram::UnifiedRecursionLayerL1FeederWrap.rom()
+        verifier_common::fsv_binaries::FsvProfile::L1FeederWrap.rom()
     );
 }

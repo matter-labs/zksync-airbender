@@ -227,34 +227,39 @@ fn registration_matches_remaining_stages_and_reuses_batch_setups() {
         let mut binaries = vec![(user_key, ProofProfile::Standard, Some(100))];
         use BlakeMode::{BlakeSpecialOpcodes as Special, Compression};
         use ExecutionKind::{Unified, Unified22, Unrolled};
-        use FsvProgram::{
-            UnifiedRecursionLayer, UnifiedRecursionLayerL1FeederA,
-            UnifiedRecursionLayerL1FeederWrap, UnrolledBaseLayer, UnrolledRecursionLayer,
-        };
+        use FsvProfile::{L1FeederA as FeederA, L1FeederWrap as FeederWrap, Standard as Std};
+        use FsvProgram::{UnifiedRecursionLayer, UnrolledBaseLayer, UnrolledRecursionLayer};
         use ProofProfile::{L1Feeder as C, L1FeederA as A, L1Wrap, Standard};
-        for (fsv, mode, kind, profile) in [
-            (UnrolledBaseLayer, Compression, Unrolled, Standard),
-            (UnrolledRecursionLayer, Compression, Unrolled, Standard),
-            (UnrolledBaseLayer, Compression, Unified, Standard),
-            (UnrolledRecursionLayer, Compression, Unified, Standard),
-            (UnifiedRecursionLayer, final_mode, Unified, Standard),
-            (UnifiedRecursionLayer, Special, Unified22, C),
-            (UnifiedRecursionLayerL1FeederA, Special, Unified22, C),
-            (UnifiedRecursionLayer, Special, Unified, A),
-            (UnifiedRecursionLayerL1FeederA, Special, Unified, A),
+        for (fsv, fsv_profile, mode, kind, profile) in [
+            (UnrolledBaseLayer, Std, Compression, Unrolled, Standard),
+            (UnrolledRecursionLayer, Std, Compression, Unrolled, Standard),
+            (UnrolledBaseLayer, Std, Compression, Unified, Standard),
+            (UnrolledRecursionLayer, Std, Compression, Unified, Standard),
+            (UnifiedRecursionLayer, Std, final_mode, Unified, Standard),
+            (UnifiedRecursionLayer, Std, Special, Unified22, C),
+            (UnifiedRecursionLayer, FeederA, Special, Unified22, C),
+            (UnifiedRecursionLayer, Std, Special, Unified, A),
+            (UnifiedRecursionLayer, FeederA, Special, Unified, A),
             (
-                UnifiedRecursionLayerL1FeederWrap,
+                UnifiedRecursionLayer,
+                FeederWrap,
                 Special,
                 L1_WRAP_KIND,
                 L1Wrap,
             ),
         ] {
-            let (bin, text) = match fsv {
-                UnifiedRecursionLayerL1FeederA | UnifiedRecursionLayerL1FeederWrap => {
-                    load_l1_fsv_program(fsv_dir(), fsv, mode)
-                }
-                _ => full_statement_verifier::host_utils::load_fsv_program(fsv_dir(), fsv, mode),
+            let descriptor = FsvDescriptor {
+                profile: fsv_profile,
+                ..FsvDescriptor::new(
+                    prover::definitions::SecurityLevel::Sec100,
+                    SoundnessMode::PessimisticConjecture,
+                    fsv,
+                    mode,
+                )
             };
+            let (bin, text) = load_fsv_exact(fsv_dir(), &descriptor)
+                .unwrap_or_else(|error| panic!("{error}"))
+                .into_words();
             binaries.push((
                 handle_key(kind, MachineType::Reduced, &bin, &text),
                 profile,
@@ -372,11 +377,12 @@ fn expected_chain_ends_with_c_after_the_a_prefix() {
             BlakeMode::Compression.tag(),
             &mut |program| {
                 let entry = match program {
-                    ChainProgram::Fsv(program, _, SetupMachine::L1Feeder(profile)) => {
-                        let role = if program == FsvProgram::UnifiedRecursionLayer {
+                    ChainProgram::Fsv(program, fsv_profile, _, SetupMachine::L1Feeder(profile)) => {
+                        assert_eq!(program, FsvProgram::UnifiedRecursionLayer);
+                        let role = if fsv_profile == FsvProfile::Standard {
                             10
                         } else {
-                            assert_eq!(program, FsvProgram::UnifiedRecursionLayerL1FeederA);
+                            assert_eq!(fsv_profile, FsvProfile::L1FeederA);
                             20
                         };
                         [role + if profile == FeederProfile::A { 1 } else { 2 }; 8]
