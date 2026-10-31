@@ -1,3 +1,5 @@
+import Tests.PackedTableCertificates
+import Airbender.Proofs.Tables.ShiftAndPackedCertificate
 import Airbender.Proofs.GKRProtocol.NativeMachineAcceptance
 import Airbender.Proofs.GKRProtocol.ProgramUnifiedConstraints
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.UnifiedCached
@@ -19217,3 +19219,100 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.decode_word_sound
 
 #print axioms Airbender.Trace.NativeDecoder.ProgramRows.Proofs.program_code
+
+#print axioms Airbender.Setup.packedByte
+#print axioms Airbender.Setup.packedArray
+#print axioms Airbender.Setup.PackedBlock
+#print axioms Airbender.Setup.PackedBlock.decode
+#print axioms Airbender.Setup.PackedBlock.length
+#print axioms Airbender.Setup.PackedRunInput
+#print axioms Airbender.Setup.PackedBlock.input
+#print axioms Airbender.Setup.Proofs.PackedColumn.digit
+#print axioms Airbender.Setup.Proofs.PackedColumn.bytePower
+#print axioms Airbender.Setup.Proofs.PackedColumn.bytePower_eq
+#print axioms Airbender.Setup.Proofs.PackedColumn.segment_digit
+#print axioms Airbender.Setup.Proofs.PackedRadix.extractDigitBase
+#print axioms Airbender.Setup.Proofs.PackedRun.ones
+#print axioms Airbender.Setup.Proofs.PackedRun.positions
+#print axioms Airbender.Setup.Proofs.PackedRun.linear_digits
+#print axioms Airbender.Setup.Proofs.PackedRun.translated_digits
+#print axioms Airbender.Setup.Proofs.PackedRun.Run
+#print axioms Airbender.Setup.Proofs.PackedRun.Run.length
+#print axioms Airbender.Setup.Proofs.PackedRun.Run.value
+#print axioms Airbender.Setup.Proofs.PackedRun.Run.valid
+#print axioms Airbender.Setup.Proofs.PackedRun.Run.row
+#print axioms Airbender.Setup.Proofs.PackedRun.Run.packed
+#print axioms Airbender.Setup.Proofs.PackedRun.row_linear
+#print axioms Airbender.Setup.Proofs.PackedRun.packed_rows
+#print axioms Airbender.Setup.Proofs.PackedRun.row_values_bounded
+#print axioms Airbender.Setup.Proofs.PackedRun.packed_byte
+#print axioms Airbender.Setup.Proofs.PackedRun.ones_succ
+#print axioms Airbender.Setup.Proofs.PackedRun.positions_succ
+#print axioms Airbender.Setup.Proofs.PackedRun.geometric_identity
+#print axioms Airbender.Setup.Proofs.PackedRun.moment_identity
+#print axioms Airbender.Setup.Proofs.PackedRun.geometric_closed
+#print axioms Airbender.Setup.Proofs.PackedRun.moment_closed
+#print axioms Airbender.Setup.Proofs.PackedRun.Run.packedArithmetic
+#print axioms Airbender.Setup.Proofs.PackedRun.packedArithmetic_eq
+#print axioms Airbender.Setup.Proofs.PackedRun.packedArithmetic_byte
+#print axioms Airbender.Setup.Proofs.PackedRunColumn.ofBlock
+#print axioms Airbender.Setup.Proofs.PackedRunColumn.ofBlock_sound
+#print axioms Airbender.Setup.Proofs.PackedPayload.packedByte_eq
+#print axioms Airbender.Setup.Proofs.PackedPayload.packedArray_get
+#print axioms Airbender.Setup.Proofs.PackedPayload.payload_roundtrip
+#print axioms Airbender.Setup.PackedRunInput.length
+#print axioms Airbender.Setup.PackedRunInput.asRun
+#print axioms Airbender.Setup.PackedRunInput.valid
+#print axioms Airbender.Setup.PackedRunInput.packed
+#print axioms Airbender.Setup.Proofs.PackedPayload.run_length
+#print axioms Airbender.Setup.Proofs.PackedPayload.valid_sound
+#print axioms Airbender.Setup.Proofs.PackedPayload.packed_sound
+#print axioms Airbender.Setup.Proofs.PackedWindows.window
+#print axioms Airbender.Setup.Proofs.PackedWindows.span
+#print axioms Airbender.Setup.Proofs.PackedWindows.legal
+#print axioms Airbender.Setup.Proofs.PackedWindows.window_low
+#print axioms Airbender.Setup.Proofs.PackedWindows.window_high
+#print axioms Airbender.Setup.Proofs.PackedWindows.span_byte
+#print axioms Airbender.Setup.Proofs.PackedBlockCertificate.decode_length
+#print axioms Airbender.Setup.Proofs.PackedBlockCertificate.input_length
+#print axioms Airbender.Setup.Proofs.PackedBlockCertificate.input_raw
+#print axioms Airbender.Setup.Proofs.PackedBlockCertificate.checkBlock
+#print axioms Airbender.Setup.Proofs.PackedBlockCertificate.check
+#print axioms Airbender.Setup.Proofs.PackedBlockCertificate.checkBlock_sound
+#print axioms Airbender.Setup.Proofs.PackedBlockCertificate.check_sound
+#print axioms Airbender.Verification.byteAndPackedBlocks
+#print axioms Airbender.Verification.byteAndPackedBlocksSourceBytes
+#print axioms Airbender.Verification.ShiftPackedCertificate.source_binding
+#print axioms Airbender.Verification.ShiftPackedCertificate.same_source_bytes
+#print axioms Airbender.Verification.ShiftPackedCertificate.check
+#print axioms Airbender.Verification.ShiftPackedCertificate.ok
+#print axioms Airbender.Verification.ShiftPackedCertificate.check_sound
+#print axioms Airbender.Verification.ShiftPackedCertificate.and_outputs
+#print axioms Tests.PackedTableCertificates.first_nonzero_byte
+#print axioms Tests.PackedTableCertificates.changed_byte_rejected
+#print axioms Tests.PackedTableCertificates.little_endian_payload
+#print axioms Tests.PackedTableCertificates.reversed_bytes_rejected
+#print axioms Tests.PackedTableCertificates.extra_payload_byte_rejected
+#print axioms Tests.PackedTableCertificates.periodic_source
+#print axioms Tests.PackedTableCertificates.affine_source
+#print axioms Tests.PackedTableCertificates.row_boundary
+#print axioms Tests.PackedTableCertificates.last_source_byte
+#print axioms Tests.PackedTableCertificates.outside_table_rejected
+#print axioms Airbender.Verification.byteAndDataPackedColumn2
+#print axioms Airbender.Setup.PackedBlock.affine
+#print axioms Airbender.Setup.PackedBlock.dense
+#print axioms Airbender.Setup.PackedBlock.periodic
+#print axioms Airbender.Setup.PackedRunInput.mk
+#print axioms Airbender.Setup.PackedRunInput.count
+#print axioms Airbender.Setup.PackedRunInput.stride
+#print axioms Airbender.Setup.PackedRunInput.period
+#print axioms Airbender.Setup.PackedRunInput.payload
+#print axioms Airbender.Setup.Proofs.PackedRun.Run.mk
+#print axioms Airbender.Setup.Proofs.PackedRun.Run.count
+#print axioms Airbender.Setup.Proofs.PackedRun.Run.stride
+#print axioms Airbender.Setup.Proofs.PackedRun.Run.values
+
+#print axioms Airbender.Verification.ShiftPackedCertificate.coverage
+
+
+#print axioms Airbender.UnifiedReduced.Setup.nativeAndDataPackedColumn2

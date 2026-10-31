@@ -25,7 +25,57 @@ The three target proofs are complete. Work now follows design items 2 and 3.
 Native public-program acceptance covers all 14 CPU profiles. Earlier compiler
 interfaces remain as compatibility declarations. The public proof graph excludes
 captured decoder interpretation and retained-image contracts. The verified
-checker rollout and its measurements remain pending.
+checker rollout remains open. The adopted AND checker has focused measurements below.
+
+## Verified checker measurements
+
+The AND output certificate now uses one Boolean result for all 898 source
+blocks. A proved checker derives the original `ShiftCertificate.and_outputs`
+statement. The statement and its premises stay the same. The importer packs
+only AND output payloads. It preserves every block constructor, count, stride
+and value. The ordinary table, unified slice and both full native setup imports
+use the same encoding. No production source or native artifact changes.
+
+The following measurements use Lean 4.31.0 on this Mac. They measure the selected
+certificate module with cached imports. They do not measure a cold full build.
+The baseline uses the previous data and proof objects. The new result includes
+the coverage check and source-binding corollary.
+
+| Selected AND certificate | Previous proof | Packed checker |
+| --- | ---: | ---: |
+| Lean build | 169.87 s | 2.74 s |
+| Exact module kernel replay | 114.67 s | 2.66 s |
+| Build peak physical footprint | 1170.95 MiB | 587.93 MiB |
+| Replay peak physical footprint | 1378.24 MiB | 1021.62 MiB |
+
+Both replay runs trust their imported objects. The new source group checks all
+67 adopted modules. Its last two batches pass in 298.17 s and 112.53 s. They
+reuse source and import hash records. Their peak physical footprints are
+2075.29 MiB and 1324.07 MiB. The batches also checked two unused equality
+prototypes. Those prototypes are outside the adopted source tree.
+Selected replay also passes for the block checker, payload proof, closed-form
+arithmetic, source binding and public wrapper. This is not transitive replay.
+
+Ten kernel controls cover byte order, a changed byte, an extra payload byte,
+affine and periodic blocks, the last row and domain bounds. Direct axiom
+checks pass for all 93 new roots and the original output theorem. They use only
+`propext`, `Classical.choice` and `Quot.sound`. All 17,599 established roots
+remain. The explicit inventory now has 17,692 roots.
+
+The complete ordinary AND data has the same serialized values before and
+after this change. Its SHA-256 is
+`ebf7b9b6fbe4f934af6aea75d5523c70ef1612e9976ea17dda0f06a04b57641d`.
+Runtime controls compare both changed full setup columns to their original
+JSON blocks. They also compare the native and ordinary AND output columns.
+All comparisons pass. These controls check import fidelity; they supply no
+proof term. The generator check, mutation control, static scan, boundary
+controls and canonical program-graph check pass. No worker remains.
+
+Evidence is in `/tmp/airbender-review-round/checker-pilot-2026-10-31/`.
+The setup-column pilot and broader rollout remain open. Both cache modes stay
+required. The cold full build, full frontend checks, environment audit and
+baseline refresh, transitive replay, and Linux runtime and cache qualification
+remain pending for implementation review.
 
 ## Rebase checks
 
@@ -286,18 +336,9 @@ and strict per-port time order. Functional worker effects remain open.
 Both cached and uncached native captures remain required. The checker migration
 must qualify all 22 capture configurations.
 
-A direct one-line `decide +kernel` pilot over the existing shift/AND Block
-representation exceeded the bounded process memory limit after 12.79 seconds
-without a proof error. Separate packed-byte imports for shift AND, OR and XOR,
-plus the unified XOR8 setup output column, share a once-proved bitwise
-`check_sound`; each has a one-line kernel `ok` and a mathematical byte-projection
-claim for all 65,536 outputs. Each packed import retains definitionally equal
-full source artifact bytes to its corresponding original source import. The
-existing Block and setup-prefix shards remain; these are four pilot columns,
-not a migration of the 22 configurations or a cold-build baseline.
-The shared bitwise checker and all three shift-table capture checks now
-elaborate with default heartbeats. The shared replication proof still requires
-a raised recursion limit.
+The adopted AND checker and its measurements appear above. The earlier packed
+OR, XOR and unified XOR8 pilots remain available. Their production Block and
+setup-prefix facts still need migration. The setup-column pilot remains open.
 
 ## Supporting proved results
 
@@ -308,7 +349,7 @@ a raised recursion limit.
 | [Unified stream inclusion](Airbender/Proofs/UnifiedReduced/FullStreamInclusion.lean) | Every existing mixed ordinary/custom or complete delegated-call step lifts to the stream-aware unified relation without consuming a stream word. Finite runs lift, and existing no-read whole-execution results retain their terminal claims when the native read count is zero. The complete `Unified` target now proves native soundness of this combined relation from its explicit public and exact-matching premises. |
 | [Delegated workers](Airbender/Review/Trace/Workers/README.md) | Bigint, BLAKE2 and special5 Keccak compose under explicit call contracts. Complete algorithms require protocol coverage and valid memory gaps. Extended-round masks remain witness premises in lower-level integrated APIs as well as worker APIs. |
 | [Supported delegation use](Airbender/Review/Trace/UnifiedReduced/SupportedUseExecution.lean) | Public wrapper shapes, safe entry and reference-prefix validity derive bigint/G/extended-round worker contracts. G pointer separation remains in the public domain; accepted complete G spans also derive separation from memory matching. Public initialization, tracked RAM, configuration, setup and exact matching remain explicit. |
-| [Provided Keccak wrapper](FINDINGS.md#f12--blessed-keccak-path-is-outside-current-proof-coverage) | Uncovered. The blessed 361-call split order and control progression are checked; the three public CSR caller forms now have a separate Sail decoder registry and complete code-shape interface. [A proved bridge](Airbender/Proofs/Keccak/SplitCallerBridge.lean) preserves public Sail source evidence and the full-width native lookup query when routing a split CSR to that registry, including membership in the modeled public decoder table; each word of a blessed group selects its scheduled worker and passes the full unsigned allowlist. All three compiled worker constraint/lookup cores are imported. Their complete setup, memory effects, all-stream supported-use condition and functional composition are still required for the full unsigned target. The modeled 649-call special5 protocol is separate. |
+| [Provided Keccak wrapper](Airbender/Review/Compiler/MachineTargets.lean) | Proved in the full unsigned target. The target includes the blessed 361-call split sequence under its stated supported-use and exact-matching premises. The 649-call special5 protocol stays separate. Special5 calls remain excluded from the target. |
 | [Initialization](Airbender/Review/Trace/Initialization.lean) | Native standalone/inline adapters derive seeds for ordinary pooled/unified execution. External-read, modular, TRIADD/XORROT and delegation extensions retain their own seed premises. |
 | [Reduced public program](Airbender/Proofs/Trace/ReducedPublicProgram.lean) | The public reduced decoder filter is definitionally the stream-aware reduced filter. Every projected ordinary entry uses one of its four native CPU families, so the reduced-run inclusion no longer needs a separate family premise for text-derived programs. Every projected virtual caller is the BLAKE2 extended-round CSR; the special5 exclusion follows for reduced text. This does not establish native decoder setup binding or whole-machine soundness. |
 | [Public program setup](Airbender/Review/Compiler/PublicProgramSetup.lean) | New unrolled and unified interfaces bind independently supplied decoder columns, the actual imported circuit masks, capacity, delegation group syntax and initial image to public text. [The imported mask constructors](Airbender/Proofs/GKRProtocol/ProgramMasks.lean) satisfy that binding. [Source and classification theorems](Airbender/Proofs/GKRProtocol/PublicProgramCases.lean) map a range-checked query in those columns to a Sail-sourced ordinary instruction or virtual caller in its corresponding public program. [Native row corollaries](Airbender/Proofs/GKRProtocol/PublicNativeRows.lean) use an explicit exact decoder lookup premise to classify actual trace rows; [accepted-row corollaries](Airbender/Proofs/GKRProtocol/PublicAcceptedRows.lean) derive the required PC range from constraints, state matching and the public initial PC. Matching each compiled circuit's lookup to the supplied columns, deriving native acceptance from all certificates, then proving compiler execution remain open. |
@@ -341,7 +382,7 @@ than repeated in the guides. Changes after a checkpoint require their own checks
 | Split Keccak import slice | The example exporter compiles with `cargo check --locked -p execution_prover --example export_setup_json`. All six split worker setups export to temporary files in cached/uncached modes, and their embedded circuit objects equal the checked-in compiled objects. All six Lean constraint imports, timestamp-group checks and focused parser negative controls build under the guard (16.47 seconds, peak footprint 638.87 MiB, resident 2985.12 MiB, no surviving worker). These temporary setups are not retained in the manifest; no split-worker soundness or full import regression is claimed. The broader artifact/setup import build was intentionally interrupted after 579.72 seconds with no reported Lean error and no surviving worker. |
 | Setup provenance after exporter extension | The only exporter change adds three split-family match arms; the preexisting family branches and serialized setup paths are unchanged. Its source hash was refreshed in the retained manifest. `check_setup_artifacts.py` passes for all 13 existing artifacts, 713 native source hashes and the 12 production/one derived circuit identities. This is a static provenance check, not a fresh native reconstruction at this HEAD. |
 | Public-text decoder row model | Focused guarded builds prove ordinary and caller-aware membership, table inclusion, 16-bit sentinel exclusion, public source of each range-checked active modeled row before and after the native mask, exact native caller-registry inclusion, and generic public text-word ROM membership. The caller source records the exact CSR instruction shape and allowlist. The native model keeps the complete virtual CSR in the lookup query, rejects over-capacity text, keeps one row per padded word and applies the imported family mask. The pure-decoder tightening still matches native add/sub rows for a seven-call BLAKE2 example in full/reduced and unified configurations, both cache modes. Direct axiom smoke for the new pooled/unified membership, masked active-row source and text-ROM theorems reports only `propext`, `Classical.choice` and `Quot.sound`; split caller metadata uses `propext` alone. The complete environment audit remains pending. This does not yet replace the fixed decoder premise in compiler theorems. |
-| Packed checker pilot | Packed shift AND, OR and XOR output columns import one 2048-bit natural per 256 native rows after source-slice validation. Generic `checkRows_sound`, `extractDigit`, and bitwise byte-extraction lemmas feed one `PackedBitwise.check_sound` for all three. The focused AND, OR and XOR certificate builds passed under the 2560 MiB footprint guard in 6.43, 6.25 and 6.27 seconds respectively (peak footprint about 1550 MiB each). [The unified XOR8 setup output](Airbender/Proofs/Tables/UnifiedXorPackedPilotCertificate.lean) now passes the same checker in a focused kernel build; its peak memory and cold-build effect have not been measured. Direct axiom smoke for the unified `ok` and output theorem reports only `propext` and `Quot.sound`. The old Block and prefix shards remain in use; no cold-build or transitive replay improvement is claimed. |
+| Packed checker pilot | The original AND Block statement now follows from one kernel-checked packed certificate and its proved soundness theorem. The native setup consumers pass focused checks. See [the measurements and cache trust](#verified-checker-measurements). The setup-column pilot, broader rollout and cold full measurements remain open. |
 | Decoder differential | A compiled Lean oracle and native exporter agreed on all padded rows for an earlier 40-case small-program comparison across full/reduced machines, all applicable families and both cache modes. Focused uncached checks at the current model match all four reduced CPU families of the committed 804,998-word unrolled base-layer verifier, including 17,360 BLAKE2 CSR words; the add/sub match used a saved native export. The unified decoder matches the committed BLAKE2 and special-opcode recursion verifiers in focused uncached runs. A synthetic blessed 361-call split Keccak text matches the full add/sub decoder in both cache modes. Native circuit objects agreed across two small programs and both machine configurations for the four shared circuits. A separate public call-group shape check passes for all five committed verifier texts and rejects malformed BLAKE2/split controls. CI now includes all committed verifier texts plus small ordinary, BLAKE2 and split Keccak cases in both cache modes; that new gate has not run. A compatible ZKsync OS image/text pair is missing: the tagged repository binary has single-call BLAKE2 groups, which the current native preprocessor rejects. |
 | Reduced setup export tooling | The exporter accepts `--reduced` for the four shared unrolled CPU families. `cargo check --locked -p execution_prover --example export_setup_json` and the source-pinned manifest check pass. The executable build succeeded with `CARGO_PROFILE_DEV_DEBUG=0`, avoiding the local LLVM DWARF SIGBUS; focused native exports then completed. |
 | Complete source/runtime/review frontend | Passed on Mac at f0b059fe6412: 4,862 modules, 219 concrete Tests, five retained Sail modules, 3,509 runtime native modules, library and both executables. Normal Lake freshness, artifact hashes, direct axiom comparison, importer runtime and review checks passed. The 23 guarded jobs took 260.14 seconds from a normally built cache; peak footprint 855.31 MiB and resident 4279.14 MiB; no surviving workers. This is historical evidence for the source before the Review reorganization. |

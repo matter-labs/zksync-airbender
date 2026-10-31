@@ -11,7 +11,6 @@ open Verification
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 131072
-set_option maxHeartbeats 0
 
 def wideData (kind : Fin 3) : Airbender.Setup.TableData 10 :=
   #v[nativeXorData, nativeOrData, nativeAndData][kind]

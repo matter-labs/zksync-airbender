@@ -1,4 +1,5 @@
 import Airbender.Import.SetupEmbed
+import Airbender.Import.SetupPacked
 
 namespace Airbender.Setup.Slices
 open Lean Elab Command
@@ -41,23 +42,56 @@ private def valuesSyntax (values : Array Nat) : CommandElabM (TSyntax `term) := 
   let values := values.map quote
   arraySyntax values
 
-private def blockSyntax (block : Block) : CommandElabM (TSyntax `term) := do
+/-- Pack an actual byte array after checking every recovered source element. -/
+def packByteValues (values : Array Nat) : CommandElabM Nat := do
+  unless values.all (· < 256) do throwError "packed setup payload is not a byte array"
+  let mut packed := 0
+  let mut place := 1
+  for value in values do
+    packed := packed + value * place
+    place := place * 256
+  for index in [:values.size] do
+    unless (packed >>> (8 * index)) % 256 == values[index]! do
+      throwError "packed setup payload changed a parsed byte"
+  return packed
+
+private def packedValuesSyntax (values : Array Nat) : CommandElabM (TSyntax `term) := do
+  unless values.all (· < 256) do return ← valuesSyntax values
+  let packed ← packByteValues values
+  `(Airbender.Setup.packedArray $(quote values.size) $(quote packed))
+
+def packedBlockSyntax (block : Block) : CommandElabM (TSyntax `term) := do
+  match block with
+  | .affine length first stride =>
+    let stride ← if stride ≥ 0 then `(Int.ofNat $(quote stride.toNat))
+      else `(Int.negSucc $(quote (-stride - 1).toNat))
+    `(Airbender.Setup.PackedBlock.affine $(quote length) $(quote first) $stride)
+  | .dense values =>
+    let packed ← packByteValues values
+    `(Airbender.Setup.PackedBlock.dense $(quote values.size) $(quote packed))
+  | .periodic count stride values =>
+    let packed ← packByteValues values
+    let stride ← if stride ≥ 0 then `(Int.ofNat $(quote stride.toNat))
+      else `(Int.negSucc $(quote (-stride - 1).toNat))
+    `(Airbender.Setup.PackedBlock.periodic $(quote count) $stride $(quote values.size) $(quote packed))
+
+private def blockSyntax (block : Block) (packedBytes : Bool := false) : CommandElabM (TSyntax `term) := do
   match block with
   | .affine length first step =>
     let step ← if step ≥ 0 then `(Int.ofNat $(quote step.toNat))
       else `(Int.negSucc $(quote (-step - 1).toNat))
     `(Airbender.Setup.Block.affine $(quote length) $(quote first) $step)
   | .dense values =>
-    let values ← valuesSyntax values
+    let values ← if packedBytes then packedValuesSyntax values else valuesSyntax values
     `(Airbender.Setup.Block.dense $values)
   | .periodic repetitions stride values =>
     let stride ← if stride ≥ 0 then `(Int.ofNat $(quote stride.toNat))
       else `(Int.negSucc $(quote (-stride - 1).toNat))
-    let values ← valuesSyntax values
+    let values ← if packedBytes then packedValuesSyntax values else valuesSyntax values
     `(Airbender.Setup.Block.periodic $(quote repetitions) $stride $values)
 
-private def columnSyntax (column : Column) : CommandElabM (TSyntax `term) := do
-  let blocks ← column.blocks.mapM blockSyntax
+private def columnSyntax (column : Column) (packedBytes : Bool := false) : CommandElabM (TSyntax `term) := do
+  let blocks ← column.blocks.mapM (fun block => blockSyntax block packedBytes)
   let blocks ← arraySyntax blocks
   `(({blocks := $blocks} : Airbender.Setup.Column))
 
@@ -119,23 +153,36 @@ def matchesSource (source sliced : Column) (offset length : Nat) : Bool := Id.ru
       sliceBlock := sliceBlock + 1
   return sliceBlock == sliced.blocks.size && sliceRow == 0
 
-/-- Lossless region importing with a streaming comparison against the actual
-    parsed columns. The old importer and its checked data remain unchanged. -/
-elab "import_setup_slice " name:ident " from " path:str " native_table_id " id:num : command => do
+private def importSlice (name : TSyntax `ident) (path : TSyntax `str) (id : TSyntax `num)
+    (packedPhysical : Option Nat) : CommandElabM Unit := do
   let source ← IO.FS.readFile path.getString
   let artifact ← match parse source with
     | .ok artifact => pure artifact
     | .error error => throwError "setup import failed: {error}"
   let some region := artifact.tables.find? (fun region => region.id == id.getNat)
     | throwError "setup table ID {id.getNat} is absent"
-  let columns ← artifact.columns.mapM fun column => do
+  let mut columns := #[]
+  for physical in [:artifact.columns.size] do
+    let some column := artifact.columns[physical]?
+      | throwError "setup physical column is absent"
     let sliced := sliceColumn column region.offset region.length
     match sliced.validate region.length babyBearModulus with
     | .error error => throwError "setup region slice failed: {error}"
     | .ok () => pure ()
     unless matchesSource column sliced region.offset region.length do
       throwError "setup region slice changed a parsed value"
-    columnSyntax sliced
+    let bytePayloads := sliced.blocks.all fun block =>
+      match block with
+      | .affine .. => true
+      | .dense values | .periodic _ _ values => values.all (· < 256)
+    if packedPhysical == some physical && bytePayloads then
+      let blocks ← sliced.blocks.mapM packedBlockSyntax
+      let packedName := mkIdent (name.getId.appendAfter s!"PackedColumn{physical}")
+      elabCommand (← `(def $packedName : List Airbender.Setup.PackedBlock := [$[$blocks],*]))
+      columns := columns.push (← `(({blocks := List.toArray (List.map Airbender.Setup.PackedBlock.decode $packedName)}
+        : Airbender.Setup.Column)))
+    else
+      columns := columns.push (← columnSyntax sliced)
   elabCommand (← `(def $name : Airbender.Setup.TableData $(quote columns.size) :=
     Airbender.Setup.TableData.mk $(quote region.length) 0 #v[$[$columns],*]))
   let sourceName := mkIdent (name.getId.appendAfter "SourceBytes")
@@ -144,6 +191,14 @@ elab "import_setup_slice " name:ident " from " path:str " native_table_id " id:n
   elabCommand (← `(def $regionName : Airbender.Setup.Region :=
     Airbender.Setup.Region.mk $(quote region.id) $(quote region.offset) $(quote region.length)
       $(quote region.width) $(quote region.key_columns)))
+
+/-- Lossless region import with a streaming comparison against parsed columns. -/
+elab "import_setup_slice " name:ident " from " path:str " native_table_id " id:num : command =>
+  importSlice name path id none
+
+/-- Pack one selected byte column. Preserve each source block and value. -/
+elab "import_setup_slice_packed_bytes " name:ident " from " path:str " native_table_id " id:num " physical_column " physical:num : command =>
+  importSlice name path id (some physical.getNat)
 
 /-- Pilot representation for an eight-bit setup column: one 2048-bit natural
 number per 256 native rows. The importer still validates the parsed region and
