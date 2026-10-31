@@ -1,3 +1,5 @@
+import Airbender.Proofs.FullUnsigned.ThetaSourceLowSix
+import Airbender.Proofs.FullUnsigned.ThetaSourceLowSeven
 import Airbender.Proofs.FullUnsigned.ThetaSourceLowTwo
 import Airbender.Proofs.FullUnsigned.ThetaSourceLowThree
 import Airbender.Proofs.FullUnsigned.ThetaSourceLowFour
@@ -15798,3 +15800,14 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Setup.ThetaLowFiveSuffix.matches
 #print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_low_five_get
 #print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_low_five_match
+
+#print axioms Airbender.Setup.ThetaLowSixSuffix.skip
+#print axioms Airbender.Setup.ThetaLowSixSuffix.entries
+#print axioms Airbender.Setup.ThetaLowSixSuffix.matches
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_low_six_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_low_six_match
+#print axioms Airbender.Setup.ThetaLowSevenSuffix.skip
+#print axioms Airbender.Setup.ThetaLowSevenSuffix.entries
+#print axioms Airbender.Setup.ThetaLowSevenSuffix.matches
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_low_seven_get
+#print axioms Airbender.Setup.SourceCaptureThetaProofs.source_split_low_seven_match
