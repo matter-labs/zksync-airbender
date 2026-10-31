@@ -364,7 +364,20 @@ fn standalone_for_config(config: &ProverConfig, first_leaf_values: usize) {
     let mut setup_holder = holders.pop().unwrap();
     let mut witness_holder = holders.pop().unwrap();
     let mut memory_holder = holders.pop().unwrap();
+    let rounds = &config.whir_schedule.internal_rounds;
+    let folding_pow_bits: Vec<u32> = rounds.iter().map(|round| round.folding_pow_bits).collect();
+    let ood_pow_bits: Vec<u32> = rounds.iter().map(|round| round.ood_pow_bits).collect();
     let scheduled = unsafe {
+        // The per-oracle PoW vectors follow the slab's layout: one OOD-PoW slot
+        // per intermediate oracle, one folding-PoW slot per folding step.
+        let (_, folding_pow_slots) = layout.whir_folding_pow_nonces_device_mut(ptr);
+        let (_, ood_pow_slots) = layout.whir_ood_pow_nonces_device_mut(ptr);
+        assert_eq!(ood_pow_slots, ood_pow_bits.len());
+        assert_eq!(folding_pow_bits.len(), ood_pow_bits.len());
+        assert_eq!(
+            folding_pow_slots,
+            config.whir_schedule.fold_steps().iter().sum::<usize>()
+        );
         let (point, point_len) = layout.whir_original_evaluation_point_device_mut(ptr);
         let (gamma, gamma_len) = layout.whir_batching_challenge_device_mut(ptr);
         gpu_whir::fold::schedule_gpu_whir_fold_with_sources(
@@ -379,18 +392,8 @@ fn standalone_for_config(config: &ProverConfig, first_leaf_values: usize) {
             config.whir_schedule.queries_per_round(),
             config.whir_schedule.intermediate_lde_factors(),
             config.whir_schedule.queries_pow_bits_per_round(),
-            &config
-                .whir_schedule
-                .internal_rounds
-                .iter()
-                .map(|round| round.folding_pow_bits)
-                .collect::<Vec<_>>(),
-            &config
-                .whir_schedule
-                .internal_rounds
-                .iter()
-                .map(|round| round.ood_pow_bits)
-                .collect::<Vec<_>>(),
+            &folding_pow_bits,
+            &ood_pow_bits,
             config.cap_size,
             message_log_u32,
             true,
