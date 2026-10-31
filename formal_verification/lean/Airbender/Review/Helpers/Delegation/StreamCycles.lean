@@ -1,4 +1,5 @@
-import Airbender.Review.Trace.Modular.ExternalCalls
+import Airbender.Review.Helpers.Decoder.ModularExternal
+import Airbender.Review.Helpers.UnifiedReduced.FullCallReference
 import Airbender.Review.Helpers.Delegation.StreamMemory
 import Airbender.Review.Helpers.Delegation.Schedule
 import Airbender.Review.Helpers.Memory.SailHistory

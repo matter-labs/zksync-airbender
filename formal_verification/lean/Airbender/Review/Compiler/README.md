@@ -1,77 +1,85 @@
 # Compiler preservation
 
-Review the [public theorems](Theorems.lean), then the definitions needed for the
-selected claim. [Validation evidence](../../../VERIFICATION_STATUS.md#validation-evidence)
-records completed checks and pending assurance gates. Older fixed-program and
-framed wrappers remain in the [compatibility module](../../Compatibility/Compiler.lean),
-re-exported under their original names by the public entry module.
+Start with the three [machine targets](MachineTargets.lean). Each target lists
+its public setup, native acceptance and exact matching premises. The
+[validation status](../../../VERIFICATION_STATUS.md#validation-evidence) records
+the completed checks and the pending assurance gates.
 
-| Claim or entrypoint | Definitions to read |
+| Target | Kernel proof |
 | --- | --- |
-| Captured native arithmetic preserves every original source arithmetic assertion. | [Arithmetic semantics and 22 configurations](Arithmetic.lean); [capture selection](../../Import/Compiler/ArithmeticInstances.lean). |
-| Source arithmetic extends to a selected native arithmetic gate slice. | The same definitions; an untrusted certificate chooses the slice. This is weaker than constructing the whole native graph. |
-| Pooled/unified logical execution derives lookup/helper obligations from exact native tuple matching. | [Physical row inputs](RowFrame.lean), [logical row certificates](LogicalRows.lean), [exact lookup argument](LookupArgument.lean), [pooled boundary](Pooled.lean) and [unified boundary](Unified.lean). Select pooled_logical_execution or unified_logical_execution in the public theorems. |
-| Execution under equality with the retained four-entry decoder tables. | [Program boundaries](Program.lean). Select pooled_program_execution or unified_program_execution. |
-| Supplied-program execution with Airbender's device configuration selected explicitly. | Select pooled_airbender_execution or unified_airbender_execution; the remaining handlers come from the supplied platform. |
-| Compatibility execution with older framed certificates. | The older pooled_execution and unified_execution entrypoints retain [RowFrame](RowFrame.lean) and their original premises. |
+| Unified | [Combined ordinary, modular, stream and caller execution](../../Proofs/UnifiedReduced/MachineTarget.lean). |
+| UnrolledReduced | [Reduced execution with the extended-round caller](../../Proofs/Reduced/MachineTarget.lean). |
+| UnrolledFullUnsigned | [Full execution with blessed split Keccak](../../Proofs/FullUnsigned/Target.lean). |
+
+## Public program setup
+
+The targets quantify over public text and an initial state. The
+[program row function](../Helpers/Decoder/ProgramRows.lean) models native
+preprocessing. It emits one masked row per text word. An unsupported word
+emits the native minus-one sentinel. The
+[unified row function](../Helpers/Decoder/UnifiedProgramRows.lean) includes the
+combined unified registry.
+
+[Public setup inputs](NativePublicSetup.lean) bind the decoder columns and
+initial ROM to the supplied text. The [complete unrolled factory](NativeSubwordSetup.lean)
+also replaces the program-derived subword ROM regions. Fixed helper, range
+and timestamp regions keep their imported values.
+
+The native adapters cover all 14 CPU profiles in both cache modes.
+[Unrolled constraints](../../Proofs/GKRProtocol/ProgramPublicConstraints.lean)
+and [unified constraints](../../Proofs/GKRProtocol/ProgramUnifiedConstraints.lean)
+derive each incoming PC bound from native ranges and exact state matching.
+They require no expected instruction, helper value or per-row PC premise.
+The [native acceptance adapter](../../Proofs/GKRProtocol/NativeMachineAcceptance.lean)
+then supplies the targets' CPU equations, execute flags and decoder matching.
+Its [argument interface](NativeMachineArguments.lean) keeps the worker and
+global matching assumptions explicit.
+
+The [decoder differential](../../../scripts/check_program_decoder_rows.py)
+compares the compiled Lean row function with native exports. It also compares
+the circuit objects across public programs and the shared unrolled profiles.
+This test binds the Lean model to each tested Rust preprocessing result.
+It does not prove Rust decoder equivalence for every possible program.
 
 ## Execution premises
 
 | Connection | Current source API |
 | --- | --- |
-| Accepted cryptographic proof data to native gate validity | Outside the logical model. Native base-field arithmetic remains a row-input premise. |
-| Physical row input | The actual physical assignment, every captured native base-field gate residual equal to zero, and execute equal to one. This input has no canonical source frame, source-value/count assignment, authored membership, helper-range or canonical-borrow premise. |
-| Native lookup requests and transport | Requests use the actual consumed native encodings' fields and leaf weights at the physical assignment. Under full native arithmetic, checked field/mask/helper identities transport these requests to the source interpretation; operand coverage and setup-column bindings align primitive, group and setup selection. |
-| Logical lookup argument | Exact matching of those native requests against independently interpreted setup rows repeated by natural multiplicities. This is supplied separately for the physical row. The final compressed/sampled rational balance does not establish exact matching, and natural multiplicities are not bound to physical field counters. |
-| Authored lookup membership and helper bounds below 2^19 | Derived by logical composition from physical arithmetic and exact tuple matching, rather than supplied as row-certificate fields. |
-| State/RAM matching and public boundaries | Exact permutations, verifier closure where applicable, public initial state/program/domain, configuration, serialized inverses and seed remain explicit. Sampled product equality alone does not imply a permutation. |
-| Retained Clean constraints, decoder membership and source/trace execution | Derived by the logical entrypoints under those premises. Pooled execution additionally retains independent external-read ports. |
-| Other wiring/cache and RAM-product reductions | Supporting results. The execution connection uses actual emitted lookup tuples, while extension-field gates, sampled lookup/grand-product arguments and complete native graph semantics remain separate. |
+| Cryptographic proof to native validity | Outside the logical model. Each physical row supplies its actual native base-field gate equations. |
+| Physical CPU row | The actual assignment, all captured native base-field residuals equal to zero, and execute equal to one. |
+| Native lookup requests | Actual native encoding fields and leaf weights select the primitive, group and setup column. Checked arithmetic transports the complete tuples to the source interpretation. |
+| Exact lookup matching | Native requests match public setup rows with natural multiplicities. Sampled rational balance does not establish this premise. Physical field counters are not bound to those multiplicities. |
+| Exact state and RAM matching | The stated permutations bind row boundaries and the one shared memory history. Sampled product equality does not imply a permutation. |
+| Public boundaries | Initial state, text, ROM coverage, worker setup, initialization circuit, supported caller use and stream ports remain explicit. |
+| Retained source constraints and execution | Native transport and exact matching derive the source equations and decoder membership. The target proofs compose those facts with the reference execution. |
 
-[Physical bindings](../../Import/Compiler/Rows/AddSubUncached.lean) select actual
-captured addresses and arithmetic/active predicates. The
-[native request definition](../../Import/Compiler/LogicalRows/AddSubUncached.lean)
-constructs nativeRequests from actual encoding fields and native leaf weights.
-Its [transport and coverage proofs](../../Proofs/GKRProtocol/LogicalRows/AddSubUncached.lean)
-use nativeRequests_source under full native arithmetic, nativeOperands_coverage
-for primitive/group coverage, and nativeSetupColumns_binding for independent setup
-columns. Source-field, mask and timestamp-helper identities are consumed by that
-transport; they are not added as row-input assumptions.
-
+[Physical bindings](../../Import/Compiler/Rows/AddSubUncached.lean) select the
+captured addresses. [Native requests](../../Import/Compiler/LogicalRows/AddSubUncached.lean)
+use the actual encoding fields and leaf weights. The
+[transport proof](../../Proofs/GKRProtocol/LogicalRows/AddSubUncached.lean)
+checks arithmetic identities, operand coverage and setup-column bindings.
 [Lookup operands](LookupOperands.lean) and the [logical argument](LookupArgument.lean)
-expose the remaining interpretations. The final compressed/sampled output-to-exact
-matching step and physical field multiplicity binding remain an abstraction of the
-global argument. The 60 final lookup-output reductions may remain standalone
-supporting results. Cryptographic matching and commitment authentication are not
-established. The [evidence inventory](../../../VERIFICATION_STATUS.md#validation-evidence)
-states which source/runtime and independent assurance gates have completed.
+state the remaining interpretations.
 
-## Program and platform scope
+Extension-field gates, compressed lookup arguments and commitment authentication
+remain separate boundaries. These theorems do not prove universal correctness
+of the Rust compiler.
 
-The retained-program wrappers still select the four-entry
-[setup program](../../Data/Decoder/SelectedProgram.lean): two ADDI instructions,
-a self-looping JAL and an unreachable ADD. Its MUL/DIV, shift/binop and word/subword
-decoder tables are empty, so eight of twelve pooled row kinds cannot occur there.
+## Compatibility claims
 
-The supplied-program wrappers quantify over a program with a structural equality
-between its per-family decoder tables and those of the retained capture, together
-with existing public boot/execution inputs. This equality is independent of trace
-rows and supplies no per-row membership. It fixes the same four-entry per-family
-tables, so quantifying over a supplied program does not establish execution for
-an arbitrary different program. Other programs/setups require interpretation evidence. The generic source/trace execution layer is
-already program-parametric, including branches, jumps and loops.
+Earlier captured-program boundaries and whole-execution wrappers now live in
+the [compatibility proof layer](../../Proofs/Compatibility/Compiler/Theorems.lean).
+The original Review paths forward to those modules. Each declaration keeps its
+public name, statement and proof body. All established audit roots remain.
+These compatibility statements retain their original setup restrictions.
+The three machine targets use the public program setup described above.
 
-Generic wrappers remain polymorphic in the platform. The explicit Airbender
-wrappers disable its device windows while retaining the supplied platform's other
-handlers. None of these statements proves universal correctness of the Rust compiler.
+The [arithmetic API](Arithmetic.lean) and
+[capture selection](../../Import/Compiler/ArithmeticInstances.lean) retain the
+22 native configurations. Arithmetic extension constructs a selected gate
+slice. It does not construct the complete native graph.
 
-The arithmetic extension theorem covers a certificate-selected subset of emitted
-native gates, not necessarily every source-related gate or the whole graph. The
-certificate is untrusted and its identities are checked; a valid slice does not
-establish complete witness extension.
-
-Artifact schemas/readers live in Import; certificate algorithms, generated checks,
-witness construction, refinements and proof assembly live in Proofs. Their
-implementation/import fidelity remains a separate review task.
-[Compiler scope and evidence](../../../GKR_COMPILER_VERIFICATION.md) links current
-validation limits, reproduction and historical checkpoints.
+Artifact readers live in Import. Certificate algorithms, generated checks,
+refinements and proof assembly live in Proofs.
+[Compiler scope and evidence](../../../GKR_COMPILER_VERIFICATION.md) records
+the validation limits and reproduction steps.

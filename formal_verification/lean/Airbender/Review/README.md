@@ -56,17 +56,18 @@ one public initial state. Keep profile deviations and caller limitations explici
 
 Circuit/trace claims concern the imported richer no-cache constraints, using
 Clean and pinned original Sail standard semantics or project custom references.
-Compiler claims additionally cover base-field arithmetic preservation for 22
-captured cached/uncached compilations and conditional executor composition. Physical-row APIs derive membership/helper validity from exact tuple matching;
-supplied-program wrappers require retained decoder-table compatibility. The
+Compiler claims cover base-field arithmetic preservation for 22 captured
+cached/uncached compilations. The three machine targets prove conditional
+execution for public text and initial state. Physical-row APIs derive
+membership and helper validity from exact tuple matching. The
 [compiler guide](Compiler/README.md#execution-premises) states those logical
 boundaries. [Validation evidence](../../VERIFICATION_STATUS.md#validation-evidence)
 records completed checks and pending assurance gates. The
 [supported-use theorem](Trace/UnifiedReduced/SupportedUseExecution.lean) derives
-bigint/G/extended-round contracts from public reference-prefix validity. Special5
-Keccak remains conditional protocol coverage; the blessed split path is deferred.
-No single execution registry and captured setup currently cover a production
-verifier program. Memory-history/latest-read arguments are supporting proofs
+bigint/G/extended-round contracts from public reference-prefix validity.
+The full unsigned target includes blessed split Keccak and excludes special5.
+Production OS differential coverage and checker rollout remain open.
+Memory-history/latest-read arguments are supporting proofs
 used internally, not separate public Review statements.
 Field/configuration, public state/program/domain, modeled tables and logical
 matching are genuine conditions. Their applicability needs human review.

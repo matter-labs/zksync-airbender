@@ -21,7 +21,7 @@ by retirement is derived at the current PC; see
 [unified mixed retirement](../../Trace/UnifiedReduced/Theorems.lean).
 [Native setup](NativeData.lean) retains real rows, unsupported slots, the complete
 committed tail and fixed-prefix discriminators. [Imported-data proofs](../../../Proofs/Tables/ImportedDecoder.lean)
-connect those rows to original Sail decoding. [Execution entry points](../../Trace/ImportedDecoder.lean)
+connect those rows to original Sail decoding. [Execution entry points](../../../Proofs/Compatibility/Trace/ImportedDecoder.lean)
 derive the previous semantic membership condition from actual native lookups;
 incoming PC-low bounds follow from accepted constraints and initialized history.
 Public image/configuration binding and logical query authentication stay explicit.

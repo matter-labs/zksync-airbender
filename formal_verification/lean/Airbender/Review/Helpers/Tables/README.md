@@ -21,9 +21,9 @@ membership over the imported rows. The checked mathematical semantics live in
 imported-row proofs; the wrapper supplies no replacement table recipe.
 
 Program-dependent compatibility views retain arbitrary public programs.
-[Imported word ROM](../../Circuits/WordMemory/ImportedROM.lean),
-[imported subword setup](../../Circuits/SubwordMemory/ImportedSetup.lean) and
-[unified execution](../../Trace/ImportedDecoder.lean) connect the complete selected
+[Imported word ROM](../../../Proofs/Compatibility/Circuits/WordMemory/ImportedROM.lean),
+[imported subword setup](../../../Proofs/Compatibility/Circuits/SubwordMemory/ImportedSetup.lean) and
+[unified execution](../../../Proofs/Compatibility/Trace/ImportedDecoder.lean) connect the complete selected
 setup to those views under explicit public byte binding. The retained program
 is a specialization, rather than a restriction on the earlier generalized claims.
 

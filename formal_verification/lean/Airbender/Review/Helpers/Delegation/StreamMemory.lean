@@ -1,5 +1,5 @@
 import Airbender.Review.Helpers.Delegation.MixedMemory
-import Airbender.Review.Trace.Modular.External
+import Airbender.Review.Helpers.Decoder.ModularExternal
 
 namespace Airbender.Delegation.Caller
 open Trace

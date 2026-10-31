@@ -1,4 +1,4 @@
-import Airbender.Review.Trace.Workers.Keccak.SplitUse
+import Airbender.Review.Helpers.Keccak.SplitUse
 import Airbender.Review.Helpers.Memory.AtomicWrites
 import Clean.Specs.Keccak256
 
