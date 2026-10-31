@@ -218,6 +218,7 @@ jobs:
           fv packed-fixed-captures python3 scripts/gkr_packed_fixed_captures.py --check
           fv packed-fixed-projections python3 scripts/gkr_unified_equal_chunks.py --check
           fv packed-fixed-prefixes python3 scripts/gkr_unified_prefix_assembly.py --stage column --check
+          fv packed-arithmetic-captures python3 scripts/gkr_full_arithmetic_certificate.py --family add-sub --check
           fv packed-generator-controls python3 -m unittest discover -s scripts -p 'test_packed_*.py' -v
       - name: Twelve generators and thirteen complete fresh exports
         id: native-setups

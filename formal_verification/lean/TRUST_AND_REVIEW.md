@@ -194,6 +194,14 @@ All public declaration names and theorem statements stay the same. The pending
 environment audit must record the changed module origins. Other fact families
 still need migration.
 
+Both AddSub arithmetic captures now use one closed checker result each. A
+proved checker derives the original address uniqueness, source identities,
+forward identities and gate checks. Public declarations remain projections of
+that result. Imported values and all old theorem types stay the same. The
+larger arithmetic captures remain open. Their typed polynomial checks exceed
+this Mac's memory limit. Direct numeric capture data still needs a proved
+binding to the original imports. Both cache modes remain required.
+
 Sail generation uses the pinned upstream compiler and selected original roots.
 The normal four-byte nextPC assignment is extracted verbatim from the normal
 F_Base path, then composed with execution and tick_pc. Translation, pruning,

@@ -10,6 +10,7 @@ must discharge the source helper assertions before claiming complete extension.
 import argparse
 import json
 import os
+import re
 import subprocess
 
 from gkr_arithmetic_certificate import synthesis as old_synthesis, PRIME, atom, const, plus, times, expression, coefficient, key, packed
@@ -167,6 +168,9 @@ def synthesize(pair,snapshot):
 
 
 
+CHECKER_CAPTURES = {"AddSubCached", "AddSubUncached"}
+
+
 def modules(name, case, result):
     prefix = "Airbender.Proofs.GKRProtocol.FullArithmeticNative." + case
     namespace = "Airbender.Compiler.FullArithmeticNative." + case
@@ -181,13 +185,19 @@ def modules(name, case, result):
                 "set_option warningAsError true\n"
                 "set_option Elab.async false\n"
                 "set_option maxRecDepth 32768\n"
-                "set_option maxHeartbeats 4000000\n\n" + command + "\n\n"
+                + ("" if case in CHECKER_CAPTURES else "set_option maxHeartbeats 4000000\n") + "\n" + command + "\n\n"
                 f"end {namespace}\n")
 
     foundation = prefix + "Foundation"
     result_modules = [(foundation, wrap(["Airbender.Import.GKRProtocol.FullArithmeticImport"],
         f'import_full_compiler_arithmetic native from "artifacts/compiler/{name}.json"\n'
         f'  source "artifacts/compiler/{name}-source.json"\n  selectors {selectors}'))]
+    if case in CHECKER_CAPTURES:
+        result_modules.append((prefix, wrap([foundation,
+            "Airbender.Import.GKRProtocol.FullArithmeticCheckImport"],
+            f'certify_full_compiler_arithmetic native {dimensions}\n\n'
+            f'finalize_full_compiler_arithmetic native {dimensions}')))
+        return result_modules
     parts = []
     counts = [len(result["addresses"]), result["counts"]["relations"], result["counts"]["source_obligations"]]
     for phase, (label, count) in enumerate(zip(["Unique", "Forward", "Backward"], counts, strict=True)):
@@ -213,6 +223,23 @@ def modules(name, case, result):
     return result_modules
 
 
+def retired_checker_parts(root, case, targets):
+    """Retire only tracked proof parts of an adopted whole capture."""
+    if case not in CHECKER_CAPTURES:
+        return []
+    parent = root / "Airbender/Proofs/GKRProtocol/FullArithmeticNative"
+    wanted = {root / (name.replace(".", "/") + ".lean") for name, _ in targets}
+    retired = [path for path in parent.glob(case + "*Part*.lean")
+               if re.fullmatch(re.escape(case) + r"(?:Unique|Forward|Backward)Part[0-9]+\.lean", path.name)
+               and path not in wanted]
+    for path in retired:
+        tracked = subprocess.run(["git", "ls-files", "--error-unmatch", "--", str(path.relative_to(root))],
+                                 cwd=root, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if tracked.returncode:
+            raise ValueError(f"refuse to retire an untracked arithmetic module: {path}")
+    return retired
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--family", choices=FAMILIES, action="append")
@@ -232,6 +259,9 @@ def main():
             result = synthesize(json.loads((root / (name + ".json")).read_text()),
                                 json.loads((root / (name + "-source.json")).read_text()))
             targets = modules(name, case, result)
+            retired = retired_checker_parts(LEAN, case, targets)
+            if args.check and retired:
+                raise ValueError(f"retired arithmetic parts remain: {case}")
             for module, content in targets:
                 destination = LEAN / (module.replace(".", "/") + ".lean")
                 if args.check and (not destination.exists() or destination.read_text() != content):
@@ -239,6 +269,9 @@ def main():
                 if args.write and (not destination.exists() or destination.read_text() != content):
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     destination.write_text(content)
+            if args.write:
+                for destination in retired:
+                    destination.unlink()
             print(name, result["counts"], len(targets), "sequential proof modules", flush=True)
             if args.build:
                 # Build each foundation/shard before its root. A single Lake
