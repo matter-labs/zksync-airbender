@@ -85,6 +85,22 @@ def LookupArguments (input : Input) : Type :=
          Airbender.Compiler.TableNative.SubwordMemoryUncached.native.range16SetupColumns,
          Airbender.Compiler.TableNative.SubwordMemoryUncached.native.timestampSetupColumns]).get group))
     (fun group => activeLookupFields (nativeRequests input group))
+
+/-- Match the same native tuples against independently supplied setup rows.
+The calling boundary must bind these rows to public text and fixed setup data. -/
+def LookupArgumentsWith
+    (tables : Fin 3 → Fin Airbender.Compiler.MaterializedNative.SubwordMemoryUncached.native.model.imported.data.length →
+      List Source.BaseField) (input : Input) : Type :=
+  GroupedLookupArguments tables (fun group => activeLookupFields (nativeRequests input group))
+
+/-- The retained setup gives exactly the existing lookup argument type. -/
+theorem lookup_arguments_with_retained (input : Input) :
+    LookupArgumentsWith
+      (fun group : Fin 3 => Airbender.Compiler.MaterializedNative.SubwordMemoryUncached.native.model.fields
+        (([Airbender.Compiler.TableNative.SubwordMemoryUncached.native.genericSetupColumns,
+           Airbender.Compiler.TableNative.SubwordMemoryUncached.native.range16SetupColumns,
+           Airbender.Compiler.TableNative.SubwordMemoryUncached.native.timestampSetupColumns]).get group)) input =
+      LookupArguments input := rfl
 -- End generated logical lookup argument.
 
 def inputRow (input : Input) : Trace.Row babyBearModulus Trace.PooledFamily :=

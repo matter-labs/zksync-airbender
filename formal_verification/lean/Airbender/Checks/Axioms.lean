@@ -18788,3 +18788,32 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 
 #print axioms Airbender.Compiler.LookupArgument.restrictTo
 #print axioms Airbender.Compiler.LookupArgument.splitBy
+
+#print axioms Airbender.Compiler.PooledRowNative.AddSubUncached.LookupArgumentsWith
+#print axioms Airbender.Compiler.PooledRowNative.AddSubUncached.lookup_arguments_with_retained
+#print axioms Airbender.Compiler.PooledRowNative.AddSubCached.LookupArgumentsWith
+#print axioms Airbender.Compiler.PooledRowNative.AddSubCached.lookup_arguments_with_retained
+#print axioms Airbender.Compiler.PooledRowNative.JumpBranchUncached.LookupArgumentsWith
+#print axioms Airbender.Compiler.PooledRowNative.JumpBranchUncached.lookup_arguments_with_retained
+#print axioms Airbender.Compiler.PooledRowNative.JumpBranchCached.LookupArgumentsWith
+#print axioms Airbender.Compiler.PooledRowNative.JumpBranchCached.lookup_arguments_with_retained
+#print axioms Airbender.Compiler.PooledRowNative.MulDivUncached.LookupArgumentsWith
+#print axioms Airbender.Compiler.PooledRowNative.MulDivUncached.lookup_arguments_with_retained
+#print axioms Airbender.Compiler.PooledRowNative.MulDivCached.LookupArgumentsWith
+#print axioms Airbender.Compiler.PooledRowNative.MulDivCached.lookup_arguments_with_retained
+#print axioms Airbender.Compiler.PooledRowNative.ShiftBinopUncached.LookupArgumentsWith
+#print axioms Airbender.Compiler.PooledRowNative.ShiftBinopUncached.lookup_arguments_with_retained
+#print axioms Airbender.Compiler.PooledRowNative.ShiftBinopCached.LookupArgumentsWith
+#print axioms Airbender.Compiler.PooledRowNative.ShiftBinopCached.lookup_arguments_with_retained
+#print axioms Airbender.Compiler.PooledRowNative.WordMemoryUncached.LookupArgumentsWith
+#print axioms Airbender.Compiler.PooledRowNative.WordMemoryUncached.lookup_arguments_with_retained
+#print axioms Airbender.Compiler.PooledRowNative.WordMemoryCached.LookupArgumentsWith
+#print axioms Airbender.Compiler.PooledRowNative.WordMemoryCached.lookup_arguments_with_retained
+#print axioms Airbender.Compiler.PooledRowNative.SubwordMemoryUncached.LookupArgumentsWith
+#print axioms Airbender.Compiler.PooledRowNative.SubwordMemoryUncached.lookup_arguments_with_retained
+#print axioms Airbender.Compiler.PooledRowNative.SubwordMemoryCached.LookupArgumentsWith
+#print axioms Airbender.Compiler.PooledRowNative.SubwordMemoryCached.lookup_arguments_with_retained
+#print axioms Airbender.Compiler.UnifiedRowNative.UnifiedUncached.LookupArgumentsWith
+#print axioms Airbender.Compiler.UnifiedRowNative.UnifiedUncached.lookup_arguments_with_retained
+#print axioms Airbender.Compiler.UnifiedRowNative.UnifiedCached.LookupArgumentsWith
+#print axioms Airbender.Compiler.UnifiedRowNative.UnifiedCached.lookup_arguments_with_retained

@@ -165,7 +165,8 @@ theorem nativeSetupColumns_binding (group : Fin 3) :
         assert text.count(needle) == 1
         text = text.replace(needle, import_block + '\n' + needle)
     text = text.replace('(activeLookupFields (physicalRequests input group))', '(activeLookupFields (nativeRequests input group))')
-    assert text.count('activeLookupFields (nativeRequests input group)') == 1
+    expected_arguments = 1 + int('def LookupArgumentsWith' in text)
+    assert text.count('activeLookupFields (nativeRequests input group)') == expected_arguments
     # Generate the complete public premise instantiation, as well as operands.
     # Its meaning lives in Review.Compiler.LookupArgument, independent of native
     # certificate proofs. Setup columns and requests are artifact bindings.
@@ -178,6 +179,22 @@ def LookupArguments (input : Input) : Type :=
          Airbender.Compiler.TableNative.{name}.native.range16SetupColumns,
          Airbender.Compiler.TableNative.{name}.native.timestampSetupColumns]).get group))
     (fun group => activeLookupFields (nativeRequests input group))
+
+/-- Match the same native tuples against independently supplied setup rows.
+The calling boundary must bind these rows to public text and fixed setup data. -/
+def LookupArgumentsWith
+    (tables : Fin 3 → Fin Airbender.Compiler.MaterializedNative.{name}.native.model.imported.data.length →
+      List Source.BaseField) (input : Input) : Type :=
+  GroupedLookupArguments tables (fun group => activeLookupFields (nativeRequests input group))
+
+/-- The retained setup gives exactly the existing lookup argument type. -/
+theorem lookup_arguments_with_retained (input : Input) :
+    LookupArgumentsWith
+      (fun group : Fin 3 => Airbender.Compiler.MaterializedNative.{name}.native.model.fields
+        (([Airbender.Compiler.TableNative.{name}.native.genericSetupColumns,
+           Airbender.Compiler.TableNative.{name}.native.range16SetupColumns,
+           Airbender.Compiler.TableNative.{name}.native.timestampSetupColumns]).get group)) input =
+      LookupArguments input := rfl
 ''' + ARGUMENT_END
     begin = text.index(ARGUMENT_START)
     if ARGUMENT_END in text:
@@ -225,7 +242,8 @@ if '#print axioms Airbender.Compiler.GroupedLookupArguments' not in content.spli
     roots.append('#print axioms Airbender.Compiler.GroupedLookupArguments')
 for name in NAMES:
     namespace = 'UnifiedRowNative' if name.startswith('Unified') else 'PooledRowNative'
-    for theorem in ['nativeRequests_source', 'nativeOperands_coverage', 'nativeSetupColumns_binding']:
+    for theorem in ['LookupArgumentsWith', 'lookup_arguments_with_retained',
+                    'nativeRequests_source', 'nativeOperands_coverage', 'nativeSetupColumns_binding']:
         root = f'#print axioms Airbender.Compiler.{namespace}.{name}.{theorem}'
         if root not in content.splitlines():
             roots.append(root)

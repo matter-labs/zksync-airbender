@@ -35,7 +35,7 @@ class LookupPremiseGeneration(unittest.TestCase):
                 start = text.index('/-- Exact matching of every enabled emitted tuple')
                 end = text.index('-- End generated logical lookup argument.', start)
                 binding = text[start:end]
-                self.assertEqual(binding.count('.native.genericSetupColumns'), 1)
+                self.assertEqual(binding.count('.native.genericSetupColumns'), 2)
                 binding = binding.replace('.native.genericSetupColumns', '.native.range16SetupColumns')
                 path.write_text(text[:start] + binding + text[end:])
             changed = subprocess.run(command, capture_output=True, text=True)
