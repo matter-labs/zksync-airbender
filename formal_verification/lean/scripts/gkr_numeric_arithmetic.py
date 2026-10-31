@@ -7,9 +7,11 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-from export_gkr_translations import LEAN
+from export_gkr_translations import FAMILIES, LEAN
+from gkr_wiring_instances import CASES
 
-NUMERIC_CAPTURES = {"BlakeRoundCached", "BlakeRoundUncached"}
+NUMERIC_CAPTURES = {stem + mode for stem in CASES if stem not in {"AddSub", "Bigint", "Keccak"}
+                    for mode in ("Cached", "Uncached")}
 PRIME = 2013265921
 
 
@@ -147,39 +149,63 @@ theorem numericFullChecked : FullArithmeticChecks.check native.addresses native.
             (prefix + "NumericCertificate", wrap([prefix + "NumericBindings"], certificate))]
 
 
+def capture_roots(case, payload):
+    """Audit every numeric payload, structural binding and complete result."""
+    base = "Airbender.Compiler.FullArithmeticNative." + case + "."
+    fields = [("source", "numericSource"), ("sourceNormalized", "numericNormalizedSource"),
+              ("lowered", "numericLowered"), ("extension", "numericExtensionData"),
+              ("gateInputNormalized", "numericGateInputs"), ("gateOutputNormalized", "numericGateOutputs"),
+              ("backward", "numericBackward"), ("forward", "numericForward")]
+    declarations = [name for _, name in fields] + ["numericKeys"]
+    roots = [base + name for name in declarations]
+    roots += [base + name + "_binding" for name in declarations]
+    roots += [base + name for name in ["numericCapture", "numericBindings", "numericChecked",
+                                      "numericFullChecked", "native.captureChecked"]]
+    for field, name in fields:
+        roots += [base + name + "." + suffix for suffix in ["tree", "tree_binding", "tree_valid"]]
+        roots += [base + name + ".leaf" + str(index)
+                  for index in range(max(1, (len(payload[field]) + 15) // 16))]
+    return roots
+
+
 def main():
     from gkr_full_arithmetic_certificate import synthesize
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--family", choices=[family for family, stem in zip(FAMILIES, CASES, strict=True)
+                                               if stem + "Cached" in NUMERIC_CAPTURES], action="append")
     parser.add_argument("--mode", choices=("cached", "uncached"), action="append")
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--raw-dir", type=Path)
     args = parser.parse_args()
-    for mode in ("cached", "uncached"):
-        if args.mode and mode not in args.mode:
+    for family, stem in zip(FAMILIES, CASES, strict=True):
+        if stem + "Cached" not in NUMERIC_CAPTURES or (args.family and family not in args.family):
             continue
-        name = "blake-round-" + mode
-        case = "BlakeRound" + mode.title()
-        root = LEAN / "artifacts/compiler"
-        selectors = synthesize(json.loads((root / (name + ".json")).read_text()),
-                               json.loads((root / (name + "-source.json")).read_text()))
-        if args.write:
-            with tempfile.TemporaryDirectory(prefix="airbender-numeric-export-") as directory:
-                raw = (args.raw_dir / (case + "-numeric-export.json") if args.raw_dir else Path(directory) / "raw.json")
-                if not args.raw_dir:
-                    source = Path(directory) / "Export.lean"
-                    source.write_text(f"import Airbender.Proofs.GKRProtocol.FullArithmeticNative.{case}Foundation\n" +
-                                      (LEAN / "scripts/ExportNumericArithmetic.lean").read_text() +
-                                      "\n-- Reflection runs only in this untrusted export command.\n" +
-                                      "set_option maxRecDepth 32768\nset_option maxHeartbeats 4000000\n" +
-                                      f'export_numeric_arithmetic Airbender.Compiler.FullArithmeticNative.{case}.native to "{raw}"\n')
-                    subprocess.run(["lake", "env", "lean", "--tstack=2097152", str(source)], cwd=LEAN, check=True)
-                payload = prepare_payload(LEAN, name, selectors, json.loads(raw.read_text()))
-                path = payload_path(LEAN, name)
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
-        check_payload(LEAN, name, selectors)
-        print(f"PASS numeric payload provenance and complete dimensions: {name}")
+        for mode in ("cached", "uncached"):
+            if args.mode and mode not in args.mode:
+                continue
+            name = family + "-" + mode
+            case = stem + mode.title()
+            root = LEAN / "artifacts/compiler"
+            selectors = synthesize(json.loads((root / (name + ".json")).read_text()),
+                                   json.loads((root / (name + "-source.json")).read_text()))
+            if args.write:
+                with tempfile.TemporaryDirectory(prefix="airbender-numeric-export-") as directory:
+                    raw = (args.raw_dir / (case + "-numeric-export.json") if args.raw_dir else Path(directory) / "raw.json")
+                    if not args.raw_dir:
+                        source = Path(directory) / "Export.lean"
+                        source.write_text(f"import Airbender.Proofs.GKRProtocol.FullArithmeticNative.{case}Foundation\n" +
+                                          (LEAN / "scripts/ExportNumericArithmetic.lean").read_text() +
+                                          "\n-- Reflection runs only in this untrusted export command.\n" +
+                                          "set_option maxRecDepth 32768\nset_option maxHeartbeats 4000000\n" +
+                                          f'export_numeric_arithmetic Airbender.Compiler.FullArithmeticNative.{case}.native to "{raw}"\n')
+                        subprocess.run(["lake", "env", "lean", "--tstack=2097152", str(source)], cwd=LEAN, check=True)
+                    payload = prepare_payload(LEAN, name, selectors, json.loads(raw.read_text()))
+                    path = payload_path(LEAN, name)
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+            check_payload(LEAN, name, selectors)
+            print(f"PASS numeric payload provenance and complete dimensions: {name}")
 
 
 if __name__ == "__main__":

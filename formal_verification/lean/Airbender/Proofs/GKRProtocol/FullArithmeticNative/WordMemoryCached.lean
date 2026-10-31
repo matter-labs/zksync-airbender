@@ -1,17 +1,15 @@
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.WordMemoryCachedFoundation
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.WordMemoryCachedUniquePart0
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.WordMemoryCachedUniquePart1
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.WordMemoryCachedForwardPart0
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.WordMemoryCachedForwardPart1
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.WordMemoryCachedBackwardPart0
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.WordMemoryCachedNumericCertificate
+import Airbender.Import.GKRProtocol.FullArithmeticCheckImport
 
 namespace Airbender.Compiler.FullArithmeticNative.WordMemoryCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
-finalize_full_compiler_arithmetic native inputs 52 variables 63 sources 27 gates 38
+certify_full_compiler_arithmetic native inputs 52 variables 63 sources 27 gates 38 using numericFullChecked
+
+finalize_checked_full_compiler_arithmetic native inputs 52 variables 63
 
 end Airbender.Compiler.FullArithmeticNative.WordMemoryCached

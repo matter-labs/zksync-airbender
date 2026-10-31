@@ -194,8 +194,8 @@ All public declaration names and theorem statements stay the same. The pending
 environment audit must record the changed module origins. Other fact families
 still need migration.
 
-Both AddSub arithmetic captures use one closed checker result each. Both Blake
-round captures use direct numeric data. Separate kernel equalities bind that
+Both AddSub arithmetic captures use one closed checker result each. Sixteen arithmetic
+captures use direct numeric data. Separate kernel equalities bind that
 data to all original source expressions, lowered residuals, computed extensions
 and certificates. Further bindings check normalized source rows and both complete normalized
 gate sides.
@@ -204,7 +204,8 @@ sizes, strict key order, every translation identity and every gate equality.
 Its soundness theorem derives the exact original Boolean statement. Public
 corollaries retain the original theorem types. The exporter and payload hashes
 supply no proof. The kernel checks every data binding and the capture result.
-Both cache modes remain required. Other arithmetic captures remain open.
+Both cache modes remain required. Bigint and Keccak keep their established
+proofs while the dense numeric path remains open.
 
 Sail generation uses the pinned upstream compiler and selected original roots.
 The normal four-byte nextPC assignment is extracted verbatim from the normal

@@ -1,20 +1,15 @@
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGCachedFoundation
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGCachedUniquePart0
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGCachedUniquePart1
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGCachedUniquePart2
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGCachedUniquePart3
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGCachedUniquePart4
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGCachedForwardPart0
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGCachedForwardPart1
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGCachedBackwardPart0
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BlakeGCachedNumericCertificate
+import Airbender.Import.GKRProtocol.FullArithmeticCheckImport
 
 namespace Airbender.Compiler.FullArithmeticNative.BlakeGCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
-finalize_full_compiler_arithmetic native inputs 112 variables 137 sources 32 gates 57
+certify_full_compiler_arithmetic native inputs 112 variables 137 sources 32 gates 57 using numericFullChecked
+
+finalize_checked_full_compiler_arithmetic native inputs 112 variables 137
 
 end Airbender.Compiler.FullArithmeticNative.BlakeGCached

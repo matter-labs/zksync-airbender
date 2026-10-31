@@ -1,16 +1,15 @@
 import Airbender.Proofs.GKRProtocol.FullArithmeticNative.JumpBranchUncachedFoundation
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.JumpBranchUncachedUniquePart0
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.JumpBranchUncachedUniquePart1
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.JumpBranchUncachedForwardPart0
-import Airbender.Proofs.GKRProtocol.FullArithmeticNative.JumpBranchUncachedBackwardPart0
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.JumpBranchUncachedNumericCertificate
+import Airbender.Import.GKRProtocol.FullArithmeticCheckImport
 
 namespace Airbender.Compiler.FullArithmeticNative.JumpBranchUncached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
-finalize_full_compiler_arithmetic native inputs 55 variables 59 sources 26 gates 30
+certify_full_compiler_arithmetic native inputs 55 variables 59 sources 26 gates 30 using numericFullChecked
+
+finalize_checked_full_compiler_arithmetic native inputs 55 variables 59
 
 end Airbender.Compiler.FullArithmeticNative.JumpBranchUncached
