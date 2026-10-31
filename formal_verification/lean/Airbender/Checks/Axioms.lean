@@ -1,3 +1,25 @@
+import Airbender.Proofs.FullUnsigned.SourceIndexPartitions
+import Airbender.Proofs.FullUnsigned.ParityOutputPartition
+import Airbender.Proofs.FullUnsigned.ParityOutputIntervals
+import Airbender.Proofs.FullUnsigned.ParityOutputGroup0
+import Airbender.Proofs.FullUnsigned.ParityOutputGroup1
+import Airbender.Proofs.FullUnsigned.ParityOutputGroup2
+import Airbender.Proofs.FullUnsigned.ParityOutputGroup3
+import Airbender.Proofs.FullUnsigned.ParityOutputGroup4
+import Airbender.Proofs.FullUnsigned.ParityOutputGroup5
+import Airbender.Proofs.FullUnsigned.ParityOutputGroup6
+import Airbender.Proofs.FullUnsigned.ParityOutputGroup7
+import Airbender.Proofs.FullUnsigned.ParityOutputGroup8
+import Airbender.Proofs.FullUnsigned.ParityOutputGroup9
+import Airbender.Proofs.FullUnsigned.ParityOutputGroup10
+import Airbender.Proofs.FullUnsigned.ParityOutputGroup11
+import Airbender.Proofs.FullUnsigned.ParityOutputGroup12
+import Airbender.Proofs.FullUnsigned.ParityOutputGroup13
+import Airbender.Proofs.FullUnsigned.ParityOutputGroup14
+import Airbender.Proofs.FullUnsigned.ParityOutputGroup15
+import Airbender.Proofs.FullUnsigned.ParityOutputGroup16
+import Airbender.Proofs.FullUnsigned.ParitySourceXorOutput
+import Airbender.Proofs.FullUnsigned.ParitySourceMembership
 import Airbender.Proofs.FullUnsigned.ParitySourceXorInputs
 import Airbender.Proofs.FullUnsigned.SetupSourcePrefixes
 import Airbender.Proofs.FullUnsigned.ParityControlPrefixes
@@ -15896,3 +15918,106 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Setup.SourceCaptureParityProofs.source_xor_padding_get
 #print axioms Airbender.Setup.SourceCaptureParityProofs.source_xor_tag_get
 #print axioms Airbender.Setup.SourceCaptureParityProofs.source_xor_fixed_match
+
+#print axioms Airbender.Setup.SourceIndices.decode_split
+#print axioms Airbender.Setup.SourceIndices.partition_join
+#print axioms Airbender.Setup.SourceIndices.singleton_partition
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_0
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_1
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_2
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_3
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_4
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_5
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_6
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_7
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_8
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_9
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_10
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_11
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_12
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_13
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_14
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_15
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_16
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_17
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_18
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_19
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_20
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_21
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_22
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_23
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_24
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_25
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_26
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_27
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_28
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_29
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_30
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_31
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_32
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_33
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_34
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_35
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_36
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_37
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_38
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_39
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_40
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_41
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_42
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_43
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_44
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_45
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_46
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_47
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_48
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_49
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_50
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_51
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_52
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_53
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_54
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_55
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_56
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_57
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_58
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_59
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_60
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_61
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_62
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_63
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_64
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_65
+#print axioms Airbender.Setup.ParityOutputPartition.chunk_66
+#print axioms Airbender.Setup.ParityOutputPartition.chunks
+#print axioms Airbender.Setup.ParityOutputPartition.matches
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputIntervals.binding
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputIntervals.blocks
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputIntervals.offset
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputIntervals.length
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputIntervals.expected
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputIntervals.IntervalFact
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputGroup0.facts
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputGroup1.facts
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputGroup2.facts
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputGroup3.facts
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputGroup4.facts
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputGroup5.facts
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputGroup6.facts
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputGroup7.facts
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputGroup8.facts
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputGroup9.facts
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputGroup10.facts
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputGroup11.facts
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputGroup12.facts
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputGroup13.facts
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputGroup14.facts
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputGroup15.facts
+#print axioms Airbender.Setup.SourceCaptureParityProofs.OutputGroup16.facts
+#print axioms Airbender.Setup.SourceCaptureParityProofs.source_xor_output_get
+#print axioms Airbender.Setup.SourceCaptureParityProofs.source_xor_output_match
+#print axioms Airbender.Setup.SourceCaptureParityProofs.source_xor_columns_match
+#print axioms Airbender.Setup.SourceCaptureParityProofs.source_xor_rows
+#print axioms Airbender.Compiler.MachineTargets.Proofs.parity_source_xor_member
+#print axioms Airbender.Compiler.MachineTargets.Proofs.split_parity_real_rows
+#print axioms Airbender.Compiler.MachineTargets.Proofs.parity_source_rows
