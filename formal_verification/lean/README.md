@@ -206,6 +206,12 @@ are not exact cgroup enforcement. Commands and peak metrics are retained in rece
 Processes whose address space is confirmed gone remain owned for cleanup but
 are no longer workers. Unknown live Lean commands still count toward the ceiling.
 
+The Airbender library reserves a 2 GiB virtual Lean thread stack. The kernel
+needs this space to compare the complete parity and chi source literals.
+The physical-memory and bounded-resident caps above still apply. Focused
+literal-model checks passed with this stack. Independent replay has not yet
+qualified these new proofs under its separate stack setting.
+
 Independent replay passes Lean an explicit 32 MiB thread stack on every host,
 using --tstack=32768, and records it in the ledger identity. Linux also sets the
 process stack limit to 32 MiB. On Darwin, the OS rejects process stack-limit
