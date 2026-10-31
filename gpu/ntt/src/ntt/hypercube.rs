@@ -449,6 +449,64 @@ pub(crate) fn hypercube_evals_to_monomials_2_pass(
     Ok(())
 }
 
+/// Complete compact Mobius transform for one column. Exact input/output aliasing
+/// is permitted: each existing pass reads its block-owned rows before stores.
+pub(crate) fn launch_hypercube_compact_column(
+    input_matrix: PtrAndStride<BF>,
+    output_matrix_const: PtrAndStride<BF>,
+    output_matrix_mut: MutPtrAndStride<BF>,
+    log_n: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!((TWO_PASS_COMPACT_MIN_LOG_N..TWO_PASS_COMPACT_MAX_LOG_N).contains(&log_n));
+    let n = 1usize << log_n;
+    let log_k = log_n - 8;
+    let tail_function = match log_k {
+        5 => HypercubeLastCompactFunction(
+            ab_hypercube_evals_to_monomials_last_5_stages_compact_kernel,
+        ),
+        6 => HypercubeLastCompactFunction(
+            ab_hypercube_evals_to_monomials_last_6_stages_compact_kernel,
+        ),
+        7 => HypercubeLastCompactFunction(
+            ab_hypercube_evals_to_monomials_last_7_stages_compact_kernel,
+        ),
+        8 => HypercubeLastCompactFunction(
+            ab_hypercube_evals_to_monomials_last_8_stages_compact_kernel,
+        ),
+        9 => HypercubeLastCompactFunction(
+            ab_hypercube_evals_to_monomials_last_9_stages_compact_kernel,
+        ),
+        10 => HypercubeLastCompactFunction(
+            ab_hypercube_evals_to_monomials_last_10_stages_compact_kernel,
+        ),
+        11 => HypercubeLastCompactFunction(
+            ab_hypercube_evals_to_monomials_last_11_stages_compact_kernel,
+        ),
+        _ => unreachable!("log_k = log_n - 8 is in [5, 11]"),
+    };
+
+    // At log_n=13/14 this is intentionally a skinny 1/2-block grid per
+    // column; it is still a fixed two-launch path instead of 13/14
+    // one-stage launches. Column folding can be added if these sizes
+    // become hot enough to justify changing the kernel ABI.
+    let first_blocks = n / (1usize << 13);
+    let first_config = CudaLaunchConfig::basic(first_blocks as u32, 256, stream);
+    let first_args =
+        StridedTilesStagesArguments::new(input_matrix, output_matrix_mut, log_n as i32, 0);
+    StridedTilesStagesFunction(ab_hypercube_evals_to_monomials_8_stages_kernel)
+        .launch(&first_config, &first_args)?;
+
+    let k_vals = 1usize << log_k;
+    let tail_blocks = n / k_vals;
+    debug_assert_eq!(tail_blocks, 1usize << 8);
+    let mut tail_config = CudaLaunchConfig::basic(tail_blocks as u32, 256, stream);
+    tail_config.dynamic_smem_bytes = k_vals * size_of::<BF>();
+    let tail_args = HypercubeLastCompactArguments::new(output_matrix_const, output_matrix_mut);
+    tail_function.launch(&tail_config, &tail_args)?;
+    Ok(())
+}
+
 /// Two-pass compact-range Mobius transform: the existing whole-domain
 /// nonfinal8 pass followed by a twiddle-free consecutive-chunk tail of
 /// `log_n - 8` stages. This path is natural-layout only.
@@ -484,32 +542,6 @@ pub(crate) fn hypercube_evals_to_monomials_2_pass_compact(
         )
     };
     let outputs_slice_mut = outputs_matrix.slice_mut();
-    let log_k = log_n - 8;
-    let tail_function = match log_k {
-        5 => HypercubeLastCompactFunction(
-            ab_hypercube_evals_to_monomials_last_5_stages_compact_kernel,
-        ),
-        6 => HypercubeLastCompactFunction(
-            ab_hypercube_evals_to_monomials_last_6_stages_compact_kernel,
-        ),
-        7 => HypercubeLastCompactFunction(
-            ab_hypercube_evals_to_monomials_last_7_stages_compact_kernel,
-        ),
-        8 => HypercubeLastCompactFunction(
-            ab_hypercube_evals_to_monomials_last_8_stages_compact_kernel,
-        ),
-        9 => HypercubeLastCompactFunction(
-            ab_hypercube_evals_to_monomials_last_9_stages_compact_kernel,
-        ),
-        10 => HypercubeLastCompactFunction(
-            ab_hypercube_evals_to_monomials_last_10_stages_compact_kernel,
-        ),
-        11 => HypercubeLastCompactFunction(
-            ab_hypercube_evals_to_monomials_last_11_stages_compact_kernel,
-        ),
-        _ => unreachable!("log_k = log_n - 8 is in [5, 11]"),
-    };
-
     // Work on one column at a time to preserve the existing L2 locality.
     for col in 0..num_ntts {
         let range = col * stride..(col + 1) * stride;
@@ -523,24 +555,13 @@ pub(crate) fn hypercube_evals_to_monomials_2_pass_compact(
         let mut output_matrix_mut = DeviceMatrixChunkMut::new(output_slice_mut, stride, offset, n);
         let output_matrix_mut = output_matrix_mut.as_mut_ptr_and_stride();
 
-        // At log_n=13/14 this is intentionally a skinny 1/2-block grid per
-        // column; it is still a fixed two-launch path instead of 13/14
-        // one-stage launches. Column folding can be added if these sizes
-        // become hot enough to justify changing the kernel ABI.
-        let first_blocks = n / (1usize << 13);
-        let first_config = CudaLaunchConfig::basic(first_blocks as u32, 256, stream);
-        let first_args =
-            StridedTilesStagesArguments::new(input_matrix, output_matrix_mut, log_n as i32, 0);
-        StridedTilesStagesFunction(ab_hypercube_evals_to_monomials_8_stages_kernel)
-            .launch(&first_config, &first_args)?;
-
-        let k_vals = 1usize << log_k;
-        let tail_blocks = n / k_vals;
-        debug_assert_eq!(tail_blocks, 1usize << 8);
-        let mut tail_config = CudaLaunchConfig::basic(tail_blocks as u32, 256, stream);
-        tail_config.dynamic_smem_bytes = k_vals * size_of::<BF>();
-        let tail_args = HypercubeLastCompactArguments::new(output_matrix_const, output_matrix_mut);
-        tail_function.launch(&tail_config, &tail_args)?;
+        launch_hypercube_compact_column(
+            input_matrix,
+            output_matrix_const,
+            output_matrix_mut,
+            log_n,
+            stream,
+        )?;
     }
     Ok(())
 }
@@ -765,10 +786,21 @@ pub(crate) fn restore_hypercube_in_place(
     properties: &DeviceProperties,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert!((20..=24).contains(&log_n));
+    assert!(super::log_size_supports_in_place(log_n));
     let n = 1usize << log_n;
     assert_eq!(values.len() % n, 0);
     assert_eq!(values.as_ptr() as usize % 16, 0);
+    if log_n < 20 {
+        // The existing addition-stage kernel restores natural raw evaluations
+        // in place. One exclusive column, same-stream stages, no scratch/copy.
+        for column in 0..values.len() / n {
+            let values = &mut values[column * n..(column + 1) * n];
+            for stage in 0..log_n {
+                super::launch_hypercube_forward_stage(values, log_n, stage, stream)?;
+            }
+        }
+        return Ok(());
+    }
     let two_pass = super::ntt_pass_selection(log_n, properties) == super::NttPassCount::Two;
     for column in 0..values.len() / n {
         // SAFETY: each kernel's complete read/write set is owned by its block

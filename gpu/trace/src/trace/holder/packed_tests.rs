@@ -937,7 +937,9 @@ fn cpu_packed_base_geometry_admission_is_cuda_free() {
         ))
         .is_err());
     }
-    assert!(!gpu_ntt::ntt::log_size_supports_retained_monomials(19));
+    assert!(!gpu_ntt::ntt::log_size_supports_retained_monomials(12));
+    assert!(gpu_ntt::ntt::log_size_supports_retained_monomials(13));
+    assert!(gpu_ntt::ntt::log_size_supports_retained_monomials(19));
     assert!(gpu_ntt::ntt::log_size_supports_retained_monomials(20));
     assert!(gpu_ntt::ntt::log_size_supports_retained_monomials(24));
     assert!(!gpu_ntt::ntt::log_size_supports_retained_monomials(25));
@@ -946,46 +948,59 @@ fn cpu_packed_base_geometry_admission_is_cuda_free() {
 #[test]
 fn packed_base_cpu_parity_rejects_domain_and_storage_before_work() {
     use std::panic::{catch_unwind, AssertUnwindSafe};
+    fn check(error: &(dyn std::any::Any + Send), expected: &str) {
+        let text = error
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| error.downcast_ref::<&str>().copied())
+            .unwrap();
+        assert!(text.contains(expected), "{text}");
+    }
     let context = super::tests::make_test_context(256, 16);
-    let config = test_config(13, 1);
+    let config = test_config(12, 1);
+    // Structural holder construction is field-generic. BF capability checks
+    // reject before cap/workspace allocation, raw take or transform work.
+    let shape = geometry(&config, BaseOracleRole::Memory, 1);
     let mut holder = TraceHolder::<BF>::new_base_without_cosets(
-        geometry(&config, BaseOracleRole::Memory, 1),
+        shape,
         BaseOracleRole::Memory,
         TreesCacheMode::CachePartial,
         &context,
     )
     .unwrap();
     let before = context.get_used_mem_current();
-    assert!(
-        catch_unwind(AssertUnwindSafe(|| validate_baby_bear_base_opening(
-            &geometry(&config, BaseOracleRole::Memory, 1),
-            OpeningStrategy::InPlace,
-            TreesCacheMode::CachePartial,
-            context
-                .ntt_device_context()
-                .whir_leaf_transform_params()
-                .omega_log_order,
-        )))
-        .is_err()
-    );
-    assert!(catch_unwind(AssertUnwindSafe(|| {
-        validate_baby_bear_base_opening(
-            &geometry(&config, BaseOracleRole::Memory, 1),
-            OpeningStrategy::PerCoset,
-            TreesCacheMode::CachePartial,
-            context
-                .ntt_device_context()
-                .whir_leaf_transform_params()
-                .omega_log_order,
+    let twiddle_domain_log2 = context
+        .ntt_device_context()
+        .whir_leaf_transform_params()
+        .omega_log_order;
+    for opening in [OpeningStrategy::InPlace, OpeningStrategy::PerCoset] {
+        check(
+            &*catch_unwind(|| {
+                validate_baby_bear_base_opening(
+                    &shape,
+                    opening,
+                    TreesCacheMode::CachePartial,
+                    twiddle_domain_log2,
+                )
+            })
+            .expect_err("m12 BF geometry is rejected before work"),
+            "UnsupportedMessageSize { requested: 12, min: 13, max: 24 }",
         );
-        holder.defer_materialization_until_queries(OpeningStrategy::PerCoset)
-    }))
-    .is_err());
-    assert!(catch_unwind(AssertUnwindSafe(
-        || holder.commit_with_monomials(None, &context)
-    ))
-    .is_err());
-    assert!(catch_unwind(AssertUnwindSafe(|| holder.commit_in_place(None, &context))).is_err());
+        assert_eq!(context.get_used_mem_current(), before);
+    }
+    check(
+        &*catch_unwind(AssertUnwindSafe(|| {
+            holder.commit_with_monomials(None, &context)
+        }))
+        .expect_err("m12 retained commitment is rejected before work"),
+        "geometry-backed PerCoset commitments require the retained-monomial dispatch family",
+    );
+    assert_eq!(context.get_used_mem_current(), before);
+    check(
+        &*catch_unwind(AssertUnwindSafe(|| holder.commit_in_place(None, &context)))
+            .expect_err("m12 InPlace commitment is rejected before work"),
+        "in-place commitments require the generated transform domain",
+    );
     assert_eq!(context.get_used_mem_current(), before);
 
     // Retained commitment requires its partial-tree storage, independently
@@ -1493,19 +1508,54 @@ fn cpu_in_place_geometry_checks_domain_and_tree_before_work() {
         ))
         .is_err());
     }
-    // This is a geometry-path check even at k0, independent of the legacy
-    // holder route. G-6 will wire the compact transform lifecycle.
-    for (k, fold) in [(0, 0), (0, 1), (1, 0), (1, 1)] {
-        let config = test_config_with_base_fold(13, k, fold);
-        let shape = geometry(&config, BaseOracleRole::Witness, (1usize << k) + 1);
-        for opening in [OpeningStrategy::InPlace, OpeningStrategy::PerCoset] {
-            assert!(std::panic::catch_unwind(|| validate_baby_bear_base_opening(
-                &shape,
-                opening,
-                TreesCacheMode::CachePartial,
-                27
-            ))
-            .is_err());
+    // Geometry-path admission is independent of legacy routing, even at k0.
+    for message in [12, 13] {
+        for (k, fold) in [(0, 0), (0, 1), (1, 0), (1, 1)] {
+            let config = test_config_with_base_fold(message, k, fold);
+            let shape = geometry(&config, BaseOracleRole::Witness, (1usize << k) + 1);
+            for opening in [OpeningStrategy::InPlace, OpeningStrategy::PerCoset] {
+                let check = || {
+                    validate_baby_bear_base_opening(
+                        &shape,
+                        opening,
+                        TreesCacheMode::CachePartial,
+                        27,
+                    )
+                };
+                if message == 13 {
+                    check();
+                } else {
+                    let error = std::panic::catch_unwind(check)
+                        .expect_err("m12 has no compact eight-stage transform");
+                    let text = error
+                        .downcast_ref::<String>()
+                        .map(String::as_str)
+                        .or_else(|| error.downcast_ref::<&str>().copied())
+                        .unwrap();
+                    assert!(
+                        text.contains("UnsupportedMessageSize { requested: 12, min: 13, max: 24 }"),
+                        "{text}"
+                    );
+                }
+            }
         }
     }
+}
+
+// Compact transform lifecycle: two physical columns, empty roles and padded tails.
+in_place_geometry_tests! {
+    in_place_base_cpu_parity_compact_m13_f0: (12, 1, 0),
+    in_place_base_cpu_parity_compact_m13_f1: (12, 1, 1),
+    in_place_base_cpu_parity_compact_m14_f0: (13, 1, 0),
+    in_place_base_cpu_parity_compact_m14_f1: (13, 1, 1),
+    in_place_base_cpu_parity_compact_m15_f0: (14, 1, 0),
+    in_place_base_cpu_parity_compact_m15_f1: (14, 1, 1),
+    in_place_base_cpu_parity_compact_m16_f0: (15, 1, 0),
+    in_place_base_cpu_parity_compact_m16_f1: (15, 1, 1),
+    in_place_base_cpu_parity_compact_m17_f0: (16, 1, 0),
+    in_place_base_cpu_parity_compact_m17_f1: (16, 1, 1),
+    in_place_base_cpu_parity_compact_m18_f0: (17, 1, 0),
+    in_place_base_cpu_parity_compact_m18_f1: (17, 1, 1),
+    in_place_base_cpu_parity_compact_m19_f0: (18, 1, 0),
+    in_place_base_cpu_parity_compact_m19_f1: (18, 1, 1),
 }

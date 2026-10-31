@@ -479,6 +479,38 @@ fn l2_clamped_columns_per_launch(
     num_columns.min(columns_per_launch_l2)
 }
 
+/// Existing compact DIF decomposition, also used by exact-alias coset inverse.
+/// This bypasses the forward DIT choice at m13; no inverse DIT route exists.
+pub(crate) fn compact_dif_strategy(
+    log_n: usize,
+    num_columns: usize,
+    num_cosets: usize,
+    device_props: &DeviceProperties,
+) -> NttStrategy {
+    assert!((TWO_PASS_COMPACT_MIN_LOG_N..=TWO_PASS_COMPACT_MAX_LOG_N).contains(&log_n));
+    let initial_stages = log_n - 8;
+    let (columns_per_launch, cosets_per_launch) =
+        pick_cols_and_cosets_per_launch(log_n, num_columns, num_cosets, device_props);
+    NttStrategy {
+        passes: vec![
+            NttPass {
+                start_stage: 0,
+                stage_count: initial_stages,
+                kernel: NttKernelKind::MonomialsToEvalsFirstCompact {
+                    stages: initial_stages,
+                },
+            },
+            NttPass {
+                start_stage: initial_stages,
+                stage_count: 8,
+                kernel: NttKernelKind::MonomialsToEvalsNonInitial { stages: 8 },
+            },
+        ],
+        columns_per_launch,
+        cosets_per_launch,
+    }
+}
+
 fn select_forward_strategy(
     log_n: usize,
     num_columns: usize,
@@ -568,34 +600,12 @@ fn select_forward_strategy(
         });
     }
     if (TWO_PASS_COMPACT_MIN_LOG_N..=TWO_PASS_COMPACT_MAX_LOG_N).contains(&log_n) {
-        // 2-pass: first K stages (K = log_n - 8) via compact-style kernel +
-        // noninitial 8 stages. Pass 1 writes pass-2's input; the per-launch
-        // working set plus the monomial source must fit in L2 across the
-        // coset-tile sweep. The joint optimizer picks
-        // `(cols_per_launch, cosets_per_launch)` to maximize per-launch
-        // parallelism `K * cols` under `(K + 1) * cols * col_bytes <= L2`,
-        // tie-breaking on max cols.
-        let initial_stages = log_n - 8;
-        let (columns_per_launch, cosets_per_launch) =
-            pick_cols_and_cosets_per_launch(log_n, num_columns, num_cosets, device_props);
-        return Ok(NttStrategy {
-            passes: vec![
-                NttPass {
-                    start_stage: 0,
-                    stage_count: initial_stages,
-                    kernel: NttKernelKind::MonomialsToEvalsFirstCompact {
-                        stages: initial_stages,
-                    },
-                },
-                NttPass {
-                    start_stage: initial_stages,
-                    stage_count: 8,
-                    kernel: NttKernelKind::MonomialsToEvalsNonInitial { stages: 8 },
-                },
-            ],
-            columns_per_launch,
-            cosets_per_launch,
-        });
+        return Ok(compact_dif_strategy(
+            log_n,
+            num_columns,
+            num_cosets,
+            device_props,
+        ));
     }
     let column_bytes = (1usize << log_n) * size_of::<BF>();
     let use_two_pass = column_bytes >= device_props.l2_cache_size_bytes && log_n >= 23;
@@ -839,6 +849,36 @@ mod cpu_tests {
             compute_capability_major: 12,
             compute_capability_minor: 0,
             max_dynamic_smem_per_block_optin: 99 * 1024,
+        }
+    }
+
+    #[test]
+    fn cpu_compact_inverse_plan_skips_forward_dit() {
+        let properties = rtx_5090_like();
+        let ordinary = select_ntt_strategy(NttDirection::Forward, 13, 2, 1, &properties).unwrap();
+        assert!(matches!(
+            ordinary.passes[0].kernel,
+            NttKernelKind::MonomialsToEvalsDit { .. }
+        ));
+        for log_n in 13..=19 {
+            let compact = compact_dif_strategy(log_n, 2, 1, &properties);
+            assert_eq!(
+                compact.passes,
+                vec![
+                    NttPass {
+                        start_stage: 0,
+                        stage_count: log_n - 8,
+                        kernel: NttKernelKind::MonomialsToEvalsFirstCompact { stages: log_n - 8 }
+                    },
+                    NttPass {
+                        start_stage: log_n - 8,
+                        stage_count: 8,
+                        kernel: NttKernelKind::MonomialsToEvalsNonInitial { stages: 8 }
+                    },
+                ]
+            );
+            assert!((1..=2).contains(&compact.columns_per_launch));
+            assert_eq!(compact.cosets_per_launch, 1);
         }
     }
 

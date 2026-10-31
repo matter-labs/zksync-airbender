@@ -96,7 +96,7 @@ pub fn validate_baby_bear_base_opening(
     }
 }
 
-/// `PerCoset` and `InPlace` require `log_domain_size` in `20..=24`.
+/// `PerCoset` and `InPlace` require `log_domain_size` in `13..=24`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum OpeningStrategy {
     #[default]
@@ -105,7 +105,7 @@ pub enum OpeningStrategy {
     InPlace,
 }
 
-/// `PerCoset` and `InPlace` require `log_domain_size` in `20..=24`.
+/// `PerCoset` and `InPlace` require `log_domain_size` in `13..=24`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum WitnessCommitmentStrategy {
     #[default]

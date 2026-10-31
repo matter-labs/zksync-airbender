@@ -22,7 +22,7 @@ use super::{hypercube_three_pass, select_ntt_strategy, NttDirection, OMEGA_LOG_O
 
 /// Supported generated retained-monomial/pre-tail dispatch sizes.
 pub fn log_size_supports_retained_monomials(log_n: usize) -> bool {
-    (20..=24).contains(&log_n)
+    (13..=24).contains(&log_n)
 }
 
 fn check_shape(
@@ -124,7 +124,21 @@ unsafe fn initialize(
         let m_mut = MutPtrAndStride::new(monomials.as_mut_ptr().add(offset), n);
         let c_const = PtrAndStride::new(coset.as_ptr().add(offset), n);
         let c_mut = MutPtrAndStride::new(coset.as_mut_ptr().add(offset), n);
-        if three {
+        if log_n < 20 {
+            super::hypercube::launch_hypercube_compact_column(
+                input, m_const, m_mut, log_n, stream,
+            )?;
+            generate_column(
+                &monomials[offset..offset + n],
+                &mut coset[offset..offset + n],
+                log_n,
+                log_f,
+                coset_index,
+                None,
+                properties,
+                stream,
+            )?;
+        } else if three {
             // The preceding column's terminal already computed this finest
             // pass, including when the next raw column aliases its M output.
             launch_pre_tail_lsb_column(
@@ -228,7 +242,7 @@ pub fn retained_monomials_to_coset(
     check_shape(monomials, coset, log_n, log_f, coset_index);
     let n = 1usize << log_n;
     let columns = monomials.len() / n;
-    if !hypercube_three_pass(log_n, properties) && columns != 0 {
+    if (log_n < 20 || !hypercube_three_pass(log_n, properties)) && columns != 0 {
         // Compact regeneration has no cross-column finest/prefetch dependency.
         // Use the existing L2-bounded column tiling instead of paying two
         // launches per column. The large two-pass strategy uses its own bound.
@@ -238,7 +252,7 @@ pub fn retained_monomials_to_coset(
         let input = DeviceMatrix::new(monomials, n);
         let mut output = DeviceMatrixMut::new(coset, n);
         let shift = (OMEGA_LOG_ORDER as usize - log_n - log_f) as u32;
-        if log_n == 20 {
+        if log_n <= 20 {
             return natural_monomials_to_bitrev_evals_2_pass_compact(
                 &input,
                 &mut output,
@@ -297,6 +311,23 @@ fn generate_column(
 ) -> CudaResult<()> {
     let n = 1usize << log_n;
     let shift = (OMEGA_LOG_ORDER as usize - log_n - log_f) as u32;
+    if log_n < 20 {
+        let input = DeviceMatrix::new(monomials, n);
+        let mut output = DeviceMatrixMut::new(coset, n);
+        return natural_monomials_to_bitrev_evals_2_pass_compact(
+            &input,
+            &mut output,
+            log_n,
+            coset_index,
+            shift,
+            1,
+            1,
+            1,
+            1,
+            false,
+            stream,
+        );
+    }
     if hypercube_three_pass(log_n, properties) {
         let input = PtrAndStride::new(monomials.as_ptr(), n);
         let output_const = PtrAndStride::new(coset.as_ptr(), n);

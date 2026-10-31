@@ -65,6 +65,18 @@ fn run(log_n: usize, log_f: usize, force_two_pass: bool) {
     let mut expected_cosets = vec![BF::new(0); len * f];
     memory_copy_async(&mut expected_cosets[..], &d_full, stream).unwrap();
     stream.synchronize().unwrap();
+    if log_n < 20 {
+        let cpu =
+            super::helpers::host_cosets_from_natural_monomials(&expected_monomials, log_n, log_f);
+        for (coset, values) in cpu.into_iter().enumerate() {
+            compare(
+                &expected_cosets[coset * len..(coset + 1) * len],
+                &values,
+                &format!("full-LDE CPU reference m={log_n} ell={log_f} coset={coset}"),
+            );
+            expected_cosets[coset * len..(coset + 1) * len].copy_from_slice(&values);
+        }
+    }
     for in_place in [false, true] {
         // Nonzero recycled contents, overwritten by the first raw pass.
         memory_copy_async(&mut d_m, &raw[..], stream).unwrap();
@@ -158,3 +170,18 @@ case!(retained_n24_f8_two_pass, 24, 3, true);
 case!(retained_n22_f2, 22, 1, false);
 case!(retained_n23_f2, 23, 1, false);
 case!(retained_n23_f8_two_pass, 23, 3, true);
+
+case!(retained_n13_f2, 13, 1, false);
+case!(retained_n13_f4, 13, 2, false);
+case!(retained_n14_f2, 14, 1, false);
+case!(retained_n14_f4, 14, 2, false);
+case!(retained_n15_f2, 15, 1, false);
+case!(retained_n15_f4, 15, 2, false);
+case!(retained_n16_f2, 16, 1, false);
+case!(retained_n16_f4, 16, 2, false);
+case!(retained_n17_f2, 17, 1, false);
+case!(retained_n17_f4, 17, 2, false);
+case!(retained_n18_f2, 18, 1, false);
+case!(retained_n18_f4, 18, 2, false);
+case!(retained_n19_f2, 19, 1, false);
+case!(retained_n19_f4, 19, 2, false);

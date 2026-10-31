@@ -245,6 +245,25 @@ DEFINE_FIRST_K_KERNEL(12, 2)
 
 #undef DEFINE_FIRST_K_KERNEL
 
+// Compact inverse K+8 DIF plans for log_n=13..19 reuse the inverse template.
+#define DEFINE_INVERSE_FIRST_K_KERNEL(K)                                                                                                                       \
+  EXTERN __launch_bounds__(COMPACT_THREADS, 2) __global__ void ab_coset_to_monomials_first_##K##_stages_compact_kernel(                                        \
+      bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const bool transposed_monomials, const int log_n,                 \
+      const int coset_index_base, const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {                                  \
+    (void)transposed_monomials;                                                                                                                                \
+    monomials_to_evals_first_stages_in_block<K, true>(gmem_in, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset, log_cosets_in_tile); \
+  }
+
+DEFINE_INVERSE_FIRST_K_KERNEL(5)
+DEFINE_INVERSE_FIRST_K_KERNEL(6)
+DEFINE_INVERSE_FIRST_K_KERNEL(7)
+DEFINE_INVERSE_FIRST_K_KERNEL(8)
+DEFINE_INVERSE_FIRST_K_KERNEL(9)
+DEFINE_INVERSE_FIRST_K_KERNEL(10)
+DEFINE_INVERSE_FIRST_K_KERNEL(11)
+
+#undef DEFINE_INVERSE_FIRST_K_KERNEL
+
 // log_n=20 uses first-12 compact stages followed by noninitial-8.
 EXTERN __launch_bounds__(COMPACT_THREADS, 2) __global__
     void ab_coset_to_monomials_first_12_stages_compact_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
