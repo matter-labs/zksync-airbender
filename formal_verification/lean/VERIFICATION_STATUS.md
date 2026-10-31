@@ -3010,3 +3010,31 @@ execution interfaces, production OS binary comparison and verified checker
 rollout also remain open. No native circuit, Rust source or imported value
 changed. Full frontend validation, environment audit, baseline refresh,
 transitive replay and Linux qualification did not run.
+
+### Program parameter migration: subword ROM constraints
+
+The subword setup has two program-dependent ROM regions. Their tags are 44
+and 45. The new program row factory includes both regions. It uses the public
+ROM word function and the imported fixed load tables. It keeps the exact
+native decoder bounds, zero padding, range group and timestamp group.
+It preserves the earlier basic row factory and all its public declarations.
+
+Both subword cache modes now prove their complete native row constraints
+with this program row factory. Native arithmetic excludes the decoder tag
+from each helper request. Exact matching then supplies a public table row.
+The proof needs no retained image or expected helper value. Ten of the
+14 CPU profiles now have program-parameter constraint theorems.
+
+The new factory, query interpretation, arithmetic guard and both native
+constraint adapters passed focused kernel checks. The last group passed
+in six seconds. Peak physical memory was 452 MiB. All ten new public roots
+passed direct axiom checks with only the three allowed axioms. The inventory
+has 17,554 roots. It retains all 17,544 prior roots. Generator freshness and
+mutation controls passed. Each guard cleaned its owned children.
+
+The new subword factory still needs decoder and PC registry integration.
+Word-memory and unified constraint adapters remain open in both cache modes.
+The legacy execution interfaces, production OS binary comparison and verified
+checker rollout also remain open. No native circuit, Rust source or imported
+value changed. Full frontend validation, environment audit, baseline refresh,
+transitive replay and Linux qualification did not run.
