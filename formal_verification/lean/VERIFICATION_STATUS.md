@@ -2699,3 +2699,28 @@ and the verified checker rollout. The hourly follow-up remains active.
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run. Independent replay has not
 qualified the new literal proofs under its separate stack setting.
+
+
+### Program parameter migration: exact lookup partition
+
+Design item 2 now has a generic exact lookup partition.
+`LookupArgument.restrictTo` selects table rows and requests with the same
+tuple predicate. It preserves the original natural multiplicity for each
+retained row. `LookupArgument.splitBy` derives both parts of a setup split
+from the original exact permutation. Neither operation assumes extra query
+membership or a new matching argument.
+
+The generic module passed a focused kernel check in two seconds. Peak
+physical memory was 227 MiB. Both new roots passed direct axiom checks in
+one second. They use only the three allowed axioms. The explicit inventory
+has 17,277 roots. It retains all 17,275 prior roots.
+
+The native bindings must still identify the partition predicate and each
+program region. The legacy compiler interfaces still use the retained image
+and decoder tables. Their migration remains open. The production OS binary
+comparison and verified checker rollout also remain open.
+
+No native circuit, Rust source or imported value changed. Exact lookup and
+RAM assumptions stay explicit. Cached and uncached captures remain required.
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.

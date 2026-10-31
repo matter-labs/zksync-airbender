@@ -1,3 +1,4 @@
+import Airbender.Proofs.GKRProtocol.LookupSetupPartition
 import Airbender.Proofs.FullUnsigned.Target
 import Airbender.Proofs.FullUnsigned.ChiSourceBinding
 import Airbender.Proofs.FullUnsigned.Source.ChiLiteral
@@ -18784,3 +18785,6 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Setup.SourceCaptureParityProofs.source_eq
 #print axioms Airbender.Compiler.MachineTargets.Proofs.parity_original_source_rows
 #print axioms Airbender.Compiler.MachineTargets.Proofs.unrolled_full_soundness
+
+#print axioms Airbender.Compiler.LookupArgument.restrictTo
+#print axioms Airbender.Compiler.LookupArgument.splitBy
