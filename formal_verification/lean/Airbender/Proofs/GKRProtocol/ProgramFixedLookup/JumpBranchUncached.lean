@@ -1,5 +1,6 @@
 import Airbender.Proofs.GKRProtocol.LogicalRows.JumpBranchUncached
 import Airbender.Proofs.GKRProtocol.ProgramSetupNative
+import Airbender.Proofs.GKRProtocol.NativeProgramQueries
 
 namespace Airbender.Compiler.ProgramFixedLookup.JumpBranchUncached
 open Airbender Airbender.Compiler Airbender.Compiler.PooledRowNative.JumpBranchUncached
@@ -49,4 +50,23 @@ theorem helpers_from_arguments (decoder : Configuration → List (List Source.Ba
   change Airbender.Compiler.MaterializedNative.JumpBranchUncached.native.model.Contains [.timestamp] [value] at present
   exact Airbender.Compiler.MaterializedRangeNative.JumpBranchUncached.native.timestamp_bounded value present
 
+
+/-- Program rows cannot alter a lookup with a fixed helper tag. -/
+theorem generic_from_arguments
+    (decoder : Configuration → List (List Source.BaseField))
+    (wordAt : Nat → BitVec 32) (input : Input)
+    (arguments : LookupArgumentsWith (fun group index => NativeProgramSetup.rows decoder wordAt .jumpBranchUncached group index.val) input) (query : SourceLookupQuery) (member : query ∈ Airbender.Compiler.LookupSourceNative.JumpBranchUncached.native.genericQueries)
+    (nonzeroTag : (query.fields.map (fun field => field.value ((input.physical ∘ Airbender.Compiler.LookupSourceNative.JumpBranchUncached.native.bank.address) ∘ Airbender.Compiler.LookupNative.JumpBranchUncached.native.sourcePlacement))).getLast?.getD 0 ≠ 0)
+    (notDecoder : (query.fields.map (fun field => field.value ((input.physical ∘ Airbender.Compiler.LookupSourceNative.JumpBranchUncached.native.bank.address) ∘ Airbender.Compiler.LookupNative.JumpBranchUncached.native.sourcePlacement))).getLast?.getD 0 ≠ 46)
+    (notROM : (query.fields.map (fun field => field.value ((input.physical ∘ Airbender.Compiler.LookupSourceNative.JumpBranchUncached.native.bank.address) ∘ Airbender.Compiler.LookupNative.JumpBranchUncached.native.sourcePlacement))).getLast?.getD 0 ≠ 34)
+    (enabled : query.weight (RingHom.id _) ((input.physical ∘ Airbender.Compiler.LookupSourceNative.JumpBranchUncached.native.bank.address) ∘ Airbender.Compiler.LookupNative.JumpBranchUncached.native.sourcePlacement) ≠ 0) :
+    Airbender.Compiler.MaterializedNative.JumpBranchUncached.native.model.Contains Airbender.Compiler.TableNative.JumpBranchUncached.native.genericSetupColumns
+      (query.fields.map (fun field => field.value ((input.physical ∘ Airbender.Compiler.LookupSourceNative.JumpBranchUncached.native.bank.address) ∘ Airbender.Compiler.LookupNative.JumpBranchUncached.native.sourcePlacement))) := by
+  obtain ⟨index, equal⟩ := source_member_with (fun group index => NativeProgramSetup.rows decoder wordAt .jumpBranchUncached group index.val) input arguments 0
+    (query.materialized ((input.physical ∘ Airbender.Compiler.LookupSourceNative.JumpBranchUncached.native.bank.address) ∘ Airbender.Compiler.LookupNative.JumpBranchUncached.native.sourcePlacement)) (List.mem_map.mpr ⟨query, member, rfl⟩) enabled
+  have matched : (query.fields.map (fun field => field.value ((input.physical ∘ Airbender.Compiler.LookupSourceNative.JumpBranchUncached.native.bank.address) ∘ Airbender.Compiler.LookupNative.JumpBranchUncached.native.sourcePlacement))) = NativeProgramSetup.rows decoder wordAt .jumpBranchUncached 0 index.val := equal
+  have fixedRow := NativeProgramSetup.fixed_member decoder wordAt .jumpBranchUncached _ rfl rfl
+    index.val (query.fields.map (fun field => field.value ((input.physical ∘ Airbender.Compiler.LookupSourceNative.JumpBranchUncached.native.bank.address) ∘ Airbender.Compiler.LookupNative.JumpBranchUncached.native.sourcePlacement))) matched nonzeroTag notDecoder notROM
+  refine ⟨index, ?_⟩
+  simpa [NativeProgramSetup.retainedRows, index.isLt] using fixedRow
 end Airbender.Compiler.ProgramFixedLookup.JumpBranchUncached

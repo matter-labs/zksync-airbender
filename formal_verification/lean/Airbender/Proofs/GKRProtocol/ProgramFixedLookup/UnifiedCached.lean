@@ -1,5 +1,6 @@
 import Airbender.Proofs.GKRProtocol.LogicalRows.UnifiedCached
 import Airbender.Proofs.GKRProtocol.ProgramSetupNative
+import Airbender.Proofs.GKRProtocol.NativeProgramQueries
 
 namespace Airbender.Compiler.ProgramFixedLookup.UnifiedCached
 open Airbender Airbender.Compiler Airbender.Compiler.UnifiedRowNative.UnifiedCached
