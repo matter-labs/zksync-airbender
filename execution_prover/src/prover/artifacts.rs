@@ -5,6 +5,7 @@
 //! prefixed with — neither of which `ProveResult` carries.
 
 use super::*;
+use crate::config::ProvingSelection;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength};
 
 /// `setup_cap` is the exact digest sequence the backend committed and every
@@ -12,14 +13,32 @@ use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength};
 pub struct RiscvFamilyArtifact {
     pub compiled_circuit: Arc<GKRCircuitArtifact<BF>>,
     pub setup_cap: MerkleTreeCapVarLength,
+    /// The profile config's `cap_size`: the setup cap is admitted against it,
+    /// not against its own length.
+    pub setup_cap_size: usize,
 }
 
 impl RiscvFamilyArtifact {
-    fn from_precomputations(precomputations: &impl CircuitPrecomputation) -> Self {
+    fn from_precomputations(
+        precomputations: &impl CircuitPrecomputation,
+        circuit: UnrolledCircuitType,
+        profile: ProofProfile,
+        selection: ProvingSelection,
+    ) -> Self {
+        let compiled_circuit = Arc::clone(precomputations.compiled_circuit());
+        let setup_cap_size = crate::config::try_prover_config_in_mode(
+            CircuitType::Unrolled(circuit),
+            &compiled_circuit,
+            profile,
+            selection,
+        )
+        .unwrap_or_else(|error| panic!("{error}"))
+        .cap_size;
         Self {
-            compiled_circuit: Arc::clone(precomputations.compiled_circuit()),
+            compiled_circuit,
+            setup_cap_size,
             setup_cap: precomputations
-                .setup_cap()
+                .setup_cap(profile)
                 .expect("RISC-V family setup must have columns"),
         }
     }
@@ -42,7 +61,11 @@ pub struct ProgramArtifacts {
 
 impl<B: ExecutionBackend> ExecutionProver<B> {
     /// Snapshot the compiled-circuit artifacts for a registered binary.
-    pub fn program_artifacts(&self, handle: &BinaryHandle) -> ProgramArtifacts {
+    pub fn program_artifacts(
+        &self,
+        handle: &BinaryHandle,
+        profile: ProofProfile,
+    ) -> ProgramArtifacts {
         let holder = &self.binary_holders[&handle.0];
         let riscv_families = holder
             .precomputations
@@ -50,7 +73,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             .map(|(circuit_type, precomputations)| {
                 (
                     circuit_type.get_family_idx() as u32,
-                    RiscvFamilyArtifact::from_precomputations(precomputations),
+                    RiscvFamilyArtifact::from_precomputations(
+                        precomputations,
+                        *circuit_type,
+                        profile,
+                        self.configuration.selection(),
+                    ),
                 )
             })
             .collect();
@@ -70,7 +98,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 _ => {}
             }
         }
-        if holder.execution_kind == ExecutionKind::Unified {
+        if holder.execution_kind.is_unified() {
             inits_and_teardowns = None;
         }
         ProgramArtifacts {

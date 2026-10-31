@@ -30,6 +30,7 @@ pub(crate) trait TracingDataProducers<A: HostTraceAllocator> {
 
     fn new(
         machine_type: MachineType,
+        unified_circuit: CircuitType,
         free_allocators: Receiver<A>,
         results: Sender<WorkerResult<A>>,
     ) -> Self;
@@ -162,6 +163,7 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for SplitTracingDataProducer
 
     fn new(
         _machine_type: MachineType,
+        _unified_circuit: CircuitType,
         free_allocators: Receiver<A>,
         results: Sender<WorkerResult<A>>,
     ) -> Self {
@@ -338,13 +340,14 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for UnifiedTracingDataProduc
 
     fn new(
         machine_type: MachineType,
+        unified_circuit: CircuitType,
         free_allocators: Receiver<A>,
         results: Sender<WorkerResult<A>>,
     ) -> Self {
         assert_eq!(machine_type, MachineType::Reduced);
         let delegation = DelegationProducers::new(&free_allocators, &results);
         let cycles_producer = TracingDataProducer::<UnifiedOpcodeTracingDataWithTimestamp, _>::new(
-            CircuitType::Unrolled(UnrolledCircuitType::Unified),
+            unified_circuit,
             free_allocators.clone(),
             results.clone(),
         );

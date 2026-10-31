@@ -29,10 +29,21 @@ fn prove(
     let mut prover =
         CpuExecutionProver::with_configuration(CpuExecutionProverConfiguration::default());
     let (binary, text) = workload;
-    let handle = prover.add_binary(execution_kind, machine_type, binary, text, None);
-    let result =
-        prover.commit_memory_and_prove(1, &handle, QuasiUARTSource::new_with_reads(inputs));
-    let artifacts = prover.program_artifacts(&handle);
+    let handle = prover.add_binary(
+        execution_kind,
+        machine_type,
+        binary,
+        text,
+        None,
+        &[execution_prover::ProofProfile::Standard],
+    );
+    let result = prover.commit_memory_and_prove(
+        1,
+        &handle,
+        QuasiUARTSource::new_with_reads(inputs),
+        execution_prover::ProofProfile::Standard,
+    );
+    let artifacts = prover.program_artifacts(&handle, execution_prover::ProofProfile::Standard);
     program_prover::assemble_program_proof(&artifacts, result)
 }
 
@@ -198,14 +209,19 @@ fn selected_base_measurement(soundness_mode: prover::definitions::SoundnessMode)
                 binary,
                 text,
                 None,
+                &[execution_prover::ProofProfile::Standard],
             )
             .expect("basic Fibonacci configs must resolve in ethproofs mode");
         let result = prover.commit_memory_and_prove(
             1,
             &handle,
             QuasiUARTSource::new_with_reads(vec![15, 1]),
+            execution_prover::ProofProfile::Standard,
         );
-        program_prover::assemble_program_proof(&prover.program_artifacts(&handle), result)
+        program_prover::assemble_program_proof(
+            &prover.program_artifacts(&handle, execution_prover::ProofProfile::Standard),
+            result,
+        )
     };
     let proof_count: usize = proof.riscv_proofs.values().map(Vec::len).sum();
     assert!(

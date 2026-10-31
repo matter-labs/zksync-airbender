@@ -297,6 +297,13 @@ fn parse_input_data(
     }
 }
 
+/// The L1 targets exist only in `pessimistic-conjecture` (deferred product scope); reject the
+/// prover's own selection before any input is read.
+fn admit_target(config: &ProgramProverConfig) -> Result<(), String> {
+    prover_pipeline::validate_target_selection(config.target, config.selection())
+        .map_err(|error| error.to_string())
+}
+
 fn make_prover_config(
     soundness_mode: SoundnessMode,
     target: ProofTarget,
@@ -440,15 +447,17 @@ fn run_cli() {
             soundness_mode,
             settings,
         } => {
+            let prover_config = make_prover_config(soundness_mode, target, backend, settings);
+            admit_target(&prover_config).unwrap_or_else(|e| panic!("Continuation rejected: {}", e));
             let input_artifact: ProofArtifact = deserialize_from_file(&proof);
             input_artifact
                 .validate_expected_mode(soundness_mode)
                 .unwrap_or_else(|e| panic!("Continuation rejected: {}", e));
             let source = program_source(bin, text, elf);
-            let prover_config = make_prover_config(soundness_mode, target, backend, settings);
 
-            let mut prover = ProgramProver::new(source, prover_config)
-                .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
+            let mut prover =
+                ProgramProver::for_continuation(source, prover_config, &input_artifact)
+                    .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
             let artifact = prover
                 .continue_artifact(input_artifact)
                 .unwrap_or_else(|e| panic!("Continuation failed: {}", e));
@@ -467,7 +476,14 @@ fn run_cli() {
             let output =
                 prover_pipeline::verify_artifact_in_mode(&artifact, &source, soundness_mode)
                     .unwrap_or_else(|e| panic!("Verification failed: {}", e));
-            println!("PROOF IS VALID. output={:?}", output);
+            if artifact.target == ProofTarget::L1 {
+                println!(
+                    "FEEDER SIDECAR AND CHAIN ARE VALID. Proth proof was not verified. output={:?}",
+                    output
+                );
+            } else {
+                println!("PROOF IS VALID. output={:?}", output);
+            }
         }
         Commands::Run {
             bin,
@@ -632,6 +648,55 @@ mod tests {
             | Commands::ContinueProof { soundness_mode, .. }
             | Commands::Verify { soundness_mode, .. } => soundness_mode,
             Commands::Run { .. } => panic!("run takes no soundness mode"),
+        }
+    }
+
+    /// The prover config that `continue-proof` builds from its own arguments.
+    fn continuation_config(target: ProofTarget, mode: SoundnessMode) -> ProgramProverConfig {
+        let target = target.to_possible_value().unwrap();
+        let args = with_mode(MODE_COMMANDS[2], mode.cli_name());
+        let args: Vec<&str> = args
+            .into_iter()
+            .chain(["--target", target.get_name()])
+            .collect();
+        match parse(&args).unwrap().command {
+            Commands::ContinueProof {
+                target,
+                backend,
+                soundness_mode,
+                settings,
+                ..
+            } => make_prover_config(soundness_mode, target, backend, settings),
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn ethproofs_l1_targets_are_rejected_before_any_input() {
+        for target in [ProofTarget::L1Feeder, ProofTarget::L1] {
+            let config = continuation_config(target, SoundnessMode::EthproofsSoundnessCalc);
+            assert_eq!(
+                (config.target, config.selection().soundness_mode),
+                (target, SoundnessMode::EthproofsSoundnessCalc)
+            );
+            assert_eq!(
+                admit_target(&config).unwrap_err(),
+                "UnsupportedSpecialConfigMode: ethproofs soundness mode is not implemented for the L1 feeder/wrap/EVM profile (deferred product scope); requested L1Feeder"
+            );
+            admit_target(&continuation_config(
+                target,
+                SoundnessMode::PessimisticConjecture,
+            ))
+            .unwrap();
+        }
+        for target in [
+            ProofTarget::Base,
+            ProofTarget::RecursionUnrolled,
+            ProofTarget::RecursionUnified,
+        ] {
+            for &mode in SoundnessMode::ALL {
+                admit_target(&continuation_config(target, mode)).unwrap();
+            }
         }
     }
 

@@ -31,6 +31,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+use common_constants::rom::{RomGeometry, REGULAR_ROM};
 use common_constants::{INITIAL_PC, ROM_BYTE_SIZE, ROM_WORD_SIZE};
 use object::elf;
 use object::read::elf::{ElfFile32, FileHeader, ProgramHeader, SectionHeader};
@@ -128,13 +129,15 @@ impl InitDataSection {
 #[derive(Clone, Debug)]
 pub struct ElfImage {
     pub mode: ElfReadMode,
+    /// ROM geometry selected by the caller and checked against the linked image.
+    pub rom: RomGeometry,
     /// `e_entry`; validated to be [`INITIAL_PC`] and the start of `.text`.
     pub entry_point: u32,
     /// VMA (== LMA) of `.text`.
     pub text_address: u32,
     /// Content of `.text` as little-endian words, not padded.
     pub text: Vec<u32>,
-    /// Legacy mode only: the full ROM image as little-endian words, exactly [`ROM_WORD_SIZE`]
+    /// Legacy mode only: the full ROM image as little-endian words, exactly `rom.word_size()`
     /// of them. Every loaded section is placed at its LMA, the rest is zero. Its first
     /// [`flattened_binary_used_bytes`](Self::flattened_binary_used_bytes) bytes are what
     /// `objcopy -O binary` produces. `None` in strict mode.
@@ -158,13 +161,13 @@ impl ElfImage {
         words_to_bytes(&self.text)
     }
 
-    /// `.text` zero-padded to the ROM size ([`ROM_WORD_SIZE`] words). This is the conventional
+    /// `.text` zero-padded to the selected ROM size (`rom.word_size()` words). This is the conventional
     /// shape the prover setups and instruction tapes are built from, and the only padding the
     /// host side applies to a program.
     pub fn padded_text_words(&self) -> Vec<u32> {
         let mut words = self.text.clone();
-        assert!(words.len() <= ROM_WORD_SIZE);
-        words.resize(ROM_WORD_SIZE, 0u32);
+        assert!(words.len() <= self.rom.word_size());
+        words.resize(self.rom.word_size(), 0u32);
         words
     }
 
@@ -216,6 +219,16 @@ impl ElfImage {
 
 /// Parse and validate a RISC-V guest ELF in the given mode.
 pub fn read_elf(bytes: &[u8], mode: ElfReadMode) -> Result<ElfImage, ElfReadError> {
+    read_elf_with_rom(bytes, mode, REGULAR_ROM)
+}
+
+/// Parse and validate a RISC-V guest ELF for the selected circuit's ROM geometry.
+pub fn read_elf_with_rom(
+    bytes: &[u8],
+    mode: ElfReadMode,
+    rom: RomGeometry,
+) -> Result<ElfImage, ElfReadError> {
+    let rom_byte_size = rom.byte_size();
     let file = ElfFile32::<Endianness>::parse(bytes).map_err(ElfReadError::Parse)?;
     let endian = file.endian();
     let header = file.elf_header();
@@ -368,9 +381,9 @@ pub fn read_elf(bytes: &[u8], mode: ElfReadMode) -> Result<ElfImage, ElfReadErro
         )));
     }
     let text_end = text_section.virtual_address + text_section.size;
-    if text_end as usize > ROM_BYTE_SIZE {
+    if text_end as usize > rom_byte_size {
         return Err(ElfReadError::Layout(format!(
-            ".text ends at {text_end:#x}, beyond the {ROM_BYTE_SIZE:#x}-byte ROM"
+            ".text ends at {text_end:#x}, beyond the {rom_byte_size:#x}-byte ROM"
         )));
     }
     if entry_point != INITIAL_PC {
@@ -400,7 +413,7 @@ pub fn read_elf(bytes: &[u8], mode: ElfReadMode) -> Result<ElfImage, ElfReadErro
         if section.size == 0 {
             continue;
         }
-        if section.writable && (section.virtual_address as usize) < ROM_BYTE_SIZE {
+        if section.writable && (section.virtual_address as usize) < rom_byte_size {
             return Err(ElfReadError::Layout(format!(
                 "writable section {} at {:#x} lies inside the ROM",
                 section.name, section.virtual_address
@@ -414,7 +427,7 @@ pub fn read_elf(bytes: &[u8], mode: ElfReadMode) -> Result<ElfImage, ElfReadErro
         match mode {
             ElfReadMode::Legacy => {
                 let lma_end = section.load_address as u64 + section.size as u64;
-                if lma_end > ROM_BYTE_SIZE as u64 {
+                if lma_end > rom_byte_size as u64 {
                     return Err(ElfReadError::Layout(format!(
                         "legacy mode loads initial content from ROM only, but section {} is stored at {:#x}..{:#x}",
                         section.name, section.load_address, lma_end
@@ -428,7 +441,7 @@ pub fn read_elf(bytes: &[u8], mode: ElfReadMode) -> Result<ElfImage, ElfReadErro
                 }
             }
             ElfReadMode::Strict => {
-                if (section.virtual_address as usize) < ROM_BYTE_SIZE {
+                if (section.virtual_address as usize) < rom_byte_size {
                     return Err(ElfReadError::Layout(format!(
                         "strict mode keeps ROM execute-only, but section {} is placed at {:#x} inside the ROM; it must be relocated into RAM",
                         section.name, section.virtual_address
@@ -443,7 +456,7 @@ pub fn read_elf(bytes: &[u8], mode: ElfReadMode) -> Result<ElfImage, ElfReadErro
     placed.sort_by_key(|(section, _)| section.load_address);
     let mut flattened_binary_used_bytes = 0usize;
     let mut previous_end = 0u64;
-    let mut flattened = (mode == ElfReadMode::Legacy).then(|| vec![0u8; ROM_BYTE_SIZE]);
+    let mut flattened = (mode == ElfReadMode::Legacy).then(|| vec![0u8; rom_byte_size]);
     for (section, data) in placed.iter() {
         let start = section.load_address as u64;
         let end = start + section.size as u64;
@@ -454,7 +467,7 @@ pub fn read_elf(bytes: &[u8], mode: ElfReadMode) -> Result<ElfImage, ElfReadErro
             )));
         }
         previous_end = end;
-        if end as usize > ROM_BYTE_SIZE {
+        if end as usize > rom_byte_size {
             // Strict mode allows LMAs outside the ROM (they are virtual); such a section does
             // not contribute to the ROM image.
             continue;
@@ -529,15 +542,16 @@ pub fn read_elf(bytes: &[u8], mode: ElfReadMode) -> Result<ElfImage, ElfReadErro
         }
     }
     if let Some(&rom_size) = symbols.get("_rom_size") {
-        if rom_size as usize != ROM_BYTE_SIZE {
+        if rom_size as usize != rom_byte_size {
             return Err(ElfReadError::Layout(format!(
-                "linker script ROM size {rom_size:#x} != common_constants::ROM_BYTE_SIZE ({ROM_BYTE_SIZE:#x})"
+                "linker script ROM size (_rom_size) {rom_size:#x} != selected ROM size ({rom_byte_size:#x})"
             )));
         }
     }
 
     Ok(ElfImage {
         mode,
+        rom,
         entry_point,
         text_address: text_section.virtual_address,
         text: bytes_to_words(text_data),
@@ -551,8 +565,17 @@ pub fn read_elf(bytes: &[u8], mode: ElfReadMode) -> Result<ElfImage, ElfReadErro
 
 /// [`read_elf`] on a file.
 pub fn read_elf_from_path(path: &Path, mode: ElfReadMode) -> Result<ElfImage, ElfReadError> {
+    read_elf_from_path_with_rom(path, mode, REGULAR_ROM)
+}
+
+/// [`read_elf_with_rom`] on a file.
+pub fn read_elf_from_path_with_rom(
+    path: &Path,
+    mode: ElfReadMode,
+    rom: RomGeometry,
+) -> Result<ElfImage, ElfReadError> {
     let bytes = std::fs::read(path).map_err(ElfReadError::Io)?;
-    read_elf(&bytes, mode)
+    read_elf_with_rom(&bytes, mode, rom)
 }
 
 /// Load a guest program from its ELF for the VM and the prover (legacy read mode): returns
@@ -603,6 +626,7 @@ pub fn read_legacy_binaries(bin_path: &Path, text_path: &Path) -> Result<ElfImag
     flattened.resize(ROM_WORD_SIZE, 0u32);
     Ok(ElfImage {
         mode: ElfReadMode::Legacy,
+        rom: REGULAR_ROM,
         entry_point: INITIAL_PC,
         text_address: INITIAL_PC,
         text: bytes_to_words(&text),

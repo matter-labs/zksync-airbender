@@ -17,16 +17,20 @@ use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 
 pub use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as FAMILY_IDX;
 
+/// The unified circuit at trace length `2^LOG2`. The default is the
+/// 2^23 shape; the L1 feeder uses the 2^22 specialization with the same witness.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct UnifiedReducedMachineCircuit;
+pub struct UnifiedReducedMachineCircuit<const LOG2: u32 = { TRACE_LEN_LOG2 }>;
 
-impl<F: PrimeField> circuit_common::RiscVCycleCircuit<F, true> for UnifiedReducedMachineCircuit {
+impl<F: PrimeField, const LOG2: u32> circuit_common::RiscVCycleCircuit<F, true>
+    for UnifiedReducedMachineCircuit<LOG2>
+{
     const CIRCUIT_FAMILY: u8 =
         common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
     // the LOGICAL trace length for the purposes of GKR (rows of the circuit
     // trace); the polynomials WHIR commits may be larger when the base
     // commitment packs columns (`BASE_PACKING`)
-    const TRACE_LEN_LOG2: u32 = TRACE_LEN_LOG2;
+    const TRACE_LEN_LOG2: u32 = LOG2;
     const NUM_INIT_AND_TEARDOWN_PAIRS: usize = 1;
 
     fn circuit_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS, _bytecode: &[u32]) {

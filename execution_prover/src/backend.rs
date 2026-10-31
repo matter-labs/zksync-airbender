@@ -5,8 +5,10 @@ use crate::config::{
 use crate::messages::WorkBatch;
 use crate::setup::CanonicalCircuitSetup;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, SecurityLevel, BF};
+use crate::{ExecutionKind, ProofProfile};
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::circuit_type::CircuitType;
+use execution_prover_model::MachineType;
 use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, TraceChunk};
 use std::ops::DerefMut;
 use std::sync::Arc;
@@ -16,7 +18,7 @@ pub trait CircuitPrecomputation: Clone + Send + Sync + 'static {
     fn compiled_circuit(&self) -> &Arc<GKRCircuitArtifact<BF>>;
 
     /// Available after setup initialization. `None` means no setup columns.
-    fn setup_cap(&self) -> Option<MerkleTreeCapVarLength>;
+    fn setup_cap(&self, profile: ProofProfile) -> Option<MerkleTreeCapVarLength>;
 }
 
 /// Drop must drain accepted work and join workers before borrowed setup or
@@ -56,12 +58,25 @@ pub trait ExecutionBackend: Send + Sync + Sized + 'static {
         0
     }
 
+    /// Admission of a binary registration BEFORE its setups are built: a
+    /// backend that cannot prove `(execution_kind, profiles)` panics here, so
+    /// the rejection precedes the trace-sized setup allocation. `prepare` keeps
+    /// validating the prepared circuit as defense.
+    fn admit_binary(
+        &self,
+        _execution_kind: ExecutionKind,
+        _machine_type: MachineType,
+        _profiles: &[ProofProfile],
+    ) {
+    }
+
     /// Must assert that compiled circuit geometry agrees with `circuit`.
     fn prepare(
         &self,
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
         security: SecurityLevel,
+        profiles: &[ProofProfile],
     ) -> Self::Precomputations;
 
     /// Selection-aware preparation. The compatibility bridge accepts pessimistic only.
@@ -70,9 +85,10 @@ pub trait ExecutionBackend: Send + Sync + Sized + 'static {
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
         selection: ProvingSelection,
+        profiles: &[ProofProfile],
     ) -> Result<Self::Precomputations, SelectionError> {
         Self::validate_selection(selection)?;
-        Ok(self.prepare(circuit, setup, selection.security_level))
+        Ok(self.prepare(circuit, setup, selection.security_level, profiles))
     }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>);
@@ -109,6 +125,7 @@ mod tests {
             _: CircuitType,
             _: CanonicalCircuitSetup,
             _: SecurityLevel,
+            _: &[ProofProfile],
         ) -> Self::Precomputations {
             unreachable!()
         }

@@ -32,3 +32,29 @@ const _: fn(
 const _: fn(
     ethproofs_soundcalc::unified_reduced_machine::ConcreteVerifierOutput,
 ) -> UnifiedCircuitOutput = |o| o;
+
+pub mod unified_reduced_machine_sec_100_l1_feeder;
+pub mod unified_reduced_machine_sec_100_l1_feeder_a;
+
+/// The unified verifier output at setup cap `CAP`: the standard verifier's
+/// shape (`UnifiedCircuitOutput` at [`prover::definitions::DEFAULT_CAP_SIZE`])
+/// and the L1 feeder verifier's at its generated `CAP_SIZE`.
+pub type UnifiedCircuitOutputWithCap<const CAP: usize> = verifier_common::VerifierOutput<
+    verifier_common::field::baby_bear::ext4::BabyBearExt4,
+    { pessimistic_conjecture::unified_reduced_machine::INIT_AND_TEARDOWN_SETS },
+    CAP,
+    { pessimistic_conjecture::unified_reduced_machine::NUM_MEMORY_COMMITS },
+    { pessimistic_conjecture::unified_reduced_machine::NUM_SETUP_COMMITS },
+>;
+const _: () = assert!(
+    unified_reduced_machine_sec_100_l1_feeder::INIT_AND_TEARDOWN_SETS
+        == pessimistic_conjecture::unified_reduced_machine::INIT_AND_TEARDOWN_SETS
+);
+const _: () = assert!(
+    unified_reduced_machine_sec_100_l1_feeder::NUM_MEMORY_COMMITS
+        == pessimistic_conjecture::unified_reduced_machine::NUM_MEMORY_COMMITS
+);
+const _: () = assert!(
+    unified_reduced_machine_sec_100_l1_feeder::NUM_SETUP_COMMITS
+        == pessimistic_conjecture::unified_reduced_machine::NUM_SETUP_COMMITS
+);

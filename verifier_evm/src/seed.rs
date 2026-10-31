@@ -4,8 +4,8 @@
 //! prover derives while emitting proof calldata, plus the `(publicInput, auxInput,
 //! setupCommitment)` tuple the on-chain verifier reports to its registry. Nothing here reads
 //! a fixture; the bytes are computed purely from the circuit artifact, the proof, and the aux
-//! commitment-mode data. The logic mirrors the reference simulation in
-//! `prover/src/tests/gkr/large_field.rs::verify_dim_reduce_layers`.
+//! operation mode. The F1 replay checks the reconstructed batching challenge
+//! against the first WHIR sumcheck claim.
 
 use field::Proth120;
 use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;

@@ -11,7 +11,9 @@ use execution_prover::config::ExecutionProverConfiguration;
 use execution_prover::config::{ProvingSelection, SelectionError, SoundnessMode};
 use execution_prover::messages::WorkBatch;
 use execution_prover::setup::CanonicalCircuitSetup;
+use execution_prover::{ExecutionKind, ProofProfile};
 use execution_prover_model::circuit_type::CircuitType;
+use execution_prover_model::MachineType;
 use gpu_core::primitives::field::BF;
 use riscv_transpiler::jit::JitRunnerRam;
 use std::sync::Arc;
@@ -22,7 +24,7 @@ impl CircuitPrecomputation for CircuitPrecomputations {
         self.gkr_programs.compiled_circuit()
     }
 
-    fn setup_cap(&self) -> Option<MerkleTreeCapVarLength> {
+    fn setup_cap(&self, _profile: ProofProfile) -> Option<MerkleTreeCapVarLength> {
         self.setup_host
             .get_initialized()
             .map(|setup_host| MerkleTreeCapVarLength {
@@ -81,11 +83,16 @@ impl ExecutionBackend for GpuBackend {
         self.extra_trace_blocks
     }
 
+    fn admit_binary(&self, kind: ExecutionKind, _machine: MachineType, profiles: &[ProofProfile]) {
+        assert_supported_registration(kind, profiles);
+    }
+
     fn prepare(
         &self,
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
         security: SecurityLevel,
+        profiles: &[ProofProfile],
     ) -> Self::Precomputations {
         self.prepare_with_selection(
             circuit,
@@ -94,6 +101,7 @@ impl ExecutionBackend for GpuBackend {
                 security_level: security,
                 soundness_mode: SoundnessMode::PessimisticConjecture,
             },
+            profiles,
         )
         .unwrap_or_else(|error| panic!("{error}"))
     }
@@ -103,7 +111,9 @@ impl ExecutionBackend for GpuBackend {
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
         selection: ProvingSelection,
+        _profiles: &[ProofProfile],
     ) -> Result<Self::Precomputations, SelectionError> {
+        // `admit_binary` has already restricted this backend to `ProofProfile::Standard`.
         CircuitPrecomputations::from_canonical(circuit, setup, selection)
     }
 
@@ -124,6 +134,46 @@ mod tests {
                 ..ProvingSelection::default()
             };
             assert_eq!(GpuBackend::validate_selection(selection), Ok(()));
+        }
+    }
+}
+
+fn assert_supported_registration(kind: ExecutionKind, profiles: &[ProofProfile]) {
+    assert!(
+        matches!(kind, ExecutionKind::Unrolled | ExecutionKind::Unified),
+        "GPU backend does not support this CPU-only execution kind"
+    );
+    assert!(
+        profiles
+            .iter()
+            .all(|profile| *profile == ProofProfile::Standard),
+        "GPU backend only supports ProofProfile::Standard"
+    );
+}
+
+#[cfg(test)]
+mod cpu_tests {
+    use super::*;
+
+    #[test]
+    fn l1_registration_is_rejected_before_setup() {
+        for kind in [ExecutionKind::Unified22, ExecutionKind::L1Wrap21] {
+            assert!(std::panic::catch_unwind(|| assert_supported_registration(
+                kind,
+                &[ProofProfile::Standard]
+            ))
+            .is_err());
+        }
+        for profile in [
+            ProofProfile::L1Feeder,
+            ProofProfile::L1FeederA,
+            ProofProfile::L1Wrap,
+        ] {
+            assert!(std::panic::catch_unwind(|| assert_supported_registration(
+                ExecutionKind::Unified,
+                &[profile]
+            ))
+            .is_err());
         }
     }
 }

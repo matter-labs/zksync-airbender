@@ -17,6 +17,7 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
     external_challenges: Option<&GKRExternalChallenges<BF, E4>>,
     proof_caps: &BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
     work_requests_sender: &Sender<WorkRequest<B::Allocator, B::Precomputations>>,
+    profile: ProofProfile,
 ) -> CacheSeedOutcome {
     let mut pending_requests_count = 0;
     let mut sent_requests_count = 0;
@@ -43,7 +44,17 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
             {
                 assert!(trivial_unified_inits_and_teardowns.remove(&sequence_id));
             }
+            let profile = match circuit_type {
+                CircuitType::Delegation(_)
+                | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
+                    ProofProfile::Standard
+                }
+                _ => profile,
+            };
             let precomputations = match circuit_type {
+                CircuitType::L1Wrap21 => {
+                    panic!("L1Wrap does not use the BabyBear trace cache")
+                }
                 CircuitType::Delegation(_)
                 | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
                     prover.common_precomputations[&circuit_type].clone()
@@ -67,6 +78,7 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
                     .expect("proof cache seeding requires external challenges"),
                 memory_caps,
                 selection: prover.configuration.selection(),
+                profile,
             };
             let request = WorkRequest::Proof(request);
             work_requests_sender

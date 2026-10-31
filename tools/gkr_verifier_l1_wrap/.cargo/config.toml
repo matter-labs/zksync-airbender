@@ -1,0 +1,29 @@
+[build]
+target = "riscv32i-unknown-none-elf"
+# Pins `-C metadata` for guest units so symbol names (and with them function/constant
+# placement and the ROM bytes) do not depend on the checkout path or the host triple.
+# Share ../gkr_verifier/rustc_wrapper.sh with the regular guests.
+rustc-wrapper = "../gkr_verifier/rustc_wrapper.sh"
+rustflags = [
+  "-C", "target-feature=-unaligned-scalar-mem,+relax,+zimop",
+  "-C", "link-arg=-Tmemory.x",
+  "-C", "link-arg=-Tlink.x",
+  "-C", "link-arg=--save-temps",
+  "-C", "force-frame-pointers",
+  # Reproducibility. Mirrors matter-labs/zksync-os#243.
+  # codegen-units=1 removes any dependence on how work is split across codegen threads.
+  # Path remapping and debuginfo=0 keep host paths and debug info out of canonical outputs;
+  # dump_bin.sh re-enables DWARF for the non-fsv binaries that the VM flamegraph profiles.
+  # A build-id hashes ELF metadata (debug info, toolchain strings, and symbol names) into
+  # an allocated note that reaches the ROM image, making ROM bytes depend on that metadata.
+  # The linker defaults to no note; keep --build-id=none explicit so it is not re-enabled
+  # unknowingly, for either the canonical fsv_* set or the profiled guests.
+  # Path remapping (checkout root, sysroot, cargo registry) is added by dump_bin.sh via
+  # `--config build.rustflags` because the prefixes are only known at build time.
+  "-C", "codegen-units=1",
+  "-C", "debuginfo=0",
+  "-C", "link-arg=--build-id=none",
+]
+
+[unstable]
+panic-immediate-abort = true

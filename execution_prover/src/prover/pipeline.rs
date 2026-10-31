@@ -19,6 +19,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         pow_challenge: u64,
         external_challenges: Option<GKRExternalChallenges<BF, E4>>,
         proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
+        profile: ProofProfile,
     ) -> ExecutionProverResult {
         if let Some(cache) = cache.as_ref() {
             if proving {
@@ -29,6 +30,22 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         }
         assert!(proving ^ external_challenges.is_none());
         let binary_holder = &self.binary_holders[&binary_key];
+        assert!(
+            !binary_holder.execution_kind.is_l1_wrap(),
+            "ExecutionKind::{:?} requires prove_l1_wrap",
+            binary_holder.execution_kind
+        );
+        assert!(
+            binary_holder.profiles.contains(&profile),
+            "ProofProfile::{profile:?} was not declared for this binary"
+        );
+        let commitment_mode = crate::config::try_execution_commitment_mode(
+            binary_holder.execution_kind,
+            profile,
+            self.configuration.selection(),
+            |circuit| binary_holder.compiled_circuit(circuit),
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
         let (work_results_sender, work_results_receiver) = unbounded();
         let (work_requests_sender, work_requests_receiver) = unbounded();
         let work_batch = WorkBatch {
@@ -47,6 +64,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             external_challenges.as_ref(),
             &proof_caps,
             &work_requests_sender,
+            profile,
         );
         let mut sent_requests_count = cache_seed.sent_requests_count;
         let requests_served_from_cache = cache_seed.requests_served_from_cache;
@@ -87,6 +105,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
 
         let request_context = RequestContext {
             proving,
+            commitment_mode,
+            profile,
             batch_id,
             binary_holder,
             external_challenges: external_challenges.as_ref(),
@@ -94,7 +114,10 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         };
         for sequence_id in trivial_unified_inits_and_teardowns {
             let data = InitsAndTeardownsData {
-                circuit_type: CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                circuit_type: binary_holder
+                    .execution_kind
+                    .unified_circuit()
+                    .expect("trivial unified inits-and-teardowns belong to a unified execution"),
                 sequence_id,
                 inits_and_teardowns: None,
             };
@@ -102,6 +125,9 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 .insert(sequence_id, data);
         }
         match execution_kind {
+            ExecutionKind::L1Wrap21 => {
+                panic!("ExecutionKind::{execution_kind:?} requires prove_l1_wrap")
+            }
             ExecutionKind::Unrolled => {
                 let non_memory =
                     UnrolledNonMemoryCircuitType::get_circuit_types_for_machine_type(machine_type)
@@ -118,7 +144,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         .insert(family_idx, BTreeMap::new());
                 }
             }
-            ExecutionKind::Unified => {
+            ExecutionKind::Unified | ExecutionKind::Unified22 => {
                 let family_idx = UnrolledCircuitType::Unified.get_family_idx();
                 acc.circuit_families_memory_caps
                     .insert(family_idx, BTreeMap::new());
@@ -186,14 +212,14 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 cache.simulation_result = acc.simulation_result.clone();
             }
         }
-        assemble_result(acc, proving, pow_challenge, binary_key)
+        assemble_result(acc, proving, pow_challenge, binary_key, profile)
     }
 
     /// Spawn the simulator worker plus `replay_worker_threads_count` replay
     /// workers onto their own threads. Owns the snapshot / free-trace-chunk
     /// channels for the duration of the spawn; the workers keep their own
     /// clones, so the originals are dropped here once every worker is queued.
-    fn spawn_simulation_workers<ND: NonDeterminismCSRSource + Send + 'static>(
+    pub(super) fn spawn_simulation_workers<ND: NonDeterminismCSRSource + Send + 'static>(
         &self,
         batch_id: u64,
         binary_holder: &BinaryHolder<B>,
@@ -201,6 +227,10 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         work_results_sender: &Sender<WorkerResult<B::Allocator>>,
         abort: &Arc<AtomicBool>,
     ) {
+        let unified_circuit = binary_holder
+            .execution_kind
+            .unified_circuit()
+            .unwrap_or(CircuitType::Unrolled(UnrolledCircuitType::Unified));
         let replayers_count = self.configuration.replay_worker_threads_count;
         let execution_kind = binary_holder.execution_kind;
         let machine_type = binary_holder.machine_type;
@@ -217,7 +247,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             let free_allocators_receiver = self.free_allocators_receiver.clone();
             let binary_image = binary_holder.binary_image.clone();
             let text_section = binary_holder.text_section.clone();
-            let cycles_bound = binary_holder.cycles_bound;
+            let cycles_bound = if binary_holder.execution_kind.is_l1_wrap() {
+                let limit = unified_circuit.get_domain_size() as u32 + 1;
+                Some(binary_holder.cycles_bound.unwrap_or(limit).min(limit))
+            } else {
+                binary_holder.cycles_bound
+            };
             let jit_cache = binary_holder.jit_cache.clone();
             let non_determinism_source = non_determinism_source.clone();
             let work_results_sender = work_results_sender.clone();
@@ -243,6 +278,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     ExecutionKind::Unrolled => run_simulator::<_, SplitTracingType, _, _, _>(
                         batch_id,
                         machine_type,
+                        unified_circuit,
                         binary_image,
                         text_section,
                         cycles_bound,
@@ -259,25 +295,28 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         ram_config,
                         assume_canonical_mop_inputs,
                     ),
-                    ExecutionKind::Unified => run_simulator::<_, UnifiedTracingType, _, _, _>(
-                        batch_id,
-                        machine_type,
-                        binary_image,
-                        text_section,
-                        cycles_bound,
-                        jit_cache,
-                        &mut memory_holder,
-                        non_determinism_source,
-                        free_trace_chunks_sender,
-                        free_trace_chunks_receiver,
-                        unified_snapshot_sender,
-                        work_results_sender,
-                        free_allocators_receiver,
-                        abort,
-                        &worker,
-                        ram_config,
-                        assume_canonical_mop_inputs,
-                    ),
+                    ExecutionKind::Unified | ExecutionKind::Unified22 | ExecutionKind::L1Wrap21 => {
+                        run_simulator::<_, UnifiedTracingType, _, _, _>(
+                            batch_id,
+                            machine_type,
+                            unified_circuit,
+                            binary_image,
+                            text_section,
+                            cycles_bound,
+                            jit_cache,
+                            &mut memory_holder,
+                            non_determinism_source,
+                            free_trace_chunks_sender,
+                            free_trace_chunks_receiver,
+                            unified_snapshot_sender,
+                            work_results_sender,
+                            free_allocators_receiver,
+                            abort,
+                            &worker,
+                            ram_config,
+                            assume_canonical_mop_inputs,
+                        )
+                    }
                 };
                 memory_holders_sender
                     .send(memory_holder)
@@ -290,6 +329,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             });
         }
         trace!("BATCH[{batch_id}] PROVER spawning REPLAY workers");
+        let rom = unified_circuit.rom();
         for worker_id in 0..replayers_count {
             let instruction_tape = binary_holder.instruction_tape.clone();
             let split_snapshot_receiver = split_snapshot_receiver.clone();
@@ -302,21 +342,25 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 ExecutionKind::Unrolled => run_replayer::<SplitTracingType, _, _>(
                     batch_id,
                     worker_id,
+                    rom,
                     instruction_tape,
                     split_snapshot_receiver,
                     free_trace_chunks_sender,
                     work_results_sender,
                     abort,
                 ),
-                ExecutionKind::Unified => run_replayer::<UnifiedTracingType, _, _>(
-                    batch_id,
-                    worker_id,
-                    instruction_tape,
-                    unified_snapshot_receiver,
-                    free_trace_chunks_sender,
-                    work_results_sender,
-                    abort,
-                ),
+                ExecutionKind::Unified | ExecutionKind::Unified22 | ExecutionKind::L1Wrap21 => {
+                    run_replayer::<UnifiedTracingType, _, _>(
+                        batch_id,
+                        worker_id,
+                        rom,
+                        instruction_tape,
+                        unified_snapshot_receiver,
+                        free_trace_chunks_sender,
+                        work_results_sender,
+                        abort,
+                    )
+                }
             });
         }
         drop(free_trace_chunks_sender);
@@ -328,6 +372,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         batch_id: u64,
         handle: BinaryHandle,
         non_determinism_source: Arc<Mutex<Option<impl NonDeterminismCSRSource + Send + 'static>>>,
+        profile: ProofProfile,
     ) -> CommitMemoryResult {
         let binary_key = handle.0;
         info!(
@@ -344,6 +389,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 0,
                 None,
                 BTreeMap::new(),
+                profile,
             )
             .into_memory_commitment_result();
         result.binary_handle = handle;
@@ -363,6 +409,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         pow_challenge: u64,
         external_challenges: GKRExternalChallenges<BF, E4>,
         proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
+        profile: ProofProfile,
     ) -> ProveResult {
         info!("BATCH[{batch_id}] PROVER producing proofs for binary with key {binary_key:?}");
         let timer = Instant::now();
@@ -376,6 +423,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 pow_challenge,
                 Some(external_challenges),
                 proof_caps,
+                profile,
             )
             .into_proof_result();
         let elapsed = timer.elapsed().as_secs_f64();
@@ -395,6 +443,7 @@ fn assemble_result<A: fft::GoodAllocator>(
     proving: bool,
     pow_challenge: u64,
     binary_key: usize,
+    profile: ProofProfile,
 ) -> ExecutionProverResult {
     let ResultAccumulator {
         trivial_unified_inits_and_teardowns_count,
@@ -452,7 +501,7 @@ fn assemble_result<A: fft::GoodAllocator>(
             pow_challenge,
             num_unified_it_circuits,
         };
-        ExecutionProverResult::Prove(result)
+        ExecutionProverResult::Prove(Box::new(result))
     } else {
         let circuit_families_memory_caps = circuit_families_memory_caps
             .into_iter()
@@ -465,6 +514,7 @@ fn assemble_result<A: fft::GoodAllocator>(
             .map(|(i, v)| (i, v.into_values().collect_vec()))
             .collect();
         let result = CommitMemoryResult {
+            profile,
             final_register_values,
             final_pc,
             final_timestamp,
@@ -475,6 +525,56 @@ fn assemble_result<A: fft::GoodAllocator>(
             inits_and_teardowns_top_bits,
             binary_handle: BinaryHandle(binary_key),
         };
-        ExecutionProverResult::CommitMemory(result)
+        ExecutionProverResult::CommitMemory(Box::new(result))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::TestBackend;
+
+    #[test]
+    #[should_panic(
+        expected = "MergedMemoryAndWitness does not support delegation calls or circuits"
+    )]
+    fn l1_profile_rejects_delegation_requests() {
+        let mut prover = ExecutionProver::<TestBackend>::new();
+        let program = vec![0x0001_2083, 0xffdf_f06f];
+        let profile = ProofProfile::L1Feeder;
+        let kind = ExecutionKind::Unified22;
+        let handle = prover.add_binary(
+            kind,
+            MachineType::Reduced,
+            program.clone(),
+            program,
+            Some(32),
+            &[profile],
+        );
+        let proof_caps = BTreeMap::new();
+        let context = RequestContext {
+            proving: false,
+            commitment_mode: crate::config::try_execution_commitment_mode(
+                kind,
+                profile,
+                prover.configuration.selection(),
+                |circuit| prover.binary_holders[&handle.0].compiled_circuit(circuit),
+            )
+            .unwrap(),
+            profile,
+            batch_id: 1,
+            binary_holder: &prover.binary_holders[&handle.0],
+            external_challenges: None,
+            proof_caps: &proof_caps,
+        };
+        context.build_work_request(
+            &prover,
+            Some(InitsAndTeardownsData {
+                circuit_type: CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression),
+                sequence_id: 0,
+                inits_and_teardowns: None,
+            }),
+            None,
+        );
     }
 }

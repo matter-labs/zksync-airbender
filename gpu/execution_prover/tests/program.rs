@@ -192,7 +192,14 @@ fn prove_on_gpu(
     text_section: Vec<u32>,
     reads: Vec<u32>,
 ) -> (crate::upstream::ProgramProof, crate::upstream::Setups) {
-    let handle = prover.add_binary(kind, machine, binary_image, text_section, None);
+    let handle = prover.add_binary(
+        kind,
+        machine,
+        binary_image,
+        text_section,
+        None,
+        &[execution_prover::ProofProfile::Standard],
+    );
     prove_registered_on_gpu(prover, &handle, reads)
 }
 
@@ -202,9 +209,13 @@ fn prove_registered_on_gpu(
     handle: &gpu_execution_prover::BinaryHandle,
     reads: Vec<u32>,
 ) -> (crate::upstream::ProgramProof, crate::upstream::Setups) {
-    let result =
-        prover.commit_memory_and_prove(0, handle, FlatResponsesSource::new_with_reads(reads));
-    let artifacts = prover.program_artifacts(handle);
+    let result = prover.commit_memory_and_prove(
+        0,
+        handle,
+        FlatResponsesSource::new_with_reads(reads),
+        execution_prover::ProofProfile::Standard,
+    );
+    let artifacts = prover.program_artifacts(handle, execution_prover::ProofProfile::Standard);
     assemble_program_proof(&artifacts, result)
 }
 
@@ -816,6 +827,7 @@ fn test_generate_sec100_cost_model_fixtures() {
         base_binary,
         base_text,
         None,
+        &[execution_prover::ProofProfile::Standard],
     );
     let fsv_dir = artifact_root().join("tools/gkr_verifier/full_statement_verifiers");
     let (binary, text) = load_fsv_program(
@@ -829,6 +841,7 @@ fn test_generate_sec100_cost_model_fixtures() {
         binary,
         text,
         None,
+        &[execution_prover::ProofProfile::Standard],
     );
     let (binary, text) = load_fsv_program(
         &fsv_dir,
@@ -841,6 +854,7 @@ fn test_generate_sec100_cost_model_fixtures() {
         binary,
         text,
         None,
+        &[execution_prover::ProofProfile::Standard],
     );
 
     let mut last_chain = None;

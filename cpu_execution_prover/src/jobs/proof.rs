@@ -1,5 +1,5 @@
 use super::caps::join_memory_caps;
-use super::{rows, teardown_sets, CpuJobs};
+use super::{rows, teardown_sets, whir_storage, CpuJobs};
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{
     bigint_witness_eval_fn, blake2_g_function_witness_eval_fn,
@@ -7,7 +7,7 @@ use crate::upstream::{
     evaluate_gkr_witness_for_executor_family, evaluate_init_and_teardown_memory_witness,
     keccak_chi5_witness_eval_fn, keccak_column_parity_witness_eval_fn,
     keccak_special5_witness_eval_fn, keccak_theta_rho_witness_eval_fn,
-    prove_configured_with_gkr_with_backends, Blake2sTranscript, ColumnMajorWitnessProxy,
+    prove_configured_with_gkr_with_storage_and_backend, Blake2sTranscript, ColumnMajorWitnessProxy,
     DefaultTreeConstructor, DelegationAbiDescription, DelegationOracle, DelegationWitness,
     GKRFullWitnessTrace, MemoryCircuitOracle, NonMemoryCircuitOracle, OperationMode,
     UnifiedRiscvCircuitOracle, UnrolledCircuitWitnessEvalFn, BF, E4,
@@ -42,15 +42,14 @@ pub(super) fn run<A: HostTraceAllocator>(
         external_challenges,
         memory_caps,
         selection,
+        profile,
     } = request;
     let config = precomputations
-        .config_for_request(circuit_type, selection)
+        .config_for_request(circuit_type, selection, profile)
         .unwrap_or_else(|error| panic!("{error}"));
+    let storage = whir_storage(profile, config);
     let twiddles = jobs.twiddles(1usize << config.whir_message_size_log2(), worker);
-    let setup_commitment = precomputations
-        .setup_commitment
-        .get()
-        .unwrap_or_else(|| panic!("setup initialization has not run for {circuit_type:?}"));
+    let setup_commitment = precomputations.setup_commitment(profile);
     let (witness, top_bits) = build_witness(
         &precomputations,
         circuit_type,
@@ -58,7 +57,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         tracing_data.as_ref(),
         worker,
     );
-    let proof = prove_configured_with_gkr_with_backends::<
+    let proof = prove_configured_with_gkr_with_storage_and_backend::<
         BF,
         E4,
         DefaultTreeConstructor,
@@ -74,6 +73,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         &*twiddles,
         config,
         OperationMode::MultipleChunks,
+        storage,
         top_bits,
         precomputations.trace_len,
         &jobs.backend,
@@ -81,9 +81,6 @@ pub(super) fn run<A: HostTraceAllocator>(
         worker,
     );
 
-    // `SeparateMemoryAndWitness` re-commits memory while proving, and that
-    // second commitment is the one the verifier checks: it must equal the cap
-    // published in the memory pass, or the two passes proved different traces.
     let committed = join_memory_caps(&memory_caps, config.lde_factor(), config.cap_size);
     assert!(
         proof.whir_proof.memory_commitment.commitment.cap.cap == committed.cap,
@@ -101,7 +98,7 @@ pub(super) fn run<A: HostTraceAllocator>(
     }
 }
 
-fn build_witness<A: HostTraceAllocator>(
+pub(super) fn build_witness<A: HostTraceAllocator>(
     precomputations: &CpuCircuitPrecomputations,
     circuit_type: CircuitType,
     inits_and_teardowns: Option<&InitsAndTeardownsTraceHost<A>>,
@@ -109,6 +106,9 @@ fn build_witness<A: HostTraceAllocator>(
     worker: &Worker,
 ) -> (Witness, Vec<u32>) {
     match circuit_type {
+        CircuitType::L1Wrap21 => {
+            panic!("L1Wrap requires its typed proof request")
+        }
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(_)) => {
             let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::NonMemory(trace))) =
                 tracing_data
@@ -173,7 +173,7 @@ fn build_witness<A: HostTraceAllocator>(
             );
             (witness, Vec::new())
         }
-        CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
+        CircuitType::Unrolled(UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22) => {
             let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(trace))) =
                 tracing_data
             else {

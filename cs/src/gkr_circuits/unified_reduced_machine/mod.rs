@@ -9,7 +9,9 @@ mod mem_word_only;
 mod mem_word_only_lw_sw;
 
 pub use self::circuit::{
-    build_unified_artifact, unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr,
+    build_unified_artifact, build_unified_artifact_core,
+    unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr,
+    unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core,
     unified_reduced_machine_table_addition_fn, unified_reduced_machine_table_driver_fn,
     FAMILY_1_FLAG_OFFSET, FAMILY_1_TRI_ADD_BIT, FAMILY_2_FLAG_OFFSET, FAMILY_3_BINARY_OP_BIT,
     FAMILY_3_FLAG_OFFSET, FAMILY_4_FLAG_OFFSET, FAMILY_4_LW_BIT, FAMILY_4_SW_BIT,

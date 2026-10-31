@@ -97,6 +97,22 @@ impl CircuitData {
         )
     }
 
+    /// A circuit outside the `gkr_circuits!` catalogue (its production
+    /// crate and `cs/compiled_circuits/<name>_layout*_gkr.json` artifacts
+    /// exist, but no standard per-level verifier is generated for it).
+    pub fn new(name: &'static str, production_path: &'static str) -> Self {
+        Self {
+            name,
+            production_path,
+            security_levels: [SecurityLevel::Sec100],
+            prover_configs_cache: [[const { OnceLock::new() }; NUM_SOUNDNESS_MODES];
+                NUM_SECURITY_LEVELS],
+            nds_cache: [const {
+                [const { [const { OnceLock::new() }; NUM_BLAKE_MODES] }; NUM_SOUNDNESS_MODES]
+            }; NUM_SECURITY_LEVELS],
+        }
+    }
+
     pub fn prover_config_for(&self, level: SecurityLevel) -> &ProverConfig {
         self.prover_config_for_mode(level, SoundnessMode::DEFAULT)
     }
@@ -148,6 +164,9 @@ impl CircuitData {
     }
 
     pub fn circuit_path(&self) -> String {
+        if self.name == "unified_reduced_machine_2_22" {
+            return format!("{}/generated/layout.json", self.production_path);
+        }
         if self.name == "inits_and_teardowns" {
             format!(
                 "{}/cs/compiled_circuits/{}_layout_no_caches_gkr.json",

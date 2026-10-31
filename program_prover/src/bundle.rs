@@ -127,7 +127,6 @@ impl std::fmt::Display for L1InputError {
 impl std::error::Error for L1InputError {}
 
 /// Explicitly reject the retired legacy pair syntax before any file I/O.
-#[cfg(feature = "l1")]
 pub fn read_l1_input(
     _proof: &Path,
     _setups: &Path,
@@ -210,7 +209,6 @@ pub(crate) mod tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
 
-    #[cfg(feature = "l1")]
     #[test]
     fn legacy_pairs_report_a_typed_error_without_io() {
         let missing = Path::new("/missing/task-s-legacy.bin");

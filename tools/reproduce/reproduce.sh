@@ -37,6 +37,10 @@ cargo test --release -p verifier_generator --test generate_verifiers
 
 cd "$REPO_ROOT/tools/gkr_verifier"
 
+# Build the independent 512 KiB-ROM L1 wrap guest first: it is a registry row
+# (FsvProfile::L1FeederWrap), and the manifest regenerated below pins every registered guest on disk.
+bash ../gkr_verifier_l1_wrap/dump_bin.sh
+
 # Full-statement verifiers in every soundness mode and blake variant the recursion pipeline can
 # select (full_statement_verifiers/ and full_statement_verifiers/ethproofs_soundcalc/), then the
 # manifest pinning their decoded ROM images (full_statement_verifiers/fsv_manifest.txt). The

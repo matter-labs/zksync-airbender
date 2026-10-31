@@ -6,7 +6,7 @@
 //! [`load_fsv_exact`] accepts a file only if it decodes to that image, so an `FSV_DIR` may
 //! relocate the binaries but never re-identify them.
 
-use riscv_transpiler::elf::{read_elf, ElfReadError, ElfReadMode};
+use riscv_transpiler::elf::{read_elf_with_rom, ElfReadError, ElfReadMode};
 use sha3::{Digest, Keccak256};
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -15,7 +15,10 @@ use verifier_common::fsv_binaries::{
     FSV_REGISTRY,
 };
 
-/// Name of the digest recipe of [`fsv_digest`], recorded in the manifest header.
+/// Name of the digest recipe of [`fsv_digest`], recorded in the manifest header. v1 hashes the
+/// guest's bin and text words padded to the row's ROM geometry (`FsvProfile::rom()`, the
+/// manifest's `rom_size` column): 4 MiB for every row except the L1 wrap's 512 KiB. An external
+/// recomputation must pad to that row's `rom_size`.
 pub const FSV_DIGEST_RECIPE: &str = "fsv-rom-digest-v1";
 
 /// The manifest's file name under the FSV root.
@@ -66,6 +69,11 @@ pub fn fsv_digest(bin: &[u32], text: &[u32]) -> FsvDigest {
 pub struct FsvManifestEntry {
     pub descriptor: FsvDescriptor,
     pub relative_path: &'static str,
+    /// The row's ROM geometry in bytes ([`FsvProfile::rom`]): the size the image is decoded
+    /// and padded to.
+    ///
+    /// [`FsvProfile::rom`]: verifier_common::fsv_binaries::FsvProfile::rom
+    pub rom_size: usize,
     /// Decoded ROM image size (`objcopy -O binary` length).
     pub rom_bytes: usize,
     /// `.text` size.
@@ -259,12 +267,14 @@ fn decode_guest(descriptor: &FsvDescriptor, path: &Path) -> Result<DecodedGuest,
             }
         }
     })?;
-    let image =
-        read_elf(&bytes, ElfReadMode::Legacy).map_err(|error| FsvLoadError::InvalidElf {
+    // The row's ROM geometry decodes and pads the image; the digest binds it.
+    let image = read_elf_with_rom(&bytes, ElfReadMode::Legacy, descriptor.profile.rom()).map_err(
+        |error| FsvLoadError::InvalidElf {
             descriptor: *descriptor,
             path: path.to_path_buf(),
             error,
-        })?;
+        },
+    )?;
     let text = image.padded_text_words();
     Ok(DecodedGuest {
         bin: image
@@ -341,7 +351,12 @@ const MANIFEST_HEADER: &str = "\
 # full_statement_verifier::host_utils, which loads a guest only if it matches its row.
 # Generated; regenerate with tools/gkr_verifier/dump_recursive_verifiers.sh.
 #
-# rom_bytes: decoded ROM image size (objcopy -O binary length); the ROM is 4194304 bytes.
+# The L1 wrap guest (profile l1_feeder_wrap) is built by tools/gkr_verifier_l1_wrap/dump_bin.sh;
+# run it before dump_recursive_verifiers.sh, which regenerates this manifest last.
+#
+# rom_size: the row's ROM geometry in bytes (verifier_common FsvProfile::rom): 4194304, or
+#   524288 for the L1 wrap ROM. The image is decoded and padded to it.
+# rom_bytes: decoded ROM image size (objcopy -O binary length), at most rom_size.
 # text_bytes: .text size.
 ";
 
@@ -352,16 +367,18 @@ pub fn render_fsv_manifest(dir: impl AsRef<Path>) -> Result<String, FsvLoadError
     out.push_str(&format!(
         "# digest: {FSV_DIGEST_RECIPE} = keccak256(le_u64(bin words) || le_u64(text words) || \
          bin words || text words),\n\
-         #   little-endian words of the ROM-padded image and .text, as the legacy ELF loader returns them.\n\
+         #   little-endian words of the image and .text, each padded to the row's ROM, as the legacy ELF\n\
+         #   loader returns them.\n\
          #\n\
-         # security soundness_mode program profile blake path rom_bytes text_bytes digest\n"
+         # security soundness_mode program profile blake path rom_size rom_bytes text_bytes digest\n"
     ));
     for entry in FSV_REGISTRY {
         let guest = decode_guest(&entry.descriptor, &dir.as_ref().join(entry.relative_path))?;
         let [security, mode, program, profile, blake] = entry.descriptor.tokens();
         out.push_str(&format!(
-            "{security} {mode} {program} {profile} {blake} {} {} {} {}\n",
+            "{security} {mode} {program} {profile} {blake} {} {} {} {} {}\n",
             entry.relative_path,
+            entry.descriptor.profile.rom().byte_size(),
             guest.rom_bytes,
             guest.text_bytes,
             fsv_digest(&guest.bin, &guest.text),
@@ -378,7 +395,7 @@ fn parse_manifest(text: &str) -> Result<Vec<FsvManifestEntry>, String> {
     let mut entries: Vec<FsvManifestEntry> = Vec::new();
     for line in text.lines().filter(|line| !line.starts_with('#')) {
         let fields: Vec<&str> = line.split(' ').collect();
-        let [security, mode, program, profile, blake, path, rom_bytes, text_bytes, digest] =
+        let [security, mode, program, profile, blake, path, rom_size, rom_bytes, text_bytes, digest] =
             fields[..]
         else {
             return Err(format!("malformed row {line:?}"));
@@ -399,9 +416,20 @@ fn parse_manifest(text: &str) -> Result<Vec<FsvManifestEntry>, String> {
         {
             return Err(format!("duplicate row for {}", registered.descriptor));
         }
+        let rom_size: usize = rom_size
+            .parse()
+            .map_err(|_| format!("row {line:?}: bad rom_size"))?;
+        if rom_size != registered.descriptor.profile.rom().byte_size() {
+            return Err(format!(
+                "row {line:?}: {} is decoded with a {}-byte ROM",
+                registered.descriptor,
+                registered.descriptor.profile.rom().byte_size()
+            ));
+        }
         entries.push(FsvManifestEntry {
             descriptor: registered.descriptor,
             relative_path: registered.relative_path,
+            rom_size,
             rom_bytes: rom_bytes
                 .parse()
                 .map_err(|_| format!("row {line:?}: bad rom_bytes"))?,
@@ -483,7 +511,8 @@ mod tests {
         );
         for entry in fsv_manifest() {
             assert!(
-                entry.rom_bytes <= common_constants::ROM_BYTE_SIZE,
+                entry.rom_bytes <= entry.rom_size
+                    && entry.rom_size == entry.descriptor.profile.rom().byte_size(),
                 "{} does not fit the ROM",
                 entry.descriptor
             );
@@ -515,6 +544,65 @@ mod tests {
                     .any(|entry| entry.relative_path == relative),
                 "{relative} is not in FSV_REGISTRY"
             );
+        }
+    }
+
+    /// The L1 guests decode at their own ROM: the wrap's image and text are padded to the
+    /// 512 KiB wrap ROM, and its linked ROM size refuses the regular geometry.
+    #[test]
+    fn l1_feeder_guests_decode_at_their_rom() {
+        for profile in [FsvProfile::L1FeederA, FsvProfile::L1FeederWrap] {
+            let descriptor = FsvDescriptor::l1_feeder(profile);
+            let guest = load_fsv_exact(canonical_fsv_dir(), &descriptor).unwrap();
+            let words = profile.rom().word_size();
+            assert_eq!((guest.bin().len(), guest.text().len()), (words, words));
+            let entry = fsv_manifest_entry(&descriptor).unwrap();
+            assert_eq!(entry.rom_size, profile.rom().byte_size());
+            assert!(entry.rom_bytes <= entry.rom_size);
+        }
+        let wrap = FsvDescriptor::l1_feeder(FsvProfile::L1FeederWrap);
+        let bytes = std::fs::read(canonical_fsv_dir().join(path_of(&wrap))).unwrap();
+        assert!(matches!(
+            read_elf_with_rom(
+                &bytes,
+                ElfReadMode::Legacy,
+                common_constants::rom::REGULAR_ROM
+            ),
+            Err(ElfReadError::Layout(_))
+        ));
+    }
+
+    /// The two L1 guests swapped on disk: each descriptor refuses the other's ELF. Where the
+    /// foreign ELF's linked ROM does not fit the row's geometry, decoding refuses it (today: the
+    /// wrap ELF at the feeder-A path); otherwise the digest does (today: the feeder-A image fits
+    /// the 512 KiB wrap ROM). The expectation is derived per case, so it holds for any layout.
+    #[test]
+    fn swapped_l1_guests_are_rejected() {
+        let feeder_a = FsvDescriptor::l1_feeder(FsvProfile::L1FeederA);
+        let wrap = FsvDescriptor::l1_feeder(FsvProfile::L1FeederWrap);
+        let dir = ScratchDir::new("swapped-l1", &[(&feeder_a, &wrap), (&wrap, &feeder_a)]);
+        for (descriptor, foreign) in [(&wrap, &feeder_a), (&feeder_a, &wrap)] {
+            let bytes = std::fs::read(canonical_fsv_dir().join(path_of(foreign))).unwrap();
+            let refused_by_geometry = matches!(
+                read_elf_with_rom(&bytes, ElfReadMode::Legacy, descriptor.profile.rom()),
+                Err(ElfReadError::Layout(_))
+            );
+            match (refused_by_geometry, load_fsv_exact(&dir.0, descriptor)) {
+                (
+                    true,
+                    Err(FsvLoadError::InvalidElf {
+                        error: ElfReadError::Layout(_),
+                        ..
+                    }),
+                ) => {}
+                (false, Err(FsvLoadError::DigestMismatch { expected, .. })) => {
+                    assert_eq!(expected, fsv_manifest_entry(descriptor).unwrap().digest);
+                }
+                (by_geometry, other) => panic!(
+                    "{descriptor} holding {foreign}: expected a {} rejection, got {other:?}",
+                    if by_geometry { "geometry" } else { "digest" }
+                ),
+            }
         }
     }
 
@@ -667,24 +755,32 @@ mod tests {
             FsvProgram::UnifiedBaseLayer,
             BlakeMode::Compression,
         );
-        let feeder = FsvDescriptor {
-            profile: FsvProfile::L1Feeder,
-            ..descriptor(
-                ETHPROOFS,
-                FsvProgram::UnifiedRecursionLayer,
-                BlakeMode::BlakeSpecialOpcodes,
-            )
-        };
+        let [feeder_a, feeder_wrap] =
+            [FsvProfile::L1FeederA, FsvProfile::L1FeederWrap].map(|profile| FsvDescriptor {
+                soundness_mode: ETHPROOFS,
+                ..FsvDescriptor::l1_feeder(profile)
+            });
         let g_function = descriptor(
             PESSIMISTIC,
             FsvProgram::UnrolledBaseLayer,
             BlakeMode::GFunction,
         );
-        for target in [unified_base, feeder, g_function] {
+        for target in [unified_base, feeder_a, feeder_wrap, g_function] {
             match load_fsv_exact(canonical_fsv_dir(), &target) {
                 Err(FsvLoadError::Unsupported(err)) => assert_eq!(err.descriptor, target),
                 other => panic!("expected Unsupported for {target}, got {other:?}"),
             }
+        }
+        for target in [feeder_a, feeder_wrap] {
+            let error = load_fsv_exact(canonical_fsv_dir(), &target)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                error.contains(
+                    "not implemented for the L1 feeder/wrap/EVM profile (deferred product scope)"
+                ),
+                "{error}"
+            );
         }
     }
 
@@ -711,7 +807,7 @@ mod tests {
         let row = |path: &str| {
             format!(
                 "sec_100 ethproofs_soundcalc unified_base_layer standard blake2_with_compression \
-                 {path} 4 4 {}\n",
+                 {path} 4194304 4 4 {}\n",
                 "00".repeat(32)
             )
         };
@@ -720,11 +816,22 @@ mod tests {
 
         let wrong_path = format!(
             "{header}sec_100 pessimistic_conjecture unified_base_layer standard \
-             blake2_with_compression other.elf 4 4 {}\n",
+             blake2_with_compression other.elf 4194304 4 4 {}\n",
             "00".repeat(32)
         );
         let err = parse_manifest(&wrong_path).unwrap_err();
         assert!(err.contains("the registry places"), "{err}");
+
+        // The ROM size is the row's geometry: the wrap row cannot claim the regular ROM.
+        let wrong_rom = format!(
+            "{header}sec_100 pessimistic_conjecture unified_recursion_layer l1_feeder_wrap \
+             special_opcodes_extension \
+             fsv_unified_recursion_layer_sec_100_l1_feeder_wrap_special_opcodes_extension.elf \
+             4194304 4 4 {}\n",
+            "00".repeat(32)
+        );
+        let err = parse_manifest(&wrong_rom).unwrap_err();
+        assert!(err.contains("is decoded with a 524288-byte ROM"), "{err}");
 
         let err = parse_manifest("sec_100\n").unwrap_err();
         assert!(err.contains("does not declare"), "{err}");

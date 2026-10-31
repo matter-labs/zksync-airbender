@@ -19,7 +19,6 @@ use crate::recursion_chain::{self, RecursionChain};
 use setups::Setups;
 use std::path::Path;
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
-use verifier_common::prover::definitions::MerkleTreeCap;
 #[cfg(feature = "verifiers")]
 use verifier_common::prover::definitions::{SecurityLevel, SoundnessMode};
 use verifier_common::USE_REDUCED_BLAKE2_ROUNDS;
@@ -52,9 +51,7 @@ pub fn build_unified_stream(setups: &Setups, proof: &ProgramProof, blake: BlakeM
 }
 
 fn flattened_caps(setups: &Setups) -> impl Iterator<Item = &[u32]> {
-    setups
-        .values()
-        .map(|params| MerkleTreeCap::flatten_single(&params.setup_caps))
+    setups.values().map(|params| params.flattened_setup_caps())
 }
 
 /// Failure of a mode-explicit native verifier. Invalid input never selects another mode.
@@ -135,6 +132,76 @@ pub fn try_native_verify_unrolled_in_mode(
         };
         result.map_err(|error| format!("{error:?}"))
     })
+}
+
+/// Native verification of an L1 feeder stream (the zero-delegation
+/// feeder statement) at a checked boundary: a verifier error, a structural
+/// panic inside the statement (a nonzero delegation count, a truncated
+/// stream), or trailing words after the statement consumed its input are all
+/// reported as `Err`.
+#[cfg(feature = "verifiers")]
+pub fn native_verify_unified_l1_feeder(stream: Vec<u32>) -> Result<[u32; 16], String> {
+    native_verify_l1_feeder_statement(
+        stream,
+        crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_l1_feeder::<
+            _,
+            verifier_common::errors::DebugErrorCreator,
+            USE_REDUCED_BLAKE2_ROUNDS,
+        >,
+    )
+}
+
+/// [`native_verify_unified_l1_feeder`] over a proof of the 2^23 feeder
+/// profile A.
+#[cfg(feature = "verifiers")]
+pub fn native_verify_unified_l1_feeder_a(stream: Vec<u32>) -> Result<[u32; 16], String> {
+    native_verify_l1_feeder_statement(
+        stream,
+        crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_l1_feeder_a::<
+            _,
+            verifier_common::errors::DebugErrorCreator,
+            USE_REDUCED_BLAKE2_ROUNDS,
+        >,
+    )
+}
+
+#[cfg(feature = "verifiers")]
+fn native_verify_l1_feeder_statement(
+    stream: Vec<u32>,
+    statement: fn(
+        &mut std::vec::IntoIter<u32>,
+    ) -> Result<[u32; 16], verifier_common::errors::VerificationError>,
+) -> Result<[u32; 16], String> {
+    let joined = std::thread::Builder::new()
+        .name("unified l1 feeder verifier".to_string())
+        .stack_size(1 << 27)
+        .spawn(move || {
+            let mut it = stream.into_iter();
+            let output = statement(&mut it)
+                .map_err(|err| format!("unified l1 feeder proof failed to verify: {err:?}"))?;
+            let trailing = it.count();
+            if trailing != 0 {
+                return Err(format!(
+                    "unified l1 feeder stream carries {trailing} trailing words after the statement"
+                ));
+            }
+            Ok(output)
+        })
+        .expect("spawn verifier thread")
+        .join();
+    match joined {
+        Ok(result) => result,
+        Err(payload) => {
+            let reason = payload
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| payload.downcast_ref::<&str>().copied())
+                .unwrap_or("unknown verifier panic");
+            Err(format!(
+                "unified l1 feeder statement rejected the stream: {reason}"
+            ))
+        }
+    }
 }
 
 /// Pessimistic compatibility wrapper for a proof expected to be valid.
