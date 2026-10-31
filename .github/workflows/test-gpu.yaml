@@ -198,22 +198,20 @@ jobs:
           done
           exit "$failed"
 
-      - name: Prove recursion unified on GPU
+      - name: Prove, continue and verify on GPU in every soundness mode
+        env:
+          # n = 15, h = 1,200,000 Blake iterations: every mode's base verifier is estimated
+          # above the 16Mi floor, so this threshold proves an unrolled recursion layer.
+          RECURSION_UNIFIED_SWITCH_CYCLES: "16777216"
+          INPUT_FILE: output/hashed_fibonacci_input.txt
+          DIRECT: "1"
+          EXPECT_UNROLLED: "1"
         run: |
           chmod +x zksync-airbender-gpu/cli
-          zksync-airbender-gpu/cli prove \
-            --bin examples/hashed_fibonacci/app.bin \
-            --input-file examples/hashed_fibonacci/input.txt \
-            --target recursion-unified \
-            --backend gpu \
-            --output-dir output \
-            --output-file proof.json
-
-      - name: Verify recursion unified proof
-        run: |
-          zksync-airbender-gpu/cli verify \
-            --proof output/proof.json \
-            --bin examples/hashed_fibonacci/app.bin
+          mkdir -p output
+          printf '0000000f00124f80' > "$INPUT_FILE"
+          .github/scripts/soundness_mode_smoke.sh zksync-airbender-gpu/cli \
+            examples/hashed_fibonacci/app.bin gpu
 
   # Keep branch protection tied to one stable GPU check name even if we
   # split GPU coverage across multiple jobs or matrix entries later on.
