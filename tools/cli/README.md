@@ -182,7 +182,9 @@ L1 wrap. One profile-A instance continues through another layer. For the
 committed `basic_fibonacci` input, the chain is two A instances, one A
 instance, then one C instance. At most eight feeder layers are allowed.
 
-Artifacts use schema 5. The `l1-feeder` artifact is the input of the L1 wrap.
+Artifacts use schema 6 (schema 4 plus the L1 fields). Schema 5, the
+pre-rebase L1 layout, is rejected; regenerate such artifacts. The `l1-feeder`
+artifact is the input of the L1 wrap.
 
 The committed reference can be regenerated in a fresh process with the ignored
 `l1_reference::generate_l1_reference_from_recursion_unified` test, which
@@ -206,7 +208,7 @@ cargo run --release -p cli -- verify \
 `--target l1` continues an `l1-feeder` checkpoint (or runs through it) and
 proves the L1 feeder verifier's execution as one Proth120 packed unified proof
 with Keccak commitments, the proof shape the EVM verifier consumes. The
-artifact (schema 5) keeps the BabyBear feeder sidecar and adds the `l1` bundle
+artifact (schema 6) keeps the BabyBear feeder sidecar and adds the `l1` bundle
 (proof and operation-mode data).
 
 ```bash

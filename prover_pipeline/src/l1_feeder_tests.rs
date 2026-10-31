@@ -444,8 +444,11 @@ fn continuation_constructor_rejects_request_and_source_before_backend_setup() {
         backend: ProverBackend::Gpu,
         ..Default::default()
     };
-    let mut old_schema = artifact(ProofTarget::Base, 1);
-    old_schema.schema_version = 4;
+    // A v4 artifact cannot carry an L1 target; v5 is the retired pre-rebase L1 layout.
+    let mut v4_l1 = artifact(ProofTarget::L1Feeder, 4);
+    v4_l1.schema_version = 4;
+    let mut v5 = artifact(ProofTarget::Base, 1);
+    v5.schema_version = 5;
     let mut wrong_bin = artifact(ProofTarget::Base, 1);
     wrong_bin.program_bin_keccak = keccak256(&loaded.bin_bytes);
     wrong_bin.program_bin_keccak[0] ^= 1;
@@ -456,8 +459,13 @@ fn continuation_constructor_rejects_request_and_source_before_backend_setup() {
     for (source, invalid, expected) in [
         (
             &missing,
-            old_schema,
-            "unsupported proof artifact schema_version",
+            v4_l1,
+            "UnsupportedArtifactTarget: schema v4 cannot carry the L1 target L1Feeder",
+        ),
+        (
+            &missing,
+            v5,
+            "pre-rebase L1 artifact; unsupported; regenerate",
         ),
         (
             &missing,
