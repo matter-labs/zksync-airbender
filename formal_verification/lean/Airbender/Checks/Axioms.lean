@@ -1,3 +1,6 @@
+import Airbender.Proofs.GKRProtocol.ProgramPublicConstraints
+import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.WordMemoryCached
+import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.WordMemoryUncached
 import Airbender.Proofs.GKRProtocol.ProgramPublicRows
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.SubwordMemoryCached
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.SubwordMemoryUncached
@@ -19171,3 +19174,17 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.program_final_pc_low
 #print axioms Airbender.Compiler.PooledExecution.program_native_query_pc_low
 #print axioms Airbender.Compiler.PooledExecution.program_decoder_exact_lookup_from_native
+
+#print axioms Airbender.Compiler.ProgramConstraintsNative.WordMemoryUncached.input_constraints
+#print axioms Airbender.Compiler.ProgramConstraintsNative.WordMemoryCached.input_constraints
+
+#print axioms Airbender.Reference.Compiler.ProgramSetup.fixed_query_or_zero
+#print axioms Airbender.Compiler.word_helper_not_decoder
+#print axioms Airbender.WordMemory.Proofs.word_flags_of_assertions
+#print axioms Airbender.Compiler.NativeProgramSetup.fixed_or_zero_member
+#print axioms Airbender.Compiler.NativeProgramSetup.vector_nine_last
+#print axioms Airbender.Compiler.NativeProgramSetup.fixed_word_query_zero
+#print axioms Airbender.Compiler.NativeProgramSetup.word_query_member
+#print axioms Airbender.Compiler.NativeProgramSetup.word_public_member
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.program_constraints
+#print axioms Airbender.Compiler.PooledExecution.program_row_constraints_from_native

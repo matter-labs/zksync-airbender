@@ -988,6 +988,110 @@ end Airbender.Compiler.ProgramConstraintsNative.{name}
     return roots
 
 
+def program_word_constraints():
+    roots = []
+    for name in [name for name in NAMES if name.startswith('WordMemory')]:
+        constructor = name[0].lower() + name[1:]
+        case = f'Airbender.Compiler.PooledRowNative.{name}'
+        source_model = f'Airbender.Compiler.LookupSourceNative.{name}.native'
+        clean = f'Airbender.Compiler.CleanGenericArgumentsNative.{name}.native'
+        arithmetic = f'Airbender.Compiler.CleanArithmeticNative.{name}.native'
+        values = f'((input.physical ∘ {source_model}.bank.address) ∘ Airbender.Compiler.LookupNative.{name}.native.sourcePlacement)'
+        tables = f'(fun group index => NativeProgramSetup.rows decoder wordAt .{constructor} group index.val)'
+        range_parameters = f'''(decoder : Configuration → List (List Source.BaseField))
+    (wordAt : Nat → BitVec 32) (input : Input)
+    (arguments : LookupArgumentsWith {tables} input)'''
+        parameters = f'''{{initial : Reference.RiscV.Sail.State}}
+    (decoder : Configuration → List (List Source.BaseField)) (input : Input)
+    (arguments : LookupArgumentsWith (fun group index =>
+      NativeProgramSetup.rows decoder (Trace.ROM.words initial) .{constructor} group index.val) input)
+    {{cells : List Trace.Cell}} {{tokens : List (Trace.MemoryToken babyBearModulus)}}
+    (image : Trace.initialImage initial cells = some tokens)
+    (domain : ROMNative.WordFullPublic.CoversROM cells)'''
+        code = f'''import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.{name}
+import Airbender.Proofs.GKRProtocol.ProgramWordROM
+import Airbender.Proofs.GKRProtocol.ProgramWordTags
+
+namespace Airbender.Compiler.ProgramConstraintsNative.{name}
+open Airbender Airbender.Compiler {case}
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 65536
+
+'''
+        original = (ROOT / 'Airbender/Proofs/GKRProtocol/PhysicalClosedNative' / (name + '.lean')).read_text()
+        ranges = original[original.index('theorem range_lookup0'):original.index('theorem generic_lookup0')]
+        for entry in re.split(r'(?=theorem range_lookup\d+\n)', ranges):
+            if not entry.strip():
+                continue
+            theorem = re.search(r'^theorem (range_lookup\d+)', entry)[1]
+            target = entry[entry.index(' :\n', entry.index('(authored')) + len(' :\n'):]
+            target = re.sub(r'\bphysical\b', 'input.physical', target)
+            target = re.sub(r'\barithmetic\b', 'input.arithmetic', target)
+            target = target.replace('authored.2 query', f'ProgramFixedLookup.{name}.range_from_arguments decoder wordAt input arguments query')
+            code += f'private theorem {theorem}\n    {range_parameters} (data : ProverData Source.BaseField) :\n' + target
+        code += f'''private theorem generic_lookup0
+    {parameters} (notDecoder : (inputRow input).assignment 45 ≠ 46)
+    (data : ProverData Source.BaseField) :
+    (Lookup.mk (Trace.ROM.table cells tokens).toRaw {clean}.genericExpressions0).Contains
+      ({arithmetic}.environment input.physical data) := by
+  let query := {source_model}.genericQueries.get ⟨0, by decide⟩
+  obtain ⟨nativeIndex, matched⟩ := source_member_with (fun group index =>
+    NativeProgramSetup.rows decoder (Trace.ROM.words initial) .{constructor} group index.val) input arguments 0
+    (query.materialized {values})
+    (List.mem_map.mpr ⟨query, List.get_mem {source_model}.genericQueries ⟨0, by decide⟩, rfl⟩)
+    one_ne_zero
+'''
+        for field in range(9):
+            code += f'  have same{field} := {clean}.part0.generic_value0_{field} input.physical data input.arithmetic\n'
+        code += f'''  let actual := {clean}.genericExpressions0.map
+    (fun expression => expression.eval ({arithmetic}.environment input.physical data))
+  have guard : actual[8] ≠ 46 := by
+    simp [actual, {clean}.genericExpressions0,
+      {clean}.part0.genericExpression0_8, _root_.Expression.eval]
+    change (inputRow input).assignment 45 ≠ 46
+    exact notDecoder
+  apply clean_vector_lookup
+  apply NativeProgramSetup.word_public_member image domain decoder .{constructor}
+    ({"Or.inl" if name.endswith("Uncached") else "Or.inr"} rfl) nativeIndex actual ?_ guard
+  simp only [actual, {clean}.genericExpressions0, Vector.map_mk, List.map_toArray]
+  change [''' + ', '.join(f'({clean}.part0.genericExpression0_{field}).eval ({arithmetic}.environment input.physical data)' for field in range(9)) + '''] = _
+  rw [''' + ', '.join('same' + str(field) for field in range(9)) + ''']
+  exact matched
+
+'''
+        inventory = original[original.index('theorem clock_lookup_inventory'):original.index('theorem range_lookup0')]
+        inventory = inventory.replace('theorem clock_lookup_inventory :', 'private theorem clock_lookup_inventory (rom : Table Source.BaseField (fields 9)) :')
+        inventory = inventory.replace('nativeSetup', 'rom')
+        code += inventory
+        body = original[original.index('theorem retained_clock_from_physical'):]
+        body = body[body.index(' := by\n') + len(' := by\n'):body.index('\nend ')]
+        body = re.sub(r'(range_lookup\d+) physical data arithmetic authored', r'\1 decoder (Trace.ROM.words initial) input arguments (fun _ _ => #[])', body)
+        body = body.replace('generic_lookup0 physical data arithmetic authored', 'generic_lookup0 decoder input arguments image domain notDecoder (fun _ _ => #[])')
+        body = re.sub(r'\bphysical\b', 'input.physical', body)
+        body = re.sub(r'\barithmetic\b', 'input.arithmetic', body)
+        body = re.sub(r'\bdata\b', '(fun _ _ => #[])', body)
+        body = body.replace('nativeSetup', '(Trace.ROM.table cells tokens)')
+        code += f'''/-- Exact native matching proves word-memory constraints for the public image. -/
+theorem input_constraints
+    {parameters} (subwordSetup : Table Source.BaseField (fields 9)) :
+    FlatOperation.ConstraintsHoldFlat (Verification.environment (inputRow input).assignment)
+      ((inputRow input).constraints (⟨Trace.ROM.table cells tokens, subwordSetup⟩ : Trace.PooledSetup babyBearModulus)) := by
+  have helpers := ProgramFixedLookup.{name}.helpers_from_arguments decoder (Trace.ROM.words initial) input arguments
+  have assertions : ∀ expression ∈ FlatOperation.constraints (WordMemory.importedConstraints (Trace.ROM.table cells tokens)),
+      expression.eval (Verification.environment (inputRow input).assignment) = 0 := by
+    rw [Airbender.Compiler.CleanLinksNative.{name}.arithmetic_inventory]
+    exact CleanExpression.assertions_only _ _
+      ({arithmetic}.arithmetic_preserved input.physical (fun _ _ => #[]) input.arithmetic)
+  have notDecoder := word_helper_not_decoder _ _ assertions
+{body}
+end Airbender.Compiler.ProgramConstraintsNative.{name}
+'''
+        emit(Path('Airbender/Proofs/GKRProtocol/ProgramConstraintsNative') / (name + '.lean'), code)
+        roots.append(f'Airbender.Compiler.ProgramConstraintsNative.{name}.input_constraints')
+    return roots
+
+
 def program_pc_bounds():
     roots = []
     direct = {'ShiftBinop': 0, 'WordMemory': 1, 'SubwordMemory': 3, 'Unified': 11}
@@ -1057,6 +1161,7 @@ decoder_roots = program_decoder_interfaces()
 fixed_roots = program_fixed_interfaces()
 constraint_roots = program_fixed_cpu_constraints()
 constraint_roots += program_subword_constraints()
+constraint_roots += program_word_constraints()
 pc_roots = program_pc_bounds()
 shift_roots = ['Airbender.Compiler.' + name for name in [
     'public_program_full_fields', 'public_program_shift_source',
@@ -1075,6 +1180,15 @@ public_row_roots = ['Airbender.Compiler.PooledExecution.' + name for name in [
     'program_decoder_exact_lookup',
     'ProgramLogicalRowCertificate.program_final_pc_low',
     'program_native_query_pc_low', 'program_decoder_exact_lookup_from_native']]
+word_roots = ['Airbender.Reference.Compiler.ProgramSetup.fixed_query_or_zero',
+              'Airbender.Compiler.word_helper_not_decoder',
+              'Airbender.WordMemory.Proofs.word_flags_of_assertions']
+word_roots += ['Airbender.Compiler.NativeProgramSetup.' + name for name in [
+    'fixed_or_zero_member', 'vector_nine_last', 'fixed_word_query_zero',
+    'word_query_member', 'word_public_member']]
+word_roots += ['Airbender.Compiler.PooledExecution.' + name for name in [
+    'ProgramLogicalRowCertificate.program_constraints',
+    'program_row_constraints_from_native']]
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
@@ -1087,17 +1201,20 @@ if setup_import not in content.splitlines():
 public_row_import = 'import Airbender.Proofs.GKRProtocol.ProgramPublicRows'
 if public_row_import not in content.splitlines():
     content = public_row_import + '\n' + content
+public_constraints_import = 'import Airbender.Proofs.GKRProtocol.ProgramPublicConstraints'
+if public_constraints_import not in content.splitlines():
+    content = public_constraints_import + '\n' + content
 decoder_imports = '\n'.join('import Airbender.Proofs.GKRProtocol.' + tree + '.' + name
                           for tree in ['ProgramDecoderNative', 'ProgramDecoderLookup', 'ProgramFixedLookup', 'ProgramPCLowNative'] for name in NAMES)
 for decoder_import in decoder_imports.splitlines():
     if decoder_import not in content.splitlines():
         content = decoder_import + '\n' + content
-for name in [name for name in NAMES if name.startswith(('AddSub', 'JumpBranch', 'MulDiv', 'ShiftBinop', 'SubwordMemory'))]:
+for name in [name for name in NAMES if name.startswith(('AddSub', 'JumpBranch', 'MulDiv', 'ShiftBinop', 'SubwordMemory', 'WordMemory'))]:
     constraint_import = 'import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.' + name
     if constraint_import not in content.splitlines():
         content = constraint_import + '\n' + content
 roots = []
-for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots + public_row_roots:
+for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots + public_row_roots + word_roots:
     root = f'#print axioms {name}'
     if root not in content.splitlines():
         roots.append(root)
