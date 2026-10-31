@@ -186,12 +186,13 @@ block and keeps the source bytes fixed. The kernel rejects that control.
 The AND result now follows from a proved packed checker for the original Block
 statement. See the [selected measurements](VERIFICATION_STATUS.md#verified-checker-measurements).
 The setup-column pilot proves exact block equality with a second kernel-checked
-certificate. Columns 2 and 5 now use projections of complete capture certificates. Column 5
-uses a balanced numeric tree. Its checker validates branch sizes, exact block
-equality and all requested row counts. Kernel conversion proofs bind the tree
-to both native spans. All public declaration names and theorem statements stay
-the same. The pending environment audit must record the changed module origins.
-Other fact families still need migration.
+certificate. Columns 2, 4, 5, 6 and 7 use projections of complete capture
+certificates. The four wide columns use balanced numeric trees. The checker
+validates branch sizes, exact block equality and all requested row counts.
+Kernel layout and conversion proofs bind each tree to both native sides.
+All public declaration names and theorem statements stay the same. The pending
+environment audit must record the changed module origins. Other fact families
+still need migration.
 
 Sail generation uses the pinned upstream compiler and selected original roots.
 The normal four-byte nextPC assignment is extracted verbatim from the normal

@@ -13,8 +13,15 @@ PACKED_COLUMNS = {
         'UnifiedPackedEquality', {52: -111, 53: 788, 54: 1686}),
     5: ('UnifiedPackedEquality.Column5.Codes', 'UnifiedPackedEquality.Column5.Certificate',
         'UnifiedPackedEquality.Column5', {9: -128, 49: 24304, 50: 25202}),
+    4: ('UnifiedPackedEquality.Column4.Codes', 'UnifiedPackedEquality.Column4.Certificate',
+        'UnifiedPackedEquality.Column4', {9: -128, 47: 24158, 48: 25057}),
+    6: ('UnifiedPackedEquality.Column6.Codes', 'UnifiedPackedEquality.Column6.Certificate',
+        'UnifiedPackedEquality.Column6', {9: -128}),
+    7: ('UnifiedPackedEquality.Column7.Codes', 'UnifiedPackedEquality.Column7.Certificate',
+        'UnifiedPackedEquality.Column7', {9: -128}),
 }
 
+TREE_COLUMNS = frozenset({4, 5, 6, 7})
 
 
 def packed_modules(column, artifact, positions, groups, selected):
@@ -32,13 +39,13 @@ def packed_modules(column, artifact, positions, groups, selected):
     text = (f'import Airbender.Proofs.GKRProtocol.{certificate}\n\n'
             'namespace ' + namespace + '\nopen Airbender Airbender.Compiler\n'
             'set_option warningAsError true\nset_option Elab.async false\n\n')
-    if column == 5:
+    if column in TREE_COLUMNS:
         text += ('-- Each projection reduces one bounded leaf and a tree path.\n'
                  'set_option maxRecDepth 8192\n\n')
     for ordinal, (first, last) in enumerate(selected):
         index = first // CHUNK
         offset, count, rows = specifications[ordinal]
-        if column == 5:
+        if column in TREE_COLUMNS:
             text += (f'noncomputable def original{index} : List Setup.Block :=\n'
                      f'  {capture}.sourceChunk {offset}\n')
         else:
@@ -59,7 +66,7 @@ def packed_modules(column, artifact, positions, groups, selected):
             size = len(indexes)
             names.append(part)
             pieces.append(size)
-            if column == 5:
+            if column in TREE_COLUMNS:
                 prior = sum(pieces[:-1])
                 if start != offset + prior:
                     raise ValueError('fixed target chunk position changed')
@@ -76,7 +83,7 @@ def packed_modules(column, artifact, positions, groups, selected):
                          f'  ({capture}.targetBlocks.drop {start}).take {size}\n')
         text += f'noncomputable def target{index} : List Setup.Block := ' + ' ++ '.join(names) + '\n\n'
         text += f'theorem chunkSame{index} : original{index} = target{index} := by\n'
-        if column == 5:
+        if column in TREE_COLUMNS:
             if len(pieces) == 1:
                 text += f'  exact {capture}.chunk_eq {offset}\n\n'
             elif len(pieces) == 2:
@@ -92,7 +99,7 @@ def packed_modules(column, artifact, positions, groups, selected):
         else:
             raise ValueError('unexpected fixed column region boundary')
         text += f'theorem chunkLength{index} : (original{index}.map Setup.Block.length).sum = {rows} := by\n'
-        if column == 5:
+        if column in TREE_COLUMNS:
             text += f'  exact {capture}.chunk_length_at ⟨{ordinal}, by decide +kernel⟩\n\n'
         else:
             text += f'  exact {capture}.length_at ⟨{ordinal}, by decide +kernel⟩\n\n'
