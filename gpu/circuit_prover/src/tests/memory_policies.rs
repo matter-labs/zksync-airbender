@@ -598,6 +598,65 @@ fn geometry_guard_g_f11_blake_virtual_lde4() {
     geometry_guard_g_check_policies(fixture, first);
 }
 
+// F11 companions: per-coset memory caps are in natural coset order, which only
+// LDE >= 4 distinguishes from the bit-reversed tree order.
+// The all-cosets preset policy does not fit LDE8 in the 30 GiB fixture arena,
+// so this companion checks the memory caps only; virtual_whir_k2_lde8_cpu_parity
+// covers the LDE8 proof.
+#[test]
+#[ignore = "geometry audit F11 companion: fresh CPU proof and GPU memory caps"]
+fn geometry_guard_g_f11_blake_virtual_lde8_memory_caps() {
+    let mut config = prover::gkr::prover_config::example_configs::virtual_packed_config_for_security_level_under_pessimistic_conjecture(20, 2, SecurityLevel::Sec100);
+    config.whir_schedule.base_round.lde_factor_log2 = 3;
+    config.validate_for_whir_message_size(config.whir_message_size_log2());
+    let fixture =
+        super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
+    let geometry = BaseCommitmentGeometry::from_config(
+        &fixture.base.prover_config,
+        BaseColumns::of(&fixture.base.compiled_circuit),
+    )
+    .unwrap();
+    super::packed_proof::gpu_memory_caps(&fixture.base, geometry);
+}
+
+#[test]
+#[ignore = "geometry audit F11 companion: fresh CPU proof and two queued GPU proofs"]
+fn geometry_guard_g_f11_blake_physical_k1_lde4() {
+    let mut config = prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(20, 1, SecurityLevel::Sec100);
+    config.whir_schedule.base_round.lde_factor_log2 = 2;
+    config.validate_for_whir_message_size(config.whir_message_size_log2());
+    let fixture =
+        super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
+    let first = fixture.base.memory_policy();
+    geometry_guard_g_check_policies(fixture, first);
+}
+
+#[test]
+#[ignore = "geometry audit F11 companion: fresh CPU proof and two queued GPU proofs"]
+fn geometry_guard_g_f11_blake_merged_virtual_k2_lde4() {
+    let mut config = prover::gkr::prover_config::example_configs::virtual_packed_config_for_security_level_under_pessimistic_conjecture(20, 2, SecurityLevel::Sec100);
+    config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+    config.whir_schedule.base_round.lde_factor_log2 = 2;
+    config.validate_for_whir_message_size(config.whir_message_size_log2());
+    let fixture =
+        super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
+    let first = fixture.base.memory_policy();
+    geometry_guard_g_check_policies(fixture, first);
+}
+
+#[test]
+#[ignore = "geometry audit F11 companion: fresh CPU proof and two queued GPU proofs"]
+fn geometry_guard_g_f11_blake_merged_physical_k2_lde4() {
+    let mut config = prover::gkr::prover_config::example_configs::packed_config_for_security_level_under_pessimistic_conjecture(20, 2, SecurityLevel::Sec100);
+    config.commitment_mode = CommitmentMode::MergedMemoryAndWitness;
+    config.whir_schedule.base_round.lde_factor_log2 = 2;
+    config.validate_for_whir_message_size(config.whir_message_size_log2());
+    let fixture =
+        super::proof_matrix::prepare_blake2_with_compression_proof_fixture_for_config(config);
+    let first = fixture.base.memory_policy();
+    geometry_guard_g_check_policies(fixture, first);
+}
+
 #[test]
 #[ignore = "geometry audit F12: fresh CPU proof and two queued GPU proofs"]
 fn geometry_guard_g_f12_blake_virtual_cap32() {

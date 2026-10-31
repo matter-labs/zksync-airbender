@@ -321,16 +321,49 @@ pub(super) fn assert_gkr_proof_structure_for_test(
     );
 }
 
-pub(super) fn stage1_subcaps_from_cap(
+/// Splits a combined memory cap into per-coset caps the way the execution
+/// provers do: the combined cap is in bit-reversed tree order, and entry `c` of
+/// the result is natural coset `c` (cpu_execution_prover `split_memory_cap`).
+pub(super) fn natural_coset_caps_from_cap(
     cap: &MerkleTreeCapVarLength,
-    subcap_size: usize,
+    lde_factor: usize,
 ) -> Vec<MerkleTreeCapVarLength> {
-    cap.cap
-        .chunks_exact(subcap_size)
-        .map(|chunk| MerkleTreeCapVarLength {
-            cap: chunk.to_vec(),
+    assert!(lde_factor.is_power_of_two());
+    assert_eq!(cap.cap.len() % lde_factor, 0);
+    let subcap_size = cap.cap.len() / lde_factor;
+    let log_lde_factor = lde_factor.trailing_zeros();
+    (0..lde_factor)
+        .map(|coset| {
+            let segment = if log_lde_factor == 0 {
+                0
+            } else {
+                coset.reverse_bits() >> (usize::BITS - log_lde_factor)
+            };
+            MerkleTreeCapVarLength {
+                cap: cap.cap[segment * subcap_size..(segment + 1) * subcap_size].to_vec(),
+            }
         })
         .collect_vec()
+}
+
+#[test]
+fn natural_coset_caps_follow_the_execution_prover_split() {
+    let cap = MerkleTreeCapVarLength {
+        cap: (0..16u32).map(|i| [i; 8]).collect(),
+    };
+    for (lde_factor, starts) in [
+        (1, &[0][..]),
+        (2, &[0, 8]),
+        (4, &[0, 8, 4, 12]),
+        (8, &[0, 8, 4, 12, 2, 10, 6, 14]),
+    ] {
+        let size = 16 / lde_factor;
+        let split = natural_coset_caps_from_cap(&cap, lde_factor);
+        assert_eq!(split.len(), lde_factor);
+        for (coset, &start) in starts.iter().enumerate() {
+            assert_eq!(split[coset].cap, cap.cap[start..start + size]);
+        }
+    }
 }
 
 fn canonical_serialized_bytes_for_test<T: serde::Serialize>(value: &T) -> Vec<u8> {

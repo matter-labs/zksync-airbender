@@ -767,15 +767,8 @@ where
         .memory_commitment
         .commitment
         .cap;
-    let lde_factor = whir_schedule.base_lde_factor();
-    let subcap_size = combined_cap.cap.len() / lde_factor;
-    let memory_tree_caps = combined_cap
-        .cap
-        .chunks_exact(subcap_size)
-        .map(|chunk| MerkleTreeCapVarLength {
-            cap: chunk.to_vec(),
-        })
-        .collect_vec();
+    let memory_tree_caps =
+        natural_coset_caps_from_cap(combined_cap, whir_schedule.base_lde_factor());
 
     let tracing_data_host = make_delegation_tracing_host_for_test(circuit_type, buffer);
     eprintln!("delegation fixture ({circuit_type:?}): tracing host ready");
@@ -1180,16 +1173,10 @@ fn prepare_unified_fixture(
 
     // Per-coset memory tree caps from the CPU proof (needed for the prove signature).
     let memory_tree_caps = if let Some(ref cpu_proof) = expected_cpu_proof {
-        let combined_cap = &cpu_proof.whir_proof.memory_commitment.commitment.cap;
-        let lde_factor = whir_schedule.base_lde_factor();
-        let subcap_size = combined_cap.cap.len() / lde_factor;
-        combined_cap
-            .cap
-            .chunks_exact(subcap_size)
-            .map(|chunk| MerkleTreeCapVarLength {
-                cap: chunk.to_vec(),
-            })
-            .collect_vec()
+        natural_coset_caps_from_cap(
+            &cpu_proof.whir_proof.memory_commitment.commitment.cap,
+            whir_schedule.base_lde_factor(),
+        )
     } else {
         // No CPU reference -> derive caps from a one-shot GPU commit_memory.
         // The unified arm requires the inits/teardowns bundle, so use

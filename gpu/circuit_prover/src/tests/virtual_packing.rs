@@ -555,3 +555,41 @@ fn cpu_g4_nondefault_virtual_slab_schema() {
 fn geometry_guard_g_virtual_whir_m13_nondefault_cpu_parity() {
     standalone_for_config(&bounded_virtual_config(), 32);
 }
+
+/// The production zero-fold config with the base LDE raised above 2. Only
+/// LDE >= 4 distinguishes natural from bit-reversed coset order.
+fn virtual_config_with_base_lde(
+    trace_len_log2: usize,
+    k: usize,
+    lde_factor_log2: usize,
+) -> ProverConfig {
+    let mut config = prover::gkr::prover_config::example_configs::virtual_packed_config_for_security_level_under_pessimistic_conjecture(trace_len_log2, k, SecurityLevel::Sec100);
+    config.whir_schedule.base_round.lde_factor_log2 = lde_factor_log2;
+    config.validate_for_whir_message_size(config.whir_message_size_log2());
+    config
+}
+
+fn standalone_with_base_lde(trace_len_log2: usize, k: usize, lde_factor_log2: usize) {
+    let config = virtual_config_with_base_lde(trace_len_log2, k, lde_factor_log2);
+    assert_eq!(config.lde_factor(), 1 << lde_factor_log2);
+    let first_leaf_values = 1usize << config.whir_schedule.internal_rounds[0].folding_log2;
+    standalone_for_config(&config, first_leaf_values);
+}
+
+#[test]
+#[ignore = "zero-fold k2 m22 protocol at base LDE4 and cap16 (the F11 geometry)"]
+fn virtual_whir_k2_lde4_cpu_parity() {
+    standalone_with_base_lde(20, 2, 2);
+}
+
+#[test]
+#[ignore = "zero-fold k2 m22 protocol at base LDE8"]
+fn virtual_whir_k2_lde8_cpu_parity() {
+    standalone_with_base_lde(20, 2, 3);
+}
+
+#[test]
+#[ignore = "zero-fold k1 m20 protocol at base LDE4 (the log_n 20 LDE family)"]
+fn virtual_whir_k1_m20_lde4_cpu_parity() {
+    standalone_with_base_lde(19, 1, 2);
+}

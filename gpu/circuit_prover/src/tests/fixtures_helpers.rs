@@ -324,16 +324,10 @@ pub(super) fn finish_proof_fixture(
 
     // Extract per-coset memory tree caps from the CPU proof (needed for the new prove signature).
     let memory_tree_caps = if let Some(ref cpu_proof) = expected_cpu_proof {
-        let combined_cap = &cpu_proof.whir_proof.memory_commitment.commitment.cap;
-        let lde_factor = whir_schedule.base_lde_factor();
-        let subcap_size = combined_cap.cap.len() / lde_factor;
-        combined_cap
-            .cap
-            .chunks_exact(subcap_size)
-            .map(|chunk| MerkleTreeCapVarLength {
-                cap: chunk.to_vec(),
-            })
-            .collect_vec()
+        natural_coset_caps_from_cap(
+            &cpu_proof.whir_proof.memory_commitment.commitment.cap,
+            whir_schedule.base_lde_factor(),
+        )
     } else {
         compute_memory_tree_caps_for_fixture()
     };
@@ -711,16 +705,10 @@ pub(super) fn finish_proof_fixture_memory(
     };
 
     let memory_tree_caps = if let Some(ref cpu_proof) = expected_cpu_proof {
-        let combined_cap = &cpu_proof.whir_proof.memory_commitment.commitment.cap;
-        let lde_factor = whir_schedule.base_lde_factor();
-        let subcap_size = combined_cap.cap.len() / lde_factor;
-        combined_cap
-            .cap
-            .chunks_exact(subcap_size)
-            .map(|chunk| MerkleTreeCapVarLength {
-                cap: chunk.to_vec(),
-            })
-            .collect_vec()
+        natural_coset_caps_from_cap(
+            &cpu_proof.whir_proof.memory_commitment.commitment.cap,
+            whir_schedule.base_lde_factor(),
+        )
     } else {
         compute_memory_tree_caps_for_fixture()
     };
