@@ -1,3 +1,17 @@
+import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.UnifiedCached
+import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.UnifiedUncached
+import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.SubwordMemoryCached
+import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.SubwordMemoryUncached
+import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.WordMemoryCached
+import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.WordMemoryUncached
+import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.ShiftBinopCached
+import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.ShiftBinopUncached
+import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.MulDivCached
+import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.MulDivUncached
+import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.JumpBranchCached
+import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.JumpBranchUncached
+import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.AddSubCached
+import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.AddSubUncached
 import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup
 import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.UnifiedCached
 import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.UnifiedUncached
@@ -19012,3 +19026,46 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.PooledExecution.decoder_exact_lookup
 #print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate.decoder_lookup
 #print axioms Airbender.Compiler.UnifiedExecution.decoder_exact_lookup
+
+#print axioms Airbender.Compiler.ProgramFixedLookup.AddSubUncached.fixed_group_member
+#print axioms Airbender.Compiler.ProgramFixedLookup.AddSubUncached.range_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.AddSubUncached.helpers_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.AddSubCached.fixed_group_member
+#print axioms Airbender.Compiler.ProgramFixedLookup.AddSubCached.range_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.AddSubCached.helpers_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.JumpBranchUncached.fixed_group_member
+#print axioms Airbender.Compiler.ProgramFixedLookup.JumpBranchUncached.range_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.JumpBranchUncached.helpers_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.JumpBranchCached.fixed_group_member
+#print axioms Airbender.Compiler.ProgramFixedLookup.JumpBranchCached.range_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.JumpBranchCached.helpers_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.MulDivUncached.fixed_group_member
+#print axioms Airbender.Compiler.ProgramFixedLookup.MulDivUncached.range_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.MulDivUncached.helpers_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.MulDivCached.fixed_group_member
+#print axioms Airbender.Compiler.ProgramFixedLookup.MulDivCached.range_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.MulDivCached.helpers_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.ShiftBinopUncached.fixed_group_member
+#print axioms Airbender.Compiler.ProgramFixedLookup.ShiftBinopUncached.range_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.ShiftBinopUncached.helpers_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.ShiftBinopCached.fixed_group_member
+#print axioms Airbender.Compiler.ProgramFixedLookup.ShiftBinopCached.range_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.ShiftBinopCached.helpers_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.WordMemoryUncached.fixed_group_member
+#print axioms Airbender.Compiler.ProgramFixedLookup.WordMemoryUncached.range_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.WordMemoryUncached.helpers_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.WordMemoryCached.fixed_group_member
+#print axioms Airbender.Compiler.ProgramFixedLookup.WordMemoryCached.range_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.WordMemoryCached.helpers_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.SubwordMemoryUncached.fixed_group_member
+#print axioms Airbender.Compiler.ProgramFixedLookup.SubwordMemoryUncached.range_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.SubwordMemoryUncached.helpers_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.SubwordMemoryCached.fixed_group_member
+#print axioms Airbender.Compiler.ProgramFixedLookup.SubwordMemoryCached.range_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.SubwordMemoryCached.helpers_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.UnifiedUncached.fixed_group_member
+#print axioms Airbender.Compiler.ProgramFixedLookup.UnifiedUncached.range_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.UnifiedUncached.helpers_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.UnifiedCached.fixed_group_member
+#print axioms Airbender.Compiler.ProgramFixedLookup.UnifiedCached.range_from_arguments
+#print axioms Airbender.Compiler.ProgramFixedLookup.UnifiedCached.helpers_from_arguments

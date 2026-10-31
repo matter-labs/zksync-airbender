@@ -2891,3 +2891,24 @@ production OS binary comparison and verified checker rollout remain open.
 Both cache modes remain required. No native circuit, Rust source or imported
 value changed. Full frontend validation, environment audit, baseline refresh,
 transitive replay and Linux qualification did not run.
+
+
+### Program parameter migration: fixed lookup bounds
+
+All 14 CPU profiles now derive range and timestamp membership against the
+unchanged native setup groups. Each profile also derives its physical helper
+bounds from exact matching. The program decoder rows and ROM word function
+remain parameters. The proofs assume no helper value or canonical borrow.
+
+All 14 modules passed focused kernel checks in 37 seconds. Peak physical
+memory was 457 MiB. All 42 new roots passed direct axiom checks. They use only
+the three allowed axioms. The inventory has 17,501 roots. It retains all
+17,459 prior roots. Generator freshness and mutation controls passed. Each
+guard cleaned its owned children.
+
+The next step transports native constraints with the program-dependent ROM
+rows. The legacy execution interfaces, production OS binary comparison and
+verified checker rollout remain open. Both cache modes remain required.
+No native circuit, Rust source or imported value changed. Full frontend
+validation, environment audit, baseline refresh, transitive replay and Linux
+qualification did not run.

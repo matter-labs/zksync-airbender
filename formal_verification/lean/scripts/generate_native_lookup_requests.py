@@ -602,11 +602,69 @@ end Airbender.Compiler.ProgramDecoderLookup.{name}
         roots.append(f'Airbender.Compiler.ProgramDecoderLookup.{name}.decoder_lookup')
     return roots
 
+def program_fixed_interfaces():
+    roots = []
+    for name in NAMES:
+        owner = 'UnifiedRowNative' if name.startswith('Unified') else 'PooledRowNative'
+        case = f'Airbender.Compiler.{owner}.{name}'
+        constructor = name[0].lower() + name[1:]
+        model = f'Airbender.Compiler.MaterializedNative.{name}.native.model'
+        setup_columns = f'Airbender.Compiler.MaterializedWitnessNative.{name}.setupColumns'
+        source = f'Airbender.Compiler.LookupSourceNative.{name}.native'
+        coordinates = f'((input.physical ∘ {source}.bank.address) ∘ Airbender.Compiler.LookupNative.{name}.native.sourcePlacement)'
+        tables = f'(fun group index => NativeProgramSetup.rows decoder wordAt .{constructor} group index.val)'
+        parameters = f'''(decoder : Configuration → List (List Source.BaseField))
+    (wordAt : Nat → BitVec 32) (input : Input)
+    (arguments : LookupArgumentsWith {tables} input)'''
+        old = (ROOT / 'Airbender/Proofs/GKRProtocol/LogicalRows' / (name + '.lean')).read_text()
+        helpers = old[old.index('theorem helpers_from_arguments'):old.index('theorem input_active')]
+        helpers = helpers.replace('(input : Input) (arguments : LookupArguments input)', parameters)
+        helpers = helpers.replace('physical_member input arguments 2',
+                                  'fixed_group_member decoder wordAt input arguments 2 (by decide +kernel)')
+        code = f'''import Airbender.Proofs.GKRProtocol.LogicalRows.{name}
+import Airbender.Proofs.GKRProtocol.ProgramSetupNative
+
+namespace Airbender.Compiler.ProgramFixedLookup.{name}
+open Airbender Airbender.Compiler {case}
+set_option warningAsError true
+set_option Elab.async false
+
+/-- Range and timestamp matching use the unchanged native setup groups. -/
+theorem fixed_group_member
+    {parameters}
+    (group : Fin 3) (other : group.val ≠ 0) (query : MaterializedQuery)
+    (member : query ∈ physicalRequests input group) (enabled : query.weight ≠ 0) :
+    {model}.Contains ({setup_columns} group) query.fields := by
+  obtain ⟨index, equal⟩ := source_member_with {tables}
+    input arguments group query member enabled
+  rw [NativeProgramSetup.rows_fixed_group decoder wordAt .{constructor} group index.val other] at equal
+  refine ⟨index, ?_⟩
+  simpa only [NativeProgramSetup.retainedRows, dif_pos index.isLt, {setup_columns}] using equal
+
+theorem range_from_arguments
+    {parameters} :
+    ∀ query ∈ {source}.range16Queries,
+      query.weight (RingHom.id _) {coordinates} ≠ 0 →
+        {model}.Contains Airbender.Compiler.TableNative.{name}.native.range16SetupColumns
+          (query.fields.map (fun field => field.value {coordinates})) := by
+  intro query member enabled
+  apply fixed_group_member decoder wordAt input arguments 1 (by decide +kernel)
+    (query.materialized {coordinates}) ?_ enabled
+  exact List.mem_map.mpr ⟨query, member, rfl⟩
+
+{helpers}end Airbender.Compiler.ProgramFixedLookup.{name}
+'''
+        emit(Path('Airbender/Proofs/GKRProtocol/ProgramFixedLookup') / f'{name}.lean', code)
+        roots.extend(f'Airbender.Compiler.ProgramFixedLookup.{name}.{theorem}'
+                     for theorem in ['fixed_group_member', 'range_from_arguments', 'helpers_from_arguments'])
+    return roots
+
 for name in NAMES:
     prepared(name)
 program_roots = program_row_interfaces()
 setup_roots = program_setup_interfaces()
 decoder_roots = program_decoder_interfaces()
+fixed_roots = program_fixed_interfaces()
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
@@ -617,12 +675,12 @@ setup_import = 'import Airbender.Proofs.GKRProtocol.ProgramSetupNative'
 if setup_import not in content.splitlines():
     content = setup_import + '\n' + content
 decoder_imports = '\n'.join('import Airbender.Proofs.GKRProtocol.' + tree + '.' + name
-                          for tree in ['ProgramDecoderNative', 'ProgramDecoderLookup'] for name in NAMES)
+                          for tree in ['ProgramDecoderNative', 'ProgramDecoderLookup', 'ProgramFixedLookup'] for name in NAMES)
 for decoder_import in decoder_imports.splitlines():
     if decoder_import not in content.splitlines():
         content = decoder_import + '\n' + content
 roots = []
-for name in program_roots + setup_roots + decoder_roots:
+for name in program_roots + setup_roots + decoder_roots + fixed_roots:
     root = f'#print axioms {name}'
     if root not in content.splitlines():
         roots.append(root)
