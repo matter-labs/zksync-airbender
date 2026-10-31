@@ -8,6 +8,21 @@ set_option maxRecDepth 131072
 
 theorem ok : PackedSetupEquality.checkWithLengths sourceCode targetCode lengthChecks = true := by decide +kernel
 
+def sourceBlocks : List Setup.Block := sourceCode.map BlockCode.decode
+def targetBlocks : List Setup.Block := targetCode.map BlockCode.decode
+
+theorem blocks_eq : sourceBlocks = targetBlocks :=
+  (PackedSetupEquality.checkWithLengths_sound _ _ _ ok).1
+
+theorem slice_eq (first count : Nat) :
+    (sourceBlocks.drop first).take count = (targetBlocks.drop first).take count :=
+  congrArg (fun values : List Setup.Block => (values.drop first).take count) blocks_eq
+
+theorem length_at (index : Fin lengthChecks.length) :
+    (((sourceBlocks.drop lengthChecks[index].first).take lengthChecks[index].count).map Setup.Block.length).sum =
+      lengthChecks[index].expected :=
+  (PackedSetupEquality.checkWithLengths_sound _ _ _ ok).2 _ (List.getElem_mem index.isLt)
+
 theorem fixed_column_blocks :
     (Data.GKRSetup.Unified.setupColumn2.blocks.toList.drop 128).take 2584 =
     (UnifiedReduced.Setup.nativeXorData.columns[2].blocks.toList.drop 111).take 788 ++

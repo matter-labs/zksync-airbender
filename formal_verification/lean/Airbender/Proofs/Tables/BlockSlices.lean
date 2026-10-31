@@ -13,6 +13,22 @@ partial def literalList (value : Lean.Expr) : CommandElabM (Array Lean.Expr) := 
     let args := value.getAppArgs
     unless args.size == 4 do throwError "unexpected imported block-map arity"
     return (← literalList args[3]!).map (mkApp args[2]!)
+  if value.getAppFn.isConstOf ``List.take || value.getAppFn.isConstOf ``List.drop then
+    let args := value.getAppArgs
+    unless args.size == 3 do throwError "unexpected imported list-view arity"
+    let scalar ← liftTermElabM <| Meta.whnf args[1]!
+    let .lit (.natVal count) := scalar | throwError "imported list view requires a literal index"
+    let elements ← literalList args[2]!
+    if value.getAppFn.isConstOf ``List.take then return elements.extract 0 (min count elements.size)
+    return elements.extract (min count elements.size) elements.size
+  if value.getAppFn.isConstOf ``List.append then
+    let args := value.getAppArgs
+    unless args.size == 3 do throwError "unexpected imported list-append arity"
+    return (← literalList args[1]!) ++ (← literalList args[2]!)
+  if value.getAppFn.isConstOf ``HAppend.hAppend then
+    let args := value.getAppArgs
+    unless args.size == 6 do throwError "unexpected imported append-instance arity"
+    return (← literalList args[4]!) ++ (← literalList args[5]!)
   unless value.getAppFn.isConstOf ``List.cons do throwError "expected imported literal block list"
   let args := value.getAppArgs
   unless args.size == 3 do throwError "unexpected imported block-list arity"

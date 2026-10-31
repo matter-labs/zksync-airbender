@@ -1,9 +1,4 @@
-import Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column2.Part0
-import Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column2.Part1
-import Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column2.Part2
-import Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column2.Part3
-import Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column2.Part4
-import Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column2.Part5
+import Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column2.Projected
 import Airbender.Proofs.GKRProtocol.UnifiedSpecialNative.Column2.Chunk0
 import Airbender.Proofs.GKRProtocol.UnifiedSpecialLengths.Column2.Chunk0
 import Airbender.Import.GKRProtocol.BlockCoverageImport

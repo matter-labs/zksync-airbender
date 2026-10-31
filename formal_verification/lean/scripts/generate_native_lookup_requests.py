@@ -1486,7 +1486,13 @@ packed_setup_roots = ['Airbender.Compiler.PackedSetupEquality.bytes',
  'Tests.PackedSetupEquality.changed_stride_rejected',
  'Tests.PackedSetupEquality.changed_byte_rejected',
  'Tests.PackedSetupEquality.row_count_checked',
- 'Tests.PackedSetupEquality.changed_row_count_rejected']
+ 'Tests.PackedSetupEquality.changed_row_count_rejected',
+ 'Airbender.Compiler.PackedSetupEquality.slice_split',
+ 'Airbender.Compiler.UnifiedPackedEquality.sourceBlocks',
+ 'Airbender.Compiler.UnifiedPackedEquality.targetBlocks',
+ 'Airbender.Compiler.UnifiedPackedEquality.blocks_eq',
+ 'Airbender.Compiler.UnifiedPackedEquality.slice_eq',
+ 'Airbender.Compiler.UnifiedPackedEquality.length_at']
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
