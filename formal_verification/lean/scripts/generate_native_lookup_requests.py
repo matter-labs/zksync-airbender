@@ -232,12 +232,89 @@ def emit(path, content):
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(content)
 
+def program_row_interfaces():
+    review = '''import Airbender.Review.Compiler.Arithmetic
+import Airbender.Review.Compiler.LogicalRows
+
+namespace Airbender.Compiler
+
+/-- Setup row parameters for each native configuration and lookup group.
+The public boundary binds these parameters to program and fixed setup data. -/
+abbrev ProgramLookupRows := Configuration → Fin 3 → Nat → List Source.BaseField
+'''
+    proofs = '''import Airbender.Review.Compiler.ProgramLogicalRows
+import Airbender.Proofs.GKRProtocol.LogicalRows
+
+namespace Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+'''
+    roots = ['Airbender.Compiler.ProgramLookupRows']
+    for execution, native_namespace, family, cases in [
+        ('PooledExecution', 'PooledRowNative', 'PooledFamily',
+         [name for name in NAMES if not name.startswith('Unified')]),
+        ('UnifiedExecution', 'UnifiedRowNative', 'UnifiedFamily',
+         [name for name in NAMES if name.startswith('Unified')]),
+    ]:
+        review += f'''
+namespace {execution}
+
+/-- Physical native inputs and exact lookup matching against setup parameters.
+Each constructor selects its actual circuit and cache configuration. -/
+inductive ProgramLogicalRowCertificate (tables : ProgramLookupRows) where
+'''
+        for name in cases:
+            constructor = name[0].lower() + name[1:]
+            native = f'{native_namespace}.{name}'
+            review += f'''  | {constructor} (input : {native}.Input)
+      (arguments : {native}.LookupArgumentsWith
+        (fun group index => tables .{constructor} group index.val) input)
+'''
+            roots.append(f'Airbender.Compiler.{execution}.ProgramLogicalRowCertificate.{constructor}')
+        review += f'''
+def ProgramLogicalRowCertificate.row {{tables : ProgramLookupRows}} :
+    ProgramLogicalRowCertificate tables → Trace.Row babyBearModulus Trace.{family}
+'''
+        for name in cases:
+            constructor = name[0].lower() + name[1:]
+            review += f'  | .{constructor} input _ => {native_namespace}.{name}.inputRow input\n'
+        review += f'\nend {execution}\n'
+        proofs += f'''
+namespace {execution}
+
+/-- The physical native input proves the execute bit for either cache mode. -/
+theorem ProgramLogicalRowCertificate.row_active {{tables : ProgramLookupRows}}
+    (cert : ProgramLogicalRowCertificate tables) :
+    cert.row.assignment cert.row.columns.execute = 1 := by
+  cases cert with
+'''
+        for name in cases:
+            constructor = name[0].lower() + name[1:]
+            proofs += f'  | {constructor} input _arguments => exact {native_namespace}.{name}.input_active input\n'
+        proofs += f'\nend {execution}\n'
+        roots += [f'Airbender.Compiler.{execution}.ProgramLogicalRowCertificate',
+                  f'Airbender.Compiler.{execution}.ProgramLogicalRowCertificate.row',
+                  f'Airbender.Compiler.{execution}.ProgramLogicalRowCertificate.row_active']
+    review += '\nend Airbender.Compiler\n'
+    proofs += '\nend Airbender.Compiler\n'
+    emit(Path('Airbender/Review/Compiler/ProgramLogicalRows.lean'), review)
+    emit(Path('Airbender/Proofs/GKRProtocol/ProgramLogicalRows.lean'), proofs)
+    return roots
+
 for name in NAMES:
     prepared(name)
+program_roots = program_row_interfaces()
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
+program_import = 'import Airbender.Proofs.GKRProtocol.ProgramLogicalRows'
+if program_import not in content.splitlines():
+    content = program_import + '\n' + content
 roots = []
+for name in program_roots:
+    root = f'#print axioms {name}'
+    if root not in content.splitlines():
+        roots.append(root)
 if '#print axioms Airbender.Compiler.GroupedLookupArguments' not in content.splitlines():
     roots.append('#print axioms Airbender.Compiler.GroupedLookupArguments')
 for name in NAMES:
