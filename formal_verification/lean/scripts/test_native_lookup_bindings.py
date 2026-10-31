@@ -24,6 +24,11 @@ class LookupPremiseGeneration(unittest.TestCase):
             audit = scratch / 'Airbender/Checks/Axioms.lean'
             audit.parent.mkdir(parents=True)
             shutil.copyfile(ROOT / 'Airbender/Checks/Axioms.lean', audit)
+            for relative in ('Airbender/Review/Compiler/ProgramLogicalRows.lean',
+                             'Airbender/Proofs/GKRProtocol/ProgramLogicalRows.lean'):
+                destination = scratch / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / relative, destination)
             command = [sys.executable, '-B', str(ROOT / 'scripts/generate_native_lookup_requests.py'),
                        '--check', '--root', str(scratch)]
             clean = subprocess.run(command, capture_output=True, text=True)

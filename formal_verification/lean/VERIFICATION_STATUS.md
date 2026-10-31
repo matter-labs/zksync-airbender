@@ -2755,3 +2755,33 @@ and verified checker rollout also remain open.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Program parameter migration: row certificates
+
+The new `ProgramLookupRows` parameter supplies setup tuples by configuration,
+lookup group and native row. Both compiler registries now define
+`ProgramLogicalRowCertificate` with these rows. All 14 CPU constructors retain
+their actual native input and exact lookup matching. They select the correct
+circuit and cache configuration. The original certificate types stay intact.
+
+Each registry proves `ProgramLogicalRowCertificate.row_active`. The proof
+uses the physical native input. It needs no table interpretation premise.
+The interface and active-bit proofs passed focused kernel checks. The final
+proof group passed in eight seconds and reused the freshly checked interface.
+Peak physical memory was 459 MiB. No heartbeat override was needed.
+
+All 21 new roots passed direct axiom checks in three seconds. They include
+every new CPU constructor. They use only the three allowed axioms. The
+explicit inventory has 17,326 roots. It retains all 17,305 prior roots.
+The guards cleaned their owned children. Generator freshness and the
+existing mutation control both passed.
+
+The native program-region bindings and execution adapters remain open.
+The legacy compiler interfaces still have their retained-image and decoder
+limits. The production OS binary comparison and verified checker rollout
+also remain open. Exact lookup and RAM assumptions stay explicit.
+Cached and uncached captures remain required.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.

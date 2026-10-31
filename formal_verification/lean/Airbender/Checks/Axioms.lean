@@ -1,3 +1,4 @@
+import Airbender.Proofs.GKRProtocol.ProgramLogicalRows
 import Airbender.Proofs.GKRProtocol.LookupSetupPartition
 import Airbender.Proofs.FullUnsigned.Target
 import Airbender.Proofs.FullUnsigned.ChiSourceBinding
@@ -18817,3 +18818,25 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.UnifiedRowNative.UnifiedUncached.lookup_arguments_with_retained
 #print axioms Airbender.Compiler.UnifiedRowNative.UnifiedCached.LookupArgumentsWith
 #print axioms Airbender.Compiler.UnifiedRowNative.UnifiedCached.lookup_arguments_with_retained
+
+#print axioms Airbender.Compiler.ProgramLookupRows
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.addSubUncached
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.addSubCached
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.jumpBranchUncached
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.jumpBranchCached
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.mulDivUncached
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.mulDivCached
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.shiftBinopUncached
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.shiftBinopCached
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.wordMemoryUncached
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.wordMemoryCached
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.subwordMemoryUncached
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.subwordMemoryCached
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.row
+#print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.row_active
+#print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate.unifiedUncached
+#print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate.unifiedCached
+#print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate
+#print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate.row
+#print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate.row_active
