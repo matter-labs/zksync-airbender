@@ -2,27 +2,28 @@
 
 <!-- source-names: keccak_special5 -->
 
-The model proves the public Unified and UnrolledReduced machine targets.
-Both proofs include the native combined stream relation, public program binding
-and initialization. The full unsigned target remains open. Exact lookup,
-request and RAM matching remain explicit. The final full validation is pending.
+The model proves all three public machine targets. Each proof includes the
+native combined stream relation, public program binding and initialization.
+Exact lookup, request and RAM matching remain explicit. The final full
+validation is pending.
 
 ## Production machine targets
 
 | Setup machine | Current target status |
 | --- | --- |
-| Unrolled full unsigned | Open. Native execution, public supported-use induction and initialization are kernel checked. Parity and theta have complete represented-source membership proofs. Chi membership uses its native query-tag guard. The original theta and chi source bindings are kernel checked. Bind the original parity source string at the original interface. The parser, exact columns and padding cases pass kernel checks. The target excludes special5 calls. |
+| Unrolled full unsigned | Proved by `MachineTargets.Proofs.unrolled_full_soundness`. The theorem has exactly the `UnrolledFullUnsigned` target type. It includes native execution, public supported-use induction, all three original split setup sources and initialization. It admits the blessed 361-call split Keccak sequence. Exact lookup, request and RAM matching remain explicit. The target excludes special5 calls. |
 | Unrolled reduced | Proved by `MachineTargets.Proofs.unrolled_reduced_soundness`. The theorem has exactly the `UnrolledReduced` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. |
 | Unified | Proved by `MachineTargets.Proofs.unified_soundness`. The theorem has exactly the `Unified` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. The target excludes special5 calls. |
 
 [The three target definitions](Airbender/Review/Compiler/MachineTargets.lean)
-are Lean propositions. Unified and UnrolledReduced now have proofs. The full
-unsigned target remains open. Each target names its native acceptance, program
-setup, decoder lookup and initialization premises.
+are Lean propositions. Each now has a proof with exactly that target type.
+Each target names its native acceptance, program setup, decoder lookup and
+initialization premises.
 Exact lookup matching and state/RAM permutations remain explicit.
 
-Unified and UnrolledReduced are complete. Work now covers UnrolledFullUnsigned
-and blessed split Keccak. The packed checker pilot stays at its current scope.
+The three target proofs are complete. Work now follows design items 2 and 3.
+Legacy compiler interfaces still need the migration to a program parameter. The
+verified checker rollout and its measurements remain pending.
 
 ## Rebase checks
 
@@ -2659,3 +2660,42 @@ stays intact. Cached and uncached captures remain required.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned target proof
+
+`MachineTargets.Proofs.unrolled_full_soundness` proves the exact
+`UnrolledFullUnsigned` target. It closes the last original-source obligation.
+All three machine targets now have kernel proofs. No target statement,
+reference or premise changed.
+
+`SourceCaptureParityProofs.source_eq` proves exact equality with all
+6,307,780 original parity source characters. `parity_original_source_rows`
+supplies the native original-source row obligation. A primitive interval
+fold checks all 385 complete intervals. The proof checks both final tails.
+It preserves the complete original bank and every token encoding.
+
+The parity character proof passed in 485 seconds. Peak physical memory
+was 797 MiB. The adapter for the original source and the complete target passed in a
+focused group in 12 seconds. That group used at most 558 MiB of physical memory.
+The group reused the freshly checked chi and theta bindings. All guards
+kept the same physical-memory, resident-memory and time caps. They cleaned
+their owned children.
+
+All 18 focused roots passed direct axiom checks in three seconds. This
+includes the complete FullUnsigned target. The proofs use only `propext`,
+`Classical.choice` and `Quot.sound`. The explicit inventory has 17,275 roots.
+It retains all 17,271 prior roots and all established audit roots.
+
+Production circuits, production Rust and imported native values stay intact.
+Exact lookup, request and RAM matching remain explicit. Cached and uncached
+captures remain required. The target admits the blessed split Keccak path.
+It keeps the public special5 exclusion.
+
+The remaining implementation work covers design items 2 and 3. This includes
+the legacy compiler interfaces, capture checks that depend on the program
+and the verified checker rollout. The hourly follow-up remains active.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run. Independent replay has not
+qualified the new literal proofs under its separate stack setting.
