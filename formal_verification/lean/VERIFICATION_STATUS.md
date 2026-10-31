@@ -2812,3 +2812,27 @@ checker rollout remain open. Cached and uncached captures remain required.
 No native circuit, Rust source or imported value changed. Exact lookup and
 RAM assumptions stay explicit. Full frontend validation, environment audit,
 baseline refresh, transitive replay and Linux qualification did not run.
+
+### Program parameter migration: native setup rows
+
+The native setup row factory now takes decoder rows and a ROM word function.
+It keeps the captured range and timestamp groups. It keeps fixed generic
+rows and replaces rows selected by the decoder and ROM tags. The row model
+keeps every payload field when it adds padding and a tag.
+
+All 14 CPU profiles use geometry from the native setup exports. Kernel
+proofs check their widths, decoder capacity, region bounds and ROM bounds.
+Both cache modes remain required. The setup row laws, generated geometry,
+row interfaces and direct consumers passed focused checks. The last group
+passed in six seconds. Peak physical memory was 429 MiB. The 25 new roots
+passed direct axiom checks in six seconds. They use only the three allowed
+axioms. The explicit inventory has 17,373 roots. It retains all 17,348 prior
+roots. Generator freshness and the existing mutation control passed. Each
+guard cleaned its owned children.
+
+The active decoder and ROM query bindings remain open. The public setup
+adapter and legacy execution interfaces must use these bindings next.
+The production OS binary comparison and verified checker rollout also
+remain open. No native circuit, Rust source or imported value changed.
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.

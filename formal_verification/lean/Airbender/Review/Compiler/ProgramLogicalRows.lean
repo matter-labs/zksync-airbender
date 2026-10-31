@@ -1,5 +1,5 @@
 import Airbender.Review.Compiler.Arithmetic
-import Airbender.Review.Compiler.LogicalRows
+import Airbender.Import.Compiler.LogicalRows
 
 namespace Airbender.Compiler
 

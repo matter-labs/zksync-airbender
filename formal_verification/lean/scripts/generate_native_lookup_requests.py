@@ -250,7 +250,7 @@ def emit(path, content):
 
 def program_row_interfaces():
     review = '''import Airbender.Review.Compiler.Arithmetic
-import Airbender.Review.Compiler.LogicalRows
+import Airbender.Import.Compiler.LogicalRows
 
 namespace Airbender.Compiler
 
@@ -360,17 +360,131 @@ theorem ProgramLogicalRowCertificate.source_member {tables : ProgramLookupRows}
     emit(Path('Airbender/Proofs/GKRProtocol/ProgramLogicalRows.lean'), proofs)
     return roots
 
+def program_setup_interfaces():
+    families = {'AddSub': 'add-sub', 'JumpBranch': 'jump-branch', 'MulDiv': 'mul-div',
+                'ShiftBinop': 'shift-binop', 'WordMemory': 'word-memory',
+                'SubwordMemory': 'subword-memory', 'Unified': 'unified'}
+    data = '''import Airbender.Reference.Compiler.ProgramSetup
+import Airbender.Review.Compiler.ProgramLogicalRows
+
+namespace Airbender.Compiler.NativeProgramSetup
+open Airbender.Reference.Compiler
+
+/-- Native setup geometry. Both cache configurations use each exported layout. -/
+def layouts : Configuration → Option ProgramSetup.Layout
+'''
+    for family, filename in families.items():
+        artifact = json.loads((ROOT / 'artifacts/setup' / (filename + '.json')).read_text())
+        circuit = artifact['circuit']
+        assert circuit['has_decoder_lookup'], filename
+        roms = [table for table in artifact['tables'] if table['id'] == 34]
+        assert len(roms) <= 1, filename
+        rom_start = 'none' if not roms else 'some ' + str(roms[0]['offset'])
+        rom_words = 0 if not roms else roms[0]['length']
+        prefix = family[0].lower() + family[1:]
+        data += f'''  | .{prefix}Uncached | .{prefix}Cached => some {{
+      «width» := {circuit['generic_lookup_tables_width']}
+      tagged := {str(circuit['tables_ids_in_generic_lookups']).lower()}
+      decoderStart := {circuit['offset_for_decoder_table']}
+      decoderWords := {circuit['total_tables_size'] - circuit['offset_for_decoder_table']}
+      romStart := {rom_start}
+      romWords := {rom_words} }}
+'''
+    data += '  | _ => none\n'
+    for function, value in [
+        ('lookupLength', 'MaterializedNative.{name}.native.model.imported.data.length'),
+        ('genericWidth', 'TableNative.{name}.native.genericSetupColumns.length'),
+    ]:
+        data += f'\ndef {function} : Configuration → Nat\n'
+        for name in NAMES:
+            constructor = name[0].lower() + name[1:]
+            data += f'  | .{constructor} => ' + value.format(name=name) + '\n'
+        data += '  | _ => 0\n'
+    data += '''
+/-- Read the unchanged captured row at every valid native index. -/
+noncomputable def retainedRows (configuration : Configuration) (group : Fin 3)
+    (index : Nat) : List Source.BaseField :=
+  match configuration with
+'''
+    for name in NAMES:
+        constructor = name[0].lower() + name[1:]
+        data += f'''  | .{constructor} =>
+    if bounded : index < MaterializedNative.{name}.native.model.imported.data.length then
+      MaterializedNative.{name}.native.model.fields
+        (([TableNative.{name}.native.genericSetupColumns,
+           TableNative.{name}.native.range16SetupColumns,
+           TableNative.{name}.native.timestampSetupColumns]).get group) ⟨index, bounded⟩
+    else []
+'''
+    data += '''  | _ => []
+
+/-- Build lookup rows from public decoder columns and a public ROM word function. -/
+noncomputable def rows (decoder : Configuration → List (List Source.BaseField))
+    (wordAt : Nat → BitVec 32) : ProgramLookupRows :=
+  fun configuration group index =>
+    match layouts configuration with
+    | none => retainedRows configuration group index
+    | some layout => ProgramSetup.groupRows layout (retainedRows configuration)
+        (decoder configuration) wordAt group index
+
+def ValidGeometry (configuration : Configuration) : Prop :=
+  match layouts configuration with
+  | none => True
+  | some layout =>
+    0 < layout.width ∧ layout.width = genericWidth configuration ∧
+      layout.decoderStart + layout.decoderWords ≤ lookupLength configuration ∧
+      layout.decoderWords = 1048576 ∧ layout.romWords ≤ 1048576 ∧
+      match layout.romStart with
+      | none => layout.romWords = 0
+      | some regionStart => regionStart + layout.romWords ≤ layout.decoderStart
+
+end Airbender.Compiler.NativeProgramSetup
+'''
+    proof = '''import Airbender.Data.Compiler.NativeProgramSetup
+import Airbender.Proofs.GKRProtocol.ProgramSetupRows
+
+namespace Airbender.Compiler.NativeProgramSetup
+open Airbender.Reference.Compiler
+set_option warningAsError true
+set_option Elab.async false
+
+theorem geometry_valid (configuration : Configuration) : ValidGeometry configuration := by
+  cases configuration <;> simp only [ValidGeometry, layouts] <;> decide +kernel
+
+theorem rows_fixed_group (decoder : Configuration → List (List Source.BaseField))
+    (wordAt : Nat → BitVec 32) (configuration : Configuration) (group : Fin 3)
+    (index : Nat) (other : group.val ≠ 0) :
+    rows decoder wordAt configuration group index = retainedRows configuration group index := by
+  cases selected : layouts configuration with
+  | none => simp [rows, selected]
+  | some layout =>
+    simpa [rows, selected] using
+      ProgramSetup.fixed_group layout (retainedRows configuration) (decoder configuration)
+        wordAt group index other
+
+end Airbender.Compiler.NativeProgramSetup
+'''
+    emit(Path('Airbender/Data/Compiler/NativeProgramSetup.lean'), data)
+    emit(Path('Airbender/Proofs/GKRProtocol/ProgramSetupNative.lean'), proof)
+    return ['Airbender.Compiler.NativeProgramSetup.' + name for name in
+            ['layouts', 'lookupLength', 'genericWidth', 'retainedRows', 'rows', 'ValidGeometry',
+             'geometry_valid', 'rows_fixed_group']]
+
 for name in NAMES:
     prepared(name)
 program_roots = program_row_interfaces()
+setup_roots = program_setup_interfaces()
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
 program_import = 'import Airbender.Proofs.GKRProtocol.ProgramLogicalRows'
 if program_import not in content.splitlines():
     content = program_import + '\n' + content
+setup_import = 'import Airbender.Proofs.GKRProtocol.ProgramSetupNative'
+if setup_import not in content.splitlines():
+    content = setup_import + '\n' + content
 roots = []
-for name in program_roots:
+for name in program_roots + setup_roots:
     root = f'#print axioms {name}'
     if root not in content.splitlines():
         roots.append(root)
