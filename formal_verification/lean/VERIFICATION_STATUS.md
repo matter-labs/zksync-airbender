@@ -2961,3 +2961,28 @@ interfaces, production OS binary comparison and verified checker rollout
 also remain open. Both cache modes remain required. No native circuit, Rust
 source or imported value changed. Full frontend validation, environment
 audit, baseline refresh, transitive replay and Linux qualification did not run.
+
+
+### Program parameter migration: native decoder PC bounds
+
+All 14 CPU profiles now prove the outgoing PC low-limb bound from native
+range matching and arithmetic. These proofs do not use decoder membership.
+Both row registries transfer the bounds through exact state matching.
+The public initial PC bound then gives the range of every incoming decoder
+query. The trace adapters derive public decoder matching without a per-row
+typing premise or complete helper-table constraint adapter.
+
+Every case module and both trace adapters passed focused kernel checks.
+The last 76-module group passed in four seconds. It reused the freshly
+checked case modules. Peak physical memory was 474 MiB. All 20 new roots
+passed direct axiom checks with only the three allowed axioms. The inventory
+has 17,533 roots. It retains all 17,513 prior roots. Generator freshness and
+mutation controls passed. Each guard cleaned its owned children.
+
+The next step uses public decoder data to constrain variable helper tags.
+Native constraint transport remains open for Shift/Binop, subword,
+word-memory and unified rows. The legacy execution interfaces, production
+OS binary comparison and verified checker rollout also remain open. Both
+cache modes remain required. No native circuit, Rust source or imported
+value changed. Full frontend validation, environment audit, baseline refresh,
+transitive replay and Linux qualification did not run.
