@@ -839,6 +839,119 @@ end Airbender.Compiler.ProgramConstraintsNative.{name}
         roots.append(f'Airbender.Compiler.ProgramConstraintsNative.{name}.input_constraints')
     return roots
 
+def program_subword_constraints():
+    roots = []
+    for name in [name for name in NAMES if name.startswith('SubwordMemory')]:
+        constructor = name[0].lower() + name[1:]
+        case = f'Airbender.Compiler.PooledRowNative.{name}'
+        source_model = f'Airbender.Compiler.LookupSourceNative.{name}.native'
+        clean = f'Airbender.Compiler.CleanGenericArgumentsNative.{name}.native'
+        arithmetic = f'Airbender.Compiler.CleanArithmeticNative.{name}.native'
+        values = f'((input.physical ∘ {source_model}.bank.address) ∘ Airbender.Compiler.LookupNative.{name}.native.sourcePlacement)'
+        tables = f'(fun group index => NativeProgramSetup.programRows decoder wordAt .{constructor} group index.val)'
+        parameters = f'''(decoder : Configuration → List (List Source.BaseField))
+    (wordAt : Nat → BitVec 32) (input : Input)
+    (arguments : LookupArgumentsWith {tables} input)'''
+        code = f'''import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.{name}
+import Airbender.Proofs.GKRProtocol.ProgramSubwordSetup
+import Airbender.Proofs.GKRProtocol.ProgramSubwordTags
+
+namespace Airbender.Compiler.ProgramConstraintsNative.{name}
+open Airbender Airbender.Compiler {case}
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 65536
+
+'''
+        fixed = (ROOT / 'Airbender/Proofs/GKRProtocol/ProgramFixedLookup' / (name + '.lean')).read_text()
+        fixed = fixed[fixed.index('/-- Range and timestamp matching'):fixed.index('\nend ')]
+        fixed = re.sub(r'^theorem ', 'private theorem ', fixed, flags=re.M)
+        fixed = fixed.replace('NativeProgramSetup.rows ', 'NativeProgramSetup.programRows ')
+        fixed = fixed.replace('NativeProgramSetup.rows_fixed_group', 'NativeProgramSetup.program_rows_fixed_group')
+        code += fixed + '\n'
+        original = (ROOT / 'Airbender/Proofs/GKRProtocol/PhysicalClosedNative' / (name + '.lean')).read_text()
+        ranges = original[original.index('theorem range_lookup0'):original.index('theorem generic_lookup0')]
+        for entry in re.split(r'(?=theorem range_lookup\d+\n)', ranges):
+            if not entry.strip():
+                continue
+            theorem = re.search(r'^theorem (range_lookup\d+)', entry)[1]
+            target = entry[entry.index(' :\n', entry.index('(authored')) + len(' :\n'):]
+            target = re.sub(r'\bphysical\b', 'input.physical', target)
+            target = re.sub(r'\barithmetic\b', 'input.arithmetic', target)
+            target = target.replace('authored.2 query', 'range_from_arguments decoder wordAt input arguments query')
+            code += f'private theorem {theorem}\n    {parameters} (data : ProverData Source.BaseField) :\n' + target
+        for index in range(2):
+            code += f'''private theorem generic_lookup{index}
+    {parameters} ({"_notDecoder" if index == 0 else "notDecoder"} : (inputRow input).assignment 61 ≠ 46)
+    (data : ProverData Source.BaseField) :
+    (Lookup.mk (Verification.subwordTable wordAt).toRaw {clean}.genericExpressions{index}).Contains
+      ({arithmetic}.environment input.physical data) := by
+  let query := {source_model}.genericQueries.get ⟨{index}, by decide⟩
+  have tagSame : ({clean}.part0.genericExpression{index}_8).eval
+      ({arithmetic}.environment input.physical data) =
+      (query.fields.map (fun field => field.value {values})).getLast?.getD 0 :=
+    {clean}.part0.generic_value{index}_8 input.physical data input.arithmetic
+  have guard : (query.fields.map (fun field => field.value {values})).getLast?.getD 0 ≠ 46 := by
+    rw [← tagSame]
+    simp [{clean}.part0.genericExpression{index}_8, _root_.Expression.eval]
+'''
+            if index == 0:
+                code += '    exact of_decide_eq_true rfl\n'
+            else:
+                code += '    exact notDecoder\n'
+            code += f'''  obtain ⟨nativeIndex, matched⟩ := source_member_with {tables} input arguments 0
+    (query.materialized {values})
+    (List.mem_map.mpr ⟨query, List.get_mem {source_model}.genericQueries ⟨{index}, by decide⟩, rfl⟩)
+    one_ne_zero
+  have matchedRow : (query.fields.map (fun field => field.value {values})) =
+      NativeProgramSetup.subwordRows (decoder .{constructor}) wordAt nativeIndex.val := by
+    simpa [NativeProgramSetup.programRows, SourceLookupQuery.materialized] using matched
+  obtain ⟨row, equal⟩ := NativeProgramSetup.subword_query_member (decoder .{constructor}) wordAt
+    nativeIndex.val _ matchedRow guard
+'''
+            for field in range(9):
+                code += f'  have same{field} := {clean}.part0.generic_value{index}_{field} input.physical data input.arithmetic\n'
+            code += f'''  apply clean_vector_lookup
+  refine ⟨row, ?_⟩
+  apply Vector.toList_inj.mp
+  simp only [{clean}.genericExpressions{index}, Vector.map_mk, List.map_toArray]
+  change [''' + ', '.join(f'({clean}.part0.genericExpression{index}_{field}).eval ({arithmetic}.environment input.physical data)' for field in range(9)) + '''] = _
+  rw [''' + ', '.join('same' + str(field) for field in range(9)) + ''']
+  exact equal
+
+'''
+        inventory = original[original.index('theorem clock_lookup_inventory'):original.index('theorem range_lookup0')]
+        inventory = inventory.replace('theorem clock_lookup_inventory :', 'private theorem clock_lookup_inventory (wordAt : Nat → BitVec 32) :')
+        inventory = inventory.replace('nativeSetup', '(Verification.subwordTable wordAt)')
+        code += inventory
+        body = original[original.index('theorem retained_clock_from_physical'):]
+        body = body[body.index(' := by\n') + len(' := by\n'):body.index('\nend ')]
+        body = re.sub(r'(range_lookup\d+) physical data arithmetic authored', r'\1 decoder wordAt input arguments (fun _ _ => #[])', body)
+        body = re.sub(r'(generic_lookup\d+) physical data arithmetic authored', r'\1 decoder wordAt input arguments notDecoder (fun _ _ => #[])', body)
+        body = re.sub(r'\bphysical\b', 'input.physical', body)
+        body = re.sub(r'\barithmetic\b', 'input.arithmetic', body)
+        body = re.sub(r'\bdata\b', '(fun _ _ => #[])', body)
+        body = body.replace('nativeSetup', '(Verification.subwordTable wordAt)')
+        code += f'''/-- Exact native matching proves subword constraints for the public ROM function. -/
+theorem input_constraints
+    {parameters} (wordSetup : Table Source.BaseField (fields 9)) :
+    FlatOperation.ConstraintsHoldFlat (Verification.environment (inputRow input).assignment)
+      ((inputRow input).constraints (⟨wordSetup, Verification.subwordTable wordAt⟩ : Trace.PooledSetup babyBearModulus)) := by
+  have helpers := helpers_from_arguments decoder wordAt input arguments
+  have assertions : ∀ expression ∈ FlatOperation.constraints (SubwordMemory.importedConstraints (Verification.subwordTable wordAt)),
+      expression.eval (Verification.environment (inputRow input).assignment) = 0 := by
+    rw [Airbender.Compiler.CleanLinksNative.{name}.arithmetic_inventory]
+    exact CleanExpression.assertions_only _ _
+      ({arithmetic}.arithmetic_preserved input.physical (fun _ _ => #[]) input.arithmetic)
+  have notDecoder := subword_helper_not_decoder _ _ assertions
+{body}
+end Airbender.Compiler.ProgramConstraintsNative.{name}
+'''
+        emit(Path('Airbender/Proofs/GKRProtocol/ProgramConstraintsNative') / (name + '.lean'), code)
+        roots.append(f'Airbender.Compiler.ProgramConstraintsNative.{name}.input_constraints')
+    return roots
+
+
 def program_pc_bounds():
     roots = []
     direct = {'ShiftBinop': 0, 'WordMemory': 1, 'SubwordMemory': 3, 'Unified': 11}
@@ -907,11 +1020,17 @@ setup_roots = program_setup_interfaces()
 decoder_roots = program_decoder_interfaces()
 fixed_roots = program_fixed_interfaces()
 constraint_roots = program_fixed_cpu_constraints()
+constraint_roots += program_subword_constraints()
 pc_roots = program_pc_bounds()
 shift_roots = ['Airbender.Compiler.' + name for name in [
     'public_program_full_fields', 'public_program_shift_source',
     'shift_flags_of_assertions', 'shift_tag_equations_of_assertions',
     'public_shift_helper_tags']]
+subword_roots = ['Airbender.Compiler.NativeProgramSetup.' + name for name in [
+    'subwordRows', 'programRows', 'subword_geometry', 'subword_zero_row',
+    'subword_query_member', 'program_rows_fixed_group']]
+subword_roots += ['Airbender.SubwordMemory.Proofs.subword_flags_of_assertions',
+                  'Airbender.Compiler.subword_helper_not_decoder']
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
@@ -926,12 +1045,12 @@ decoder_imports = '\n'.join('import Airbender.Proofs.GKRProtocol.' + tree + '.' 
 for decoder_import in decoder_imports.splitlines():
     if decoder_import not in content.splitlines():
         content = decoder_import + '\n' + content
-for name in [name for name in NAMES if name.startswith(('AddSub', 'JumpBranch', 'MulDiv', 'ShiftBinop'))]:
+for name in [name for name in NAMES if name.startswith(('AddSub', 'JumpBranch', 'MulDiv', 'ShiftBinop', 'SubwordMemory'))]:
     constraint_import = 'import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.' + name
     if constraint_import not in content.splitlines():
         content = constraint_import + '\n' + content
 roots = []
-for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots:
+for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots:
     root = f'#print axioms {name}'
     if root not in content.splitlines():
         roots.append(root)

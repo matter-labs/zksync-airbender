@@ -1,3 +1,5 @@
+import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.SubwordMemoryCached
+import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.SubwordMemoryUncached
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.ShiftBinopCached
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.ShiftBinopUncached
 import Airbender.Proofs.GKRProtocol.ProgramPCBounds
@@ -19141,3 +19143,15 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.shift_flags_of_assertions
 #print axioms Airbender.Compiler.shift_tag_equations_of_assertions
 #print axioms Airbender.Compiler.public_shift_helper_tags
+
+#print axioms Airbender.Compiler.ProgramConstraintsNative.SubwordMemoryUncached.input_constraints
+#print axioms Airbender.Compiler.ProgramConstraintsNative.SubwordMemoryCached.input_constraints
+
+#print axioms Airbender.Compiler.NativeProgramSetup.subwordRows
+#print axioms Airbender.Compiler.NativeProgramSetup.programRows
+#print axioms Airbender.Compiler.NativeProgramSetup.subword_geometry
+#print axioms Airbender.Compiler.NativeProgramSetup.subword_zero_row
+#print axioms Airbender.Compiler.NativeProgramSetup.subword_query_member
+#print axioms Airbender.Compiler.NativeProgramSetup.program_rows_fixed_group
+#print axioms Airbender.SubwordMemory.Proofs.subword_flags_of_assertions
+#print axioms Airbender.Compiler.subword_helper_not_decoder
