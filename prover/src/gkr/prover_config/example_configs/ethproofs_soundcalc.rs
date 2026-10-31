@@ -188,7 +188,9 @@ pub struct EthproofsSoundcalcEntry {
     pub base_queries_pow_bits: u32,
     pub base_analysis: RoundAnalysis,
     pub rounds: &'static [EthproofsInternalRound],
-    /// The pessimistic-conjecture ladder of the same shape, for comparison.
+    /// The pessimistic-conjecture ladder of the same shape that the schedule was derived from,
+    /// as it stood before the 2026-10-27 rebalance of the pessimistic LDE factors; historical,
+    /// for comparison.
     pub pessimistic_ladder: &'static str,
 }
 
@@ -335,8 +337,18 @@ impl EthproofsSoundcalcEntry {
              needs one bit less per sumcheck step (listed per step above), so the schedule grinds slightly \
              more than the certification requires.\n"
         );
-        let _ = writeln!(out, "## Against the pessimistic-conjecture ladder\n");
+        let _ = writeln!(
+            out,
+            "## Against the pessimistic-conjecture ladder it was derived from\n"
+        );
         let _ = writeln!(out, "{}\n", self.pessimistic_ladder);
+        let _ = writeln!(
+            out,
+            "This is the pessimistic-conjecture ladder before its 2026-10-27 LDE rebalance; \
+             `prover_config_{}_{}.json` holds the current one.\n",
+            level.dir_suffix(),
+            crate::definitions::SoundnessMode::PessimisticConjecture.file_suffix()
+        );
         let _ = writeln!(
             out,
             "The base round cannot stay at the ladder's 89 queries / 26 PoW bits: under both accepted \
