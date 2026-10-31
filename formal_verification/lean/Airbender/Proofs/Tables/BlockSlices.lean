@@ -29,10 +29,89 @@ partial def literalList (value : Lean.Expr) : CommandElabM (Array Lean.Expr) := 
     let args := value.getAppArgs
     unless args.size == 6 do throwError "unexpected imported append-instance arity"
     return (← literalList args[4]!) ++ (← literalList args[5]!)
-  unless value.getAppFn.isConstOf ``List.cons do throwError "expected imported literal block list"
+  unless value.getAppFn.isConstOf ``List.cons do
+    let reduced ← liftTermElabM <| Meta.withTransparency .all <| Meta.whnf value
+    if reduced == value then throwError "expected imported literal block list"
+    return ← literalList reduced
   let args := value.getAppArgs
   unless args.size == 3 do throwError "unexpected imported block-list arity"
   return #[args[1]!] ++ (← literalList args[2]!)
+
+private partial def appendView (value : Lean.Expr) : CommandElabM (Option (Lean.Expr × Lean.Expr)) := do
+  let value := value.consumeMData
+  if value.getAppFn.isConstOf ``List.append then
+    let args := value.getAppArgs
+    return some (args[1]!, args[2]!)
+  if value.getAppFn.isConstOf ``HAppend.hAppend then
+    let args := value.getAppArgs
+    return some (args[4]!, args[5]!)
+  if let .const name _ := value then
+    if let .defnInfo info ← getConstInfo name then return ← appendView info.value
+  return none
+
+private def appendBlocks (left right : Lean.Expr) : Lean.Expr :=
+  mkApp3 (mkConst ``List.append [Level.zero]) (mkConst ``Airbender.Setup.Block) left right
+
+private def typedEquality (left right proof : Lean.Expr) : CommandElabM Lean.Expr := do
+  let type ← liftTermElabM <| Meta.mkEq left right
+  return .letE `boundedBinding type proof (.bvar 0) false
+
+private partial def splitList (value : Lean.Expr) (first : Nat) :
+    CommandElabM (Lean.Expr × Lean.Expr × Lean.Expr) := do
+  let element := mkConst ``Airbender.Setup.Block
+  let empty := mkApp (mkConst ``List.nil [Level.zero]) element
+  let size := (← literalList value).size
+  if first == 0 then
+    let proof ← liftTermElabM <| Meta.mkEqSymm (mkApp2 (mkConst ``List.nil_append [Level.zero]) element value)
+    return (empty, value, ← typedEquality value (appendBlocks empty value) proof)
+  if size ≤ first then
+    let proof ← liftTermElabM <| Meta.mkEqSymm (mkApp2 (mkConst ``List.append_nil [Level.zero]) element value)
+    return (value, empty, ← typedEquality value (appendBlocks value empty) proof)
+  if let some (left, right) ← appendView value then
+    let width := (← literalList left).size
+    if first == width then
+      let proof ← liftTermElabM <| Meta.mkEqRefl value
+      return (left, right, ← typedEquality value (appendBlocks left right) proof)
+    if first < width then
+      let (front, tail, proof) ← splitList left first
+      let result ← liftTermElabM do
+        let operation ← Meta.mkLambdaFVars #[] (mkApp (mkConst ``List.append [Level.zero]) element)
+        let rightProof ← Meta.mkEqRefl right
+        let joined ← Meta.mkCongr (← Meta.mkCongrArg operation proof) rightProof
+        let assoc := mkApp4 (mkConst ``List.append_assoc [Level.zero]) element front tail right
+        Meta.mkEqTrans joined assoc
+      let rest := appendBlocks tail right
+      return (front, rest, ← typedEquality value (appendBlocks front rest) result)
+    else
+      let (front, tail, proof) ← splitList right (first - width)
+      let result ← liftTermElabM do
+        let operation := mkApp2 (mkConst ``List.append [Level.zero]) element left
+        let joined ← Meta.mkCongrArg operation proof
+        let assoc := mkApp4 (mkConst ``List.append_assoc [Level.zero]) element left front tail
+        Meta.mkEqTrans joined (← Meta.mkEqSymm assoc)
+      let initial := appendBlocks left front
+      return (initial, tail, ← typedEquality value (appendBlocks initial tail) result)
+  let front := mkApp3 (mkConst ``List.take [Level.zero]) element (mkNatLit first) value
+  let tail := mkApp3 (mkConst ``List.drop [Level.zero]) element (mkNatLit first) value
+  let proof ← liftTermElabM <| Meta.mkEqSymm
+    (mkApp3 (mkConst ``List.take_append_drop [Level.zero]) element (mkNatLit first) value)
+  return (front, tail, ← typedEquality value (appendBlocks front tail) proof)
+
+/-- Compose bounded conversions. The kernel checks every typed local equality. -/
+partial def listEqualityProof (left right : Lean.Expr) : CommandElabM Lean.Expr := do
+  if let some (first, second) ← appendView left then
+    let width := (← literalList first).size
+    let (rightFirst, rightSecond, partition) ← splitList right width
+    let firstProof ← listEqualityProof first rightFirst
+    let secondProof ← listEqualityProof second rightSecond
+    let result ← liftTermElabM do
+      let operation := mkApp (mkConst ``List.append [Level.zero]) (mkConst ``Airbender.Setup.Block)
+      let joined ← Meta.mkCongr (← Meta.mkCongrArg operation firstProof) secondProof
+      Meta.mkEqTrans joined (← Meta.mkEqSymm partition)
+    typedEquality left right result
+  else
+    let proof ← liftTermElabM <| Meta.mkEqRefl left
+    typedEquality left right proof
 
 partial def literalArray (value : Lean.Expr) : CommandElabM (Array Lean.Expr) := do
   let value := value.consumeMData

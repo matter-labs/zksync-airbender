@@ -21,6 +21,18 @@ class PackedSetupProjectionTests(unittest.TestCase):
             self.assertIn(f'theorem chunkSame{index} : original{index} = target{index}', source)
             self.assertIn(f'theorem chunkLength{index} : (original{index}.map Setup.Block.length).sum', source)
 
+    def test_wide_capture_keeps_the_gap_and_all_public_facts(self):
+        modules = list(generator.modules(5))
+        self.assertEqual(len(modules), 1)
+        name, source = modules[0]
+        self.assertEqual(name, 'Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column5.Projected')
+        self.assertEqual(source.count('theorem chunkSame'), 204)
+        self.assertEqual(source.count('theorem chunkLength'), 204)
+        self.assertNotIn('original191 :', source)
+        self.assertIn('original192 : List Setup.Block :=\n  UnifiedPackedEquality.Column5.sourceChunk 24320', source)
+        self.assertNotIn('column_blocks_part', source)
+        self.assertNotIn('maxHeartbeats', source)
+
     def test_scope_drift_stops_before_it_changes_files(self):
         relative = Path('Airbender/Proofs/GKRProtocol/UnifiedPackedEqualityCodes.lean')
         source = (generator.LEAN / relative).read_text()

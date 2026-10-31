@@ -46,7 +46,55 @@ end PackedBindingControl
             raise SystemExit('Kernel accepted a changed packed source binding')
         elif '(kernel) declaration type mismatch' not in result.stdout.lower():
             raise SystemExit('Packed binding failed for an unrelated reason:\n' + result.stdout[-3000:])
-    print('PASS kernel accepts the exact packed binding and rejects a changed value')
+    for changed in (False, True):
+        source = """import Airbender.Import.PackedSetupEmbed
+open Airbender.Setup Airbender.Compiler.PackedSetupEquality
+namespace BalancedBindingControl
+def first : List Block := [.affine 1 0 0]
+def second : List Block := [.affine 1 3 0]
+def firstCode : List BlockCode := [.affine 1 0 0]
+def secondCode : List BlockCode := [.affine 1 NEXT 0]
+setup_code_binding binding : List.append first second =
+  (List.append firstCode secondCode).map BlockCode.decode
+end BalancedBindingControl
+""".replace('NEXT', '4' if changed else '3')
+        with tempfile.TemporaryDirectory(prefix='airbender-balanced-binding-') as directory:
+            path = Path(directory) / 'Check.lean'
+            path.write_text(source)
+            result = subprocess.run(['lean', '-j1', '-DElab.async=false', str(path)], cwd=LEAN,
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        if not changed and result.returncode != 0:
+            raise SystemExit('Positive balanced binding control failed:\n' + result.stdout[-3000:])
+        if changed:
+            if result.returncode == 0:
+                raise SystemExit('Kernel accepted a changed balanced source binding')
+            if '(kernel)' not in result.stdout.lower() or 'type mismatch' not in result.stdout.lower():
+                raise SystemExit('Balanced binding failed for an unrelated reason:\n' + result.stdout[-3000:])
+    for changed in (False, True):
+        source = """import Airbender.Import.GKRProtocol.BlockCoverageImport
+open Airbender.Setup Airbender.Compiler.BlockCoverageImport
+namespace LayoutBindingControl
+def first : List Block := [.affine 1 0 0, .affine 1 1 0]
+def second : List Block := [.affine 1 2 0, .affine 1 NEXT 0]
+def part : List Block := List.append first second
+def fixtureColumn : Column := ⟨([.affine 1 0 0, .affine 1 1 0,
+  .affine 1 2 0, .affine 1 3 0] : List Block).toArray⟩
+column_parts_cover binding from fixtureColumn parts [part]
+end LayoutBindingControl
+""".replace('NEXT', '4' if changed else '3')
+        with tempfile.TemporaryDirectory(prefix='airbender-layout-binding-') as directory:
+            path = Path(directory) / 'Check.lean'
+            path.write_text(source)
+            result = subprocess.run(['lean', '-j1', '-DElab.async=false', str(path)], cwd=LEAN,
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        if not changed and result.returncode != 0:
+            raise SystemExit('Positive layout binding control failed:\n' + result.stdout[-3000:])
+        if changed:
+            if result.returncode == 0:
+                raise SystemExit('Kernel accepted a changed layout source binding')
+            if '(kernel)' not in result.stdout.lower() or 'type mismatch' not in result.stdout.lower():
+                raise SystemExit('Layout binding failed for an unrelated reason:\n' + result.stdout[-3000:])
+    print('PASS exact flat, balanced and layout bindings; kernel rejects each changed value')
 
 
 def main():

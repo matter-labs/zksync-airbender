@@ -5,7 +5,7 @@ import os
 import subprocess
 from export_gkr_translations import LEAN
 from gkr_unified_prefix import plans,DATA,CHUNK,PREFIX
-from gkr_unified_equal_chunks import PER_MODULE
+from gkr_unified_equal_chunks import PER_MODULE, PACKED_COLUMNS
 
 
 def special_chunks(column):
@@ -36,7 +36,7 @@ def column_module(column):
         last=min(first+CHUNK,stop);k=first//CHUNK
         (equal if all(e['mode']=='identical' for group in groups[first:last] for e in group) else special).append(k)
     name=f'Airbender.Proofs.GKRProtocol.UnifiedAllPrefix.Column{column}';owner=f'Airbender.Compiler.UnifiedAllPrefix.Column{column}'
-    text=('import Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column2.Projected\n' if column == 2 else
+    text=(f'import Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column{column}.Projected\n' if column in PACKED_COLUMNS else
           ''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column{column}.Part{i}\n' for i in range((len(equal)+PER_MODULE-1)//PER_MODULE)))
     text+=''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedSpecialNative.Column{column}.Chunk{k}\n' for k in special)
     text+=''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedSpecialLengths.Column{column}.Chunk{k}\n' for k in special)

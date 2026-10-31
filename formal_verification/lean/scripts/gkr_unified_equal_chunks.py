@@ -8,25 +8,42 @@ from export_gkr_translations import LEAN
 from gkr_unified_prefix import plans,DATA,CHUNK
 
 PER_MODULE=4
+PACKED_COLUMNS = {
+    2: ('UnifiedPackedEqualityCodes', 'UnifiedPackedEqualityCertificate',
+        'UnifiedPackedEquality', {52: -111, 53: 788, 54: 1686}),
+    5: ('UnifiedPackedEquality.Column5.Codes', 'UnifiedPackedEquality.Column5.Certificate',
+        'UnifiedPackedEquality.Column5', {9: -128, 49: 24304, 50: 25202}),
+}
 
 
-def packed_modules(artifact, positions, groups, selected):
-    code = (LEAN/'Airbender/Proofs/GKRProtocol/UnifiedPackedEqualityCodes.lean').read_text()
+
+def packed_modules(column, artifact, positions, groups, selected):
+    code_module, certificate, capture, region_offsets = PACKED_COLUMNS[column]
+    code = (LEAN/('Airbender/Proofs/GKRProtocol/'+code_module.replace('.', '/')+'.lean')).read_text()
     specifications = [tuple(map(int, entry)) for entry in re.findall(r'⟨(\d+), (\d+), (\d+)⟩', code)]
-    expected = [(first - 128, last - first, positions[last] - positions[first]) for first, last in selected]
+    expected, offset = [], 0
+    for first, last in selected:
+        expected.append((offset, last - first, positions[last] - positions[first]))
+        offset += last - first
     if specifications != expected:
         raise ValueError('fixed column capture scope or row-count statements changed')
-    region_offsets = {52: -111, 53: 788, 54: 1686}
-    name = 'Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column2.Projected'
-    namespace = 'Airbender.Compiler.UnifiedEqualChunks.Column2'
-    text = ('import Airbender.Proofs.GKRProtocol.UnifiedPackedEqualityCertificate\n\n'
+    name = f'Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column{column}.Projected'
+    namespace = f'Airbender.Compiler.UnifiedEqualChunks.Column{column}'
+    text = (f'import Airbender.Proofs.GKRProtocol.{certificate}\n\n'
             'namespace ' + namespace + '\nopen Airbender Airbender.Compiler\n'
             'set_option warningAsError true\nset_option Elab.async false\n\n')
+    if column == 5:
+        text += ('-- Each projection reduces one bounded leaf and a tree path.\n'
+                 'set_option maxRecDepth 8192\n\n')
     for ordinal, (first, last) in enumerate(selected):
         index = first // CHUNK
         offset, count, rows = specifications[ordinal]
-        text += (f'noncomputable def original{index} : List Setup.Block :=\n'
-                 f'  (UnifiedPackedEquality.sourceBlocks.drop {offset}).take {count}\n')
+        if column == 5:
+            text += (f'noncomputable def original{index} : List Setup.Block :=\n'
+                     f'  {capture}.sourceChunk {offset}\n')
+        else:
+            text += (f'noncomputable def original{index} : List Setup.Block :=\n'
+                     f'  ({capture}.sourceBlocks.drop {offset}).take {count}\n')
         names, pieces = [], []
         for region_index, region in enumerate(artifact['tables']):
             entries = [entry for group in groups[first:last] for entry in group if entry['region'] == region_index]
@@ -42,19 +59,43 @@ def packed_modules(artifact, positions, groups, selected):
             size = len(indexes)
             names.append(part)
             pieces.append(size)
-            text += (f'noncomputable def {part} : List Setup.Block :=\n'
-                     f'  (UnifiedPackedEquality.targetBlocks.drop {start}).take {size}\n')
+            if column == 5:
+                prior = sum(pieces[:-1])
+                if start != offset + prior:
+                    raise ValueError('fixed target chunk position changed')
+                leaf = f'({capture}.targetChunk {offset})'
+                if prior:
+                    value = f'{leaf}.drop {prior}'
+                elif size == count:
+                    value = leaf
+                else:
+                    value = f'{leaf}.take {size}'
+                text += f'noncomputable def {part} : List Setup.Block := {value}\n'
+            else:
+                text += (f'noncomputable def {part} : List Setup.Block :=\n'
+                         f'  ({capture}.targetBlocks.drop {start}).take {size}\n')
         text += f'noncomputable def target{index} : List Setup.Block := ' + ' ++ '.join(names) + '\n\n'
         text += f'theorem chunkSame{index} : original{index} = target{index} := by\n'
-        if len(pieces) == 1:
-            text += f'  exact UnifiedPackedEquality.slice_eq {offset} {count}\n\n'
+        if column == 5:
+            if len(pieces) == 1:
+                text += f'  exact {capture}.chunk_eq {offset}\n\n'
+            elif len(pieces) == 2:
+                text += (f'  exact ({capture}.chunk_eq {offset}).trans\n'
+                         f'    (List.take_append_drop {pieces[0]} ({capture}.targetChunk {offset})).symm\n\n')
+            else:
+                raise ValueError('unexpected fixed column region boundary')
+        elif len(pieces) == 1:
+            text += f'  exact {capture}.slice_eq {offset} {count}\n\n'
         elif len(pieces) == 2:
-            text += (f'  exact (UnifiedPackedEquality.slice_eq {offset} {count}).trans\n'
-                     f'    (PackedSetupEquality.slice_split UnifiedPackedEquality.targetBlocks {offset} {pieces[0]} {pieces[1]})\n\n')
+            text += (f'  exact ({capture}.slice_eq {offset} {count}).trans\n'
+                     f'    (PackedSetupEquality.slice_split {capture}.targetBlocks {offset} {pieces[0]} {pieces[1]})\n\n')
         else:
             raise ValueError('unexpected fixed column region boundary')
-        text += (f'theorem chunkLength{index} : (original{index}.map Setup.Block.length).sum = {rows} := by\n'
-                 f'  exact UnifiedPackedEquality.length_at ⟨{ordinal}, by decide +kernel⟩\n\n')
+        text += f'theorem chunkLength{index} : (original{index}.map Setup.Block.length).sum = {rows} := by\n'
+        if column == 5:
+            text += f'  exact {capture}.chunk_length_at ⟨{ordinal}, by decide +kernel⟩\n\n'
+        else:
+            text += f'  exact {capture}.length_at ⟨{ordinal}, by decide +kernel⟩\n\n'
     yield name, text + 'end ' + namespace + '\n'
 
 def modules(column):
@@ -63,8 +104,8 @@ def modules(column):
     for first in range(0,stop,CHUNK):
         last=min(first+CHUNK,stop)
         if all(e['mode']=='identical' for group in groups[first:last] for e in group):selected.append((first,last))
-    if column == 2:
-        yield from packed_modules(artifact, positions, groups, selected)
+    if column in PACKED_COLUMNS:
+        yield from packed_modules(column, artifact, positions, groups, selected)
         return
     for begin in range(0,len(selected),PER_MODULE):
         name=f'Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column{column}.Part{begin//PER_MODULE}'
@@ -94,9 +135,8 @@ def main():
     args=parser.parse_args()
     for col in args.column or range(10):
         generated = list(modules(col))
-        if col == 2:
-            for part in range(6):
-                legacy = LEAN/f'Airbender/Proofs/GKRProtocol/UnifiedEqualParts/Column2/Part{part}.lean'
+        if col in PACKED_COLUMNS:
+            for legacy in sorted((LEAN/f'Airbender/Proofs/GKRProtocol/UnifiedEqualParts/Column{col}').glob('Part*.lean')):
                 if legacy.exists():
                     if args.check:
                         raise ValueError('obsolete fixed column fact shard: '+str(legacy))
@@ -110,9 +150,8 @@ def main():
             if args.write and (not path.exists() or path.read_text()!=text):path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text)
             print(name,flush=True)
             if args.build:subprocess.run(['lake','--no-cache','build','+'+name+':olean'],cwd=LEAN,env=dict(os.environ,LEAN_NUM_THREADS='1'),check=True)
-        if col == 2 and args.write:
-            for part in range(6):
-                legacy = LEAN/f'Airbender/Proofs/GKRProtocol/UnifiedEqualParts/Column2/Part{part}.lean'
+        if col in PACKED_COLUMNS and args.write:
+            for legacy in sorted((LEAN/f'Airbender/Proofs/GKRProtocol/UnifiedEqualParts/Column{col}').glob('Part*.lean')):
                 if legacy.exists():
                     legacy.unlink()
 

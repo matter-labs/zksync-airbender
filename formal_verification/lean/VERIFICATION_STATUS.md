@@ -61,7 +61,8 @@ affine and periodic blocks, the last row and domain bounds. Direct axiom
 checks pass for all 93 new roots and the original output theorem. They use only
 `propext`, `Classical.choice` and `Quot.sound`. All 17,599 established roots
 remain. That checkpoint has 17,692 explicit roots. The setup pilot adds 71
-roots. Its adoption adds six helpers. The current explicit inventory has 17,769 roots.
+roots. Its adoption adds six helpers. That checkpoint has 17,769 explicit roots. The column 5 rollout adds 85 roots.
+The current explicit inventory has 17,854 roots.
 
 The complete ordinary AND data has the same serialized values before and
 after this change. Its SHA-256 is
@@ -125,6 +126,60 @@ untracked file at a retired path. All equality and prefix generator checks pass.
 The declaration origins move to the projection module. The pending environment
 audit must record that move. Other setup columns and fact families still need
 migration. The broader rollout and final full validation remain open.
+
+### Wide setup-column rollout
+
+Unified equality column 5 now has one checker result for 26,112 native blocks.
+The result also checks all 204 established row-count conclusions. The capture
+excludes the program ROM region. It includes both fixed source spans and the
+matching shift, rotate8 and rotate7 target spans.
+
+A balanced tree holds bounded lists of numeric block records. The checker reads
+that tree directly. It checks each branch size before it uses the size to select
+rows. The generic soundness theorem gives exact decoded block equality and each
+requested row count. Separate kernel proofs bind the trees to the complete native source and target
+spans. The tree layouts reuse the existing bounded data. Their proofs use append lemmas and preserve opaque numeric leaves. Native span
+data also has at most 128 records per declaration. Balanced map and list
+congruence proofs bind those spans. Each typed local equality stays subject to
+the kernel check. These changes remove the deep flat conversions from replay. No native value or production source changes.
+
+The three capture modules pass focused source builds. Data and append layouts
+take 32.76 s. Native bindings take 63.80 s. The certificate takes 7.28 s.
+The binding repair group includes the bounded list helpers and reader. It takes
+101.82 s, including 27.57 s of exact binding-module replay. Its peak physical
+footprint is 2336.41 MiB. Replay uses the standard 32 MiB Lean thread stack. These runs trust retained imports.
+
+The final 25-module consumer group passes in 155.17 s. Its peak physical
+footprint is 2001.47 MiB. It checks both column assemblies, all eight affected
+region consumers and all three control modules. It reuses source and import
+hash records for unchanged modules. A plain import control also passes.
+The earlier flat-list comparisons exceed the existing 2560 MiB footprint limit.
+Those comparison variants are outside the adopted source tree.
+
+One projection module replaces 51 old fact modules. It preserves all 1,021
+public declaration names and all 408 theorem statement types. Each projection
+selects one tree leaf. The same closed checker result also verifies the whole
+leaf row counts. The source and target coverage checks remain kernel proofs. Declaration origins move to the
+projection module. The pending environment audit must record that move.
+
+Selected replay passes for the shared tree checker, capture data and layouts,
+native bindings, capture certificate, public projections, column assembly and
+both new control modules. It checks 8 selected modules with cached imports.
+The safe declarations have no dependencies on skipped compiler helpers.
+This is not transitive replay. All 1,106 direct preserved-declaration and new
+root axiom checks pass. They use only `propext`, `Classical.choice` and
+`Quot.sound`. All 17,769 established explicit roots remain. Four generator
+controls check names, the skipped source gap, scope drift and untracked files.
+
+Six source-binding controls pass. They cover exact flat, balanced and layout
+bindings. The kernel rejects a changed value in each form. A later source
+check covers the reader, data/layout module and layout control after the
+command grammar repair. It passes in 48.68 s, including the six controls.
+No worker remains. Full RLE mutation control is outside this focused run.
+
+The broader rollout remains open. Both cache modes stay required. Full frontend
+validation, environment auditing and baseline refresh, transitive replay, cold
+full measurements, and Linux runtime and cache qualification remain pending.
 
 ## Rebase checks
 
