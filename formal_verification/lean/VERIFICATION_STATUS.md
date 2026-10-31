@@ -11,7 +11,7 @@ request and RAM matching remain explicit. The final full validation is pending.
 
 | Setup machine | Current target status |
 | --- | --- |
-| Unrolled full unsigned | Open. Native execution, public supported-use induction and initialization are kernel checked. Complete `SplitParityRealRows`, `SplitThetaRealRows` and `SplitChiRealRows`. Then bind the equal source representation at the original interface. The parser, exact columns and padding cases pass kernel checks. Chi5 uses its native query tags. The target excludes special5 calls. |
+| Unrolled full unsigned | Open. Native execution, public supported-use induction and initialization are kernel checked. Chi and theta represented-source membership are proved. Parity byte-iota, slots, control, XOR-five keys and fixed fields are proved. Complete the parity XOR-five source output and all three original source-string bindings. The parser, exact columns and padding cases pass kernel checks. Chi5 uses its native query tags. The target excludes special5 calls. |
 | Unrolled reduced | Proved by `MachineTargets.Proofs.unrolled_reduced_soundness`. The theorem has exactly the `UnrolledReduced` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. |
 | Unified | Proved by `MachineTargets.Proofs.unified_soundness`. The theorem has exactly the `Unified` target type. It includes public program binding, native combined execution and initialization. Exact lookup, request and RAM matching remain explicit. The target excludes special5 calls. |
 
@@ -2467,6 +2467,27 @@ Parity XOR-five source membership and all three original source-string
 bindings remain open. FullUnsigned is not yet proved. Design items 2 and 3
 follow the machine targets. The native artifacts and packed checker pilot
 stay intact.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
+
+
+### Full unsigned parity XOR-five source inputs and fixed fields
+
+All five source keys now equal their original native base-sixteen digits on
+all 1,048,576 arithmetic rows. Direct periodic and constant-block rules prove
+these values. The complete source padding field is zero. The complete tag
+field is 64. Both fixed fields equal their original native values.
+
+The focused module passed in four seconds. It used 428 MiB of physical memory.
+The guard cleaned all owned children. All five new roots passed direct axiom
+checks. They use only the three allowed axioms. The inventory has 14,425
+roots. It retains all 14,420 previous roots.
+
+Only the source output field remains for parity XOR-five membership. All
+three original source-string bindings remain open. FullUnsigned is not yet
+proved. Design items 2 and 3 follow the targets. The native artifacts and
+packed checker pilot stay intact.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
