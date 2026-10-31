@@ -63,12 +63,12 @@ struct ProgramIdentity {
     text_keccak256: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+/// A guest's identity is its registry `fsv-rom-digest-v1`, the one `load_fsv_exact` checks.
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct FsvIdentity {
     role: String,
     stem: String,
-    bin_keccak256: String,
-    text_keccak256: String,
+    fsv_rom_digest_v1: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -144,58 +144,53 @@ fn file_identity(dir: &Path, name: &str) -> Result<FileIdentity, String> {
 }
 
 fn fsv_identities(blake: PipelineBlakeModes) -> Result<Vec<FsvIdentity>, String> {
+    let standard =
+        |program, mode| FsvDescriptor::new(SoundnessMode::PessimisticConjecture, program, mode);
     [
         (
             "unrolled_base",
-            FsvProgram::UnrolledBaseLayer,
-            blake.unrolled,
+            standard(FsvProgram::UnrolledBaseLayer, blake.unrolled),
         ),
         (
             "unrolled_recursion",
-            FsvProgram::UnrolledRecursionLayer,
-            blake.unrolled,
+            standard(FsvProgram::UnrolledRecursionLayer, blake.unrolled),
         ),
-        ("bridge_base", FsvProgram::UnrolledBaseLayer, blake.bridge),
+        (
+            "bridge_base",
+            standard(FsvProgram::UnrolledBaseLayer, blake.bridge),
+        ),
         (
             "bridge_recursion",
-            FsvProgram::UnrolledRecursionLayer,
-            blake.bridge,
+            standard(FsvProgram::UnrolledRecursionLayer, blake.bridge),
         ),
         (
             "unified",
-            FsvProgram::UnifiedRecursionLayer,
-            blake.final_layer,
+            standard(FsvProgram::UnifiedRecursionLayer, blake.final_layer),
         ),
         (
             "feeder_first",
-            FsvProgram::UnifiedRecursionLayer,
-            BlakeMode::BlakeSpecialOpcodes,
+            standard(
+                FsvProgram::UnifiedRecursionLayer,
+                BlakeMode::BlakeSpecialOpcodes,
+            ),
         ),
-        (
-            "feeder_a",
-            FsvProgram::UnifiedRecursionLayerL1FeederA,
-            BlakeMode::BlakeSpecialOpcodes,
-        ),
+        ("feeder_a", FsvDescriptor::l1_feeder(FsvProfile::L1FeederA)),
         (
             "feeder_wrap",
-            FsvProgram::UnifiedRecursionLayerL1FeederWrap,
-            BlakeMode::BlakeSpecialOpcodes,
+            FsvDescriptor::l1_feeder(FsvProfile::L1FeederWrap),
         ),
     ]
     .into_iter()
-    .map(|(role, program, mode)| {
-        let stem = program.file_stem(mode);
-        let path = fsv_dir().join(format!("{stem}.elf"));
-        let image = full_statement_verifier::host_utils::read_fsv_image(fsv_dir(), program, mode)
-            .map_err(|error| format!("FSV identity {}: {error}", path.display()))?;
-        let bin = image
-            .objcopy_binary()
-            .expect("legacy ELF mode has a ROM image");
+    .map(|(role, descriptor)| {
+        let guest = load_fsv_exact(fsv_dir(), &descriptor);
+        let stem = descriptor
+            .relative_path()
+            .trim_end_matches(".elf")
+            .to_owned();
         Ok(FsvIdentity {
             role: role.into(),
-            bin_keccak256: hex_digest(&bin),
-            text_keccak256: hex_digest(&image.text_bytes()),
             stem,
+            fsv_rom_digest_v1: guest.digest().to_string(),
         })
     })
     .collect()
@@ -478,9 +473,15 @@ fn compare_files(reference: &Path, sink: &Path, inventory: &Inventory) -> Result
 
 /// `dir`'s manifest, with every listed file's length and hash checked
 /// against `dir`'s own copy.
-fn validated_manifest(dir: &Path) -> Result<ProofManifest, String> {
-    let manifest: ProofManifest = read_typed(&dir.join("manifest.json"))?;
-    for file in &manifest.files {
+/// The manifest's file inventory, checked against the files. It reads a manifest of any FSV
+/// identity format, so a regeneration can replace an older one.
+fn validated_inventory(dir: &Path) -> Result<Inventory, String> {
+    #[derive(Deserialize)]
+    struct Files {
+        files: Inventory,
+    }
+    let Files { files } = read_typed(&dir.join("manifest.json"))?;
+    for file in &files {
         let actual = file_identity(dir, &file.name)?;
         if actual.bytes != file.bytes || actual.keccak256 != file.keccak256 {
             return Err(format!(
@@ -489,6 +490,22 @@ fn validated_manifest(dir: &Path) -> Result<ProofManifest, String> {
                 file.name
             ));
         }
+    }
+    Ok(files)
+}
+
+/// The full manifest: its files are intact and its FSV identities are the registry's.
+fn validated_manifest(dir: &Path) -> Result<ProofManifest, String> {
+    validated_inventory(dir)?;
+    let manifest: ProofManifest = read_typed(&dir.join("manifest.json"))?;
+    let registry = fsv_identities(PipelineBlakeModes::from_env())?;
+    if manifest.fsv != registry {
+        return Err(format!(
+            "L1 reference manifest of {} records FSV identities {:?}; the registry has {:?}",
+            dir.display(),
+            manifest.fsv,
+            registry
+        ));
     }
     Ok(manifest)
 }
@@ -509,9 +526,8 @@ fn generate_l1_reference_seed() {
     let mut managed = BTreeSet::new();
     if reference.join("manifest.json").exists() {
         managed.extend(
-            validated_manifest(&reference)
+            validated_inventory(&reference)
                 .expect("previous L1 reference manifest")
-                .files
                 .into_iter()
                 .map(|file| file.name),
         );
@@ -639,16 +655,45 @@ fn export_l1_wrap_setup_frontier() {
     let setup_commitment = &bundle.proof.whir_proof.setup_commitment;
 
     let circuit_type = CircuitType::L1Wrap21;
-    let (mut binary, mut text) = full_statement_verifier::host_utils::load_l1_fsv_program(
+    let (mut binary, mut text) = load_fsv_exact(
         fsv_dir(),
-        FsvProgram::UnifiedRecursionLayerL1FeederWrap,
-        BlakeMode::BlakeSpecialOpcodes,
-    );
+        &FsvDescriptor::l1_feeder(FsvProfile::L1FeederWrap),
+    )
+    .into_words();
     setups::pad_bytecode_for_proving_with_rom(&mut binary, circuit_type.rom());
     setups::pad_bytecode_for_proving_with_rom(&mut text, circuit_type.rom());
     let worker = Worker::new();
     let setup =
         unified_reduced_machine_proth120::l1_wrap_2p21::l1_wrap_setup(&binary, &text, &worker);
+    // Exercise the deferred maps in the Proth field against the materialized rows
+    // and the function-backed fast path used by witness generation.
+    let mut rows = 0usize;
+    for table in &setup.table_driver.tables {
+        let ::prover::cs::tables::LookupWrapper::Initialized(table) = table else {
+            continue;
+        };
+        let mut fallback = table.clone();
+        fallback.quick_index_lookup_fn = ::prover::cs::tables::IndexLookupFn::None;
+        fallback.quick_value_lookup_fn = ::prover::cs::tables::ValueLookupFn::None;
+        assert_eq!(fallback.content_data.len(), table.data.len());
+        assert_eq!(fallback.lookup_data.len(), table.data.len());
+        for (index, row) in table.data.iter().enumerate() {
+            assert_eq!(table.lookup_row(row), index);
+            assert_eq!(fallback.lookup_row(row), index);
+            let keys = &row[..table.num_key_columns];
+            let fast =
+                table.lookup_value::<{ ::prover::cs::definitions::MAX_TABLE_WIDTH - 1 }>(keys);
+            let indexed =
+                fallback.lookup_value::<{ ::prover::cs::definitions::MAX_TABLE_WIDTH - 1 }>(keys);
+            assert_eq!(fast, indexed);
+            assert_eq!(
+                &fast[..table.num_value_columns],
+                &row[table.num_key_columns..]
+            );
+            rows += 1;
+        }
+    }
+    println!("proth_table_identity rows={rows} fast_and_deferred_indexes_equal=true");
     let config = ProofProfile::L1Wrap.prover_config(
         circuit_type.get_domain_size_log2() as usize,
         SoundnessMode::PessimisticConjecture,
@@ -803,11 +848,11 @@ fn cpu_l1_feeder_profiles_and_capacity_margins() {
         BlakeMode::BlakeSpecialOpcodes,
     );
     let output = FeederProfile::C.native_verify(stream.clone()).unwrap();
-    let program = load_l1_fsv_program(
+    let program = load_fsv_exact(
         fsv_dir(),
-        FsvProgram::UnifiedRecursionLayerL1FeederWrap,
-        BlakeMode::BlakeSpecialOpcodes,
-    );
+        &FsvDescriptor::l1_feeder(FsvProfile::L1FeederWrap),
+    )
+    .into_words();
     let report = ProductionFeederVerifier
         .wrap_run(&program, stream.clone())
         .unwrap();
@@ -882,4 +927,200 @@ fn cpu_native_feeder_a_accepts_a_valid_stream_and_rejects_trailing_words() {
     stream.push(0);
     let error = FeederProfile::A.native_verify(stream).unwrap_err();
     assert!(error.contains("1 trailing words"), "{error}");
+}
+
+/// Bind shared registration preprocessing and parallel setup construction to the
+/// actual feeder checkpoints without generating another proof tower.
+#[test]
+#[ignore = "recommits the three feeder setups to compare with the committed reference"]
+fn recomputed_l1_feeder_setups_match_reference() {
+    use ::prover::fft::Twiddles;
+    use ::prover::merkle_trees::DefaultTreeConstructor;
+    use execution_prover::setup::{
+        build_unrolled_setup, build_unrolled_setup_with_preprocessing, preprocess_binary,
+        CanonicalCircuitSetup,
+    };
+    let reference = fixture_dir();
+    validated_manifest(&reference).expect("L1 reference manifest");
+    let fsv = FsvPrograms::load(
+        ProofTarget::L1,
+        SoundnessMode::PessimisticConjecture,
+        PipelineBlakeModes::from_env(),
+    );
+    let worker = worker::Worker::new_with_num_threads(24);
+    for (layer, role, profile) in [
+        (0, FeederRole::First, FeederProfile::A),
+        (1, FeederRole::Recurrent, FeederProfile::A),
+        (2, FeederRole::Recurrent, FeederProfile::C),
+    ] {
+        let (proof, expected) = if layer < 2 {
+            let checkpoint: StepCheckpoint =
+                read_typed(&reference.join(feeder_checkpoint_name(layer))).unwrap();
+            (checkpoint.proof, checkpoint.setups)
+        } else {
+            let artifact: ProofArtifact = read_typed(&reference.join("l1_feeder.json")).unwrap();
+            (artifact.proof, artifact.setups)
+        };
+        let (bin, text) = fsv.feeder_program(role);
+        let mut padded = bin.clone();
+        setups::pad_bytecode_for_proving(&mut padded);
+        let preprocessing = preprocess_binary(
+            MachineType::Reduced,
+            &[ExecutionKind::Unified, ExecutionKind::Unified22],
+            text,
+        );
+        let CanonicalCircuitSetup::Riscv(actual) = build_unrolled_setup_with_preprocessing(
+            profile.circuit(),
+            &padded,
+            &preprocessing,
+            &worker,
+        ) else {
+            unreachable!()
+        };
+        // Independent standalone decoding exercises the same selected geometry.
+        let CanonicalCircuitSetup::Riscv(standalone) = build_unrolled_setup(
+            MachineType::Reduced,
+            profile.circuit(),
+            &padded,
+            text,
+            &worker,
+        ) else {
+            unreachable!()
+        };
+        assert_eq!(actual.trace_len, profile.circuit().get_domain_size());
+        assert_eq!(
+            actual.setup.hypercube_evals.len(),
+            standalone.setup.hypercube_evals.len()
+        );
+        for (shared, standalone) in actual
+            .setup
+            .hypercube_evals
+            .iter()
+            .zip(&standalone.setup.hypercube_evals)
+        {
+            assert!(
+                shared.iter().eq(standalone.iter()),
+                "shared decoding changed setup columns at feeder {layer}"
+            );
+        }
+        drop(standalone);
+        let config = profile.config();
+        assert_eq!(config.trace_len_log2, actual.trace_len.ilog2() as usize);
+        let family = profile.circuit().get_family_idx() as u32;
+        let committed_circuit = &proof.compiled_riscv_circuits[&family];
+        assert_eq!(
+            serde_json::to_vec(&actual.compiled_circuit).unwrap(),
+            serde_json::to_vec(committed_circuit).unwrap()
+        );
+        for proof in &proof.riscv_proofs[&family] {
+            assert_eq!(proof.whir_proof.whir_schedule, config.whir_schedule);
+        }
+        let twiddles = Twiddles::new(1 << config.whir_message_size_log2(), &worker);
+        let tree = actual
+            .setup
+            .commit_for_config::<DefaultTreeConstructor>(&twiddles, &config, &worker);
+        let params = setups::UnrolledCircuitSetupParams::from_setup_tree_cap(
+            family,
+            actual.trace_len as u32,
+            tree.get_cap(),
+            config.cap_size,
+        );
+        let actual = BTreeMap::from([(family, params)]);
+        assert_eq!(
+            actual, expected,
+            "feeder {layer} setup caps/geometry changed"
+        );
+        assert_eq!(
+            compute_end_params(&actual, proof.final_pc),
+            compute_end_params(&expected, proof.final_pc)
+        );
+        println!("feeder_setup_identity layer={layer} profile={profile:?} trace={} cap={} columns_equal=true caps_equal=true end_params_equal=true", config.trace_len_log2, config.cap_size);
+    }
+}
+
+#[test]
+fn supplied_standard_records_refuse_an_l1_chain_without_recomputation() {
+    let artifact: ProofArtifact = read_typed(&fixture_dir().join("l1_feeder.json")).unwrap();
+    let source = source();
+    let loaded = load_and_validate_program(&source, &artifact).unwrap();
+    let mut trusted = TrustedParams {
+        schema_version: 1,
+        program_hash: fsv_digest(&loaded.bin_u32, &loaded.text_u32).0,
+        soundness_mode: SoundnessMode::PessimisticConjecture,
+        programs: vec![],
+    };
+    let mut layer = 0;
+    expected_chain_end_params(
+        artifact.target,
+        artifact.chain_end_params.len(),
+        artifact.feeder_layers,
+        &artifact.blake_unrolled,
+        &artifact.blake_bridge,
+        &artifact.blake_final,
+        &mut |program| {
+            let end_params = artifact.chain_end_params[layer];
+            layer += 1;
+            let (hash, machine, exit_pc) = match program {
+                ChainProgram::User => (
+                    trusted.program_hash,
+                    SetupMachine::UnrolledFullUnsigned,
+                    find_binary_exit_point(&loaded.bin_u32)?,
+                ),
+                ChainProgram::Fsv(_, _, _, SetupMachine::L1Feeder(_)) => return Ok(end_params),
+                ChainProgram::Fsv(program, profile, blake, machine) => {
+                    let guest = load_fsv_exact(
+                        fsv_dir(),
+                        &FsvDescriptor {
+                            soundness_mode: trusted.soundness_mode,
+                            program,
+                            profile,
+                            blake,
+                        },
+                    );
+                    (
+                        fsv_digest(guest.bin(), guest.text()).0,
+                        machine,
+                        find_binary_exit_point(guest.bin())?,
+                    )
+                }
+            };
+            if !trusted
+                .programs
+                .iter()
+                .any(|r| r.program_hash == hash && r.machine == machine)
+            {
+                trusted.programs.push(TrustedProgramParams {
+                    program_hash: hash,
+                    machine,
+                    setups: Setups::new(),
+                    exit_pc,
+                    end_params,
+                });
+            }
+            Ok(end_params)
+        },
+    )
+    .unwrap();
+    // These deliberately incomplete caller-trusted records cover the earlier
+    // Standard chain; no L1 setup record may be synthesized on the caller's behalf.
+    let encoded = serde_json::to_vec(&trusted).unwrap();
+    let trusted: TrustedParams = serde_json::from_slice(&encoded).unwrap();
+    let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        verify_artifact_with_trusted_params_in_mode(
+            &artifact,
+            &source,
+            trusted.soundness_mode,
+            Some(&trusted),
+        )
+    }))
+    .expect_err("missing L1 records must refuse");
+    let message = failure
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| failure.downcast_ref::<&str>().copied())
+        .unwrap_or_default();
+    assert!(
+        message.contains("trusted params have no record for this program hash and machine"),
+        "{message}"
+    );
 }
