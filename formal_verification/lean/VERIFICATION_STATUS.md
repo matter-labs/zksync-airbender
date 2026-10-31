@@ -110,7 +110,9 @@ binding control now accepts the exact packed binding and requires a kernel
 type mismatch for a changed value. Both focused controls pass. The old RLE
 control remains in that gate. It has not rerun for this checkpoint.
 The capture and both bindings use default heartbeats. Only the data importer
-raises the limit for its complete 2,584-block declaration.
+raises the limit for its complete capture command. Each literal data declaration
+holds at most 128 block records. A balanced append tree names the full capture.
+The same 15-module source group passes with that representation.
 
 The adopted family includes one public projection module. It replaces all six
 old equality shards. It preserves 107 declaration names and all 42 theorem

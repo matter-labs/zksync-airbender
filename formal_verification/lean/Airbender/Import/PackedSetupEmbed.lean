@@ -88,8 +88,25 @@ private def artifact (path : TSyntax `str) : CommandElabM Artifact := do
   | .ok value => pure value
   | .error error => throwError "setup code import failed: {error}"
 
+private partial def appendData (parts : Array (TSyntax `term)) : CommandElabM (TSyntax `term) := do
+  if parts.isEmpty then return ← `(([] : List BlockCode))
+  if parts.size == 1 then return parts[0]!
+  let left ← appendData (parts.extract 0 (parts.size / 2))
+  let right ← appendData (parts.extract (parts.size / 2) parts.size)
+  `(List.append $left $right)
+
 private def emit (name : TSyntax `ident) (blocks : Array (TSyntax `term)) : CommandElabM Unit := do
-  withEnableInfoTree false <| elabCommand (← `(def $name : List BlockCode := [$[$blocks],*]))
+  if blocks.size ≤ 128 then
+    withEnableInfoTree false <| elabCommand (← `(def $name : List BlockCode := [$[$blocks],*]))
+  else
+    let mut parts := #[]
+    for index in [:(blocks.size + 127) / 128] do
+      let part := mkIdent (name.getId.appendAfter s!"Data{index}")
+      let values := blocks.extract (index * 128) (min blocks.size ((index + 1) * 128))
+      withEnableInfoTree false <| elabCommand (← `(def $part : List BlockCode := [$[$values],*]))
+      parts := parts.push (← `($part))
+    let value ← appendData parts
+    withEnableInfoTree false <| elabCommand (← `(def $name : List BlockCode := $value))
 
 private def emitSpan (source : Artifact) (name : TSyntax `ident)
     (physical first count id : Nat) : CommandElabM Unit := do
