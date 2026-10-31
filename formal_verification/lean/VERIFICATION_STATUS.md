@@ -3119,3 +3119,22 @@ The legacy execution interfaces, production OS binary comparison and verified
 checker rollout remain open. No native circuit, Rust source or imported value
 changed. Full frontend validation, environment audit, baseline refresh,
 transitive replay and Linux qualification did not run.
+
+### Program parameter migration: native machine acceptance
+
+The native acceptance adapter now closes the CPU-equation, execute and decoder
+matching premises for all three machine targets. It uses the public program
+setup and physical row certificates. The unrolled adapter retains explicit ROM
+coverage and initial-image construction. Worker equations and exact state,
+request and RAM matching keep the same meaning.
+
+Both new modules passed focused kernel checks in four seconds. Peak physical
+memory was 525 MiB. All four new roots passed direct axiom checks with only the
+three allowed axioms. The inventory has 17,596 roots. It retains all 17,592 prior
+roots. Generator freshness and mutation controls passed. Both guards cleaned
+their owned children.
+
+The legacy execution interfaces, production OS binary comparison and verified
+checker rollout remain open. No native circuit, Rust source or imported value
+changed. Full frontend validation, environment audit, baseline refresh,
+transitive replay and Linux qualification did not run.

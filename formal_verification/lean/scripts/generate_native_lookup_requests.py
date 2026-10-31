@@ -1314,6 +1314,9 @@ unified_roots += ['Airbender.Compiler.NativeProgramSetup.' + name for name in [
 unified_roots += ['Airbender.Compiler.UnifiedExecution.' + name for name in [
     'ProgramLogicalRowCertificate.program_constraints',
     'program_row_constraints_from_native']]
+acceptance_roots = ['Airbender.Compiler.MachineTargets.' + name for name in [
+    'UnrolledNativeArguments', 'UnifiedNativeArguments',
+    'unrolled_acceptance_from_native', 'unified_acceptance_from_native']]
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
@@ -1332,6 +1335,9 @@ if public_constraints_import not in content.splitlines():
 unified_constraints_import = 'import Airbender.Proofs.GKRProtocol.ProgramUnifiedConstraints'
 if unified_constraints_import not in content.splitlines():
     content = unified_constraints_import + '\n' + content
+acceptance_import = 'import Airbender.Proofs.GKRProtocol.NativeMachineAcceptance'
+if acceptance_import not in content.splitlines():
+    content = acceptance_import + '\n' + content
 decoder_imports = '\n'.join('import Airbender.Proofs.GKRProtocol.' + tree + '.' + name
                           for tree in ['ProgramDecoderNative', 'ProgramDecoderLookup', 'ProgramFixedLookup', 'ProgramPCLowNative'] for name in NAMES)
 for decoder_import in decoder_imports.splitlines():
@@ -1342,7 +1348,7 @@ for name in NAMES:
     if constraint_import not in content.splitlines():
         content = constraint_import + '\n' + content
 roots = []
-for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots + public_row_roots + word_roots + unified_roots:
+for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots + public_row_roots + word_roots + unified_roots + acceptance_roots:
     root = f'#print axioms {name}'
     if root not in content.splitlines():
         roots.append(root)
