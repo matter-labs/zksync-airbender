@@ -101,9 +101,9 @@ selection. They do not add a policy allowlist to an admitted geometry.
 
 | Constraint | Reason and source |
 | --- | --- |
-| InPlace transform domain log 20..24 | The existing exact-aliasing transform family supports that range. The shared `gpu_ntt::ntt::log_size_supports_in_place` predicate is checked at the BabyBear boundary before cap/workspace allocation or taking the raw owner. |
-| Packed retained-monomial PerCoset domain log 20..24 | The retained transform dispatch has that existing range; it checks aligned whole columns and root order. See [`retained_monomials.rs`](../../ntt/src/ntt/retained_monomials.rs). |
-| Packed base transform message log at most 24, codeword log at most 27 and at most the live twiddle capacity | Natural-order coefficient labeling and the BabyBear root order must match the committed domain. The small legacy MSB route is not a substitute. All currently admitted packed/virtual domains have message log 22 or 24. |
+| InPlace transform domain log 13..24 | Existing compact inverse/forward passes and the addition-stage restore cover 13..19; the 20..24 routes are preserved. The shared `gpu_ntt::ntt::log_size_supports_in_place` predicate is checked at the BabyBear boundary before cap/workspace allocation or taking the raw owner. |
+| Geometry-backed retained-monomial PerCoset domain log 13..24 | The compact raw-to-monomials and coset-regeneration paths cover the smaller domains; it checks aligned whole columns and root order. See [`retained_monomials.rs`](../../ntt/src/ntt/retained_monomials.rs). |
+| Geometry-backed base transform message log 13..24, codeword log at most 27 and at most the live twiddle capacity | Natural-order coefficient labeling and the BabyBear root order must match the committed domain. The small legacy MSB route is not a substitute. The limits follow the generated transform family, not a fixed message tuple. |
 | Cap at least LDE; Partial trees require room for the fixed 32-leaf boundary | Per-coset cap arithmetic and the cached partial-tree layout require these dimensions. The field-free holder validation owns them. |
 | Recomputed direct-holder queries require None or Partial trees | The current gather reconstructs paths through partial-tree boundary roots; a Full tree needs a different gather. Current proof policies never construct Full trees. |
 | Direct packed retained commit requires None cosets and Partial trees | Its outer entry selects the partial-tree representation; None/Full tree variants need other transient/tree handling. The inner Full-coset/Partial branch does not make the outer packed entry callable in that state. Current stage1 starts with None cosets and Partial trees. |
@@ -116,19 +116,24 @@ structural holder and geometry interfaces remain field-generic.
 
 ### Geometry and protocol scope
 
-Memory-policy compatibility does not widen geometry admission. Current separate
-packed proof shapes are physical `(n,k,f)=(20,2,1),(20,4,1),(23,1,1)` and virtual
-`(22,0,0),(20,2,0)`. The virtual schedule uses message log 22, base LDE 2, cap 16
-and fold ladder `[0,6,5,5,5]`. Merged packed proof admission remains Blake
-compression `(20,4,1)`, LDE 2, cap 16. These are the existing geometry/circuit
-qualification lists, preserved separately from policy compatibility; they are
-not proofs that other geometries are impossible. Existing legacy routes remain.
+Geometry admission follows the actual field, kernel, storage and ownership
+requirements in [commitment geometry](../../docs/commitment_geometry.md).
+The old physical/virtual tuple, circuit, message22, LDE2, cap16 and fold-ladder
+qualification lists are removed. Presets select defaults; they do not restrict
+callable policies or geometries that satisfy those requirements.
 
-The current base batching implementation supports fold log 0 or 1. Recursive
-oracle dispatch, partial-tree dimensions, field/root order and context capacity
-remain independently validated. Physical claim merging supports k1..4; k0 bypasses
-the merge kernel. The memory-only producer remains separate-only; merged jobs use
-the concatenating producer instead.
+The generated base batching reader supports fold log 0 or 1. Recursive route
+selection, partial-tree dimensions, field/root order and context capacity are
+validated independently. Physical claim merging supports k1..5; k0 bypasses
+the one-warp merge kernel. The memory-only producer remains separate-only;
+merged jobs use the concatenating producer.
+
+The GPU validates the configured same-size schedule but ignores it for window
+selection: execution uses compiled windows. F13 establishes fresh Naive-CPU byte
+parity and the same-pin Windowed control has identical main/DR dispatch. Short
+positive DR chains use the existing tower from round zero. Execution workers
+request explicit output log 4, which preflight binds to the config; other output
+logs are available through the direct circuit-prover API.
 
 Schedules with multiple OOD samples, OOD PoW or folding PoW remain rejected. The
 GPU proof layout/scheduler handles one OOD tuple per oracle and does not implement

@@ -79,19 +79,22 @@ rather than letting the duplicate drift by convention.
   `AB_DETERMINISTIC_POW` on this archive.
 ## Production commitment and query terms
 
-Base fold0 skips the base sumcheck and commits the batched polynomial itself
-as intermediate oracle0. The qualified m22 virtual ladder is `[0,6,5,5,5]`;
-its base queries use one BF value per physical column and the full base LDE
-domain. Cap absorption precedes OOD, and fresh delinearization follows the query
-draw. Schedule admission permits the CPU batching-PoW override independently of
-that geometry.
+Base fold0 skips the base sumcheck and commits the batched polynomial itself as
+intermediate oracle0. Its base queries use one BF value per physical column and
+the full base LDE domain. Admission validates the requested message, LDE, cap
+and folding dimensions rather than a qualified message/ladder tuple. Cap
+absorption precedes OOD, and fresh delinearization follows the query draw.
+Schedule admission permits the CPU batching-PoW override independently of that
+geometry.
 
 Recursive oracles use coefficient leaves and partial Merkle trees. Small shapes
-use the fused families in `fused_commit.rs`; retained residue LDEs cover
-`(log_n, log_v) = (14..23, 5)` and `(22, 6)`. The full polynomial plus LDE
-domain must fit both BabyBear's 27-bit domain and the context twiddle capacity.
-Unsupported shapes and full-tree geometries fail
-explicitly. All recursive commitment work runs on `exec_stream`.
+select existing fused Block/Subwarp families in `fused_commit.rs`, then fall
+back to retained residue LDEs when those fast paths do not apply. Actual
+transform, gather-grid and staging capacities bound that fallback. The full
+polynomial plus LDE domain must fit both BabyBear's 27-bit domain and the
+context twiddle capacity; recursive commitments require the partial-tree
+representation. See [geometry limits](../docs/commitment_geometry.md). All
+recursive commitment work runs on `exec_stream`.
 
 Retained LDEs process all cosets before hashing when
 `log_ntt_len <= MAX_LOG_N_FOR_SINGLE_KERNEL_LDE`. Larger transforms run
@@ -126,6 +129,9 @@ Horner evaluation directly from monomial coefficients.
   forces `RUST_TEST_THREADS=1`). The crate carries no `#[serial]`
   annotations. CPU-only tests may be named or moduled `cpu_*` to run
   parallel under nextest.
+- The six `packed_handoff` CPU-byte-parity tests require `deterministic_pow`.
+  Run them with `--features deterministic_pow`; unified builds also enable this
+  through the `gpu_circuit_prover` default features.
 - For compute-heavy GPU tests or prover flows, use `--release` by default.
 - Compile first with `cargo nextest run --no-run`, then run under
   `.agents/bin/with_gpu_lock.sh cargo nextest run …` so only the execution

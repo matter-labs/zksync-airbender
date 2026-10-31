@@ -222,6 +222,12 @@ tests live in `gpu/execution_prover/tests/program.rs`, behind `verifiers`.
   the permuted digest pass. Review question for any new commitment kernel: does
   any lane index feeding a VALUES pointer pass through `bitreverse_low_bits`?
 
+## Commitment geometry
+
+[Commitment geometry and backend limits](docs/commitment_geometry.md) records the
+actual field, kernel, ownership and representation constraints, separately from
+preset selection and memory-policy choice.
+
 ## Profiling
 
 Per-kernel (`ncu`) and timeline (`nsys`) profiling methodology applies to any
