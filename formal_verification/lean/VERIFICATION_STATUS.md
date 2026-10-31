@@ -3091,3 +3091,31 @@ The legacy execution interfaces, production OS binary comparison and verified
 checker rollout also remain open. No native circuit, Rust source or imported
 value changed. Full frontend validation, environment audit, baseline refresh,
 transitive replay and Linux qualification did not run.
+
+### Program parameter migration: complete unified row constraints
+
+Both unified cache modes now prove their complete native row constraints
+for the public program setup. Public decoding fixes the operation tag.
+Arithmetic assertions derive the dispatcher bound and all five helper tags.
+Exact matching supplies fixed helper rows or public ROM words. The result
+needs no retained program image or expected helper value.
+
+The unified trace adapter derives every incoming PC bound from native ranges
+and exact state matching. All 14 CPU profiles now have public program
+constraint adapters. Both row registries compose these adapters without a
+per-row PC, operation-tag or expected-value premise.
+
+The decoder guard, arithmetic guards, ROM interpretation, both native
+adapters and unified registry passed focused kernel checks. The arithmetic
+guard group took 40 seconds. Peak physical memory was 845 MiB. The final
+native-adapter group took 13 seconds. The registry group took four seconds.
+All 13 new public roots and the retained dispatcher root passed direct axiom
+checks with only the three allowed axioms. The dispatcher theorem keeps its
+public name and statement. Its shared proof moved to the arithmetic module.
+The inventory has 17,592 roots. It retains all 17,579 prior roots. Generator
+freshness and mutation controls passed. Each guard cleaned its owned children.
+
+The legacy execution interfaces, production OS binary comparison and verified
+checker rollout remain open. No native circuit, Rust source or imported value
+changed. Full frontend validation, environment audit, baseline refresh,
+transitive replay and Linux qualification did not run.

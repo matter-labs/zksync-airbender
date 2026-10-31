@@ -1092,6 +1092,119 @@ end Airbender.Compiler.ProgramConstraintsNative.{name}
     return roots
 
 
+def program_unified_constraints():
+    roots = []
+    for name in [name for name in NAMES if name.startswith('Unified')]:
+        constructor = name[0].lower() + name[1:]
+        case = f'Airbender.Compiler.UnifiedRowNative.{name}'
+        source_model = f'Airbender.Compiler.LookupSourceNative.{name}.native'
+        clean = f'Airbender.Compiler.CleanGenericArgumentsNative.{name}.native'
+        arithmetic = f'Airbender.Compiler.CleanArithmeticNative.{name}.native'
+        values = f'((input.physical ∘ {source_model}.bank.address) ∘ Airbender.Compiler.LookupNative.{name}.native.sourcePlacement)'
+        tables = f'(fun group index => NativeProgramSetup.rows decoder wordAt .{constructor} group index.val)'
+        range_parameters = f'''(decoder : Configuration → List (List Source.BaseField))
+    (wordAt : Nat → BitVec 32) (input : Input)
+    (arguments : LookupArgumentsWith {tables} input)'''
+        generic_parameters = f'''(decoder : Configuration → List (List Source.BaseField))
+    (initial : Reference.RiscV.Sail.State) (input : Input)
+    (arguments : LookupArgumentsWith (fun group index => NativeProgramSetup.rows decoder
+      (Trace.ROM.words initial) .{constructor} group index.val) input)
+    (guards : ∀ index : Fin 5, (inputRow input).assignment (#v[82, 86, 95, 104, 113][index]) ≠ 46)'''
+        code = f'''import Airbender.Proofs.GKRProtocol.ProgramFixedLookup.{name}
+import Airbender.Proofs.GKRProtocol.ProgramDecoderLookup.{name}
+import Airbender.Proofs.GKRProtocol.ProgramUnifiedDecoderTags
+import Airbender.Proofs.GKRProtocol.ProgramUnifiedArithmeticTags
+import Airbender.Proofs.GKRProtocol.ProgramUnifiedROM
+
+namespace Airbender.Compiler.ProgramConstraintsNative.{name}
+open Airbender Airbender.Compiler {case}
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 65536
+
+'''
+        original = (ROOT / 'Airbender/Proofs/GKRProtocol/PhysicalClosedNative' / (name + '.lean')).read_text()
+        ranges = original[original.index('theorem range_lookup0'):original.index('theorem generic_lookup0')]
+        for entry in re.split(r'(?=theorem range_lookup\d+\n)', ranges):
+            if not entry.strip():
+                continue
+            theorem = re.search(r'^theorem (range_lookup\d+)', entry)[1]
+            target = entry[entry.index(' :\n', entry.index('(authored')) + len(' :\n'):]
+            target = re.sub(r'\bphysical\b', 'input.physical', target)
+            target = re.sub(r'\barithmetic\b', 'input.arithmetic', target)
+            target = target.replace('authored.2 query', f'ProgramFixedLookup.{name}.range_from_arguments decoder wordAt input arguments query')
+            code += f'private theorem {theorem}\n    {range_parameters} (data : ProverData Source.BaseField) :\n' + target
+        for index, tag_column in enumerate([82, 86, 95, 104, 113]):
+            code += f'''private theorem generic_lookup{index}
+    {generic_parameters} (data : ProverData Source.BaseField) :
+    (Lookup.mk (UnifiedReduced.Setup.table initial).toRaw {clean}.genericExpressions{index}).Contains
+      ({arithmetic}.environment input.physical data) := by
+  let query := {source_model}.genericQueries.get ⟨{index}, by decide⟩
+  obtain ⟨nativeIndex, matched⟩ := source_member_with (fun group index =>
+    NativeProgramSetup.rows decoder (Trace.ROM.words initial) .{constructor} group index.val) input arguments 0
+    (query.materialized {values})
+    (List.mem_map.mpr ⟨query, List.get_mem {source_model}.genericQueries ⟨{index}, by decide⟩, rfl⟩)
+    one_ne_zero
+'''
+            for field in range(10):
+                code += f'  have same{field} := {clean}.part0.generic_value{index}_{field} input.physical data input.arithmetic\n'
+            code += f'''  let actual := {clean}.genericExpressions{index}.map
+    (fun expression => expression.eval ({arithmetic}.environment input.physical data))
+  have guard : actual[9] ≠ 46 := by
+    simp [actual, {clean}.genericExpressions{index},
+      {clean}.part0.genericExpression{index}_9, _root_.Expression.eval]
+    change (inputRow input).assignment {tag_column} ≠ 46
+    exact guards ⟨{index}, by decide⟩
+  apply clean_vector_lookup
+  apply NativeProgramSetup.unified_public_member decoder initial .{constructor}
+    ({"Or.inl" if name.endswith("Uncached") else "Or.inr"} rfl) nativeIndex actual ?_ guard
+  simp only [actual, {clean}.genericExpressions{index}, Vector.map_mk, List.map_toArray]
+  change [''' + ', '.join(f'({clean}.part0.genericExpression{index}_{field}).eval ({arithmetic}.environment input.physical data)' for field in range(10)) + '''] = _
+  rw [''' + ', '.join('same' + str(field) for field in range(10)) + ''']
+  exact matched
+
+'''
+        inventory = original[original.index('theorem clock_lookup_inventory'):original.index('theorem range_lookup0')]
+        inventory = inventory.replace('theorem clock_lookup_inventory :', 'private theorem clock_lookup_inventory (setup : Table Source.BaseField (fields 10)) :')
+        inventory = inventory.replace('nativeSetup', 'setup')
+        code += inventory
+        body = original[original.index('theorem retained_clock_from_physical'):]
+        body = body[body.index(' := by\n') + len(' := by\n'):body.index('\nend ')]
+        body = re.sub(r'(range_lookup\d+) physical data arithmetic authored', r'\1 (NativeProgramSetup.unifiedDecoderColumns columns) (Trace.ROM.words initial) input arguments (fun _ _ => #[])', body)
+        body = re.sub(r'(generic_lookup\d+) physical data arithmetic authored', r'\1 (NativeProgramSetup.unifiedDecoderColumns columns) initial input arguments guards (fun _ _ => #[])', body)
+        body = re.sub(r'\bphysical\b', 'input.physical', body)
+        body = re.sub(r'\barithmetic\b', 'input.arithmetic', body)
+        body = re.sub(r'\bdata\b', '(fun _ _ => #[])', body)
+        body = body.replace('nativeSetup', '(UnifiedReduced.Setup.table initial)')
+        code += f'''/-- Public decoding and exact native matching prove all unified row constraints. -/
+theorem input_constraints
+    {{initial : Reference.RiscV.Sail.State}} {{text : List (BitVec 32)}} {{capacity : Nat}}
+    {{mask : Trace.NativeDecoder.ProgramRows.Mask}} {{columns : List (List Source.BaseField)}}
+    (setup : UnifiedProgramSetup initial text capacity mask columns)
+    (input : Input)
+    (arguments : LookupArgumentsWith (fun group index =>
+      NativeProgramSetup.unifiedLookupRows initial columns .{constructor} group index.val) input)
+    (typed : (inputRow input).decoderQuery[0].val < 65536) :
+    FlatOperation.ConstraintsHoldFlat (Verification.environment (inputRow input).assignment)
+      ((inputRow input).constraints (UnifiedReduced.Setup.table initial)) := by
+  have helpers := ProgramFixedLookup.{name}.helpers_from_arguments
+    (NativeProgramSetup.unifiedDecoderColumns columns) (Trace.ROM.words initial) input arguments
+  have assertions : ∀ expression ∈ FlatOperation.constraints (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table initial)),
+      expression.eval (Verification.environment (inputRow input).assignment) = 0 := by
+    rw [Airbender.Compiler.CleanLinksNative.{name}.arithmetic_inventory]
+    exact CleanExpression.assertions_only _ _
+      ({arithmetic}.arithmetic_preserved input.physical (fun _ _ => #[]) input.arithmetic)
+  have matched := ProgramDecoderLookup.{name}.decoder_lookup setup input arguments typed
+  have operation := public_unified_operation setup (inputRow input).assignment matched typed
+  have guards := UnifiedPublicConstraints.helper_not_decoder _ (inputRow input).assignment assertions input.active operation
+{body}
+end Airbender.Compiler.ProgramConstraintsNative.{name}
+'''
+        emit(Path('Airbender/Proofs/GKRProtocol/ProgramConstraintsNative') / (name + '.lean'), code)
+        roots.append(f'Airbender.Compiler.ProgramConstraintsNative.{name}.input_constraints')
+    return roots
+
+
 def program_pc_bounds():
     roots = []
     direct = {'ShiftBinop': 0, 'WordMemory': 1, 'SubwordMemory': 3, 'Unified': 11}
@@ -1162,6 +1275,7 @@ fixed_roots = program_fixed_interfaces()
 constraint_roots = program_fixed_cpu_constraints()
 constraint_roots += program_subword_constraints()
 constraint_roots += program_word_constraints()
+constraint_roots += program_unified_constraints()
 pc_roots = program_pc_bounds()
 shift_roots = ['Airbender.Compiler.' + name for name in [
     'public_program_full_fields', 'public_program_shift_source',
@@ -1189,6 +1303,17 @@ word_roots += ['Airbender.Compiler.NativeProgramSetup.' + name for name in [
 word_roots += ['Airbender.Compiler.PooledExecution.' + name for name in [
     'ProgramLogicalRowCertificate.program_constraints',
     'program_row_constraints_from_native']]
+unified_roots = ['Airbender.Compiler.public_unified_field_tags',
+                 'Airbender.Compiler.public_unified_operation',
+                 'Airbender.UnifiedReduced.Proofs.unified_flags_of_assertions',
+                 'Airbender.UnifiedReduced.Proofs.unified_dispatch_count_of_assertions',
+                 'Airbender.Compiler.UnifiedPublicConstraints.helper_not_decoder']
+unified_roots += ['Airbender.Compiler.NativeProgramSetup.' + name for name in [
+    'vector_ten_last', 'unified_fixed_query_member', 'unified_zero_member',
+    'unified_public_member']]
+unified_roots += ['Airbender.Compiler.UnifiedExecution.' + name for name in [
+    'ProgramLogicalRowCertificate.program_constraints',
+    'program_row_constraints_from_native']]
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
@@ -1204,17 +1329,20 @@ if public_row_import not in content.splitlines():
 public_constraints_import = 'import Airbender.Proofs.GKRProtocol.ProgramPublicConstraints'
 if public_constraints_import not in content.splitlines():
     content = public_constraints_import + '\n' + content
+unified_constraints_import = 'import Airbender.Proofs.GKRProtocol.ProgramUnifiedConstraints'
+if unified_constraints_import not in content.splitlines():
+    content = unified_constraints_import + '\n' + content
 decoder_imports = '\n'.join('import Airbender.Proofs.GKRProtocol.' + tree + '.' + name
                           for tree in ['ProgramDecoderNative', 'ProgramDecoderLookup', 'ProgramFixedLookup', 'ProgramPCLowNative'] for name in NAMES)
 for decoder_import in decoder_imports.splitlines():
     if decoder_import not in content.splitlines():
         content = decoder_import + '\n' + content
-for name in [name for name in NAMES if name.startswith(('AddSub', 'JumpBranch', 'MulDiv', 'ShiftBinop', 'SubwordMemory', 'WordMemory'))]:
+for name in NAMES:
     constraint_import = 'import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.' + name
     if constraint_import not in content.splitlines():
         content = constraint_import + '\n' + content
 roots = []
-for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots + public_row_roots + word_roots:
+for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots + public_row_roots + word_roots + unified_roots:
     root = f'#print axioms {name}'
     if root not in content.splitlines():
         roots.append(root)

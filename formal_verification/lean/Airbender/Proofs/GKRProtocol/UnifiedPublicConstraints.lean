@@ -1,3 +1,4 @@
+import Airbender.Proofs.GKRProtocol.ProgramUnifiedArithmeticTags
 import Airbender.Proofs.GKRProtocol.RetableConstraints
 import Airbender.Proofs.GKRProtocol.CleanClosedNative.UnifiedUncached
 import Airbender.Proofs.GKRProtocol.ROMNative.UnifiedFullPublic
@@ -9,30 +10,6 @@ set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 65536
 set_option maxHeartbeats 4000000
-
-/-- At most one dispatcher contribution reaches a pooled query. The selected
-binary-operation tag remains a separate decoder-derived input. -/
-theorem one_hot_tags (operation : Source.BaseField) (different : operation ≠ 46)
-    (control binary shift rom : Nat) (oneHotBound : control + binary + shift + rom ≤ 1) :
-    ((control : Source.BaseField) + 8 * binary + 3 * shift + 34 * rom) ≠ 46 ∧
-    (5 * (control : Source.BaseField) + 9 * binary + shift * operation) ≠ 46 ∧
-    (51 * (control : Source.BaseField) + 9 * binary + shift * operation) ≠ 46 ∧
-    (2 * (control : Source.BaseField) + 9 * binary + shift * operation) ≠ 46 := by
-  have a : control ≤ 1 := by omega
-  have b : binary ≤ 1 := by omega
-  have c : shift ≤ 1 := by omega
-  have d : rom ≤ 1 := by omega
-  have g0 : (0 : Source.BaseField) ≠ 46 := by decide +kernel
-  have g1 : (1 : Source.BaseField) ≠ 46 := by decide +kernel
-  have g2 : (2 : Source.BaseField) ≠ 46 := by decide +kernel
-  have g3 : (3 : Source.BaseField) ≠ 46 := by decide +kernel
-  have g5 : (5 : Source.BaseField) ≠ 46 := by decide +kernel
-  have g8 : (8 : Source.BaseField) ≠ 46 := by decide +kernel
-  have g9 : (9 : Source.BaseField) ≠ 46 := by decide +kernel
-  have g34 : (34 : Source.BaseField) ≠ 46 := by decide +kernel
-  have g51 : (51 : Source.BaseField) ≠ 46 := by decide +kernel
-  interval_cases control <;> interval_cases binary <;> interval_cases shift <;> interval_cases rom
-  all_goals first | omega | simp_all
 
 noncomputable abbrev rowQueries := CleanGenericArgumentsNative.UnifiedUncached.native.genericExpressions
 
