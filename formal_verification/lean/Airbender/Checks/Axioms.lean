@@ -1,3 +1,4 @@
+import Airbender.Proofs.GKRProtocol.NativeMachineAcceptance
 import Airbender.Proofs.GKRProtocol.ProgramUnifiedConstraints
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.UnifiedCached
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.UnifiedUncached
@@ -19206,3 +19207,8 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.NativeProgramSetup.unified_public_member
 #print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate.program_constraints
 #print axioms Airbender.Compiler.UnifiedExecution.program_row_constraints_from_native
+
+#print axioms Airbender.Compiler.MachineTargets.UnrolledNativeArguments
+#print axioms Airbender.Compiler.MachineTargets.UnifiedNativeArguments
+#print axioms Airbender.Compiler.MachineTargets.unrolled_acceptance_from_native
+#print axioms Airbender.Compiler.MachineTargets.unified_acceptance_from_native
