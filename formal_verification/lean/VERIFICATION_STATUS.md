@@ -2558,3 +2558,34 @@ pilot stays intact. Cached and uncached captures remain required.
 
 Full frontend validation, environment audit, baseline refresh, transitive
 replay and Linux qualification did not run.
+
+
+### Full unsigned exact source-bank and token obligations
+
+The parity and chi exact-bank and token obligations are closed. The kernel
+proves each new bank equal to its original bank. It preserves all 106,187
+parity source indices. It also preserves both chi index lists, with 54,535
+and 6,969 entries. Each scalar partition and literal list has a kernel proof.
+
+The kernel checks every stored string and number encoding. The selector
+proofs cover all indices, including the default branch. These results supply
+the bank and token premises of the original-source renderer. They add no
+premise to the machine target.
+
+The four modules passed a focused build in 93 seconds. Peak physical memory
+was 1,960 MiB. All 2,650 new roots passed direct axiom checks in five seconds.
+They use only the three allowed axioms. The explicit inventory has 17,257
+roots. It retains all 14,607 prior roots. Each guard cleaned its owned children.
+
+The original parity and chi string bindings remain open. FullUnsigned is
+not yet proved. Whole-literal parity comparisons reached a kernel recursion
+limit. Separate data builds passed. The complete literal model did not pass.
+Diagnostic tools and alternate literal representations remain outside the
+repository. They supply no proof or validation result. No resource cap increased.
+
+Design items 2 and 3 follow the targets. The packed checker pilot stays intact.
+Production circuits, production Rust and native imported values stay intact.
+Cached and uncached captures remain required.
+
+Full frontend validation, environment audit, baseline refresh, transitive
+replay and Linux qualification did not run.
