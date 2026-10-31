@@ -1,3 +1,4 @@
+import Airbender.Proofs.FullUnsigned.ParitySourceXorInputs
 import Airbender.Proofs.FullUnsigned.SetupSourcePrefixes
 import Airbender.Proofs.FullUnsigned.ParityControlPrefixes
 import Airbender.Proofs.FullUnsigned.ParitySourcePrefixRead
@@ -15889,3 +15890,9 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Setup.SourceCaptureParityProofs.source_control_slot_rows
 #print axioms Airbender.Compiler.MachineTargets.Proofs.parity_source_iota_member
 #print axioms Airbender.Compiler.MachineTargets.Proofs.parity_source_control_slot_member
+
+#print axioms Airbender.Setup.SourceCaptureParityProofs.source_xor_keys_get
+#print axioms Airbender.Setup.SourceCaptureParityProofs.source_xor_keys_match
+#print axioms Airbender.Setup.SourceCaptureParityProofs.source_xor_padding_get
+#print axioms Airbender.Setup.SourceCaptureParityProofs.source_xor_tag_get
+#print axioms Airbender.Setup.SourceCaptureParityProofs.source_xor_fixed_match
