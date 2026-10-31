@@ -470,10 +470,143 @@ end Airbender.Compiler.NativeProgramSetup
             ['layouts', 'lookupLength', 'genericWidth', 'retainedRows', 'rows', 'ValidGeometry',
              'geometry_valid', 'rows_fixed_group']]
 
+def program_decoder_interfaces():
+    root = ROOT
+    roots = []
+    families = {'AddSub': ('addSub', 'add-sub'), 'JumpBranch': ('jumpBranchSlt', 'jump-branch'),
+                'MulDiv': ('mulDiv', 'mul-div'), 'ShiftBinop': ('shiftBinop', 'shift-binop'),
+                'WordMemory': ('wordMemory', 'word-memory'),
+                'SubwordMemory': ('subwordMemory', 'subword-memory'), 'Unified': ('', 'unified')}
+    for name in NAMES:
+        family, filename = families[next(family for family in families if name.startswith(family))]
+        owner = 'UnifiedRowNative' if name.startswith('Unified') else 'PooledRowNative'
+        argument_source = (root / 'Airbender/Proofs/GKRProtocol/DecoderArgumentsNative' / f'{name}.lean').read_text()
+        trace_columns = re.search(r'\btrace_columns (\S+)', argument_source)[1]
+        decoder_columns = re.search(r'\bdecoder_columns (\S+)', argument_source)[1]
+        artifact=json.loads((root/'artifacts/setup'/f'{filename}.json').read_text())
+        circuit=artifact['circuit']; width=circuit['generic_lookup_tables_width'];tagged=circuit['tables_ids_in_generic_lookups'];mask=circuit['decode_table_columns_mask']
+        assert sum(mask) + int(tagged) == width, name
+        selectors=[]
+        for quoted in re.findall(r'\bselectors\s+("(?:[^"\\]|\\.)*")',(root/'Airbender/Proofs/GKRProtocol/LookupSourceNative'/f'{name}.lean').read_text()):
+            obj=json.loads(json.loads(quoted))
+            if 'operands' in obj:selectors.append(obj)
+        assert len(selectors)==1
+        queries=sorted([op for op in selectors[0]['operands'] if op['group']=='GenericLookup' and op['kind'] in ['query','decoder']],key=lambda o:o['source_row'])
+        decoder=next(o for o in queries if o['kind']=='decoder');leaf=decoder['native_leaf'];slot=queries.index(decoder)
+        source=f'Airbender.Compiler.LookupSourceNative.{name}.native'
+        native=f'Airbender.Compiler.DecoderArgumentsNative.{name}.native'
+        clean=f'Airbender.Compiler.CleanArithmeticNative.{name}.native'
+        case=f'Airbender.Compiler.{owner}.{name}'
+        coordinates=f'((input.physical ∘ {source}.bank.address) ∘ Airbender.Compiler.LookupNative.{name}.native.sourcePlacement)'
+        fields=f'{source}.query{leaf}.fields.map (fun field => field.value {coordinates})'
+        query=f'({case}.inputRow input).decoderQuery'
+        native_mask = 'ProgramRows.Proofs.unifiedMask' if name.startswith('Unified') else f'(ProgramRows.Proofs.maskOfFamily .{family})'
+        masked=f'ProgramRows.maskRow {native_mask} {query}'
+        packed=f'ProgramSetup.packTagged {width} 46 ({masked})' if tagged else masked
+        projection=', '.join([f'row[{i}]' for i,b in enumerate(mask) if b]+(['46'] if tagged else []))
+        exprs=', '.join(f'{native}.expression{i}' for i in range(1,width+1))
+        simplifiers=f'project, {native}.payloadExpressions, '+exprs+(', _root_.Expression.eval' if tagged else '')
+        code=f'''import Airbender.Import.Compiler.LogicalRows.{name}
+import Airbender.Proofs.GKRProtocol.DecoderArgumentsNative.{name}
+import Airbender.Proofs.GKRProtocol.PublicProgramRowWidths
+
+namespace Airbender.Compiler.ProgramDecoderNative.{name}
+open Airbender Airbender.Compiler Airbender.Trace.NativeDecoder Airbender.Reference.Compiler
+set_option warningAsError true
+set_option Elab.async false
+
+theorem decoder_tuple (input : {case}.Input) :
+    {fields} =
+      {packed} := by
+  rw [← {native}.payload_fields input.physical (fun _ _ => #[]) input.arithmetic]
+  let project : Vector Source.BaseField 9 → List Source.BaseField := fun row => [{projection}]
+  have left : ({native}.payloadExpressions.map (fun expression => expression.eval
+      ({clean}.environment input.physical (fun _ _ => #[])))) =
+      project ((decoderExpressions {trace_columns} {decoder_columns}).map
+        (fun expression => expression.eval ({clean}.environment input.physical (fun _ _ => #[])))) := by simp [{simplifiers}]
+  have right : {packed} = project (Trace.nativeDecoderQuery
+      {trace_columns} {decoder_columns}
+      (fun index => ({clean}.environment input.physical (fun _ _ => #[])).get index)) := by rfl
+  exact left.trans ((congrArg project (decoder_expressions_value
+    {trace_columns} {decoder_columns}
+    ({clean}.environment input.physical (fun _ _ => #[])))).trans right.symm)
+
+theorem decoder_enabled (input : {case}.Input) :
+    {source}.query{leaf}.weight (RingHom.id _) {coordinates} ≠ 0 := by
+  rw [{native}.execute_weight input.physical (fun _ _ => #[]) input.arithmetic]
+  have active : ({native}.expression0).eval
+      ({clean}.environment input.physical (fun _ _ => #[])) = 1 := input.active
+  rw [active]
+  exact one_ne_zero
+
+theorem decoder_member (input : {case}.Input) :
+    {source}.query{leaf}.materialized {coordinates} ∈ {case}.physicalRequests input 0 := by
+  have member : {source}.query{leaf} ∈ {source}.genericQueries :=
+    List.get_mem {source}.genericQueries ⟨{slot}, by decide⟩
+  exact List.mem_map.mpr ⟨{source}.query{leaf}, member, rfl⟩
+
+end Airbender.Compiler.ProgramDecoderNative.{name}
+'''
+        emit(Path('Airbender/Proofs/GKRProtocol/ProgramDecoderNative') / f'{name}.lean', code)
+        roots.extend(f'Airbender.Compiler.ProgramDecoderNative.{name}.{theorem}'
+                     for theorem in ['decoder_tuple', 'decoder_enabled', 'decoder_member'])
+        constructor = name[0].lower() + name[1:]
+        if name.startswith('Unified'):
+            parameters = '''{initial : Reference.RiscV.Sail.State} {text : List (BitVec 32)} {capacity : Nat}
+    {mask : ProgramRows.Mask} {columns : List (List Source.BaseField)}
+    (setup : UnifiedProgramSetup initial text capacity mask columns)'''
+            factory = 'unifiedLookupRows initial columns'
+            result = f'ProgramRows.maskRow mask {query} ∈ columns'
+            choice = 'Or.inr rfl' if name.endswith('Cached') else 'Or.inl rfl'
+            application = f'''NativeProgramSetup.unified_decoder_lookup setup .{constructor} _
+    ({choice}) rfl index.val _ typed
+  rw [NativeProgramSetup.unified_mask_eq setup]'''
+        else:
+            parameters = '''{config : ProgramRows.Config} {initial : Reference.RiscV.Sail.State}
+    {text : List (BitVec 32)} {capacity : Nat} {masks : Trace.PooledFamily → ProgramRows.Mask}
+    {columns : Trace.PooledFamily → List (List Source.BaseField)}
+    (setup : UnrolledProgramSetup config initial text capacity masks columns)'''
+            factory = 'unrolledLookupRows initial columns'
+            result = f'ProgramRows.maskRow (masks .{family}) {query} ∈ columns .{family}'
+            application = f'''NativeProgramSetup.unrolled_decoder_lookup setup .{constructor} .{family} _
+    rfl rfl index.val _ typed
+  rw [NativeProgramSetup.unrolled_mask_eq setup .{family}]'''
+        code = f'''import Airbender.Proofs.GKRProtocol.ProgramDecoderNative.{name}
+import Airbender.Proofs.GKRProtocol.LogicalRows.{name}
+import Airbender.Proofs.GKRProtocol.NativePublicDecoder
+
+namespace Airbender.Compiler.ProgramDecoderLookup.{name}
+open Airbender Airbender.Compiler Airbender.Trace.NativeDecoder NativeProgramSetup
+set_option warningAsError true
+set_option Elab.async false
+
+/-- Exact native matching and arithmetic derive the public decoder lookup. -/
+theorem decoder_lookup
+    {parameters}
+    (input : {case}.Input)
+    (arguments : {case}.LookupArgumentsWith
+      (fun group index => {factory} .{constructor} group index.val) input)
+    (typed : {query}[0].val < 65536) : {result} := by
+  obtain ⟨index, equal⟩ := {case}.source_member_with
+    (fun group index => {factory} .{constructor} group index.val)
+    input arguments 0 ({source}.query{leaf}.materialized {coordinates})
+    (ProgramDecoderNative.{name}.decoder_member input)
+    (ProgramDecoderNative.{name}.decoder_enabled input)
+  have matched : {fields} = {factory} .{constructor} 0 index.val := equal
+  apply {application}
+  exact (ProgramDecoderNative.{name}.decoder_tuple input).symm.trans matched
+
+end Airbender.Compiler.ProgramDecoderLookup.{name}
+'''
+        emit(Path('Airbender/Proofs/GKRProtocol/ProgramDecoderLookup') / f'{name}.lean', code)
+        roots.append(f'Airbender.Compiler.ProgramDecoderLookup.{name}.decoder_lookup')
+    return roots
+
 for name in NAMES:
     prepared(name)
 program_roots = program_row_interfaces()
 setup_roots = program_setup_interfaces()
+decoder_roots = program_decoder_interfaces()
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
@@ -483,8 +616,13 @@ if program_import not in content.splitlines():
 setup_import = 'import Airbender.Proofs.GKRProtocol.ProgramSetupNative'
 if setup_import not in content.splitlines():
     content = setup_import + '\n' + content
+decoder_imports = '\n'.join('import Airbender.Proofs.GKRProtocol.' + tree + '.' + name
+                          for tree in ['ProgramDecoderNative', 'ProgramDecoderLookup'] for name in NAMES)
+for decoder_import in decoder_imports.splitlines():
+    if decoder_import not in content.splitlines():
+        content = decoder_import + '\n' + content
 roots = []
-for name in program_roots + setup_roots:
+for name in program_roots + setup_roots + decoder_roots:
     root = f'#print axioms {name}'
     if root not in content.splitlines():
         roots.append(root)

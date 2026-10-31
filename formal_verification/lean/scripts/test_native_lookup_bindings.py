@@ -16,6 +16,9 @@ class LookupPremiseGeneration(unittest.TestCase):
             for relative in ('Airbender/Import/Compiler/LogicalRows',
                              'Airbender/Proofs/GKRProtocol/LogicalRows',
                              'Airbender/Proofs/GKRProtocol/LookupSourceNative',
+                             'Airbender/Proofs/GKRProtocol/DecoderArgumentsNative',
+                             'Airbender/Proofs/GKRProtocol/ProgramDecoderNative',
+                             'Airbender/Proofs/GKRProtocol/ProgramDecoderLookup',
                              'Airbender/Proofs/GKRProtocol/HelperNative'):
                 destination = scratch / relative
                 destination.mkdir(parents=True)
@@ -54,6 +57,19 @@ class LookupPremiseGeneration(unittest.TestCase):
             changed = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(changed.returncode, 1, changed.stdout + changed.stderr)
             for path in paths:
+                self.assertIn(path.relative_to(scratch).as_posix(), changed.stderr)
+            restored = subprocess.run([item for item in command if item != '--check'],
+                                      capture_output=True, text=True)
+            self.assertEqual(restored.returncode, 0, restored.stdout + restored.stderr)
+            decoder_paths = sorted((scratch / 'Airbender/Proofs/GKRProtocol/ProgramDecoderNative').glob('*.lean'))
+            self.assertEqual(len(decoder_paths), 14)
+            for path in decoder_paths:
+                text = path.read_text()
+                self.assertIn('.fields.map', text)
+                path.write_text(text.replace('.fields.map', '.fields.reverse.map', 1))
+            changed = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(changed.returncode, 1, changed.stdout + changed.stderr)
+            for path in decoder_paths:
                 self.assertIn(path.relative_to(scratch).as_posix(), changed.stderr)
 
 
