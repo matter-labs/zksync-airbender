@@ -1,3 +1,6 @@
+import Airbender.Proofs.GKRProtocol.ProgramUnifiedConstraints
+import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.UnifiedCached
+import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.UnifiedUncached
 import Airbender.Proofs.GKRProtocol.ProgramPublicConstraints
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.WordMemoryCached
 import Airbender.Proofs.GKRProtocol.ProgramConstraintsNative.WordMemoryUncached
@@ -19188,3 +19191,18 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.NativeProgramSetup.word_public_member
 #print axioms Airbender.Compiler.PooledExecution.ProgramLogicalRowCertificate.program_constraints
 #print axioms Airbender.Compiler.PooledExecution.program_row_constraints_from_native
+
+#print axioms Airbender.Compiler.ProgramConstraintsNative.UnifiedUncached.input_constraints
+#print axioms Airbender.Compiler.ProgramConstraintsNative.UnifiedCached.input_constraints
+
+#print axioms Airbender.Compiler.public_unified_field_tags
+#print axioms Airbender.Compiler.public_unified_operation
+#print axioms Airbender.UnifiedReduced.Proofs.unified_flags_of_assertions
+#print axioms Airbender.UnifiedReduced.Proofs.unified_dispatch_count_of_assertions
+#print axioms Airbender.Compiler.UnifiedPublicConstraints.helper_not_decoder
+#print axioms Airbender.Compiler.NativeProgramSetup.vector_ten_last
+#print axioms Airbender.Compiler.NativeProgramSetup.unified_fixed_query_member
+#print axioms Airbender.Compiler.NativeProgramSetup.unified_zero_member
+#print axioms Airbender.Compiler.NativeProgramSetup.unified_public_member
+#print axioms Airbender.Compiler.UnifiedExecution.ProgramLogicalRowCertificate.program_constraints
+#print axioms Airbender.Compiler.UnifiedExecution.program_row_constraints_from_native
