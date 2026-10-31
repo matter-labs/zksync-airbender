@@ -29,13 +29,25 @@ private theorem checks (kind : Fin 3) :
 theorem coverage (kind : Fin 3) :
     ((data (binaryKind kind)).columns[2].blocks.toList.map Block.length).sum = 65536 := by
   fin_cases kind
-  all_goals
-    dsimp only [data, binaryKind, byteXorData, byteOrData, byteAndData,
+  ·
+    dsimp only [data, binaryKind, byteXorData, byteOrData,
       Vector.getElem_mk, Fin.getElem_fin, List.getElem_toArray,
       List.getElem_cons_zero, List.getElem_cons_succ]
     simp only [raw_toList_append, List.map_append, List.sum_append,
       List.map_cons, List.map_nil, List.sum_cons, List.sum_nil,
-      Block.length, raw_literal_size, List.length_cons, List.length_nil, Array.size_ofFn, Array.size_replicate, Array.size_range, raw_size_append, Nat.reduceAdd, Nat.reduceMul]
+      Block.length, raw_literal_size, List.length_cons, List.length_nil,
+      Array.size_ofFn, raw_size_append,
+      Nat.reduceAdd, Nat.reduceMul]
+  ·
+    dsimp only [data, binaryKind, byteXorData, byteOrData,
+      Vector.getElem_mk, Fin.getElem_fin, List.getElem_toArray,
+      List.getElem_cons_zero, List.getElem_cons_succ]
+    simp only [raw_toList_append, List.map_append, List.sum_append,
+      List.map_cons, List.map_nil, List.sum_cons, List.sum_nil,
+      Block.length, raw_literal_size, List.length_cons, List.length_nil,
+      Array.size_ofFn, Array.size_replicate, raw_size_append,
+      Nat.reduceAdd, Nat.reduceMul]
+  · exact ShiftPackedCertificate.coverage
 
 private theorem output_get (kind : Fin 3) (n : Nat) (bound : n < 65536) :
     (data (binaryKind kind)).columns[2].get? n = some (output kind n) := by

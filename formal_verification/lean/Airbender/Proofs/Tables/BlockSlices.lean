@@ -8,6 +8,11 @@ partial def literalList (value : Lean.Expr) : CommandElabM (Array Lean.Expr) := 
   let value := value.consumeMData
   if let .letE _ _ rhs body _ := value then return ← literalList (body.instantiate1 rhs)
   if value.getAppFn.isConstOf ``List.nil then return #[]
+  if let .const name _ := value then return ← literalList (← getConstInfoDefn name).value
+  if value.getAppFn.isConstOf ``List.map then
+    let args := value.getAppArgs
+    unless args.size == 4 do throwError "unexpected imported block-map arity"
+    return (← literalList args[3]!).map (mkApp args[2]!)
   unless value.getAppFn.isConstOf ``List.cons do throwError "expected imported literal block list"
   let args := value.getAppArgs
   unless args.size == 3 do throwError "unexpected imported block-list arity"

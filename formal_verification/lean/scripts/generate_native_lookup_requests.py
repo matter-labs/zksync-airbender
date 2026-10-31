@@ -1322,6 +1322,100 @@ decode_roots = ['Airbender.Trace.NativeDecoder.ProgramRows.decodeWord',
                 'Airbender.Trace.NativeDecoder.ProgramRows.Proofs.decode_word_sound',
                 'Airbender.Trace.NativeDecoder.ProgramRows.Proofs.program_code']
 
+packed_table_roots = ['Airbender.Setup.packedByte',
+ 'Airbender.Setup.packedArray',
+ 'Airbender.Setup.PackedBlock',
+ 'Airbender.Setup.PackedBlock.decode',
+ 'Airbender.Setup.PackedBlock.length',
+ 'Airbender.Setup.PackedRunInput',
+ 'Airbender.Setup.PackedBlock.input',
+ 'Airbender.Setup.Proofs.PackedColumn.digit',
+ 'Airbender.Setup.Proofs.PackedColumn.bytePower',
+ 'Airbender.Setup.Proofs.PackedColumn.bytePower_eq',
+ 'Airbender.Setup.Proofs.PackedColumn.segment_digit',
+ 'Airbender.Setup.Proofs.PackedRadix.extractDigitBase',
+ 'Airbender.Setup.Proofs.PackedRun.ones',
+ 'Airbender.Setup.Proofs.PackedRun.positions',
+ 'Airbender.Setup.Proofs.PackedRun.linear_digits',
+ 'Airbender.Setup.Proofs.PackedRun.translated_digits',
+ 'Airbender.Setup.Proofs.PackedRun.Run',
+ 'Airbender.Setup.Proofs.PackedRun.Run.length',
+ 'Airbender.Setup.Proofs.PackedRun.Run.value',
+ 'Airbender.Setup.Proofs.PackedRun.Run.valid',
+ 'Airbender.Setup.Proofs.PackedRun.Run.row',
+ 'Airbender.Setup.Proofs.PackedRun.Run.packed',
+ 'Airbender.Setup.Proofs.PackedRun.row_linear',
+ 'Airbender.Setup.Proofs.PackedRun.packed_rows',
+ 'Airbender.Setup.Proofs.PackedRun.row_values_bounded',
+ 'Airbender.Setup.Proofs.PackedRun.packed_byte',
+ 'Airbender.Setup.Proofs.PackedRun.ones_succ',
+ 'Airbender.Setup.Proofs.PackedRun.positions_succ',
+ 'Airbender.Setup.Proofs.PackedRun.geometric_identity',
+ 'Airbender.Setup.Proofs.PackedRun.moment_identity',
+ 'Airbender.Setup.Proofs.PackedRun.geometric_closed',
+ 'Airbender.Setup.Proofs.PackedRun.moment_closed',
+ 'Airbender.Setup.Proofs.PackedRun.Run.packedArithmetic',
+ 'Airbender.Setup.Proofs.PackedRun.packedArithmetic_eq',
+ 'Airbender.Setup.Proofs.PackedRun.packedArithmetic_byte',
+ 'Airbender.Setup.Proofs.PackedRunColumn.ofBlock',
+ 'Airbender.Setup.Proofs.PackedRunColumn.ofBlock_sound',
+ 'Airbender.Setup.Proofs.PackedPayload.packedByte_eq',
+ 'Airbender.Setup.Proofs.PackedPayload.packedArray_get',
+ 'Airbender.Setup.Proofs.PackedPayload.payload_roundtrip',
+ 'Airbender.Setup.PackedRunInput.length',
+ 'Airbender.Setup.PackedRunInput.asRun',
+ 'Airbender.Setup.PackedRunInput.valid',
+ 'Airbender.Setup.PackedRunInput.packed',
+ 'Airbender.Setup.Proofs.PackedPayload.run_length',
+ 'Airbender.Setup.Proofs.PackedPayload.valid_sound',
+ 'Airbender.Setup.Proofs.PackedPayload.packed_sound',
+ 'Airbender.Setup.Proofs.PackedWindows.window',
+ 'Airbender.Setup.Proofs.PackedWindows.span',
+ 'Airbender.Setup.Proofs.PackedWindows.legal',
+ 'Airbender.Setup.Proofs.PackedWindows.window_low',
+ 'Airbender.Setup.Proofs.PackedWindows.window_high',
+ 'Airbender.Setup.Proofs.PackedWindows.span_byte',
+ 'Airbender.Setup.Proofs.PackedBlockCertificate.decode_length',
+ 'Airbender.Setup.Proofs.PackedBlockCertificate.input_length',
+ 'Airbender.Setup.Proofs.PackedBlockCertificate.input_raw',
+ 'Airbender.Setup.Proofs.PackedBlockCertificate.checkBlock',
+ 'Airbender.Setup.Proofs.PackedBlockCertificate.check',
+ 'Airbender.Setup.Proofs.PackedBlockCertificate.checkBlock_sound',
+ 'Airbender.Setup.Proofs.PackedBlockCertificate.check_sound',
+ 'Airbender.Verification.byteAndPackedBlocks',
+ 'Airbender.Verification.byteAndPackedBlocksSourceBytes',
+ 'Airbender.Verification.ShiftPackedCertificate.source_binding',
+ 'Airbender.Verification.ShiftPackedCertificate.same_source_bytes',
+ 'Airbender.Verification.ShiftPackedCertificate.check',
+ 'Airbender.Verification.ShiftPackedCertificate.ok',
+ 'Airbender.Verification.ShiftPackedCertificate.check_sound',
+ 'Airbender.Verification.ShiftPackedCertificate.and_outputs',
+ 'Tests.PackedTableCertificates.first_nonzero_byte',
+ 'Tests.PackedTableCertificates.changed_byte_rejected',
+ 'Tests.PackedTableCertificates.little_endian_payload',
+ 'Tests.PackedTableCertificates.reversed_bytes_rejected',
+ 'Tests.PackedTableCertificates.extra_payload_byte_rejected',
+ 'Tests.PackedTableCertificates.periodic_source',
+ 'Tests.PackedTableCertificates.affine_source',
+ 'Tests.PackedTableCertificates.row_boundary',
+ 'Tests.PackedTableCertificates.last_source_byte',
+ 'Tests.PackedTableCertificates.outside_table_rejected',
+ 'Airbender.Verification.byteAndDataPackedColumn2',
+ 'Airbender.Setup.PackedBlock.affine',
+ 'Airbender.Setup.PackedBlock.dense',
+ 'Airbender.Setup.PackedBlock.periodic',
+ 'Airbender.Setup.PackedRunInput.mk',
+ 'Airbender.Setup.PackedRunInput.count',
+ 'Airbender.Setup.PackedRunInput.stride',
+ 'Airbender.Setup.PackedRunInput.period',
+ 'Airbender.Setup.PackedRunInput.payload',
+ 'Airbender.Setup.Proofs.PackedRun.Run.mk',
+ 'Airbender.Setup.Proofs.PackedRun.Run.count',
+ 'Airbender.Setup.Proofs.PackedRun.Run.stride',
+ 'Airbender.Setup.Proofs.PackedRun.Run.values',
+ 'Airbender.Verification.ShiftPackedCertificate.coverage',
+ 'Airbender.UnifiedReduced.Setup.nativeAndDataPackedColumn2']
+
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
 program_import = 'import Airbender.Proofs.GKRProtocol.ProgramLogicalRows'
@@ -1339,6 +1433,12 @@ if public_constraints_import not in content.splitlines():
 unified_constraints_import = 'import Airbender.Proofs.GKRProtocol.ProgramUnifiedConstraints'
 if unified_constraints_import not in content.splitlines():
     content = unified_constraints_import + '\n' + content
+packed_import = 'import Airbender.Proofs.Tables.ShiftAndPackedCertificate'
+if packed_import not in content.splitlines():
+    content = packed_import + '\n' + content
+packed_test_import = 'import Tests.PackedTableCertificates'
+if packed_test_import not in content.splitlines():
+    content = packed_test_import + '\n' + content
 acceptance_import = 'import Airbender.Proofs.GKRProtocol.NativeMachineAcceptance'
 if acceptance_import not in content.splitlines():
     content = acceptance_import + '\n' + content
@@ -1352,7 +1452,7 @@ for name in NAMES:
     if constraint_import not in content.splitlines():
         content = constraint_import + '\n' + content
 roots = []
-for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots + public_row_roots + word_roots + unified_roots + acceptance_roots + decode_roots:
+for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots + public_row_roots + word_roots + unified_roots + acceptance_roots + decode_roots + packed_table_roots:
     root = f'#print axioms {name}'
     if root not in content.splitlines():
         roots.append(root)

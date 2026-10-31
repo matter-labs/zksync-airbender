@@ -1,4 +1,5 @@
 import Airbender.Import.SetupEmbed
+import Airbender.Import.SetupRegionEmbed
 
 namespace Airbender.Setup
 open Lean Elab Command
@@ -61,11 +62,22 @@ private def blockSyntax : Block → CommandElabM (TSyntax `term)
   | .periodic repetitions stride values => do
       `(Airbender.Setup.Block.periodic $(quote repetitions) $(← integerSyntax stride) $(← valuesSyntax values))
 
-private def emitColumn (owner : Ident) (stem : String) (column : Column) : CommandElabM (TSyntax `term) := do
+private def emitColumn (owner : Ident) (stem : String) (column : Column)
+    (packedInterval : Option (Nat × Nat) := none) : CommandElabM (TSyntax `term) := do
   let mut chunks := #[]
+  let mut position := 0
   for chunk in [: (column.blocks.size + 127) / 128] do
     let name := mkIdent (owner.getId.appendAfter s!"{stem}Blocks{chunk}")
-    let blocks ← (column.blocks.extract (chunk * 128) (min column.blocks.size ((chunk + 1) * 128))).mapM blockSyntax
+    let mut blocks := #[]
+    for block in column.blocks.extract (chunk * 128) (min column.blocks.size ((chunk + 1) * 128)) do
+      let finish := position + block.length
+      let selected := packedInterval.any fun (first, last) => first ≤ position && finish ≤ last
+      let encoded ← if selected then do
+        let payload ← Slices.packedBlockSyntax block
+        `(Airbender.Setup.PackedBlock.decode $payload)
+      else blockSyntax block
+      blocks := blocks.push encoded
+      position := finish
     let literal ← arraySyntax blocks
     emitChecked (← `(def $name : Array Airbender.Setup.Block := $literal))
     chunks := chunks.push (← `($name))
@@ -77,13 +89,23 @@ private def emitColumn (owner : Ident) (stem : String) (column : Column) : Comma
 /-- Import whole physical setup columns in bounded literal declarations. The
 parser, validation, source bytes and circuit binding match `import_setup`.
 Array chunking changes elaboration size only, preserving every block in order. -/
-elab "import_full_setup " name:ident " from " path:str : command => do
+private def importFullSetup (name : TSyntax `ident) (path : TSyntax `str)
+    (packedSelection : Option (Nat × Nat)) : CommandElabM Unit := do
   let source ← IO.FS.readFile path.getString
   let artifact ← match parse source with
     | .ok artifact => pure artifact | .error error => throwError "setup import failed: {error}"
+  let packedInterval ← match packedSelection with
+    | none => pure none
+    | some (id, physical) => do
+      unless physical < artifact.columns.size do throwError "packed setup column is absent"
+      let some region := artifact.tables.find? (fun region => region.id == id)
+        | throwError "packed setup region is absent"
+      pure (some (physical, region.offset, region.offset + region.length))
   let mut columns := #[]
   for (column, index) in artifact.columns.toList.zipIdx do
-    columns := columns.push (← emitColumn name s!"Column{index}" column)
+    let interval := packedInterval.bind fun (physical, first, last) =>
+      if physical == index then some (first, last) else none
+    columns := columns.push (← emitColumn name s!"Column{index}" column interval)
   let range16 ← emitColumn name "Range16Column" artifact.range16
   let timestamp ← emitColumn name "TimestampColumn" artifact.timestamp_range
   let regions ← artifact.tables.mapM fun region =>
@@ -109,5 +131,15 @@ elab "import_full_setup " name:ident " from " path:str : command => do
     | .ok circuit => pure circuit.compress | .error error => throwError "setup import failed: {error}"
   let circuitName := mkIdent (name.getId.appendAfter "CircuitSource")
   emitChecked (← `(def $circuitName : String := $(quote circuit)))
+
+/-- Keep the original payload encoding for each source column. -/
+elab "import_full_setup " name:ident " from " path:str : command =>
+  importFullSetup name path none
+
+/-- Pack byte payloads in one selected region and physical column. The source
+parser, validation and every block boundary stay the same. -/
+elab "import_full_setup_packed_bytes " name:ident " from " path:str
+    " native_table_id " id:num " physical_column " physical:num : command =>
+  importFullSetup name path (some (id.getNat, physical.getNat))
 
 end Airbender.Setup
