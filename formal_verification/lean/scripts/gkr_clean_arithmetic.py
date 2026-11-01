@@ -101,14 +101,15 @@ def module(name, case, result):
     namespace = 'Airbender.Compiler.CleanArithmeticNative.' + case
     selectors = json.dumps(json.dumps({'format_version': 1, 'witnesses': result['witnesses']},
                                      separators=(',', ':')))
-    content = (f'import Airbender.Import.GKRProtocol.CleanArithmeticImport\nimport Airbender.Proofs.GKRProtocol.FullArithmeticNative.{case}\nimport Airbender.Proofs.GKRProtocol.CleanPlacementNative.{case}\n\n'
+    content = (f'import Airbender.Import.GKRProtocol.CleanArithmeticImport\nimport Airbender.Proofs.GKRProtocol.CleanIdealNative.{case}\nimport Airbender.Proofs.GKRProtocol.FullArithmeticNative.{case}\nimport Airbender.Proofs.GKRProtocol.CleanPlacementNative.{case}\n\n'
         f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
         'set_option warningAsError true\nset_option Elab.async false\n'
-        'set_option maxRecDepth 32768\nset_option maxHeartbeats 4000000\n\n'
+        'set_option maxRecDepth 32768\n\n'
         f'import_clean_arithmetic native from "artifacts/compiler/{name}.json"\n'
         f'  selectors {selectors}\n'
         f'  base_model Airbender.Compiler.FullArithmeticNative.{case}.native variables {result["counts"]["variables"]}\n'
-        f'  using Airbender.Compiler.CleanPlacementNative.{case}\n\n'
+        f'  using Airbender.Compiler.CleanPlacementNative.{case}\n'
+        f'  ideal_checks Airbender.Compiler.CleanIdealNative.{case}\n\n'
         f'end {namespace}\n')
     return target, content
 

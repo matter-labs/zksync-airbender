@@ -220,6 +220,7 @@ jobs:
           fv packed-fixed-prefixes python3 scripts/gkr_unified_prefix_assembly.py --stage column --check
           fv packed-arithmetic-captures python3 scripts/gkr_full_arithmetic_certificate.py --check
           fv numeric-payloads python3 scripts/gkr_numeric_arithmetic.py --check
+          fv clean-ideal-payloads python3 scripts/gkr_clean_ideal.py --check
           fv packed-xor9 python3 scripts/generate_packed_xor9.py --check
           fv packed-chi python3 scripts/generate_packed_chi.py --check
           fv packed-shift-encoding python3 scripts/generate_shift_packed_encoding.py --check
@@ -313,6 +314,7 @@ jobs:
           fv numeric-bindings python3 scripts/check_numeric_arithmetic_controls.py
           fv packed-normalization python3 scripts/check_packed_normalization_controls.py
           fv clean-placement python3 scripts/check_clean_placement_controls.py
+          fv clean-ideal python3 scripts/check_clean_ideal_controls.py
           fv packed-xor9-controls python3 scripts/check_packed_xor9_controls.py
           fv packed-byte-controls python3 scripts/check_packed_byte_table_controls.py
           fv packed-word-column-kernel-controls python3 scripts/check_packed_word_column_controls.py
