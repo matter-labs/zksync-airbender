@@ -1310,6 +1310,24 @@ and the larger-capture measurements remain open. Other generated frame and
 argument families also need a scope audit.
 The final full validation remains pending for implementation review.
 
+### Query-frame scaling probe
+
+The unadopted BlakeRound probe contains all 1,152 fields.
+Its closed numeric payload builds in 44.76 s and replays in 1.96 s.
+Materialization needs a bounded recursion depth of 8,192 and a scoped
+2,000,000-heartbeat limit. Replay still uses the standard 32 MiB stack.
+The complete source-record binding exceeds the 2,560 MiB footprint cap.
+The guard stops it at 2566.85 MiB and cleans its owned workers.
+The complete result and preservation controls do not run after that stop.
+
+A direct coordinate binding passes source and replay checks. Its guard takes
+4.84 s and peaks at 892.42 MiB. A combined metadata and edge-field binding
+probe also exceeds the cap. Its buffered messages do not identify the first
+expensive binding. Isolate each component before the next probe. Use bounded
+exact binding leaves for the expensive lists. Keep one complete Boolean result.
+All scaling sources stay in the evidence directory. No large capture is adopted.
+The other 20 query-frame captures remain open.
+
 ## Rebase checks
 
 The branch now uses base `c1a662222cafcd96db4383dce737edb79fa62b09` from
