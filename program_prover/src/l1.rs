@@ -117,7 +117,7 @@ pub fn prove_l1_wrap_in_memory_in_mode(
     let unified_circuit: GKRCircuitArtifact<Proth120> = {
         let src = std::fs::File::open(circuit_layout_path)
             .unwrap_or_else(|e| panic!("open {}: {e}", circuit_layout_path.display()));
-        serde_json::from_reader(src).expect("deserialize unified circuit")
+        serde_json::from_reader(std::io::BufReader::new(src)).expect("deserialize unified circuit")
     };
     let num_teardown_sets = unified_circuit.memory_layout.teardown_sets.len();
 

@@ -48,9 +48,11 @@ use setups::Setups;
 use std::path::PathBuf;
 
 fn serialize_pretty_to_file<T: serde::Serialize>(el: &T, path: &PathBuf) {
-    let mut dst =
-        std::fs::File::create(path).unwrap_or_else(|e| panic!("create {}: {e}", path.display()));
+    let mut dst = std::io::BufWriter::new(
+        std::fs::File::create(path).unwrap_or_else(|e| panic!("create {}: {e}", path.display())),
+    );
     serde_json::to_writer_pretty(&mut dst, el).unwrap();
+    std::io::Write::flush(&mut dst).unwrap();
 }
 
 /// The proof and setups to compress.
