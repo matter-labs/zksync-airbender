@@ -14,6 +14,10 @@ namespace Xor7Control
 def main():
     checker='PackedXor7Checks.check';owner='Airbender.Blake2G.Proofs.Xor7PackedCapture.'
     cases=[
+        ('three-bit table','checkBlocks (fun n => n / 8 ^^^ n % 8) 0 (Airbender.Blake2G.xor3Data.columns[2]).blocks.toList = true',
+         'checkBlocks (fun _ => 0) 0 (Airbender.Blake2G.xor3Data.columns[2]).blocks.toList = true'),
+        ('four-bit table','checkBlocks (fun n => n / 16 ^^^ n % 16) 0 (Airbender.Blake2G.xor4Data.columns[2]).blocks.toList = true',
+         'checkBlocks (fun _ => 0) 0 (Airbender.Blake2G.xor4Data.columns[2]).blocks.toList = true'),
         ('payload',f'{checker} 0 [Code.dense 2 65536] = true',f'{checker} 0 [Code.dense 2 65537] = true'),
         ('signed stride',f'{checker} 127 [Code.affine 2 127 (-126)] = true',f'{checker} 127 [Code.affine 2 127 (-127)] = true'),
         ('domain bound',f'{checker} 16383 [Code.affine 1 0 0] = true',f'{checker} 16383 [Code.affine 2 0 0] = true'),
@@ -29,7 +33,7 @@ def main():
             if not mutated and result.returncode:raise SystemExit(f'Exact {label} failed:\n'+result.stdout[-2000:])
             if mutated and (not result.returncode or '(kernel) declaration type mismatch' not in result.stdout.lower()):
                 raise SystemExit(f'Changed {label} did not fail in the kernel:\n'+result.stdout[-2000:])
-    print('PASS five exact XOR7 controls; kernel rejects all five mutations')
+    print('PASS seven exact small XOR and XOR7 controls; kernel rejects all seven mutations')
 
 
 if __name__=='__main__':main()

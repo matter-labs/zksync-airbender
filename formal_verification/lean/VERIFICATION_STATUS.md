@@ -1140,6 +1140,29 @@ The inventory has 73,590 roots. It retains all 73,485 established roots.
 Other fixed setup length and table families still need migration.
 The final full validation remains pending for implementation review.
 
+### Complete small native XOR checks
+
+The native XOR3 and XOR4 certificates now each use one whole kernel result.
+They use the existing Boolean `checkBlocks` checker and its proved soundness.
+Their 64 and 256 rows pass with the default heartbeat limit.
+The old literal splits and four-million-heartbeat override are gone.
+Both original public theorem types pass the kernel preservation control.
+No imported value changes.
+
+The certificate and its direct consumer pass source checks and kernel replay.
+Each replay uses the standard 32 MiB stack. No safe dependency is skipped.
+These checks trust imported objects.
+The certificate builds in 1.92 s and replays in 1.87 s.
+The source and replay guard takes 4.35 s and peaks at 830.95 MiB.
+The consumer and qualification guard takes 38.23 s and peaks at 1827.35 MiB.
+Both guards clean their owned workers.
+Both focused axiom checks use only the three allowed axioms.
+Seven exact small-XOR and XOR7 controls pass.
+The kernel rejects all seven mutations.
+The inventory stays at 73,590 roots. Every established root remains.
+Other fixed setup length and table families still need migration.
+The final full validation remains pending for implementation review.
+
 ## Rebase checks
 
 The branch now uses base `c1a662222cafcd96db4383dce737edb79fa62b09` from
