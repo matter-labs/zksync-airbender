@@ -4622,3 +4622,43 @@ check. Full frontend validation, the environment audit and baseline refresh,
 full transitive replay, cold full measurements, and Linux runtime and warm-cache
 qualification remain pending for review. The known aggregate ownership collision
 remains deferred.
+
+### Complete memory-frame pilot (2026-11-01)
+
+AddSubCached and AddSubUncached now use one complete memory-frame check each.
+NumericMemoryFrameChecks.check_sound derives the original RAM, initialization
+and execute predicates. It keeps both erasure scopes. RAM uses activeCoordinates.
+Initialization and execute use allCoordinates. It preserves the exact input-bank,
+full-bank and oracle-independence tests. A proved address-code decoder handles
+all original address classes. The semantic finalizers and their premises remain.
+
+The strict importer materializes only closed natural data. Separate complete
+kernel equalities bind both masks, four address maps and all three field lists.
+The source binding retains every coefficient and term. The original imported
+values stay in the data inputs. One result derives every old per-index fact.
+All pilot modules use default heartbeats.
+
+All 142 original public declarations remain. The kernel accepts all 130 old
+theorem types. All 12 imported data values have identical Expr values. All 15
+selected modules pass source checks and kernel replay. They include both direct
+witness consumers. Each replay uses the standard 32 MiB stack. No safe dependency
+is skipped. These checks trust imported objects. All 171 focused axiom checks use
+only the three allowed axioms. All 17 exact controls pass. The kernel rejects all
+17 mutations. The legacy finalizer passes. The importer rejects an opaque payload.
+Three generator controls pass. Capture, interface and inventory freshness pass.
+Static checks, workflow syntax and the source import graph pass.
+The inventory has 76,292 roots. It retains all 76,263 prior roots.
+
+The shared checker and importer source and replay guard takes 13.08 s and peaks
+at 830.24 MiB. The capture guard takes 36.02 s and peaks at 947.04 MiB. The
+finalizer guard takes 24.06 s and peaks at 835.71 MiB. Qualification takes 84.12 s
+and peaks at 833.34 MiB. All guards clean their owned workers. The first finalizer
+build used a reserved local name. The corrected build passes. This pilot proves
+fidelity and soundness. It does not establish a cold full-build gain.
+
+The other 20 memory-frame captures remain open. Qualify the largest captures next.
+Use complete source bindings. Use bounded windows if a whole binding exceeds the
+cap. Other frame and argument families remain open. Full frontend validation,
+the environment audit and baseline refresh, full transitive replay, cold full
+measurements, and Linux runtime and warm-cache qualification remain pending for
+review. The known aggregate ownership collision remains deferred.

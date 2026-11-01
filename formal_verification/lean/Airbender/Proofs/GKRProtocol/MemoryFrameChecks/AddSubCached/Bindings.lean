@@ -1,0 +1,13 @@
+import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.AddSubCached.Data
+import Airbender.Import.GKRProtocol.NumericArithmeticDataImport
+
+namespace Airbender.Compiler.MemoryFrameChecks.AddSubCached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+numeric_data_binding source_binding : data = NumericMemoryFrameChecks.ofTyped Airbender.Compiler.MemoryFrameNative.AddSubCached.native.ramFields Airbender.Compiler.MemoryFrameNative.AddSubCached.native.initializationFields Airbender.Compiler.MemoryFrameNative.AddSubCached.native.executeFields
+  Airbender.Compiler.MemoryNative.AddSubCached.native.sourcePlacement Airbender.Compiler.MemoryNative.AddSubCached.native.bank Airbender.Compiler.MemoryFrameNative.AddSubCached.native.activeCoordinates Airbender.Compiler.MemoryFrameNative.AddSubCached.native.allCoordinates
+  Airbender.Compiler.FullArithmeticNative.AddSubCached.native.inputBank Airbender.Compiler.FullArithmeticNative.AddSubCached.native.bank
+end Airbender.Compiler.MemoryFrameChecks.AddSubCached

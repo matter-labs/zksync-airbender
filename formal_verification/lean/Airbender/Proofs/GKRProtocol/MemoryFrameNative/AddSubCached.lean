@@ -1,12 +1,12 @@
 import Airbender.Import.GKRProtocol.MemoryFrameImport
 import Airbender.Proofs.GKRProtocol.CounterFrameNative.AddSubCached
+import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.AddSubCached.Certificate
 
 namespace Airbender.Compiler.MemoryFrameNative.AddSubCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_memory_frame native from "artifacts/compiler/add-sub-cached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.AddSubCached.native
@@ -16,5 +16,6 @@ import_memory_frame native from "artifacts/compiler/add-sub-cached-source.json"
   helper_model Airbender.Compiler.HelperValidityNative.AddSubCached.native
   counter_model Airbender.Compiler.CounterFrameNative.AddSubCached.native
   inputs 48 phase 3 start 0 stop 56
+  using_check Airbender.Compiler.MemoryFrameChecks.AddSubCached.originalChecked
 
 end Airbender.Compiler.MemoryFrameNative.AddSubCached

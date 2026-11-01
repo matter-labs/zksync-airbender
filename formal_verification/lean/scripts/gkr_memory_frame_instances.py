@@ -18,6 +18,9 @@ def ram_count(case):
 
 
 def module(name, case, phase=3, start=0, stop=None):
+    from gkr_packed_memory_frame import CASES as PACKED_CASES
+    packed=case in PACKED_CASES
+    if packed and phase in [1,2]:raise ValueError('complete memory frames do not use proof shards')
     root = LEAN / 'artifacts/compiler'
     arity = len(synthesize(json.loads((root / (name + '.json')).read_text()),
                            json.loads((root / (name + '-source.json')).read_text()))['inputs'])
@@ -32,6 +35,8 @@ def module(name, case, phase=3, start=0, stop=None):
               ('source_model', 'SourceContractNative'), ('history_model', 'HistoryErasureNative'),
               ('helper_model', 'HelperValidityNative'), ('counter_model', 'CounterFrameNative')]
     imports = f'import Airbender.Import.GKRProtocol.MemoryFrameImport\nimport Airbender.Proofs.GKRProtocol.CounterFrameNative.{case}\n'
+    if packed and phase==3:
+        imports+=f'import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.{case}.Certificate\n'
     if phase in [1, 2]:
         imports += f'import Airbender.Proofs.GKRProtocol.MemoryFrameNative.{case}Inputs\n'
     if phase == 2:
@@ -43,6 +48,11 @@ def module(name, case, phase=3, start=0, stop=None):
         f'import_memory_frame native from "artifacts/compiler/{name}-source.json"\n' +
         ''.join('  ' + key + ' ' + prefix + model + '.' + case + '.native\n' for key, model in models) +
         f'  inputs {arity} phase {phase} start {start} stop {stop}\n\nend {namespace}\n')
+    if packed:
+        content=content.replace('set_option maxHeartbeats 4000000\n','')
+        if phase==3:
+            content=content.replace(f'phase {phase} start {start} stop {stop}\n',
+                f'phase {phase} start {start} stop {stop}\n  using_check Airbender.Compiler.MemoryFrameChecks.{case}.originalChecked\n')
     return target, content
 
 
@@ -62,10 +72,14 @@ def main():
                 continue
             name, case = family + '-' + mode, stem + mode.title()
             size = ram_count(case)
-            phases = [(3, 0, size)] if size <= 256 else ([(0, 0, size)] +
+            from gkr_packed_memory_frame import CASES as PACKED_CASES
+            phases = [(0,0,size),(3,0,size)] if case in PACKED_CASES else [(3, 0, size)] if size <= 256 else ([(0, 0, size)] +
                 [(1, first, min(first + 64, size)) for first in range(0, size, 64)] + [(2, 0, size)])
-            for phase, start, stop in phases:
-                target, content = module(name, case, phase, start, stop)
+            generated=[module(name,case,phase,start,stop) for phase,start,stop in phases]
+            if args.write:
+                from gkr_packed_rotate_boundary import preflight
+                preflight(generated)
+            for target, content in generated:
                 path = LEAN / (target.replace('.', '/') + '.lean')
                 if args.check and (not path.exists() or path.read_text() != content):
                     raise ValueError('source memory frame changed: ' + target)
