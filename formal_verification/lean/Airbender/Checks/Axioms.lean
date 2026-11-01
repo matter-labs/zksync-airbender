@@ -1,3 +1,4 @@
+import Tests.PackedSignedRun
 import Tests.CleanPlacementChecks
 import Tests.NumericArithmeticTrace
 import Tests.NumericExpressionChecks
@@ -598,72 +599,7 @@ import Airbender.Proofs.Blake2Round.DiagonalCertificate0
 import Airbender.Proofs.Blake2Round.DiagonalCertificate1
 import Airbender.Proofs.Blake2Round.DiagonalCertificate2
 import Airbender.Proofs.Blake2Round.DiagonalCertificate3
-import Airbender.Proofs.Blake2G.Xor9CertificatePart16
-import Airbender.Proofs.Blake2G.Xor9CertificatePart17
-import Airbender.Proofs.Blake2G.Xor9CertificatePart18
-import Airbender.Proofs.Blake2G.Xor9CertificatePart19
-import Airbender.Proofs.Blake2G.Xor9CertificatePart20
-import Airbender.Proofs.Blake2G.Xor9CertificatePart21
-import Airbender.Proofs.Blake2G.Xor9CertificatePart22
-import Airbender.Proofs.Blake2G.Xor9CertificatePart23
-import Airbender.Proofs.Blake2G.Xor9CertificatePart24
-import Airbender.Proofs.Blake2G.Xor9CertificatePart25
-import Airbender.Proofs.Blake2G.Xor9CertificatePart26
-import Airbender.Proofs.Blake2G.Xor9CertificatePart27
-import Airbender.Proofs.Blake2G.Xor9CertificatePart28
-import Airbender.Proofs.Blake2G.Xor9CertificatePart29
-import Airbender.Proofs.Blake2G.Xor9CertificatePart30
-import Airbender.Proofs.Blake2G.Xor9CertificatePart31
-import Airbender.Proofs.Blake2G.Xor9CertificatePart32
-import Airbender.Proofs.Blake2G.Xor9CertificatePart33
-import Airbender.Proofs.Blake2G.Xor9CertificatePart34
-import Airbender.Proofs.Blake2G.Xor9CertificatePart35
-import Airbender.Proofs.Blake2G.Xor9CertificatePart36
-import Airbender.Proofs.Blake2G.Xor9CertificatePart37
-import Airbender.Proofs.Blake2G.Xor9CertificatePart38
-import Airbender.Proofs.Blake2G.Xor9CertificatePart39
-import Airbender.Proofs.Blake2G.Xor9CertificatePart40
-import Airbender.Proofs.Blake2G.Xor9CertificatePart41
-import Airbender.Proofs.Blake2G.Xor9CertificatePart42
-import Airbender.Proofs.Blake2G.Xor9CertificatePart43
-import Airbender.Proofs.Blake2G.Xor9CertificatePart44
-import Airbender.Proofs.Blake2G.Xor9CertificatePart45
-import Airbender.Proofs.Blake2G.Xor9CertificatePart46
-import Airbender.Proofs.Blake2G.Xor9CertificatePart47
-import Airbender.Proofs.Blake2G.Xor9CertificatePart48
-import Airbender.Proofs.Blake2G.Xor9CertificatePart49
-import Airbender.Proofs.Blake2G.Xor9CertificatePart50
-import Airbender.Proofs.Blake2G.Xor9CertificatePart51
-import Airbender.Proofs.Blake2G.Xor9CertificatePart52
-import Airbender.Proofs.Blake2G.Xor9CertificatePart53
-import Airbender.Proofs.Blake2G.Xor9CertificatePart54
-import Airbender.Proofs.Blake2G.Xor9CertificatePart55
-import Airbender.Proofs.Blake2G.Xor9CertificatePart56
-import Airbender.Proofs.Blake2G.Xor9CertificatePart57
-import Airbender.Proofs.Blake2G.Xor9CertificatePart58
-import Airbender.Proofs.Blake2G.Xor9CertificatePart59
-import Airbender.Proofs.Blake2G.Xor9CertificatePart60
-import Airbender.Proofs.Blake2G.Xor9CertificatePart61
-import Airbender.Proofs.Blake2G.Xor9CertificatePart62
-import Airbender.Proofs.Blake2G.Xor9CertificatePart63
 import Airbender.Proofs.Blake2G.Xor9Certificate
-import Airbender.Proofs.Blake2G.Xor9CertificatePart0
-import Airbender.Proofs.Blake2G.Xor9CertificatePart1
-import Airbender.Proofs.Blake2G.Xor9CertificatePart10
-import Airbender.Proofs.Blake2G.Xor9CertificatePart11
-import Airbender.Proofs.Blake2G.Xor9CertificatePart12
-import Airbender.Proofs.Blake2G.Xor9CertificatePart13
-import Airbender.Proofs.Blake2G.Xor9CertificatePart14
-import Airbender.Proofs.Blake2G.Xor9CertificatePart15
-import Airbender.Proofs.Blake2G.Xor9CertificatePart2
-import Airbender.Proofs.Blake2G.Xor9CertificatePart3
-import Airbender.Proofs.Blake2G.Xor9CertificatePart4
-import Airbender.Proofs.Blake2G.Xor9CertificatePart5
-import Airbender.Proofs.Blake2G.Xor9CertificatePart6
-import Airbender.Proofs.Blake2G.Xor9CertificatePart7
-import Airbender.Proofs.Blake2G.Xor9CertificatePart8
-import Airbender.Proofs.Blake2G.Xor9CertificatePart9
-import Airbender.Proofs.Blake2G.Xor9Extents
 import Airbender.Proofs.Tables.ImportedSubwordROMData
 import Airbender.Proofs.Tables.AffineSlices
 import Airbender.Proofs.Tables.AlignedConstants
@@ -22701,3 +22637,249 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.CleanPlacementNative.KeccakUncached.bankCodes15
 #print axioms Airbender.Compiler.CleanPlacementNative.KeccakUncached.bankCodes16
 #print axioms Airbender.Compiler.CleanArithmeticNative.KeccakUncached.native.placementsSourceBinding
+
+#print axioms Airbender.Setup.Proofs.PackedSignedRun.digit
+#print axioms Airbender.Setup.Proofs.PackedSignedRun.segment_digit
+#print axioms Airbender.Setup.Proofs.PackedSignedRun.shifted_digits
+#print axioms Airbender.Setup.Proofs.PackedSignedRun.linear_rows
+#print axioms Airbender.Setup.Proofs.PackedSignedRun.Run
+#print axioms Airbender.Setup.Proofs.PackedSignedRun.Run.length
+#print axioms Airbender.Setup.Proofs.PackedSignedRun.Run.value
+#print axioms Airbender.Setup.Proofs.PackedSignedRun.Run.valid
+#print axioms Airbender.Setup.Proofs.PackedSignedRun.Run.row
+#print axioms Airbender.Setup.Proofs.PackedSignedRun.Run.packed
+#print axioms Airbender.Setup.Proofs.PackedSignedRun.value_bounds
+#print axioms Airbender.Setup.Proofs.PackedSignedRun.row_linear
+#print axioms Airbender.Setup.Proofs.PackedSignedRun.packed_linear
+#print axioms Airbender.Setup.Proofs.PackedSignedRun.packed_digit
+#print axioms Airbender.Setup.Proofs.PackedSignedRun.Run.packedArithmetic
+#print axioms Airbender.Setup.Proofs.PackedSignedRun.packedArithmetic_eq
+#print axioms Airbender.Setup.Proofs.PackedSignedRun.packedArithmetic_digit
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.payloadArray
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.payload_roundtrip
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.Input
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.Input.length
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.Input.asRun
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.checkDigits
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.checkDigits_sound
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.Input.seedValid
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.Input.valid
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.valid_parts
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.Input.packed
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.input_length
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.packed_eq
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.packed_digit
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.Code
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.Code.decode
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.Code.input
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.Code.length
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.ofBlock
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.ofBlock_sound
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.decode_length
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.input_raw
+#print axioms Airbender.Setup.Proofs.PackedWordBlocks.input_sound
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.indexPacked
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.repeatedOnes
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.index_correct
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.ones_correct
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.extract_xor
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.expectedRow
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.expected_digit
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.window
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.span
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.legal
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.window_low
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.window_high
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.span_digit
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.checkBlock
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.check
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.check_cons
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.checkBlock_sound
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.check_sound
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.Request
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.checkRequests
+#print axioms Airbender.Setup.Proofs.PackedXor9Checks.requests_sound
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks0
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks1
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks2
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks3
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks4
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks5
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks6
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks7
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks8
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks9
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks10
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks11
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks12
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks13
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks14
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks15
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks16
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks17
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks18
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks19
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks20
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks21
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks22
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks23
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks24
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks25
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks26
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks27
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks28
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks29
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks30
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks31
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks32
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks33
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks34
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks35
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks36
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks37
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks38
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks39
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks40
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks41
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks42
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks43
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks44
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks45
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks46
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks47
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks48
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks49
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks50
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks51
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks52
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks53
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks54
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks55
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks56
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks57
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks58
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks59
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks60
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks61
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks62
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks63
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.blocks
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding0
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding1
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding2
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding3
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding4
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding5
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding6
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding7
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding8
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding9
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding10
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding11
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding12
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding13
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding14
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding15
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding16
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding17
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding18
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding19
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding20
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding21
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding22
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding23
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding24
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding25
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding26
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding27
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding28
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding29
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding30
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding31
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding32
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding33
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding34
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding35
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding36
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding37
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding38
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding39
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding40
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding41
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding42
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding43
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding44
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding45
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding46
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding47
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding48
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding49
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding50
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding51
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding52
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding53
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding54
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding55
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding56
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding57
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding58
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding59
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding60
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding61
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding62
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.binding63
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.source_binding
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.requests
+#print axioms Airbender.Blake2G.Proofs.Xor9PackedCapture.checked
+#print axioms Tests.PackedSignedRun.decreasing
+#print axioms Tests.PackedSignedRun.increasing
+#print axioms Tests.PackedSignedRun.negativeEndpoint
+#print axioms Tests.PackedSignedRun.largeEndpoint
+#print axioms Tests.PackedSignedRun.extraWord
+#print axioms Tests.PackedSignedRun.decreasing_valid
+#print axioms Tests.PackedSignedRun.increasing_valid
+#print axioms Tests.PackedSignedRun.decreasing_words
+#print axioms Tests.PackedSignedRun.increasing_words
+#print axioms Tests.PackedSignedRun.negative_endpoint_rejected
+#print axioms Tests.PackedSignedRun.large_endpoint_rejected
+#print axioms Tests.PackedSignedRun.extra_word_rejected
+#print axioms Tests.PackedSignedRun.descendingBlock
+#print axioms Tests.PackedSignedRun.crossingBlock
+#print axioms Tests.PackedSignedRun.lastBlock
+#print axioms Tests.PackedSignedRun.wrongStride
+#print axioms Tests.PackedSignedRun.wrongHighBit
+#print axioms Tests.PackedSignedRun.descending_checked
+#print axioms Tests.PackedSignedRun.crossing_checked
+#print axioms Tests.PackedSignedRun.last_checked
+#print axioms Tests.PackedSignedRun.wrong_stride_rejected
+#print axioms Tests.PackedSignedRun.changed_high_bit_rejected
+#print axioms Tests.PackedSignedRun.domain_overflow_rejected
+#print axioms Tests.PackedSignedRun.excessive_window_rejected
+#print axioms Tests.PackedSignedRun.original_descending
+#print axioms Tests.PackedSignedRun.original_crossing
+#print axioms Tests.PackedSignedRun.complete_payload_binding
+#print axioms Tests.PackedSignedRun.requests
+#print axioms Tests.PackedSignedRun.wrongSize
+#print axioms Tests.PackedSignedRun.requests_checked
+#print axioms Tests.PackedSignedRun.wrong_size_rejected
+#print axioms Tests.PackedSignedRun.requested_source_length
+
+#print axioms Airbender.Setup.Proofs.PackedWordBounds.extract_and
+#print axioms Airbender.Setup.Proofs.PackedWordBounds.extract_or
+#print axioms Airbender.Setup.Proofs.PackedWordBounds.units
+#print axioms Airbender.Setup.Proofs.PackedWordBounds.units_eq
+#print axioms Airbender.Setup.Proofs.PackedWordBounds.repeated_digit
+#print axioms Airbender.Setup.Proofs.PackedWordBounds.translated_digits
+#print axioms Airbender.Setup.Proofs.PackedWordBounds.shifted_digit
+#print axioms Airbender.Setup.Proofs.PackedWordBounds.fastValid
+#print axioms Airbender.Setup.Proofs.PackedWordBounds.checkDigits_complete
+#print axioms Airbender.Setup.Proofs.PackedWordBounds.fastValid_sound
+#print axioms Tests.PackedSignedRun.crossBorrow
+#print axioms Tests.PackedSignedRun.highSeed
+#print axioms Tests.PackedSignedRun.excessiveDelta
+#print axioms Tests.PackedSignedRun.fast_decreasing_valid
+#print axioms Tests.PackedSignedRun.fast_increasing_valid
+#print axioms Tests.PackedSignedRun.packed_borrow_rejected
+#print axioms Tests.PackedSignedRun.packed_high_seed_rejected
+#print axioms Tests.PackedSignedRun.packed_large_delta_rejected
+#print axioms Tests.PackedSignedRun.original_bounds_derived

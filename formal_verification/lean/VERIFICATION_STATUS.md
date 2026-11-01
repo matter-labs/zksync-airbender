@@ -71,7 +71,8 @@ The next seven arithmetic families add 1,041 roots.
 The packed normalization proof adds 105 roots.
 The dense arithmetic rollout adds 925 roots.
 The Clean placement rollout adds 497 roots.
-The current explicit inventory has 21,025 roots.
+The XOR9 rollout adds 244 roots.
+The current explicit inventory has 21,269 roots.
 
 The complete ordinary AND data has the same serialized values before and
 after this change. Its SHA-256 is
@@ -510,6 +511,52 @@ The aggregate import remains subject to the recorded cache ownership issue.
 The full frontend, environment audit and baseline refresh, full transitive
 replay, cold full measurements, and Linux runtime and cache qualification
 stay pending for implementation review.
+
+### Complete XOR9 table
+
+The complete native XOR9 output now uses one numeric checker result.
+The checker covers all 2,050 blocks and all 64 established extent requests.
+It reads packed 16-bit words. A generic signed-run proof handles positive and
+negative strides. Packed masks check every seed and signed endpoint. The
+soundness proof derives the original validity predicate. It does not add an
+assumption about the data.
+
+Kernel equalities bind each bounded data leaf to its original native block
+list. A balanced equality binds the complete column. The public wrapper derives
+all original output and extent statements as corollaries. The original finalizer
+still proves complete column coverage. This step retires 65 proof modules.
+The four capture modules include the unchanged partition data. They have no
+unlimited heartbeat setting. The number of `Proofs/` files with that setting falls from
+151 to 85. Other fact families still need migration.
+
+| Selected XOR9 component | Source build | Selected replay |
+| --- | ---: | ---: |
+| Packed data and exact source bindings | 48.22 s | 41.61 s |
+| Closed checker result | 3.17 s | 3.43 s |
+| Public corollaries and finalizer | 7.85 s | 3.71 s |
+
+The final six-module source and replay batch takes 121.99 s. It peaks at
+2122.10 MiB. The other two shared modules also pass source and replay.
+All eight selected replays use the standard 32 MiB thread stack. No safe
+declaration uses a skipped dependency. These runs trust imported objects.
+They do not measure a cold full build or full transitive replay.
+
+A kernel control accepts all 192 original theorem types. All 193 imported data
+values are identical. All 385 original public declarations remain. All 629
+focused axiom checks pass. They use only `propext`, `Classical.choice` and
+`Quot.sound`. Eleven exact controls pass. The kernel rejects all eleven changed
+results or source bindings. These controls include a packed borrow, a high seed,
+a large stride extent, the stride sign, the final row and a changed source word.
+The qualification group takes 45.65 s. It peaks at 807.51 MiB.
+The direct XOR certificate consumer passes source and selected replay.
+All 24 Python generator controls pass. CI requires capture freshness and the
+kernel mutation controls.
+
+The audit inventory retains all 21,025 established roots and adds 244 roots.
+It has 21,269 roots. The declaration origins of the retired shards move to the
+public wrapper. The deferred environment audit must record that change.
+Evidence stays in `/tmp/airbender-review-round/checker-pilot-2026-10-31/`.
+The final full validation remains pending for implementation review.
 
 ## Rebase checks
 
