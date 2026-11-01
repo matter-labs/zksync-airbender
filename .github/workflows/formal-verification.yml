@@ -350,6 +350,9 @@ jobs:
           fv array-sample-freshness python3 scripts/generate_array_samples.py --check
           fv array-sample-generator-controls python3 -m unittest discover -s scripts -p test_array_samples.py
           fv array-sample-kernel-controls python3 scripts/check_array_sample_controls.py
+          fv aligned-sample-freshness python3 scripts/generate_aligned_samples.py --check
+          fv aligned-sample-generator-controls python3 -m unittest discover -s scripts -p test_aligned_samples.py
+          fv aligned-sample-kernel-controls python3 scripts/check_aligned_sample_controls.py
           fv packed-xor7-freshness python3 scripts/generate_packed_xor7.py --check
           fv packed-xor7-generator-controls python3 -m unittest discover -s scripts -p test_packed_xor7.py
           fv packed-xor7-kernel-controls python3 scripts/check_packed_xor7_controls.py

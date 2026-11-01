@@ -1,3 +1,4 @@
+import Airbender.Proofs.Tables.AlignedSampleChecks.Certificate
 import Airbender.Proofs.GKRProtocol.SubwordRegionLengths.Column8
 import Airbender.Proofs.GKRProtocol.SubwordRegionLengths.Column7
 import Airbender.Proofs.GKRProtocol.SubwordRegionLengths.Column6
@@ -75710,3 +75711,26 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.SubwordRegionLengths.Column8.region2
 #print axioms Airbender.Compiler.SubwordRegionLengths.Column8.region3
 #print axioms Airbender.Compiler.SubwordRegionLengths.Column8.region4
+
+#print axioms Airbender.Compiler.PackedSetupSamples.getFromCodes
+#print axioms Airbender.Compiler.PackedSetupSamples.getFromCodes_decode
+#print axioms Airbender.Compiler.PackedSetupSamples.alignedCheck
+#print axioms Airbender.Compiler.PackedSetupSamples.alignedCheck_sound
+#print axioms Airbender.Compiler.PackedSetupSamples.Request
+#print axioms Airbender.Compiler.PackedSetupSamples.check
+#print axioms Airbender.Compiler.PackedSetupSamples.Fact
+#print axioms Airbender.Compiler.PackedSetupSamples.check_sound
+#print axioms Airbender.Compiler.PackedSetupSamples.check_sound_at
+#print axioms Airbender.Compiler.PackedSetupSamples.fact_bound
+#print axioms Airbender.Verification.AlignedSampleChecks.conditional
+#print axioms Airbender.Verification.AlignedSampleChecks.conditionalRequests
+#print axioms Airbender.Verification.AlignedSampleChecks.position
+#print axioms Airbender.Verification.AlignedSampleChecks.positionRequests
+#print axioms Airbender.Verification.AlignedSampleChecks.conditionalBinding
+#print axioms Airbender.Verification.AlignedSampleChecks.positionBinding
+#print axioms Airbender.Verification.AlignedSampleChecks.conditionalChecked
+#print axioms Airbender.Verification.AlignedSampleChecks.conditionalFact
+#print axioms Airbender.Verification.AlignedSampleChecks.positionChecked
+#print axioms Airbender.Verification.AlignedSampleChecks.positionFact
+#print axioms Airbender.Verification.AlignedSampleChecks.conditionalBlocks
+#print axioms Airbender.Verification.AlignedSampleChecks.positionBlocks
