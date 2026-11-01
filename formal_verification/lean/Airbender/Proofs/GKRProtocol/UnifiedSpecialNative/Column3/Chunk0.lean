@@ -1,3 +1,4 @@
+import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column3.Projected
 import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column3.Chunk0.Part0
 import Airbender.Proofs.GKRProtocol.ChunkLengths
 

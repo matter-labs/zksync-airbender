@@ -3,6 +3,7 @@
 import argparse
 from export_gkr_translations import LEAN
 from gkr_unified_prefix import plans,CHUNK
+from gkr_packed_special_spans import COLUMNS as FIXED_SPAN_COLUMNS, dependencies as fixed_span_dependencies
 
 
 def modules(column):
@@ -21,6 +22,8 @@ def modules(column):
                 end=min(begin+16,last);part=(begin-first)//16;parts.append(f'part{part}')
                 part_name=name+f'Part{part}'
                 dependencies=''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column{column}.Chunk{chunk}.Part{k}\n' for k in range((begin-first)//8,(end-first+7)//8))
+                if column in FIXED_SPAN_COLUMNS:
+                    dependencies=''.join('import '+name+'\n' for name in fixed_span_dependencies(column,chunk))
                 part_text=dependencies+text[text.index('\nnamespace '):]
                 source_owner=f'Airbender.Compiler.UnifiedSpecialChunks.Column{column}.Chunk{chunk}'
                 part_text+=f'open {source_owner}\n\n'

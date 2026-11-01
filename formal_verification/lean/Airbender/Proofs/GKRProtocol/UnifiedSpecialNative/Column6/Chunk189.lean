@@ -1,14 +1,4 @@
-import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column6.Chunk189.Part0
-import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column6.Chunk189.Part1
-import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column6.Chunk189.Part2
-import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column6.Chunk189.Part3
-import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column6.Chunk189.Part4
-import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column6.Chunk189.Part5
-import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column6.Chunk189.Part6
-import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column6.Chunk189.Part7
-import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column6.Chunk189.Part8
-import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column6.Chunk189.Part9
-import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column6.Chunk189.Part10
+import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column6.Projected
 import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column6.Chunk189.Part11
 import Airbender.Proofs.GKRProtocol.ChunkLengths
 

@@ -903,6 +903,42 @@ The old per-part literal simplification proofs are gone.
 Other fixed setup spans and table metadata still need migration.
 The final full validation remains pending for implementation review.
 
+### Complete fixed unified special spans
+
+Six unified columns now use complete fixed special-span checks.
+Columns 2, 3, 4, 5, 6 and 7 cover 1,296 source groups.
+Each column has one closed kernel result. The checker proves the original
+source lengths and `blockTargetsFollow` statements.
+The scope excludes groups that touch program ROM or the suffix boundary.
+Their original proofs stay in the retained source files.
+
+All 29,908 original declarations remain. A kernel control accepts all 18,367
+old theorem types. All 11,541 imported data values are identical.
+The rollout retires 158 fixed proof shards.
+The data declarations keep their original names and expressions.
+The native and length assemblies use the new public projections.
+
+All 73 selected modules pass source checks and kernel replay.
+They include 42 consumers and all six complete native prefix columns.
+Each replay uses the standard 32 MiB stack. No safe dependency is skipped.
+The remaining capture batch takes 243.16 s and peaks at 864.52 MiB.
+The consumer batch takes 452.99 s and peaks at 1592.48 MiB.
+The final qualification takes 73.47 s and peaks at 879.96 MiB.
+These checks trust imported objects. Every guard cleans its owned workers.
+
+All 36,443 focused axiom checks use only the three allowed axioms.
+Eight exact span and binding controls pass.
+The kernel rejects all eight mutations. Three generator controls pass.
+They check the fixed scope, retained program proofs and untracked files.
+Capture, length, consumer and inventory freshness pass.
+Changed-source static checks and workflow syntax pass.
+The inventory has 66,507 roots. It retains all 59,972 established roots.
+The 224 original module objects stay in `fixed-special-original-oleans`
+under the evidence directory.
+
+Other table metadata and fixed setup families still need migration.
+The final full validation remains pending for implementation review.
+
 ## Rebase checks
 
 The branch now uses base `c1a662222cafcd96db4383dce737edb79fa62b09` from

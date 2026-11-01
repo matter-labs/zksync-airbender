@@ -1,3 +1,4 @@
+import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column4.Projected
 import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column4.Chunk199.Foundation
 
 namespace Airbender.Compiler.UnifiedSpecialChunks.Column4.Chunk199
@@ -6,48 +7,6 @@ set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 65536
 set_option maxHeartbeats 8000000
-
-noncomputable def source25568 : Setup.Block := original.get ⟨96, by decide +kernel⟩
-
-column_blocks_part part25568_0 from (UnifiedReduced.Setup.nativeRotate12Data.columns[(4 : Nat)]) start 255 stop 256
-noncomputable def destination25568_0 : Setup.Block := part25568_0.get ⟨0, by decide +kernel⟩
-
-noncomputable def target25568 : List Setup.Block := part25568_0
-
-theorem follows25568 : blockTargetsFollow source25568 0 target25568 :=
-  And.intro (by
-    intro index bounded
-    change source25568.get? (0 + index) = destination25568_0.get? index
-    have same : source25568 = destination25568_0 := by rfl
-    rw [same, Nat.zero_add]
-  ) (True.intro)
-
-theorem length25568 : (target25568.map Setup.Block.length).sum = source25568.length := by decide +kernel
-
-noncomputable def source25569 : Setup.Block := original.get ⟨97, by decide +kernel⟩
-
-column_blocks_part part25569_0 from (UnifiedReduced.Setup.nativeRotate8Data.columns[(4 : Nat)]) start 0 stop 1
-noncomputable def destination25569_0 : Setup.Block := part25569_0.get ⟨0, by decide +kernel⟩
-
-column_blocks_part part25569_1 from (UnifiedReduced.Setup.nativeRotate7Data.columns[(4 : Nat)]) start 0 stop 1
-noncomputable def destination25569_1 : Setup.Block := part25569_1.get ⟨0, by decide +kernel⟩
-
-column_blocks_part part25569_2 from (UnifiedReduced.Setup.nativeConditionalData.columns[(4 : Nat)]) start 0 stop 1
-noncomputable def destination25569_2 : Setup.Block := part25569_2.get ⟨0, by decide +kernel⟩
-
-column_blocks_part part25569_3 from (UnifiedReduced.Setup.nativeXorData.columns[(4 : Nat)]) start 0 stop 1
-noncomputable def destination25569_3 : Setup.Block := part25569_3.get ⟨0, by decide +kernel⟩
-
-column_blocks_part part25569_4 from (UnifiedReduced.Setup.nativeOrData.columns[(4 : Nat)]) start 0 stop 1
-noncomputable def destination25569_4 : Setup.Block := part25569_4.get ⟨0, by decide +kernel⟩
-
-column_blocks_part part25569_5 from (UnifiedReduced.Setup.nativeAndData.columns[(4 : Nat)]) start 0 stop 1
-noncomputable def destination25569_5 : Setup.Block := part25569_5.get ⟨0, by decide +kernel⟩
-
-noncomputable def part25569_6 : List Setup.Block := [.dense #[0]]
-noncomputable def destination25569_6 : Setup.Block := part25569_6.get ⟨0, by decide +kernel⟩
-
-noncomputable def target25569 : List Setup.Block := part25569_0 ++ part25569_1 ++ part25569_2 ++ part25569_3 ++ part25569_4 ++ part25569_5 ++ part25569_6
 
 theorem follows25569 : blockTargetsFollow source25569 0 target25569 :=
   And.intro (by

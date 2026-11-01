@@ -2518,6 +2518,23 @@ for column in PACKED_SHIFT_COLUMNS:
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
+from gkr_packed_special_spans import COLUMNS as FIXED_SPECIAL_COLUMNS, modules as fixed_special_modules, capture_plan as fixed_special_plan
+for column in FIXED_SPECIAL_COLUMNS:
+    for module, fixed_text in fixed_special_modules(column):
+        if module.endswith(('.Data', '.Projected')):
+            continue
+        fixed_namespace = re.search(r'^namespace (\S+)', fixed_text, re.M)[1]
+        packed_arithmetic_roots += [fixed_namespace + '.' + name for name in
+            re.findall(r'^(?:def|theorem|numeric_data_binding) (\S+)', fixed_text, re.M)]
+    _, fixed_groups, _, selected, _ = fixed_special_plan(column)
+    for index in selected:
+        fixed_owner = f'Airbender.Compiler.UnifiedFixedSpans.Column{column}.'
+        packed_arithmetic_roots.append(fixed_owner + f'source{index}')
+        packed_arithmetic_roots += [fixed_owner + f'target{index}_{part}'
+            for part in range(len(fixed_groups[index]))]
+    fixed_import = f'import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column{column}.Projected'
+    if fixed_import not in content.splitlines():
+        content = fixed_import + '\n' + content
 from generate_shift_extent_checks import generated as shift_extent_modules
 for extent_source in ['Airbender/Proofs/Tables/PackedLengthChecks.lean', 'Tests/PackedLengthChecks.lean']:
     extent_text = (ROOT / extent_source).read_text()

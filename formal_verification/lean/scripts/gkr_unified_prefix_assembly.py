@@ -6,6 +6,7 @@ import subprocess
 from export_gkr_translations import LEAN
 from gkr_unified_prefix import plans,DATA,CHUNK,PREFIX
 from gkr_unified_equal_chunks import PER_MODULE, PACKED_COLUMNS
+from gkr_packed_special_spans import COLUMNS as FIXED_SPAN_COLUMNS, dependencies as fixed_span_dependencies
 
 
 def special_chunks(column):
@@ -17,6 +18,8 @@ def special_chunks(column):
         stem=f'Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column{column}.Chunk{k}'
         name=f'Airbender.Proofs.GKRProtocol.UnifiedSpecialNative.Column{column}.Chunk{k}'
         text=''.join(f'import {stem}.Part{i}\n' for i in range((last-first+7)//8))+'import Airbender.Proofs.GKRProtocol.ChunkLengths\n\nnamespace '+owner+'\n'
+        if column in FIXED_SPAN_COLUMNS:
+            text=''.join('import '+dependency+'\n' for dependency in fixed_span_dependencies(column,k))+'import Airbender.Proofs.GKRProtocol.ChunkLengths\n\nnamespace '+owner+'\n'
         text+='open Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 16000000\n\n'
         text+='noncomputable def sources : List Setup.Block := ['+', '.join(f'source{i}' for i in range(first,last))+']\n\n'
         text+='noncomputable def targets : List (List Setup.Block) := ['+', '.join(f'target{i}' for i in range(first,last))+']\n\n'
