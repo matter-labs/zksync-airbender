@@ -38,7 +38,7 @@ def legacy_modules(column):
             text+=f'theorem chunkLength{i} : (original{i}.map Setup.Block.length).sum = {hi-lo} := by decide +kernel\n\n'
         text+='end '+ns+'\n';targets.append((name,text))
     name=f'Airbender.Proofs.GKRProtocol.SubwordPrefixNative.Column{column}'
-    text=''.join('import '+n+'\n' for n,_ in targets)+'import Airbender.Import.GKRProtocol.BlockCoverageImport\n\nnamespace '+ns+'\n'+opts
+    text=''.join('import '+n+'\n' for n,_ in targets)+f'import Airbender.Proofs.GKRProtocol.SubwordRegionLengths.Column{column}\nimport Airbender.Import.GKRProtocol.BlockCoverageImport\n\nnamespace '+ns+'\n'+opts
     text+=f'column_blocks_part suffix from {full} start {stop} stop {len(artifact["columns"][column]["blocks"])}\n'
     for stem in ['original','target']:
         text+=f'noncomputable def {stem}s : List (List Setup.Block) := ['+', '.join(stem+str(i) for i in range(len(chunks)))+']\n\n'
@@ -59,7 +59,8 @@ def legacy_modules(column):
     text+='  change Setup.getFromBlocks '+full+'.blocks.toList index.val = _\n  rw [sourceShape, getFromBlocks_before_suffix _ _ index.val (by rw [prefixLength]; exact index.isLt), targetShape]\n  exact normalized_chunks_agree originals targets chunksChecked index.val\n\n'
     for i,col in enumerate(cols):
         size=artifact['tables'][i]['length'];offset=artifact['tables'][i]['offset']
-        text+=f'theorem regionLength{i} : ({col}.blocks.toList.map Setup.Block.length).sum = {size} := by decide +kernel\n\n'
+        proof=f'Airbender.Compiler.SubwordRegionLengths.Column{column}.length{i}' if i<5 else 'by decide +kernel'
+        text+=f'theorem regionLength{i} : ({col}.blocks.toList.map Setup.Block.length).sum = {size} := {proof}\n\n'
         front=' ++ '.join(c+'.blocks.toList' for c in cols[:i]) or '[]';back=' ++ '.join(c+'.blocks.toList' for c in cols[i+1:]) or '[]'
         text+=f'noncomputable def front{i} : List Setup.Block := {front}\nnoncomputable def back{i} : List Setup.Block := {back}\n\n'
         text+=f'theorem regionPrefix{i} : (front{i}.map Setup.Block.length).sum = {offset} := by\n'

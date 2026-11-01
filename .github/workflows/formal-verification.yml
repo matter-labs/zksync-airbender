@@ -340,6 +340,9 @@ jobs:
           fv fixed-subword-freshness python3 scripts/gkr_subword_prefix.py --check
           fv fixed-subword-generator-controls python3 -m unittest discover -s scripts -p test_packed_subword_prefix.py
           fv fixed-subword-kernel-controls python3 scripts/check_subword_fixed_controls.py
+          fv subword-length-freshness python3 scripts/gkr_packed_subword_lengths.py --check
+          fv subword-length-generator-controls python3 -m unittest discover -s scripts -p test_packed_subword_lengths.py
+          fv subword-length-kernel-controls python3 scripts/check_subword_length_controls.py
           fv setup-length-freshness python3 scripts/gkr_packed_region_lengths.py --check
           fv setup-length-consumer-freshness python3 scripts/gkr_unified_prefix_assembly.py --stage column --check
           fv setup-length-generator-controls python3 -m unittest discover -s scripts -p test_packed_region_lengths.py

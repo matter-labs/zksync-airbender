@@ -1,6 +1,7 @@
 import Airbender.Proofs.GKRProtocol.SubwordFixedChecks.Column2
 import Airbender.Proofs.GKRProtocol.SubwordPrefixParts.Column2.Part0
 import Airbender.Proofs.GKRProtocol.SubwordPrefixParts.Column2.Part1
+import Airbender.Proofs.GKRProtocol.SubwordRegionLengths.Column2
 import Airbender.Import.GKRProtocol.BlockCoverageImport
 
 namespace Airbender.Compiler.SubwordPrefixNative.Column2
@@ -53,7 +54,7 @@ theorem prefix_value (index : Fin 13238273) : Data.GKRSetup.SubwordMemory.setupC
   rw [sourceShape, getFromBlocks_before_suffix _ _ index.val (by rw [prefixLength]; exact index.isLt), targetShape]
   exact normalized_chunks_agree originals targets chunksChecked index.val
 
-theorem regionLength0 : ((Verification.subwordZeroData.columns[(2 : Nat)]).blocks.toList.map Setup.Block.length).sum = 1 := by decide +kernel
+theorem regionLength0 : ((Verification.subwordZeroData.columns[(2 : Nat)]).blocks.toList.map Setup.Block.length).sum = 1 := Airbender.Compiler.SubwordRegionLengths.Column2.length0
 
 noncomputable def front0 : List Setup.Block := []
 noncomputable def back0 : List Setup.Block := (Verification.storePlaceData.columns[(2 : Nat)]).blocks.toList ++ (Verification.storeClearData.columns[(2 : Nat)]).blocks.toList ++ (Verification.loadHalfData.columns[(2 : Nat)]).blocks.toList ++ (Verification.loadByteData.columns[(2 : Nat)]).blocks.toList ++ (Verification.subwordROMHalfData.columns[(2 : Nat)]).blocks.toList ++ (Verification.subwordROMByteData.columns[(2 : Nat)]).blocks.toList
@@ -72,7 +73,7 @@ theorem region_value0 (index : Fin 1) :
   rw [regionPrefix0] at skipped
   exact skipped.trans (getFromBlocks_before_suffix _ _ index.val (by rw [regionLength0]; exact index.isLt))
 
-theorem regionLength1 : ((Verification.storePlaceData.columns[(2 : Nat)]).blocks.toList.map Setup.Block.length).sum = 131072 := by decide +kernel
+theorem regionLength1 : ((Verification.storePlaceData.columns[(2 : Nat)]).blocks.toList.map Setup.Block.length).sum = 131072 := Airbender.Compiler.SubwordRegionLengths.Column2.length1
 
 noncomputable def front1 : List Setup.Block := (Verification.subwordZeroData.columns[(2 : Nat)]).blocks.toList
 noncomputable def back1 : List Setup.Block := (Verification.storeClearData.columns[(2 : Nat)]).blocks.toList ++ (Verification.loadHalfData.columns[(2 : Nat)]).blocks.toList ++ (Verification.loadByteData.columns[(2 : Nat)]).blocks.toList ++ (Verification.subwordROMHalfData.columns[(2 : Nat)]).blocks.toList ++ (Verification.subwordROMByteData.columns[(2 : Nat)]).blocks.toList
@@ -91,7 +92,7 @@ theorem region_value1 (index : Fin 131072) :
   rw [regionPrefix1] at skipped
   exact skipped.trans (getFromBlocks_before_suffix _ _ index.val (by rw [regionLength1]; exact index.isLt))
 
-theorem regionLength2 : ((Verification.storeClearData.columns[(2 : Nat)]).blocks.toList.map Setup.Block.length).sum = 131072 := by decide +kernel
+theorem regionLength2 : ((Verification.storeClearData.columns[(2 : Nat)]).blocks.toList.map Setup.Block.length).sum = 131072 := Airbender.Compiler.SubwordRegionLengths.Column2.length2
 
 noncomputable def front2 : List Setup.Block := (Verification.subwordZeroData.columns[(2 : Nat)]).blocks.toList ++ (Verification.storePlaceData.columns[(2 : Nat)]).blocks.toList
 noncomputable def back2 : List Setup.Block := (Verification.loadHalfData.columns[(2 : Nat)]).blocks.toList ++ (Verification.loadByteData.columns[(2 : Nat)]).blocks.toList ++ (Verification.subwordROMHalfData.columns[(2 : Nat)]).blocks.toList ++ (Verification.subwordROMByteData.columns[(2 : Nat)]).blocks.toList
@@ -110,7 +111,7 @@ theorem region_value2 (index : Fin 131072) :
   rw [regionPrefix2] at skipped
   exact skipped.trans (getFromBlocks_before_suffix _ _ index.val (by rw [regionLength2]; exact index.isLt))
 
-theorem regionLength3 : ((Verification.loadHalfData.columns[(2 : Nat)]).blocks.toList.map Setup.Block.length).sum = 131072 := by decide +kernel
+theorem regionLength3 : ((Verification.loadHalfData.columns[(2 : Nat)]).blocks.toList.map Setup.Block.length).sum = 131072 := Airbender.Compiler.SubwordRegionLengths.Column2.length3
 
 noncomputable def front3 : List Setup.Block := (Verification.subwordZeroData.columns[(2 : Nat)]).blocks.toList ++ (Verification.storePlaceData.columns[(2 : Nat)]).blocks.toList ++ (Verification.storeClearData.columns[(2 : Nat)]).blocks.toList
 noncomputable def back3 : List Setup.Block := (Verification.loadByteData.columns[(2 : Nat)]).blocks.toList ++ (Verification.subwordROMHalfData.columns[(2 : Nat)]).blocks.toList ++ (Verification.subwordROMByteData.columns[(2 : Nat)]).blocks.toList
@@ -129,7 +130,7 @@ theorem region_value3 (index : Fin 131072) :
   rw [regionPrefix3] at skipped
   exact skipped.trans (getFromBlocks_before_suffix _ _ index.val (by rw [regionLength3]; exact index.isLt))
 
-theorem regionLength4 : ((Verification.loadByteData.columns[(2 : Nat)]).blocks.toList.map Setup.Block.length).sum = 262144 := by decide +kernel
+theorem regionLength4 : ((Verification.loadByteData.columns[(2 : Nat)]).blocks.toList.map Setup.Block.length).sum = 262144 := Airbender.Compiler.SubwordRegionLengths.Column2.length4
 
 noncomputable def front4 : List Setup.Block := (Verification.subwordZeroData.columns[(2 : Nat)]).blocks.toList ++ (Verification.storePlaceData.columns[(2 : Nat)]).blocks.toList ++ (Verification.storeClearData.columns[(2 : Nat)]).blocks.toList ++ (Verification.loadHalfData.columns[(2 : Nat)]).blocks.toList
 noncomputable def back4 : List Setup.Block := (Verification.subwordROMHalfData.columns[(2 : Nat)]).blocks.toList ++ (Verification.subwordROMByteData.columns[(2 : Nat)]).blocks.toList

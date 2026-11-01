@@ -1218,6 +1218,32 @@ Every guard cleans its owned workers.
 Other fixed setup lengths and table metadata still need migration.
 The final full validation remains pending for implementation review.
 
+### Complete fixed Subword region lengths
+
+Nine closed kernel results cover all 45 fixed Subword region lengths.
+Each capture includes the complete five fixed target regions for one column.
+Exact bindings retain every original imported block and value.
+The native prefix consumers project their original length statements.
+The two program ROM regions keep their original proofs. Mixed source groups
+in columns 3 through 7 remain outside the fixed normalization captures.
+
+All 1,247 original declarations remain. A kernel control accepts all 869 old
+theorem types. All 378 imported data values are identical.
+All 45 selected modules pass source checks and kernel replay. They include
+all nine complete native prefix consumers. Each replay uses the standard
+32 MiB stack. No safe dependency is skipped. These checks trust imported objects.
+The source and replay batch takes 200.93 s and peaks at 1015.04 MiB.
+The final qualification takes 40.25 s and peaks at 814.46 MiB.
+Both guards clean their owned workers.
+
+All 1,409 focused axiom checks use only the three allowed axioms.
+Six exact controls pass. The kernel rejects all six mutations.
+Three generator controls pass. Capture, consumer and inventory freshness pass.
+The source import graph has no cycle. Static checks and workflow syntax pass.
+The inventory has 74,022 roots. It retains all 73,860 established roots.
+Other fixed table samples and metadata still need migration.
+The final full validation remains pending for implementation review.
+
 ## Rebase checks
 
 The branch now uses base `c1a662222cafcd96db4383dce737edb79fa62b09` from
