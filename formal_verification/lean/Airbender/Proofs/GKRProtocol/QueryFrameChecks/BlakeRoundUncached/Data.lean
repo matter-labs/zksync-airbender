@@ -1,0 +1,13 @@
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedInputs
+import Airbender.Import.GKRProtocol.NumericQueryFrameImport
+
+namespace Airbender.Compiler.QueryFrameChecks.BlakeRoundUncached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+set_option maxHeartbeats 2000000 in
+numeric_query_frame_capture data := NumericQueryFrameChecks.ofTyped Airbender.Compiler.QueryFrameNative.BlakeRoundUncached.native.fields Airbender.Compiler.QueryFrameNative.BlakeRoundUncached.native.coordinates
+  Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.originalProjection Airbender.Compiler.LookupNative.BlakeRoundUncached.native.sourcePlacement Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.inputBank Airbender.Compiler.LookupSourceNative.BlakeRoundUncached.native.bank
+end Airbender.Compiler.QueryFrameChecks.BlakeRoundUncached

@@ -31,7 +31,7 @@ def module(name, case, phase=3, start=0, stop=None):
             query_names.append(prefix + 'LookupSourceNative.' + case + '.native.' + stem + 'Queries')
     query_term = ' ++ '.join(query_names) or '[]'
     imports = f'import Airbender.Import.GKRProtocol.QueryFrameImport\nimport Airbender.Proofs.GKRProtocol.CounterFrameNative.{case}\n'
-    if packed and phase==3:
+    if packed and phase in [1,2,3]:
         imports+=f'import Airbender.Proofs.GKRProtocol.QueryFrameChecks.{case}.Certificate\n'
     if phase in [1, 2]:
         imports += f'import Airbender.Proofs.GKRProtocol.QueryFrameNative.{case}Inputs\n'
@@ -53,7 +53,7 @@ def module(name, case, phase=3, start=0, stop=None):
         f'end {namespace}\n')
     if packed:
         content=content.replace('set_option maxHeartbeats 4000000\n','')
-        if phase==3:
+        if phase in [1,2,3]:
             content=content.replace(f'phase {phase} start {start} stop {stop}\n',
                 f'phase {phase} start {start} stop {stop}\n  using_check Airbender.Compiler.QueryFrameChecks.{case}.originalChecked\n')
     return target, content

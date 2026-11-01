@@ -2551,11 +2551,17 @@ packed_arithmetic_roots += ['Airbender.Compiler.PackedSetupSamples.' + name for 
 query_frame_text = (ROOT / 'Airbender/Proofs/GKRProtocol/NumericQueryFrameChecks.lean').read_text()
 packed_arithmetic_roots += ['Airbender.Compiler.NumericQueryFrameChecks.' + name for name in
     re.findall(r'^(?:def|theorem|structure) (\S+)', query_frame_text, re.M)]
+for query_frame_module in ['NumericQueryFrameBindings', 'NumericQueryFrameIndexedChecks']:
+    query_frame_source = (ROOT / f'Airbender/Proofs/GKRProtocol/{query_frame_module}.lean').read_text()
+    packed_arithmetic_roots += ['Airbender.Compiler.NumericQueryFrameChecks.' + name for name in
+        re.findall(r'^(?:def|theorem|structure) (\S+)', query_frame_source, re.M)]
+packed_arithmetic_roots += ['Airbender.Compiler.QueryFrameImport.all_slice_true']
 from gkr_packed_query_frame import CASES as NUMERIC_QUERY_FRAME_CASES, modules as numeric_query_frame_modules
 for case in NUMERIC_QUERY_FRAME_CASES:
+    packed_arithmetic_roots += ['Airbender.Compiler.QueryFrameNative.' + case + '.native.fieldsLength']
     for module, frame_text in numeric_query_frame_modules(case):
         packed_arithmetic_roots += ['Airbender.Compiler.QueryFrameChecks.' + case + '.' + name for name in
-            re.findall(r'^(?:theorem|numeric_data_binding|numeric_query_frame_capture) (\S+)', frame_text, re.M)]
+            re.findall(r'^(?:noncomputable def|theorem|numeric_data_binding|numeric_query_frame_capture|numeric_query_frame_index) (\S+)', frame_text, re.M)]
     frame_import = f'import Airbender.Proofs.GKRProtocol.QueryFrameChecks.{case}.Certificate'
     if frame_import not in content.splitlines():
         content = frame_import + '\n' + content

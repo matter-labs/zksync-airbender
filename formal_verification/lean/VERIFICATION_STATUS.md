@@ -4525,3 +4525,58 @@ retains the same three established assembly exceptions. No production circuit,
 Rust source or imported value changed. Full frontend validation, normal native
 executable freshness, environment audit, baseline refresh, transitive replay
 and Linux qualification did not run to completion. Checker rollout remains open.
+
+### Complete BlakeRound query frames (2026-11-01)
+
+Both BlakeRound captures now use one complete indexed kernel check. Each capture
+has 1,152 fields. A proved coordinate mask replaces repeated membership scans.
+Balanced numeric trees replace repeated address-list scans. The soundness theorem
+derives the original numeric checker. The original semantic finalizer remains.
+
+Exact kernel bindings cover all five source components. They retain every field
+and every term, including zero terms. The address windows contain at most 32
+entries. The field windows contain at most 16 entries. A generic coverage proof
+joins every window and proves the complete source equality. These windows bind
+data. They do not split the semantic check.
+
+The complete wrappers derive all old per-field and block facts from the result.
+They retain the old block data and flattening theorem. The 36 old proof shards
+are gone. The two captures use 20 modules, including their inputs and finalizers.
+All 2,390 original public declarations remain. The kernel accepts all 2,348 old
+theorem types. All 42 imported data values have identical Expr values.
+The shared field-length proof also preserves the AddSub pilot. Its 36 old theorem
+types pass again. Its six imported data values remain identical.
+
+All 30 selected modules pass source checks and kernel replay. They include both
+BlakeRound direct witness consumers and the changed AddSub wrappers. Each replay
+uses the standard 32 MiB stack. No safe dependency is skipped. These checks trust
+imported objects. All 3,232 focused axiom checks use only the three allowed axioms.
+All 24 exact controls pass. The kernel rejects all 24 mutations. The legacy
+finalizer passes. Both importers reject opaque payloads. Four generator controls
+pass. Capture, interface and inventory freshness pass. Static checks, workflow
+syntax and the source import graph pass. The inventory has 74,907 roots. It
+retains all 74,065 prior roots and every established root.
+
+The capture source and replay batch takes 388.61 s. It peaks at 2079.53 MiB.
+The complete cached wrapper builds in 8.13 s and replays in 2.47 s. The uncached
+wrapper builds in 8.11 s and replays in 2.53 s. Both use default heartbeats.
+The two materializers use a scoped two-million heartbeat budget. The default
+budget cannot erase the complete typed field list. The kernel checks each source
+binding separately. The first wrapper batch repeated the field-count reduction.
+One shared length theorem reduces a 64-field source check from 16.42 s to 2.21 s.
+The complete wrappers replace that batch. The first axiom query omitted the two
+AddSub input imports. The direct-consumer, preservation and control guard takes
+290.77 s and peaks at 1036.17 MiB. The corrected query passes. The final guard
+takes 5.66 s and peaks at 819.57 MiB. All guards clean their owned workers.
+
+The flat whole check exceeds the memory cap. A slice of the complete List.ofFn
+source also exceeds the cap. The adopted source windows construct only their
+bounded entries. The indexed whole check builds in about 2.7 s and replays in
+about 2.7 s per capture. The data-binding cost remains separate. This checkpoint
+does not claim a cold full-build gain.
+
+The other 18 query-frame captures remain open. Other frame and argument families
+remain open. Full frontend validation, the environment audit and baseline refresh,
+full transitive replay, cold full measurements, and Linux runtime and warm-cache
+qualification remain pending for review. The known aggregate ownership collision
+remains deferred. This checkpoint does not establish an aggregate import pass.
