@@ -1187,6 +1187,37 @@ The inventory has 73,833 roots. It retains all 73,590 established roots.
 Other fixed table metadata still needs migration.
 The final full validation remains pending for implementation review.
 
+### Complete fixed array samples
+
+Three closed kernel results cover the store-placement template, both signed
+byte-load templates and the byte-shift amount template. The checker verifies
+all four 256-entry numeric arrays and their exact lengths.
+Four kernel bindings connect the arrays to the original imported fields.
+The original size and sample statements are corollaries of proved soundness.
+The byte-template module now uses the default heartbeat limit.
+
+All 16 original public declarations remain. A kernel control accepts all
+13 old theorem types. All three imported data values are identical.
+All 12 selected modules pass source checks and kernel replay. They include
+both byte-load adapters, the fixed Subword rows and the Shift rows.
+Each replay uses the standard 32 MiB stack. No safe dependency is skipped.
+These checks trust imported objects.
+The final wrapper and consumer batch takes 44.26 s and peaks at 1390.67 MiB.
+The default-heartbeat control takes 4.21 s and peaks at 809.54 MiB.
+The final qualification takes 48.85 s and peaks at 1439.71 MiB.
+Eight exact controls pass. The kernel rejects all eight mutations.
+All 43 focused axiom checks use only the three allowed axioms.
+Three generator controls pass. Capture and inventory freshness pass.
+The source import graph has no cycle. Static checks and workflow syntax pass.
+The inventory has 73,860 roots. It retains all 73,833 established roots.
+
+The initial whole-array comparison exceeded the memory cap. The adopted
+checker traverses indexed samples. It separates numeric data from import
+bindings. An explicit binding adapter avoids expensive simplifier conversion.
+Every guard cleans its owned workers.
+Other fixed setup lengths and table metadata still need migration.
+The final full validation remains pending for implementation review.
+
 ## Rebase checks
 
 The branch now uses base `c1a662222cafcd96db4383dce737edb79fa62b09` from

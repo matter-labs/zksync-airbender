@@ -4,6 +4,7 @@ import Airbender.Data.Tables.Shift.Column2
 import Airbender.Data.Tables.Shift.Column3
 import Mathlib.Tactic.IntervalCases
 import Airbender.Proofs.Tables.AlignedConstants
+import Airbender.Proofs.Tables.ShiftSampleBindings
 
 namespace Airbender.Verification.ShiftKeys
 open Setup
@@ -75,10 +76,13 @@ private def amountValues : Array Nat :=
   match (byteShiftColumn2.blocks[0]? : Option Setup.Block) with
   | some (Setup.Block.periodic _ _ values) => values
   | _ => #[]
-private theorem amount_size : amountValues.size = 256 := by decide +kernel
+private theorem amount_size : amountValues.size = 256 :=
+  ArraySampleChecks.size_sound_bound ShiftSampleChecks.amount ShiftSampleChecks.fact
+    amountValues ShiftSampleBindings.amountBinding
 private theorem amount_samples (q : Fin 256) :
-    amountValues[q.val]'(by rw [amount_size]; exact q.isLt) = q.val / 8 := by
-  simp [amountValues, byteShiftColumn2]
+    amountValues[q.val]'(by rw [amount_size]; exact q.isLt) = q.val / 8 :=
+  ArraySampleChecks.sample_sound_bound ShiftSampleChecks.amount ShiftSampleChecks.fact
+    amountValues ShiftSampleBindings.amountBinding q
 private theorem amount_column : byteShiftColumn2 =
     Column.mk #[.periodic 1024 0 amountValues] := rfl
 

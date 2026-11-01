@@ -1,6 +1,7 @@
 import Airbender.Data.Tables.Subword.StorePlaceData
 import Airbender.Proofs.Tables.ReferenceSubwordRows
 import Airbender.Proofs.Tables.PeriodicColumns
+import Airbender.Proofs.Tables.SubwordSampleBindings
 
 namespace Airbender.Verification.SubwordFixed
 open Setup Setup.Proofs
@@ -13,11 +14,13 @@ private def highValues : Array Nat :=
   | some (.periodic _ _ values) => values
   | _ => #[]
 
-private theorem high_size : highValues.size = 256 := by decide +kernel
+private theorem high_size : highValues.size = 256 :=
+  ArraySampleChecks.size_sound_bound SubwordSampleChecks.storeHigh SubwordSampleChecks.storeFact
+    highValues SubwordSampleBindings.storeHighBinding
 private theorem high_samples (i : Fin 256) :
-    highValues[i.val]'(by rw [high_size]; exact i.isLt) = 256 * i.val := by
-  revert i
-  decide +kernel
+    highValues[i.val]'(by rw [high_size]; exact i.isLt) = 256 * i.val :=
+  ArraySampleChecks.sample_sound_bound SubwordSampleChecks.storeHigh SubwordSampleChecks.storeFact
+    highValues SubwordSampleBindings.storeHighBinding i
 
 private theorem output_shape : storePlaceData.columns[1] = Column.mk
     #[.periodic 256 0 (Array.range 256), .periodic 256 0 highValues] := rfl

@@ -1,12 +1,12 @@
 import Airbender.Data.Tables.Subword.LoadByteData
 import Airbender.Proofs.Tables.PeriodicColumns
+import Airbender.Proofs.Tables.SubwordSampleBindings
 
 namespace Airbender.Verification.SubwordFixed
 open Setup Setup.Proofs
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 2000000
 
 def lowSignValues : Array Nat :=
   match (loadByteData.columns[1].blocks[1]? : Option Setup.Block) with
@@ -17,20 +17,24 @@ def highSignValues : Array Nat :=
   | some (.periodic _ _ values) => values
   | _ => #[]
 
-theorem lowSign_size : lowSignValues.size = 256 := by decide +kernel
-theorem highSign_size : highSignValues.size = 256 := by decide +kernel
+theorem lowSign_size : lowSignValues.size = 256 :=
+  ArraySampleChecks.size_sound_bound SubwordSampleChecks.byteLow SubwordSampleChecks.byteLowFact
+    lowSignValues SubwordSampleBindings.byteLowBinding
+theorem highSign_size : highSignValues.size = 256 :=
+  ArraySampleChecks.size_sound_bound SubwordSampleChecks.byteHigh SubwordSampleChecks.byteHighFact
+    highSignValues SubwordSampleBindings.byteHighBinding
 
 theorem lowSign_samples (i : Fin 256) :
     lowSignValues[i.val]'(by rw [lowSign_size]; exact i.isLt) =
-      if i.val < 128 then i.val else i.val + 65280 := by
-  revert i
-  decide +kernel
+      if i.val < 128 then i.val else i.val + 65280 :=
+  ArraySampleChecks.sample_sound_bound SubwordSampleChecks.byteLow SubwordSampleChecks.byteLowFact
+    lowSignValues SubwordSampleBindings.byteLowBinding i
 
 theorem highSign_samples (i : Fin 256) :
     highSignValues[i.val]'(by rw [highSign_size]; exact i.isLt) =
-      if i.val < 128 then 65535 else 0 := by
-  revert i
-  decide +kernel
+      if i.val < 128 then 65535 else 0 :=
+  ArraySampleChecks.sample_sound_bound SubwordSampleChecks.byteHigh SubwordSampleChecks.byteHighFact
+    highSignValues SubwordSampleBindings.byteHighBinding i
 
 theorem byte_low_shape : loadByteData.columns[1] = Column.mk
     #[.periodic 256 0 (Array.range 256), .periodic 256 0 lowSignValues,

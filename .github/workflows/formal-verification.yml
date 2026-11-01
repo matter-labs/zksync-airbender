@@ -344,6 +344,9 @@ jobs:
           fv setup-length-consumer-freshness python3 scripts/gkr_unified_prefix_assembly.py --stage column --check
           fv setup-length-generator-controls python3 -m unittest discover -s scripts -p test_packed_region_lengths.py
           fv setup-length-kernel-controls python3 scripts/check_setup_length_controls.py
+          fv array-sample-freshness python3 scripts/generate_array_samples.py --check
+          fv array-sample-generator-controls python3 -m unittest discover -s scripts -p test_array_samples.py
+          fv array-sample-kernel-controls python3 scripts/check_array_sample_controls.py
           fv packed-xor7-freshness python3 scripts/generate_packed_xor7.py --check
           fv packed-xor7-generator-controls python3 -m unittest discover -s scripts -p test_packed_xor7.py
           fv packed-xor7-kernel-controls python3 scripts/check_packed_xor7_controls.py

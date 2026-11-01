@@ -1,3 +1,8 @@
+import Airbender.Proofs.Tables.ShiftSampleBindings
+import Airbender.Proofs.Tables.ShiftSampleChecks
+import Airbender.Proofs.Tables.SubwordSampleBindings
+import Airbender.Proofs.Tables.SubwordSampleChecks
+import Airbender.Proofs.Tables.ArraySampleChecks
 import Airbender.Proofs.GKRProtocol.UnifiedRegionLengths.Column8
 import Airbender.Proofs.GKRProtocol.UnifiedRegionLengths.Column1
 import Airbender.Proofs.Blake2G.Xor7PackedCertificate
@@ -75504,3 +75509,32 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.UnifiedRegionLengths.Column8.extra12
 #print axioms Airbender.Compiler.UnifiedRegionLengths.Column8.extra13
 #print axioms Airbender.Compiler.UnifiedRegionLengths.Column8.extra14
+
+#print axioms Airbender.Verification.ArraySampleChecks.Request
+#print axioms Airbender.Verification.ArraySampleChecks.check
+#print axioms Airbender.Verification.ArraySampleChecks.Fact
+#print axioms Airbender.Verification.ArraySampleChecks.check_sound
+#print axioms Airbender.Verification.ArraySampleChecks.check_sound_at
+#print axioms Airbender.Verification.ArraySampleChecks.size_sound
+#print axioms Airbender.Verification.ArraySampleChecks.sample_sound
+#print axioms Airbender.Verification.SubwordSampleChecks.storeHigh
+#print axioms Airbender.Verification.SubwordSampleChecks.byteLow
+#print axioms Airbender.Verification.SubwordSampleChecks.byteHigh
+#print axioms Airbender.Verification.SubwordSampleChecks.storeRequests
+#print axioms Airbender.Verification.SubwordSampleChecks.storeChecked
+#print axioms Airbender.Verification.SubwordSampleChecks.storeFact
+#print axioms Airbender.Verification.SubwordSampleChecks.byteRequests
+#print axioms Airbender.Verification.SubwordSampleChecks.byteChecked
+#print axioms Airbender.Verification.SubwordSampleChecks.byteLowFact
+#print axioms Airbender.Verification.SubwordSampleChecks.byteHighFact
+#print axioms Airbender.Verification.SubwordSampleBindings.storeHighBinding
+#print axioms Airbender.Verification.SubwordSampleBindings.byteLowBinding
+#print axioms Airbender.Verification.SubwordSampleBindings.byteHighBinding
+#print axioms Airbender.Verification.ShiftSampleChecks.amount
+#print axioms Airbender.Verification.ShiftSampleChecks.requests
+#print axioms Airbender.Verification.ShiftSampleChecks.checked
+#print axioms Airbender.Verification.ShiftSampleChecks.fact
+#print axioms Airbender.Verification.ShiftSampleBindings.amountBinding
+
+#print axioms Airbender.Verification.ArraySampleChecks.size_sound_bound
+#print axioms Airbender.Verification.ArraySampleChecks.sample_sound_bound
