@@ -2373,6 +2373,37 @@ for word_source in [
     "Airbender/Proofs/Keccak/ChiPackedCapture.lean",
     "Airbender/Proofs/Keccak/ChiPackedCertificate.lean",
     "Tests/PackedByteTables.lean",
+    'Airbender/Proofs/Tables/PackedWordColumn.lean',
+    'Airbender/Proofs/Tables/PackedDisjointSum.lean',
+    'Airbender/Proofs/Tables/ShiftPackedReference.lean',
+    'Airbender/Proofs/Tables/ShiftPackedBasisData.lean',
+    'Airbender/Proofs/Tables/ShiftPackedBasis.lean',
+    'Airbender/Proofs/Tables/ShiftPackedRows.lean',
+    'Airbender/Proofs/Tables/ShiftPackedExpectedRows.lean',
+    'Airbender/Proofs/Tables/ShiftPackedRowData.lean',
+    'Airbender/Proofs/Tables/ShiftPackedRowBinding.lean',
+    'Airbender/Proofs/Tables/ShiftPackedRowBinding0.lean',
+    'Airbender/Proofs/Tables/ShiftPackedRowBinding1.lean',
+    'Airbender/Proofs/Tables/ShiftPackedRowBinding2.lean',
+    'Airbender/Proofs/Tables/ShiftPackedRowBinding3.lean',
+    'Tests/PackedWordColumn.lean',
+    'Tests/ShiftPackedReference.lean',
+    'Airbender/Proofs/Tables/ShiftPackedEncoding/Column0Data.lean',
+    'Airbender/Proofs/Tables/ShiftPackedEncoding/Column0.lean',
+    'Airbender/Proofs/Tables/ShiftPackedEncoding/Column0Requests.lean',
+    'Airbender/Proofs/Tables/ShiftPackedEncoding/Column0Reference.lean',
+    'Airbender/Proofs/Tables/ShiftPackedEncoding/Column1Data.lean',
+    'Airbender/Proofs/Tables/ShiftPackedEncoding/Column1.lean',
+    'Airbender/Proofs/Tables/ShiftPackedEncoding/Column1Requests.lean',
+    'Airbender/Proofs/Tables/ShiftPackedEncoding/Column1Reference.lean',
+    'Airbender/Proofs/Tables/ShiftPackedEncoding/Column2Data.lean',
+    'Airbender/Proofs/Tables/ShiftPackedEncoding/Column2.lean',
+    'Airbender/Proofs/Tables/ShiftPackedEncoding/Column2Requests.lean',
+    'Airbender/Proofs/Tables/ShiftPackedEncoding/Column2Reference.lean',
+    'Airbender/Proofs/Tables/ShiftPackedEncoding/Column3Data.lean',
+    'Airbender/Proofs/Tables/ShiftPackedEncoding/Column3.lean',
+    'Airbender/Proofs/Tables/ShiftPackedEncoding/Column3Requests.lean',
+    'Airbender/Proofs/Tables/ShiftPackedEncoding/Column3Reference.lean',
 ]:
     word_text = (ROOT / word_source).read_text()
     word_namespace = re.search(r"^namespace (\S+)", word_text, re.M)[1]
@@ -2384,6 +2415,13 @@ for chi_part in range(32):
     packed_arithmetic_roots += ["Airbender.Keccak.Proofs.ChiPackedCapture.column" + stem + str(chi_part)
                                 for stem in ["Blocks", "Start", "Size"]]
 
+for shift_lane in range(4):
+    shift_prefix = f"Airbender.Verification.ShiftPackedEncoding.Lane{shift_lane}.sourceColumn"
+    packed_arithmetic_roots.append(shift_prefix)
+    for shift_part in range(256):
+        packed_arithmetic_roots += [shift_prefix + stem + str(shift_part)
+                                    for stem in ["Blocks", "Start", "Size"]]
+
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
 for numeric_case in sorted(NUMERIC_CAPTURES):
@@ -2394,6 +2432,11 @@ for dense_import in ['import Tests.NumericExpressionChecks', 'import Tests.Numer
     if dense_import not in content.splitlines():
         content = dense_import + '\n' + content
 content = re.sub(r'^import Airbender\.Proofs\.Blake2G\.(?:Xor9CertificatePart[0-9]+|Xor9Extents)\n', '', content, flags=re.M)
+content = re.sub(r'^import Airbender\.Proofs\.Tables\.ShiftOutputCertificate[0-3]Part[0-9]+\n', '', content, flags=re.M)
+for shift_import in ['import Tests.PackedWordColumn', 'import Tests.ShiftPackedReference'] + [
+        f'import Airbender.Proofs.Tables.ShiftPackedEncoding.Column{lane}' for lane in range(4)]:
+    if shift_import not in content.splitlines():
+        content = shift_import + '\n' + content
 byte_import = 'import Tests.PackedByteTables'
 if byte_import not in content.splitlines():
     content = byte_import + '\n' + content

@@ -6,7 +6,6 @@ open Airbender.Setup Airbender.Setup.Proofs
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 131072
-set_option maxHeartbeats 0
 column_block_part output1Blocks0 from byteShiftColumn5 depth 4 part 0
 column_block_part output1Blocks1 from byteShiftColumn5 depth 4 part 1
 column_block_part output1Blocks2 from byteShiftColumn5 depth 4 part 2

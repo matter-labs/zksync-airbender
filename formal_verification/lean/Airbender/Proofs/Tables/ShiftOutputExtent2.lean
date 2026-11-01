@@ -6,7 +6,6 @@ open Airbender.Setup Airbender.Setup.Proofs
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 131072
-set_option maxHeartbeats 0
 
 theorem output2_extent0 :
     (output2Blocks0.toList.map Block.length).sum = 17522 := by

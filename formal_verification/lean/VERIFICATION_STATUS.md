@@ -73,7 +73,8 @@ The dense arithmetic rollout adds 925 roots.
 The Clean placement rollout adds 497 roots.
 The XOR9 rollout adds 244 roots.
 The Chi rollout adds 202 roots.
-The current explicit inventory has 21,471 roots.
+The shift output rollout adds 6,310 roots.
+The current explicit inventory has 27,781 roots.
 
 The complete ordinary AND data has the same serialized values before and
 after this change. Its SHA-256 is
@@ -591,6 +592,53 @@ The audit inventory retains all 21,269 established roots and adds 202 roots.
 It has 21,471 roots. Evidence stays in
 `/tmp/airbender-review-round/checker-pilot-2026-10-31/`.
 The final full validation remains pending for implementation review.
+
+### Complete shift output columns
+
+All four native shift output columns now use complete packed checkers.
+They cover 97,918 source blocks and 1,048,576 output cells.
+Exact kernel equalities bind all source leaves and all numeric requests.
+The balanced tree checker proves that the packed data has the original values.
+Each reference check covers all requests for one column.
+The original 64 facts remain as corollaries. All four finalizers remain.
+The rollout removes 64 proof modules and 76 unlimited heartbeat settings.
+Seven `Proofs/` files still have unlimited settings.
+
+The reference keeps every original control. This includes signed right shifts,
+byte reversal and invalid controls. Kernel results bind all 128 basis rows and
+all 4,096 packed byte rows to that reference. Generic OR distribution and
+proved basis disjointness justify the numeric row sums. A proved span checker
+derives the original output equations. No new proof premise was added.
+
+All 44 selected modules pass source checks and kernel replay.
+Each replay uses the standard 32 MiB thread stack. No safe declaration uses a
+skipped dependency. These runs trust imported objects. The capture and test batch has 30 modules.
+It takes 594.42 s. It peaks at 1865.42 MiB of physical memory.
+The direct consumer for shift rows also passes source and replay.
+
+All 222 original public declarations remain. A kernel control accepts all 142
+original theorem types. All 80 imported data values are identical.
+All 6,532 focused axiom checks pass. They use only `propext`,
+`Classical.choice` and `Quot.sound`. Eighteen exact controls pass.
+The kernel rejects all eighteen mutations. They cover native codecs, request
+fields, row bindings, signed fill, invalid controls and domain bounds.
+All 32 Python controls pass. Generator freshness and workflow syntax pass.
+CI requires the new freshness and kernel mutation checks.
+
+Direct scalar checks and whole packed comparisons exceeded the memory cap.
+Bounded spans with computed reference rows also exceeded the cap.
+These variants are not adopted. The adopted checks use literal numeric requests
+and a balanced lookup of packed rows. Kernel bindings prove each connection.
+Each qualification guard cleaned its owned workers.
+
+The inventory has 27,781 roots. It retains all 21,471 established roots.
+The old shard declarations now belong to the public wrappers.
+The deferred environment audit must record that change.
+Evidence stays in `/tmp/airbender-review-round/checker-pilot-2026-10-31/`.
+Other item 3 families remain open. These include OR, XOR, coverage metadata,
+Clean ideal checks and wiring. Full frontend validation, environment audit,
+baseline refresh, full transitive replay, cold full measurements and Linux
+runtime and warm cache qualification remain pending for implementation review.
 
 ## Rebase checks
 
