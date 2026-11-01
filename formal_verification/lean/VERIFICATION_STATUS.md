@@ -26,7 +26,8 @@ Native public-program acceptance covers all 14 CPU profiles. Earlier compiler
 interfaces remain as compatibility declarations. The public proof graph excludes
 captured decoder interpretation and retained-image contracts. The verified
 checker rollout remains open. All 22 arithmetic captures now use whole results.
-Other per-capture fact families still need migration. The adopted AND checker
+All 22 Clean ideal captures now use complete results.
+Wiring and other per-capture fact families still need migration. The adopted AND checker
 has focused measurements below.
 
 ## Verified checker measurements
@@ -678,6 +679,51 @@ Other table families, metadata, Clean ideal checks and wiring remain open.
 Full frontend validation, environment audit, baseline refresh, full transitive
 replay, cold full measurements and Linux runtime and warm cache qualification
 remain pending for implementation review.
+
+### Complete Clean ideal captures
+
+All 22 Clean arithmetic captures now use complete checker results.
+Both cache modes remain required. The shared soundness theorem derives the
+original typed ideal facts and input scope facts. Exact kernel bindings cover
+all expressions, gate residuals and witnesses. They preserve every term.
+
+Bigint and Keccak use the proved packed normalization traces. Bounded source
+bindings connect the original expressions to direct numeric rows.
+The trace checker verifies each insertion position and each complete next state.
+BlakeRound uses indices through 674. It exceeds the packed quadratic bound.
+BlakeRound and Unified therefore use direct numeric rows and the proved fast
+normalizer. The packed codec stays unchanged. Each capture has one complete
+semantic result. All old per-statement facts follow as corollaries.
+
+All 11,520 original public declarations remain. A kernel control accepts all
+7,684 original theorem types. All 3,836 imported values are identical.
+All 18,409 focused axiom checks pass. They use only `propext`,
+`Classical.choice` and `Quot.sound`. Seventeen exact controls pass.
+The kernel rejects all seventeen mutations. Eleven Python generator controls
+pass. Capture freshness and the original scaffold check pass for all 22 captures.
+CI requires the numeric capture freshness check and the kernel controls.
+
+All 90 selected modules pass source checks and kernel replay.
+Each replay uses the standard 32 MiB thread stack. No safe declaration uses a
+skipped dependency. These checks trust imported objects.
+The final 68-module source and replay batch takes 649.59 s.
+It peaks at 1701.01 MiB of physical memory. The cached Bigint and BlakeRound
+groups also pass. The successful source and replay groups peak at 1735.32 MiB.
+Each guard cleaned its owned workers.
+
+Direct whole expression checks exceeded the cap for Bigint and BlakeRound.
+They are not adopted. Direct numeric rows avoid that aggregate expansion cost.
+The first axiom query used incorrect names for the new trace leaves.
+The corrected inventory and all focused queries pass.
+All 22 former large heartbeat overrides are gone from the Clean capture roots.
+
+The inventory has 35,162 roots. It retains all 28,273 established roots.
+Evidence stays in `/tmp/airbender-review-round/checker-pilot-2026-10-31/`.
+Wiring, remaining table families and metadata still need migration.
+Four `Proofs/UnifiedReduced` files still have unlimited heartbeat settings.
+No production circuit or Rust file changed. Full frontend validation,
+environment audit, baseline refresh, full transitive replay, cold full
+measurements and Linux qualification remain pending for implementation review.
 
 ## Rebase checks
 

@@ -2,6 +2,8 @@ import Airbender.Import.Coefficients
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.GKRProtocol.CleanArithmetic
 import Airbender.Proofs.GKRProtocol.CleanPlacementChecks
+import Airbender.Proofs.GKRProtocol.CleanIdealChecks
+import Airbender.Import.GKRProtocol.NumericArithmeticDataImport
 import Airbender.Import.GKRProtocol.FullArithmeticImport
 import Airbender.Proofs.GKRProtocol.NativeLookup
 
@@ -58,11 +60,11 @@ private def statementSyntax : StructuredStatement → CommandElabM (TSyntax `ter
         (_root_.Expression.mul $(← constantSyntax (-1)) $(← expressionSyntax expression)))
 
 syntax (name := importCleanArithmetic) "import_clean_arithmetic " ident " from " str
-  " selectors " str " base_model " ident " variables " num (" using " ident)? : command
+  " selectors " str " base_model " ident " variables " num (" using " ident)? (" ideal_checks " ident)? : command
 
 elab_rules : command
   | `(import_clean_arithmetic $name:ident from $path:str selectors $selectorText:str
-      base_model $baseName:ident variables $arityNumber:num $[using $provided:ident]?) => do
+      base_model $baseName:ident variables $arityNumber:num $[using $provided:ident]? $[ideal_checks $ideals:ident]?) => do
     let pair ← match Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
       | .ok pair => pure pair | .error error => throwError "{error}"
     let certificateData ← match Json.parse selectorText.getString >>= (fromJson? (α := Selectors)) with
@@ -135,8 +137,20 @@ elab_rules : command
       obtain ⟨gate, included, same⟩ := List.mem_map.mp member
       rw [← same, gate.checked_value (List.all_eq_true.mp $gatesChecked gate included)]
       exact holds gate included))
+    let idealRelations := fieldName name "idealRelationsBinding"
+    if let some owner := ideals then
+      let capture := fieldName owner "capture"
+      let countBinding := fieldName name "idealCountBinding"
+      let scopeBinding := fieldName name "idealScopeLimitBinding"
+      emitChecked (← `(numeric_data_binding $idealRelations :
+        ($relations).map NumericPolynomialChecks.encode = ($capture).relations.toList))
+      emitChecked (← `(numeric_data_binding $countBinding : ($capture).codes.size =
+        $(quote pair.circuit.structured_statements.size)))
+      emitChecked (← `(numeric_data_binding $scopeBinding : ($capture).scopeLimit =
+        $(quote placementEntries.size)))
     let mut expressions := #[]
     let mut proofs := #[]
+    let mut scopeProofs := #[]
     for (statement, index) in pair.circuit.structured_statements.toList.zipIdx do
       let expression := fieldName name s!"expression{index}"
       let witness := fieldName name s!"witness{index}"
@@ -152,8 +166,27 @@ elab_rules : command
           `((($(quote coefficient) : Source.BaseField), [$wires,*]))
         entries := entries.push (← `(([$terms,*], ⟨$(quote relation), by decide⟩)))
       emitChecked (← `(noncomputable def $witness : Combination $relations := [$entries,*]))
-      emitChecked (← `(theorem $checked : equal (CleanExpression.polynomial $placement $expression)
-        (combination $relations $witness) = true := by decide +kernel))
+      if let some owner := ideals then
+        let capture := fieldName owner "capture"
+        let whole := fieldName owner "checked"
+        let codeBinding := fieldName name s!"idealCodeBinding{index}"
+        let witnessBinding := fieldName name s!"idealWitnessBinding{index}"
+        let inputsBinding := fieldName name s!"idealInputsBinding{index}"
+        emitChecked (← `(numeric_data_binding $codeBinding :
+          CleanIdealChecks.encode $placement $expression = ($capture).codes.getD $(quote index) (.constant 0)))
+        emitChecked (← `(numeric_data_binding $witnessBinding :
+          NumericPolynomialChecks.encodeCombination $witness = ($capture).witnesses.getD $(quote index) []))
+        emitChecked (← `(numeric_data_binding $inputsBinding :
+          CleanExpression.inputs $expression = ($capture).inputs.getD $(quote index) []))
+        emitChecked (← `(theorem $checked : equal (CleanExpression.polynomial $placement $expression)
+          (combination $relations $witness) = true :=
+          CleanIdealChecks.check_sound_at $placement $relations $expression $witness $capture $whole
+            $(quote index) (by decide +kernel) $codeBinding $idealRelations $witnessBinding))
+        scopeProofs := scopeProofs.push (← `(CleanIdealChecks.scope_at $expression $capture $whole
+          $(quote index) (by decide +kernel) $inputsBinding))
+      else
+        emitChecked (← `(theorem $checked : equal (CleanExpression.polynomial $placement $expression)
+          (combination $relations $witness) = true := by decide +kernel))
       emitChecked (← `(theorem $preserved (base : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
         (holds : Satisfies $relations (base ∘ ($bank).address)) :
         ($expression).eval ($environment base data) = 0 :=
@@ -164,8 +197,15 @@ elab_rules : command
     let allExpressions := fieldName name "expressions"
     emitChecked (← `(noncomputable def $allExpressions : List (_root_.Expression Source.BaseField) := [$expressions,*]))
     let scope := fieldName name "scopeChecked"
-    emitChecked (← `(theorem $scope : ($allExpressions).all (fun expression =>
-      (CleanExpression.inputs expression).all (fun index => decide (index < $(quote placementEntries.size)))) = true := by decide +kernel))
+    if ideals.isSome then
+      emitChecked (← `(theorem $scope : ($allExpressions).all (fun expression =>
+        (CleanExpression.inputs expression).all (fun index => decide (index < $(quote placementEntries.size)))) = true :=
+        BoolChecks.all_true (predicate := fun expression =>
+          (CleanExpression.inputs expression).all (fun index => decide (index < $(quote placementEntries.size))))
+          (items := $allExpressions) $(← checksSyntax scopeProofs)))
+    else
+      emitChecked (← `(theorem $scope : ($allExpressions).all (fun expression =>
+        (CleanExpression.inputs expression).all (fun index => decide (index < $(quote placementEntries.size)))) = true := by decide +kernel))
     let preserved := fieldName name "arithmetic_preserved"
     let mut cases ← `(PredicateChecks.nil)
     for proof in proofs.reverse do cases ← `(PredicateChecks.cons ($proof base data holds) $cases)

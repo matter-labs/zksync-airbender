@@ -2440,8 +2440,39 @@ for shift_lane in range(4):
         packed_arithmetic_roots += [shift_prefix + stem + str(shift_part)
                                     for stem in ["Blocks", "Start", "Size"]]
 
+from gkr_clean_ideal import CAPTURES as CLEAN_IDEAL_CAPTURES, TRACE_CASES as CLEAN_TRACE_CASES, ROW_CASES as CLEAN_ROW_CASES, load as clean_ideal_payload
+for clean_source in ["Airbender/Proofs/GKRProtocol/CleanIdealChecks.lean",
+        "Airbender/Proofs/GKRProtocol/CleanIdealTrace.lean",
+        "Airbender/Proofs/GKRProtocol/CleanIdealRows.lean",
+        "Tests/CleanIdealChecks.lean", "Tests/CleanIdealTrace.lean", "Tests/CleanIdealRows.lean"] + [
+        f"Airbender/Proofs/GKRProtocol/CleanIdealNative/{case}{suffix}.lean"
+        for case in CLEAN_IDEAL_CAPTURES
+        for suffix in (["Data", "Bindings", "TraceBindings", ""] if case in CLEAN_TRACE_CASES else ["Data", "Bindings", ""] if case in CLEAN_ROW_CASES else ["Data", ""])]:
+    clean_text = (ROOT / clean_source).read_text()
+    clean_namespace = re.search(r"^namespace (\S+)", clean_text, re.M)[1]
+    clean_names = re.findall(r"^(?:def|theorem|structure|inductive|numeric_data_binding) (\S+)", clean_text, re.M)
+    packed_arithmetic_roots += [clean_namespace + "." + name for name in clean_names]
+for clean_case, clean_name in CLEAN_IDEAL_CAPTURES.items():
+    clean_payload = clean_ideal_payload(clean_case, clean_name)
+    clean_count = len(clean_payload["expressions"])
+    if clean_case in CLEAN_TRACE_CASES:
+        trace_prefix = f"Airbender.Compiler.CleanIdealNative.{clean_case}.traceRows"
+        packed_arithmetic_roots += [trace_prefix]
+        packed_arithmetic_roots += [trace_prefix + ".leaf" + str(index)
+            for index in range((len(clean_payload["normalizationTraces"]) + 7) // 8)]
+    clean_prefix = f"Airbender.Compiler.CleanArithmeticNative.{clean_case}.native."
+    packed_arithmetic_roots += [clean_prefix + name for name in [
+        "idealRelationsBinding", "idealCountBinding", "idealScopeLimitBinding"]]
+    packed_arithmetic_roots += [clean_prefix + name + str(index)
+        for name in ["idealCodeBinding", "idealWitnessBinding", "idealInputsBinding"]
+        for index in range(clean_count)]
+
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
+for clean_import in ['import Tests.CleanIdealChecks', 'import Tests.CleanIdealTrace', 'import Tests.CleanIdealRows'] + [
+        'import Airbender.Proofs.GKRProtocol.CleanArithmeticNative.' + case for case in CLEAN_IDEAL_CAPTURES]:
+    if clean_import not in content.splitlines():
+        content = clean_import + '\n' + content
 for numeric_case in sorted(NUMERIC_CAPTURES):
     numeric_capture_import = "import Airbender.Proofs.GKRProtocol.FullArithmeticNative." + numeric_case
     if numeric_capture_import not in content.splitlines():
