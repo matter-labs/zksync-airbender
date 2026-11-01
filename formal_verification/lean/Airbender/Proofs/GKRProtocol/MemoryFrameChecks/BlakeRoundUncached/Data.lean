@@ -1,0 +1,15 @@
+import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.BlakeRoundUncached.PrefixBindings
+import Airbender.Import.GKRProtocol.NumericMemoryFrameImport
+
+namespace Airbender.Compiler.MemoryFrameChecks.BlakeRoundUncached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+set_option exponentiation.threshold 4096 in
+set_option maxHeartbeats 2000000 in
+numeric_memory_frame_capture data := NumericMemoryFrameChecks.ofTypedPrefix Airbender.Compiler.MemoryFrameNative.BlakeRoundUncached.native.ramFields Airbender.Compiler.MemoryFrameNative.BlakeRoundUncached.native.initializationFields Airbender.Compiler.MemoryFrameNative.BlakeRoundUncached.native.executeFields
+  Airbender.Compiler.MemoryNative.BlakeRoundUncached.native.sourcePlacement Airbender.Compiler.MemoryNative.BlakeRoundUncached.native.bank Airbender.Compiler.MemoryFrameNative.BlakeRoundUncached.native.activeCoordinates Airbender.Compiler.MemoryFrameNative.BlakeRoundUncached.native.allCoordinates
+  Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.inputBank Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.bank
+end Airbender.Compiler.MemoryFrameChecks.BlakeRoundUncached

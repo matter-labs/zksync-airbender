@@ -1,23 +1,12 @@
 import Airbender.Import.GKRProtocol.MemoryFrameImport
 import Airbender.Proofs.GKRProtocol.CounterFrameNative.BlakeRoundCached
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundCachedInputs
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundCachedPart0
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundCachedPart1
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundCachedPart2
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundCachedPart3
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundCachedPart4
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundCachedPart5
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundCachedPart6
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundCachedPart7
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundCachedPart8
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundCachedPart9
+import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.BlakeRoundCached.Certificate
 
 namespace Airbender.Compiler.MemoryFrameNative.BlakeRoundCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_memory_frame native from "artifacts/compiler/blake-round-cached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native
@@ -26,6 +15,7 @@ import_memory_frame native from "artifacts/compiler/blake-round-cached-source.js
   history_model Airbender.Compiler.HistoryErasureNative.BlakeRoundCached.native
   helper_model Airbender.Compiler.HelperValidityNative.BlakeRoundCached.native
   counter_model Airbender.Compiler.CounterFrameNative.BlakeRoundCached.native
-  inputs 763 phase 2 start 0 stop 616
+  inputs 763 phase 3 start 0 stop 616
+  using_check Airbender.Compiler.MemoryFrameChecks.BlakeRoundCached.originalChecked
 
 end Airbender.Compiler.MemoryFrameNative.BlakeRoundCached

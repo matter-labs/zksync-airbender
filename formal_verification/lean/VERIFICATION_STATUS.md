@@ -4693,3 +4693,43 @@ NumericMemoryFramePrefix.lean remains there too. The prototype is not adopted.
 Next generate both canonical BlakeRound modes. Run preservation, controls, axiom
 checks and direct consumer checks before adoption. Keep the AddSub pilot as it is.
 The other 20 memory-frame captures remain open. Full validation remains pending.
+
+### Complete dense memory-frame captures (2026-11-01)
+
+Both BlakeRound cache modes now use one complete numeric checker result. The
+proved prefix constructor keeps the original capture exactly. Closed prefix and
+bank inverse proofs justify the adapter. Complete bounded bindings cover all
+four address vectors and all 616 RAM polynomials in each capture. They preserve
+zero terms and term order. The masks, initialization list and execute list also
+have exact bindings. The original semantic finalizers and premises remain.
+
+The rollout retires 20 old RAM proof shards. All 1,304 old public declarations
+remain. Kernel preservation accepts all 1,272 old theorem types. All 32 imported
+data values are identical. All 25 selected source checks and replays pass. These
+include both direct witness consumers. Replay uses the standard 32 MiB stack and
+skips no safe dependency. All 2,189 focused axiom checks use only the three allowed
+axioms. All 41 exact controls and 41 kernel mutation rejections pass. The legacy
+finalizer and opaque-payload rejection pass. All four Python generator controls
+pass. Source and interface freshness, static checks, the source import graph and
+workflow syntax pass. The inventory has 77,177 roots. It retains all 76,292 prior
+roots and every established root.
+
+The canonical source and replay guard takes 267.18 s and peaks at 1,231.09 MiB.
+Each whole checker builds in about 2.1 s and replays in about 2.1 s. The complete
+native wrappers build in about 4.9 s and replay in about 2.1 s. These focused
+measurements do not establish a cold full-build gain. The two dense materializers
+use a scoped two-million heartbeat budget. All other new modules use the default
+budget. The AddSub pilot outputs remain unchanged.
+
+The first mutation run stops at a syntax error in the test expression. The
+corrected run passes. The preservation and consumer results remain valid. All
+guards clean their owned workers. Evidence uses memory-frame-blake-* in the
+checker evidence folder. The original objects remain in
+memory-frame-blake-original-oleans. The other 18 memory-frame captures remain
+open. Their original objects are archived. Other frame and argument families
+also remain open. Full frontend validation, the environment audit and baseline
+refresh, full transitive replay, cold full measurements, and Linux runtime and
+warm-cache qualification remain pending for review. The known aggregate import
+collision remains deferred.
+
+The final qualification guard takes 167.90 s and peaks at 551.90 MiB.

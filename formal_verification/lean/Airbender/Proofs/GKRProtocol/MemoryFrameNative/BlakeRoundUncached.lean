@@ -1,23 +1,12 @@
 import Airbender.Import.GKRProtocol.MemoryFrameImport
 import Airbender.Proofs.GKRProtocol.CounterFrameNative.BlakeRoundUncached
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundUncachedInputs
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundUncachedPart0
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundUncachedPart1
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundUncachedPart2
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundUncachedPart3
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundUncachedPart4
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundUncachedPart5
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundUncachedPart6
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundUncachedPart7
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundUncachedPart8
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BlakeRoundUncachedPart9
+import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.BlakeRoundUncached.Certificate
 
 namespace Airbender.Compiler.MemoryFrameNative.BlakeRoundUncached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_memory_frame native from "artifacts/compiler/blake-round-uncached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native
@@ -26,6 +15,7 @@ import_memory_frame native from "artifacts/compiler/blake-round-uncached-source.
   history_model Airbender.Compiler.HistoryErasureNative.BlakeRoundUncached.native
   helper_model Airbender.Compiler.HelperValidityNative.BlakeRoundUncached.native
   counter_model Airbender.Compiler.CounterFrameNative.BlakeRoundUncached.native
-  inputs 763 phase 2 start 0 stop 616
+  inputs 763 phase 3 start 0 stop 616
+  using_check Airbender.Compiler.MemoryFrameChecks.BlakeRoundUncached.originalChecked
 
 end Airbender.Compiler.MemoryFrameNative.BlakeRoundUncached

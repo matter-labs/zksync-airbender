@@ -2556,14 +2556,14 @@ for query_frame_module in ['NumericQueryFrameBindings', 'NumericQueryFrameIndexe
     packed_arithmetic_roots += ['Airbender.Compiler.NumericQueryFrameChecks.' + name for name in
         re.findall(r'^(?:def|theorem|structure) (\S+)', query_frame_source, re.M)]
 packed_arithmetic_roots += ['Airbender.Compiler.QueryFrameImport.all_slice_true']
-memory_frame_text = (ROOT / 'Airbender/Proofs/GKRProtocol/NumericMemoryFrameChecks.lean').read_text()
+memory_frame_text = '\n'.join((ROOT / f'Airbender/Proofs/GKRProtocol/{module}.lean').read_text() for module in ['NumericMemoryFrameChecks', 'NumericMemoryFramePrefix'])
 packed_arithmetic_roots += ['Airbender.Compiler.NumericMemoryFrameChecks.' + name for name in
     re.findall(r'^(?:def|theorem|structure) (\S+)', memory_frame_text, re.M)]
 from gkr_packed_memory_frame import CASES as NUMERIC_MEMORY_FRAME_CASES, modules as numeric_memory_frame_modules
 for case in NUMERIC_MEMORY_FRAME_CASES:
     for module, frame_text in numeric_memory_frame_modules(case):
         packed_arithmetic_roots += ['Airbender.Compiler.MemoryFrameChecks.' + case + '.' + name for name in
-            re.findall(r'^(?:theorem|numeric_data_binding|numeric_memory_frame_capture) (\S+)', frame_text, re.M)]
+            re.findall(r'^(?:noncomputable def|theorem|numeric_data_binding|numeric_memory_frame_capture) (\S+)', frame_text, re.M)]
     packed_arithmetic_roots += ['Airbender.Compiler.MemoryFrameNative.' + case + '.native.' + name + 'FieldsLength'
         for name in ['ram', 'initialization', 'execute']]
     frame_import = f'import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.{case}.Certificate'
