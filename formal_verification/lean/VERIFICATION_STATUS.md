@@ -27,7 +27,8 @@ interfaces remain as compatibility declarations. The public proof graph excludes
 captured decoder interpretation and retained-image contracts. The verified
 checker rollout remains open. All 22 arithmetic captures now use whole results.
 All 22 Clean ideal captures now use complete results.
-Wiring and other per-capture fact families still need migration. The adopted AND checker
+All 22 wiring captures now use complete results.
+Other table families and metadata still need migration. The adopted AND checker
 has focused measurements below.
 
 ## Verified checker measurements
@@ -720,6 +721,48 @@ All 22 former large heartbeat overrides are gone from the Clean capture roots.
 The inventory has 35,162 roots. It retains all 28,273 established roots.
 Evidence stays in `/tmp/airbender-review-round/checker-pilot-2026-10-31/`.
 Wiring, remaining table families and metadata still need migration.
+Four `Proofs/UnifiedReduced` files still have unlimited heartbeat settings.
+No production circuit or Rust file changed. Full frontend validation,
+environment audit, baseline refresh, full transitive replay, cold full
+measurements and Linux qualification remain pending for implementation review.
+
+### Complete wiring captures
+
+All 22 wiring captures now use complete checker results.
+Both cache modes remain required. Numeric producer key trees replace repeated
+producer scans. Exact kernel bindings cover both complete key banks.
+A structural merge sort has a proved permutation theorem. The checker derives
+the original `Wiring.check` result. The original soundness theorem and finalizer remain.
+
+All 17,814 original public declarations remain. A kernel control accepts all
+12,960 old theorem types. All 4,854 imported values are identical.
+All original per-index facts follow as corollaries. The rollout retires 258
+proof shards. It keeps the two established import compatibility modules.
+All 44 former large heartbeat overrides are gone from the data and Native roots.
+The importer parses each complete capture once. The kernel checks each closed
+corollary against its original declared type. The declaration API skips no checks.
+
+All 118 selected modules pass source checks and kernel replay.
+Each replay uses the standard 32 MiB thread stack. No safe declaration uses a
+skipped dependency. These checks trust imported objects.
+The 94-module data and certificate stage takes 412.49 s.
+It peaks at 1477.25 MiB of physical memory. The 24-module interface stage takes
+435.23 s. It peaks at 797.64 MiB. Each guard cleaned its owned workers.
+
+All 18,051 focused axiom checks pass. They use only `propext`,
+`Classical.choice` and `Quot.sound`. Ten exact controls pass.
+The kernel rejects all ten mutations. Seven Python generator controls pass.
+Both complete capture and scaffold freshness checks pass for all 22 captures.
+CI requires capture freshness and the kernel controls. Workflow syntax passes.
+
+Direct whole wiring checks and insertion-sort source bindings exceeded the
+memory cap on BlakeRound. They are not adopted. The structural sort and
+numeric key trees pass the same limit.
+
+The inventory has 53,191 roots. It retains all 35,162 established roots.
+Evidence stays in `/tmp/airbender-review-round/checker-pilot-2026-10-31/`.
+The original 304 module objects remain in its `wiring-original-oleans` directory.
+Remaining table families and metadata still need migration.
 Four `Proofs/UnifiedReduced` files still have unlimited heartbeat settings.
 No production circuit or Rust file changed. Full frontend validation,
 environment audit, baseline refresh, full transitive replay, cold full

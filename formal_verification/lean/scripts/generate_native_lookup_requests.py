@@ -2467,8 +2467,27 @@ for clean_case, clean_name in CLEAN_IDEAL_CAPTURES.items():
         for name in ["idealCodeBinding", "idealWitnessBinding", "idealInputsBinding"]
         for index in range(clean_count)]
 
+from gkr_packed_wiring import CAPTURES as WIRING_CAPTURES, load as wiring_payload, legacy_roots as wiring_legacy_roots
+for wiring_source in [
+        "Airbender/Proofs/GKRCompiler/WiringKeySort.lean",
+        "Airbender/Proofs/GKRCompiler/WiringChecks.lean",
+        "Airbender/Proofs/GKRCompiler/WiringCheckProjections.lean",
+        "Tests/WiringChecks.lean"] + [
+        f"Airbender/Proofs/GKRCompiler/WiringCheckNative/{case}{suffix}.lean"
+        for case in WIRING_CAPTURES for suffix in ["Data", "Bindings", ""]]:
+    wiring_text = (ROOT / wiring_source).read_text()
+    wiring_namespace = re.search(r"^namespace (\S+)", wiring_text, re.M)[1]
+    wiring_names = re.findall(r"^(?:def|theorem|structure|inductive|numeric_data_binding) (\S+)", wiring_text, re.M)
+    packed_arithmetic_roots += [wiring_namespace + "." + name for name in wiring_names]
+for wiring_case, wiring_name in WIRING_CAPTURES.items():
+    packed_arithmetic_roots += wiring_legacy_roots(wiring_case, wiring_name, wiring_payload(wiring_name))
+
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
+for wiring_import in ['import Tests.WiringChecks'] + [
+        'import Airbender.Proofs.GKRCompiler.WiringNative.' + case for case in WIRING_CAPTURES]:
+    if wiring_import not in content.splitlines():
+        content = wiring_import + '\n' + content
 for clean_import in ['import Tests.CleanIdealChecks', 'import Tests.CleanIdealTrace', 'import Tests.CleanIdealRows'] + [
         'import Airbender.Proofs.GKRProtocol.CleanArithmeticNative.' + case for case in CLEAN_IDEAL_CAPTURES]:
     if clean_import not in content.splitlines():

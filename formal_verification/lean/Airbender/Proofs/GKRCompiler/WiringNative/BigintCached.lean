@@ -1,34 +1,13 @@
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedGeometry
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedUnique0
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedUnique1
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedUnique2
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedUnique3
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedUnique4
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedUnique5
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedUnique6
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedUnique7
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedPlacement0
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedPlacement1
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedPlacement2
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedPlacement3
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedGates0
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedGates1
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedGates2
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedGates3
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedGates4
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedGates5
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedCaches0
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedCaches1
-import Airbender.Proofs.GKRCompiler.WiringParts.BigintCachedCaches2
+import Airbender.Import.GKRCompiler.WiringImport
+import Airbender.Proofs.GKRCompiler.WiringCheckNative.BigintCached
 
 namespace Airbender.Compiler.WiringNative.BigintCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
-import_compiler_wiring native from "artifacts/compiler/bigint-cached.json" phase "assemble" start 0 count 0
+import_compiler_wiring native from "artifacts/compiler/bigint-cached.json" phase "certified" start 0 count 0 using Airbender.Compiler.WiringCheckNative.BigintCached
 
 theorem wiring_valid : native.graph.Valid := native.sound
 

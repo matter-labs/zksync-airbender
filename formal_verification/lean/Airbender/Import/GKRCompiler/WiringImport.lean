@@ -1,9 +1,35 @@
 import Airbender.Proofs.GKRCompiler.Wiring
+import Airbender.Proofs.GKRCompiler.WiringCheckProjections
 import Airbender.Import.GKRCompiler.Import
+import Lean.AddDecl
 
 namespace Airbender.Compiler.WiringImport
 open Lean Elab Command
 set_option warningAsError true
+
+private def emitChecked (command : Syntax) : CommandElabM Unit := withEnableInfoTree false do
+  elabCommand command
+  if (← get).messages.hasErrors then throwAbortCommand
+
+/-- Elaborate closed corollaries once. The kernel checks their original types. -/
+private def emitCorollary (command : Syntax) : CommandElabM Unit := withEnableInfoTree false do
+  match command with
+  | `(theorem $name:ident : $statement:term := $proof:term) =>
+      let type ← liftTermElabM do
+        let value ← Term.elabType statement
+        Term.synthesizeSyntheticMVarsNoPostponing
+        instantiateMVars value
+      let value ← liftTermElabM do
+        let value ← Term.elabTerm proof none
+        Term.synthesizeSyntheticMVarsNoPostponing
+        instantiateMVars value
+      liftCoreM <| addDecl (.thmDecl {
+        name := (← getCurrNamespace) ++ name.getId
+        levelParams := []
+        type := type
+        value := value
+      })
+  | _ => throwError "closed wiring corollary required"
 
 private def memory (indices : List Nat) : List GKRAddress := indices.map .BaseLayerMemory
 
@@ -130,15 +156,18 @@ private def checksSyntax (proofs : Array (TSyntax `ident)) : CommandElabM (TSynt
     result ← `(Compiler.BoolChecks.cons $proof $result)
   return result
 
-syntax (name := importWiring) "import_compiler_wiring " ident " from " str " phase " str " start " num " count " num : command
+syntax (name := importWiring) "import_compiler_wiring " ident " from " str " phase " str " start " num " count " num (" using " ident)? : command
 
 elab_rules : command
-  | `(import_compiler_wiring $name:ident from $path:str phase $mode:str start $offset:num count $length:num) => do
+  | `(import_compiler_wiring $name:ident from $path:str phase $mode:str start $offset:num count $length:num $[using $owner:ident]?) => do
+    let supplied := owner.map fun value => mkIdent (value.getId ++ `original_checked)
     let mode := mode.getString
-    unless ["data", "geometry", "unique", "placement", "gates", "caches", "assemble"].contains mode do
+    unless ["data", "geometry", "unique", "placement", "gates", "caches", "assemble", "certified"].contains mode do
       throwError "unsupported wiring-check phase"
     let first := offset.getNat
     let last := first + length.getNat
+    if mode == "certified" && (supplied.isNone || first != 0 || length.getNat != 0) then
+      throwError "complete wiring corollaries require a checker and no slice"
     let bytes ← IO.FS.readFile path.getString
     let pair ← match Json.parse bytes >>= (fromJson? (α := Import.Pair)) with
       | .ok pair => pure pair
@@ -167,13 +196,13 @@ elab_rules : command
         producerPorts := producerPorts ++ ports.outputs
         let gateName := mkIdent (name.getId ++ Name.mkSimple s!"gate{gateTerms.size}")
         if mode == "data" then
-          elabCommand (← `(noncomputable def $gateName : GatePorts := GatePorts.mk $(quote ports.layer)
+          emitChecked (← `(noncomputable def $gateName : GatePorts := GatePorts.mk $(quote ports.layer)
             $(← addressesSyntax ports.inputs) $(← addressesSyntax ports.outputs)))
         gateTerms := gateTerms.push (← `($gateName))
       for (address, relation) in layer.cached_relations do
         let cacheName := mkIdent (name.getId ++ Name.mkSimple s!"cache{cacheTerms.size}")
         if mode == "data" then
-          elabCommand (← `(noncomputable def $cacheName : CachePorts := CachePorts.mk $(quote index)
+          emitChecked (← `(noncomputable def $cacheName : CachePorts := CachePorts.mk $(quote index)
             $(← addressesSyntax (cacheInputs relation)) $(← addressSyntax address)))
         cacheTerms := cacheTerms.push (← `($cacheName))
     let mut outputs : List GKRAddress := []
@@ -197,7 +226,7 @@ elab_rules : command
     for layer in circuit.layers do
       producerPorts := producerPorts ++ layer.cached_relations.toList.map (·.1)
     if mode == "data" then
-      elabCommand (← `(noncomputable def $graphName : Wiring :=
+      emitChecked (← `(noncomputable def $graphName : Wiring :=
         ⟨$(quote circuit.memory_layout.total_width), $(quote circuit.witness_layout.total_width),
          $(quote circuit.generic_lookup_tables_width), $(quote widths.toList),
          [$gateTerms,*], [$cacheTerms,*], $(← addressesSyntax producerPorts), [$placements,*], $(quote circuit.scratch_space_size),
@@ -210,12 +239,18 @@ elab_rules : command
     let placementName := mkIdent (name.getId ++ `placementChecked)
     let scratchName := mkIdent (name.getId ++ `scratchChecked)
     let outputsName := mkIdent (name.getId ++ `outputsChecked)
-    if mode == "geometry" then
-      elabCommand (← `(theorem $nonemptyName : decide (($graphName).widths ≠ []) = true := by decide +kernel))
-      elabCommand (← `(theorem $tableName : decide (($graphName).produced = ($graphName).computedProduced) = true := by decide +kernel))
-      elabCommand (← `(theorem $scratchName : ($graphName).scratchValid = true := by decide +kernel))
-      elabCommand (← `(theorem $outputsName : ($graphName).outputsValid = true := by decide +kernel))
-      return
+    if mode == "geometry" || mode == "certified" then
+      if let some whole := supplied then
+        emitCorollary (← `(theorem $nonemptyName : decide (($graphName).widths ≠ []) = true := (WiringChecks.facts $graphName $whole).nonempty))
+        emitCorollary (← `(theorem $tableName : decide (($graphName).produced = ($graphName).computedProduced) = true := (WiringChecks.facts $graphName $whole).producerTable))
+        emitCorollary (← `(theorem $scratchName : ($graphName).scratchValid = true := (WiringChecks.facts $graphName $whole).scratch))
+        emitCorollary (← `(theorem $outputsName : ($graphName).outputsValid = true := (WiringChecks.facts $graphName $whole).outputs))
+      else
+        emitChecked (← `(theorem $nonemptyName : decide (($graphName).widths ≠ []) = true := by decide +kernel))
+        emitChecked (← `(theorem $tableName : decide (($graphName).produced = ($graphName).computedProduced) = true := by decide +kernel))
+        emitChecked (← `(theorem $scratchName : ($graphName).scratchValid = true := by decide +kernel))
+        emitChecked (← `(theorem $outputsName : ($graphName).outputsValid = true := by decide +kernel))
+      if mode == "geometry" then return
     if mode == "gates" && last > gateTerms.size || mode == "caches" && last > cacheTerms.size ||
         mode == "unique" && last > producerPorts.length || mode == "placement" && last > placements.size then
       throwError "wiring-check shard outside native relation count"
@@ -223,44 +258,58 @@ elab_rules : command
     for index in [:producerPorts.length] do
       let position ← `(⟨$(quote index), by decide⟩)
       let proof := mkIdent (name.getId ++ Name.mkSimple s!"producerUniqueChecked{index}")
-      if mode == "unique" && first ≤ index && index < last then
-        elabCommand (← `(theorem $proof : Compiler.distinctAt ($graphName).produced $position = true := by decide +kernel))
+      if mode == "certified" || mode == "unique" && first ≤ index && index < last then
+        if let some whole := supplied then
+          emitCorollary (← `(theorem $proof : Compiler.distinctAt ($graphName).produced $position = true := WiringChecks.unique_at $graphName $whole $position))
+        else
+          emitChecked (← `(theorem $proof : Compiler.distinctAt ($graphName).produced $position = true := by decide +kernel))
       uniqueProofs := uniqueProofs.push proof
     let mut placementProofs := #[]
     for index in [:placements.size] do
       let position ← `(⟨$(quote index), by decide⟩)
       let proof := mkIdent (name.getId ++ Name.mkSimple s!"placementCaseChecked{index}")
-      if mode == "placement" && first ≤ index && index < last then
-        elabCommand (← `(theorem $proof : ($graphName).placementCase $position = true := by decide +kernel))
+      if mode == "certified" || mode == "placement" && first ≤ index && index < last then
+        if let some whole := supplied then
+          emitCorollary (← `(theorem $proof : ($graphName).placementCase $position = true := WiringChecks.placement_at $graphName $whole $position))
+        else
+          emitChecked (← `(theorem $proof : ($graphName).placementCase $position = true := by decide +kernel))
       placementProofs := placementProofs.push proof
     let mut gateProofs := #[]
     for index in [:gateTerms.size] do
       let gate := gateTerms[index]!
       let proof := mkIdent (name.getId ++ Name.mkSimple s!"gateChecked{index}")
-      if mode == "gates" && first ≤ index && index < last then
-        elabCommand (← `(theorem $proof : ($graphName).gateValid $gate = true := by decide +kernel))
+      if mode == "certified" || mode == "gates" && first ≤ index && index < last then
+        if let some whole := supplied then
+          let position ← `(⟨$(quote index), by decide +kernel⟩)
+          emitCorollary (← `(theorem $proof : ($graphName).gateValid $gate = true := WiringChecks.gate_at $graphName $whole $position))
+        else
+          emitChecked (← `(theorem $proof : ($graphName).gateValid $gate = true := by decide +kernel))
       gateProofs := gateProofs.push proof
     let mut cacheProofs := #[]
     for index in [:cacheTerms.size] do
       let cache := cacheTerms[index]!
       let proof := mkIdent (name.getId ++ Name.mkSimple s!"cacheChecked{index}")
-      if mode == "caches" && first ≤ index && index < last then
-        elabCommand (← `(theorem $proof : ($graphName).cacheValid $cache = true := by decide +kernel))
+      if mode == "certified" || mode == "caches" && first ≤ index && index < last then
+        if let some whole := supplied then
+          let position ← `(⟨$(quote index), by decide +kernel⟩)
+          emitCorollary (← `(theorem $proof : ($graphName).cacheValid $cache = true := WiringChecks.cache_at $graphName $whole $position))
+        else
+          emitChecked (← `(theorem $proof : ($graphName).cacheValid $cache = true := by decide +kernel))
       cacheProofs := cacheProofs.push proof
-    if mode != "assemble" then return
-    elabCommand (← `(theorem $uniqueName : ($graphName).uniqueValid = true :=
+    if mode != "assemble" && mode != "certified" then return
+    emitChecked (← `(theorem $uniqueName : ($graphName).uniqueValid = true :=
       Compiler.BoolChecks.all_true $(← checksSyntax uniqueProofs)))
-    elabCommand (← `(theorem $placementName : ($graphName).placementValid = true :=
+    emitChecked (← `(theorem $placementName : ($graphName).placementValid = true :=
       Compiler.BoolChecks.all_true $(← checksSyntax placementProofs)))
     let gatesName := mkIdent (name.getId ++ `gatesChecked)
-    elabCommand (← `(theorem $gatesName : ($graphName).gates.all ($graphName).gateValid = true :=
+    emitChecked (← `(theorem $gatesName : ($graphName).gates.all ($graphName).gateValid = true :=
       Compiler.BoolChecks.all_true $(← checksSyntax gateProofs)))
     let cachesName := mkIdent (name.getId ++ `cachesChecked)
-    elabCommand (← `(theorem $cachesName : ($graphName).caches.all ($graphName).cacheValid = true :=
+    emitChecked (← `(theorem $cachesName : ($graphName).caches.all ($graphName).cacheValid = true :=
       Compiler.BoolChecks.all_true $(← checksSyntax cacheProofs)))
-    elabCommand (← `(theorem $checkedName : ($graphName).check = true :=
+    emitChecked (← `(theorem $checkedName : ($graphName).check = true :=
       Wiring.assemble (graph := $graphName) $nonemptyName $tableName $uniqueName $gatesName $cachesName $placementName $scratchName $outputsName))
     let soundName := mkIdent (name.getId ++ `sound)
-    elabCommand (← `(theorem $soundName : ($graphName).Valid := Wiring.sound (graph := $graphName) $checkedName))
+    emitChecked (← `(theorem $soundName : ($graphName).Valid := Wiring.sound (graph := $graphName) $checkedName))
 
 end Airbender.Compiler.WiringImport

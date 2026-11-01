@@ -1,17 +1,13 @@
-import Airbender.Proofs.GKRCompiler.WiringParts.AddSubUncachedGeometry
-import Airbender.Proofs.GKRCompiler.WiringParts.AddSubUncachedUnique0
-import Airbender.Proofs.GKRCompiler.WiringParts.AddSubUncachedPlacement0
-import Airbender.Proofs.GKRCompiler.WiringParts.AddSubUncachedGates0
-import Airbender.Proofs.GKRCompiler.WiringParts.AddSubUncachedGates1
+import Airbender.Import.GKRCompiler.WiringImport
+import Airbender.Proofs.GKRCompiler.WiringCheckNative.AddSubUncached
 
 namespace Airbender.Compiler.WiringNative.AddSubUncached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
-import_compiler_wiring native from "artifacts/compiler/add-sub-uncached.json" phase "assemble" start 0 count 0
+import_compiler_wiring native from "artifacts/compiler/add-sub-uncached.json" phase "certified" start 0 count 0 using Airbender.Compiler.WiringCheckNative.AddSubUncached
 
 theorem wiring_valid : native.graph.Valid := native.sound
 
