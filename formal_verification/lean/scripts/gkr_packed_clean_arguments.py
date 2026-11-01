@@ -8,9 +8,12 @@ from export_gkr_translations import LEAN
 from gkr_packed_functional_steps import balanced
 from gkr_packed_query_frame import capture_name, merge_slices
 from gkr_packed_rotate_boundary import preflight
+from gkr_wiring_instances import CASES as CIRCUIT_CASES
 
 PILOT_CASES = ('WordMemoryCached', 'WordMemoryUncached')
 CASES = PILOT_CASES + ('BlakeRoundCached', 'BlakeRoundUncached')
+CASES += tuple(stem + mode for stem in CIRCUIT_CASES if stem not in ['WordMemory', 'BlakeRound']
+               for mode in ['Cached', 'Uncached'])
 
 
 def metadata(case):

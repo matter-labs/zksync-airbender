@@ -1,19 +1,18 @@
-import Airbender.Proofs.GKRProtocol.CleanGenericArgumentsParts.SubwordMemoryUncached.Part0
+import Airbender.Proofs.GKRProtocol.CleanArgumentChecks.SubwordMemoryUncached.Certificate
 
-namespace Airbender.Compiler.CleanGenericArgumentsNative.SubwordMemoryUncached.native
+namespace Airbender.Compiler.CleanGenericArgumentsNative.SubwordMemoryUncached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
-noncomputable def genericExpressions0 : Vector (_root_.Expression Source.BaseField) 9 :=
-  #v[part0.genericExpression0_0, part0.genericExpression0_1, part0.genericExpression0_2, part0.genericExpression0_3, part0.genericExpression0_4, part0.genericExpression0_5, part0.genericExpression0_6, part0.genericExpression0_7, part0.genericExpression0_8]
+import_clean_generic_arguments native from "artifacts/compiler/subword-memory-uncached.json"
+  certificate "artifacts/compiler/lookup/subword-memory-uncached.json"
+  clean_model Airbender.Compiler.CleanArithmeticNative.SubwordMemoryUncached.native
+  base_model Airbender.Compiler.FullArithmeticNative.SubwordMemoryUncached.native
+  lookup_model Airbender.Compiler.LookupNative.SubwordMemoryUncached.native
+  query_model Airbender.Compiler.LookupSourceNative.SubwordMemoryUncached.native
+  links_model Airbender.Compiler.FunctionalLinksNative.SubwordMemoryUncached.native
+  start 0 stop 2 part_size 8 phase 1 using_checks Airbender.Compiler.CleanArgumentChecks.SubwordMemoryUncached
 
-noncomputable def genericExpressions1 : Vector (_root_.Expression Source.BaseField) 9 :=
-  #v[part0.genericExpression1_0, part0.genericExpression1_1, part0.genericExpression1_2, part0.genericExpression1_3, part0.genericExpression1_4, part0.genericExpression1_5, part0.genericExpression1_6, part0.genericExpression1_7, part0.genericExpression1_8]
-
-noncomputable def genericExpressions : List (Vector (_root_.Expression Source.BaseField) 9) :=
-  [genericExpressions0, genericExpressions1]
-
-end Airbender.Compiler.CleanGenericArgumentsNative.SubwordMemoryUncached.native
+end Airbender.Compiler.CleanGenericArgumentsNative.SubwordMemoryUncached
