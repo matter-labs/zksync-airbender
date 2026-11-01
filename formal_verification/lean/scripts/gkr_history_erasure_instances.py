@@ -11,6 +11,7 @@ from gkr_wiring_instances import CASES
 
 
 def module(name, case):
+    from gkr_packed_history_erasure import CASES as PACKED_CASES
     root = LEAN / 'artifacts/compiler'
     arity = len(synthesize(json.loads((root / (name + '.json')).read_text()),
                            json.loads((root / (name + '-source.json')).read_text()))['inputs'])
@@ -24,6 +25,13 @@ def module(name, case):
         f'  base_model Airbender.Compiler.FullArithmeticNative.{case}.native\n'
         f'  source_model Airbender.Compiler.SourceContractNative.{case}.native inputs {arity}\n\n'
         f'end {namespace}\n')
+    if case in PACKED_CASES:
+        content = content.replace('import Airbender.Import.GKRProtocol.HistoryErasureImport\n',
+            f'import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.{case}.Certificate\n')
+        content = content.replace('set_option maxHeartbeats 4000000\n', '')
+        content = content.replace(f'source_model Airbender.Compiler.SourceContractNative.{case}.native inputs {arity}\n',
+            f'source_model Airbender.Compiler.SourceContractNative.{case}.native inputs {arity}\n'
+            f'  phase 1 using_check Airbender.Compiler.HistoryErasureChecks.{case}.originalChecked\n')
     return target, content
 
 

@@ -14,11 +14,19 @@ private def coordinate (placement : Ident) : Source.MemoryField → CommandElabM
   | _ => throwError "source history erasure requires direct original/history timestamp cells"
 
 syntax (name := importHistoryErasure) "import_history_erasure " ident " from " str
-  " base_model " ident " source_model " ident " inputs " num : command
+  " base_model " ident " source_model " ident " inputs " num
+  (" phase " num)? (" using_check " term)? : command
 
 elab_rules : command
   | `(import_history_erasure $name:ident from $path:str base_model $baseName:ident
-      source_model $sourceName:ident inputs $arityNumber:num) => do
+      source_model $sourceName:ident inputs $arityNumber:num
+      $[phase $phaseNumber:num]? $[using_check $wholeCheck:term]?) => do
+    let phaseIndex := (phaseNumber.map TSyntax.getNat).getD 2
+    unless phaseIndex ≤ 2 do throwError "invalid history erasure phase"
+    if phaseIndex == 1 && wholeCheck.isNone then
+      throwError "the complete history erasure phase requires a checker result"
+    if phaseIndex == 0 && wholeCheck.isSome then
+      throwError "the history erasure input phase cannot accept a checker result"
     let snapshot ← match Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Source.Snapshot)) with
       | .ok snapshot => pure snapshot | .error error => throwError "{error}"
     let requests ← match Source.helperRequests snapshot.semantic_inputs with
@@ -32,17 +40,15 @@ elab_rules : command
     for (previous, _) in requests.comparisons do
       coordinates := coordinates.push (← coordinate placement previous.low)
       coordinates := coordinates.push (← coordinate placement previous.high)
-    elabCommand (← `(def $slots : List (Fin $(quote arityNumber.getNat)) := [$coordinates,*]))
+    if phaseIndex != 1 then
+      elabCommand (← `(def $slots : List (Fin $(quote arityNumber.getNat)) := [$coordinates,*]))
     let unique := fieldName name "historyUnique"
     let checked := fieldName name "arithmeticChecked"
-    elabCommand (← `(theorem $unique : ($slots).Nodup := by decide +kernel))
-    elabCommand (← `(theorem $checked : erasureCheck $slots $protectedPolys = true := by decide +kernel))
     let historyFields := fieldName name "historyFields"
     let meaning := fieldName name "historyMeaning"
-    elabCommand (← `(noncomputable def $historyFields : List Source.MemoryField :=
-      ($comparisons).flatMap (fun pair => [pair.1.low, pair.1.high])))
-    elabCommand (← `(theorem $meaning : ($historyFields).map (Source.MemoryField.polynomial ($placement).memory) =
-      ($slots).map (Compiler.atom (F := Source.BaseField)) := by rfl))
+    if phaseIndex != 1 then
+      elabCommand (← `(noncomputable def $historyFields : List Source.MemoryField :=
+        ($comparisons).flatMap (fun pair => [pair.1.low, pair.1.high])))
     let memory ← match Source.memoryRequests snapshot.semantic_inputs with
       | .ok memory => pure memory | .error error => throwError "{error}"
     let mut protectedVariables := #[memory.execute]
@@ -54,14 +60,29 @@ elab_rules : command
         protectedVariables := protectedVariables.push read.values[0]!
     let extraFields ← protectedVariables.mapM fun index => `(Source.MemoryField.input (.Variable $(quote index)))
     let currentFields := fieldName name "protectedFields"
-    elabCommand (← `(noncomputable def $currentFields : List Source.MemoryField :=
-      ($comparisons).flatMap (fun pair => [pair.2.low, pair.2.high]) ++
-        (match ($clock) with | none => [] | some (initial, final) => [initial.low, initial.high, final.low, final.high]) ++
-        [$extraFields,*]))
+    if phaseIndex != 1 then
+      elabCommand (← `(noncomputable def $currentFields : List Source.MemoryField :=
+        ($comparisons).flatMap (fun pair => [pair.2.low, pair.2.high]) ++
+          (match ($clock) with | none => [] | some (initial, final) => [initial.low, initial.high, final.low, final.high]) ++
+          [$extraFields,*]))
+    if phaseIndex == 0 then return
+    let uniqueProof ← match wholeCheck with
+      | some complete => `(($complete).1)
+      | none => `(by decide +kernel)
+    let arithmeticProof ← match wholeCheck with
+      | some complete => `(($complete).2.1)
+      | none => `(by decide +kernel)
+    elabCommand (← `(theorem $unique : ($slots).Nodup := $uniqueProof))
+    elabCommand (← `(theorem $checked : erasureCheck $slots $protectedPolys = true := $arithmeticProof))
+    elabCommand (← `(theorem $meaning : ($historyFields).map (Source.MemoryField.polynomial ($placement).memory) =
+      ($slots).map (Compiler.atom (F := Source.BaseField)) := by rfl))
     let fieldsChecked := fieldName name "fieldsChecked"
+    let fieldsProof ← match wholeCheck with
+      | some complete => `(by simpa only [List.all_map, Function.comp_def] using ($complete).2.2)
+      | none => `(by decide +kernel)
     elabCommand (← `(theorem $fieldsChecked : ($currentFields).all (fun field =>
       equal (substitute (erasurePolynomials $slots) (field.polynomial ($placement).memory))
-        (field.polynomial ($placement).memory)) = true := by decide +kernel))
+        (field.polynomial ($placement).memory)) = true := $fieldsProof))
     let preserved := fieldName name "arithmetic_preserved"
     elabCommand (← `(theorem $preserved (values : Fin $(quote arityNumber.getNat) → Source.BaseField)
       (holds : Satisfies $protectedPolys values) :
