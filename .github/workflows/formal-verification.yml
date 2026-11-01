@@ -225,6 +225,7 @@ jobs:
           fv packed-shift-encoding python3 scripts/generate_shift_packed_encoding.py --check
           fv packed-shift-reference python3 scripts/generate_shift_packed_reference.py --check
           fv packed-shift-corollaries python3 scripts/generate_shift_output_certificates.py --check
+          fv packed-shift-bitwise python3 scripts/generate_shift_bitwise.py --check
           fv packed-generator-controls python3 -m unittest discover -s scripts -p 'test_packed_*.py' -v
       - name: Twelve generators and thirteen complete fresh exports
         id: native-setups

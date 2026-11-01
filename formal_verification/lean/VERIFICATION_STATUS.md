@@ -74,7 +74,8 @@ The Clean placement rollout adds 497 roots.
 The XOR9 rollout adds 244 roots.
 The Chi rollout adds 202 roots.
 The shift output rollout adds 6,310 roots.
-The current explicit inventory has 27,781 roots.
+The native OR, XOR and Blake byte-XOR rollout adds 492 roots.
+The current explicit inventory has 28,273 roots.
 
 The complete ordinary AND data has the same serialized values before and
 after this change. Its SHA-256 is
@@ -639,6 +640,44 @@ Other item 3 families remain open. These include OR, XOR, coverage metadata,
 Clean ideal checks and wiring. Full frontend validation, environment audit,
 baseline refresh, full transitive replay, cold full measurements and Linux
 runtime and warm cache qualification remain pending for implementation review.
+
+### Complete OR and XOR tables
+
+The native OR, native XOR and Blake byte-XOR tables now use complete packed
+checkers. Each capture has one closed kernel result. The shared soundness
+proof derives the original output theorem. Exact kernel bindings cover all
+source blocks. The three captures cover 2,695 blocks and 196,608 output cells.
+No elaborator split computes the per-row facts.
+
+All 38 original public declarations remain. A kernel control accepts all 14
+original theorem types. All 24 imported values are identical. All 530 focused
+axiom checks pass. They use only `propext`, `Classical.choice` and `Quot.sound`.
+Six exact controls pass. The kernel rejects all six mutations.
+All 13 selected modules pass source checks and kernel replay.
+Each replay uses the standard 32 MiB thread stack. No safe declaration uses a
+skipped dependency. These runs trust imported objects.
+The binary, rotate-row and shift-row consumers pass source and replay.
+
+The native OR and XOR source and replay batch takes 55.92 s.
+It peaks at 1249.29 MiB of physical memory. The Blake byte-XOR source checks
+and selected replays also pass. Its closed result takes 2.35 s to build and 2.30 s to replay.
+Generator freshness, all 32 Python controls and workflow syntax pass.
+CI requires the complete capture freshness check.
+
+The shift coverage module now passes with default heartbeats.
+No `Proofs/Tables` file has an unlimited setting.
+Four `Proofs/UnifiedReduced` files still have unlimited settings.
+A whole metadata checker exceeded the memory cap after the three table
+checks passed. It is not adopted. Its source stays in the evidence directory.
+The coverage facts still need a checker migration. Each guard cleaned its
+owned workers.
+
+The inventory has 28,273 roots. It retains all 27,781 established roots.
+Evidence stays in `/tmp/airbender-review-round/checker-pilot-2026-10-31/`.
+Other table families, metadata, Clean ideal checks and wiring remain open.
+Full frontend validation, environment audit, baseline refresh, full transitive
+replay, cold full measurements and Linux runtime and warm cache qualification
+remain pending for implementation review.
 
 ## Rebase checks
 
