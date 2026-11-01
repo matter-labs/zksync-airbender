@@ -721,7 +721,7 @@ All 22 former large heartbeat overrides are gone from the Clean capture roots.
 The inventory has 35,162 roots. It retains all 28,273 established roots.
 Evidence stays in `/tmp/airbender-review-round/checker-pilot-2026-10-31/`.
 Wiring, remaining table families and metadata still need migration.
-Four `Proofs/UnifiedReduced` files still have unlimited heartbeat settings.
+The rotation checkpoint below removes the last four unlimited heartbeat settings.
 No production circuit or Rust file changed. Full frontend validation,
 environment audit, baseline refresh, full transitive replay, cold full
 measurements and Linux qualification remain pending for implementation review.
@@ -767,6 +767,32 @@ Four `Proofs/UnifiedReduced` files still have unlimited heartbeat settings.
 No production circuit or Rust file changed. Full frontend validation,
 environment audit, baseline refresh, full transitive replay, cold full
 measurements and Linux qualification remain pending for implementation review.
+
+### Complete rotation reference grid
+
+One kernel result now checks all 4,096 rotation-byte cases.
+The generic finite-grid soundness theorem derives the original public reference.
+Exact kernel bindings connect the full rotate8 and rotate16 output columns.
+The shared fixed-data equalities remain unchanged.
+The last four unlimited heartbeat settings are gone from `Proofs/`.
+
+All eight original public declarations remain. A kernel control accepts all five
+old theorem types. All three imported values are identical.
+Three small bound helpers retain names used by the old theorem types.
+All seven selected modules pass source checks and kernel replay.
+Each replay uses the standard 32 MiB stack. No safe dependency is skipped.
+The source group peaks at 939.15 MiB of physical memory.
+The final qualification takes 28.55 s and peaks at 1783.81 MiB.
+Its guard leaves no owned worker.
+
+All 22 focused axiom checks use only the three allowed axioms.
+Four exact controls pass. The kernel rejects all four mutations.
+CI requires these controls. The inventory has 53,208 roots.
+It retains all 53,191 established roots. Generator freshness passes.
+The inventory generator now uses a set for repeated root lookups.
+This removes a quadratic scan and preserves the generated inventory.
+The remaining setup span and table metadata families still need migration.
+The final full validation remains pending for implementation review.
 
 ## Rebase checks
 

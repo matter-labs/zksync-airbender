@@ -1,3 +1,4 @@
+import Tests.FiniteGridChecks
 import Airbender.Proofs.GKRCompiler.WiringNative.KeccakUncached
 import Airbender.Proofs.GKRCompiler.WiringNative.KeccakCached
 import Airbender.Proofs.GKRCompiler.WiringNative.BlakeRoundUncached
@@ -54806,3 +54807,22 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.WiringNative.KeccakUncached.native.gateChecked302
 #print axioms Airbender.Compiler.WiringNative.KeccakUncached.native.gateChecked303
 #print axioms Airbender.Compiler.WiringNative.KeccakUncached.native.gateChecked304
+
+#print axioms Airbender.Verification.FiniteGridChecks.check
+#print axioms Airbender.Verification.FiniteGridChecks.check_sound
+#print axioms Tests.FiniteGridChecks.left
+#print axioms Tests.FiniteGridChecks.right
+#print axioms Tests.FiniteGridChecks.checked
+#print axioms Tests.FiniteGridChecks.original
+#print axioms Tests.FiniteGridChecks.wrong
+#print axioms Tests.FiniteGridChecks.final_cell_rejected
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.nativeRotations
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.referenceRotatedByte
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.finiteRotatedByte
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.rotationByteCheck
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.rotationByteChecked
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.rotate8_output_binding
+
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.imported_rotate8_output._proof_1
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.imported_rotate16_xor._proof_1
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.imported_rotate16_xor._proof_2

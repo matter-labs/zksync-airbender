@@ -317,6 +317,7 @@ jobs:
           fv clean-placement python3 scripts/check_clean_placement_controls.py
           fv clean-ideal python3 scripts/check_clean_ideal_controls.py
           fv wiring-kernel-controls python3 scripts/check_wiring_controls.py
+          fv rotation-kernel-controls python3 scripts/check_rotation_binding_controls.py
           fv packed-xor9-controls python3 scripts/check_packed_xor9_controls.py
           fv packed-byte-controls python3 scripts/check_packed_byte_table_controls.py
           fv packed-word-column-kernel-controls python3 scripts/check_packed_word_column_controls.py
