@@ -52,11 +52,22 @@ elab_rules : command
     let canonical := fieldName name "canonical"
     let stepHolds := fieldName name "canonical_step_holds"
     let baseHolds := fieldName name "canonical_base"
-    elabCommand (← `(noncomputable def $canonical {R : Type} [CommRing R]
-      (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-      (baseValue : GKRAddress → Source.BaseField) : GKRAddress → R :=
-      Functional.read $isBase (hom ∘ baseValue)
-        (($program).execute hom challenges gamma $isBase (hom ∘ baseValue) (fun _ => 0))))
+    -- A foundation can retain the original instance paths in this value.
+    -- Check its complete execution body before the semantic proofs use it.
+    let environment ← getEnv
+    let canonicalName := (← getCurrNamespace) ++ canonical.getId
+    if environment.contains canonicalName || environment.contains canonical.getId then
+      elabCommand (← `(example {R : Type} [CommRing R]
+        (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
+        (baseValue : GKRAddress → Source.BaseField) :
+        $canonical hom challenges gamma baseValue = Functional.read $isBase (hom ∘ baseValue)
+          (($program).execute hom challenges gamma $isBase (hom ∘ baseValue) (fun _ => 0)) := rfl))
+    else
+      elabCommand (← `(noncomputable def $canonical {R : Type} [CommRing R]
+        (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
+        (baseValue : GKRAddress → Source.BaseField) : GKRAddress → R :=
+        Functional.read $isBase (hom ∘ baseValue)
+          (($program).execute hom challenges gamma $isBase (hom ∘ baseValue) (fun _ => 0))))
     elabCommand (← `(theorem $stepHolds {R : Type} [CommRing R]
       (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
       (baseValue : GKRAddress → Source.BaseField) :

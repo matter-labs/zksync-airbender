@@ -69,6 +69,7 @@ def selectors(circuit):
 
 
 def modules(name, case, pair):
+    from gkr_packed_functional_steps import CASES as PACKED_STEPS
     circuit = pair['circuit']
     caches = [cache for layer in circuit['layers'] for _, cache in layer['cached_relations']]
     gates = [next(iter(gate['enforced_relation'])) for layer in circuit['layers']
@@ -96,8 +97,21 @@ def modules(name, case, pair):
                'Airbender.Proofs.GKRProtocol.FullArithmeticNative.' + case,
                'Airbender.Proofs.GKRProtocol.LookupNative.' + case, 'Airbender.Proofs.GKRProtocol.ProductNative.' + case],
                'import_functional_graph ' + arguments))]
+    if case in PACKED_STEPS:
+        # Elaborate this value before numeric imports change instance priority.
+        declaration = '''noncomputable def native.canonical {R : Type} [CommRing R]
+  (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
+  (baseValue : GKRAddress → Source.BaseField) : GKRAddress → R :=
+  Functional.read native.isBase (hom ∘ baseValue)
+    (native.program.execute hom challenges gamma native.isBase (hom ∘ baseValue) (fun _ => 0))
+'''
+        module, content = result[0]
+        result[0] = (module, content.replace('\nend ' + namespace, '\n' + declaration + '\nend ' + namespace))
     parts = []
     for phase, (label, count) in enumerate([('Steps', steps), ('Base', bases)]):
+        if phase == 0 and case in PACKED_STEPS:
+            parts.append('Airbender.Proofs.GKRProtocol.FunctionalStepChecks.' + case + '.Corollaries')
+            continue
         for part, start in enumerate(range(0, count, 32)):
             module = prefix + label + str(part)
             parts.append(module)
@@ -131,6 +145,9 @@ def main():
             name, case = family + '-' + mode, stem + mode.title()
             pair = json.loads((LEAN / 'artifacts/compiler' / (name + '.json')).read_text())
             targets, steps, bases = modules(name, case, pair)
+            if args.write:
+                from gkr_packed_rotate_boundary import preflight
+                preflight(targets)
             for module, content in targets:
                 path = LEAN / (module.replace('.', '/') + '.lean')
                 if args.check and (not path.exists() or path.read_text() != content):

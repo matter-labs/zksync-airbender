@@ -4833,3 +4833,58 @@ corollaries, complete interface preservation, controls, CI and direct consumers.
 Base-port and base-relation checks remain separate open obligations. No
 functional native wrapper has changed. Item 3 and final full validation remain
 open. The hourly follow-up stays active.
+
+## Complete dense functional step captures
+
+Both BlakeRound cache modes now use complete numeric step checks. The cached
+program has 674 steps. The uncached program has 394 steps. Each capture has one
+closed kernel result. A proved balanced-set checker derives the exact original
+`FunctionalProgram.check`. Complete eight-entry bindings retain every input,
+output, base flag and port order. The checker reconstructs the original known
+address state. It adds no caller premise.
+
+Literal data replaces repeated Meta materialization in source builds. Source
+hashes bind the numeric files to the native artifact, foundation and reflector.
+The strict exporter emits untrusted natural data. The kernel bindings establish
+its full source fidelity. CI checks both modes, source hashes, generator output,
+the native interface and mutation controls.
+
+All 1,068 old `stepCheckedN` names remain. Their proofs select facts from the
+complete result. The 35 old step proof shards are gone. All base-port and
+base-relation declarations keep their original proofs. The original semantic
+finalizer remains. It checks the full execution expression of a canonical value
+that the foundation declares before numeric imports. This keeps the original
+ring instance paths. The first preservation control found a changed instance
+path in that value. The final control accepts its exact original type and value.
+
+All 5,530 old public declarations remain. A kernel control accepts all 2,549 old
+theorem types. All 2,981 old data Expr values are identical. All 19 selected
+modules pass source checks and replay. These modules include both foundations,
+finalizers, functional-link consumers and source-contract consumers. Replay uses
+the standard 32 MiB stack. It skips no safe dependency. All 6,233 focused axiom
+checks use only the three allowed axioms. Ten exact controls pass. The kernel
+rejects all ten mutations. The opaque-data control and both small exporter
+controls pass. All five Python generator controls pass.
+
+The capture source and replay guard takes 812.60 s. It peaks at 2,348.12 MiB.
+Cached binding source and replay take 210.09 s and 206.27 s. Its complete check
+builds and replays in about 6 s. Its corollaries build in 104.61 s and replay in
+14.28 s. Uncached binding source and replay take 95.70 s and 93.42 s. Its
+complete check builds and replays in about 5 s. Its corollaries build in
+35.79 s and replay in 6.09 s. Final qualification takes 293.52 s. It peaks at
+2,255.38 MiB. Both completed guards clean their owned workers. Two intermediate
+qualification restarts stop safely during the instance-path repair.
+
+The explicit inventory has 79,633 roots. It retains all 78,983 prior roots and
+every established root. Freshness, source-layer checks, static checks and
+workflow syntax pass. No cold full-build gain is claimed.
+
+Evidence prefixes are functional-steps-canonical, functional-steps-qualification4
+and functional-canonical-probe in the checker evidence folder. Original objects
+remain in functional-steps-complete-original-oleans. The other 20 functional step
+captures remain open. All functional base checks and the other argument and
+frame families remain open. Item 3 is not complete. The hourly follow-up stays
+active. Full frontend validation, environment audit and baseline refresh, full
+transitive replay, cold full measurements and Linux qualification did not run.
+They remain pending for implementation review. The known aggregate ownership
+collision stays deferred. No aggregate import pass is claimed.
