@@ -72,7 +72,8 @@ The packed normalization proof adds 105 roots.
 The dense arithmetic rollout adds 925 roots.
 The Clean placement rollout adds 497 roots.
 The XOR9 rollout adds 244 roots.
-The current explicit inventory has 21,269 roots.
+The Chi rollout adds 202 roots.
+The current explicit inventory has 21,471 roots.
 
 The complete ordinary AND data has the same serialized values before and
 after this change. Its SHA-256 is
@@ -556,6 +557,39 @@ The audit inventory retains all 21,025 established roots and adds 244 roots.
 It has 21,269 roots. The declaration origins of the retired shards move to the
 public wrapper. The deferred environment audit must record that change.
 Evidence stays in `/tmp/airbender-review-round/checker-pilot-2026-10-31/`.
+The final full validation remains pending for implementation review.
+
+### Complete Chi table
+
+The complete native Chi output now uses one packed checker result.
+It covers all 898 original blocks. A shared byte-table checker handles AND, OR,
+XOR and Chi. Its soundness theorem derives the original output equations.
+The capture reuses the proved signed-word codec and packed endpoint checks.
+Separate kernel equalities bind every source leaf and the complete column.
+The public Chi theorem keeps its original name and type.
+
+The five-module source and selected replay batch passes in 35.01 s. It peaks at
+1250.59 MiB. The closed result takes 2.10 s to build and 2.03 s to replay.
+The test module also passes source and replay. The direct fixed-table consumer
+passes source and replay in 15.94 s. It peaks at 1549.39 MiB. All seven selected
+replays use the standard 32 MiB thread stack. No safe declaration uses a skipped
+dependency. These runs trust imported objects.
+
+A kernel control accepts all eight original theorem types. It includes the
+six shared block equations. All 21 original imported data values are identical.
+All 29 original public declarations remain. Six exact controls pass. The kernel
+rejects all six changed operations, source words, strides or bounds.
+All 231 focused axiom checks pass. They use only `propext`, `Classical.choice`
+and `Quot.sound`. The first axiom query omitted the XOR adapter import.
+The corrected query passes. All 27 Python generator controls pass.
+CI requires capture freshness and the kernel mutation controls.
+
+The Chi and XOR wrappers now use default heartbeats. This removes both
+unlimited settings from `Proofs/Keccak`. There are 83 `Proofs/` files with
+unlimited settings. Other fact families still need migration.
+The audit inventory retains all 21,269 established roots and adds 202 roots.
+It has 21,471 roots. Evidence stays in
+`/tmp/airbender-review-round/checker-pilot-2026-10-31/`.
 The final full validation remains pending for implementation review.
 
 ## Rebase checks

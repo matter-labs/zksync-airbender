@@ -2369,11 +2369,20 @@ for word_source in [
     "Airbender/Proofs/Blake2G/Xor9PackedCapture.lean",
     "Airbender/Proofs/Blake2G/Xor9PackedCertificate.lean",
     "Tests/PackedSignedRun.lean",
+    "Airbender/Proofs/Tables/PackedByteTableChecks.lean",
+    "Airbender/Proofs/Keccak/ChiPackedCapture.lean",
+    "Airbender/Proofs/Keccak/ChiPackedCertificate.lean",
+    "Tests/PackedByteTables.lean",
 ]:
     word_text = (ROOT / word_source).read_text()
     word_namespace = re.search(r"^namespace (\S+)", word_text, re.M)[1]
     word_names = re.findall(r"^(?:def|theorem|structure|inductive|numeric_data_binding) (\S+)", word_text, re.M)
     packed_arithmetic_roots += [word_namespace + "." + name for name in word_names]
+
+packed_arithmetic_roots += ["Airbender.Keccak.Proofs.ChiPackedCapture.column"]
+for chi_part in range(32):
+    packed_arithmetic_roots += ["Airbender.Keccak.Proofs.ChiPackedCapture.column" + stem + str(chi_part)
+                                for stem in ["Blocks", "Start", "Size"]]
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
@@ -2385,6 +2394,9 @@ for dense_import in ['import Tests.NumericExpressionChecks', 'import Tests.Numer
     if dense_import not in content.splitlines():
         content = dense_import + '\n' + content
 content = re.sub(r'^import Airbender\.Proofs\.Blake2G\.(?:Xor9CertificatePart[0-9]+|Xor9Extents)\n', '', content, flags=re.M)
+byte_import = 'import Tests.PackedByteTables'
+if byte_import not in content.splitlines():
+    content = byte_import + '\n' + content
 word_import = 'import Tests.PackedSignedRun'
 if word_import not in content.splitlines():
     content = word_import + '\n' + content

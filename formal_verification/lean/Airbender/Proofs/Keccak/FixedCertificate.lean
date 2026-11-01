@@ -8,7 +8,6 @@ open Airbender.Setup Airbender.Setup.Proofs
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 131072
-set_option maxHeartbeats 0
 
 theorem xor_output_checks :
     checkBlocks (fun n => n / 256 ^^^ n % 256) 0 xorData.columns[2].blocks.toList = true := by
