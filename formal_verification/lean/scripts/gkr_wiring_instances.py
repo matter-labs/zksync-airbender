@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generate/check wiring module shards, or build them with one compiler at a time.
+"""Generate complete wiring captures, or build them with one compiler at a time.
 
 The generated modules read the actual native pair. This script supplies only
-module boundaries and check ranges; no replacement ports or proof facts.
+data scaffolds and complete certificates; no replacement ports or proof facts.
 Run --build under bounded_fv.py. It uses ordinary Lake dependency checks.
 """
 import argparse
@@ -25,58 +25,43 @@ open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_compiler_wiring native from "{path}" phase "{phase}" start {first} count {count}
 """ + ("\ntheorem wiring_valid : native.graph.Valid := native.sound\n" if public else "") + "\nend " + namespace + "\n"
 
 
 def generated():
+    from gkr_packed_wiring import load, modules, native_module
     files, jobs = {}, []
-    for family, stem in zip(FAMILIES, CASES):
+    for family, stem in zip(FAMILIES, CASES, strict=True):
         for mode, suffix in (("uncached", "Uncached"), ("cached", "Cached")):
             case = stem + suffix
-            path = f"artifacts/compiler/{family}-{mode}.json"
-            pair = json.loads((LEAN / path).read_text())
-            gates = [gate["enforced_relation"] for layer in pair["circuit"]["layers"]
-                     for gate in layer["gates"] + layer["gates_with_external_connections"]]
-            nc = sum(len(layer["cached_relations"]) for layer in pair["circuit"]["layers"])
-            outputs = [body.get("output") for gate in gates for body in gate.values() if "output" in body]
-            np = nc + sum(len(output) if isinstance(output, list) else 1 for output in outputs)
+            name = family + '-' + mode
+            path = f"artifacts/compiler/{name}.json"
+            payload = load(name)
             data = "Airbender.Proofs.GKRCompiler.WiringData." + case
             files[data] = module(case, path, ["Airbender.Import.GKRCompiler.WiringImport"], "data")
             jobs.append(data)
-            geometry = "Airbender.Proofs.GKRCompiler.WiringParts." + case + "Geometry"
-            files[geometry] = module(case, path, [data], "geometry")
-            jobs.append(geometry)
-            imports = [geometry]
-            for phase, count in (("unique", np), ("placement", pair["source"]["num_variables"]),
-                                 ("gates", len(gates)), ("caches", nc)):
-                for first in range(0, count, 64):
-                    name = "Airbender.Proofs.GKRCompiler.WiringParts." + case + phase.title() + str(first // 64)
-                    files[name] = module(case, path, [data], phase, first, min(64, count - first))
-                    jobs.append(name)
-                    imports.append(name)
-            name = "Airbender.Proofs.GKRCompiler.WiringNative." + case
-            files[name] = module(case, path, imports, "assemble", public=True)
-            jobs.append(name)
-    # Keep old module paths after native source slots disappear. Each module
-    # re-exports the complete current certificate. The native graph still checks
-    # every current placement; no empty shard acts as a proof.
+            for relative, content in modules(case, payload).items():
+                owner = relative.removesuffix('.lean').replace('/', '.')
+                files[owner] = content
+                jobs.append(owner)
+            native = "Airbender.Proofs.GKRCompiler.WiringNative." + case
+            files[native] = native_module(case, name, payload)
+            jobs.append(native)
+    # Keep the two established import paths after source slots disappear.
     for suffix in ("Cached", "Uncached"):
         case = "Unified" + suffix
         retired = "Airbender.Proofs.GKRCompiler.WiringParts." + case + "Placement2"
-        if retired not in files:
-            owner = "Airbender.Proofs.GKRCompiler.WiringNative." + case
-            files[retired] = "import " + owner + "\n"
-            jobs.append(retired)
+        files[retired] = "import Airbender.Proofs.GKRCompiler.WiringNative." + case + "\n"
+        jobs.append(retired)
     return files, jobs
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", action="store_true", help="Write changed generated module scaffolding")
-    parser.add_argument("--build", action="store_true", help="Check scaffolding, then build each shard sequentially")
+    parser.add_argument("--build", action="store_true", help="Check scaffolding, then build each capture module sequentially")
     parser.add_argument("--family", choices=FAMILIES, action="append", help="Limit builds, not inventory checking")
     args = parser.parse_args()
     files, jobs = generated()
@@ -88,7 +73,7 @@ def main():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content)
     actual = {str(path.relative_to(LEAN).with_suffix("")).replace("/", ".")
-              for folder in ("WiringData", "WiringParts", "WiringNative")
+              for folder in ("WiringData", "WiringParts", "WiringNative", "WiringCheckNative")
               for path in (LEAN / "Airbender/Proofs/GKRCompiler" / folder).glob("*.lean")}
     if actual != set(files):
         raise SystemExit("Unexpected wiring scaffolding files; review before removing stale shards")
