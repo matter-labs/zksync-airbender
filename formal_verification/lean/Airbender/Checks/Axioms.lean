@@ -1,3 +1,5 @@
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.AddSubCached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.AddSubUncached.Certificate
 import Airbender.Proofs.GKRProtocol.CounterFrameChecks.BlakeRoundCached.Certificate
 import Airbender.Proofs.GKRProtocol.CounterFrameChecks.BlakeRoundUncached.Certificate
 import Airbender.Proofs.GKRProtocol.CounterFrameChecks.BigintCached.Certificate
@@ -84097,3 +84099,61 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.CounterFrameChecks.WordMemoryUncached.data
 #print axioms Airbender.Compiler.CounterFrameChecks.WordMemoryUncached.originalChecked
 #print axioms Airbender.Compiler.CounterFrameChecks.WordMemoryUncached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.AddSubCached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.AddSubCached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.AddSubCached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.AddSubCached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.AddSubCached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.AddSubUncached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.AddSubUncached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.AddSubUncached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.AddSubUncached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.AddSubUncached.source_binding
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.Capture
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.Capture.arithmetic
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.Capture.casesOn
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.Capture.coordinates
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.Capture.ctorIdx
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.Capture.fields
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.Capture.mk
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.Capture.mk.inj
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.Capture.mk.injEq
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.Capture.mk.noConfusion
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.Capture.mk.sizeOf_spec
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.Capture.noConfusion
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.Capture.noConfusionType
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.Capture.rec
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.Capture.recOn
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.arithmeticCheck
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.arithmeticCheck.eq_1
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.arithmetic_encode
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.check
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.check.eq_1
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.check_sound
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.clock_inverse
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.clock_inverse_val
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.encoded_nil
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.erasedPair
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.erasedPair.eq_1
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.fastErasedPair
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.fastErasedPair_eq
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.fieldsCheck
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.fieldsCheck.eq_1
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.fields_encode
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.numericClockAssertions
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.numericClockAssertions.eq_1
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.numericClockAssertions.eq_2
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.numericClockAssertions.match_1
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.numericClockAssertions_eq
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.numericClockCarry
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.numericClockCarry.eq_1
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.numericErasure
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.numericErasure.eq_1
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.numeric_erasure
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.ofSource
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.ofSource_eq
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.ofTyped
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.ofTyped.eq_1
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.ofTypedFast
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.ofTypedFast.eq_1
+#print axioms Airbender.Compiler.NumericHistoryErasureChecks.ofTypedFast_eq

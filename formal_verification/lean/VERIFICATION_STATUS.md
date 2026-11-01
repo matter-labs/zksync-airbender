@@ -5111,3 +5111,60 @@ frontend validation, environment audit and baseline refresh, full transitive
 replay, cold full measurements and Linux qualification did not run. They remain
 pending for implementation review. The known aggregate ownership collision
 stays deferred. No aggregate import pass is claimed.
+
+## Complete history-erasure pilot
+
+AddSub now uses one complete history-erasure result per cache mode. The proved
+NumericHistoryErasureChecks.check_sound derives the exact original predicates.
+It retains history uniqueness, arithmetic erasureCheck and exact field
+substitution equality. The arithmetic check keeps all three original branches.
+It does not replace field equality with an untouched-coordinate condition.
+Complete kernel bindings retain every polynomial term, zero coefficient and
+coordinate. The original semantic finalizers stay unchanged. No caller premise
+changes. Both captures use default heartbeats.
+
+The first materializer reaches the recursion limit at the clock coefficient.
+Component controls isolate this coefficient. Coordinates, ordinary source rows
+and protected fields pass separately. The kernel proves the exact inverse value
+2013262081 from a multiplication check. A generic equality binds the numeric
+clock assertions to the original assertions. A second proved equality binds
+numeric substitution to the original typed substitution. The ofSource_eq theorem
+composes these exact equalities. The complete source binding unfolds only the
+two named protected-polynomial aliases. The original source construction stays
+in the soundness statement. The larger recursion override is removed.
+
+All 70 original public declarations remain. This includes both original
+history modules and their direct helper consumers. A kernel control accepts all
+54 old theorem types. All 16 imported data Expr values are identical.
+These values include both helper canonical functions. All 21 selected modules
+pass source checks and replay. They include the helper, counter, query and
+materialized-witness consumers in both modes. Replay uses the standard 32 MiB
+stack. It skips no safe dependency. All 176 focused axiom checks use only the
+three allowed axioms. Thirteen exact controls pass. The kernel rejects all
+thirteen mutations. Opaque-data rejection, the legacy importer and all three
+Python generator controls pass.
+
+The updated shared group takes 8.36 s and peaks at 832.90 MiB. The final
+nine-module source tail takes 38.49 s and peaks at 885.13 MiB. It reuses the
+passed importer and cached Inputs results. The first qualification misses a
+helper import in its axiom query. Its passed consumers and preservation checks
+are reused. The corrected qualification takes 81.09 s and peaks at
+2,263.68 MiB. All guards clean their owned workers. Temporary debug prints
+are removed. Source and interface freshness, static checks, source-layer checks
+and workflow syntax pass. CI checks both cache modes. No cold full-build gain is
+claimed.
+
+The explicit inventory has 82,348 roots. It retains all 82,290 prior roots
+and every established root. Original objects remain in
+history-erasure-original-oleans. This baseline also holds all direct helper
+consumer objects. Evidence prefixes are history-erasure-pilot,
+history-generic-clock and history-materializer. The earlier whole typed
+materializers remain unadopted.
+
+The other 20 history captures remain open. Dense prototypes are not adopted.
+Numerical argument checks and other frame families need a scope check. Item 3
+is not complete. The hourly follow-up stays active. Full frontend validation,
+environment audit and baseline refresh, full transitive replay, cold full
+measurements and Linux qualification did not run. They remain pending for
+implementation review. The known aggregate ownership collision stays deferred.
+No aggregate import pass is claimed.
