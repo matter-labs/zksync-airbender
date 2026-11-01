@@ -45,6 +45,28 @@ private def combinations (value : Expr) : CommandElabM Json := do
     return Json.arr terms
   return Json.arr rows
 
+private partial def expressionCode (value : Expr) : CommandElabM Json := do
+  let value ← liftTermElabM <| Meta.whnf value
+  let args := value.getAppArgs
+  if value.getAppFn.isConstOf ``Airbender.Compiler.Expression.constant then
+    return Json.arr #[toJson (0 : Nat), toJson (← natural (← liftTermElabM <| Meta.mkAppM ``ZMod.val #[args[2]!]))]
+  else if value.getAppFn.isConstOf ``Airbender.Compiler.Expression.atom then
+    return Json.arr #[toJson (1 : Nat), toJson (← natural (← liftTermElabM <| Meta.mkAppM ``Fin.val #[args[2]!]))]
+  else if value.getAppFn.isConstOf ``Airbender.Compiler.Expression.add then
+    return Json.arr #[toJson (2 : Nat), ← expressionCode args[2]!, ← expressionCode args[3]!]
+  else if value.getAppFn.isConstOf ``Airbender.Compiler.Expression.mul then
+    return Json.arr #[toJson (3 : Nat), ← expressionCode args[2]!, ← expressionCode args[3]!]
+  else throwError "expected an imported arithmetic expression"
+
+syntax "export_source_expressions " ident " count " num " to " str : command
+elab_rules : command
+  | `(export_source_expressions $scope:ident count $countNumber:num to $destination:str) => do
+    let mut rows := #[]
+    for index in [:countNumber.getNat] do
+      let original := mkIdent (scope.getId ++ Name.mkSimple s!"originalExpression{index}")
+      rows := rows.push (← expressionCode (← originalTerm (← `($original))))
+    IO.FS.writeFile destination.getString ((Json.arr rows).compress ++ "\n")
+
 syntax "export_numeric_arithmetic " ident " to " str : command
 elab_rules : command
   | `(export_numeric_arithmetic $scope:ident to $destination:str) => do

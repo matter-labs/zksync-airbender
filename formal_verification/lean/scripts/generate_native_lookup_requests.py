@@ -2301,12 +2301,40 @@ packed_arithmetic_roots += ['Airbender.Compiler.NumericPolynomialChecks.FastNorm
  'Airbender.Compiler.NumericPolynomialChecks.PackedNormalization.PolynomialRow.Binding.expectedBound',
  'Airbender.Compiler.NumericPolynomialChecks.PackedNormalization.PolynomialRow.Binding.inputBound']
 
+packed_arithmetic_roots += ['Airbender.Compiler.NumericExpressionChecks.Code',
+ 'Airbender.Compiler.NumericExpressionChecks.Code.polynomial',
+ 'Airbender.Compiler.NumericExpressionChecks.encode',
+ 'Airbender.Compiler.NumericExpressionChecks.encode_polynomial',
+ 'Airbender.Compiler.NumericExpressionChecks.source_binding',
+ 'Airbender.Compiler.NumericArithmeticTrace.rowBindingCheck',
+ 'Airbender.Compiler.NumericArithmeticTrace.rowBindingCheck_sound',
+ 'Airbender.Compiler.NumericArithmeticTrace.bindingCheck',
+ 'Airbender.Compiler.NumericArithmeticTrace.bindingCheck_sound',
+ 'Airbender.Compiler.NumericArithmeticTrace.checked_pairs',
+ 'Airbender.Compiler.NumericArithmeticTrace.forwardExpected',
+ 'Airbender.Compiler.NumericArithmeticTrace.forwardExpected_eq',
+ 'Airbender.Compiler.NumericArithmeticTrace.pairs',
+ 'Airbender.Compiler.NumericArithmeticTrace.Capture',
+ 'Airbender.Compiler.NumericArithmeticTrace.check',
+ 'Airbender.Compiler.NumericArithmeticTrace.check_sound',
+ 'Tests.NumericExpressionChecks.original',
+ 'Tests.NumericExpressionChecks.expanded_terms',
+ 'Tests.NumericExpressionChecks.original_terms',
+ 'Tests.NumericExpressionChecks.zero_terms_retained',
+ 'Tests.NumericExpressionChecks.variable_order_retained',
+ 'Tests.NumericArithmeticTrace.bindings_checked',
+ 'Tests.NumericArithmeticTrace.imported_checked',
+ 'Tests.NumericArithmeticTrace.original_normalization_checked']
+
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
 for numeric_case in sorted(NUMERIC_CAPTURES):
     numeric_capture_import = "import Airbender.Proofs.GKRProtocol.FullArithmeticNative." + numeric_case
     if numeric_capture_import not in content.splitlines():
         content = numeric_capture_import + "\n" + content
+for dense_import in ['import Tests.NumericExpressionChecks', 'import Tests.NumericArithmeticTrace']:
+    if dense_import not in content.splitlines():
+        content = dense_import + '\n' + content
 trace_import = 'import Tests.PackedNormalizationTrace'
 if trace_import not in content.splitlines():
     content = trace_import + '\n' + content

@@ -25,7 +25,9 @@ The three target proofs are complete. Work now follows design items 2 and 3.
 Native public-program acceptance covers all 14 CPU profiles. Earlier compiler
 interfaces remain as compatibility declarations. The public proof graph excludes
 captured decoder interpretation and retained-image contracts. The verified
-checker rollout remains open. The adopted AND checker has focused measurements below.
+checker rollout remains open. All 22 arithmetic captures now use whole results.
+Other per-capture fact families still need migration. The adopted AND checker
+has focused measurements below.
 
 ## Verified checker measurements
 
@@ -67,7 +69,8 @@ families add 131 roots. That checkpoint has 17,985 explicit roots. The arithmeti
 The numeric arithmetic rollout adds 434 roots.
 The next seven arithmetic families add 1,041 roots.
 The packed normalization proof adds 105 roots.
-The current explicit inventory has 19,603 roots.
+The dense arithmetic rollout adds 925 roots.
+The current explicit inventory has 20,528 roots.
 
 The complete ordinary AND data has the same serialized values before and
 after this change. Its SHA-256 is
@@ -376,18 +379,18 @@ Bigint and Keccak still use their established proofs in both cache modes.
 All 18,457 established explicit roots remain. The inventory now has 19,498
 roots. No worker remains.
 
-### Dense arithmetic obligations
+### Dense arithmetic rollout
 
-The remaining four arithmetic captures need a bounded dense path. Bigint has
-5,064 raw source terms. A direct source binding exceeds the memory cap.
-An unadopted erasure prototype preserves every term before polynomial expansion.
-Its four complete source bindings pass source checks and selected replay.
-The group peaks at 1755.77 MiB. The complete Bigint checker still exceeds the
-memory cap. Keccak still needs qualification on the dense path.
+The initial dense path exceeded the memory cap. Bigint has 5,064 raw source
+terms. A direct source binding exceeded the cap. An erasure prototype retained
+every term before polynomial expansion. Its four complete source bindings passed
+source checks and selected replay. That group peaked at 1755.77 MiB. The whole
+Bigint checker still exceeded the cap. The packed trace step below removes that
+remaining normalization cost.
 
 The expression-erasure prototypes stay in
 `/tmp/airbender-review-round/checker-pilot-2026-10-31/dense-normalization-prototype/`.
-They do not supply adopted native proof claims.
+The adopted source bindings below use the proved erasure theorem.
 
 #### Packed normalization proof
 
@@ -423,11 +426,46 @@ The controls cover positions, inputs, outputs, trace coverage, lengths, word
 bounds and modulus bounds. Generation, boundary, program graph, link and
 workflow syntax checks pass. The final full validation did not run.
 
-The original four arithmetic captures still use their established proofs.
-Their native bindings and public corollaries need adoption and qualification.
-The numeric pilots stay outside the adopted source tree. They supply no new
-native circuit claim. The audit inventory retains all 19,498 established roots
-and adds 105 proof and control roots.
+At that checkpoint, the four arithmetic captures still used their established
+proofs. The numeric pilots stayed outside the adopted source tree. The audit
+inventory retained all 19,498 established roots and added 105 proof and control
+roots. The next step adopts the complete native bindings and public corollaries.
+
+#### Dense capture adoption
+
+Both Bigint captures and both Keccak captures now use the packed trace checker.
+Separate kernel proofs bind the source expression trees before expansion.
+The proofs retain all zero terms, coefficient values and variable order.
+Other bindings cover every residual, extension and certificate entry. The trace
+binding checks the complete backward and forward banks. The soundness theorem
+derives the original `FullArithmeticChecks.check` result. Each public per-index
+fact remains a corollary with its original statement.
+
+All 22 arithmetic captures now use whole checker results. Both cache modes
+remain required. This step retires 85 fact modules. The four captures use 24
+modules, including their four original foundations. None raises `maxHeartbeats`.
+
+The 29-module source and selected replay group passes in 669.48 s. It peaks at
+2404.69 MiB. The remaining control module also passes source and replay.
+All 30 selected replays use the standard 32 MiB thread stack. No safe declaration
+uses a skipped dependency. These runs trust imported objects. They do not
+constitute transitive replay.
+
+A kernel control accepts all 3,335 original theorem types. All 1,383 imported
+data values are identical. All 4,718 original public declarations remain.
+All 5,643 focused axiom checks pass. They use only `propext`, `Classical.choice`
+and `Quot.sound`. Eleven exact controls pass. The kernel rejects all eleven
+changed certificates or bindings. All 17 Python generator controls pass.
+The preservation, axiom and mutation group takes 56.29 s. It peaks at 823.77 MiB.
+
+All eight direct functional and clean consumers pass source checks in 43.32 s.
+They peak at 443.28 MiB. Generation, provenance, boundary, public program graph,
+link and workflow syntax checks pass. The full aggregate import remains subject
+to the previously recorded cache ownership issue.
+
+The audit inventory retains all 19,603 established roots and adds 925 roots.
+The current inventory has 20,528 roots. Evidence stays in
+`/tmp/airbender-review-round/checker-pilot-2026-10-31/`.
 
 Both cache modes remain required. Other fact families and unlimited heartbeat
 settings also need migration. The full frontend, environment audit and baseline

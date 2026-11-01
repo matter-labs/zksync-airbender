@@ -13,7 +13,7 @@ import gkr_full_arithmetic_certificate as generator
 class PackedArithmeticCaptureTests(unittest.TestCase):
     def test_both_modes_use_one_whole_capture(self):
         self.assertEqual(generator.CHECKER_CAPTURES,
-                         {stem + mode for stem in generator.CASES if stem not in {"Bigint", "Keccak"} for mode in ("Cached", "Uncached")})
+                         {stem + mode for stem in generator.CASES for mode in ("Cached", "Uncached")})
         for case in ["AddSubCached", "AddSubUncached"]:
             path = generator.LEAN / f"Airbender/Proofs/GKRProtocol/FullArithmeticNative/{case}Foundation.lean"
             quoted = re.search(r'\bselectors\s+("(?:[^"\\]|\\.)*")', path.read_text()).group(1)
@@ -27,7 +27,7 @@ class PackedArithmeticCaptureTests(unittest.TestCase):
             self.assertNotIn("maxHeartbeats", root)
 
     def test_all_numeric_captures_use_bound_data(self):
-        self.assertEqual(len(generator.NUMERIC_CAPTURES), 16)
+        self.assertEqual(len(generator.NUMERIC_CAPTURES), 20)
         for case in sorted(generator.NUMERIC_CAPTURES):
             path = generator.LEAN / f"Airbender/Proofs/GKRProtocol/FullArithmeticNative/{case}Foundation.lean"
             quoted = re.search(r'\bselectors\s+("(?:[^"\\]|\\.)*")', path.read_text()).group(1)
@@ -35,16 +35,23 @@ class PackedArithmeticCaptureTests(unittest.TestCase):
             mode = "Uncached" if case.endswith("Uncached") else "Cached"
             family = dict(zip(generator.CASES, generator.FAMILIES, strict=True))[case.removesuffix(mode)]
             modules = generator.modules(family + "-" + mode.lower(), case, result)
-            self.assertEqual(len(modules), 5)
+            dense = family in {"bigint", "keccak"}
+            self.assertEqual(len(modules), 6 if dense else 5)
             certificate = modules[-2][1]
-            self.assertEqual(certificate.count("by decide +kernel"), 2)
+            self.assertEqual(certificate.count("by decide +kernel"), 3 if dense else 2)
             self.assertIn("NumericArithmeticChecks.full_check", certificate)
             self.assertIn("using numericFullChecked", modules[-1][1])
             self.assertNotIn("LookupTable.ofList", modules[2][1])
             self.assertIn("numericSource.tree", modules[2][1])
-            self.assertEqual(modules[1][1].count("numeric_data_binding"),
-                             6)
-            self.assertEqual(modules[2][1].count("numeric_data_binding"), 3)
+            if dense:
+                self.assertIn("NumericExpressionChecks.source_binding", modules[1][1])
+                self.assertIn("numericSourceExpressions_binding", modules[1][1])
+                self.assertIn("numericSourceExpansion_binding", modules[1][1])
+                self.assertIn("packed_normalization_rows numericTraceRows", modules[3][1])
+                self.assertIn("NumericArithmeticTrace.check_sound", certificate)
+            else:
+                self.assertEqual(modules[1][1].count("numeric_data_binding"), 6)
+                self.assertEqual(modules[2][1].count("numeric_data_binding"), 3)
             self.assertTrue(all("maxHeartbeats" not in text for _, text in modules))
 
     def test_untracked_retired_path_stops_before_mutation(self):

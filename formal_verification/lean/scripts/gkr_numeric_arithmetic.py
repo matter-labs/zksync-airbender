@@ -7,10 +7,12 @@ from pathlib import Path
 import subprocess
 import tempfile
 
+import gkr_dense_arithmetic as dense
+
 from export_gkr_translations import FAMILIES, LEAN
 from gkr_wiring_instances import CASES
 
-NUMERIC_CAPTURES = {stem + mode for stem in CASES if stem not in {"AddSub", "Bigint", "Keccak"}
+NUMERIC_CAPTURES = {stem + mode for stem in CASES if stem != "AddSub"
                     for mode in ("Cached", "Uncached")}
 PRIME = 2013265921
 
@@ -31,12 +33,30 @@ def provenance(root, name, selectors):
     return hashes
 
 
+def is_dense(name):
+    return any(name.startswith(family + "-") for family in dense.DENSE_FAMILIES)
+
+
+def expression_count(root, name):
+    source = json.loads((root / f"artifacts/compiler/{name}.json").read_text())["source"]
+    return len(source["statements"]) + len(source["booleans"])
+
+
 def prepare_payload(root, name, selectors, raw):
     payload = dict(raw)
     payload["sourceNormalized"] = [normalize(row) for row in raw["source"]]
+    if is_dense(name):
+        count = expression_count(root, name)
+        if len(raw.get("sourceExpressions", [])) != count:
+            raise ValueError(f"source expression count changed: {name}")
+        payload["sourceHelpers"] = raw["source"][count:]
     for side in ("gateInput", "gateOutput"):
-        payload[side + "Normalized"] = [normalize(row) for row in payload.pop(side)]
+        payload[side + "Normalized"] = [normalize(row) for row in raw[side]]
+        if not is_dense(name):
+            payload.pop(side)
     payload["keys"] = sorted(payload["keys"])
+    if is_dense(name):
+        payload["normalizationTraces"] = dense.normalization_traces(payload, len(selectors["inputs"]))
     payload["provenance"] = provenance(root, name, selectors)
     return payload
 
@@ -58,6 +78,11 @@ def check_payload(root, name, selectors):
                 "gateInputNormalized": selectors["counts"]["relations"],
                 "gateOutputNormalized": selectors["counts"]["relations"],
                 "keys": len(selectors["addresses"])}
+    if is_dense(name):
+        expected.update({"sourceExpressions": expression_count(root, name),
+                         "sourceHelpers": expected["source"] - expression_count(root, name),
+                         "gateInput": expected["lowered"], "gateOutput": expected["lowered"],
+                         "normalizationTraces": expected["source"] + expected["lowered"]})
     if set(payload) != {*expected, "provenance"}:
         raise ValueError(f"numeric arithmetic field set changed: {name}")
     for field, count in expected.items():
@@ -65,10 +90,14 @@ def check_payload(root, name, selectors):
             raise ValueError(f"numeric arithmetic row count changed: {name}/{field}")
     if payload["keys"] != sorted(payload["keys"]):
         raise ValueError(f"numeric arithmetic keys are not sorted: {name}")
+    if is_dense(name) and payload["normalizationTraces"] != dense.normalization_traces(payload, len(selectors["inputs"])):
+        raise ValueError(f"packed normalization trace changed: {name}")
     return payload
 
 
 def modules(name, case, result, foundation, wrap):
+    if is_dense(name):
+        return dense.modules(name, case, result, foundation, wrap, expression_count(LEAN, name))
     prefix = foundation.removesuffix("Foundation")
     path = f"artifacts/compiler/numeric-arithmetic/{name}.json"
     data = "open NumericPolynomialChecks\n\n"
@@ -165,6 +194,8 @@ def capture_roots(case, payload):
         roots += [base + name + "." + suffix for suffix in ["tree", "tree_binding", "tree_valid"]]
         roots += [base + name + ".leaf" + str(index)
                   for index in range(max(1, (len(payload[field]) + 15) // 16))]
+    if "normalizationTraces" in payload:
+        roots += dense.extra_roots(case, payload)
     return roots
 
 
@@ -199,8 +230,15 @@ def main():
                                           "\n-- Reflection runs only in this untrusted export command.\n" +
                                           "set_option maxRecDepth 32768\nset_option maxHeartbeats 4000000\n" +
                                           f'export_numeric_arithmetic Airbender.Compiler.FullArithmeticNative.{case}.native to "{raw}"\n')
+                        if is_dense(name):
+                            expressions = Path(directory) / "expressions.json"
+                            with source.open("a") as output:
+                                output.write(f'export_source_expressions Airbender.Compiler.FullArithmeticNative.{case}.native count {expression_count(LEAN, name)} to "{expressions}"\n')
                         subprocess.run(["lake", "env", "lean", "--tstack=2097152", str(source)], cwd=LEAN, check=True)
-                    payload = prepare_payload(LEAN, name, selectors, json.loads(raw.read_text()))
+                    raw_payload = json.loads(raw.read_text())
+                    if is_dense(name) and not args.raw_dir:
+                        raw_payload["sourceExpressions"] = json.loads(expressions.read_text())
+                    payload = prepare_payload(LEAN, name, selectors, raw_payload)
                     path = payload_path(LEAN, name)
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
