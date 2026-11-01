@@ -1,6 +1,7 @@
 import Airbender.Import.Coefficients
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.GKRProtocol.CleanArithmetic
+import Airbender.Proofs.GKRProtocol.CleanPlacementChecks
 import Airbender.Import.GKRProtocol.FullArithmeticImport
 import Airbender.Proofs.GKRProtocol.NativeLookup
 
@@ -15,7 +16,7 @@ structure Selectors where
 
 private def fieldName (owner : Ident) (stem : String) : Ident := mkIdent (owner.getId ++ Name.mkSimple stem)
 
-private def emitChecked (command : Syntax) : CommandElabM Unit := do
+private def emitChecked (command : Syntax) : CommandElabM Unit := withEnableInfoTree false do
   elabCommand command
   if (← get).messages.hasErrors then throwAbortCommand
 
@@ -57,11 +58,11 @@ private def statementSyntax : StructuredStatement → CommandElabM (TSyntax `ter
         (_root_.Expression.mul $(← constantSyntax (-1)) $(← expressionSyntax expression)))
 
 syntax (name := importCleanArithmetic) "import_clean_arithmetic " ident " from " str
-  " selectors " str " base_model " ident " variables " num : command
+  " selectors " str " base_model " ident " variables " num (" using " ident)? : command
 
 elab_rules : command
   | `(import_clean_arithmetic $name:ident from $path:str selectors $selectorText:str
-      base_model $baseName:ident variables $arityNumber:num) => do
+      base_model $baseName:ident variables $arityNumber:num $[using $provided:ident]?) => do
     let pair ← match Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
       | .ok pair => pure pair | .error error => throwError "{error}"
     let certificateData ← match Json.parse selectorText.getString >>= (fromJson? (α := Selectors)) with
@@ -102,13 +103,26 @@ elab_rules : command
       rw [$placementsRange:ident]
       exact List.nodup_range))
     let inBankPredicate ← `(fun address : GKRAddress => decide (($bank).address (($bank).placement address) = address))
-    let mut inBankProofs := #[]
-    for index in [:addresses.size] do
-      let checked := fieldName name s!"placementInBank{index}"
-      emitChecked (← `(theorem $checked : ($inBankPredicate) $(addresses[index]!) = true := by decide +kernel))
-      inBankProofs := inBankProofs.push (← `($checked))
-    emitChecked (← `(theorem $placementsInBank : ($placementAddresses).all $inBankPredicate = true :=
-      BoolChecks.all_true (predicate := $inBankPredicate) (items := $placementAddresses) $(← checksSyntax inBankProofs)))
+    if let some owner := provided then
+      let sourcePlacements := fieldName owner "placements"
+      let sourceChecked := fieldName owner "placementsInBank"
+      let binding := fieldName name "placementsSourceBinding"
+      emitChecked (← `(theorem $binding : $placementAddresses = $sourcePlacements := by rfl))
+      emitChecked (← `(theorem $placementsInBank : ($placementAddresses).all $inBankPredicate = true :=
+        (congrArg (fun items : List GKRAddress => items.all $inBankPredicate) $binding).trans $sourceChecked))
+      for index in [:addresses.size] do
+        let checked := fieldName name s!"placementInBank{index}"
+        emitChecked (← `(theorem $checked : ($inBankPredicate) $(addresses[index]!) = true :=
+          CleanPlacementChecks.all_lookup $inBankPredicate $placementAddresses $placementsInBank
+            $(quote index) $(addresses[index]!) (by rfl)))
+    else
+      let mut inBankProofs := #[]
+      for index in [:addresses.size] do
+        let checked := fieldName name s!"placementInBank{index}"
+        emitChecked (← `(theorem $checked : ($inBankPredicate) $(addresses[index]!) = true := by decide +kernel))
+        inBankProofs := inBankProofs.push (← `($checked))
+      emitChecked (← `(theorem $placementsInBank : ($placementAddresses).all $inBankPredicate = true :=
+        BoolChecks.all_true (predicate := $inBankPredicate) (items := $placementAddresses) $(← checksSyntax inBankProofs)))
     emitChecked (← `(def $placement (index : Nat) : Fin $(quote arityNumber.getNat) :=
       (([$mappings,*] : List (Nat × Fin $(quote arityNumber.getNat))).lookup index).getD ⟨0, by decide⟩))
     emitChecked (← `(def $environment (base : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField) :

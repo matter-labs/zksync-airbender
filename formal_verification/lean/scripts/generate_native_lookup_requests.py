@@ -2326,6 +2326,41 @@ packed_arithmetic_roots += ['Airbender.Compiler.NumericExpressionChecks.Code',
  'Tests.NumericArithmeticTrace.imported_checked',
  'Tests.NumericArithmeticTrace.original_normalization_checked']
 
+packed_arithmetic_roots += ['Airbender.Compiler.CleanPlacementChecks.addressCode_injective',
+ 'Airbender.Compiler.CleanPlacementChecks.Capture',
+ 'Airbender.Compiler.CleanPlacementChecks.check',
+ 'Airbender.Compiler.CleanPlacementChecks.reference_mem',
+ 'Airbender.Compiler.CleanPlacementChecks.member_sound',
+ 'Airbender.Compiler.CleanPlacementChecks.address_placement_of_mem',
+ 'Airbender.Compiler.CleanPlacementChecks.check_sound',
+ 'Airbender.Compiler.CleanPlacementChecks.placement_at',
+ 'Airbender.Compiler.CleanPlacementChecks.placement_from_lookup',
+ 'Airbender.Compiler.CleanPlacementChecks.all_lookup',
+ 'Tests.CleanPlacementChecks.entries',
+ 'Tests.CleanPlacementChecks.placements',
+ 'Tests.CleanPlacementChecks.capture',
+ 'Tests.CleanPlacementChecks.bank_binding',
+ 'Tests.CleanPlacementChecks.placement_binding',
+ 'Tests.CleanPlacementChecks.checked',
+ 'Tests.CleanPlacementChecks.original_roundtrips',
+ 'Tests.CleanPlacementChecks.wrongIndex',
+ 'Tests.CleanPlacementChecks.wrongCode',
+ 'Tests.CleanPlacementChecks.outside',
+ 'Tests.CleanPlacementChecks.forgedSize',
+ 'Tests.CleanPlacementChecks.wrong_index_rejected',
+ 'Tests.CleanPlacementChecks.wrong_code_rejected',
+ 'Tests.CleanPlacementChecks.default_value_cannot_hide_outside_index',
+ 'Tests.CleanPlacementChecks.forged_size_rejected']
+
+from gkr_clean_placement import capture_roots as clean_placement_roots
+for clean_case in NUMERIC_CASES:
+    for clean_mode in ["Cached", "Uncached"]:
+        clean_name = clean_case + clean_mode
+        clean_foundation = ROOT / ("Airbender/Proofs/GKRProtocol/FullArithmeticNative/" + clean_name + "Foundation.lean")
+        clean_selectors = json.loads(json.loads(re.search(r'\bselectors\s+("(?:[^"\\]|\\.)*")', clean_foundation.read_text())[1]))
+        packed_arithmetic_roots += clean_placement_roots(clean_name, len(clean_selectors["addresses"]))
+        packed_arithmetic_roots.append("Airbender.Compiler.CleanArithmeticNative." + clean_name + ".native.placementsSourceBinding")
+
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
 for numeric_case in sorted(NUMERIC_CAPTURES):
@@ -2335,6 +2370,9 @@ for numeric_case in sorted(NUMERIC_CAPTURES):
 for dense_import in ['import Tests.NumericExpressionChecks', 'import Tests.NumericArithmeticTrace']:
     if dense_import not in content.splitlines():
         content = dense_import + '\n' + content
+clean_import = 'import Tests.CleanPlacementChecks'
+if clean_import not in content.splitlines():
+    content = clean_import + '\n' + content
 trace_import = 'import Tests.PackedNormalizationTrace'
 if trace_import not in content.splitlines():
     content = trace_import + '\n' + content

@@ -306,6 +306,7 @@ jobs:
           source "$FV_ROOT/guard.sh"
           fv numeric-bindings python3 scripts/check_numeric_arithmetic_controls.py
           fv packed-normalization python3 scripts/check_packed_normalization_controls.py
+          fv clean-placement python3 scripts/check_clean_placement_controls.py
       - name: Public program decoder row differential
         timeout-minutes: 75
         run: |
