@@ -4778,3 +4778,58 @@ the memory-frame rollout as completion of the wider work. Full frontend
 validation, the environment audit and baseline refresh, full transitive replay,
 cold full measurements, and Linux runtime and warm-cache qualification remain
 pending for review. The known aggregate import collision remains deferred.
+
+### Functional-step checker scaling (2026-11-01)
+
+The functional-step pilot remains unadopted. A typed whole-program check passes
+for AddSubCached. It builds in 5.56 s and replays in 2.43 s. The same pattern
+reaches the footprint cap for BlakeRoundCached at 2,565.49 MiB. Whole numeric
+materialization also reaches the cap when it copies each known-address prefix.
+A whole program.map port materializer reaches the cap too. Do not repeat these
+variants.
+
+The generic numeric model now has a proved balanced-set checker. It uses
+Std.TreeSet Nat for the known addresses. Its soundness theorem derives the exact
+original FunctionalProgram.check predicate. Both generic source and replay pass.
+The list-based whole numeric check reaches the cap. The balanced-set result for
+all 674 cached steps builds in 5.90 s and replays in 5.99 s. Its guard peaks at
+2,291.16 MiB. No safe dependency is skipped.
+
+Explicit 32-step port materializers fit. Late blocks exceed the default heartbeat
+budget, so the prototype scopes a two-million budget to materialization. The
+cached data builds in 224.93 s and replays in 1.62 s. Its guard peaks at
+1,381.67 MiB. The uncached data has 394 steps. It builds in 104.57 s and replays
+in 1.65 s. Mark the aggregate data noncomputable. A computable aggregate triggers
+a Lean compiler IR error. This change does not change the data or the kernel
+predicate. Prototype stdout progress remains buffered, even after a flush.
+
+Thirty-two-entry bindings exceed the cap for late source windows. Direct first
+window binding passes. Offset 640 with width eight also passes. Complete eight
+entry bindings now pass for both modes. The cached binding builds in 208.22 s
+and replays in 204.04 s. Its native program-check certificate builds in 6.37 s
+and replays in 6.23 s. The combined guard peaks at 2,343.65 MiB. The uncached
+binding builds in 96.64 s and replays in 92.89 s. Its certificate builds in
+5.10 s and replays in 4.84 s. That guard peaks at 1,900.34 MiB. Both old
+last-step theorem types also pass source and replay. All six exact controls,
+six kernel mutation rejections and 23 generic axiom checks pass.
+
+A separate untrusted export reads the closed natural port data. Literal data
+for both modes passes exact kernel equality with the materialized data. These
+source builds take 3.60 s and 4.00 s. Replays take about 1.52 s each. The four
+literal data and preservation modules pass source and replay. Their guard peaks
+at 788.35 MiB. The canonical generator must add source-hash freshness and retain
+the complete original kernel bindings. Do not trust the export as a proof.
+
+Two old cached step shards provide a focused baseline. The first 32 steps build
+in 6.86 s and replay in 6.89 s. Steps 640 through 671 build in 20.40 s and replay
+in 20.68 s. These samples do not establish a full-family or cold full-build gain.
+
+All prototype sources, reports and generators remain in the checker evidence
+folder. Evidence prefixes are functional-steps-*, functional-step-*, and
+functional-literal-probe. Thirty-five original dense step modules remain in
+functional-steps-original-oleans. All guards clean their owned workers. The
+remaining adoption work is canonical literal generation, all old step theorem
+corollaries, complete interface preservation, controls, CI and direct consumers.
+Base-port and base-relation checks remain separate open obligations. No
+functional native wrapper has changed. Item 3 and final full validation remain
+open. The hourly follow-up stays active.
