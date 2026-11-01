@@ -1,0 +1,14 @@
+import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.WordMemoryCached.PrefixBindings
+import Airbender.Import.GKRProtocol.NumericMemoryFrameImport
+
+namespace Airbender.Compiler.MemoryFrameChecks.WordMemoryCached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+set_option exponentiation.threshold 4096 in
+numeric_memory_frame_capture data := NumericMemoryFrameChecks.ofTypedPrefix Airbender.Compiler.MemoryFrameNative.WordMemoryCached.native.ramFields Airbender.Compiler.MemoryFrameNative.WordMemoryCached.native.initializationFields Airbender.Compiler.MemoryFrameNative.WordMemoryCached.native.executeFields
+  Airbender.Compiler.MemoryNative.WordMemoryCached.native.sourcePlacement Airbender.Compiler.MemoryNative.WordMemoryCached.native.bank Airbender.Compiler.MemoryFrameNative.WordMemoryCached.native.activeCoordinates Airbender.Compiler.MemoryFrameNative.WordMemoryCached.native.allCoordinates
+  Airbender.Compiler.FullArithmeticNative.WordMemoryCached.native.inputBank Airbender.Compiler.FullArithmeticNative.WordMemoryCached.native.bank
+end Airbender.Compiler.MemoryFrameChecks.WordMemoryCached

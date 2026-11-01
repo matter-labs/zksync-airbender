@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Check original port classes, both erasure scopes and exact source fidelity."""
+import argparse
 from pathlib import Path
 import subprocess
 import tempfile
@@ -27,6 +28,9 @@ def run(source):
 
 
 def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--case',choices=generator.CASES,action='append')
+    args=parser.parse_args()
     exact='check tiny = true';cases=[]
     for label,changed in [('active erasure','{tiny with activeMask := 1}'),('all erasure','{tiny with allMask := 1}'),
             ('placement','{tiny with placement := .leaf [1]}'),('full bank exclusion','{tiny with inputAddress := .leaf [1]}'),
@@ -40,7 +44,8 @@ def main():
     rejected='check {external with nativeAddress := .leaf [AddressUniqueChecks.addressCode (.VirtualSetup .InitsAndTeardownsLow)], fullAddress := .leaf [AddressUniqueChecks.addressCode (.VirtualSetup .InitsAndTeardownsLow)]} = true'
     cases.append(('initialization oracle class',allowed,rejected,None))
     cases.append(('complete zero term','tiny.ram = [[(1,[0]),(0,[])]]','tiny.ram = [[(1,[0])]]',None))
-    for case in generator.CASES:
+    if args.case:cases=[]
+    for case in args.case or generator.CASES:
         owner='Airbender.Compiler.MemoryFrameChecks.'+case
         cases.append((case,f'check {owner}.data = true',f'check {{{owner}.data with placement := .branch 1 (.leaf []) (.leaf [])}} = true',case))
         if case in generator.SMALL_CASES:
@@ -55,13 +60,18 @@ def main():
             native='Airbender.Compiler.MemoryFrameNative.'+case+'.native'
             expected=f'NumericQueryFrameChecks.coordinateMask ({native}.activeCoordinates.map Fin.val)'
             cases.append((case+' mask',f'{owner}.data.activeMask = {expected}',f'{owner}.data.activeMask+1 = {expected}',case))
-            for field in ['placement','nativeAddress','inputAddress','fullAddress']:
-                for first in [0,arity//32*32]:
+            if case.startswith('Unified'):
+                expected=f'NumericQueryFrameChecks.coordinateMask ({native}.allCoordinates.map Fin.val)'
+                cases.append((case+' initialization mask',f'{owner}.data.allMask = {expected}',f'{owner}.data.allMask+1 = {expected}',case))
+                expected=f'{native}.initializationFields.map {owner}.encodeField'
+                cases.append((case+' complete initialization',f'{owner}.data.initialization = {expected}',f'{owner}.data.initialization.drop 1 = {expected}',case))
+            for field in (['placement','nativeAddress','inputAddress','fullAddress'] if case.startswith('BlakeRound') else []):
+                for first in [0,(arity-1)//32*32]:
                     length=min(32,arity-first)
                     values=f'({owner}.data.{field}.toList.drop {first}).take {length}'
                     expected=f'NumericQueryFrameChecks.window {owner}.{field}Source {first} {length} (by decide +kernel)'
                     cases.append((case+f' {field} window {first}',f'{values} = {expected}',f'({values}).drop 1 = {expected}',case))
-            for first in [0,size//16*16]:
+            for first in [0,(size-1)//16*16]:
                 length=min(16,size-first)
                 expected=f'(({native}.ramFields.drop {first}).take {length}).map {owner}.encodeField'
                 values=f'({owner}.data.ram.drop {first}).take {length}'
@@ -73,6 +83,10 @@ def main():
             if not mutated and result.returncode:raise SystemExit(f'Exact {label} failed:\n'+result.stdout[-2000:])
             if mutated and (not result.returncode or '(kernel) declaration type mismatch' not in result.stdout.lower()):
                 raise SystemExit(f'Changed {label} did not fail in the kernel:\n'+result.stdout[-2000:])
+        print('PASS memory-frame control:',label,flush=True)
+    if args.case:
+        print(f'PASS {len(cases)} exact memory-frame capture controls; kernel rejects all {len(cases)} mutations')
+        return
     with patch.object(generator,'CASES',()):legacy=module('add-sub-cached','AddSubCached')[1]
     result=run(legacy)
     if result.returncode:raise SystemExit('Legacy finalizer failed:\n'+result.stdout[-2000:])

@@ -4,8 +4,10 @@ import argparse
 from export_gkr_translations import LEAN
 from gkr_packed_rotate_boundary import preflight
 
+from gkr_wiring_instances import CASES as CIRCUIT_CASES
+
 SMALL_CASES=('AddSubCached','AddSubUncached')
-LARGE_CASES=('BlakeRoundCached','BlakeRoundUncached')
+LARGE_CASES=tuple(stem+mode for stem in CIRCUIT_CASES if stem!='AddSub' for mode in ['Cached','Uncached'])
 CASES=SMALL_CASES+LARGE_CASES
 
 

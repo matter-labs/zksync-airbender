@@ -53,7 +53,8 @@ theorem inputRoundTrip (wire : Fin {inputs}) :
 end Airbender.Compiler.MemoryFrameChecks.{case}
 ''')
     emit('Data',f'import {stem}.PrefixBindings\nimport Airbender.Import.GKRProtocol.NumericMemoryFrameImport\n\n'+header+
-        'set_option exponentiation.threshold 4096 in\nset_option maxHeartbeats 2000000 in\n'+
+        'set_option exponentiation.threshold 4096 in\n'+
+        ('set_option maxHeartbeats 2000000 in\n' if case.startswith('BlakeRound') else '')+
         'numeric_memory_frame_capture data := '+original_source.replace('NumericMemoryFrameChecks.ofTyped ', 'NumericMemoryFrameChecks.ofTypedPrefix ')+end)
     common=f'import {stem}.Data\nimport Airbender.Proofs.GKRProtocol.NumericQueryFrameBindings\nimport Airbender.Import.GKRProtocol.NumericArithmeticDataImport\n\n'
     source_functions=[('placement',f'(fun wire : Fin {arity} => if wire.val < {inputs} then wire.val else ({base}.inputBank.placement ({mem}.bank.address wire)).val)'),('nativeAddress',f'(fun wire : Fin {arity} => AddressUniqueChecks.addressCode ({mem}.bank.address wire))'),('inputAddress',f'(fun wire : Fin {arity} => if wire.val < {inputs} then AddressUniqueChecks.addressCode ({mem}.bank.address wire) else AddressUniqueChecks.addressCode ({base}.inputBank.address ({base}.inputBank.placement ({mem}.bank.address wire))))'),('fullAddress',f'(fun wire : Fin {arity} => if wire.val < {inputs} then AddressUniqueChecks.addressCode ({mem}.bank.address wire) else AddressUniqueChecks.addressCode ({base}.bank.address ({base}.bank.placement ({mem}.bank.address wire))))')]

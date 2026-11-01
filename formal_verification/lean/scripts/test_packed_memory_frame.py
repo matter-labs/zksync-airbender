@@ -11,7 +11,8 @@ import gkr_memory_frame_instances as interface
 
 class NumericMemoryFrameTests(unittest.TestCase):
     def test_complete_both_cache_modes(self):
-        self.assertEqual(generator.CASES,('AddSubCached','AddSubUncached','BlakeRoundCached','BlakeRoundUncached'))
+        self.assertEqual(len(generator.CASES),22)
+        self.assertEqual(set(generator.CASES),{stem+mode for stem in generator.CIRCUIT_CASES for mode in ['Cached','Uncached']})
         for case in generator.CASES:
             generated=dict(generator.modules(case));stem='Airbender.Proofs.GKRProtocol.MemoryFrameChecks.'+case
             self.assertEqual(generated[stem+'.Certificate'].count(':= by decide +kernel'),1)
@@ -21,7 +22,8 @@ class NumericMemoryFrameTests(unittest.TestCase):
             else:
                 from gkr_packed_memory_frame_bounded import capture_shape
                 inputs,arity,size=capture_shape(case)
-                self.assertEqual((inputs,arity,size),(763,771,616))
+                if case.startswith('BlakeRound'):self.assertEqual((inputs,arity,size),(763,771,616))
+                self.assertLessEqual(inputs,arity)
                 self.assertEqual(len(generated),9)
                 self.assertIn('check_sound data',generated[stem+'.Certificate'])
                 self.assertNotIn('source_binding',generated[stem+'.Bindings'])
@@ -48,10 +50,11 @@ class NumericMemoryFrameTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'memory input prefix changed'):
                 list(generator.modules('BlakeRoundCached'))
 
-    def test_unadopted_interface_stays_the_same(self):
-        name,source=interface.module('jump-branch-cached','JumpBranchCached')
+    def test_legacy_interface_stays_available(self):
+        with patch.object(generator,'CASES',()):
+            _,source=interface.module('jump-branch-cached','JumpBranchCached')
         self.assertNotIn('using_check',source)
-        self.assertEqual((interface.LEAN/(name.replace('.','/')+'.lean')).read_text(),source)
+        self.assertIn('set_option maxHeartbeats 4000000',source)
 
     def test_untracked_sources_stop_before_writes(self):
         for inputs in [False,True]:

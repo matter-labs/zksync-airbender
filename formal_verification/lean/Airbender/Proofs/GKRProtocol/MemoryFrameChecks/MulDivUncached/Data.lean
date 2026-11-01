@@ -1,0 +1,14 @@
+import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.MulDivUncached.PrefixBindings
+import Airbender.Import.GKRProtocol.NumericMemoryFrameImport
+
+namespace Airbender.Compiler.MemoryFrameChecks.MulDivUncached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+set_option exponentiation.threshold 4096 in
+numeric_memory_frame_capture data := NumericMemoryFrameChecks.ofTypedPrefix Airbender.Compiler.MemoryFrameNative.MulDivUncached.native.ramFields Airbender.Compiler.MemoryFrameNative.MulDivUncached.native.initializationFields Airbender.Compiler.MemoryFrameNative.MulDivUncached.native.executeFields
+  Airbender.Compiler.MemoryNative.MulDivUncached.native.sourcePlacement Airbender.Compiler.MemoryNative.MulDivUncached.native.bank Airbender.Compiler.MemoryFrameNative.MulDivUncached.native.activeCoordinates Airbender.Compiler.MemoryFrameNative.MulDivUncached.native.allCoordinates
+  Airbender.Compiler.FullArithmeticNative.MulDivUncached.native.inputBank Airbender.Compiler.FullArithmeticNative.MulDivUncached.native.bank
+end Airbender.Compiler.MemoryFrameChecks.MulDivUncached

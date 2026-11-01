@@ -4733,3 +4733,48 @@ warm-cache qualification remain pending for review. The known aggregate import
 collision remains deferred.
 
 The final qualification guard takes 167.90 s and peaks at 551.90 MiB.
+
+### Complete memory-frame rollout (2026-11-01)
+
+All 22 memory-frame captures now use one closed numeric result per capture.
+The remaining 18 captures use the proved prefix constructor and complete bounded
+source bindings. The original predicates, semantic finalizers and premises stay
+unchanged. RAM uses the active mask. Initialization and execute use the full
+coordinate mask. Both Unified modes bind all 28 initialization fields exactly.
+The rollout retires the ten old Bigint RAM proof shards. No memory-frame proof
+shard remains. The AddSub and BlakeRound capture outputs remain unchanged.
+
+The 18 captures retain all 2,280 old public declarations.
+Kernel preservation accepts all 2,162 old theorem types.
+All 118 imported data values are identical. All
+216 selected source checks and replays pass. These
+include every direct witness consumer. Replay uses the standard 32 MiB stack
+and skips no safe dependency. All 4,086 focused axiom checks use
+only the three allowed axioms. All 76 exact controls and 76 kernel
+mutation rejections pass. These include the complete Unified initialization lists
+and masks. The prior checkpoint qualifies the shared controls, legacy finalizer
+and opaque-payload rejection. All four Python generator controls pass. Capture
+and interface freshness, static checks, the local source import graph and workflow
+syntax pass. CI keeps both modes and checks the complete family.
+
+The inventory has 78,983 roots. It retains all
+77,177 prior roots and every established root. The dense source
+and replay guard takes 232.55 s and peaks at
+992.95 MiB. The ordinary source and replay
+guard takes 657.60 s and peaks at
+884.68 MiB. Qualification takes
+451.88 s and peaks at
+845.03 MiB. All guards clean their
+owned workers. All 18 new captures use default heartbeat limits. Only the two
+BlakeRound materializers retain the documented scoped budget. No cold full-build
+gain is claimed.
+
+Evidence uses memory-frame-remaining-* in the checker evidence folder. The
+30 original objects remain in memory-frame-remaining-original-oleans. Item 3
+remains open. Functional graph step and base checks still use numerical proof
+shards. Other frame and argument families also need migration or a scope audit.
+A focused scan finds 1,130 high heartbeat settings under GKRProtocol. Do not treat
+the memory-frame rollout as completion of the wider work. Full frontend
+validation, the environment audit and baseline refresh, full transitive replay,
+cold full measurements, and Linux runtime and warm-cache qualification remain
+pending for review. The known aggregate import collision remains deferred.

@@ -1,0 +1,14 @@
+import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.ShiftBinopCached.PrefixBindings
+import Airbender.Import.GKRProtocol.NumericMemoryFrameImport
+
+namespace Airbender.Compiler.MemoryFrameChecks.ShiftBinopCached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+set_option exponentiation.threshold 4096 in
+numeric_memory_frame_capture data := NumericMemoryFrameChecks.ofTypedPrefix Airbender.Compiler.MemoryFrameNative.ShiftBinopCached.native.ramFields Airbender.Compiler.MemoryFrameNative.ShiftBinopCached.native.initializationFields Airbender.Compiler.MemoryFrameNative.ShiftBinopCached.native.executeFields
+  Airbender.Compiler.MemoryNative.ShiftBinopCached.native.sourcePlacement Airbender.Compiler.MemoryNative.ShiftBinopCached.native.bank Airbender.Compiler.MemoryFrameNative.ShiftBinopCached.native.activeCoordinates Airbender.Compiler.MemoryFrameNative.ShiftBinopCached.native.allCoordinates
+  Airbender.Compiler.FullArithmeticNative.ShiftBinopCached.native.inputBank Airbender.Compiler.FullArithmeticNative.ShiftBinopCached.native.bank
+end Airbender.Compiler.MemoryFrameChecks.ShiftBinopCached
