@@ -4662,3 +4662,34 @@ cap. Other frame and argument families remain open. Full frontend validation,
 the environment audit and baseline refresh, full transitive replay, cold full
 measurements, and Linux runtime and warm-cache qualification remain pending for
 review. The known aggregate ownership collision remains deferred.
+
+### Dense memory-frame scaling controls (2026-11-01)
+
+The unadopted BlakeRoundCached probe has 616 RAM fields. Its memory bank has
+771 addresses. The first 763 match the original arithmetic inputs exactly.
+Default materialization stops at the heartbeat budget after 11.50 s. A scoped
+two-million budget reaches the footprint cap at 2560.43 MiB. No binding runs.
+A separate placement component builds in 49.44 s and replays in 1.90 s. The
+full-address component alone also reaches the cap. Do not repeat these variants.
+
+A proved prefix constructor preserves the complete original numeric capture.
+It uses the actual input prefix, both bank inverse laws and the existing full-bank
+input projection. All these facts have kernel proofs. The constructor changes no
+reference, imported value or semantic premise. Its generic equality theorem and
+the exact native prefix facts pass source checks and standard-stack replay.
+The prefix capture builds in 17.77 s and replays in 1.87 s. Its whole record
+binding still reaches the cap. Bounded exact windows solve that binding cost.
+
+All four address vectors and all 616 RAM polynomials now have complete bounded
+bindings in the prototype. The masks and other field lists remain fully bound.
+The transport proofs unfold only their named source functions. They do not split
+literal data. All ten prototype modules pass source checks and selected replay
+across the successful focused runs. The final complete checker builds in 2.12 s
+and replays in 2.07 s. No safe dependency is skipped. The final tail guard takes
+9.65 s and peaks at 930.51 MiB. It leaves no owned worker.
+
+These sources remain under memory-frame-large-prototype in the evidence folder.
+NumericMemoryFramePrefix.lean remains there too. The prototype is not adopted.
+Next generate both canonical BlakeRound modes. Run preservation, controls, axiom
+checks and direct consumer checks before adoption. Keep the AddSub pilot as it is.
+The other 20 memory-frame captures remain open. Full validation remains pending.
