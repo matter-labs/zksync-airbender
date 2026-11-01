@@ -5,6 +5,8 @@ import json
 import os
 import subprocess
 
+import gkr_clean_placement as placement
+
 from gkr_full_arithmetic_certificate import synthesize as full_arithmetic
 from gkr_arithmetic_certificate import atom, const, plus, times, expression, coefficient, key, packed
 from export_gkr_translations import FAMILIES, LEAN
@@ -99,13 +101,14 @@ def module(name, case, result):
     namespace = 'Airbender.Compiler.CleanArithmeticNative.' + case
     selectors = json.dumps(json.dumps({'format_version': 1, 'witnesses': result['witnesses']},
                                      separators=(',', ':')))
-    content = (f'import Airbender.Import.GKRProtocol.CleanArithmeticImport\nimport Airbender.Proofs.GKRProtocol.FullArithmeticNative.{case}\n\n'
+    content = (f'import Airbender.Import.GKRProtocol.CleanArithmeticImport\nimport Airbender.Proofs.GKRProtocol.FullArithmeticNative.{case}\nimport Airbender.Proofs.GKRProtocol.CleanPlacementNative.{case}\n\n'
         f'namespace {namespace}\nopen Airbender Airbender.Compiler\n'
         'set_option warningAsError true\nset_option Elab.async false\n'
         'set_option maxRecDepth 32768\nset_option maxHeartbeats 4000000\n\n'
         f'import_clean_arithmetic native from "artifacts/compiler/{name}.json"\n'
         f'  selectors {selectors}\n'
-        f'  base_model Airbender.Compiler.FullArithmeticNative.{case}.native variables {result["counts"]["variables"]}\n\n'
+        f'  base_model Airbender.Compiler.FullArithmeticNative.{case}.native variables {result["counts"]["variables"]}\n'
+        f'  using Airbender.Compiler.CleanPlacementNative.{case}\n\n'
         f'end {namespace}\n')
     return target, content
 
@@ -126,15 +129,17 @@ def main():
                 continue
             name, case = family + '-' + mode, stem + mode.title()
             root = LEAN / 'artifacts/compiler'
-            result = synthesize(json.loads((root / (name + '.json')).read_text()),
-                                json.loads((root / (name + '-source.json')).read_text()))
-            target, content = module(name, case, result)
-            path = LEAN / (target.replace('.', '/') + '.lean')
-            if args.check and (not path.exists() or path.read_text() != content):
-                raise ValueError('post-compiler Clean arithmetic scaffold changed: ' + target)
-            if args.write and (not path.exists() or path.read_text() != content):
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content)
+            pair = json.loads((root / (name + '.json')).read_text())
+            snapshot = json.loads((root / (name + '-source.json')).read_text())
+            result = synthesize(pair, snapshot)
+            modules = [placement.module(name, case, pair, snapshot), module(name, case, result)]
+            for target, content in modules:
+                path = LEAN / (target.replace('.', '/') + '.lean')
+                if args.check and (not path.exists() or path.read_text() != content):
+                    raise ValueError('post-compiler Clean arithmetic scaffold changed: ' + target)
+                if args.write and (not path.exists() or path.read_text() != content):
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(content)
             print(name, result['counts'], flush=True)
             if args.build:
                 subprocess.run(['lake', '--no-cache', 'build', '+' + target + ':olean'],

@@ -70,7 +70,8 @@ The numeric arithmetic rollout adds 434 roots.
 The next seven arithmetic families add 1,041 roots.
 The packed normalization proof adds 105 roots.
 The dense arithmetic rollout adds 925 roots.
-The current explicit inventory has 20,528 roots.
+The Clean placement rollout adds 497 roots.
+The current explicit inventory has 21,025 roots.
 
 The complete ordinary AND data has the same serialized values before and
 after this change. Its SHA-256 is
@@ -471,6 +472,44 @@ Both cache modes remain required. Other fact families and unlimited heartbeat
 settings also need migration. The full frontend, environment audit and baseline
 refresh, full transitive replay, cold full measurements, and Linux runtime and
 cache qualification stay pending for implementation review.
+
+### Clean placement rollout
+
+All 22 Clean placement captures now use one numeric checker result each.
+A proved checker validates bank coordinates and complete address coverage.
+Kernel equalities bind the numeric data to the original address bank and
+placement list. Address-code injectivity gives the original placement
+round trips. Every per-address statement remains a corollary with its old type.
+Both cache modes remain required.
+
+This step changes only the placement fact family. The Clean per-statement
+ideal checks remain unchanged. Their separate migration remains open.
+The new capture modules use default heartbeats. The existing Clean arithmetic
+modules retain their finite limit for those ideal checks.
+
+All 44 capture and consumer modules pass source checks and selected replay.
+The rollout batch takes 732.15 s. It peaks at 1714.27 MiB. The earlier pilot
+and shared-module group takes 150.69 s. It peaks at 1186.79 MiB.
+All 47 selected replays use the standard 32 MiB thread stack. No safe declaration
+uses a skipped dependency. These runs trust imported objects.
+
+A kernel control accepts all 7,684 original theorem types. All 3,836 imported
+data values are identical. All 11,520 original public declarations remain.
+All 12,017 focused axiom checks pass. They use only `propext`, `Classical.choice`
+and `Quot.sound`. Six exact controls pass. The kernel rejects all six changed
+results or bindings. The preservation, axiom and mutation group takes 29.26 s.
+It peaks at 869.43 MiB. All 20 Python generator controls pass.
+
+Generation, proof boundary, public program graph, link and workflow syntax
+checks pass. CI requires the placement mutation controls. The audit inventory
+retains all 20,528 established roots and adds 497 roots. It has 21,025 roots.
+Evidence stays in `/tmp/airbender-review-round/checker-pilot-2026-10-31/`.
+
+Other fact families and unlimited heartbeat settings still need migration.
+The aggregate import remains subject to the recorded cache ownership issue.
+The full frontend, environment audit and baseline refresh, full transitive
+replay, cold full measurements, and Linux runtime and cache qualification
+stay pending for implementation review.
 
 ## Rebase checks
 
