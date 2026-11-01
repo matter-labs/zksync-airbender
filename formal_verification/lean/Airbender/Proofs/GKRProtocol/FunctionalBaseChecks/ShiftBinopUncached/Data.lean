@@ -1,0 +1,18 @@
+import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.ShiftBinopUncached.Typed
+import Airbender.Import.GKRProtocol.NumericFunctionalBaseImport
+
+namespace Airbender.Compiler.FunctionalBaseChecks.ShiftBinopUncached
+open Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+numeric_functional_base_capture data0 := [
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.ShiftBinopUncached.native.baseRecipe0 Airbender.Compiler.FunctionalNative.ShiftBinopUncached.native.baseOutput0 Airbender.Compiler.FullArithmeticNative.ShiftBinopUncached.native.bank Airbender.Compiler.FunctionalNative.ShiftBinopUncached.native.isBase Airbender.Compiler.FullArithmeticNative.ShiftBinopUncached.native.gate0.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.ShiftBinopUncached.native.baseRecipe1 Airbender.Compiler.FunctionalNative.ShiftBinopUncached.native.baseOutput1 Airbender.Compiler.FullArithmeticNative.ShiftBinopUncached.native.bank Airbender.Compiler.FunctionalNative.ShiftBinopUncached.native.isBase Airbender.Compiler.FullArithmeticNative.ShiftBinopUncached.native.gate41.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.ShiftBinopUncached.native.baseRecipe2 Airbender.Compiler.FunctionalNative.ShiftBinopUncached.native.baseOutput2 Airbender.Compiler.FullArithmeticNative.ShiftBinopUncached.native.bank Airbender.Compiler.FunctionalNative.ShiftBinopUncached.native.isBase Airbender.Compiler.FullArithmeticNative.ShiftBinopUncached.native.gate42.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.ShiftBinopUncached.native.baseRecipe3 Airbender.Compiler.FunctionalNative.ShiftBinopUncached.native.baseOutput3 Airbender.Compiler.FullArithmeticNative.ShiftBinopUncached.native.bank Airbender.Compiler.FunctionalNative.ShiftBinopUncached.native.isBase Airbender.Compiler.FullArithmeticNative.ShiftBinopUncached.native.gate55.inputResidual)]
+
+noncomputable def data : List NumericFunctionalBaseChecks.Data := data0
+
+end Airbender.Compiler.FunctionalBaseChecks.ShiftBinopUncached

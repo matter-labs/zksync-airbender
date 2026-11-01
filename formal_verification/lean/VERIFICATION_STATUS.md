@@ -4980,3 +4980,48 @@ Full frontend validation, environment audit and baseline refresh, full
 transitive replay, cold full measurements and Linux qualification did not run.
 They remain pending for implementation review. The known aggregate ownership
 collision stays deferred. No aggregate pass is claimed.
+
+## Complete functional base family
+
+All 22 native functional base captures now use complete kernel checks. The other
+18 captures reuse the qualified checker and exact source bindings. Each capture
+keeps one closed result. All original port and relation facts select that result.
+The original recipe relation and gate.inputResidual stay exact. All source terms,
+zero coefficients and term order stay bound. No caller premise changes. The
+semantic finalizer and complete step captures stay unchanged. Both cache modes
+stay required. The remaining 20 old base shards are gone. No functional
+base proof shard remains.
+
+All 7,776 original public declarations in the remaining captures stay
+available. A kernel control accepts all 2,859 old theorem types.
+All 4,917 old data Expr values are identical. All 144 selected modules
+pass source checks and replay. They include all 18 finalizers and 36 direct
+consumers. Replay uses the standard 32 MiB stack. It skips no safe dependency.
+All 9,795 focused axiom checks use only the three allowed axioms.
+Thirty-six exact capture controls pass. The kernel rejects all thirty-six
+mutations. The shared controls and opaque-data rejection retain their qualified
+pilot results. All three expanded base generator controls and five step
+generator controls pass.
+
+The six larger source captures take 157.72 s and peak at
+1,027.34 MiB. Their qualification takes 258.44 s
+and peaks at 2,277.91 MiB. The other twelve source captures take
+242.20 s and peak at 928.54 MiB. Their qualification
+takes 350.34 s and peaks at 2,274.95 MiB. All guards
+clean their owned workers. All new modules use default heartbeats. The four
+pilot capture outputs stay unchanged. No cold full-build gain is claimed.
+
+The explicit inventory has 82,178 roots. It retains all 81,365 prior roots
+and every established root. Source and interface freshness, source-layer checks,
+static checks and workflow syntax pass. CI checks the complete family. Original
+objects remain in functional-base-remaining-original-oleans. Evidence prefixes
+are functional-base-remaining-dense and functional-base-remaining-ordinary.
+
+Item 3 remains open. Other numerical argument and frame checks remain. Counter
+frames, history erasure and generic argument checks need migration. Parametric
+semantic proofs need a scope check. Decoder interpretation and program-dependent
+setup stay excluded. The hourly follow-up stays active. Full frontend validation,
+environment audit and baseline refresh, full transitive replay, cold full
+measurements and Linux qualification did not run. They remain pending for
+implementation review. The known aggregate ownership collision stays deferred.
+No aggregate import pass is claimed.

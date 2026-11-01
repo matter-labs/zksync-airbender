@@ -14,7 +14,7 @@ from gkr_packed_query_frame import capture_name
 
 class FunctionalBaseTests(unittest.TestCase):
     def test_complete_native_references(self):
-        self.assertEqual(set(generator.CASES), {stem + mode for stem in ['AddSub', 'BlakeRound']
+        self.assertEqual(set(generator.CASES), {stem + mode for stem in generator.CIRCUIT_CASES
                                               for mode in ['Cached', 'Uncached']})
         for case in generator.CASES:
             generated = dict(generator.modules(case))
@@ -48,7 +48,8 @@ class FunctionalBaseTests(unittest.TestCase):
     def test_legacy_base_checks_stay_available(self):
         name, case = 'mul-div-cached', 'MulDivCached'
         pair = json.loads((generator.LEAN / f'artifacts/compiler/{name}.json').read_text())
-        targets, _, _ = interface.modules(name, case, pair)
+        with patch.object(generator, 'CASES', ()):
+            targets, _, _ = interface.modules(name, case, pair)
         self.assertTrue(any(module.endswith('Base0') for module, _ in targets))
 
     def test_untracked_source_is_preserved(self):

@@ -7,8 +7,11 @@ from export_gkr_translations import LEAN
 from gkr_packed_functional_steps import balanced
 from gkr_packed_query_frame import capture_name, merge_slices
 from gkr_packed_rotate_boundary import preflight
+from gkr_wiring_instances import CASES as CIRCUIT_CASES
 
-CASES = ('AddSubCached', 'AddSubUncached', 'BlakeRoundCached', 'BlakeRoundUncached')
+PILOT_CASES = ('AddSubCached', 'AddSubUncached', 'BlakeRoundCached', 'BlakeRoundUncached')
+CASES = PILOT_CASES + tuple(stem + mode for stem in CIRCUIT_CASES if stem not in ['AddSub', 'BlakeRound']
+                          for mode in ['Cached', 'Uncached'])
 
 
 def base_bindings(case):
@@ -43,7 +46,7 @@ def modules(case):
                           header + '\n'.join(lines) + end)
 
     lines, leaves = [], []
-    stride = 1 if case == 'BlakeRoundCached' else 8
+    stride = 1 if count >= 32 else 8
     for first in range(0, count, stride):
         width = min(stride, count - first)
         block, offset = first // 8 * 8, first % 8

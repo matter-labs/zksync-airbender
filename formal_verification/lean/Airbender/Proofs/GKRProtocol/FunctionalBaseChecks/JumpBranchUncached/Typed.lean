@@ -1,0 +1,16 @@
+import Airbender.Proofs.GKRProtocol.FunctionalNative.JumpBranchUncachedFoundation
+import Airbender.Proofs.GKRProtocol.NumericFunctionalBaseChecks
+
+namespace Airbender.Compiler.FunctionalBaseChecks.JumpBranchUncached
+open Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+noncomputable def originalEntries := [
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.JumpBranchUncached.native.baseRecipe0 Airbender.Compiler.FunctionalNative.JumpBranchUncached.native.baseOutput0 Airbender.Compiler.FullArithmeticNative.JumpBranchUncached.native.bank Airbender.Compiler.FunctionalNative.JumpBranchUncached.native.isBase Airbender.Compiler.FullArithmeticNative.JumpBranchUncached.native.gate0.inputResidual,
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.JumpBranchUncached.native.baseRecipe1 Airbender.Compiler.FunctionalNative.JumpBranchUncached.native.baseOutput1 Airbender.Compiler.FullArithmeticNative.JumpBranchUncached.native.bank Airbender.Compiler.FunctionalNative.JumpBranchUncached.native.isBase Airbender.Compiler.FullArithmeticNative.JumpBranchUncached.native.gate1.inputResidual,
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.JumpBranchUncached.native.baseRecipe2 Airbender.Compiler.FunctionalNative.JumpBranchUncached.native.baseOutput2 Airbender.Compiler.FullArithmeticNative.JumpBranchUncached.native.bank Airbender.Compiler.FunctionalNative.JumpBranchUncached.native.isBase Airbender.Compiler.FullArithmeticNative.JumpBranchUncached.native.gate2.inputResidual,
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.JumpBranchUncached.native.baseRecipe3 Airbender.Compiler.FunctionalNative.JumpBranchUncached.native.baseOutput3 Airbender.Compiler.FullArithmeticNative.JumpBranchUncached.native.bank Airbender.Compiler.FunctionalNative.JumpBranchUncached.native.isBase Airbender.Compiler.FullArithmeticNative.JumpBranchUncached.native.gate29.inputResidual]
+
+end Airbender.Compiler.FunctionalBaseChecks.JumpBranchUncached

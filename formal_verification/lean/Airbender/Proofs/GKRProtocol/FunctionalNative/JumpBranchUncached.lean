@@ -1,6 +1,6 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.JumpBranchUncachedFoundation
 import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.JumpBranchUncached.Corollaries
-import Airbender.Proofs.GKRProtocol.FunctionalNative.JumpBranchUncachedBase0
+import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.JumpBranchUncached.Corollaries
 import Airbender.Import.GKRProtocol.FunctionalFinalize
 
 namespace Airbender.Compiler.FunctionalNative.JumpBranchUncached

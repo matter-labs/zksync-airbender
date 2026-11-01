@@ -1,7 +1,6 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.BigintCachedFoundation
 import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.BigintCached.Corollaries
-import Airbender.Proofs.GKRProtocol.FunctionalNative.BigintCachedBase0
-import Airbender.Proofs.GKRProtocol.FunctionalNative.BigintCachedBase1
+import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.BigintCached.Corollaries
 import Airbender.Import.GKRProtocol.FunctionalFinalize
 
 namespace Airbender.Compiler.FunctionalNative.BigintCached
