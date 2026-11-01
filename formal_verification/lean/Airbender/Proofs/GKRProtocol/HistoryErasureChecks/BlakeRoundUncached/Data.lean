@@ -1,0 +1,12 @@
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.BlakeRoundUncached.Inputs
+import Airbender.Import.GKRProtocol.NumericHistoryErasureImport
+
+namespace Airbender.Compiler.HistoryErasureChecks.BlakeRoundUncached
+open Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+numeric_history_erasure_capture data := NumericHistoryErasureChecks.ofSource Airbender.Compiler.HistoryErasureNative.BlakeRoundUncached.native.historyCells Airbender.Compiler.SourceContractNative.BlakeRoundUncached.native.originals Airbender.Compiler.SourceContractNative.BlakeRoundUncached.native.clock Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.helperPlacement (Airbender.Compiler.HistoryErasureNative.BlakeRoundUncached.native.protectedFields.map (fun field => field.polynomial Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.helperPlacement.memory))
+
+end Airbender.Compiler.HistoryErasureChecks.BlakeRoundUncached

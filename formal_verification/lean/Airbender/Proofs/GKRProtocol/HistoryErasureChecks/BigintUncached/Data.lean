@@ -1,0 +1,12 @@
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.BigintUncached.Inputs
+import Airbender.Import.GKRProtocol.NumericHistoryErasureImport
+
+namespace Airbender.Compiler.HistoryErasureChecks.BigintUncached
+open Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+numeric_history_erasure_capture data := NumericHistoryErasureChecks.ofSource Airbender.Compiler.HistoryErasureNative.BigintUncached.native.historyCells Airbender.Compiler.SourceContractNative.BigintUncached.native.originals Airbender.Compiler.SourceContractNative.BigintUncached.native.clock Airbender.Compiler.FullArithmeticNative.BigintUncached.native.helperPlacement (Airbender.Compiler.HistoryErasureNative.BigintUncached.native.protectedFields.map (fun field => field.polynomial Airbender.Compiler.FullArithmeticNative.BigintUncached.native.helperPlacement.memory))
+
+end Airbender.Compiler.HistoryErasureChecks.BigintUncached

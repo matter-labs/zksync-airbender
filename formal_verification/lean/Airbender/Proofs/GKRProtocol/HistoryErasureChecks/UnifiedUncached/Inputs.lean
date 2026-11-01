@@ -1,0 +1,14 @@
+import Airbender.Import.GKRProtocol.HistoryErasureImport
+import Airbender.Proofs.GKRProtocol.SourceContractNative.UnifiedUncached
+
+namespace Airbender.Compiler.HistoryErasureNative.UnifiedUncached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 32768
+
+import_history_erasure native from "artifacts/compiler/unified-uncached-source.json"
+  base_model Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native
+  source_model Airbender.Compiler.SourceContractNative.UnifiedUncached.native inputs 137 phase 0
+
+end Airbender.Compiler.HistoryErasureNative.UnifiedUncached

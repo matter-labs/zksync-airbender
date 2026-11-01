@@ -5168,3 +5168,50 @@ environment audit and baseline refresh, full transitive replay, cold full
 measurements and Linux qualification did not run. They remain pending for
 implementation review. The known aggregate ownership collision stays deferred.
 No aggregate import pass is claimed.
+
+## Complete history-erasure family
+
+All 22 history-erasure captures now use one complete kernel result per
+capture. The other 20 captures use the qualified numeric checker and exact
+source binding. All original erasure predicates remain exact. Every original
+and erased polynomial keeps every term, coordinate and zero coefficient. The
+original semantic finalizers stay unchanged. The proved clock coefficient and
+numeric substitution factories retain equality with the full original source
+model. No caller premise changes. Both cache modes stay required. Every
+history-erasure module uses default heartbeats. The two pilot outputs stay
+unchanged.
+
+All 998 original public declarations in the remaining captures stay available.
+A kernel control accepts all 838 old theorem types. All 160 imported data Expr
+values are identical. All 180 selected modules pass source checks and replay.
+They include 80 direct helper, counter, query and materialized witness
+consumers. Preservation covers each history module and its helper consumer.
+Every original helper canonical value stays identical. Replay uses the
+standard 32 MiB stack. It skips no safe dependency. All 2,058 focused axiom
+checks use only the three allowed axioms. Sixty exact source controls pass.
+The kernel rejects all sixty mutations. The shared exact controls, opaque-data
+rejection and legacy importer retain their pilot results. All three expanded
+Python generator controls pass.
+
+The six larger source captures take 211.09 s and peak at 2,486.90 MiB. Their
+qualification takes 456.11 s and peaks at 2,266.52 MiB. The other fourteen
+source captures take 299.79 s and peak at 1,059.85 MiB. Their qualification
+takes 519.70 s and peaks at 2,276.23 MiB. All guards clean their owned
+workers. Source and interface freshness, static checks, source-layer checks
+and workflow syntax pass. CI checks the complete family. No cold full-build
+gain is claimed.
+
+The explicit inventory has 82,448 roots. It retains all 82,348 prior roots and
+every established root. Original objects remain in history-erasure-original-
+oleans. Evidence prefixes are history-erasure-remaining-dense and history-
+erasure-remaining-ordinary. The complete dense prototypes remain in history-
+erasure-blake-prototype. Canonical source and replay replace those temporary
+source paths for adoption.
+
+Item 3 remains open. Numerical argument checks and other frame facts remain.
+Parametric semantic proofs need a scope check. Decoder interpretation and
+program-dependent setup stay excluded. The hourly follow-up stays active. Full
+frontend validation, environment audit and baseline refresh, full transitive
+replay, cold full measurements and Linux qualification did not run. They
+remain pending for implementation review. The known aggregate ownership
+collision stays deferred. No aggregate import pass is claimed.
