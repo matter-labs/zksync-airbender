@@ -2361,6 +2361,20 @@ for clean_case in NUMERIC_CASES:
         packed_arithmetic_roots += clean_placement_roots(clean_name, len(clean_selectors["addresses"]))
         packed_arithmetic_roots.append("Airbender.Compiler.CleanArithmeticNative." + clean_name + ".native.placementsSourceBinding")
 
+for word_source in [
+    "Airbender/Proofs/Tables/PackedSignedRun.lean",
+    "Airbender/Proofs/Tables/PackedWordBlocks.lean",
+    "Airbender/Proofs/Tables/PackedWordBounds.lean",
+    "Airbender/Proofs/Tables/PackedXor9Checks.lean",
+    "Airbender/Proofs/Blake2G/Xor9PackedCapture.lean",
+    "Airbender/Proofs/Blake2G/Xor9PackedCertificate.lean",
+    "Tests/PackedSignedRun.lean",
+]:
+    word_text = (ROOT / word_source).read_text()
+    word_namespace = re.search(r"^namespace (\S+)", word_text, re.M)[1]
+    word_names = re.findall(r"^(?:def|theorem|structure|inductive|numeric_data_binding) (\S+)", word_text, re.M)
+    packed_arithmetic_roots += [word_namespace + "." + name for name in word_names]
+
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
 for numeric_case in sorted(NUMERIC_CAPTURES):
@@ -2370,6 +2384,10 @@ for numeric_case in sorted(NUMERIC_CAPTURES):
 for dense_import in ['import Tests.NumericExpressionChecks', 'import Tests.NumericArithmeticTrace']:
     if dense_import not in content.splitlines():
         content = dense_import + '\n' + content
+content = re.sub(r'^import Airbender\.Proofs\.Blake2G\.(?:Xor9CertificatePart[0-9]+|Xor9Extents)\n', '', content, flags=re.M)
+word_import = 'import Tests.PackedSignedRun'
+if word_import not in content.splitlines():
+    content = word_import + '\n' + content
 clean_import = 'import Tests.CleanPlacementChecks'
 if clean_import not in content.splitlines():
     content = clean_import + '\n' + content
