@@ -36,11 +36,20 @@ def tiny : Data := ⟨[(20,20,1)],[(1,[0]),(0,[])],[(1,[0]),(0,[])]⟩
     ] if not args.case else []
     for case in args.case or CASES:
         owner = 'Airbender.Compiler.CleanArgumentChecks.' + case
-        for first in [0, len(descriptors(case)) - 1]:
+        count = len(descriptors(case))
+        for first in [0, count - 1]:
             left = f'({owner}.data.drop {first}).take 1'
             right = f'(({owner}.originalEntries.drop {first}).take 1).map encode'
             changes.append((case + ' ' + str(first), left + ' = ' + right, '(' + left + ').drop 1 = ' + right,
                             'import Airbender.Proofs.GKRProtocol.CleanArgumentChecks.' + case + '.Data\n'))
+        if count >= 32:
+            for first in [0, (count - 1) // 8 * 8]:
+                width = min(8, count - first)
+                left = f'({owner}.originalEntries.drop {first}).take {width}'
+                right = f'{owner}.entries{first}'
+                changes.append((case + ' projection ' + str(first), left + ' = ' + right,
+                    left + ' = (' + right + f').drop {width}',
+                    'import Airbender.Proofs.GKRProtocol.CleanArgumentChecks.' + case + '.Certificate\n'))
     for label, exact, changed, imports in changes:
         for mutated, statement in [(False, exact), (True, changed)]:
             result = compile_source(imports + prefix + 'numeric_data_binding result : ' + statement +

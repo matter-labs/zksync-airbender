@@ -27,4 +27,12 @@ theorem ofNative_check (expression : _root_.Expression Source.BaseField)
   simp only [Typed.check, ofNative, CleanExpression.nativeCheck, List.all_flatMap,
     List.all_map, Function.comp_def, TypedPort.check, Bool.and_true, address_decide]
 
+theorem checked_window {items : List α} {predicate : α → Bool}
+    (checked : items.all predicate = true) (first width : Nat) :
+    ((items.drop first).take width).all predicate = true := by
+  apply List.all_eq_true.mpr
+  intro item member
+  exact List.all_eq_true.mp checked item
+    (List.mem_of_mem_drop (List.mem_of_mem_take member))
+
 end Airbender.Compiler.NumericCleanArgumentChecks

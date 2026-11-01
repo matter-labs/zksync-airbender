@@ -5262,3 +5262,81 @@ validation, environment audit and baseline refresh, full transitive replay,
 cold full measurements and Linux qualification did not run. They remain pending
 for implementation review. The known aggregate ownership collision stays
 deferred. No aggregate import pass is claimed.
+
+## Dense native Clean argument captures
+
+Both BlakeRound modes now check all native Clean arguments with one result per
+capture. Each result covers 1,241 rows. These rows contain 1,152 generic fields
+and 89 timestamp arguments. The checker uses the original source fields,
+native fields and full bank. NumericCleanArgumentChecks.ofNative_check proves
+exact Boolean equality with the old nativeCheck. The source bindings retain
+all coefficients, zero terms and term order.
+
+Each capture uses bounded numeric data commands and complete one-row source
+bindings. The complete result derives all old check facts. The semantic value,
+bound and field-match proofs retain their original references. Small typed
+windows select the compatibility facts. Each window has an exact source
+equality. The proved checked_window lemma derives each window from the same
+complete result. These windows contain no separate numerical check.
+
+A whole-check probe builds in 2.94 s and replays in 2.65 s. The first full
+projection variant did not finish in 385.94 s. Its guard was stopped safely.
+The bounded projection variant builds in 18.74 s and replays in 5.57 s. These
+measurements use cached imports. They do not measure a cold full build.
+The first prototype batch reached its 900-second limit after all data and
+binding checks passed. Separate bounded canonical phases complete that work.
+
+All 8,192 old public declarations remain. Kernel preservation accepts
+all 5,320 old theorem types. All 2,872 imported Expr values are
+identical. The 48 old generic proof shards are gone. Both WordMemory pilot
+outputs remain byte for byte unchanged. Every new module uses default
+heartbeats.
+
+All 21 selected modules pass source checks and replay. These include
+CleanClosedParts.Shared, CleanClosedNative and CleanWitnessNative consumers in
+both modes. The cached wrappers also pass after their canonical data and
+bindings. Replay uses the standard 32 MiB stack. It skips no safe dependency.
+All 21,868 focused axiom checks use only the three allowed axioms. Eight exact
+controls pass. The kernel rejects all eight mutations. These controls cover
+both ends of the complete source and both ends of the projection windows.
+The window mutation removes the complete selected window. It avoids comparing
+different typed field expressions. Both complete per-case preservation and axiom
+groups pass before the original slow control is stopped. The final control phase
+reuses those records and the completed source and replay records. One earlier
+script selected a PhysicalClosed consumer for a worker. The corrected script
+checks the actual worker consumer chain.
+The shared pilot controls and three legacy importers retain their prior passes.
+All three expanded Python controls pass.
+
+| Guarded phase | Time | Peak physical footprint |
+| --- | ---: | ---: |
+| window-checker | 4.07 s | 830.12 MiB |
+| BlakeRoundCached-tail | 45.31 s | 1,104.17 MiB |
+| BlakeRoundCached-data | 217.56 s | 847.35 MiB |
+| BlakeRoundCached-bindings | 559.91 s | 1,609.28 MiB |
+| BlakeRoundUncached-data | 216.24 s | 844.84 MiB |
+| BlakeRoundUncached-bindings | 557.15 s | 1,607.49 MiB |
+| BlakeRoundUncached-tail | 45.17 s | 1,082.98 MiB |
+| blake-qualification | 31.55 s | 520.32 MiB |
+
+The prior per-case phase peaks at 2,289.88 MiB. It stops after
+327.48 s. The table's qualification row measures the final control phase. The prior
+per-case qualification completes both preservation and axiom groups before its
+slow typed mutation is stopped. Every guard cleans its owned workers.
+Source and interface freshness, static checks, source-layer checks, source
+import graph checks and workflow syntax pass. CI checks both cache
+modes. The explicit inventory has 96,197 roots. It retains all 82,530 prior
+roots and every established root. Evidence uses the clean-argument-blake and
+clean-argument-BlakeRound prefixes. The original objects remain in
+clean-argument-original-oleans.
+
+Item 3 remains open. Eighteen Clean argument captures still need adoption.
+Lookup source and worker port numerical shards also remain. Other frame and
+argument families need a scope check. Parametric semantic proofs need a separate
+scope check. Program-dependent setup and captured decoder interpretation stay
+outside this rollout. The hourly follow-up stays active.
+
+Full frontend validation, environment audit and baseline refresh, full transitive
+replay, cold full measurements and Linux qualification did not run. They remain
+pending for implementation review. The known aggregate ownership collision stays
+deferred. No aggregate import pass is claimed.
