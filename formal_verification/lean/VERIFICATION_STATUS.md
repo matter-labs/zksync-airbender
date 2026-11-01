@@ -5215,3 +5215,50 @@ frontend validation, environment audit and baseline refresh, full transitive
 replay, cold full measurements and Linux qualification did not run. They
 remain pending for implementation review. The known aggregate ownership
 collision stays deferred. No aggregate import pass is claimed.
+
+## Complete native Clean argument pilot
+
+WordMemory now checks all native Clean arguments with one result per cache
+mode. Each capture covers nine generic fields, three range arguments and eight
+timestamp arguments. NumericCleanArgumentChecks.ofNative_check proves exact
+Boolean equality with the original CleanExpression.nativeCheck. The adapter
+reuses NumericFunctionalBaseChecks.check_sound. It checks every original full
+bank round trip and exact polynomial equality. Both polynomial sides retain all
+terms, zero coefficients and order. The port flag is true because this predicate
+has no base classification test. The proved Boolean equality keeps that choice
+explicit. No caller premise changes.
+
+Original expression definitions precede numeric imports. All old generic part
+names, vectors and scalar argument lists remain. All check facts select one
+complete result. The value, bound and field-match facts retain their original
+references and proofs. Two old generic proof shards are gone. All 160 original
+public declarations remain. A kernel control accepts all 112 old theorem
+types. All 48 imported Expr values are identical. Both modes use default
+heartbeats.
+
+All 22 selected modules pass source checks and replay. These include both
+CleanClosedNative and PhysicalClosedNative consumers in both modes. Replay uses
+the standard 32 MiB stack. It skips no safe dependency. All 246 focused axiom
+checks use only the three allowed axioms. Nine exact controls pass. The kernel
+rejects all nine mutations. All three legacy importers pass. The existing strict
+natural-data importer retains its qualified opaque-payload rejection. All three
+Python generator controls pass.
+
+The source guard takes 78.99 s and peaks at 857.76 MiB. Qualification
+takes 67.12 s and peaks at 2,261.15 MiB. Both guards clean their owned
+workers. Source and interface freshness, static checks, source-layer checks and
+workflow syntax pass. CI checks both cache modes. No cold full-build gain is
+claimed.
+
+The explicit inventory has 82,530 roots. It retains all 82,448 prior roots
+and every established root. Original scalar modules, generic parts and generic
+aggregates stay in clean-argument-original-oleans. This baseline has 136 modules
+for all 22 cases. Evidence prefixes are clean-argument-pilot. The other 20 cases
+remain open. Dense prototypes are not adopted. Parametric closed lookup proofs
+and other numerical frame families need a scope check.
+
+Item 3 remains open. The hourly follow-up stays active. Full frontend
+validation, environment audit and baseline refresh, full transitive replay,
+cold full measurements and Linux qualification did not run. They remain pending
+for implementation review. The known aggregate ownership collision stays
+deferred. No aggregate import pass is claimed.

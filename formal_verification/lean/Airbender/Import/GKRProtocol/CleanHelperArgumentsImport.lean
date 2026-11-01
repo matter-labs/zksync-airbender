@@ -28,11 +28,17 @@ private partial def expressionSyntax : Expr → CommandElabM (TSyntax `term)
       `(_root_.Expression.mul $previous $(← expressionSyntax expression))) (← constantSyntax 1)
 
 syntax (name := importCleanHelperArguments) "import_clean_helper_arguments " ident " from " str " helper_indices " str
-  " clean_model " ident " base_model " ident " helper_model " ident " memory_model " ident " links_model " ident : command
+  " clean_model " ident " base_model " ident " helper_model " ident " memory_model " ident " links_model " ident
+  (" phase " num)? (" using_checks " ident)? : command
 elab_rules : command
   | `(import_clean_helper_arguments $name:ident from $path:str helper_indices $indexText:str
       clean_model $cleanName:ident base_model $baseName:ident helper_model $helperName:ident
-      memory_model $memoryName:ident links_model $linksName:ident) => do
+      memory_model $memoryName:ident links_model $linksName:ident
+      $[phase $phaseNumber:num]? $[using_checks $wholeChecks:ident]?) => do
+    let phaseIndex := (phaseNumber.map TSyntax.getNat).getD 2
+    unless phaseIndex ≤ 2 do throwError "invalid Clean timestamp argument phase"
+    if phaseIndex == 1 && wholeChecks.isNone then throwError "the complete timestamp phase requires checker facts"
+    if phaseIndex == 0 && wholeChecks.isSome then throwError "the timestamp input phase cannot accept checker facts"
     let pair ← match Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
       | .ok pair => pure pair | .error error => throwError "{error}"
     let indices ← match Json.parse indexText.getString >>= (fromJson? (α := Indices)) with
@@ -64,9 +70,15 @@ elab_rules : command
       let fieldMatch := fieldName name s!"timestampFieldMatch{index}"
       let preserved := fieldName name s!"timestamp_value{index}"
       let bounded := fieldName name s!"timestamp_bound{index}"
-      emitChecked (← `(noncomputable def $cleanExpression : _root_.Expression Source.BaseField := $(← expressionSyntax expression)))
+      if phaseIndex != 1 then
+        emitChecked (← `(noncomputable def $cleanExpression : _root_.Expression Source.BaseField := $(← expressionSyntax expression)))
+      timestamps := timestamps.push (← `($cleanExpression))
+      if phaseIndex == 0 then continue
+      let checkProof ← match wholeChecks with
+        | some owner => `($(fieldName owner s!"timestampChecked{index}"))
+        | none => `(by decide +kernel)
       emitChecked (← `(theorem $checked : CleanExpression.nativeCheck $cleanExpression $place $fullBank
-        (($recipe).expression (($nativeBank).placement)) $nativeBank = true := by decide +kernel))
+        (($recipe).expression (($nativeBank).placement)) $nativeBank = true := $checkProof))
       emitChecked (← `(theorem $fieldMatch : ($candidate).source = ($helperFields).get ⟨$(quote index), by decide⟩ := by rfl))
       emitChecked (← `(theorem $preserved (base : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
         (arithmetic : ∀ gate ∈ ($artifact).gates, gate.expressionResidual (base ∘ ($fullBank).address) = 0) :
@@ -79,8 +91,8 @@ elab_rules : command
         (($cleanExpression).eval ($environment base data)).val < 524288 := by
         rw [$preserved base data arithmetic, $fieldMatch:ident]
         exact helpers _ (List.get_mem $helperFields ⟨$(quote index), by decide⟩)))
-      timestamps := timestamps.push (← `($cleanExpression))
     let timestampExpressions := fieldName name "timestampExpressions"
-    emitChecked (← `(noncomputable def $timestampExpressions : List (_root_.Expression Source.BaseField) := [$timestamps,*]))
+    if phaseIndex != 1 then
+      emitChecked (← `(noncomputable def $timestampExpressions : List (_root_.Expression Source.BaseField) := [$timestamps,*]))
 
 end Airbender.Compiler.CleanHelperArgumentsImport

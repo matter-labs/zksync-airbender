@@ -24,11 +24,16 @@ private partial def expressionSyntax : Expr → CommandElabM (TSyntax `term)
 
 syntax (name := importCleanLookupArguments) "import_clean_lookup_arguments " ident " from " str " certificate " str
   " clean_model " ident " base_model " ident " lookup_model " ident " query_model " ident
-  " links_model " ident : command
+  " links_model " ident (" phase " num)? (" using_checks " ident)? : command
 
 elab_rules : command
   | `(import_clean_lookup_arguments $name:ident from $path:str certificate $certPath:str clean_model $cleanName:ident
-      base_model $baseName:ident lookup_model $lookupName:ident query_model $queryName:ident links_model $linksName:ident) => do
+      base_model $baseName:ident lookup_model $lookupName:ident query_model $queryName:ident links_model $linksName:ident
+      $[phase $phaseNumber:num]? $[using_checks $wholeChecks:ident]?) => do
+    let phaseIndex := (phaseNumber.map TSyntax.getNat).getD 2
+    unless phaseIndex ≤ 2 do throwError "invalid Clean range argument phase"
+    if phaseIndex == 1 && wholeChecks.isNone then throwError "the complete range phase requires checker facts"
+    if phaseIndex == 0 && wholeChecks.isSome then throwError "the range input phase cannot accept checker facts"
     let pair ← match Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
       | .ok pair => pure pair | .error error => throwError "{error}"
     let certData ← match Json.parse (← IO.FS.readFile certPath.getString) >>= (fromJson? (α := LookupImport.LookupCertificate)) with
@@ -52,21 +57,27 @@ elab_rules : command
       let nativeChecked := fieldName lookupName s!"fieldChecked{rowIndex}_0"
       let checked := fieldName name s!"rangeChecked{index}"
       let preserved := fieldName name s!"range_value{index}"
-      emitChecked (← `(noncomputable def $cleanExpression : _root_.Expression Source.BaseField := $(← expressionSyntax expression)))
+      if phaseIndex != 1 then
+        emitChecked (← `(noncomputable def $cleanExpression : _root_.Expression Source.BaseField := $(← expressionSyntax expression)))
+      if (ranges[description.native_index]!).isSome then throwError "duplicate Clean range expression"
+      ranges := ranges.set! description.native_index (some (← `($cleanExpression)))
+      if phaseIndex == 0 then continue
+      let checkProof ← match wholeChecks with
+        | some owner => `($(fieldName owner s!"rangeChecked{index}"))
+        | none => `(by decide +kernel)
       emitChecked (← `(theorem $checked : CleanExpression.nativeCheck $cleanExpression $place $fullBank
-        ($nativeField).lowered $nativeBank = true := by decide +kernel))
+        ($nativeField).lowered $nativeBank = true := $checkProof))
       emitChecked (← `(theorem $preserved (base : GKRAddress → Source.BaseField) (data : ProverData Source.BaseField)
         (arithmetic : ∀ gate ∈ ($artifact).gates, gate.expressionResidual (base ∘ ($fullBank).address) = 0) :
         ($cleanExpression).eval ($environment base data) =
           ($nativeField).source.value ((base ∘ ($nativeBank).address) ∘ $sourcePlacement) :=
         (CleanExpression.native_value $cleanExpression $place $fullBank ($nativeField).lowered $nativeBank $checked base data).trans
           (LookupFieldAgreement.sound $sourcePlacement $nativeChecked ($copies base arithmetic)).symm))
-      if (ranges[description.native_index]!).isSome then throwError "duplicate Clean range expression"
-      ranges := ranges.set! description.native_index (some (← `($cleanExpression)))
     unless ranges.all Option.isSome do throwError "Clean scalar argument coverage changed"
     let rangeTerms ← ranges.mapM fun item => match item with
       | some item => pure item | none => throwError "missing Clean range expression"
     let rangeExpressions := fieldName name "rangeExpressions"
-    emitChecked (← `(noncomputable def $rangeExpressions : List (_root_.Expression Source.BaseField) := [$rangeTerms,*]))
+    if phaseIndex != 1 then
+      emitChecked (← `(noncomputable def $rangeExpressions : List (_root_.Expression Source.BaseField) := [$rangeTerms,*]))
 
 end Airbender.Compiler.CleanLookupArgumentsImport

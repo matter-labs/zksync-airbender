@@ -9,6 +9,16 @@ from gkr_wiring_instances import CASES
 
 
 def modules(name, case):
+    from gkr_packed_clean_arguments import CASES as PACKED_CASES, native_wrapper
+    if case in PACKED_CASES:
+        pair = json.loads((LEAN / 'artifacts/compiler' / (name + '.json')).read_text())
+        if pair['circuit']['generic_lookups']:
+            yield 'Airbender.Proofs.GKRProtocol.CleanGenericArgumentsNative.' + case, native_wrapper(case, generic=True)
+        return
+    yield from legacy_modules(name, case)
+
+
+def legacy_modules(name, case):
     pair = json.loads((LEAN / 'artifacts/compiler' / (name + '.json')).read_text())
     queries = pair['circuit']['generic_lookups']
     if not queries:

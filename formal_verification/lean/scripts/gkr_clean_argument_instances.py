@@ -30,6 +30,9 @@ def module(family, stem, mode):
                        ('helper_model','HelperNative'),('memory_model','MemoryNative'),('links_model','FunctionalLinksNative')]:
         content += '  ' + key + ' ' + prefix + model + '.' + case + '.native\n'
     content += f'\nend Airbender.Compiler.CleanArgumentsNative.{case}\n'
+    from gkr_packed_clean_arguments import CASES as PACKED_CASES, native_wrapper
+    if case in PACKED_CASES:
+        content = native_wrapper(case)
     return target, content
 
 

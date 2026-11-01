@@ -1,16 +1,18 @@
-import Airbender.Proofs.GKRProtocol.CleanGenericArgumentsParts.WordMemoryCached.Part0
+import Airbender.Proofs.GKRProtocol.CleanArgumentChecks.WordMemoryCached.Certificate
 
-namespace Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryCached.native
+namespace Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
-noncomputable def genericExpressions0 : Vector (_root_.Expression Source.BaseField) 9 :=
-  #v[part0.genericExpression0_0, part0.genericExpression0_1, part0.genericExpression0_2, part0.genericExpression0_3, part0.genericExpression0_4, part0.genericExpression0_5, part0.genericExpression0_6, part0.genericExpression0_7, part0.genericExpression0_8]
+import_clean_generic_arguments native from "artifacts/compiler/word-memory-cached.json"
+  certificate "artifacts/compiler/lookup/word-memory-cached.json"
+  clean_model Airbender.Compiler.CleanArithmeticNative.WordMemoryCached.native
+  base_model Airbender.Compiler.FullArithmeticNative.WordMemoryCached.native
+  lookup_model Airbender.Compiler.LookupNative.WordMemoryCached.native
+  query_model Airbender.Compiler.LookupSourceNative.WordMemoryCached.native
+  links_model Airbender.Compiler.FunctionalLinksNative.WordMemoryCached.native
+  start 0 stop 1 part_size 8 phase 1 using_checks Airbender.Compiler.CleanArgumentChecks.WordMemoryCached
 
-noncomputable def genericExpressions : List (Vector (_root_.Expression Source.BaseField) 9) :=
-  [genericExpressions0]
-
-end Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryCached.native
+end Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryCached
