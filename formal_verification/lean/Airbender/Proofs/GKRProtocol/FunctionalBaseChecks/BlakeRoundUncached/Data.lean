@@ -1,0 +1,20 @@
+import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.BlakeRoundUncached.Typed
+import Airbender.Import.GKRProtocol.NumericFunctionalBaseImport
+
+namespace Airbender.Compiler.FunctionalBaseChecks.BlakeRoundUncached
+open Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+numeric_functional_base_capture data0 := [
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.BlakeRoundUncached.native.baseRecipe0 Airbender.Compiler.FunctionalNative.BlakeRoundUncached.native.baseOutput0 Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.bank Airbender.Compiler.FunctionalNative.BlakeRoundUncached.native.isBase Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.gate0.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.BlakeRoundUncached.native.baseRecipe1 Airbender.Compiler.FunctionalNative.BlakeRoundUncached.native.baseOutput1 Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.bank Airbender.Compiler.FunctionalNative.BlakeRoundUncached.native.isBase Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.gate221.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.BlakeRoundUncached.native.baseRecipe2 Airbender.Compiler.FunctionalNative.BlakeRoundUncached.native.baseOutput2 Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.bank Airbender.Compiler.FunctionalNative.BlakeRoundUncached.native.isBase Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.gate222.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.BlakeRoundUncached.native.baseRecipe3 Airbender.Compiler.FunctionalNative.BlakeRoundUncached.native.baseOutput3 Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.bank Airbender.Compiler.FunctionalNative.BlakeRoundUncached.native.isBase Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.gate223.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.BlakeRoundUncached.native.baseRecipe4 Airbender.Compiler.FunctionalNative.BlakeRoundUncached.native.baseOutput4 Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.bank Airbender.Compiler.FunctionalNative.BlakeRoundUncached.native.isBase Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.gate224.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.BlakeRoundUncached.native.baseRecipe5 Airbender.Compiler.FunctionalNative.BlakeRoundUncached.native.baseOutput5 Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.bank Airbender.Compiler.FunctionalNative.BlakeRoundUncached.native.isBase Airbender.Compiler.FullArithmeticNative.BlakeRoundUncached.native.gate225.inputResidual)]
+
+noncomputable def data : List NumericFunctionalBaseChecks.Data := data0
+
+end Airbender.Compiler.FunctionalBaseChecks.BlakeRoundUncached

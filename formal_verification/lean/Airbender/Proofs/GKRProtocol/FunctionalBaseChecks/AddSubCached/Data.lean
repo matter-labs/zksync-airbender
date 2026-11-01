@@ -1,0 +1,26 @@
+import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.AddSubCached.Typed
+import Airbender.Import.GKRProtocol.NumericFunctionalBaseImport
+
+namespace Airbender.Compiler.FunctionalBaseChecks.AddSubCached
+open Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+numeric_functional_base_capture data0 := [
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.AddSubCached.native.baseRecipe0 Airbender.Compiler.FunctionalNative.AddSubCached.native.baseOutput0 Airbender.Compiler.FullArithmeticNative.AddSubCached.native.bank Airbender.Compiler.FunctionalNative.AddSubCached.native.isBase Airbender.Compiler.FullArithmeticNative.AddSubCached.native.gate0.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.AddSubCached.native.baseRecipe1 Airbender.Compiler.FunctionalNative.AddSubCached.native.baseOutput1 Airbender.Compiler.FullArithmeticNative.AddSubCached.native.bank Airbender.Compiler.FunctionalNative.AddSubCached.native.isBase Airbender.Compiler.FullArithmeticNative.AddSubCached.native.gate1.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.AddSubCached.native.baseRecipe2 Airbender.Compiler.FunctionalNative.AddSubCached.native.baseOutput2 Airbender.Compiler.FullArithmeticNative.AddSubCached.native.bank Airbender.Compiler.FunctionalNative.AddSubCached.native.isBase Airbender.Compiler.FullArithmeticNative.AddSubCached.native.gate2.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.AddSubCached.native.baseRecipe3 Airbender.Compiler.FunctionalNative.AddSubCached.native.baseOutput3 Airbender.Compiler.FullArithmeticNative.AddSubCached.native.bank Airbender.Compiler.FunctionalNative.AddSubCached.native.isBase Airbender.Compiler.FullArithmeticNative.AddSubCached.native.gate3.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.AddSubCached.native.baseRecipe4 Airbender.Compiler.FunctionalNative.AddSubCached.native.baseOutput4 Airbender.Compiler.FullArithmeticNative.AddSubCached.native.bank Airbender.Compiler.FunctionalNative.AddSubCached.native.isBase Airbender.Compiler.FullArithmeticNative.AddSubCached.native.gate4.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.AddSubCached.native.baseRecipe5 Airbender.Compiler.FunctionalNative.AddSubCached.native.baseOutput5 Airbender.Compiler.FullArithmeticNative.AddSubCached.native.bank Airbender.Compiler.FunctionalNative.AddSubCached.native.isBase Airbender.Compiler.FullArithmeticNative.AddSubCached.native.gate5.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.AddSubCached.native.baseRecipe6 Airbender.Compiler.FunctionalNative.AddSubCached.native.baseOutput6 Airbender.Compiler.FullArithmeticNative.AddSubCached.native.bank Airbender.Compiler.FunctionalNative.AddSubCached.native.isBase Airbender.Compiler.FullArithmeticNative.AddSubCached.native.gate6.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.AddSubCached.native.baseRecipe7 Airbender.Compiler.FunctionalNative.AddSubCached.native.baseOutput7 Airbender.Compiler.FullArithmeticNative.AddSubCached.native.bank Airbender.Compiler.FunctionalNative.AddSubCached.native.isBase Airbender.Compiler.FullArithmeticNative.AddSubCached.native.gate7.inputResidual)]
+
+numeric_functional_base_capture data8 := [
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.AddSubCached.native.baseRecipe8 Airbender.Compiler.FunctionalNative.AddSubCached.native.baseOutput8 Airbender.Compiler.FullArithmeticNative.AddSubCached.native.bank Airbender.Compiler.FunctionalNative.AddSubCached.native.isBase Airbender.Compiler.FullArithmeticNative.AddSubCached.native.gate8.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.AddSubCached.native.baseRecipe9 Airbender.Compiler.FunctionalNative.AddSubCached.native.baseOutput9 Airbender.Compiler.FullArithmeticNative.AddSubCached.native.bank Airbender.Compiler.FunctionalNative.AddSubCached.native.isBase Airbender.Compiler.FullArithmeticNative.AddSubCached.native.gate39.inputResidual)]
+
+noncomputable def data : List NumericFunctionalBaseChecks.Data := (data0 ++ data8)
+
+end Airbender.Compiler.FunctionalBaseChecks.AddSubCached
