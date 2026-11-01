@@ -13,6 +13,25 @@ private partial def literalCode (values : Array Nat) : CommandElabM (TSyntax `te
   let right ← literalCode (values.extract (values.size / 2) values.size)
   `(ArrayCode.append $left $right)
 
+/-- Use existing recipes for natural values that the byte literal encoder rejects.
+    Source bindings still check the complete decoded array in the kernel. -/
+private partial def naturalCode (values : Array Nat) : CommandElabM (TSyntax `term) := do
+  if let some first := values[0]? then
+    if values.all (· == first) then
+      return ← `(ArrayCode.constant $(quote values.size) $(quote first))
+    if let some next := values[1]? then
+      if first ≤ next then
+        let step := next - first
+        if (values.mapIdx fun index value => value == first + step * index).all id then
+          return ← `(ArrayCode.linearRuns $(quote values.size) $(quote first) $(quote step) 1)
+    let left ← naturalCode (values.extract 0 (values.size / 2))
+    let right ← naturalCode (values.extract (values.size / 2) values.size)
+    return ← `(ArrayCode.append $left $right)
+  `(ArrayCode.literal 0 0)
+
+private def literalOrNatural (values : Array Nat) : CommandElabM (TSyntax `term) := do
+  if values.all (· < 256) then literalCode values else naturalCode values
+
 private def arrayCode (values : Array Nat) (packed : Bool) : CommandElabM (TSyntax `term) := do
   if packed then
     let payload ← Slices.packByteValues values
@@ -36,9 +55,9 @@ private def arrayCode (values : Array Nat) (packed : Bool) : CommandElabM (TSynt
     if 1 < run && run < values.size && values.size % run == 0 then
       let compact := (Array.range (values.size / run)).map fun index => (values[index * run]?).getD 0
       if (values.mapIdx fun index value => value == (compact[index / run]?).getD 0).all id then
-        let encoded ← literalCode compact
+        let encoded ← literalOrNatural compact
         return ← `(ArrayCode.lookupRuns $(quote values.size) $(quote run) $encoded)
-  literalCode values
+  literalOrNatural values
 
 private def integerCode (value : Int) : CommandElabM (TSyntax `term) :=
   if value ≥ 0 then `(Int.ofNat $(quote value.toNat))
