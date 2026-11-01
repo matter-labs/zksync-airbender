@@ -5,6 +5,7 @@ import Airbender.Data.Tables.Shift.Column3
 import Mathlib.Tactic.IntervalCases
 import Airbender.Proofs.Tables.AlignedConstants
 import Airbender.Proofs.Tables.ShiftSampleBindings
+import Airbender.Proofs.Tables.AlignedSampleChecks.Certificate
 
 namespace Airbender.Verification.ShiftKeys
 open Setup
@@ -43,11 +44,13 @@ private theorem four_get (block : Block) (length : block.length = 65536)
     repeated_get block 4 n extent
 
 private theorem position_aligned : Setup.Proofs.AlignedConstants
-    byteShiftColumn0.blocks.toList := by decide +kernel
+    byteShiftColumn0.blocks.toList :=
+  (Compiler.PackedSetupSamples.fact_bound AlignedSampleChecks.position
+    AlignedSampleChecks.positionFact _ AlignedSampleChecks.positionBinding).1
 private theorem position_samples : ∀ q : Fin 8,
-    byteShiftColumn0.get? (q.val * 32768) = some (q.val / 2) := by
-  intro q
-  fin_cases q <;> decide +kernel
+    byteShiftColumn0.get? (q.val * 32768) = some (q.val / 2) :=
+  (Compiler.PackedSetupSamples.fact_bound AlignedSampleChecks.position
+    AlignedSampleChecks.positionFact _ AlignedSampleChecks.positionBinding).2
 
 theorem position (n : Nat) (bound : n < 262144) :
     byteShiftColumn0.get? n = some (n / 65536) := by

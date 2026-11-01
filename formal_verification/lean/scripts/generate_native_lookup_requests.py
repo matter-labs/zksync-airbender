@@ -2545,6 +2545,18 @@ for sample_source in ['ArraySampleChecks', 'SubwordSampleChecks', 'SubwordSample
     sample_import = f'import Airbender.Proofs.Tables.{sample_source}'
     if sample_import not in content.splitlines():
         content = sample_import + '\n' + content
+aligned_text = (ROOT / 'Airbender/Proofs/GKRProtocol/PackedSetupSamples.lean').read_text()
+packed_arithmetic_roots += ['Airbender.Compiler.PackedSetupSamples.' + name for name in
+    re.findall(r'^(?:def|theorem|structure) (\S+)', aligned_text, re.M)]
+from generate_aligned_samples import modules as aligned_sample_modules
+for module, sample_text in aligned_sample_modules():
+    sample_namespace = re.search(r'^namespace (\S+)', sample_text, re.M)[1]
+    packed_arithmetic_roots += [sample_namespace + '.' + name for name in
+        re.findall(r'^(?:def|theorem|numeric_data_binding) (\S+)', sample_text, re.M)]
+packed_arithmetic_roots += ['Airbender.Verification.AlignedSampleChecks.' + name for name in ['conditionalBlocks', 'positionBlocks']]
+sample_import = 'import Airbender.Proofs.Tables.AlignedSampleChecks.Certificate'
+if sample_import not in content.splitlines():
+    content = sample_import + '\n' + content
 from gkr_packed_region_lengths import COLUMNS as REGION_LENGTH_COLUMNS, modules as region_length_modules, metadata_plan as region_length_plan
 for column in REGION_LENGTH_COLUMNS:
     for module, length_text in region_length_modules(column):

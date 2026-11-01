@@ -2,6 +2,7 @@ import Airbender.Proofs.Tables.ReferenceControl
 import Airbender.Review.Helpers.Tables.PairData
 import Airbender.Proofs.Tables.AlignedConstants
 import Airbender.Review.Circuits.JumpBranchSlt.Tables.Control
+import Airbender.Proofs.Tables.AlignedSampleChecks.Certificate
 
 namespace Airbender.Verification.ImportedControl
 open Setup Setup.Proofs
@@ -10,11 +11,15 @@ set_option Elab.async false
 set_option maxRecDepth 32768
 
 private theorem conditional_aligned :
-    AlignedConstants conditionalData.columns[1].blocks.toList := by decide +kernel
+    AlignedConstants conditionalData.columns[1].blocks.toList :=
+  (Compiler.PackedSetupSamples.fact_bound AlignedSampleChecks.conditional
+    AlignedSampleChecks.conditionalFact _ AlignedSampleChecks.conditionalBinding).1
 
 private theorem conditional_samples : ∀ q : Fin 128,
     conditionalData.columns[1].get? (q.val * 32768) =
-      some (conditionalValue (q.val * 32768)) := by decide +kernel
+      some (conditionalValue (q.val * 32768)) :=
+  (Compiler.PackedSetupSamples.fact_bound AlignedSampleChecks.conditional
+    AlignedSampleChecks.conditionalFact _ AlignedSampleChecks.conditionalBinding).2
 
 private theorem conditional_coarse (n : Nat) :
     conditionalValue n = conditionalValue (n / 32768 * 32768) := by

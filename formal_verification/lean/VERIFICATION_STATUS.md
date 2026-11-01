@@ -1244,6 +1244,35 @@ The inventory has 74,022 roots. It retains all 73,860 established roots.
 Other fixed table samples and metadata still need migration.
 The final full validation remains pending for implementation review.
 
+### Complete aligned control and Shift samples
+
+Two closed numeric results cover all 128 conditional-control samples and all
+eight byte-shift position samples. Each result also checks every stored block
+for constant values and 32,768-row alignment. Exact kernel bindings retain
+all 47 conditional blocks and all four Shift blocks.
+The proved getter and checker derive the original alignment and sample facts.
+
+All six original public theorem types pass the kernel preservation control.
+No imported value changes. All eight selected modules pass source checks and
+kernel replay. They include both direct pair-row and Shift-row consumers.
+Each replay uses the standard 32 MiB stack. No safe dependency is skipped.
+These checks trust imported objects.
+The source and replay batch takes 48.07 s and peaks at 1074.67 MiB.
+The final qualification takes 32.40 s and peaks at 797.20 MiB.
+Both guards clean their owned workers.
+Eight exact controls pass. The kernel rejects all eight mutations.
+All 28 focused axiom checks use only the three allowed axioms.
+Three generator controls pass. Capture and inventory freshness pass.
+The source import graph has no cycle. Static checks and workflow syntax pass.
+The inventory has 74,044 roots. It retains all 74,022 established roots.
+
+The wider per-capture rollout remains open. Query-frame import still emits
+one closed check for each field and joins proof shards. This family needs a
+complete numeric checker. Other generated frame and argument families also
+need a scope audit. Fixed source-shape bindings and generic semantic case
+proofs stay distinct from per-capture numeric checks.
+The final full validation remains pending for implementation review.
+
 ## Rebase checks
 
 The branch now uses base `c1a662222cafcd96db4383dce737edb79fa62b09` from
