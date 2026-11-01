@@ -33,6 +33,8 @@ def special_chunks(column):
 
 
 def column_module(column):
+    from gkr_packed_region_lengths import COLUMNS as LENGTH_COLUMNS, metadata_plan
+    length_views={(entry['region'],entry['part']):ordinal for ordinal,entry in enumerate(metadata_plan(column))} if column in LENGTH_COLUMNS else {}
     artifact,blocks,positions,stop,groups,regions=plans(column)
     equal=[];special=[]
     for first in range(0,stop,CHUNK):
@@ -43,6 +45,7 @@ def column_module(column):
           ''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column{column}.Part{i}\n' for i in range((len(equal)+PER_MODULE-1)//PER_MODULE)))
     text+=''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedSpecialNative.Column{column}.Chunk{k}\n' for k in special)
     text+=''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedSpecialLengths.Column{column}.Chunk{k}\n' for k in special)
+    if column in LENGTH_COLUMNS:text+=f'import Airbender.Proofs.GKRProtocol.UnifiedRegionLengths.Column{column}\n'
     text+='import Airbender.Import.GKRProtocol.BlockCoverageImport\nimport Airbender.Proofs.GKRProtocol.ChunkSpans\n\nnamespace '+owner+'\n'
     text+='open Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 131072\nset_option maxHeartbeats 16000000\n\n'
     full=f'Data.GKRSetup.Unified.setupColumn{column}'
@@ -73,7 +76,8 @@ def column_module(column):
             else:pieces += [(f'{ns(k)}.part{i}_{j}',__import__('gkr_rom_columns').length(e['block'])) for i,j,e in entries]
         text+=f'column_parts_cover regionShape{r} from {col} parts ['+', '.join(p for p,l in pieces)+']\n\n'
         for j,(piece,size) in enumerate(pieces):
-            text+=f'theorem region{r}PartLength{j} : ({piece}.map Setup.Block.length).sum = {size} := by decide +kernel\n\n'
+            proof=f'Airbender.Compiler.UnifiedRegionLengths.Column{column}.length{length_views[r,j]}' if (r,j) in length_views else 'by decide +kernel'
+            text+=f'theorem region{r}PartLength{j} : ({piece}.map Setup.Block.length).sum = {size} := {proof}\n\n'
         text+=f'theorem regionLength{r} : ({col}.blocks.toList.map Setup.Block.length).sum = {region["length"]} := by\n  rw [regionShape{r}]\n'
         text+='  simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, '+', '.join(f'region{r}PartLength{j}' for j in range(len(pieces)))+']\n  rfl\n\n'
     extras=[f'{ns(i//CHUNK)}.part{i}_{j}' for i,group in enumerate(groups) for j,e in enumerate(group) if e['region'] is None]

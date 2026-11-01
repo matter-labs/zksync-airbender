@@ -1076,6 +1076,42 @@ under the evidence directory.
 Other fixed setup length and table metadata families still need migration.
 The final full validation remains pending for implementation review.
 
+### Complete fixed unified region-part lengths
+
+Six complete checks cover 2,187 fixed region-part lengths in unified columns
+2, 3, 4, 5, 6 and 7. Each column has one closed kernel result.
+The new `PackedSetupLengths.check_sound` proves the original decoded lengths.
+The checker computes numeric lengths. It does not decode stored values.
+The views reuse the fixed equality trees and fixed special-span codes.
+Fifty extra fixed pieces have exact source bindings.
+The scope excludes the program ROM region. Its original proofs remain.
+Scalar equality columns 0 and 9 stay outside this rollout.
+
+All 20,137 original declarations remain. A kernel control accepts all 14,076
+old theorem types. All 6,061 imported data values are identical.
+All 32 selected modules pass source checks and kernel replay. They include
+the six complete native prefix consumers. Each replay uses the standard
+32 MiB stack. No safe dependency is skipped. These checks trust imported objects.
+The pilot batch takes 151.41 s and peaks at 1720.79 MiB.
+The remaining batch takes 342.70 s and peaks at 1683.71 MiB.
+The final qualification takes 56.40 s and peaks at 1330.37 MiB.
+Every guard cleans its owned workers.
+
+The initial combined column-five replay exceeded the memory cap.
+The adopted layout separates data, bindings, the certificate and projections.
+It keeps one complete result per column. It adds no semantic proof shards.
+All 26,775 focused axiom checks use only the three allowed axioms.
+Five exact controls pass. The kernel rejects all five mutations.
+Three generator controls check complete fixed scope, existing bindings and
+untracked files. Capture, consumer and inventory freshness pass.
+The source import graph has no cycle. Static checks and workflow syntax pass.
+The inventory has 73,485 roots. It retains all 66,847 established roots.
+The six original native module objects stay in `unified-lengths-original-oleans`
+under the evidence directory.
+
+Other fixed setup length and table families still need migration.
+The final full validation remains pending for implementation review.
+
 ## Rebase checks
 
 The branch now uses base `c1a662222cafcd96db4383dce737edb79fa62b09` from
