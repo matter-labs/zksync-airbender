@@ -79,8 +79,8 @@ pub const DRAW_BUF_CAPACITY: usize = {
     }
 };
 pub const WHIR_FOLD_STEPS: [usize; 5usize] = [0usize, 6usize, 5usize, 5usize, 5usize];
-pub const WHIR_QUERIES: [usize; 5usize] = [174usize, 31usize, 18usize, 14usize, 12usize];
-pub const WHIR_POW_BITS: [u32; 5usize] = [28u32, 27u32, 24u32, 27u32, 25u32];
+pub const WHIR_QUERIES: [usize; 5usize] = [176usize, 31usize, 18usize, 14usize, 12usize];
+pub const WHIR_POW_BITS: [u32; 5usize] = [27u32, 27u32, 24u32, 27u32, 25u32];
 #[doc = r" Per round: PoW bits gating each folding-challenge draw (0 = plain draws)."]
 pub const WHIR_FOLDING_POW_BITS: [u32; 5usize] = [0u32, 22u32, 23u32, 23u32, 23u32];
 #[doc = r" Per intermediate oracle: its out-of-domain sample count and the PoW"]
@@ -92,7 +92,7 @@ pub const WHIR_OOD_POW_BITS: [u32; 4usize] = [8u32, 4u32, 1u32, 0u32];
 pub const WHIR_OOD_ENTRIES: usize = 4usize;
 pub const LOOKUP_CHALLENGES_POW_BITS: u32 = 8u32;
 pub const BATCHED_PROXIMITY_POW_BITS: u32 = 9u32;
-pub const MAX_POW_ENTRIES: usize = 241usize;
+pub const MAX_POW_ENTRIES: usize = 243usize;
 pub const FINAL_MONOMIALS_LEN: usize = 2usize;
 pub const NUM_ORACLES: usize = 3usize;
 pub const ORACLE_NUM_COLS: [usize; 3usize] = [75usize, 92usize, 8usize];

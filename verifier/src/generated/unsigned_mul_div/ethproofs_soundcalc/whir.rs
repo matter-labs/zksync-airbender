@@ -112,13 +112,13 @@ pub fn accumulate_ood_samples<const MAX_POW: usize, const MAX_OOD: usize>(
     (claim_correction, current)
 }
 const INITIAL_QUERY_INDEX_BITS: usize = 23usize;
-const INITIAL_NUM_QUERIES: usize = 174usize;
+const INITIAL_NUM_QUERIES: usize = 176usize;
 #[doc = r" Whether this build opens the base queries as a pruned Merkle"]
 #[doc = r" multiproof (`BlakeMode::merkle_multiproofs`, decided at compile"]
 #[doc = r" time for the build's blake implementation)."]
 const INITIAL_MERKLE_MULTIPROOF: bool =
     ::verifier_common::BLAKE_MODE.merkle_multiproofs(INITIAL_NUM_QUERIES, WHIR_CAP_SIZE);
-const INITIAL_POW_BITS: u32 = 28u32;
+const INITIAL_POW_BITS: u32 = 27u32;
 const INITIAL_DRAW_WORDS: usize = 128usize;
 const INITIAL_RS_DOMAIN_LOG2: usize = 24usize;
 const NUM_COSETS: usize = 2usize;
