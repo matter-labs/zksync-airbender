@@ -111,4 +111,12 @@ theorem check_sound_at (requests : List Request) (checked : check requests = tru
     (index : Fin requests.length) : Fact (requests.get index) :=
   check_sound requests checked _ (List.get_mem requests index)
 
+theorem check_sound_bound_at (requests : List Request) (checked : check requests = true)
+    (index : Fin requests.length) (source : Block) (targets : List Block)
+    (source_binding : source = (requests.get index).source.decode)
+    (targets_binding : targets = (requests.get index).targets.map BlockCode.decode) :
+    (targets.map Block.length).sum = source.length ∧ blockTargetsFollow source 0 targets := by
+  rw [source_binding, targets_binding]
+  exact check_sound_at requests checked index
+
 end Airbender.Compiler.PackedSetupSpans

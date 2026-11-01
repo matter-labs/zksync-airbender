@@ -1,5 +1,5 @@
-import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column2.Chunk0.Part8
-import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column2.Chunk0.Part9
+import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column2.Projected
+import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column2.Chunk0.Part1
 
 namespace Airbender.Compiler.UnifiedSpecialLengths.Column2.Chunk0
 open Airbender

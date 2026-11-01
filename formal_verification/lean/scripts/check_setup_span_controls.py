@@ -8,6 +8,8 @@ ROOT=Path(__file__).resolve().parents[1]
 PREFIX='''import Airbender.Import.GKRProtocol.NumericArithmeticDataImport
 import Tests.PackedSetupSpans
 import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.RotateBoundary.Certificate
+import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column3.Certificate
+import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column5.Certificate
 open Airbender.Compiler.PackedSetupEquality Airbender.Compiler.PackedSetupAccess
 open Airbender.Compiler.PackedSetupSpans
 namespace SetupSpanControl
@@ -25,6 +27,10 @@ def main():
         ('complete native spans',f'{checker} {owner}requests = true',f'{checker} ({owner}requests ++ [⟨.affine 1 0 0, []⟩]) = true'),
         ('native source',f'{legacy}source14 = ({owner}sourceCode.get ⟨0, by decide +kernel⟩).decode',f'{legacy}source14 = BlockCode.decode (.affine 262144 0 0)'),
         ('complete native targets',f'{legacy}target14 = {owner}targetsCode.map BlockCode.decode',f'{legacy}target14 = ({owner}targetsCode ++ [BlockCode.affine 0 0 0]).map BlockCode.decode'),
+        ('fixed special column five',f'{checker} Airbender.Compiler.UnifiedFixedSpans.Column5.requests = true',
+         f'{checker} (Airbender.Compiler.UnifiedFixedSpans.Column5.requests ++ [⟨.affine 1 0 0, []⟩]) = true'),
+        ('fixed special column three',f'{checker} Airbender.Compiler.UnifiedFixedSpans.Column3.requests = true',
+         f'{checker} (Airbender.Compiler.UnifiedFixedSpans.Column3.requests.map (fun request => {{request with targets := []}})) = true'),
     ]
     for label,exact,changed in controls:
         for mutated,statement in [(False,exact),(True,changed)]:
@@ -37,7 +43,7 @@ def main():
                 raise SystemExit(f'Exact {label} failed:\n'+result.stdout[-2000:])
             if mutated and (not result.returncode or '(kernel) declaration type mismatch' not in result.stdout.lower()):
                 raise SystemExit(f'Changed {label} did not fail in the kernel:\n'+result.stdout[-2000:])
-    print('PASS six exact numeric span and native binding controls; kernel rejects all six mutations')
+    print('PASS eight exact numeric span and native binding controls; kernel rejects all eight mutations')
 
 
 if __name__=='__main__':main()

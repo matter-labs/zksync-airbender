@@ -1,4 +1,4 @@
-import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column5.Chunk191.Part10
+import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column5.Projected
 import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column5.Chunk191.Part11
 
 namespace Airbender.Compiler.UnifiedSpecialLengths.Column5.Chunk191
