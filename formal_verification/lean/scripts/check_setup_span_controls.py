@@ -10,6 +10,7 @@ import Tests.PackedSetupSpans
 import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.RotateBoundary.Certificate
 import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column3.Certificate
 import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column5.Certificate
+import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column1.Certificate
 open Airbender.Compiler.PackedSetupEquality Airbender.Compiler.PackedSetupAccess
 open Airbender.Compiler.PackedSetupSpans
 namespace SetupSpanControl
@@ -31,6 +32,10 @@ def main():
          f'{checker} (Airbender.Compiler.UnifiedFixedSpans.Column5.requests ++ [⟨.affine 1 0 0, []⟩]) = true'),
         ('fixed special column three',f'{checker} Airbender.Compiler.UnifiedFixedSpans.Column3.requests = true',
          f'{checker} (Airbender.Compiler.UnifiedFixedSpans.Column3.requests.map (fun request => {{request with targets := []}})) = true'),
+        ('complete fixed column one',f'{checker} Airbender.Compiler.UnifiedFixedSpans.Column1.requests = true',
+         f'{checker} (Airbender.Compiler.UnifiedFixedSpans.Column1.requests ++ [⟨.affine 1 0 0, []⟩]) = true'),
+        ('fixed column one source',f'{legacy}source0 = (Airbender.Compiler.UnifiedFixedSpans.Column1.source0.get ⟨0, by decide +kernel⟩).decode',
+         f'{legacy}source0 = BlockCode.decode (.affine 1 1 0)'),
     ]
     for label,exact,changed in controls:
         for mutated,statement in [(False,exact),(True,changed)]:
@@ -43,7 +48,7 @@ def main():
                 raise SystemExit(f'Exact {label} failed:\n'+result.stdout[-2000:])
             if mutated and (not result.returncode or '(kernel) declaration type mismatch' not in result.stdout.lower()):
                 raise SystemExit(f'Changed {label} did not fail in the kernel:\n'+result.stdout[-2000:])
-    print('PASS eight exact numeric span and native binding controls; kernel rejects all eight mutations')
+    print('PASS ten exact numeric span and native binding controls; kernel rejects all ten mutations')
 
 
 if __name__=='__main__':main()

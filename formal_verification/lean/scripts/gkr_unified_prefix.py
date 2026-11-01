@@ -186,7 +186,7 @@ def pilot_assembly(column=1):
     artifact,blocks,positions,stop,groups,regions=plans(column)
     assert stop<=CHUNK
     ns=f'Airbender.Compiler.UnifiedPrefixNative.Column{column}';full=f'Data.GKRSetup.Unified.setupColumn{column}'
-    text=f'import Airbender.Proofs.GKRProtocol.UnifiedPrefixParts.Column{column}.Part0\n'+''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedPrefixParts.Column{column}.Unit{i}\n' for i in range(8,stop))
+    text='import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column1.Projected\n'+''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedPrefixParts.Column{column}.Unit{i}\n' for i in [12,13,14,33])
     text+='\nnamespace '+ns+'\nopen Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
     text+='noncomputable def sources : List Setup.Block := ['+', '.join(f'source{i}' for i in range(stop))+']\n\n'
     text+='noncomputable def targets : List (List Setup.Block) := ['+', '.join(f'target{i}' for i in range(stop))+']\n\n'
@@ -233,8 +233,16 @@ def main():
     if args.plan:print_plan();return
     stop=plans(args.column)[3]
     generated=[pilot_assembly(args.column)] if args.assembly else [foundation(args.column)]
-    for unit in ([] if args.assembly else args.unit if args.unit is not None else range(8,stop)):
+    units=[] if args.assembly else args.unit if args.unit is not None else range(stop)
+    fixed=any(unit not in [12,13,14,33] for unit in units)
+    retired=[]
+    if fixed:
+        from gkr_packed_column1_spans import modules as packed_column1, prepare
+        generated.extend(packed_column1())
+        retired=prepare(generated,args.write,args.check)
+    for unit in units:
         if not 0<=unit<stop:raise ValueError('source block unit outside actual prefix')
+        if unit not in [12,13,14,33]:continue
         if unit == 14:
             from gkr_packed_rotate_boundary import modules as packed_rotate_boundary
             generated.extend(packed_rotate_boundary())
@@ -249,6 +257,8 @@ def main():
         if args.check and (not path.exists() or path.read_text()!=text):raise ValueError('unified prefix span scaffold changed: '+name)
         if args.write and (not path.exists() or path.read_text()!=text):path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text)
         print(name,flush=True)
+    if args.write:
+        for path in retired:path.unlink()
 
 
 if __name__=='__main__':main()
