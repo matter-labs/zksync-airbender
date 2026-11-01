@@ -1,8 +1,6 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.BlakeRoundCachedFoundation
 import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.BlakeRoundCached.Corollaries
-import Airbender.Proofs.GKRProtocol.FunctionalNative.BlakeRoundCachedBase0
-import Airbender.Proofs.GKRProtocol.FunctionalNative.BlakeRoundCachedBase1
-import Airbender.Proofs.GKRProtocol.FunctionalNative.BlakeRoundCachedBase2
+import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.BlakeRoundCached.Corollaries
 import Airbender.Import.GKRProtocol.FunctionalFinalize
 
 namespace Airbender.Compiler.FunctionalNative.BlakeRoundCached

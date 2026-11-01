@@ -1,0 +1,16 @@
+import Airbender.Proofs.GKRProtocol.FunctionalNative.AddSubUncachedFoundation
+import Airbender.Proofs.GKRProtocol.NumericFunctionalBaseChecks
+
+namespace Airbender.Compiler.FunctionalBaseChecks.AddSubUncached
+open Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+noncomputable def originalEntries := [
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.AddSubUncached.native.baseRecipe0 Airbender.Compiler.FunctionalNative.AddSubUncached.native.baseOutput0 Airbender.Compiler.FullArithmeticNative.AddSubUncached.native.bank Airbender.Compiler.FunctionalNative.AddSubUncached.native.isBase Airbender.Compiler.FullArithmeticNative.AddSubUncached.native.gate0.inputResidual,
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.AddSubUncached.native.baseRecipe1 Airbender.Compiler.FunctionalNative.AddSubUncached.native.baseOutput1 Airbender.Compiler.FullArithmeticNative.AddSubUncached.native.bank Airbender.Compiler.FunctionalNative.AddSubUncached.native.isBase Airbender.Compiler.FullArithmeticNative.AddSubUncached.native.gate1.inputResidual,
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.AddSubUncached.native.baseRecipe2 Airbender.Compiler.FunctionalNative.AddSubUncached.native.baseOutput2 Airbender.Compiler.FullArithmeticNative.AddSubUncached.native.bank Airbender.Compiler.FunctionalNative.AddSubUncached.native.isBase Airbender.Compiler.FullArithmeticNative.AddSubUncached.native.gate2.inputResidual,
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.AddSubUncached.native.baseRecipe3 Airbender.Compiler.FunctionalNative.AddSubUncached.native.baseOutput3 Airbender.Compiler.FullArithmeticNative.AddSubUncached.native.bank Airbender.Compiler.FunctionalNative.AddSubUncached.native.isBase Airbender.Compiler.FullArithmeticNative.AddSubUncached.native.gate33.inputResidual]
+
+end Airbender.Compiler.FunctionalBaseChecks.AddSubUncached

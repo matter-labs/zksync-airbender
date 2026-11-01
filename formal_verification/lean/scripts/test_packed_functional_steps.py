@@ -40,7 +40,11 @@ class FunctionalStepTests(unittest.TestCase):
             targets, _, _ = interface.modules(name, case, pair)
             self.assertFalse(any('Steps' in module for module, _ in targets))
             self.assertIn(stem + '.Corollaries', targets[-1][1])
-            self.assertTrue(any('Base0' in module for module, _ in targets))
+            from gkr_packed_functional_base import CASES as PACKED_BASE
+            if case in PACKED_BASE:
+                self.assertIn('FunctionalBaseChecks.' + case + '.Corollaries', targets[-1][1])
+            else:
+                self.assertTrue(any('Base0' in module for module, _ in targets))
             self.assertIn('noncomputable def native.canonical', targets[0][1])
             self.assertNotIn('FunctionalStepChecks', targets[0][1])
 

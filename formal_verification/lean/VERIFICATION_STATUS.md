@@ -4934,3 +4934,49 @@ and baseline refresh, full transitive replay, cold full measurements and Linux
 runtime and cache qualification did not run. They remain pending for review.
 The known aggregate ownership collision stays deferred. No aggregate pass is
 claimed.
+
+## Complete functional base pilot
+
+AddSub and BlakeRound now use one complete base check per cache mode. The four
+captures retain all 115 bindings. NumericFunctionalBaseChecks.check_sound
+derives the exact original port and polynomial predicates. The port check keeps
+every output and recipe input. It checks the full bank address round trip and
+the original base classification. The polynomial check compares the original
+recipe relation with the original gate.inputResidual. It keeps every term, zero
+coefficient and original order. The source binds both polynomial sides and all
+ports in the kernel. No caller premise changes.
+
+All old basePortsCheckedN and baseRelationCheckedN names remain. They select
+facts from the complete result. Six old base proof shards are gone. The step
+captures and semantic finalizer stay unchanged. All 4,944 original public
+declarations remain. A kernel control accepts all 1,677 old theorem
+types. All 3,267 old data Expr values are identical. All 34 selected
+modules pass source checks and replay. These include all four finalizers and
+eight direct consumers. Replay uses the standard 32 MiB stack. It skips no safe
+dependency. All 5,755 focused axiom checks use only the three allowed
+axioms. Fourteen exact controls pass. The kernel rejects all fourteen mutations.
+The opaque-payload control and three Python generator controls pass. The five
+step generator controls also pass with the new base dispatch.
+
+An eight-row whole-map binding for the largest capture exceeds the footprint
+cap at 2,577.24 MiB. The adopted binding uses one-row typed conversions and
+separate numeric views. Complete generic coverage assembles all 95 rows. The
+prototype source and replay pass within the cap. The canonical source group
+takes 197.31 s and peaks at 1,276.77 MiB. Final qualification
+takes 335.28 s and peaks at 2,276.27 MiB. Both final guards
+clean their owned workers. All new modules use default heartbeats.
+
+The explicit inventory has 81,365 roots. It retains all 80,755 prior
+roots and every established root. Source and interface freshness, source-layer
+checks, static checks and workflow syntax pass. CI checks all four captures.
+Original objects remain in functional-base-pilot-original-oleans. Evidence
+prefixes are functional-base-canonical and functional-base-pilot-qualification.
+The narrow prototype and its exact controls remain in the checker evidence
+folder. No cold full-build gain is claimed.
+
+The other 18 base captures remain open. Other numerical argument and frame
+families also remain. Item 3 is not complete. The hourly follow-up stays active.
+Full frontend validation, environment audit and baseline refresh, full
+transitive replay, cold full measurements and Linux qualification did not run.
+They remain pending for implementation review. The known aggregate ownership
+collision stays deferred. No aggregate pass is claimed.
