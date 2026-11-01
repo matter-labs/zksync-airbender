@@ -5025,3 +5025,46 @@ environment audit and baseline refresh, full transitive replay, cold full
 measurements and Linux qualification did not run. They remain pending for
 implementation review. The known aggregate ownership collision stays deferred.
 No aggregate import pass is claimed.
+
+## Complete counter-frame pilot
+
+AddSub now uses one complete counter-frame result per cache mode. The proved
+NumericCounterFrameChecks.check_sound derives the exact six original checks.
+The source binds all exported columns, slots, address round trips, source
+polynomials and helper polynomials. It retains every term and zero coefficient.
+The strict importer accepts closed natural data only. A separate complete
+kernel equality binds the data. The original assignment and semantic finalizers
+stay unchanged. No caller premise changes. Both captures use default heartbeats.
+
+All 26 original public declarations remain. A kernel control accepts all
+22 old theorem types. All 4 imported data Expr values are identical.
+All 23 selected modules pass source checks and replay. They include the direct
+query, memory and oracle consumers in both modes. Replay uses the standard
+32 MiB stack. It skips no safe dependency. All 82 focused axiom checks use
+only the three allowed axioms. Thirteen exact controls pass. The kernel rejects
+all thirteen mutations. The strict opaque-data rejection and legacy importer
+control pass. All three Python generator controls pass.
+
+The source guard takes 55.67 s and peaks at 859.76 MiB. The first
+qualification run passes consumers, preservation and axiom checks. It then stops
+on a reserved field name in a mutation control. Explicit field quoting fixes
+that control. The corrected complete control group takes 53.57 s and peaks
+at 446.93 MiB. The earlier passed checks are reused. All guards clean
+their owned workers. Source and interface freshness, static checks, source-layer
+checks and workflow syntax pass. CI checks both cache modes. No cold full-build
+gain is claimed.
+
+The explicit inventory has 82,210 roots. It retains all 82,178 prior roots
+and every established root. Original objects remain in
+counter-frame-pilot-original-oleans. Evidence prefixes are counter-frame-pilot
+and counter-frame-prototype. The first prototype rejects a numeric type alias;
+the strict importer now admits that natural-data alias. Both canonical captures
+pass after the correction.
+
+The other 20 counter-frame captures remain open. Dense prototypes are not
+adopted. History erasure and numerical argument checks also remain. Item 3 is
+not complete. The hourly follow-up stays active. Full frontend validation,
+environment audit and baseline refresh, full transitive replay, cold full
+measurements and Linux qualification did not run. They remain pending for
+implementation review. The known aggregate ownership collision stays deferred.
+No aggregate import pass is claimed.

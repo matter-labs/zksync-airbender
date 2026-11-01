@@ -11,6 +11,7 @@ from gkr_wiring_instances import CASES
 
 
 def module(name, case):
+    from gkr_packed_counter_frame import CASES as PACKED_CASES
     root = LEAN / 'artifacts/compiler'
     arity = len(synthesize(json.loads((root / (name + '.json')).read_text()),
                            json.loads((root / (name + '-source.json')).read_text()))['inputs'])
@@ -68,6 +69,13 @@ def module(name, case):
         '    rw [same, native.helpers_preserved initial counts field member]\n'
         f'    exact {helper}.helper_membership sourceValue primitives field member\n\n'
         f'end {namespace}\n')
+    if case in PACKED_CASES:
+        content = content.replace('import Airbender.Import.GKRProtocol.CounterFrameImport\n',
+            f'import Airbender.Proofs.GKRProtocol.CounterFrameChecks.{case}.Certificate\n')
+        content = content.replace('set_option maxHeartbeats 4000000\n', '')
+        content = content.replace(f'helper_model {fields} inputs {arity}\n',
+            f'helper_model {fields} inputs {arity}\n'
+            f'  phase 1 using_check Airbender.Compiler.CounterFrameChecks.{case}.originalChecked\n')
     return target, content
 
 

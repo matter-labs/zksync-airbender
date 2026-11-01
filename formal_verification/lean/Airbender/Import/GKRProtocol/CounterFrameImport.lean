@@ -13,11 +13,19 @@ private def emitChecked (command : Syntax) : CommandElabM Unit := do
   if (← get).messages.hasErrors then throwAbortCommand
 
 syntax (name := importCounterFrame) "import_counter_frame " ident " from " str
-  " base_model " ident " table_model " ident " helper_model " ident " inputs " num : command
+  " base_model " ident " table_model " ident " helper_model " ident " inputs " num
+  (" phase " num)? (" using_check " term)? : command
 
 elab_rules : command
   | `(import_counter_frame $name:ident from $path:str base_model $baseName:ident
-      table_model $tableName:ident helper_model $helperName:ident inputs $arityNumber:num) => do
+      table_model $tableName:ident helper_model $helperName:ident inputs $arityNumber:num
+      $[phase $phaseNumber:num]? $[using_check $wholeCheck:term]?) => do
+    let phaseIndex := (phaseNumber.map TSyntax.getNat).getD 2
+    unless phaseIndex ≤ 2 do throwError "invalid counter frame phase"
+    if phaseIndex == 1 && wholeCheck.isNone then
+      throwError "the complete counter frame phase requires a checker result"
+    if phaseIndex == 0 && wholeCheck.isSome then
+      throwError "the counter frame input phase cannot accept a checker result"
     let pair ← match Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
       | .ok pair => pure pair | .error error => throwError "{error}"
     unless pair.format_version == 1 do throwError "unsupported compiler counter frame version"
@@ -33,23 +41,43 @@ elab_rules : command
       | .LookupTimestamps => some (quote pair.circuit.witness_layout.multiplicities_columns_for_timestamp_range_check.start)
       | _ => none
     let columnsChecked := fieldName name "columnsChecked"
-    emitChecked (← `(theorem $columnsChecked : $columns = [$actualColumns,*] := by decide +kernel))
     let slots := fieldName name "slots"
-    emitChecked (← `(def $slots (index : Fin ($columns).length) : Fin $(quote arityNumber.getNat) :=
-      ($bank).placement (.BaseLayerWitness (($columns).get index))))
+    if phaseIndex != 1 then
+      emitChecked (← `(def $slots (index : Fin ($columns).length) : Fin $(quote arityNumber.getNat) :=
+        ($bank).placement (.BaseLayerWitness (($columns).get index))))
+    if phaseIndex == 0 then return
+    let columnsProof ← match wholeCheck with
+      | some complete => `(($complete).1)
+      | none => `(by decide +kernel)
+    emitChecked (← `(theorem $columnsChecked : $columns = [$actualColumns,*] := $columnsProof))
     let unique := fieldName name "slotsUnique"
     let roundTrip := fieldName name "slotsRoundTrip"
     let fresh := fieldName name "slotsFresh"
-    emitChecked (← `(theorem $unique : Function.Injective $slots := by decide +kernel))
+    let uniqueProof ← match wholeCheck with
+      | some complete => `(($complete).2.1)
+      | none => `(by decide +kernel)
+    let roundTripProof ← match wholeCheck with
+      | some complete => `(($complete).2.2.2.1)
+      | none => `(by decide +kernel)
+    let freshProof ← match wholeCheck with
+      | some complete => `(($complete).2.2.1)
+      | none => `(by decide +kernel)
+    emitChecked (← `(theorem $unique : Function.Injective $slots := $uniqueProof))
     emitChecked (← `(theorem $roundTrip : ∀ index, ($bank).address ($slots index) =
-      GKRAddress.BaseLayerWitness (($columns).get index) := by decide +kernel))
-    emitChecked (← `(theorem $fresh : ∀ index, $(quote pair.source.num_variables) ≤ ($slots index).val := by decide +kernel))
+      GKRAddress.BaseLayerWitness (($columns).get index) := $roundTripProof))
+    emitChecked (← `(theorem $fresh : ∀ index, $(quote pair.source.num_variables) ≤ ($slots index).val := $freshProof))
     let sourceChecked := fieldName name "sourceChecked"
     let helpersChecked := fieldName name "helpersChecked"
+    let sourceProof ← match wholeCheck with
+      | some complete => `(($complete).2.2.2.2.1)
+      | none => `(by decide +kernel)
+    let helpersProof ← match wholeCheck with
+      | some complete => `(by simpa only [List.all_map, Function.comp_def] using ($complete).2.2.2.2.2)
+      | none => `(by decide +kernel)
     emitChecked (← `(theorem $sourceChecked : ($artifact).source.all
-      (erasureUntouched (List.ofFn $slots)) = true := by decide +kernel))
+      (erasureUntouched (List.ofFn $slots)) = true := $sourceProof))
     emitChecked (← `(theorem $helpersChecked : ($fields).all (fun field =>
-      erasureUntouched (List.ofFn $slots) (field.polynomial $placement)) = true := by decide +kernel))
+      erasureUntouched (List.ofFn $slots) (field.polynomial $placement)) = true := $helpersProof))
     let assigned := fieldName name "assigned"
     emitChecked (← `(noncomputable def $assigned (values : Fin $(quote arityNumber.getNat) → Source.BaseField)
       (counts : Fin ($columns).length → Source.BaseField) := Source.assignCounters $slots values counts))

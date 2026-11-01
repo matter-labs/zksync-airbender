@@ -1,3 +1,5 @@
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.AddSubCached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.AddSubUncached.Certificate
 import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.BigintCached.Corollaries
 import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.BigintUncached.Corollaries
 import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.KeccakCached.Corollaries
@@ -83963,3 +83965,35 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.FunctionalBaseChecks.WordMemoryUncached.source_binding
 #print axioms Airbender.Compiler.FunctionalBaseChecks.WordMemoryUncached.view0
 #print axioms Airbender.Compiler.FunctionalBaseChecks.WordMemoryUncached.view8
+#print axioms Airbender.Compiler.CounterFrameChecks.AddSubCached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.AddSubCached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.AddSubCached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.AddSubCached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.AddSubUncached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.AddSubUncached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.AddSubUncached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.AddSubUncached.source_binding
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.Capture
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.Capture.casesOn
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.Capture.columns
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.Capture.ctorIdx
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.Capture.exportedColumns
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.Capture.helpers
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.Capture.mk
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.Capture.mk.inj
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.Capture.mk.injEq
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.Capture.mk.noConfusion
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.Capture.mk.sizeOf_spec
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.Capture.noConfusion
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.Capture.noConfusionType
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.Capture.rec
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.Capture.recOn
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.Capture.returns
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.Capture.slots
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.Capture.source
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.check
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.check.eq_1
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.check_sound
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.ofTyped
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.ofTyped.eq_1
+#print axioms Airbender.Compiler.NumericCounterFrameChecks.untouched_all
