@@ -2548,6 +2548,17 @@ for sample_source in ['ArraySampleChecks', 'SubwordSampleChecks', 'SubwordSample
 aligned_text = (ROOT / 'Airbender/Proofs/GKRProtocol/PackedSetupSamples.lean').read_text()
 packed_arithmetic_roots += ['Airbender.Compiler.PackedSetupSamples.' + name for name in
     re.findall(r'^(?:def|theorem|structure) (\S+)', aligned_text, re.M)]
+query_frame_text = (ROOT / 'Airbender/Proofs/GKRProtocol/NumericQueryFrameChecks.lean').read_text()
+packed_arithmetic_roots += ['Airbender.Compiler.NumericQueryFrameChecks.' + name for name in
+    re.findall(r'^(?:def|theorem|structure) (\S+)', query_frame_text, re.M)]
+from gkr_packed_query_frame import CASES as NUMERIC_QUERY_FRAME_CASES, modules as numeric_query_frame_modules
+for case in NUMERIC_QUERY_FRAME_CASES:
+    for module, frame_text in numeric_query_frame_modules(case):
+        packed_arithmetic_roots += ['Airbender.Compiler.QueryFrameChecks.' + case + '.' + name for name in
+            re.findall(r'^(?:theorem|numeric_data_binding|numeric_query_frame_capture) (\S+)', frame_text, re.M)]
+    frame_import = f'import Airbender.Proofs.GKRProtocol.QueryFrameChecks.{case}.Certificate'
+    if frame_import not in content.splitlines():
+        content = frame_import + '\n' + content
 from generate_aligned_samples import modules as aligned_sample_modules
 for module, sample_text in aligned_sample_modules():
     sample_namespace = re.search(r'^namespace (\S+)', sample_text, re.M)[1]

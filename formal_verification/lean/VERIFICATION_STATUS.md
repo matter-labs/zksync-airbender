@@ -1273,6 +1273,43 @@ need a scope audit. Fixed source-shape bindings and generic semantic case
 proofs stay distinct from per-capture numeric checks.
 The final full validation remains pending for implementation review.
 
+### Complete AddSub query-frame pilot
+
+Both AddSub captures now use one closed numeric query-frame result.
+The checker verifies every erasure exclusion, bank-address round trip and
+exact polynomial transport. It retains constant terms and their full order.
+Its proved soundness derives the original typed Boolean predicate.
+The original semantic finalizer stays in place. Every old per-field check is
+a corollary of the complete result. Both captures use default heartbeats.
+
+The capture command materializes closed natural data before the Boolean check.
+It accepts only natural literals and numeric constructors. A separate kernel
+equality binds the complete capture to the original fields, coordinates,
+placements and bank addresses. The original imported values stay unchanged.
+
+All 42 original declarations remain. A kernel control accepts all 36 old
+theorem types. All six imported data values are identical.
+All 15 selected modules pass source checks and kernel replay. They include
+both direct materialized-witness consumers. Each replay uses the standard
+32 MiB stack. No safe dependency is skipped. These checks trust imported objects.
+The checker source and replay guard takes 7.35 s and peaks at 827.43 MiB.
+The capture guard takes 43.63 s and peaks at 878.49 MiB.
+The finalizer guard takes 15.25 s and peaks at 829.90 MiB.
+The consumer and qualification guard takes 61.26 s and peaks at 834.07 MiB.
+All guards clean their owned workers.
+
+All 63 focused axiom checks use only the three allowed axioms.
+Nine exact controls pass. The kernel rejects all nine mutations.
+The legacy importer path passes. The importer rejects opaque numeric payloads.
+Three generator controls pass. Capture, interface and inventory freshness pass.
+The source import graph has no cycle. Static checks and workflow syntax pass.
+The inventory has 74,065 roots. It retains all 74,044 established roots.
+This small pilot qualifies the binding and semantic transport. It does not
+establish a timing gain for the query-frame family. The other 20 captures
+and the larger-capture measurements remain open. Other generated frame and
+argument families also need a scope audit.
+The final full validation remains pending for implementation review.
+
 ## Rebase checks
 
 The branch now uses base `c1a662222cafcd96db4383dce737edb79fa62b09` from

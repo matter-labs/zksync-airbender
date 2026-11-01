@@ -1,0 +1,12 @@
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.AddSubCachedInputs
+import Airbender.Import.GKRProtocol.NumericQueryFrameImport
+
+namespace Airbender.Compiler.QueryFrameChecks.AddSubCached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+
+numeric_query_frame_capture data := NumericQueryFrameChecks.ofTyped Airbender.Compiler.QueryFrameNative.AddSubCached.native.fields Airbender.Compiler.QueryFrameNative.AddSubCached.native.coordinates
+  Airbender.Compiler.FullArithmeticNative.AddSubCached.native.originalProjection Airbender.Compiler.LookupNative.AddSubCached.native.sourcePlacement Airbender.Compiler.FullArithmeticNative.AddSubCached.native.inputBank Airbender.Compiler.LookupSourceNative.AddSubCached.native.bank
+
+end Airbender.Compiler.QueryFrameChecks.AddSubCached

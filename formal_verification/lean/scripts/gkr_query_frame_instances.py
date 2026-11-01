@@ -11,6 +11,8 @@ from gkr_wiring_instances import CASES
 
 
 def module(name, case, phase=3, start=0, stop=None):
+    from gkr_packed_query_frame import CASES as PACKED_CASES
+    packed=case in PACKED_CASES
     root = LEAN / 'artifacts/compiler'
     arity = len(synthesize(json.loads((root / (name + '.json')).read_text()),
                            json.loads((root / (name + '-source.json')).read_text()))['inputs'])
@@ -29,6 +31,8 @@ def module(name, case, phase=3, start=0, stop=None):
             query_names.append(prefix + 'LookupSourceNative.' + case + '.native.' + stem + 'Queries')
     query_term = ' ++ '.join(query_names) or '[]'
     imports = f'import Airbender.Import.GKRProtocol.QueryFrameImport\nimport Airbender.Proofs.GKRProtocol.CounterFrameNative.{case}\n'
+    if packed and phase==3:
+        imports+=f'import Airbender.Proofs.GKRProtocol.QueryFrameChecks.{case}.Certificate\n'
     if phase in [1, 2]:
         imports += f'import Airbender.Proofs.GKRProtocol.QueryFrameNative.{case}Inputs\n'
     if phase == 2:
@@ -47,6 +51,11 @@ def module(name, case, phase=3, start=0, stop=None):
         f'  helper_model {prefix}HelperValidityNative.{case}.native\n'
         f'  counter_model {prefix}CounterFrameNative.{case}.native inputs {arity} phase {phase} start {start} stop {stop}\n\n'
         f'end {namespace}\n')
+    if packed:
+        content=content.replace('set_option maxHeartbeats 4000000\n','')
+        if phase==3:
+            content=content.replace(f'phase {phase} start {start} stop {stop}\n',
+                f'phase {phase} start {start} stop {stop}\n  using_check Airbender.Compiler.QueryFrameChecks.{case}.originalChecked\n')
     return target, content
 
 
@@ -66,10 +75,14 @@ def main():
                 continue
             name, case = family + '-' + mode, stem + mode.title()
             size = sum(len(row['fields']) for row in json.loads((LEAN / 'artifacts/compiler/lookup' / (name + '.json')).read_text())['rows'])
-            phases = [(3, 0, size)] if size <= 256 else ([(0, 0, size)] +
+            from gkr_packed_query_frame import CASES as PACKED_CASES
+            phases = [(0,0,size),(3,0,size)] if case in PACKED_CASES else [(3, 0, size)] if size <= 256 else ([(0, 0, size)] +
                 [(1, first, min(first + 64, size)) for first in range(0, size, 64)] + [(2, 0, size)])
-            for phase, start, stop in phases:
-                target, content = module(name, case, phase, start, stop)
+            generated=[module(name,case,phase,start,stop) for phase,start,stop in phases]
+            if args.write:
+                from gkr_packed_rotate_boundary import preflight
+                preflight(generated)
+            for target, content in generated:
                 path = LEAN / (target.replace('.', '/') + '.lean')
                 if args.check and (not path.exists() or path.read_text() != content):
                     raise ValueError('query frame changed: ' + target)
