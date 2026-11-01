@@ -1,4 +1,4 @@
-import Airbender.Import.GKRProtocol.CounterFrameImport
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.SubwordMemoryCached.Certificate
 import Airbender.Proofs.GKRProtocol.HelperValidityNative.SubwordMemoryCached
 import Airbender.Proofs.GKRProtocol.TableNative.SubwordMemoryCached
 
@@ -7,12 +7,12 @@ open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_counter_frame native from "artifacts/compiler/subword-memory-cached.json"
   base_model Airbender.Compiler.FullArithmeticNative.SubwordMemoryCached.native
   table_model Airbender.Compiler.TableNative.SubwordMemoryCached.native
   helper_model Airbender.Compiler.HelperNative.SubwordMemoryCached.native inputs 68
+  phase 1 using_check Airbender.Compiler.CounterFrameChecks.SubwordMemoryCached.originalChecked
 
 theorem counter_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

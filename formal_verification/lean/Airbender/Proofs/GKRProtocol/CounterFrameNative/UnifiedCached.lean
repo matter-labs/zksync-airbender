@@ -1,4 +1,4 @@
-import Airbender.Import.GKRProtocol.CounterFrameImport
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.UnifiedCached.Certificate
 import Airbender.Proofs.GKRProtocol.HelperValidityNative.UnifiedCached
 import Airbender.Proofs.GKRProtocol.TableNative.UnifiedCached
 
@@ -7,12 +7,12 @@ open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_counter_frame native from "artifacts/compiler/unified-cached.json"
   base_model Airbender.Compiler.FullArithmeticNative.UnifiedCached.native
   table_model Airbender.Compiler.TableNative.UnifiedCached.native
   helper_model Airbender.Compiler.HelperNative.UnifiedCached.native inputs 137
+  phase 1 using_check Airbender.Compiler.CounterFrameChecks.UnifiedCached.originalChecked
 
 theorem counter_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

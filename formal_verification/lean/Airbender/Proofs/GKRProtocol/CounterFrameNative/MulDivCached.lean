@@ -1,4 +1,4 @@
-import Airbender.Import.GKRProtocol.CounterFrameImport
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.MulDivCached.Certificate
 import Airbender.Proofs.GKRProtocol.HelperValidityNative.MulDivCached
 import Airbender.Proofs.GKRProtocol.TableNative.MulDivCached
 
@@ -7,12 +7,12 @@ open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_counter_frame native from "artifacts/compiler/mul-div-cached.json"
   base_model Airbender.Compiler.FullArithmeticNative.MulDivCached.native
   table_model Airbender.Compiler.TableNative.MulDivCached.native
   helper_model Airbender.Compiler.HelperNative.MulDivCached.native inputs 71
+  phase 1 using_check Airbender.Compiler.CounterFrameChecks.MulDivCached.originalChecked
 
 theorem counter_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

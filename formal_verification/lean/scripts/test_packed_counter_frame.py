@@ -12,7 +12,8 @@ import gkr_counter_frame_instances as interface
 
 class CounterFrameTests(unittest.TestCase):
     def test_complete_capture_and_semantics(self):
-        self.assertEqual(generator.CASES, ('AddSubCached', 'AddSubUncached'))
+        self.assertEqual(set(generator.CASES), {stem + mode for stem in generator.CIRCUIT_CASES
+                                              for mode in ['Cached', 'Uncached']})
         for case in generator.CASES:
             modules = dict(generator.modules(case))
             stem = 'Airbender.Proofs.GKRProtocol.CounterFrameChecks.' + case

@@ -1,3 +1,23 @@
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.BlakeRoundCached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.BlakeRoundUncached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.BigintCached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.BigintUncached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.KeccakCached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.KeccakUncached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.JumpBranchCached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.JumpBranchUncached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.MulDivCached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.MulDivUncached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.ShiftBinopCached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.ShiftBinopUncached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.WordMemoryCached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.WordMemoryUncached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.SubwordMemoryCached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.SubwordMemoryUncached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.UnifiedCached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.UnifiedUncached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.BlakeGCached.Certificate
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.BlakeGUncached.Certificate
 import Airbender.Proofs.GKRProtocol.CounterFrameChecks.AddSubCached.Certificate
 import Airbender.Proofs.GKRProtocol.CounterFrameChecks.AddSubUncached.Certificate
 import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.BigintCached.Corollaries
@@ -83997,3 +84017,83 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.NumericCounterFrameChecks.ofTyped
 #print axioms Airbender.Compiler.NumericCounterFrameChecks.ofTyped.eq_1
 #print axioms Airbender.Compiler.NumericCounterFrameChecks.untouched_all
+#print axioms Airbender.Compiler.CounterFrameChecks.BigintCached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.BigintCached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.BigintCached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.BigintCached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.BigintUncached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.BigintUncached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.BigintUncached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.BigintUncached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.BlakeGCached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.BlakeGCached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.BlakeGCached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.BlakeGCached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.BlakeGUncached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.BlakeGUncached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.BlakeGUncached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.BlakeGUncached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.BlakeRoundCached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.BlakeRoundCached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.BlakeRoundCached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.BlakeRoundCached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.BlakeRoundUncached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.BlakeRoundUncached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.BlakeRoundUncached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.BlakeRoundUncached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.JumpBranchCached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.JumpBranchCached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.JumpBranchCached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.JumpBranchCached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.JumpBranchUncached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.JumpBranchUncached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.JumpBranchUncached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.JumpBranchUncached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.KeccakCached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.KeccakCached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.KeccakCached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.KeccakCached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.KeccakUncached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.KeccakUncached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.KeccakUncached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.KeccakUncached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.MulDivCached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.MulDivCached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.MulDivCached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.MulDivCached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.MulDivUncached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.MulDivUncached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.MulDivUncached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.MulDivUncached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.ShiftBinopCached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.ShiftBinopCached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.ShiftBinopCached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.ShiftBinopCached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.ShiftBinopUncached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.ShiftBinopUncached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.ShiftBinopUncached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.ShiftBinopUncached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.SubwordMemoryCached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.SubwordMemoryCached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.SubwordMemoryCached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.SubwordMemoryCached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.SubwordMemoryUncached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.SubwordMemoryUncached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.SubwordMemoryUncached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.SubwordMemoryUncached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.UnifiedCached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.UnifiedCached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.UnifiedCached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.UnifiedCached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.UnifiedUncached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.UnifiedUncached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.UnifiedUncached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.UnifiedUncached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.WordMemoryCached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.WordMemoryCached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.WordMemoryCached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.WordMemoryCached.source_binding
+#print axioms Airbender.Compiler.CounterFrameChecks.WordMemoryUncached.checked
+#print axioms Airbender.Compiler.CounterFrameChecks.WordMemoryUncached.data
+#print axioms Airbender.Compiler.CounterFrameChecks.WordMemoryUncached.originalChecked
+#print axioms Airbender.Compiler.CounterFrameChecks.WordMemoryUncached.source_binding
