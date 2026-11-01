@@ -70,7 +70,7 @@ def modules(column,include_legacy=False):
             'set_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 131072\n\n')
     data=''.join('import '+name+'\n' for name in foundations)+'\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 131072\n\n'+''.join(data_parts)
     if include_legacy:yield from foundation_sources
-    yield stem+'.Data',data
+    yield stem+'.Data',data.rstrip()+'\n'
 
     codes=(f'import {stem}.Data\nimport Airbender.Import.PackedSetupEmbed\n'
            'import Airbender.Proofs.GKRProtocol.PackedSetupSpans\n\n'+header+
@@ -119,7 +119,7 @@ def modules(column,include_legacy=False):
             projected+=(f'theorem follows{index} : blockTargetsFollow source{index} 0 target{index} :=\n  ({fact}).2\n\n'
                         f'theorem length{index} : (target{index}.map Setup.Block.length).sum = source{index}.length :=\n  ({fact}).1\n\n')
         projected+='end '+namespace+'\n\n'
-    yield stem+'.Projected',projected
+    yield stem+'.Projected',projected.rstrip()+'\n'
     if include_legacy:yield from retained
 
 

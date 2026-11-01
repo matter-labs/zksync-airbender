@@ -1339,4 +1339,3 @@ theorem length24284 : (target24284.map Setup.Block.length).sum = source24284.len
   (PackedSetupSpans.check_sound_bound_at Airbender.Compiler.UnifiedFixedSpans.Column6.requests Airbender.Compiler.UnifiedFixedSpans.Column6.checked ⟨220, by decide +kernel⟩ source24284 target24284 Airbender.Compiler.UnifiedFixedSpans.Column6.source24284_binding Airbender.Compiler.UnifiedFixedSpans.Column6.targets24284_binding).1
 
 end Airbender.Compiler.UnifiedSpecialChunks.Column6.Chunk189
-

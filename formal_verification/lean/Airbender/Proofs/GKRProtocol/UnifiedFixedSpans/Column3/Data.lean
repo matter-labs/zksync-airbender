@@ -80,4 +80,3 @@ noncomputable def destination2_9 : Setup.Block := part2_9.get ⟨0, by decide +k
 noncomputable def target2 : List Setup.Block := part2_0 ++ part2_1 ++ part2_2 ++ part2_3 ++ part2_4 ++ part2_5 ++ part2_6 ++ part2_7 ++ part2_8 ++ part2_9
 
 end Airbender.Compiler.UnifiedSpecialChunks.Column3.Chunk0
-
