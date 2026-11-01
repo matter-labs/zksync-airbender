@@ -109,53 +109,73 @@ private def emit (name : TSyntax `ident) (blocks : Array (TSyntax `term)) : Comm
     withEnableInfoTree false <| elabCommand (← `(def $name : List BlockCode := $value))
 
 private def spanBlocks (source : Artifact)
-    (physical first count id : Nat) : CommandElabM (Array (TSyntax `term)) := do
+    (physical first count : Nat) (id : Option Nat) : CommandElabM (Array (TSyntax `term)) := do
   let some column := source.columns[physical]? | throwError "source column is absent"
-  let some region := source.tables.find? (fun region => region.id == id)
-    | throwError "packed source region is absent"
+  let region ← match id with
+    | none => pure none
+    | some id =>
+        let some region := source.tables.find? (fun region => region.id == id)
+          | throwError "packed source region is absent"
+        pure (some region)
   unless first + count ≤ column.blocks.size do throwError "source block span is out of bounds"
+  if id.isNone then
+    return ← (column.blocks.extract first (first + count)).mapM (fun block => blockCode block false)
   let mut position := 0
   let mut blocks := #[]
   for (block, index) in column.blocks.toList.zipIdx do
     let finish := position + block.length
     if first ≤ index && index < first + count then
-      let packed := region.offset ≤ position && finish ≤ region.offset + region.length
+      let packed := region.any fun region => region.offset ≤ position && finish ≤ region.offset + region.length
       blocks := blocks.push (← blockCode block packed)
     position := finish
   return blocks
 
-private def regionBlocks (source : Artifact)
-    (id physical first count packed : Nat) : CommandElabM (Array (TSyntax `term)) := do
+private def regionColumn (source : Artifact) (id physical : Nat) : CommandElabM Column := do
   let some column := source.columns[physical]? | throwError "source column is absent"
   let some region := source.tables.find? (fun region => region.id == id)
     | throwError "source region is absent"
-  unless packed ≤ 1 do throwError "invalid packed source mode"
   let sliced := sliceColumn column region.offset region.length
   unless Slices.matchesSource column sliced region.offset region.length do
     throwError "source slice changed a value"
+  return sliced
+
+private def regionBlocks (sliced : Column)
+    (first count packed : Nat) : CommandElabM (Array (TSyntax `term)) := do
+  unless packed ≤ 1 do throwError "invalid packed source mode"
   unless first + count ≤ sliced.blocks.size do throwError "source block span is out of bounds"
   let blocks ← (sliced.blocks.extract first (first + count)).mapM
     (fun block => blockCode block (packed == 1))
   return blocks
 
 declare_syntax_cat setup_code_spec
-syntax ident " := " "column " num " block_start " num " block_count " num
+syntax ident " := " &"column" num " block_start " num " block_count " num
   " packed_region " num : setup_code_spec
-syntax ident " := " "region " num " column " num " block_start " num " block_count " num
+syntax ident " := " &"column" num " block_start " num " block_count " num
+  &"unpacked" : setup_code_spec
+syntax ident " := " &"region" num &"column" num " block_start " num " block_count " num
   " packed_bytes " num : setup_code_spec
 
 /-- Parse the source once for a complete capture. Each request emits data only.
 The separate kernel bindings check its exact relation to the imported columns. -/
 elab "import_setup_code_capture " "from " path:str " [" specs:setup_code_spec,* "]" : command => do
   let source ← artifact path
+  let mut regions : Std.HashMap (Nat × Nat) Column := {}
   for spec in specs.getElems do
     match spec with
     | `(setup_code_spec| $name:ident := column $physical:num block_start $first:num
         block_count $count:num packed_region $id:num) =>
-      emit name (← spanBlocks source physical.getNat first.getNat count.getNat id.getNat)
+      emit name (← spanBlocks source physical.getNat first.getNat count.getNat (some id.getNat))
+    | `(setup_code_spec| $name:ident := column $physical:num block_start $first:num
+        block_count $count:num unpacked) =>
+      emit name (← spanBlocks source physical.getNat first.getNat count.getNat none)
     | `(setup_code_spec| $name:ident := region $id:num column $physical:num
         block_start $first:num block_count $count:num packed_bytes $packed:num) =>
-      emit name (← regionBlocks source id.getNat physical.getNat first.getNat count.getNat packed.getNat)
+      let key := (id.getNat, physical.getNat)
+      let sliced ← match regions[key]? with
+        | some cached => pure cached
+        | none => regionColumn source id.getNat physical.getNat
+      regions := regions.insert key sliced
+      emit name (← regionBlocks sliced first.getNat count.getNat packed.getNat)
     | _ => throwError "unknown setup code request"
 
 private structure CodePiece where

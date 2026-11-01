@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare actual Shift prefix/slice blocks in bounded, kernel-checked spans."""
+"""Generate complete Shift prefix checks and their imported data bindings."""
 import argparse
 import json
 import os
@@ -105,11 +105,22 @@ def main():
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--build', action='store_true')
     args = parser.parse_args()
+    from gkr_packed_shift_prefix import ADOPTED, capture
     artifact = json.loads((LEAN / 'artifacts/setup/shift-binop.json').read_text())
     for column in args.column or range(10):
-        for target, text in modules(artifact, column):
-            part = int(target.rsplit('Part', 1)[1])
-            if args.part and part not in args.part:
+        generated = list(capture(artifact, column) if column in ADOPTED else modules(artifact, column))
+        obsolete = sorted((LEAN / f'Airbender/Proofs/GKRProtocol/ShiftPrefixParts/Column{column}').glob('Part*.lean')) if column in ADOPTED else []
+        if obsolete and args.check:
+            raise ValueError('obsolete Shift fact shards remain')
+        if args.write:
+            for path in obsolete:
+                if subprocess.run(['git', 'ls-files', '--error-unmatch', str(path.relative_to(LEAN))], cwd=LEAN,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
+                    raise ValueError('refuse to delete untracked legacy shard: ' + str(path))
+        for target, text in generated:
+            if args.part and column in ADOPTED:
+                raise ValueError('the complete Shift checker has no proof shard selection')
+            if args.part and int(target.rsplit('Part', 1)[1]) not in args.part:
                 continue
             path = LEAN / (target.replace('.', '/') + '.lean')
             if args.check and (not path.exists() or path.read_text() != text):
@@ -121,6 +132,9 @@ def main():
             if args.build:
                 subprocess.run(['lake', '--no-cache', 'build', '+' + target + ':olean'], cwd=LEAN,
                                env=dict(os.environ, LEAN_NUM_THREADS='1'), check=True)
+        if args.write:
+            for path in obsolete:
+                path.unlink()
 
 
 if __name__ == '__main__':
