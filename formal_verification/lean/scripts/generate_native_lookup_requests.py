@@ -2537,6 +2537,14 @@ for length_source in ['Airbender/Proofs/GKRProtocol/PackedSetupLengths.lean', 'T
     length_namespace = re.search(r'^namespace (\S+)', length_text, re.M)[1]
     packed_arithmetic_roots += [length_namespace + '.' + name for name in
         re.findall(r'^(?:def|theorem|structure) (\S+)', length_text, re.M)]
+for sample_source in ['ArraySampleChecks', 'SubwordSampleChecks', 'SubwordSampleBindings', 'ShiftSampleChecks', 'ShiftSampleBindings']:
+    sample_text = (ROOT / f'Airbender/Proofs/Tables/{sample_source}.lean').read_text()
+    sample_namespace = re.search(r'^namespace (\S+)', sample_text, re.M)[1]
+    packed_arithmetic_roots += [sample_namespace + '.' + name for name in
+        re.findall(r'^(?:def|theorem|structure|numeric_data_binding) (\S+)', sample_text, re.M)]
+    sample_import = f'import Airbender.Proofs.Tables.{sample_source}'
+    if sample_import not in content.splitlines():
+        content = sample_import + '\n' + content
 from gkr_packed_region_lengths import COLUMNS as REGION_LENGTH_COLUMNS, modules as region_length_modules, metadata_plan as region_length_plan
 for column in REGION_LENGTH_COLUMNS:
     for module, length_text in region_length_modules(column):
