@@ -1,6 +1,5 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.AddSubCachedFoundation
-import Airbender.Proofs.GKRProtocol.FunctionalNative.AddSubCachedSteps0
-import Airbender.Proofs.GKRProtocol.FunctionalNative.AddSubCachedSteps1
+import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.AddSubCached.Corollaries
 import Airbender.Proofs.GKRProtocol.FunctionalNative.AddSubCachedBase0
 import Airbender.Import.GKRProtocol.FunctionalFinalize
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check every functional port class and reject changed native source windows."""
 from pathlib import Path
+import argparse
 import subprocess
 import tempfile
 
@@ -27,6 +28,9 @@ def run(source):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--case', choices=CASES, action='append')
+    args = parser.parse_args()
     changes = [
         ('unique outputs', '[{first with outputs := [(20,0),(20,0)]}, second]'),
         ('fresh output', '[first, {second with outputs := [(20,0)]}]'),
@@ -36,7 +40,9 @@ def main():
         ('missing base input', '[{first with inputs := [(10,0)]}, second]')]
     cases = [(label, 'treeCheck ∅ tiny = true', f'treeCheck ∅ {changed} = true', '')
              for label, changed in changes]
-    for case in CASES:
+    if args.case:
+        cases = []
+    for case in args.case or CASES:
         owner = 'Airbender.Compiler.FunctionalStepChecks.' + case
         native = 'Airbender.Compiler.FunctionalNative.' + case + '.native'
         imports = f'import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.{case}.Certificate\n'
@@ -55,15 +61,17 @@ def main():
             if mutated and (not result.returncode or '(kernel) declaration type mismatch' not in result.stdout.lower()):
                 raise SystemExit(f'Changed {label} did not fail in the kernel:\n' + result.stdout[-2500:])
         print('PASS functional-step control:', label, flush=True)
-    result = run('''import Airbender.Import.GKRProtocol.NumericFunctionalStepImport
+    if not args.case:
+        result = run('''import Airbender.Import.GKRProtocol.NumericFunctionalStepImport
 open Airbender.Compiler
 opaque hidden : List NumericFunctionalStepChecks.Data := []
 numeric_functional_steps_capture rejected := hidden
 ''')
-    if not result.returncode or 'did not reduce to closed numeric data' not in result.stdout:
-        raise SystemExit('Opaque functional ports were not rejected:\n' + result.stdout[-2500:])
+        if not result.returncode or 'did not reduce to closed numeric data' not in result.stdout:
+            raise SystemExit('Opaque functional ports were not rejected:\n' + result.stdout[-2500:])
     print(f'PASS {len(cases)} exact controls; kernel rejects all {len(cases)} mutations')
-    print('PASS opaque functional port rejection')
+    if not args.case:
+        print('PASS opaque functional port rejection')
 
 
 if __name__ == '__main__':

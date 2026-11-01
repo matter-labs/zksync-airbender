@@ -1,6 +1,5 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.MulDivUncachedFoundation
-import Airbender.Proofs.GKRProtocol.FunctionalNative.MulDivUncachedSteps0
-import Airbender.Proofs.GKRProtocol.FunctionalNative.MulDivUncachedSteps1
+import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.MulDivUncached.Corollaries
 import Airbender.Proofs.GKRProtocol.FunctionalNative.MulDivUncachedBase0
 import Airbender.Import.GKRProtocol.FunctionalFinalize
 

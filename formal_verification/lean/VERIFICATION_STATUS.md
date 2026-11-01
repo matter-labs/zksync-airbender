@@ -4888,3 +4888,49 @@ active. Full frontend validation, environment audit and baseline refresh, full
 transitive replay, cold full measurements and Linux qualification did not run.
 They remain pending for implementation review. The known aggregate ownership
 collision stays deferred. No aggregate import pass is claimed.
+
+## Complete functional step family
+
+All 22 native functional step captures now use complete kernel checks. The other
+20 captures reuse the qualified dense checker and exact binding pattern. Each
+capture keeps one closed result. All old step facts select that result. The
+remaining 62 old step shards are gone. No functional step proof shard remains.
+Both cache modes stay required. The original semantic finalizer checks the full
+canonical execution expression. All base-port and base-relation proofs stay
+unchanged. These base checks remain a separate open family.
+
+All 9,871 original public declarations in the remaining captures stay
+available. A kernel control accepts all 4,668 old theorem types. All
+5,203 old data Expr values are identical. This includes every original
+canonical value. All 160 selected modules pass source checks and replay. They
+include 40 direct functional-link and source-contract consumers. Replay uses
+the standard 32 MiB stack. It skips no safe dependency. All 12,053 focused
+axiom checks use only the three allowed axioms. Forty exact capture controls
+pass. The kernel rejects all forty mutations. The shared six controls and the
+opaque-data control retain their qualified dense results. All five expanded
+Python generator controls pass.
+
+The six larger source captures take 361.81 s. Their guard peaks
+at 1,500.90 MiB. Their qualification takes 268.62 s and peaks
+at 2,281.77 MiB. The other fourteen source captures take
+319.38 s and peak at 987.37 MiB. Their qualification takes
+426.13 s and peaks at 2,272.74 MiB. All guards clean their owned
+workers. The untrusted export takes 203.72 s and peaks at 2,255.71 MiB. Its first
+attempt lacks the object overlay and stops before materialization. The corrected
+run passes. The two dense capture outputs are unchanged.
+
+The explicit inventory has 80,755 roots. It retains all 79,633 prior
+roots and every established root. Source and interface freshness, source-layer
+checks, static checks and workflow syntax pass. CI checks the complete family.
+No cold full-build gain is claimed. Original objects remain in
+functional-steps-remaining-original-oleans. Evidence prefixes are
+functional-steps-remaining-dense and functional-steps-remaining-ordinary.
+
+Item 3 remains open. Functional base checks and other numerical argument and
+frame families remain. Inspect the scope of parametric semantic proofs before
+migration. Decoder interpretation and program-dependent setup stay excluded.
+The hourly follow-up stays active. Full frontend validation, environment audit
+and baseline refresh, full transitive replay, cold full measurements and Linux
+runtime and cache qualification did not run. They remain pending for review.
+The known aggregate ownership collision stays deferred. No aggregate pass is
+claimed.

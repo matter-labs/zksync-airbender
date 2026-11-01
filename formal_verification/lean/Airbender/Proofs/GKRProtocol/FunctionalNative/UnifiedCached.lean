@@ -1,7 +1,5 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.UnifiedCachedFoundation
-import Airbender.Proofs.GKRProtocol.FunctionalNative.UnifiedCachedSteps0
-import Airbender.Proofs.GKRProtocol.FunctionalNative.UnifiedCachedSteps1
-import Airbender.Proofs.GKRProtocol.FunctionalNative.UnifiedCachedSteps2
+import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.UnifiedCached.Corollaries
 import Airbender.Proofs.GKRProtocol.FunctionalNative.UnifiedCachedBase0
 import Airbender.Import.GKRProtocol.FunctionalFinalize
 

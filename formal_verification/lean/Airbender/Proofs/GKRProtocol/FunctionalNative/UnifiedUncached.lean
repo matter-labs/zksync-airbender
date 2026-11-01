@@ -1,6 +1,5 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.UnifiedUncachedFoundation
-import Airbender.Proofs.GKRProtocol.FunctionalNative.UnifiedUncachedSteps0
-import Airbender.Proofs.GKRProtocol.FunctionalNative.UnifiedUncachedSteps1
+import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.UnifiedUncached.Corollaries
 import Airbender.Proofs.GKRProtocol.FunctionalNative.UnifiedUncachedBase0
 import Airbender.Import.GKRProtocol.FunctionalFinalize
 

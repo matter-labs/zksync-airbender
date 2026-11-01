@@ -1,6 +1,5 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.ShiftBinopCachedFoundation
-import Airbender.Proofs.GKRProtocol.FunctionalNative.ShiftBinopCachedSteps0
-import Airbender.Proofs.GKRProtocol.FunctionalNative.ShiftBinopCachedSteps1
+import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.ShiftBinopCached.Corollaries
 import Airbender.Proofs.GKRProtocol.FunctionalNative.ShiftBinopCachedBase0
 import Airbender.Import.GKRProtocol.FunctionalFinalize
 
