@@ -2518,6 +2518,21 @@ for column in PACKED_SHIFT_COLUMNS:
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
+from generate_shift_extent_checks import generated as shift_extent_modules
+for extent_source in ['Airbender/Proofs/Tables/PackedLengthChecks.lean', 'Tests/PackedLengthChecks.lean']:
+    extent_text = (ROOT / extent_source).read_text()
+    extent_namespace = re.search(r'^namespace (\S+)', extent_text, re.M)[1]
+    packed_arithmetic_roots += [extent_namespace + '.' + name for name in
+        re.findall(r'^(?:def|theorem|structure) (\S+)', extent_text, re.M)]
+for lane in range(4):
+    for module, extent_text in shift_extent_modules(shift_artifact, lane):
+        extent_namespace = re.search(r'^namespace (\S+)', extent_text, re.M)[1]
+        packed_arithmetic_roots += [extent_namespace + '.' + name for name in
+            re.findall(r'^(?:def|theorem) (\S+)', extent_text, re.M)]
+for extent_import in ['import Tests.PackedLengthChecks'] + [
+        f'import Airbender.Proofs.Tables.ShiftExtentChecks{lane}' for lane in range(4)]:
+    if extent_import not in content.splitlines():
+        content = extent_import + '\n' + content
 from gkr_packed_rotate_boundary import modules as rotate_boundary_modules
 for span_source in ['Airbender/Proofs/GKRProtocol/PackedSetupAccess.lean',
                     'Airbender/Proofs/GKRProtocol/PackedSetupSpans.lean', 'Tests/PackedSetupSpans.lean']:
