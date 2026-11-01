@@ -1,4 +1,4 @@
-import Airbender.Import.GKRProtocol.HistoryErasureImport
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.SubwordMemoryUncached.Certificate
 import Airbender.Proofs.GKRProtocol.SourceContractNative.SubwordMemoryUncached
 
 namespace Airbender.Compiler.HistoryErasureNative.SubwordMemoryUncached
@@ -6,10 +6,10 @@ open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_history_erasure native from "artifacts/compiler/subword-memory-uncached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.SubwordMemoryUncached.native
   source_model Airbender.Compiler.SourceContractNative.SubwordMemoryUncached.native inputs 68
+  phase 1 using_check Airbender.Compiler.HistoryErasureChecks.SubwordMemoryUncached.originalChecked
 
 end Airbender.Compiler.HistoryErasureNative.SubwordMemoryUncached

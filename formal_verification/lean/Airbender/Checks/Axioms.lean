@@ -1,3 +1,23 @@
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.BlakeRoundCached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.BlakeRoundUncached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.BigintCached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.BigintUncached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.KeccakCached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.KeccakUncached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.JumpBranchCached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.JumpBranchUncached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.MulDivCached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.MulDivUncached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.ShiftBinopCached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.ShiftBinopUncached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.WordMemoryCached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.WordMemoryUncached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.SubwordMemoryCached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.SubwordMemoryUncached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.UnifiedCached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.UnifiedUncached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.BlakeGCached.Certificate
+import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.BlakeGUncached.Certificate
 import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.AddSubCached.Certificate
 import Airbender.Proofs.GKRProtocol.HistoryErasureChecks.AddSubUncached.Certificate
 import Airbender.Proofs.GKRProtocol.CounterFrameChecks.BlakeRoundCached.Certificate
@@ -84157,3 +84177,103 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.NumericHistoryErasureChecks.ofTypedFast
 #print axioms Airbender.Compiler.NumericHistoryErasureChecks.ofTypedFast.eq_1
 #print axioms Airbender.Compiler.NumericHistoryErasureChecks.ofTypedFast_eq
+#print axioms Airbender.Compiler.HistoryErasureChecks.BigintCached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.BigintCached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.BigintCached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.BigintCached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.BigintCached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.BigintUncached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.BigintUncached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.BigintUncached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.BigintUncached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.BigintUncached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeGCached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeGCached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeGCached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeGCached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeGCached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeGUncached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeGUncached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeGUncached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeGUncached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeGUncached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeRoundCached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeRoundCached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeRoundCached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeRoundCached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeRoundCached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeRoundUncached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeRoundUncached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeRoundUncached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeRoundUncached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.BlakeRoundUncached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.JumpBranchCached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.JumpBranchCached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.JumpBranchCached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.JumpBranchCached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.JumpBranchCached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.JumpBranchUncached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.JumpBranchUncached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.JumpBranchUncached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.JumpBranchUncached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.JumpBranchUncached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.KeccakCached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.KeccakCached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.KeccakCached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.KeccakCached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.KeccakCached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.KeccakUncached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.KeccakUncached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.KeccakUncached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.KeccakUncached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.KeccakUncached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.MulDivCached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.MulDivCached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.MulDivCached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.MulDivCached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.MulDivCached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.MulDivUncached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.MulDivUncached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.MulDivUncached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.MulDivUncached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.MulDivUncached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.ShiftBinopCached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.ShiftBinopCached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.ShiftBinopCached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.ShiftBinopCached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.ShiftBinopCached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.ShiftBinopUncached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.ShiftBinopUncached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.ShiftBinopUncached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.ShiftBinopUncached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.ShiftBinopUncached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.SubwordMemoryCached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.SubwordMemoryCached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.SubwordMemoryCached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.SubwordMemoryCached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.SubwordMemoryCached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.SubwordMemoryUncached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.SubwordMemoryUncached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.SubwordMemoryUncached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.SubwordMemoryUncached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.SubwordMemoryUncached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.UnifiedCached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.UnifiedCached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.UnifiedCached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.UnifiedCached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.UnifiedCached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.UnifiedUncached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.UnifiedUncached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.UnifiedUncached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.UnifiedUncached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.UnifiedUncached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.WordMemoryCached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.WordMemoryCached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.WordMemoryCached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.WordMemoryCached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.WordMemoryCached.source_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.WordMemoryUncached.checked
+#print axioms Airbender.Compiler.HistoryErasureChecks.WordMemoryUncached.data
+#print axioms Airbender.Compiler.HistoryErasureChecks.WordMemoryUncached.fast_binding
+#print axioms Airbender.Compiler.HistoryErasureChecks.WordMemoryUncached.originalChecked
+#print axioms Airbender.Compiler.HistoryErasureChecks.WordMemoryUncached.source_binding

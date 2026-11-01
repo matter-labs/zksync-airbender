@@ -7,8 +7,11 @@ from export_gkr_translations import LEAN
 from gkr_full_arithmetic_certificate import synthesize
 from gkr_packed_query_frame import capture_name
 from gkr_packed_rotate_boundary import preflight
+from gkr_wiring_instances import CASES as CIRCUIT_CASES
 
-CASES = ('AddSubCached', 'AddSubUncached')
+PILOT_CASES = ('AddSubCached', 'AddSubUncached')
+CASES = PILOT_CASES + tuple(stem + mode for stem in CIRCUIT_CASES if stem != 'AddSub'
+                           for mode in ['Cached', 'Uncached'])
 
 
 def dimensions(case):
