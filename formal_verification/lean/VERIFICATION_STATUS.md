@@ -1112,6 +1112,34 @@ under the evidence directory.
 Other fixed setup length and table families still need migration.
 The final full validation remains pending for implementation review.
 
+### Complete native seven-bit XOR table
+
+One closed packed checker result covers all 386 native XOR7 blocks and
+16,384 rows. The proved checker derives the original `output7` statement.
+Sixteen bounded data bindings retain every original value and block boundary.
+The data uses signed 16-bit word recipes. The checker uses packed arithmetic
+and verifies the complete native sequence. The old literal splits are gone.
+The old four-million-heartbeat override is gone.
+
+The original public theorem type passes the kernel preservation control.
+No imported data value changes. All six selected modules pass source checks
+and kernel replay. They include both direct consumers. Each replay uses the
+standard 32 MiB stack. No safe dependency is skipped.
+These checks trust imported objects.
+The checker batch takes 4.44 s and peaks at 808.62 MiB.
+The capture batch takes 15.16 s and peaks at 897.20 MiB.
+The consumer batch takes 12.93 s and peaks at 1006.95 MiB.
+The final qualification takes 28.28 s and peaks at 1818.75 MiB.
+All guards clean their owned workers.
+
+All 106 focused axiom checks use only the three allowed axioms.
+Five exact controls pass. The kernel rejects all five mutations.
+They cover payloads, signed strides, domain bounds, the complete capture and
+its source binding. Three generator controls pass. Freshness passes.
+The inventory has 73,590 roots. It retains all 73,485 established roots.
+Other fixed setup length and table families still need migration.
+The final full validation remains pending for implementation review.
+
 ## Rebase checks
 
 The branch now uses base `c1a662222cafcd96db4383dce737edb79fa62b09` from

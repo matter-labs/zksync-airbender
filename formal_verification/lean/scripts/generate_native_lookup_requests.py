@@ -2518,6 +2518,20 @@ for column in PACKED_SHIFT_COLUMNS:
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
+xor7_text = (ROOT / 'Airbender/Proofs/Tables/PackedXor7Checks.lean').read_text()
+packed_arithmetic_roots += ['Airbender.Setup.Proofs.PackedXor7Checks.' + name for name in
+    re.findall(r'^(?:def|theorem|structure) (\S+)', xor7_text, re.M)]
+from generate_packed_xor7 import modules as xor7_modules
+for module, xor7_text in xor7_modules():
+    if module.endswith('Xor7Certificate'):
+        continue
+    packed_arithmetic_roots += ['Airbender.Blake2G.Proofs.Xor7PackedCapture.' + name for name in
+        re.findall(r'^(?:def|theorem|numeric_data_binding) (\S+)', xor7_text, re.M)]
+packed_arithmetic_roots += ['Airbender.Blake2G.Proofs.Xor7PackedCapture.' + name for name in
+    ['column'] + [f'column{role}{index}' for index in range(16) for role in ['Blocks', 'Start', 'Size']]]
+xor7_import = 'import Airbender.Proofs.Blake2G.Xor7PackedCertificate'
+if xor7_import not in content.splitlines():
+    content = xor7_import + '\n' + content
 for length_source in ['Airbender/Proofs/GKRProtocol/PackedSetupLengths.lean', 'Tests/PackedSetupLengths.lean']:
     length_text = (ROOT / length_source).read_text()
     length_namespace = re.search(r'^namespace (\S+)', length_text, re.M)[1]
