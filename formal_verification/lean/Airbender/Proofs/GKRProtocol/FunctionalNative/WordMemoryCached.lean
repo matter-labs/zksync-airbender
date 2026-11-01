@@ -1,6 +1,5 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.WordMemoryCachedFoundation
-import Airbender.Proofs.GKRProtocol.FunctionalNative.WordMemoryCachedSteps0
-import Airbender.Proofs.GKRProtocol.FunctionalNative.WordMemoryCachedSteps1
+import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.WordMemoryCached.Corollaries
 import Airbender.Proofs.GKRProtocol.FunctionalNative.WordMemoryCachedBase0
 import Airbender.Import.GKRProtocol.FunctionalFinalize
 

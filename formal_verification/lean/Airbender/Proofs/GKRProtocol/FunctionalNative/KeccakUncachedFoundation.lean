@@ -16,4 +16,10 @@ import_functional_graph native from "artifacts/compiler/keccak-uncached.json"
   product Airbender.Compiler.ProductNative.KeccakUncached.native
   base Airbender.Compiler.FullArithmeticNative.KeccakUncached.native
 
+noncomputable def native.canonical {R : Type} [CommRing R]
+  (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
+  (baseValue : GKRAddress → Source.BaseField) : GKRAddress → R :=
+  Functional.read native.isBase (hom ∘ baseValue)
+    (native.program.execute hom challenges gamma native.isBase (hom ∘ baseValue) (fun _ => 0))
+
 end Airbender.Compiler.FunctionalNative.KeccakUncached

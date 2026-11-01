@@ -14,8 +14,12 @@ import gkr_functional_instances as interface
 
 class FunctionalStepTests(unittest.TestCase):
     def test_complete_modes_and_old_step_names(self):
-        self.assertEqual(generator.CASES, ('BlakeRoundCached', 'BlakeRoundUncached'))
-        for case, count in zip(generator.CASES, [674, 394], strict=True):
+        self.assertEqual(len(generator.CASES), 22)
+        self.assertEqual(set(generator.CASES), {stem + mode for stem in generator.CIRCUIT_CASES
+                                              for mode in ['Cached', 'Uncached']})
+        self.assertEqual([len(generator.capture(case)) for case in generator.DENSE_CASES], [674, 394])
+        for case in generator.CASES:
+            count = len(generator.capture(case))
             generated = dict(generator.modules(case))
             stem = 'Airbender.Proofs.GKRProtocol.FunctionalStepChecks.' + case
             self.assertEqual(len(generated), 4)
@@ -60,7 +64,8 @@ class FunctionalStepTests(unittest.TestCase):
     def test_legacy_steps_remain_available(self):
         case, name = 'AddSubCached', 'add-sub-cached'
         pair = json.loads((generator.LEAN / f'artifacts/compiler/{name}.json').read_text())
-        targets, _, _ = interface.modules(name, case, pair)
+        with patch.object(generator, 'CASES', ()):
+            targets, _, _ = interface.modules(name, case, pair)
         self.assertTrue(any(module.endswith('Steps0') for module, _ in targets))
         self.assertIn('check_functional_graph native phase 0', dict(targets)[targets[1][0]])
 

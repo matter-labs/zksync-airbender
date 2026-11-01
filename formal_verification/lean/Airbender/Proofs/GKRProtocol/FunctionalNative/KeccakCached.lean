@@ -1,10 +1,5 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.KeccakCachedFoundation
-import Airbender.Proofs.GKRProtocol.FunctionalNative.KeccakCachedSteps0
-import Airbender.Proofs.GKRProtocol.FunctionalNative.KeccakCachedSteps1
-import Airbender.Proofs.GKRProtocol.FunctionalNative.KeccakCachedSteps2
-import Airbender.Proofs.GKRProtocol.FunctionalNative.KeccakCachedSteps3
-import Airbender.Proofs.GKRProtocol.FunctionalNative.KeccakCachedSteps4
-import Airbender.Proofs.GKRProtocol.FunctionalNative.KeccakCachedSteps5
+import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.KeccakCached.Corollaries
 import Airbender.Proofs.GKRProtocol.FunctionalNative.KeccakCachedBase0
 import Airbender.Proofs.GKRProtocol.FunctionalNative.KeccakCachedBase1
 import Airbender.Import.GKRProtocol.FunctionalFinalize

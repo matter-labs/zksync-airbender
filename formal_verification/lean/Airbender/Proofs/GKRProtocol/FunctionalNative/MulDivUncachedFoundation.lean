@@ -16,4 +16,10 @@ import_functional_graph native from "artifacts/compiler/mul-div-uncached.json"
   product Airbender.Compiler.ProductNative.MulDivUncached.native
   base Airbender.Compiler.FullArithmeticNative.MulDivUncached.native
 
+noncomputable def native.canonical {R : Type} [CommRing R]
+  (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
+  (baseValue : GKRAddress → Source.BaseField) : GKRAddress → R :=
+  Functional.read native.isBase (hom ∘ baseValue)
+    (native.program.execute hom challenges gamma native.isBase (hom ∘ baseValue) (fun _ => 0))
+
 end Airbender.Compiler.FunctionalNative.MulDivUncached

@@ -1,6 +1,5 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.MulDivCachedFoundation
-import Airbender.Proofs.GKRProtocol.FunctionalNative.MulDivCachedSteps0
-import Airbender.Proofs.GKRProtocol.FunctionalNative.MulDivCachedSteps1
+import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.MulDivCached.Corollaries
 import Airbender.Proofs.GKRProtocol.FunctionalNative.MulDivCachedBase0
 import Airbender.Import.GKRProtocol.FunctionalFinalize
 
