@@ -183,10 +183,13 @@ def pilot(column=1, begin=0, end=None, assemble=True, source_start=0, source_end
 
 
 def pilot_assembly(column=1):
+    from gkr_packed_region_lengths import metadata_plan
+    lengths=metadata_plan(column)
     artifact,blocks,positions,stop,groups,regions=plans(column)
     assert stop<=CHUNK
     ns=f'Airbender.Compiler.UnifiedPrefixNative.Column{column}';full=f'Data.GKRSetup.Unified.setupColumn{column}'
     text='import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column1.Projected\n'+''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedPrefixParts.Column{column}.Unit{i}\n' for i in [12,13,14,33])
+    text+=f'import Airbender.Proofs.GKRProtocol.UnifiedRegionLengths.Column{column}\n'
     text+='\nnamespace '+ns+'\nopen Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 65536\nset_option maxHeartbeats 8000000\n\n'
     text+='noncomputable def sources : List Setup.Block := ['+', '.join(f'source{i}' for i in range(stop))+']\n\n'
     text+='noncomputable def targets : List (List Setup.Block) := ['+', '.join(f'target{i}' for i in range(stop))+']\n\n'
@@ -201,7 +204,12 @@ def pilot_assembly(column=1):
         col=f'(UnifiedReduced.Setup.{DATA[region["id"]]}.columns[({column} : Nat)])';cols.append(col)
         pieces=[f'part{i}_{j}' for i,group in enumerate(groups) for j,e in enumerate(group) if e['region']==r]
         text+=f'column_parts_cover regionShape{r} from {col} parts ['+', '.join(pieces)+']\n\n'
-        text+=f'theorem regionLength{r} : ({col}.blocks.toList.map Setup.Block.length).sum = {region["length"]} := by decide +kernel\n\n'
+        statement=f'theorem regionLength{r} : ({col}.blocks.toList.map Setup.Block.length).sum = {region["length"]}'
+        if region['id']==34:text+=statement+' := by decide +kernel\n\n'
+        else:
+            facts=[f'Airbender.Compiler.UnifiedRegionLengths.Column{column}.length{ordinal}' for ordinal,entry in enumerate(lengths) if entry['region']==r]
+            text+=statement+f' := by\n  rw [regionShape{r}]\n'
+            text+='  simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, '+', '.join(facts)+']\n  rfl\n\n'
     extras=[f'part{i}_{j}' for i,group in enumerate(groups) for j,e in enumerate(group) if e['region'] is None]
     text+='noncomputable def regionBlocks : List Setup.Block := '+' ++ '.join(c+'.blocks.toList' for c in cols)+'\n\n'
     text+='noncomputable def extra : List Setup.Block := '+(' ++ '.join(extras) or '[]')+'\n\n'

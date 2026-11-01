@@ -1163,6 +1163,30 @@ The inventory stays at 73,590 roots. Every established root remains.
 Other fixed setup length and table families still need migration.
 The final full validation remains pending for implementation review.
 
+### Complete fixed edge-column lengths
+
+Two closed kernel results cover all 71 fixed region pieces in unified columns
+1 and 8. The column-one result reuses the fixed span and rotation bindings.
+The column-eight result binds only fixed target pieces. Neither result includes
+program ROM. The old program-region proofs remain.
+The native prefix consumers derive their original length facts from these results.
+
+All 437 original declarations remain. A kernel control accepts all 316 old
+theorem types. All 121 imported data values are identical.
+All ten selected modules pass source checks and kernel replay. They include
+both complete native prefix consumers. Each replay uses the standard 32 MiB
+stack. No safe dependency is skipped. These checks trust imported objects.
+The source and replay guard takes 80.47 s and peaks at 1375.41 MiB.
+The final qualification takes 44.28 s and peaks at 1325.02 MiB.
+Both guards clean their owned workers.
+
+All 680 focused axiom checks use only the three allowed axioms.
+Nine exact controls pass. The kernel rejects all nine mutations.
+Four generator controls pass. Capture and consumer freshness pass.
+The inventory has 73,833 roots. It retains all 73,590 established roots.
+Other fixed table metadata still needs migration.
+The final full validation remains pending for implementation review.
+
 ## Rebase checks
 
 The branch now uses base `c1a662222cafcd96db4383dce737edb79fa62b09` from

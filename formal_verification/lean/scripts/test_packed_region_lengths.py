@@ -6,13 +6,13 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import gkr_packed_region_lengths as generator
-from gkr_unified_prefix import plans
+from gkr_unified_prefix import plans, pilot_assembly
 from gkr_unified_prefix_assembly import column_module
 
 
 class FixedRegionLengthTests(unittest.TestCase):
     def test_complete_fixed_scope_and_one_closed_result(self):
-        expected={2:159,3:17,4:564,5:595,6:425,7:427}
+        expected={1:56,2:159,3:17,4:564,5:595,6:425,7:427,8:15}
         self.assertEqual(set(generator.COLUMNS),set(expected))
         for column,count in expected.items():
             entries=generator.metadata_plan(column);artifact=plans(column)[0]
@@ -22,9 +22,21 @@ class FixedRegionLengthTests(unittest.TestCase):
             self.assertEqual(modules[stem+'.Certificate'].count('theorem checked :'),1)
             self.assertEqual(modules[stem+'.Data'].count('noncomputable def view'),count)
             self.assertEqual(modules[stem].count('theorem length'),count)
-            consumer=column_module(column)[1]
+            consumer=(pilot_assembly(column) if column==1 else column_module(column))[1]
             self.assertEqual(consumer.count(f'Airbender.Compiler.UnifiedRegionLengths.Column{column}.length'),count)
             self.assertNotIn('PackedSetupNormalization',modules[stem+'.Certificate'])
+
+    def test_edge_columns_keep_fixed_target_scope(self):
+        one=generator.metadata_plan(1)
+        self.assertEqual(sum(entry['index']==14 for entry in one),12)
+        bindings=dict(generator.modules(1))['Airbender.Proofs.GKRProtocol.UnifiedRegionLengths.Column1.Bindings']
+        self.assertEqual(bindings.count('RotateBoundary.targets_binding'),12)
+        eight=generator.metadata_plan(8)
+        self.assertEqual({entry['kind'] for entry in eight},{'extra'})
+        data=dict(generator.modules(8))['Airbender.Proofs.GKRProtocol.UnifiedRegionLengths.Column8.Data']
+        self.assertNotIn('UnifiedFixedSpans.Column8',data)
+        self.assertEqual(data.count(' := region '),15)
+        self.assertNotIn('region 34 ',data)
 
     def test_known_views_reuse_complete_bindings(self):
         source=dict(generator.modules(3))['Airbender.Proofs.GKRProtocol.UnifiedRegionLengths.Column3.Bindings']

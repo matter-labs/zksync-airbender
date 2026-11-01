@@ -3,6 +3,7 @@ import Airbender.Proofs.GKRProtocol.UnifiedPrefixParts.Column1.Unit12
 import Airbender.Proofs.GKRProtocol.UnifiedPrefixParts.Column1.Unit13
 import Airbender.Proofs.GKRProtocol.UnifiedPrefixParts.Column1.Unit14
 import Airbender.Proofs.GKRProtocol.UnifiedPrefixParts.Column1.Unit33
+import Airbender.Proofs.GKRProtocol.UnifiedRegionLengths.Column1
 
 namespace Airbender.Compiler.UnifiedPrefixNative.Column1
 open Airbender Airbender.Compiler
@@ -27,31 +28,52 @@ theorem sourceShape : Data.GKRSetup.Unified.setupColumn1.blocks.toList = origina
 
 column_parts_cover regionShape0 from (UnifiedReduced.Setup.nativeZeroData.columns[(1 : Nat)]) parts [part0_0]
 
-theorem regionLength0 : ((UnifiedReduced.Setup.nativeZeroData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 1 := by decide +kernel
+theorem regionLength0 : ((UnifiedReduced.Setup.nativeZeroData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 1 := by
+  rw [regionShape0]
+  simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, Airbender.Compiler.UnifiedRegionLengths.Column1.length0]
+  rfl
 
 column_parts_cover regionShape1 from (UnifiedReduced.Setup.nativeRegisterZeroData.columns[(1 : Nat)]) parts [part0_1, part1_0]
 
-theorem regionLength1 : ((UnifiedReduced.Setup.nativeRegisterZeroData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 131072 := by decide +kernel
+theorem regionLength1 : ((UnifiedReduced.Setup.nativeRegisterZeroData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 131072 := by
+  rw [regionShape1]
+  simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, Airbender.Compiler.UnifiedRegionLengths.Column1.length1, Airbender.Compiler.UnifiedRegionLengths.Column1.length2]
+  rfl
 
 column_parts_cover regionShape2 from (UnifiedReduced.Setup.nativeCleanupData.columns[(1 : Nat)]) parts [part1_1, part2_0, part2_1]
 
-theorem regionLength2 : ((UnifiedReduced.Setup.nativeCleanupData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by decide +kernel
+theorem regionLength2 : ((UnifiedReduced.Setup.nativeCleanupData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by
+  rw [regionShape2]
+  simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, Airbender.Compiler.UnifiedRegionLengths.Column1.length3, Airbender.Compiler.UnifiedRegionLengths.Column1.length4, Airbender.Compiler.UnifiedRegionLengths.Column1.length5]
+  rfl
 
 column_parts_cover regionShape3 from (UnifiedReduced.Setup.nativeByteSignData.columns[(1 : Nat)]) parts [part2_2, part3_0, part4_0]
 
-theorem regionLength3 : ((UnifiedReduced.Setup.nativeByteSignData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 256 := by decide +kernel
+theorem regionLength3 : ((UnifiedReduced.Setup.nativeByteSignData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 256 := by
+  rw [regionShape3]
+  simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, Airbender.Compiler.UnifiedRegionLengths.Column1.length6, Airbender.Compiler.UnifiedRegionLengths.Column1.length7, Airbender.Compiler.UnifiedRegionLengths.Column1.length8]
+  rfl
 
 column_parts_cover regionShape4 from (UnifiedReduced.Setup.nativeSignData.columns[(1 : Nat)]) parts [part5_0, part6_0]
 
-theorem regionLength4 : ((UnifiedReduced.Setup.nativeSignData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by decide +kernel
+theorem regionLength4 : ((UnifiedReduced.Setup.nativeSignData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by
+  rw [regionShape4]
+  simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, Airbender.Compiler.UnifiedRegionLengths.Column1.length9, Airbender.Compiler.UnifiedRegionLengths.Column1.length10]
+  rfl
 
 column_parts_cover regionShape5 from (UnifiedReduced.Setup.nativeTruncationData.columns[(1 : Nat)]) parts [part7_0]
 
-theorem regionLength5 : ((UnifiedReduced.Setup.nativeTruncationData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by decide +kernel
+theorem regionLength5 : ((UnifiedReduced.Setup.nativeTruncationData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by
+  rw [regionShape5]
+  simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, Airbender.Compiler.UnifiedRegionLengths.Column1.length11]
+  rfl
 
 column_parts_cover regionShape6 from (UnifiedReduced.Setup.nativeShiftData.columns[(1 : Nat)]) parts [part8_0, part9_0, part10_0, part11_0]
 
-theorem regionLength6 : ((UnifiedReduced.Setup.nativeShiftData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 262144 := by decide +kernel
+theorem regionLength6 : ((UnifiedReduced.Setup.nativeShiftData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 262144 := by
+  rw [regionShape6]
+  simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, Airbender.Compiler.UnifiedRegionLengths.Column1.length12, Airbender.Compiler.UnifiedRegionLengths.Column1.length13, Airbender.Compiler.UnifiedRegionLengths.Column1.length14, Airbender.Compiler.UnifiedRegionLengths.Column1.length15]
+  rfl
 
 column_parts_cover regionShape7 from (UnifiedReduced.Setup.nativeROMData.columns[(1 : Nat)]) parts [part12_0, part13_0]
 
@@ -59,35 +81,59 @@ theorem regionLength7 : ((UnifiedReduced.Setup.nativeROMData.columns[(1 : Nat)])
 
 column_parts_cover regionShape8 from (UnifiedReduced.Setup.nativeRotate16Data.columns[(1 : Nat)]) parts [part13_1, part14_0, part14_1]
 
-theorem regionLength8 : ((UnifiedReduced.Setup.nativeRotate16Data.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by decide +kernel
+theorem regionLength8 : ((UnifiedReduced.Setup.nativeRotate16Data.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by
+  rw [regionShape8]
+  simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, Airbender.Compiler.UnifiedRegionLengths.Column1.length16, Airbender.Compiler.UnifiedRegionLengths.Column1.length17, Airbender.Compiler.UnifiedRegionLengths.Column1.length18]
+  rfl
 
 column_parts_cover regionShape9 from (UnifiedReduced.Setup.nativeRotate12Data.columns[(1 : Nat)]) parts [part14_2, part14_3, part14_4]
 
-theorem regionLength9 : ((UnifiedReduced.Setup.nativeRotate12Data.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by decide +kernel
+theorem regionLength9 : ((UnifiedReduced.Setup.nativeRotate12Data.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by
+  rw [regionShape9]
+  simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, Airbender.Compiler.UnifiedRegionLengths.Column1.length19, Airbender.Compiler.UnifiedRegionLengths.Column1.length20, Airbender.Compiler.UnifiedRegionLengths.Column1.length21]
+  rfl
 
 column_parts_cover regionShape10 from (UnifiedReduced.Setup.nativeRotate8Data.columns[(1 : Nat)]) parts [part14_5, part14_6, part14_7]
 
-theorem regionLength10 : ((UnifiedReduced.Setup.nativeRotate8Data.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by decide +kernel
+theorem regionLength10 : ((UnifiedReduced.Setup.nativeRotate8Data.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by
+  rw [regionShape10]
+  simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, Airbender.Compiler.UnifiedRegionLengths.Column1.length22, Airbender.Compiler.UnifiedRegionLengths.Column1.length23, Airbender.Compiler.UnifiedRegionLengths.Column1.length24]
+  rfl
 
 column_parts_cover regionShape11 from (UnifiedReduced.Setup.nativeRotate7Data.columns[(1 : Nat)]) parts [part14_8, part14_9, part14_10]
 
-theorem regionLength11 : ((UnifiedReduced.Setup.nativeRotate7Data.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by decide +kernel
+theorem regionLength11 : ((UnifiedReduced.Setup.nativeRotate7Data.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by
+  rw [regionShape11]
+  simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, Airbender.Compiler.UnifiedRegionLengths.Column1.length25, Airbender.Compiler.UnifiedRegionLengths.Column1.length26, Airbender.Compiler.UnifiedRegionLengths.Column1.length27]
+  rfl
 
 column_parts_cover regionShape12 from (UnifiedReduced.Setup.nativeConditionalData.columns[(1 : Nat)]) parts [part14_11, part15_0, part16_0, part17_0, part18_0, part19_0, part20_0, part21_0, part22_0, part23_0, part24_0, part25_0, part26_0, part27_0, part28_0, part29_0, part30_0, part31_0, part32_0]
 
-theorem regionLength12 : ((UnifiedReduced.Setup.nativeConditionalData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 128 := by decide +kernel
+theorem regionLength12 : ((UnifiedReduced.Setup.nativeConditionalData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 128 := by
+  rw [regionShape12]
+  simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, Airbender.Compiler.UnifiedRegionLengths.Column1.length28, Airbender.Compiler.UnifiedRegionLengths.Column1.length29, Airbender.Compiler.UnifiedRegionLengths.Column1.length30, Airbender.Compiler.UnifiedRegionLengths.Column1.length31, Airbender.Compiler.UnifiedRegionLengths.Column1.length32, Airbender.Compiler.UnifiedRegionLengths.Column1.length33, Airbender.Compiler.UnifiedRegionLengths.Column1.length34, Airbender.Compiler.UnifiedRegionLengths.Column1.length35, Airbender.Compiler.UnifiedRegionLengths.Column1.length36, Airbender.Compiler.UnifiedRegionLengths.Column1.length37, Airbender.Compiler.UnifiedRegionLengths.Column1.length38, Airbender.Compiler.UnifiedRegionLengths.Column1.length39, Airbender.Compiler.UnifiedRegionLengths.Column1.length40, Airbender.Compiler.UnifiedRegionLengths.Column1.length41, Airbender.Compiler.UnifiedRegionLengths.Column1.length42, Airbender.Compiler.UnifiedRegionLengths.Column1.length43, Airbender.Compiler.UnifiedRegionLengths.Column1.length44, Airbender.Compiler.UnifiedRegionLengths.Column1.length45, Airbender.Compiler.UnifiedRegionLengths.Column1.length46]
+  rfl
 
 column_parts_cover regionShape13 from (UnifiedReduced.Setup.nativeXorData.columns[(1 : Nat)]) parts [part32_1, part33_0, part33_1]
 
-theorem regionLength13 : ((UnifiedReduced.Setup.nativeXorData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by decide +kernel
+theorem regionLength13 : ((UnifiedReduced.Setup.nativeXorData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by
+  rw [regionShape13]
+  simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, Airbender.Compiler.UnifiedRegionLengths.Column1.length47, Airbender.Compiler.UnifiedRegionLengths.Column1.length48, Airbender.Compiler.UnifiedRegionLengths.Column1.length49]
+  rfl
 
 column_parts_cover regionShape14 from (UnifiedReduced.Setup.nativeOrData.columns[(1 : Nat)]) parts [part33_2, part33_3, part33_4]
 
-theorem regionLength14 : ((UnifiedReduced.Setup.nativeOrData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by decide +kernel
+theorem regionLength14 : ((UnifiedReduced.Setup.nativeOrData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by
+  rw [regionShape14]
+  simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, Airbender.Compiler.UnifiedRegionLengths.Column1.length50, Airbender.Compiler.UnifiedRegionLengths.Column1.length51, Airbender.Compiler.UnifiedRegionLengths.Column1.length52]
+  rfl
 
 column_parts_cover regionShape15 from (UnifiedReduced.Setup.nativeAndData.columns[(1 : Nat)]) parts [part33_5, part33_6, part33_7]
 
-theorem regionLength15 : ((UnifiedReduced.Setup.nativeAndData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by decide +kernel
+theorem regionLength15 : ((UnifiedReduced.Setup.nativeAndData.columns[(1 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by
+  rw [regionShape15]
+  simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, Airbender.Compiler.UnifiedRegionLengths.Column1.length53, Airbender.Compiler.UnifiedRegionLengths.Column1.length54, Airbender.Compiler.UnifiedRegionLengths.Column1.length55]
+  rfl
 
 noncomputable def regionBlocks : List Setup.Block := (UnifiedReduced.Setup.nativeZeroData.columns[(1 : Nat)]).blocks.toList ++ (UnifiedReduced.Setup.nativeRegisterZeroData.columns[(1 : Nat)]).blocks.toList ++ (UnifiedReduced.Setup.nativeCleanupData.columns[(1 : Nat)]).blocks.toList ++ (UnifiedReduced.Setup.nativeByteSignData.columns[(1 : Nat)]).blocks.toList ++ (UnifiedReduced.Setup.nativeSignData.columns[(1 : Nat)]).blocks.toList ++ (UnifiedReduced.Setup.nativeTruncationData.columns[(1 : Nat)]).blocks.toList ++ (UnifiedReduced.Setup.nativeShiftData.columns[(1 : Nat)]).blocks.toList ++ (UnifiedReduced.Setup.nativeROMData.columns[(1 : Nat)]).blocks.toList ++ (UnifiedReduced.Setup.nativeRotate16Data.columns[(1 : Nat)]).blocks.toList ++ (UnifiedReduced.Setup.nativeRotate12Data.columns[(1 : Nat)]).blocks.toList ++ (UnifiedReduced.Setup.nativeRotate8Data.columns[(1 : Nat)]).blocks.toList ++ (UnifiedReduced.Setup.nativeRotate7Data.columns[(1 : Nat)]).blocks.toList ++ (UnifiedReduced.Setup.nativeConditionalData.columns[(1 : Nat)]).blocks.toList ++ (UnifiedReduced.Setup.nativeXorData.columns[(1 : Nat)]).blocks.toList ++ (UnifiedReduced.Setup.nativeOrData.columns[(1 : Nat)]).blocks.toList ++ (UnifiedReduced.Setup.nativeAndData.columns[(1 : Nat)]).blocks.toList
 
