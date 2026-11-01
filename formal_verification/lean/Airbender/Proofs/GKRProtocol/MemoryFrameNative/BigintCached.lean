@@ -1,18 +1,12 @@
 import Airbender.Import.GKRProtocol.MemoryFrameImport
 import Airbender.Proofs.GKRProtocol.CounterFrameNative.BigintCached
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BigintCachedInputs
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BigintCachedPart0
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BigintCachedPart1
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BigintCachedPart2
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BigintCachedPart3
-import Airbender.Proofs.GKRProtocol.MemoryFrameNative.BigintCachedPart4
+import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.BigintCached.Certificate
 
 namespace Airbender.Compiler.MemoryFrameNative.BigintCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_memory_frame native from "artifacts/compiler/bigint-cached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.BigintCached.native
@@ -21,6 +15,7 @@ import_memory_frame native from "artifacts/compiler/bigint-cached-source.json"
   history_model Airbender.Compiler.HistoryErasureNative.BigintCached.native
   helper_model Airbender.Compiler.HelperValidityNative.BigintCached.native
   counter_model Airbender.Compiler.CounterFrameNative.BigintCached.native
-  inputs 276 phase 2 start 0 stop 280
+  inputs 276 phase 3 start 0 stop 280
+  using_check Airbender.Compiler.MemoryFrameChecks.BigintCached.originalChecked
 
 end Airbender.Compiler.MemoryFrameNative.BigintCached

@@ -1,12 +1,12 @@
 import Airbender.Import.GKRProtocol.MemoryFrameImport
 import Airbender.Proofs.GKRProtocol.CounterFrameNative.ShiftBinopCached
+import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.ShiftBinopCached.Certificate
 
 namespace Airbender.Compiler.MemoryFrameNative.ShiftBinopCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_memory_frame native from "artifacts/compiler/shift-binop-cached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.ShiftBinopCached.native
@@ -16,5 +16,6 @@ import_memory_frame native from "artifacts/compiler/shift-binop-cached-source.js
   helper_model Airbender.Compiler.HelperValidityNative.ShiftBinopCached.native
   counter_model Airbender.Compiler.CounterFrameNative.ShiftBinopCached.native
   inputs 98 phase 3 start 0 stop 56
+  using_check Airbender.Compiler.MemoryFrameChecks.ShiftBinopCached.originalChecked
 
 end Airbender.Compiler.MemoryFrameNative.ShiftBinopCached

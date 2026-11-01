@@ -1,0 +1,14 @@
+import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.JumpBranchCached.PrefixBindings
+import Airbender.Import.GKRProtocol.NumericMemoryFrameImport
+
+namespace Airbender.Compiler.MemoryFrameChecks.JumpBranchCached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+set_option exponentiation.threshold 4096 in
+numeric_memory_frame_capture data := NumericMemoryFrameChecks.ofTypedPrefix Airbender.Compiler.MemoryFrameNative.JumpBranchCached.native.ramFields Airbender.Compiler.MemoryFrameNative.JumpBranchCached.native.initializationFields Airbender.Compiler.MemoryFrameNative.JumpBranchCached.native.executeFields
+  Airbender.Compiler.MemoryNative.JumpBranchCached.native.sourcePlacement Airbender.Compiler.MemoryNative.JumpBranchCached.native.bank Airbender.Compiler.MemoryFrameNative.JumpBranchCached.native.activeCoordinates Airbender.Compiler.MemoryFrameNative.JumpBranchCached.native.allCoordinates
+  Airbender.Compiler.FullArithmeticNative.JumpBranchCached.native.inputBank Airbender.Compiler.FullArithmeticNative.JumpBranchCached.native.bank
+end Airbender.Compiler.MemoryFrameChecks.JumpBranchCached

@@ -1,12 +1,12 @@
 import Airbender.Import.GKRProtocol.MemoryFrameImport
 import Airbender.Proofs.GKRProtocol.CounterFrameNative.UnifiedUncached
+import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.UnifiedUncached.Certificate
 
 namespace Airbender.Compiler.MemoryFrameNative.UnifiedUncached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_memory_frame native from "artifacts/compiler/unified-uncached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.UnifiedUncached.native
@@ -16,5 +16,6 @@ import_memory_frame native from "artifacts/compiler/unified-uncached-source.json
   helper_model Airbender.Compiler.HelperValidityNative.UnifiedUncached.native
   counter_model Airbender.Compiler.CounterFrameNative.UnifiedUncached.native
   inputs 137 phase 3 start 0 stop 56
+  using_check Airbender.Compiler.MemoryFrameChecks.UnifiedUncached.originalChecked
 
 end Airbender.Compiler.MemoryFrameNative.UnifiedUncached

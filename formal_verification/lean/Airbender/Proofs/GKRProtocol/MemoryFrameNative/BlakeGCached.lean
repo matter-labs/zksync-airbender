@@ -1,12 +1,12 @@
 import Airbender.Import.GKRProtocol.MemoryFrameImport
 import Airbender.Proofs.GKRProtocol.CounterFrameNative.BlakeGCached
+import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.BlakeGCached.Certificate
 
 namespace Airbender.Compiler.MemoryFrameNative.BlakeGCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_memory_frame native from "artifacts/compiler/blake-g-cached-source.json"
   base_model Airbender.Compiler.FullArithmeticNative.BlakeGCached.native
@@ -16,5 +16,6 @@ import_memory_frame native from "artifacts/compiler/blake-g-cached-source.json"
   helper_model Airbender.Compiler.HelperValidityNative.BlakeGCached.native
   counter_model Airbender.Compiler.CounterFrameNative.BlakeGCached.native
   inputs 112 phase 3 start 0 stop 140
+  using_check Airbender.Compiler.MemoryFrameChecks.BlakeGCached.originalChecked
 
 end Airbender.Compiler.MemoryFrameNative.BlakeGCached

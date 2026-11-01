@@ -1,0 +1,14 @@
+import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.KeccakUncached.PrefixBindings
+import Airbender.Import.GKRProtocol.NumericMemoryFrameImport
+
+namespace Airbender.Compiler.MemoryFrameChecks.KeccakUncached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+set_option exponentiation.threshold 4096 in
+numeric_memory_frame_capture data := NumericMemoryFrameChecks.ofTypedPrefix Airbender.Compiler.MemoryFrameNative.KeccakUncached.native.ramFields Airbender.Compiler.MemoryFrameNative.KeccakUncached.native.initializationFields Airbender.Compiler.MemoryFrameNative.KeccakUncached.native.executeFields
+  Airbender.Compiler.MemoryNative.KeccakUncached.native.sourcePlacement Airbender.Compiler.MemoryNative.KeccakUncached.native.bank Airbender.Compiler.MemoryFrameNative.KeccakUncached.native.activeCoordinates Airbender.Compiler.MemoryFrameNative.KeccakUncached.native.allCoordinates
+  Airbender.Compiler.FullArithmeticNative.KeccakUncached.native.inputBank Airbender.Compiler.FullArithmeticNative.KeccakUncached.native.bank
+end Airbender.Compiler.MemoryFrameChecks.KeccakUncached
