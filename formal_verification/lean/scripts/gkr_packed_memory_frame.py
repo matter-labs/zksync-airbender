@@ -4,7 +4,9 @@ import argparse
 from export_gkr_translations import LEAN
 from gkr_packed_rotate_boundary import preflight
 
-CASES=('AddSubCached','AddSubUncached')
+SMALL_CASES=('AddSubCached','AddSubUncached')
+LARGE_CASES=('BlakeRoundCached','BlakeRoundUncached')
+CASES=SMALL_CASES+LARGE_CASES
 
 
 def source(case):
@@ -17,7 +19,7 @@ def source(case):
         f'  {base}.inputBank {base}.bank')
 
 
-def modules(case):
+def small_modules(case):
     stem='Airbender.Proofs.GKRProtocol.MemoryFrameChecks.'+case
     owner='Airbender.Compiler.MemoryFrameChecks.'+case
     header=f'namespace {owner}\nopen Airbender Airbender.Compiler\nset_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 8192\n\n'
@@ -40,6 +42,14 @@ def modules(case):
         f'  NumericMemoryFrameChecks.check_sound_of_binding data {original}.ramFields {original}.initializationFields {original}.executeFields\n'
         f'    {memory}.sourcePlacement {memory}.bank {original}.activeCoordinates {original}.allCoordinates\n'
         f'    {base}.inputBank {base}.bank source_binding checked\n'+end)
+
+
+def modules(case):
+    if case in LARGE_CASES:
+        from gkr_packed_memory_frame_bounded import modules as bounded_modules
+        certificate=dict(small_modules(case))['Airbender.Proofs.GKRProtocol.MemoryFrameChecks.'+case+'.Certificate']
+        yield from bounded_modules(case,source(case),certificate)
+    else:yield from small_modules(case)
 
 
 def main():

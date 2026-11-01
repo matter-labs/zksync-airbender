@@ -11,20 +11,42 @@ import gkr_memory_frame_instances as interface
 
 class NumericMemoryFrameTests(unittest.TestCase):
     def test_complete_both_cache_modes(self):
-        self.assertEqual(generator.CASES,('AddSubCached','AddSubUncached'))
+        self.assertEqual(generator.CASES,('AddSubCached','AddSubUncached','BlakeRoundCached','BlakeRoundUncached'))
         for case in generator.CASES:
             generated=dict(generator.modules(case));stem='Airbender.Proofs.GKRProtocol.MemoryFrameChecks.'+case
             self.assertEqual(generated[stem+'.Certificate'].count(':= by decide +kernel'),1)
-            self.assertIn('check_sound_of_binding',generated[stem+'.Certificate'])
-            self.assertIn('numeric_data_binding source_binding : data =',generated[stem+'.Bindings'])
+            if case in generator.SMALL_CASES:
+                self.assertIn('check_sound_of_binding',generated[stem+'.Certificate'])
+                self.assertIn('numeric_data_binding source_binding : data =',generated[stem+'.Bindings'])
+            else:
+                from gkr_packed_memory_frame_bounded import capture_shape
+                inputs,arity,size=capture_shape(case)
+                self.assertEqual((inputs,arity,size),(763,771,616))
+                self.assertEqual(len(generated),9)
+                self.assertIn('check_sound data',generated[stem+'.Certificate'])
+                self.assertNotIn('source_binding',generated[stem+'.Bindings'])
+                self.assertIn('ofTypedPrefix_eq',generated[stem+'.Bindings'])
+                for name in ['placement','nativeAddress','inputAddress','fullAddress']:
+                    text=generated[stem+'.'+name[0].upper()+name[1:]+'Bindings']
+                    for first in range(0,arity,32):self.assertIn(f'{name}Leaf{first} :',text)
+                    self.assertIn(f'complete_binding data.{name}.toList (List.ofFn {name}Source) {arity}',text)
+                for first in range(0,size,16):self.assertIn(f'ramLeaf{first} :',generated[stem+'.FieldsBindings'])
+                self.assertIn(f'ramFields.length = {size}',generated[stem+'.FieldsBindings'])
             for field in ['ramFields','initializationFields','executeFields','activeCoordinates','allCoordinates','sourcePlacement','inputBank','bank']:
                 self.assertIn('.'+field,generator.source(case))
-            _,source=interface.module('add-sub-'+('cached' if case.endswith('Cached') else 'uncached'),case)
+            from gkr_packed_query_frame import capture_name
+            _,source=interface.module(capture_name(case),case)
             self.assertIn('using_check Airbender.Compiler.MemoryFrameChecks.'+case+'.originalChecked',source)
             self.assertNotIn('maxHeartbeats',source)
             for phase in [1,2]:
                 with self.assertRaisesRegex(ValueError,'do not use proof shards'):
                     interface.module('add-sub-cached',case,phase=phase)
+
+    def test_changed_input_prefix_stops_generation(self):
+        import gkr_packed_memory_frame_bounded as bounded
+        with patch.object(bounded,'synthesize',return_value={'inputs':['changed address']}):
+            with self.assertRaisesRegex(ValueError,'memory input prefix changed'):
+                list(generator.modules('BlakeRoundCached'))
 
     def test_unadopted_interface_stays_the_same(self):
         name,source=interface.module('jump-branch-cached','JumpBranchCached')
