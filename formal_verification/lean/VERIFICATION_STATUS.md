@@ -66,7 +66,8 @@ That checkpoint has 17,854 explicit roots. The next three fixed-column
 families add 131 roots. That checkpoint has 17,985 explicit roots. The arithmetic pilot adds 38 roots.
 The numeric arithmetic rollout adds 434 roots.
 The next seven arithmetic families add 1,041 roots.
-The current explicit inventory has 19,498 roots.
+The packed normalization proof adds 105 roots.
+The current explicit inventory has 19,603 roots.
 
 The complete ordinary AND data has the same serialized values before and
 after this change. Its SHA-256 is
@@ -384,11 +385,49 @@ Its four complete source bindings pass source checks and selected replay.
 The group peaks at 1755.77 MiB. The complete Bigint checker still exceeds the
 memory cap. Keccak still needs qualification on the dense path.
 
-Those prototypes stay in
+The expression-erasure prototypes stay in
 `/tmp/airbender-review-round/checker-pilot-2026-10-31/dense-normalization-prototype/`.
-They do not supply adopted proof claims. The two open obligations are dense
-normalization within the resource cap and qualification of all four complete
-captures. No production equation or proof premise changes.
+They do not supply adopted native proof claims.
+
+#### Packed normalization proof
+
+A proved packed trace checker closes the numeric normalization resource
+obligation. It stores bounded terms in base-2^64 words. Each trace gives an
+insertion position and the next packed result. The checker verifies both
+neighbor keys, the position bound and the complete next result. The soundness
+proof derives sortedness from the preceding checked state. It proves exactly
+`NumericPolynomialChecks.normalize p input = expected`. It requires exact input
+and output encodings, monomial bounds and coefficient bounds. Each capture must
+prove those bindings in the kernel.
+
+The four shared proof modules and their control module pass source checks and
+selected replay. That group takes 16.54 s. It peaks at 745.08 MiB. All modules
+use default heartbeats. The discarded whole-normalization variants remain
+outside the source tree.
+
+Four numeric pilots cover the complete backward and forward residual banks.
+They use both cache modes. The following results use retained imports and the
+standard 32 MiB replay stack. They do not include native binding qualification.
+
+| Numeric pilot | Result build | Result replay |
+| --- | ---: | ---: |
+| Bigint cached | 2.81 s | 2.90 s |
+| Bigint uncached | 2.58 s | 2.71 s |
+| Keccak cached | 2.65 s | 2.80 s |
+| Keccak uncached | 2.40 s | 2.53 s |
+
+All 13 selected replay modules pass. No safe declaration uses a skipped
+dependency. All 105 focused axiom checks use only the three allowed axioms.
+Ten exact controls pass. The kernel rejects all ten changed certificates.
+The controls cover positions, inputs, outputs, trace coverage, lengths, word
+bounds and modulus bounds. Generation, boundary, program graph, link and
+workflow syntax checks pass. The final full validation did not run.
+
+The original four arithmetic captures still use their established proofs.
+Their native bindings and public corollaries need adoption and qualification.
+The numeric pilots stay outside the adopted source tree. They supply no new
+native circuit claim. The audit inventory retains all 19,498 established roots
+and adds 105 proof and control roots.
 
 Both cache modes remain required. Other fact families and unlimited heartbeat
 settings also need migration. The full frontend, environment audit and baseline
