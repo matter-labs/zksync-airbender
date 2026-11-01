@@ -2482,8 +2482,21 @@ for wiring_source in [
 for wiring_case, wiring_name in WIRING_CAPTURES.items():
     packed_arithmetic_roots += wiring_legacy_roots(wiring_case, wiring_name, wiring_payload(wiring_name))
 
+for rotation_source in [
+        "Airbender/Proofs/Tables/FiniteGridChecks.lean", "Tests/FiniteGridChecks.lean",
+        "Airbender/Proofs/UnifiedReduced/Tables/RotateReferenceBytes.lean",
+        "Airbender/Proofs/UnifiedReduced/Tables/ImportedRotate8.lean",
+        "Airbender/Proofs/UnifiedReduced/Tables/ImportedRotate16.lean"]:
+    rotation_text = (ROOT / rotation_source).read_text()
+    rotation_namespace = re.search(r"^namespace (\S+)", rotation_text, re.M)[1]
+    rotation_names = re.findall(r"^(?:def|theorem|numeric_data_binding) (\S+)", rotation_text, re.M)
+    packed_arithmetic_roots += [rotation_namespace + "." + name for name in rotation_names]
+
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
+rotation_import = 'import Tests.FiniteGridChecks'
+if rotation_import not in content.splitlines():
+    content = rotation_import + '\n' + content
 for wiring_import in ['import Tests.WiringChecks'] + [
         'import Airbender.Proofs.GKRCompiler.WiringNative.' + case for case in WIRING_CAPTURES]:
     if wiring_import not in content.splitlines():
@@ -2573,11 +2586,13 @@ for name in NAMES:
     if constraint_import not in content.splitlines():
         content = constraint_import + '\n' + content
 roots = []
+existing_roots = set(content.splitlines())
 for name in program_roots + setup_roots + decoder_roots + fixed_roots + constraint_roots + pc_roots + shift_roots + subword_roots + public_row_roots + word_roots + unified_roots + acceptance_roots + decode_roots + packed_table_roots + packed_setup_roots + packed_arithmetic_roots:
     root = f'#print axioms {name}'
-    if root not in content.splitlines():
+    if root not in existing_roots:
         roots.append(root)
-if '#print axioms Airbender.Compiler.GroupedLookupArguments' not in content.splitlines():
+        existing_roots.add(root)
+if '#print axioms Airbender.Compiler.GroupedLookupArguments' not in existing_roots:
     roots.append('#print axioms Airbender.Compiler.GroupedLookupArguments')
 for name in NAMES:
     namespace = 'UnifiedRowNative' if name.startswith('Unified') else 'PooledRowNative'
@@ -2585,8 +2600,9 @@ for name in NAMES:
                     'nativeRequests_source', 'nativeOperands_coverage', 'nativeSetupColumns_binding',
                     'source_member_with']:
         root = f'#print axioms Airbender.Compiler.{namespace}.{name}.{theorem}'
-        if root not in content.splitlines():
+        if root not in existing_roots:
             roots.append(root)
+            existing_roots.add(root)
 if roots:
     content += '\n' + '\n'.join(roots) + '\n'
 emit(path, content)
