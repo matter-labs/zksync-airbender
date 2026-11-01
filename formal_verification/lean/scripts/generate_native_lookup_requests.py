@@ -2518,6 +2518,23 @@ for column in PACKED_SHIFT_COLUMNS:
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
+from gkr_packed_rotate_boundary import modules as rotate_boundary_modules
+for span_source in ['Airbender/Proofs/GKRProtocol/PackedSetupAccess.lean',
+                    'Airbender/Proofs/GKRProtocol/PackedSetupSpans.lean', 'Tests/PackedSetupSpans.lean']:
+    span_text = (ROOT / span_source).read_text()
+    span_namespace = re.search(r'^namespace (\S+)', span_text, re.M)[1]
+    packed_arithmetic_roots += [span_namespace + '.' + name for name in
+        re.findall(r'^(?:def|theorem|structure) (\S+)', span_text, re.M)]
+for module, span_text in rotate_boundary_modules():
+    span_namespace = re.search(r'^namespace (\S+)', span_text, re.M)[1]
+    packed_arithmetic_roots += [span_namespace + '.' + name for name in
+        re.findall(r'^(?:def|theorem|numeric_data_binding) (\S+)', span_text, re.M)]
+packed_arithmetic_roots += ['Airbender.Compiler.UnifiedFixedSpans.RotateBoundary.' + name
+    for name in ['sourceCode'] + [f'target{index}' for index in range(12)]]
+for span_import in ['import Tests.PackedSetupSpans',
+                    'import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.RotateBoundary.Certificate']:
+    if span_import not in content.splitlines():
+        content = span_import + '\n' + content
 for shift_import in ['import Tests.PackedSetupNormalization'] + [
         f'import Airbender.Proofs.GKRProtocol.ShiftPrefixChecks.Column{column}.Projected'
         for column in PACKED_SHIFT_COLUMNS]:
