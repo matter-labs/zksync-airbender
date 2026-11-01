@@ -3,12 +3,11 @@
 import os
 import subprocess
 from export_gkr_translations import LEAN
-from gkr_unified_prefix import pilot
 
 
 def main():
     commands=[
-        ['gkr_unified_prefix.py','--column','1','--unit','8','--check'],
+        ['gkr_unified_prefix.py','--column','1','--check'],
         ['gkr_unified_equal_chunks.py','--check'],
         ['gkr_unified_special_chunks.py','--check'],
         ['gkr_unified_chunk_lengths.py','--check'],
@@ -19,11 +18,6 @@ def main():
         ['gkr_unified_rows.py','--rows','--check'],
         ['gkr_unified_boundary.py','--check'],
     ]
-    # Column 1 uses separately bounded certificates for its large periodic spans.
-    commands[0:1]=[['gkr_unified_prefix.py','--column','1','--unit',str(unit),'--check'] for unit in range(8,34)]
-    _,part0=pilot(1,0,8,assemble=False)
-    if (LEAN/'Airbender/Proofs/GKRProtocol/UnifiedPrefixParts/Column1/Part0.lean').read_text()!=part0:
-        raise ValueError('unified prefix initial span scaffold changed')
     commands.insert(1,['gkr_unified_prefix.py','--column','1','--assembly','--check'])
     for command in commands:
         subprocess.run(['python3','scripts/'+command[0],*command[1:]],cwd=LEAN,

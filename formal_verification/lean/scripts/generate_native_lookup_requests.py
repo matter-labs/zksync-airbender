@@ -2518,6 +2518,21 @@ for column in PACKED_SHIFT_COLUMNS:
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
+from gkr_packed_column1_spans import modules as fixed_column1_modules, capture_plan as fixed_column1_plan
+for module, fixed_text in fixed_column1_modules():
+    if module.endswith(('.Data', '.Projected')):
+        continue
+    fixed_namespace = re.search(r'^namespace (\S+)', fixed_text, re.M)[1]
+    packed_arithmetic_roots += [fixed_namespace + '.' + name for name in
+        re.findall(r'^(?:def|theorem|numeric_data_binding) (\S+)', fixed_text, re.M)]
+fixed_artifact, fixed_groups, fixed_selected = fixed_column1_plan()
+for index in fixed_selected:
+    packed_arithmetic_roots.append(f'Airbender.Compiler.UnifiedFixedSpans.Column1.source{index}')
+    packed_arithmetic_roots += [f'Airbender.Compiler.UnifiedFixedSpans.Column1.target{index}_{part}'
+        for part in range(len(fixed_groups[index]))]
+fixed_import = 'import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column1.Projected'
+if fixed_import not in content.splitlines():
+    content = fixed_import + '\n' + content
 from gkr_packed_special_spans import COLUMNS as FIXED_SPECIAL_COLUMNS, modules as fixed_special_modules, capture_plan as fixed_special_plan
 for column in FIXED_SPECIAL_COLUMNS:
     for module, fixed_text in fixed_special_modules(column):

@@ -939,6 +939,35 @@ under the evidence directory.
 Other table metadata and fixed setup families still need migration.
 The final full validation remains pending for implementation review.
 
+### Complete fixed unified column-one spans
+
+One closed kernel result covers the 30 remaining fixed source groups in
+unified column 1. The separate rotation-boundary capture covers source 14.
+Sources 12, 13 and 33 touch program ROM or the suffix. Their proofs remain.
+The rollout retires 23 fixed proof shards. The native prefix assembly imports
+the complete capture and the four retained unit modules.
+
+All 497 original declarations remain. A kernel control accepts all 256 old
+theorem types. All 241 imported data values are identical.
+All six selected modules pass source checks and kernel replay. They include
+the complete native column-one prefix consumer. Each replay uses the standard
+32 MiB stack. No safe dependency is skipped. These checks trust imported objects.
+
+The source and replay batch takes 70.70 s and peaks at 1377.01 MiB.
+The closed checker builds in 1.88 s and replays in 1.91 s.
+The final qualification takes 43.42 s and peaks at 822.98 MiB.
+Both guards clean their owned workers.
+All 654 focused axiom checks use only the three allowed axioms.
+Ten exact span and binding controls pass. The kernel rejects all ten mutations.
+Three generator controls check complete scope, scope drift and untracked files.
+Capture, interface, assembly and inventory freshness pass.
+The inventory has 66,664 roots. It retains all 66,507 established roots.
+The 28 original module objects stay in `column1-fixed-original-oleans`
+under the evidence directory.
+
+Other table metadata and fixed setup families still need migration.
+The final full validation remains pending for implementation review.
+
 ## Rebase checks
 
 The branch now uses base `c1a662222cafcd96db4383dce737edb79fa62b09` from
