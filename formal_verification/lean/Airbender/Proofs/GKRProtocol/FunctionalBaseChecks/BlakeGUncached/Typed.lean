@@ -1,0 +1,16 @@
+import Airbender.Proofs.GKRProtocol.FunctionalNative.BlakeGUncachedFoundation
+import Airbender.Proofs.GKRProtocol.NumericFunctionalBaseChecks
+
+namespace Airbender.Compiler.FunctionalBaseChecks.BlakeGUncached
+open Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+noncomputable def originalEntries := [
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.BlakeGUncached.native.baseRecipe0 Airbender.Compiler.FunctionalNative.BlakeGUncached.native.baseOutput0 Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.bank Airbender.Compiler.FunctionalNative.BlakeGUncached.native.isBase Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.gate0.inputResidual,
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.BlakeGUncached.native.baseRecipe1 Airbender.Compiler.FunctionalNative.BlakeGUncached.native.baseOutput1 Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.bank Airbender.Compiler.FunctionalNative.BlakeGUncached.native.isBase Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.gate33.inputResidual,
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.BlakeGUncached.native.baseRecipe2 Airbender.Compiler.FunctionalNative.BlakeGUncached.native.baseOutput2 Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.bank Airbender.Compiler.FunctionalNative.BlakeGUncached.native.isBase Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.gate34.inputResidual,
+  NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.BlakeGUncached.native.baseRecipe3 Airbender.Compiler.FunctionalNative.BlakeGUncached.native.baseOutput3 Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.bank Airbender.Compiler.FunctionalNative.BlakeGUncached.native.isBase Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.gate35.inputResidual]
+
+end Airbender.Compiler.FunctionalBaseChecks.BlakeGUncached

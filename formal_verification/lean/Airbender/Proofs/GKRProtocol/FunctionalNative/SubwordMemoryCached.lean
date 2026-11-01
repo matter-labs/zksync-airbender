@@ -1,6 +1,6 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.SubwordMemoryCachedFoundation
 import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.SubwordMemoryCached.Corollaries
-import Airbender.Proofs.GKRProtocol.FunctionalNative.SubwordMemoryCachedBase0
+import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.SubwordMemoryCached.Corollaries
 import Airbender.Import.GKRProtocol.FunctionalFinalize
 
 namespace Airbender.Compiler.FunctionalNative.SubwordMemoryCached

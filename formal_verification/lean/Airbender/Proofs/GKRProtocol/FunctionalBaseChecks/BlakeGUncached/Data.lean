@@ -1,0 +1,18 @@
+import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.BlakeGUncached.Typed
+import Airbender.Import.GKRProtocol.NumericFunctionalBaseImport
+
+namespace Airbender.Compiler.FunctionalBaseChecks.BlakeGUncached
+open Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+numeric_functional_base_capture data0 := [
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.BlakeGUncached.native.baseRecipe0 Airbender.Compiler.FunctionalNative.BlakeGUncached.native.baseOutput0 Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.bank Airbender.Compiler.FunctionalNative.BlakeGUncached.native.isBase Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.gate0.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.BlakeGUncached.native.baseRecipe1 Airbender.Compiler.FunctionalNative.BlakeGUncached.native.baseOutput1 Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.bank Airbender.Compiler.FunctionalNative.BlakeGUncached.native.isBase Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.gate33.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.BlakeGUncached.native.baseRecipe2 Airbender.Compiler.FunctionalNative.BlakeGUncached.native.baseOutput2 Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.bank Airbender.Compiler.FunctionalNative.BlakeGUncached.native.isBase Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.gate34.inputResidual),
+  NumericFunctionalBaseChecks.encode (NumericFunctionalBaseChecks.ofBase Airbender.Compiler.FunctionalNative.BlakeGUncached.native.baseRecipe3 Airbender.Compiler.FunctionalNative.BlakeGUncached.native.baseOutput3 Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.bank Airbender.Compiler.FunctionalNative.BlakeGUncached.native.isBase Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.gate35.inputResidual)]
+
+noncomputable def data : List NumericFunctionalBaseChecks.Data := data0
+
+end Airbender.Compiler.FunctionalBaseChecks.BlakeGUncached

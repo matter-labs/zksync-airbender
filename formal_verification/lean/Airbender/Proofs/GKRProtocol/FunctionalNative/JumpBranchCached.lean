@@ -1,6 +1,6 @@
 import Airbender.Proofs.GKRProtocol.FunctionalNative.JumpBranchCachedFoundation
 import Airbender.Proofs.GKRProtocol.FunctionalStepChecks.JumpBranchCached.Corollaries
-import Airbender.Proofs.GKRProtocol.FunctionalNative.JumpBranchCachedBase0
+import Airbender.Proofs.GKRProtocol.FunctionalBaseChecks.JumpBranchCached.Corollaries
 import Airbender.Import.GKRProtocol.FunctionalFinalize
 
 namespace Airbender.Compiler.FunctionalNative.JumpBranchCached
