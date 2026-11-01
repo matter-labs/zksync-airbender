@@ -2518,6 +2518,25 @@ for column in PACKED_SHIFT_COLUMNS:
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
+for length_source in ['Airbender/Proofs/GKRProtocol/PackedSetupLengths.lean', 'Tests/PackedSetupLengths.lean']:
+    length_text = (ROOT / length_source).read_text()
+    length_namespace = re.search(r'^namespace (\S+)', length_text, re.M)[1]
+    packed_arithmetic_roots += [length_namespace + '.' + name for name in
+        re.findall(r'^(?:def|theorem|structure) (\S+)', length_text, re.M)]
+from gkr_packed_region_lengths import COLUMNS as REGION_LENGTH_COLUMNS, modules as region_length_modules, metadata_plan as region_length_plan
+for column in REGION_LENGTH_COLUMNS:
+    for module, length_text in region_length_modules(column):
+        length_namespace = re.search(r'^namespace (\S+)', length_text, re.M)[1]
+        packed_arithmetic_roots += [length_namespace + '.' + name for name in
+            re.findall(r'^(?:noncomputable )?(?:def|theorem|numeric_data_binding) (\S+)', length_text, re.M)]
+    packed_arithmetic_roots += [f'Airbender.Compiler.UnifiedRegionLengths.Column{column}.extra{index}'
+        for index, entry in enumerate(region_length_plan(column)) if entry['kind'] == 'extra']
+    length_import = f'import Airbender.Proofs.GKRProtocol.UnifiedRegionLengths.Column{column}'
+    if length_import not in content.splitlines():
+        content = length_import + '\n' + content
+length_import = 'import Tests.PackedSetupLengths'
+if length_import not in content.splitlines():
+    content = length_import + '\n' + content
 from gkr_packed_subword_prefix import COLUMNS as SUBWORD_FIXED_COLUMNS, modules as subword_fixed_modules, capture_plan as subword_fixed_plan
 for column in SUBWORD_FIXED_COLUMNS:
     capture_module = f'Airbender.Proofs.GKRProtocol.SubwordFixedChecks.Column{column}'
