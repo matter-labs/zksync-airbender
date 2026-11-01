@@ -1,3 +1,4 @@
+import Airbender.Proofs.GKRProtocol.SubwordFixedChecks.Column2
 import Airbender.Proofs.GKRProtocol.SubwordPrefixParts.Column2.Part0
 import Airbender.Proofs.GKRProtocol.SubwordPrefixParts.Column2.Part1
 import Airbender.Import.GKRProtocol.BlockCoverageImport

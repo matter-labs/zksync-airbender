@@ -12,7 +12,7 @@ PREFIX=13238273
 PER_MODULE=8
 
 
-def modules(column):
+def legacy_modules(column):
     artifact=json.loads((LEAN/'artifacts/setup/subword-memory.json').read_text())
     stop,chunks=plans(artifact,column,prefix=PREFIX,chunk_size=1)
     ns=f'Airbender.Compiler.SubwordPrefixNative.Column{column}'
@@ -75,12 +75,21 @@ def modules(column):
     text+='end '+ns+'\n';targets.append((name,text));return targets
 
 
+def modules(column):
+    from gkr_packed_subword_prefix import COLUMNS, modules as fixed_modules
+    return list(fixed_modules(column)) if column in COLUMNS else legacy_modules(column)
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--column',type=int,choices=range(9),action='append')
     for flag in ['write','check','build']:parser.add_argument('--'+flag,action='store_true')
     args=parser.parse_args()
     for col in args.column or range(9):
-        for name,text in modules(col):
+        generated=modules(col)
+        if args.write:
+            from gkr_packed_rotate_boundary import preflight
+            preflight(generated)
+        for name,text in generated:
             path=LEAN/(name.replace('.','/')+'.lean')
             if args.check and (not path.exists() or path.read_text()!=text):raise ValueError('subword prefix scaffold changed: '+name)
             if args.write and (not path.exists() or path.read_text()!=text):path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text)

@@ -1042,6 +1042,40 @@ This closes the fixed Subword numeric encoding obligation.
 The complete fixed Subword capture rollout remains open.
 The final full validation remains pending for implementation review.
 
+### Complete fixed Subword prefix captures
+
+Four complete checks cover all 28 wholly fixed Subword source groups.
+Columns 0, 1, 2 and 8 cover 5, 12, 6 and 5 groups.
+Each column has one closed kernel result. It proves exact normalization and
+the original row counts. The old fixed chunk facts are corollaries.
+The part files retain all original data and all excluded program proofs.
+The native assemblies import the complete fixed checks.
+The scope excludes ROM halfword and byte tables. It also excludes every group
+that crosses into either program region. Columns 3 through 7 stay unchanged.
+
+All 877 original declarations remain. A kernel control accepts all 534 old
+theorem types. All 343 imported data values are identical.
+All 14 selected modules pass source checks and kernel replay. They include
+the four native prefix assemblies. Each replay uses the standard 32 MiB stack.
+No safe dependency is skipped. These checks trust imported objects.
+The source and replay batch takes 86.25 s and peaks at 1402.66 MiB.
+The final qualification takes 23.60 s and peaks at 825.35 MiB.
+It also rebuilds the data-only column-one part with the default heartbeat limit.
+The four complete captures use the default heartbeat limit.
+Every guard cleans its owned workers.
+
+All 1,033 focused axiom checks use only the three allowed axioms.
+Four exact controls pass. The kernel rejects all four mutations.
+Three generator controls check complete scope, retained program proofs and
+untracked files. Capture and inventory freshness pass.
+The source import graph has no cycle. Static checks and workflow syntax pass.
+The inventory has 66,847 roots. It retains all 66,691 established roots.
+The ten original module objects stay in `subword-fixed-original-oleans`
+under the evidence directory.
+
+Other fixed setup length and table metadata families still need migration.
+The final full validation remains pending for implementation review.
+
 ## Rebase checks
 
 The branch now uses base `c1a662222cafcd96db4383dce737edb79fa62b09` from

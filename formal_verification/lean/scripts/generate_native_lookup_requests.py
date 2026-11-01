@@ -2518,6 +2518,22 @@ for column in PACKED_SHIFT_COLUMNS:
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
+from gkr_packed_subword_prefix import COLUMNS as SUBWORD_FIXED_COLUMNS, modules as subword_fixed_modules, capture_plan as subword_fixed_plan
+for column in SUBWORD_FIXED_COLUMNS:
+    capture_module = f'Airbender.Proofs.GKRProtocol.SubwordFixedChecks.Column{column}'
+    capture_text = dict(subword_fixed_modules(column))[capture_module]
+    capture_namespace = f'Airbender.Compiler.SubwordFixedChecks.Column{column}'
+    capture_text = capture_text[:capture_text.index('end '+capture_namespace)]
+    packed_arithmetic_roots += [capture_namespace + '.' + name for name in
+        re.findall(r'^(?:def|theorem|numeric_data_binding) (\S+)', capture_text, re.M)]
+    _, subword_chunks, subword_selected = subword_fixed_plan(column)
+    for index in subword_selected:
+        packed_arithmetic_roots.append(capture_namespace + f'.source{index}')
+        packed_arithmetic_roots += [capture_namespace + f'.target{index}Region{kind}'
+            for kind, _, _ in subword_chunks[index][-1]]
+    capture_import = 'import '+capture_module
+    if capture_import not in content.splitlines():
+        content = capture_import + '\n' + content
 natural_text = (ROOT / 'Tests/PackedSubwordCodes.lean').read_text()
 packed_arithmetic_roots += ['Tests.PackedSubwordCodes.' + name for name in
     re.findall(r'^(?:def|theorem|numeric_data_binding) (\S+)', natural_text, re.M)]

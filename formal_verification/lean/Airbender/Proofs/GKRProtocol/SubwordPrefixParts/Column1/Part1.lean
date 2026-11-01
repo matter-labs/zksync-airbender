@@ -13,37 +13,17 @@ column_blocks_part original8 from Data.GKRSetup.SubwordMemory.setupColumn1 start
 column_blocks_part target8Region4 from (Verification.loadByteData.columns[(1 : Nat)]) start 1 stop 2
 noncomputable def target8 : List Setup.Block := target8Region4
 
-theorem chunkChecked8 : normalizeSetupBlocks original8 = normalizeSetupBlocks target8 := by
-  exact congrArg normalizeSetupBlocks (show original8 = target8 from rfl)
-
-theorem chunkLength8 : (original8.map Setup.Block.length).sum = 65536 := by decide +kernel
-
 column_blocks_part original9 from Data.GKRSetup.SubwordMemory.setupColumn1 start 9 stop 10
 column_blocks_part target9Region4 from (Verification.loadByteData.columns[(1 : Nat)]) start 2 stop 3
 noncomputable def target9 : List Setup.Block := target9Region4
-
-theorem chunkChecked9 : normalizeSetupBlocks original9 = normalizeSetupBlocks target9 := by
-  exact congrArg normalizeSetupBlocks (show original9 = target9 from rfl)
-
-theorem chunkLength9 : (original9.map Setup.Block.length).sum = 65536 := by decide +kernel
 
 column_blocks_part original10 from Data.GKRSetup.SubwordMemory.setupColumn1 start 10 stop 11
 column_blocks_part target10Region4 from (Verification.loadByteData.columns[(1 : Nat)]) start 3 stop 4
 noncomputable def target10 : List Setup.Block := target10Region4
 
-theorem chunkChecked10 : normalizeSetupBlocks original10 = normalizeSetupBlocks target10 := by
-  exact congrArg normalizeSetupBlocks (show original10 = target10 from rfl)
-
-theorem chunkLength10 : (original10.map Setup.Block.length).sum = 32768 := by decide +kernel
-
 column_blocks_part original11 from Data.GKRSetup.SubwordMemory.setupColumn1 start 11 stop 12
 column_blocks_part target11Region4 from (Verification.loadByteData.columns[(1 : Nat)]) start 4 stop 5
 noncomputable def target11 : List Setup.Block := target11Region4
-
-theorem chunkChecked11 : normalizeSetupBlocks original11 = normalizeSetupBlocks target11 := by
-  exact congrArg normalizeSetupBlocks (show original11 = target11 from rfl)
-
-theorem chunkLength11 : (original11.map Setup.Block.length).sum = 32768 := by decide +kernel
 
 column_blocks_part original12 from Data.GKRSetup.SubwordMemory.setupColumn1 start 12 stop 13
 column_blocks_part target12Region5 from (Verification.subwordROMHalfData.columns[(1 : Nat)]) start 0 stop 1
