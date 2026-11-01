@@ -1,3 +1,4 @@
+import Airbender.Proofs.Tables.ShiftMetadata.Certificate
 import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column1.Projected
 import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column7.Projected
 import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column6.Projected
@@ -68312,3 +68313,18 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.UnifiedFixedSpans.Column1.source32
 #print axioms Airbender.Compiler.UnifiedFixedSpans.Column1.target32_0
 #print axioms Airbender.Compiler.UnifiedFixedSpans.Column1.target32_1
+
+#print axioms Airbender.Verification.ShiftMetadata.offsetsValue
+#print axioms Airbender.Verification.ShiftMetadata.checked
+#print axioms Airbender.Verification.ShiftMetadata.offsets
+
+#print axioms Airbender.Verification.ShiftMetadata.shiftLength0
+#print axioms Airbender.Verification.ShiftMetadata.shiftLength1
+#print axioms Airbender.Verification.ShiftMetadata.shiftLength2
+#print axioms Airbender.Verification.ShiftMetadata.shiftLength3
+#print axioms Airbender.Verification.ShiftMetadata.shiftLength4
+#print axioms Airbender.Verification.ShiftMetadata.shiftLength5
+#print axioms Airbender.Verification.ShiftMetadata.shiftLength6
+#print axioms Airbender.Verification.ShiftMetadata.shiftLength7
+#print axioms Airbender.Verification.ShiftMetadata.shiftLength8
+#print axioms Airbender.Verification.ShiftMetadata.shiftLength9
