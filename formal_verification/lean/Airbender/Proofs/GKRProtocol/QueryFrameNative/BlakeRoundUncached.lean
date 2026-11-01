@@ -1,31 +1,12 @@
 import Airbender.Import.GKRProtocol.QueryFrameImport
 import Airbender.Proofs.GKRProtocol.CounterFrameNative.BlakeRoundUncached
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedInputs
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart0
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart1
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart2
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart3
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart4
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart5
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart6
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart7
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart8
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart9
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart10
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart11
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart12
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart13
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart14
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart15
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart16
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeRoundUncachedPart17
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.BlakeRoundUncached.Certificate
 
 namespace Airbender.Compiler.QueryFrameNative.BlakeRoundUncached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_query_frame native certificate "artifacts/compiler/lookup/blake-round-uncached.json"
   queries (Airbender.Compiler.LookupSourceNative.BlakeRoundUncached.native.genericQueries)
@@ -35,6 +16,7 @@ import_query_frame native certificate "artifacts/compiler/lookup/blake-round-unc
   source_model Airbender.Compiler.SourceContractNative.BlakeRoundUncached.native
   history_model Airbender.Compiler.HistoryErasureNative.BlakeRoundUncached.native
   helper_model Airbender.Compiler.HelperValidityNative.BlakeRoundUncached.native
-  counter_model Airbender.Compiler.CounterFrameNative.BlakeRoundUncached.native inputs 763 phase 2 start 0 stop 1152
+  counter_model Airbender.Compiler.CounterFrameNative.BlakeRoundUncached.native inputs 763 phase 3 start 0 stop 1152
+  using_check Airbender.Compiler.QueryFrameChecks.BlakeRoundUncached.originalChecked
 
 end Airbender.Compiler.QueryFrameNative.BlakeRoundUncached

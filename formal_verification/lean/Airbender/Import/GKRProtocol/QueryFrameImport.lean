@@ -18,6 +18,12 @@ theorem all_flatten_true (blocks : List (List α)) (predicate : α → Bool)
   obtain ⟨block, included, inside⟩ := List.mem_flatten.mp member
   exact List.all_eq_true.mp (List.all_eq_true.mp checked block included) item inside
 
+theorem all_slice_true (items : List α) (predicate : α → Bool) (first count : Nat)
+    (checked : items.all predicate = true) : ((items.drop first).take count).all predicate = true := by
+  apply List.all_eq_true.mpr
+  intro item member
+  exact List.all_eq_true.mp checked item (List.mem_of_mem_drop (List.mem_of_mem_take member))
+
 private def emitChecked (command : Syntax) : CommandElabM Unit := do
   elabCommand command
   if (← get).messages.hasErrors then throwAbortCommand
@@ -63,14 +69,18 @@ elab_rules : command
     let predicate ← `(fun field : Source.EncodedField =>
       erasureUntouched $coordinates (field.polynomial $placement) &&
         field.transportCheck $placement $oldPlacement $bank $oldBank)
+    let length := fieldName name "fieldsLength"
+    if phaseIndex == 0 then
+      emitChecked (← `(theorem $length : ($fields).length = $(quote size) := by decide +kernel))
     let checked := fieldName name "checked"
     if phaseIndex == 1 || phaseIndex == 3 then
       let mut proofs := #[]
       for index in [firstIndex:finalIndex] do
         let itemChecked := fieldName name s!"checked{index}"
         if let some complete := wholeCheck then
-          emitChecked (← `(theorem $itemChecked : ($predicate) (($fields).get ⟨$(quote index), by decide⟩) = true :=
-            List.all_eq_true.mp $complete _ (List.get_mem $fields ⟨$(quote index), by decide⟩)))
+          let bound ← `(by rw [$length:ident]; decide)
+          emitChecked (← `(theorem $itemChecked : ($predicate) (($fields).get ⟨$(quote index), $bound⟩) = true :=
+            List.all_eq_true.mp $complete _ (List.get_mem $fields ⟨$(quote index), $bound⟩)))
         else
           emitChecked (← `(theorem $itemChecked : ($predicate) (($fields).get ⟨$(quote index), by decide⟩) = true := by decide +kernel))
         proofs := proofs.push (← `($itemChecked))
@@ -79,14 +89,32 @@ elab_rules : command
         let blockChecked := fieldName name s!"blockChecked{firstIndex}"
         emitChecked (← `(noncomputable def $block : List Source.EncodedField :=
           (($fields).drop $(quote firstIndex)).take $(quote (finalIndex - firstIndex))))
-        emitChecked (← `(theorem $blockChecked : ($block).all $predicate = true :=
-          BoolChecks.all_true (predicate := $predicate) (items := $block) $(← checksSyntax proofs)))
+        if let some complete := wholeCheck then
+          emitChecked (← `(theorem $blockChecked : ($block).all $predicate = true :=
+            all_slice_true $fields $predicate $(quote firstIndex) $(quote (finalIndex - firstIndex)) $complete))
+        else
+          emitChecked (← `(theorem $blockChecked : ($block).all $predicate = true :=
+            BoolChecks.all_true (predicate := $predicate) (items := $block) $(← checksSyntax proofs)))
       else
         if let some complete := wholeCheck then
           emitChecked (← `(theorem $checked : ($fields).all $predicate = true := $complete))
         else
           emitChecked (← `(theorem $checked : ($fields).all $predicate = true :=
             BoolChecks.all_true (predicate := $predicate) (items := $fields) $(← checksSyntax proofs)))
+    if phaseIndex == 3 && size > 256 then
+      if let some complete := wholeCheck then
+        let mut blocks : Array (TSyntax `term) := #[]
+        for first in (List.range ((size + 63) / 64)).map (· * 64) do
+          let block := fieldName name s!"block{first}"
+          let blockChecked := fieldName name s!"blockChecked{first}"
+          let count := min 64 (size - first)
+          emitChecked (← `(noncomputable def $block : List Source.EncodedField :=
+            (($fields).drop $(quote first)).take $(quote count)))
+          emitChecked (← `(theorem $blockChecked : ($block).all $predicate = true :=
+            all_slice_true $fields $predicate $(quote first) $(quote count) $complete))
+          blocks := blocks.push (← `($block))
+        let flattened := fieldName name "blocksFlatten"
+        emitChecked (← `(theorem $flattened : ([$blocks,*] : List (List Source.EncodedField)).flatten = $fields := by rfl))
     if phaseIndex == 0 || phaseIndex == 1 then return
     if phaseIndex == 2 then
       let mut blocks : Array (TSyntax `term) := #[]
@@ -99,10 +127,13 @@ elab_rules : command
       let flattened := fieldName name "blocksFlatten"
       emitChecked (← `(theorem $flattened : ([$blocks,*] : List (List Source.EncodedField)).flatten = $fields := by rfl))
       let blockPredicate ← `(fun block : List Source.EncodedField => block.all $predicate)
-      emitChecked (← `(theorem $checked : ($fields).all $predicate = true := by
-        rw [← $flattened:ident]
-        exact all_flatten_true [$blocks,*] $predicate
-          (BoolChecks.all_true (predicate := $blockPredicate) (items := [$blocks,*]) $(← checksSyntax proofs))))
+      if let some complete := wholeCheck then
+        emitChecked (← `(theorem $checked : ($fields).all $predicate = true := $complete))
+      else
+        emitChecked (← `(theorem $checked : ($fields).all $predicate = true := by
+          rw [← $flattened:ident]
+          exact all_flatten_true [$blocks,*] $predicate
+            (BoolChecks.all_true (predicate := $blockPredicate) (items := [$blocks,*]) $(← checksSyntax proofs))))
     let preserved := fieldName name "fields_preserved"
     emitChecked (← `(theorem $preserved
       (sourceValue : Fin $(quote arityNumber.getNat) → Source.BaseField) (counts : Fin _ → Source.BaseField)
