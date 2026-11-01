@@ -13,7 +13,6 @@ open Setup Setup.Proofs
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 131072
-set_option maxHeartbeats 0
 
 theorem shift_coverage (lane : Fin 10) :
     ((byteShiftData.columns[lane]).blocks.toList.map Block.length).sum = 262144 := by

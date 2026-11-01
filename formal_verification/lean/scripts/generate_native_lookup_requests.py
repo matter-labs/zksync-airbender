@@ -2386,6 +2386,12 @@ for word_source in [
     'Airbender/Proofs/Tables/ShiftPackedRowBinding1.lean',
     'Airbender/Proofs/Tables/ShiftPackedRowBinding2.lean',
     'Airbender/Proofs/Tables/ShiftPackedRowBinding3.lean',
+    'Airbender/Proofs/Tables/ShiftOrPackedCapture.lean',
+    'Airbender/Proofs/Tables/ShiftOrPackedCertificate.lean',
+    'Airbender/Proofs/Tables/ShiftXorPackedCapture.lean',
+    'Airbender/Proofs/Tables/ShiftXorPackedCertificate.lean',
+    'Airbender/Proofs/Blake2G/Xor8PackedCapture.lean',
+    'Airbender/Proofs/Blake2G/Xor8PackedCertificate.lean',
     'Tests/PackedWordColumn.lean',
     'Tests/ShiftPackedReference.lean',
     'Airbender/Proofs/Tables/ShiftPackedEncoding/Column0Data.lean',
@@ -2414,6 +2420,18 @@ packed_arithmetic_roots += ["Airbender.Keccak.Proofs.ChiPackedCapture.column"]
 for chi_part in range(32):
     packed_arithmetic_roots += ["Airbender.Keccak.Proofs.ChiPackedCapture.column" + stem + str(chi_part)
                                 for stem in ["Blocks", "Start", "Size"]]
+
+packed_arithmetic_roots.append("Airbender.Blake2G.Proofs.Xor8PackedCapture.column")
+for blake_byte_part in range(32):
+    packed_arithmetic_roots += ["Airbender.Blake2G.Proofs.Xor8PackedCapture.column" + stem + str(blake_byte_part)
+                                for stem in ["Blocks", "Start", "Size"]]
+
+for bitwise_name in ["Or", "Xor"]:
+    bitwise_prefix = "Airbender.Verification.ShiftCertificate." + bitwise_name + "PackedCapture.column"
+    packed_arithmetic_roots.append(bitwise_prefix)
+    for bitwise_part in range(32):
+        packed_arithmetic_roots += [bitwise_prefix + stem + str(bitwise_part)
+                                    for stem in ["Blocks", "Start", "Size"]]
 
 for shift_lane in range(4):
     shift_prefix = f"Airbender.Verification.ShiftPackedEncoding.Lane{shift_lane}.sourceColumn"
