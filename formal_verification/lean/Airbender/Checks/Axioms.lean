@@ -1,3 +1,4 @@
+import Tests.PackedSubwordCodes
 import Airbender.Proofs.Tables.ShiftMetadata.Certificate
 import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column1.Projected
 import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column7.Projected
@@ -68328,3 +68329,18 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Verification.ShiftMetadata.shiftLength7
 #print axioms Airbender.Verification.ShiftMetadata.shiftLength8
 #print axioms Airbender.Verification.ShiftMetadata.shiftLength9
+
+#print axioms Tests.PackedSubwordCodes.binding0
+#print axioms Tests.PackedSubwordCodes.binding1
+#print axioms Tests.PackedSubwordCodes.binding2
+#print axioms Tests.PackedSubwordCodes.binding3
+#print axioms Tests.PackedSubwordCodes.arithmetic_recipe
+#print axioms Tests.PackedSubwordCodes.wrapped_recipe
+#print axioms Tests.PackedSubwordCodes.constant_recipe
+#print axioms Tests.PackedSubwordCodes.lookup_recipe
+#print axioms Tests.PackedSubwordCodes.requests
+#print axioms Tests.PackedSubwordCodes.checked
+#print axioms Tests.PackedSubwordCodes.codes0
+#print axioms Tests.PackedSubwordCodes.codes1
+#print axioms Tests.PackedSubwordCodes.codes2
+#print axioms Tests.PackedSubwordCodes.codes3

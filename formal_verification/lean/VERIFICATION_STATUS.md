@@ -1015,6 +1015,33 @@ The inventory stays at 66,677 roots. Every established root remains.
 Other table metadata and fixed setup families still need migration.
 The final full validation remains pending for implementation review.
 
+### Fixed Subword numeric source encoding
+
+The numeric setup importer now handles fixed arrays with values above 255.
+It uses the existing constant, arithmetic-run and append constructors.
+The fallback applies where the old byte literal encoder rejected the input.
+The old byte path keeps its output. Explicit packed-byte mode still rejects
+values above 255. The code datatype and its soundness theorems stay unchanged.
+
+Four exact kernel bindings cover actual fixed Subword source blocks. They
+cover an arithmetic progression, wrapped values, a constant and a repeated
+lookup. A closed normalization checker covers all four test requests.
+The controls check that all four blocks stay before the program ROM regions.
+The kernel rejects all four altered bindings.
+A rebuilt rotation capture retains all 15 original encoded data values.
+All 29 focused axiom checks use only the three allowed axioms.
+All three selected modules pass source checks and kernel replay. Each replay
+uses the standard 32 MiB stack. No safe dependency is skipped.
+These checks trust imported objects.
+The source and replay batch takes 20.91 s and peaks at 1030.58 MiB.
+The final qualification takes 19.10 s and peaks at 821.11 MiB.
+Both guards clean their owned workers. Inventory freshness passes.
+The inventory has 66,691 roots. It retains all 66,677 established roots.
+
+This closes the fixed Subword numeric encoding obligation.
+The complete fixed Subword capture rollout remains open.
+The final full validation remains pending for implementation review.
+
 ## Rebase checks
 
 The branch now uses base `c1a662222cafcd96db4383dce737edb79fa62b09` from

@@ -2518,6 +2518,13 @@ for column in PACKED_SHIFT_COLUMNS:
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
+natural_text = (ROOT / 'Tests/PackedSubwordCodes.lean').read_text()
+packed_arithmetic_roots += ['Tests.PackedSubwordCodes.' + name for name in
+    re.findall(r'^(?:def|theorem|numeric_data_binding) (\S+)', natural_text, re.M)]
+packed_arithmetic_roots += [f'Tests.PackedSubwordCodes.codes{index}' for index in range(4)]
+natural_import = 'import Tests.PackedSubwordCodes'
+if natural_import not in content.splitlines():
+    content = natural_import + '\n' + content
 from generate_shift_metadata import modules as shift_metadata_modules
 for module, metadata_text in shift_metadata_modules():
     if module.endswith(('ShiftColumnCoverage', 'ImportedBinaryRows')):
