@@ -235,8 +235,15 @@ def main():
     generated=[pilot_assembly(args.column)] if args.assembly else [foundation(args.column)]
     for unit in ([] if args.assembly else args.unit if args.unit is not None else range(8,stop)):
         if not 0<=unit<stop:raise ValueError('source block unit outside actual prefix')
+        if unit == 14:
+            from gkr_packed_rotate_boundary import modules as packed_rotate_boundary
+            generated.extend(packed_rotate_boundary())
+            continue
         _,text=pilot(args.column,unit,unit+1,assemble=False)
         generated.append((f'Airbender.Proofs.GKRProtocol.UnifiedPrefixParts.Column{args.column}.Unit{unit}',text))
+    if args.write:
+        from gkr_packed_rotate_boundary import preflight as fixed_span_preflight
+        fixed_span_preflight(generated)
     for name,text in generated:
         path=LEAN/(name.replace('.','/')+'.lean')
         if args.check and (not path.exists() or path.read_text()!=text):raise ValueError('unified prefix span scaffold changed: '+name)

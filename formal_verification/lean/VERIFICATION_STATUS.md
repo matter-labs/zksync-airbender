@@ -839,6 +839,41 @@ still need migration. No production circuit or Rust file changed.
 Full frontend validation, environment audit, baseline refresh, full transitive
 replay, cold full measurements and Linux qualification remain pending for review.
 
+### Complete fixed rotation boundary
+
+The unified column 1 rotation boundary now uses one complete kernel result.
+It covers 262,144 source rows and all twelve target blocks.
+The scope includes only fixed table regions 47 through 51.
+It excludes program ROM. A generator control rejects a program-region change.
+
+The numeric getter has a proved binding to every original array recipe.
+The span checker derives the original length and `blockTargetsFollow` facts.
+It uses numeric getters for finite boundaries. It proves affine and aligned
+periodic spans with their original equations.
+The public `follows14` and `length14` statements remain unchanged.
+All 28 original declarations remain. A kernel control accepts both old theorem
+types. All 26 imported values are identical.
+
+All nine selected modules pass source checks and kernel replay.
+They include the direct column 1 prefix consumer. Every replay uses the
+standard 32 MiB stack. No safe dependency is skipped.
+The five-module capture group takes 27.22 s and peaks at 919.69 MiB.
+The closed checker takes 2.10 s to build and 2.07 s to replay.
+The consumer group takes 34.13 s and peaks at 1379.26 MiB.
+The final qualification takes 26.61 s and peaks at 821.74 MiB.
+These checks trust imported objects. All guards clean their owned workers.
+
+All 71 focused axiom checks use only the three allowed axioms.
+Six exact controls pass. The kernel rejects all six mutations.
+The fixtures cover all nine array recipes, signed strides, missing rows
+and source bounds. Three generator controls pass.
+Capture, interface and inventory freshness pass. CI requires these controls.
+The inventory has 59,827 roots. It retains all 59,782 established roots.
+The old unit has no heartbeat override. Its new data importer has a stated limit.
+
+Other fixed setup spans and table metadata still need migration.
+The final full validation remains pending for implementation review.
+
 ## Rebase checks
 
 The branch now uses base `c1a662222cafcd96db4383dce737edb79fa62b09` from
