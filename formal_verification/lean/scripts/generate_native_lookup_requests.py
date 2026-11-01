@@ -2520,7 +2520,7 @@ path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
 from generate_shift_metadata import modules as shift_metadata_modules
 for module, metadata_text in shift_metadata_modules():
-    if module.endswith('ShiftColumnCoverage'):
+    if module.endswith(('ShiftColumnCoverage', 'ImportedBinaryRows')):
         continue
     metadata_namespace = re.search(r'^namespace (\S+)', metadata_text, re.M)[1]
     packed_arithmetic_roots += [metadata_namespace + '.' + name for name in

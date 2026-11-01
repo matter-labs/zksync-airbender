@@ -1,3 +1,4 @@
+import Airbender.Proofs.GKRProtocol.ShiftPrefixNative.Column2
 import Airbender.Proofs.Tables.LiteralSizes
 import Airbender.Proofs.Tables.BinaryColumns
 import Airbender.Proofs.Tables.TruncationColumn
@@ -27,27 +28,8 @@ private theorem checks (kind : Fin 3) :
   · exact ShiftCertificate.and_outputs
 
 theorem coverage (kind : Fin 3) :
-    ((data (binaryKind kind)).columns[2].blocks.toList.map Block.length).sum = 65536 := by
-  fin_cases kind
-  ·
-    dsimp only [data, binaryKind, byteXorData, byteOrData,
-      Vector.getElem_mk, Fin.getElem_fin, List.getElem_toArray,
-      List.getElem_cons_zero, List.getElem_cons_succ]
-    simp only [raw_toList_append, List.map_append, List.sum_append,
-      List.map_cons, List.map_nil, List.sum_cons, List.sum_nil,
-      Block.length, raw_literal_size, List.length_cons, List.length_nil,
-      Array.size_ofFn, raw_size_append,
-      Nat.reduceAdd, Nat.reduceMul]
-  ·
-    dsimp only [data, binaryKind, byteXorData, byteOrData,
-      Vector.getElem_mk, Fin.getElem_fin, List.getElem_toArray,
-      List.getElem_cons_zero, List.getElem_cons_succ]
-    simp only [raw_toList_append, List.map_append, List.sum_append,
-      List.map_cons, List.map_nil, List.sum_cons, List.sum_nil,
-      Block.length, raw_literal_size, List.length_cons, List.length_nil,
-      Array.size_ofFn, Array.size_replicate, raw_size_append,
-      Nat.reduceAdd, Nat.reduceMul]
-  · exact ShiftPackedCertificate.coverage
+    ((data (binaryKind kind)).columns[2].blocks.toList.map Block.length).sum = 65536 :=
+  (Fin.cases (motive := fun index : Fin 3 => ((data (binaryKind index)).columns[2].blocks.toList.map Block.length).sum = 65536) (Airbender.Compiler.ShiftPrefixNative.Column2.regionLength2) (Fin.cases (motive := fun index : Fin 2 => ((data (binaryKind index.succ)).columns[2].blocks.toList.map Block.length).sum = 65536) (Airbender.Compiler.ShiftPrefixNative.Column2.regionLength3) (Fin.cases (motive := fun index : Fin 1 => ((data (binaryKind index.succ.succ)).columns[2].blocks.toList.map Block.length).sum = 65536) (Airbender.Compiler.ShiftPrefixNative.Column2.regionLength4) (fun impossible => Fin.elim0 impossible)))) kind
 
 private theorem output_get (kind : Fin 3) (n : Nat) (bound : n < 65536) :
     (data (binaryKind kind)).columns[2].get? n = some (output kind n) := by

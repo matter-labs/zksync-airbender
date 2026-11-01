@@ -997,6 +997,24 @@ qualify. The adopted projections reuse the existing complete checks.
 Other table metadata and fixed setup families still need migration.
 The final full validation remains pending for implementation review.
 
+### Binary output coverage projections
+
+The three binary output coverage cases now use the complete native column-two
+checks. The old per-case literal-size proofs are gone.
+All eight original public theorem types pass the kernel preservation control.
+The original definitions and imported values stay unchanged.
+All three selected modules pass source checks and kernel replay. They include
+both direct Shift consumers. Each replay uses the standard 32 MiB stack.
+No safe dependency is skipped. These checks trust imported objects.
+The source and replay batch takes 14.32 s and peaks at 848.71 MiB.
+The binary row module builds in 2.23 s and replays in 1.81 s.
+All eight focused axiom checks use only the three allowed axioms.
+The four metadata controls and three generator controls pass.
+The kernel rejects all four mutations. Generator and inventory freshness pass.
+The inventory stays at 66,677 roots. Every established root remains.
+Other table metadata and fixed setup families still need migration.
+The final full validation remains pending for implementation review.
+
 ## Rebase checks
 
 The branch now uses base `c1a662222cafcd96db4383dce737edb79fa62b09` from

@@ -17,6 +17,8 @@ BINARY='''theorem binary_coverage (kind : Fin 4) (lane : Fin 10) :
 NATIVE='''theorem native_cast (kind : Fin 7) (index : Fin (shiftData kind).length) :
     (shiftRegionRow kind index.val).map (fun n : Nat => (n : ZMod babyBearModulus)) =
       ((shiftData kind).row index).map (fun n : Int => (n : ZMod babyBearModulus))'''
+OUTPUT_COVERAGE='''theorem coverage (kind : Fin 3) :
+    ((data (binaryKind kind)).columns[2].blocks.toList.map Block.length).sum = 65536'''
 
 
 def cases(terms,family):
@@ -68,6 +70,19 @@ def modules():
     source+=binary+' :=\n  '+cases([cases([fact(kind,lane) for lane in range(10)],f'(({TABLES[kind]}.columns[{{index}}]).blocks.toList.map Block.length).sum = 65536') for kind in range(4)],'∀ lane : Fin 10, (((#v[byteXorData, byteOrData, byteAndData, byteTruncateData] : Vector (TableData 10) 4)[{index}]).columns[lane].blocks.toList.map Block.length).sum = 65536')+' kind lane\n\n'
     source+=old[cast:].replace('have offset : (shiftData kind).offset = 0 := by fin_cases kind <;> rfl',f'have offset : (shiftData kind).offset = 0 := {OWNER}.offsets kind')
     yield 'Airbender.Proofs.Tables.ShiftColumnCoverage',source
+    binary_path=LEAN/'Airbender/Proofs/Tables/ImportedBinaryRows.lean'
+    binary_rows=binary_path.read_text()
+    begin=binary_rows.index('theorem coverage (kind : Fin 3)')
+    end=binary_rows.index('private theorem output_get',begin)
+    boundary=begin+re.search(r' :=(?: by)?\n',binary_rows[begin:]).start()
+    if binary_rows[begin:boundary]!=OUTPUT_COVERAGE:
+        raise ValueError('original binary output coverage contract changed')
+    projection=cases([f'Airbender.Compiler.ShiftPrefixNative.Column2.regionLength{region}' for region in range(2,5)],
+        '((data (binaryKind {index})).columns[2].blocks.toList.map Block.length).sum = 65536')
+    binary_rows=binary_rows[:begin]+OUTPUT_COVERAGE+' :=\n  '+projection+' kind\n\n'+binary_rows[end:]
+    dependency='import Airbender.Proofs.GKRProtocol.ShiftPrefixNative.Column2\n'
+    if dependency not in binary_rows:binary_rows=dependency+binary_rows
+    yield 'Airbender.Proofs.Tables.ImportedBinaryRows',binary_rows
 
 
 def main():

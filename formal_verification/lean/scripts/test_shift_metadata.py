@@ -21,6 +21,13 @@ class ShiftMetadataTests(unittest.TestCase):
         for statement in [generator.SHIFT,generator.BINARY,generator.NATIVE]:self.assertIn(statement,public)
         self.assertNotIn('fin_cases',public)
         self.assertNotIn('decide +kernel\n',public)
+        binary=modules['Airbender.Proofs.Tables.ImportedBinaryRows']
+        start=binary.index('theorem coverage');end=binary.index('private theorem output_get',start)
+        coverage=binary[start:end]
+        self.assertIn(generator.OUTPUT_COVERAGE,coverage)
+        for region in range(2,5):self.assertIn(f'ShiftPrefixNative.Column2.regionLength{region}',coverage)
+        self.assertNotIn('simp only',coverage)
+        self.assertNotIn('fin_cases',coverage)
 
     def test_contract_drift_stops_before_writes(self):
         with tempfile.TemporaryDirectory() as directory:
