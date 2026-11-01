@@ -2518,6 +2518,16 @@ for column in PACKED_SHIFT_COLUMNS:
 
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
+from generate_shift_metadata import modules as shift_metadata_modules
+for module, metadata_text in shift_metadata_modules():
+    if module.endswith('ShiftColumnCoverage'):
+        continue
+    metadata_namespace = re.search(r'^namespace (\S+)', metadata_text, re.M)[1]
+    packed_arithmetic_roots += [metadata_namespace + '.' + name for name in
+        re.findall(r'^(?:def|theorem) (\S+)', metadata_text, re.M)]
+metadata_import = 'import Airbender.Proofs.Tables.ShiftMetadata.Certificate'
+if metadata_import not in content.splitlines():
+    content = metadata_import + '\n' + content
 from gkr_packed_column1_spans import modules as fixed_column1_modules, capture_plan as fixed_column1_plan
 for module, fixed_text in fixed_column1_modules():
     if module.endswith(('.Data', '.Projected')):

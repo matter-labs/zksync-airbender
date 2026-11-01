@@ -968,6 +968,35 @@ under the evidence directory.
 Other table metadata and fixed setup families still need migration.
 The final full validation remains pending for implementation review.
 
+### Complete Shift coverage metadata
+
+The 50 public Shift and binary coverage cases now use the complete native
+prefix checkers. Ten Shift length projections sum named region-part facts.
+The 40 binary projections use the existing native region-length facts.
+The public wrappers select these proofs. They do not compute table literals.
+One closed kernel result checks all seven native offsets.
+The original three public theorem types pass the kernel preservation control.
+No imported data value changes.
+
+All three selected modules pass source checks and kernel replay. They include
+the direct imported Shift row consumer. Each replay uses the standard 32 MiB
+stack. No safe dependency is skipped. These checks trust imported objects.
+The source and replay batch takes 16.51 s and peaks at 1102.29 MiB.
+The public coverage module builds in 3.01 s and replays in 2.06 s.
+All 16 focused axiom checks use only the three allowed axioms.
+Four exact controls pass. The kernel rejects all four mutations.
+Three generator controls pass. They preserve complete coverage, the public
+contracts and untracked files. Capture and inventory freshness pass.
+The source import graph has no cycle.
+The inventory has 66,677 roots. It retains all 66,664 established roots.
+
+Direct whole checks over typed table values exceeded the memory cap.
+Full-value bindings and direct length-list bindings also exceeded the cap.
+The structural extractor prototype stays outside the branch. It did not
+qualify. The adopted projections reuse the existing complete checks.
+Other table metadata and fixed setup families still need migration.
+The final full validation remains pending for implementation review.
+
 ## Rebase checks
 
 The branch now uses base `c1a662222cafcd96db4383dce737edb79fa62b09` from
