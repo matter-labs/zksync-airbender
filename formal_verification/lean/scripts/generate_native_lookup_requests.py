@@ -2492,8 +2492,37 @@ for rotation_source in [
     rotation_names = re.findall(r"^(?:def|theorem|numeric_data_binding) (\S+)", rotation_text, re.M)
     packed_arithmetic_roots += [rotation_namespace + "." + name for name in rotation_names]
 
+from gkr_packed_shift_prefix import ADOPTED as PACKED_SHIFT_COLUMNS, capture as shift_capture
+from gkr_shift_prefix_instances import plans as shift_capture_plan
+shift_artifact = json.loads((ROOT / 'artifacts/setup/shift-binop.json').read_text())
+for shift_source in ["Airbender/Proofs/GKRProtocol/PackedSetupNormalization.lean",
+                     "Tests/PackedSetupNormalization.lean"]:
+    shift_text = (ROOT / shift_source).read_text()
+    shift_namespace = re.search(r"^namespace (\S+)", shift_text, re.M)[1]
+    packed_arithmetic_roots += [shift_namespace + "." + name for name in
+        re.findall(r"^(?:def|theorem|structure) (\S+)", shift_text, re.M)]
+for column in PACKED_SHIFT_COLUMNS:
+    for module, shift_text in shift_capture(shift_artifact, column):
+        shift_namespace = re.search(r"^namespace (\S+)", shift_text, re.M)[1]
+        packed_arithmetic_roots += [shift_namespace + "." + name for name in
+            re.findall(r"^(?:def|theorem|numeric_data_binding) (\S+)", shift_text, re.M)]
+    _, chunks = shift_capture_plan(shift_artifact, column)
+    for index, (first, last, _, _, selected) in enumerate(chunks):
+        code_spans = [(f'source{index}', last-first)] + [
+            (f'target{index}Region{kind}', stop-start) for kind, start, stop in selected]
+        for name, count in code_spans:
+            packed_arithmetic_roots.append(f'Airbender.Compiler.ShiftPrefixChecks.Column{column}.' + name)
+            if count > 128:
+                packed_arithmetic_roots += [f'Airbender.Compiler.ShiftPrefixChecks.Column{column}.{name}Data{part}'
+                    for part in range((count + 127) // 128)]
+
 path = Path('Airbender/Checks/Axioms.lean')
 content = (ROOT / path).read_text()
+for shift_import in ['import Tests.PackedSetupNormalization'] + [
+        f'import Airbender.Proofs.GKRProtocol.ShiftPrefixChecks.Column{column}.Projected'
+        for column in PACKED_SHIFT_COLUMNS]:
+    if shift_import not in content.splitlines():
+        content = shift_import + '\n' + content
 rotation_import = 'import Tests.FiniteGridChecks'
 if rotation_import not in content.splitlines():
     content = rotation_import + '\n' + content

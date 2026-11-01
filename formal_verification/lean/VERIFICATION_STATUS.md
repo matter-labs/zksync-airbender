@@ -28,6 +28,7 @@ captured decoder interpretation and retained-image contracts. The verified
 checker rollout remains open. All 22 arithmetic captures now use whole results.
 All 22 Clean ideal captures now use complete results.
 All 22 wiring captures now use complete results.
+All ten Shift prefix columns now use complete results.
 Other table families and metadata still need migration. The adopted AND checker
 has focused measurements below.
 
@@ -77,7 +78,7 @@ The XOR9 rollout adds 244 roots.
 The Chi rollout adds 202 roots.
 The shift output rollout adds 6,310 roots.
 The native OR, XOR and Blake byte-XOR rollout adds 492 roots.
-The current explicit inventory has 28,273 roots.
+That checkpoint has 28,273 explicit roots.
 
 The complete ordinary AND data has the same serialized values before and
 after this change. Its SHA-256 is
@@ -793,6 +794,50 @@ The inventory generator now uses a set for repeated root lookups.
 This removes a quadratic scan and preserves the generated inventory.
 The remaining setup span and table metadata families still need migration.
 The final full validation remains pending for implementation review.
+
+### Complete Shift prefix captures
+
+All ten Shift prefix columns now use complete checker results.
+The numeric normalizer has a proved binding to the original block normalizer.
+It checks complete normalization and row-count requests.
+Exact kernel bindings cover all source and target block lists.
+The original per-index facts follow from the complete results.
+
+All 18,928 original public declarations remain. A kernel control accepts all
+11,874 old theorem types. All 7,054 imported values are identical.
+The rollout retires 105 proof shards. Each column now uses five capture modules.
+All ten native assembly modules pass with default heartbeats.
+Only the capture data modules raise their heartbeat limit.
+Comments explain these data limits.
+
+All 65 selected modules pass source checks and kernel replay.
+They include both direct Shift consumers. Each replay uses the standard
+32 MiB stack. No safe dependency is skipped. These checks trust imported objects.
+The 30-module rollout batch takes 401.48 s and peaks at 2054.10 MiB.
+The final qualification takes 100.55 s and peaks at 1067.41 MiB.
+Both guards leave no owned worker.
+
+All 23,916 focused axiom checks use only the three allowed axioms.
+Four normalization controls pass. The kernel rejects all four mutations.
+The existing flat, balanced and layout binding controls pass.
+The kernel also rejects the retained RLE mutation.
+Three generator controls pass. Capture, assembly and inventory freshness pass.
+CI requires the complete capture controls and freshness checks.
+Workflow syntax and changed-source static checks pass.
+
+The importer caches each parsed region within one capture command.
+It keeps the complete fidelity check for that region.
+Its contextual DSL words permit ordinary `column` and `region` variables.
+An early checker variant exceeded the memory cap during selected replay.
+The adopted checker first tests exact input equality. Its soundness theorem
+derives the original normalization statement in both branches.
+
+The inventory has 59,782 roots. It retains all 53,208 established roots.
+The original 115 module objects remain in `shift-prefix-original-oleans`
+under the evidence directory. Other setup span and table metadata families
+still need migration. No production circuit or Rust file changed.
+Full frontend validation, environment audit, baseline refresh, full transitive
+replay, cold full measurements and Linux qualification remain pending for review.
 
 ## Rebase checks
 

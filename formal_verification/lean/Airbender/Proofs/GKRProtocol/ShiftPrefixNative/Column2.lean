@@ -1,6 +1,4 @@
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column2.Part0
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column2.Part1
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column2.Part2
+import Airbender.Proofs.GKRProtocol.ShiftPrefixChecks.Column2.Projected
 import Airbender.Review.Helpers.Tables.Bytes
 import Airbender.Import.GKRProtocol.BlockCoverageImport
 
@@ -9,7 +7,6 @@ open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 131072
-set_option maxHeartbeats 16000000
 
 column_blocks_part suffix from Data.GKRSetup.ShiftBinop.setupColumn2 start 2704 stop 2706
 noncomputable def originals : List (List Setup.Block) := [original0, original1, original2, original3, original4, original5, original6, original7, original8, original9, original10, original11, original12, original13, original14, original15, original16, original17, original18, original19, original20, original21]
@@ -47,84 +44,84 @@ theorem prefixLength : (originals.flatten.map Setup.Block.length).sum = 524545 :
   simp only [originals, List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, chunkLength0, chunkLength1, chunkLength2, chunkLength3, chunkLength4, chunkLength5, chunkLength6, chunkLength7, chunkLength8, chunkLength9, chunkLength10, chunkLength11, chunkLength12, chunkLength13, chunkLength14, chunkLength15, chunkLength16, chunkLength17, chunkLength18, chunkLength19, chunkLength20, chunkLength21]
   rfl
 
-theorem region0Part0Length : (target0Region0.map Setup.Block.length).sum = 1 := by decide +kernel
+theorem region0Part0Length : (target0Region0.map Setup.Block.length).sum = 1 := checkedRegion0Part0Length
 
 theorem regionLength0 : ((Verification.byteZeroData.columns[(2 : Nat)]).blocks.toList.map Setup.Block.length).sum = 1 := by
   rw [regionShape0]
   simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, region0Part0Length]
   rfl
 
-theorem region1Part0Length : (target0Region1.map Setup.Block.length).sum = 256 := by decide +kernel
+theorem region1Part0Length : (target0Region1.map Setup.Block.length).sum = 256 := checkedRegion1Part0Length
 
 theorem regionLength1 : ((Verification.byteSignData.columns[(2 : Nat)]).blocks.toList.map Setup.Block.length).sum = 256 := by
   rw [regionShape1]
   simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, region1Part0Length]
   rfl
 
-theorem region2Part0Length : (target0Region2.map Setup.Block.length).sum = 20416 := by decide +kernel
+theorem region2Part0Length : (target0Region2.map Setup.Block.length).sum = 20416 := checkedRegion2Part0Length
 
-theorem region2Part1Length : (target1Region2.map Setup.Block.length).sum = 1340 := by decide +kernel
+theorem region2Part1Length : (target1Region2.map Setup.Block.length).sum = 1340 := checkedRegion2Part1Length
 
-theorem region2Part2Length : (target2Region2.map Setup.Block.length).sum = 2756 := by decide +kernel
+theorem region2Part2Length : (target2Region2.map Setup.Block.length).sum = 2756 := checkedRegion2Part2Length
 
-theorem region2Part3Length : (target3Region2.map Setup.Block.length).sum = 16192 := by decide +kernel
+theorem region2Part3Length : (target3Region2.map Setup.Block.length).sum = 16192 := checkedRegion2Part3Length
 
-theorem region2Part4Length : (target4Region2.map Setup.Block.length).sum = 2800 := by decide +kernel
+theorem region2Part4Length : (target4Region2.map Setup.Block.length).sum = 2800 := checkedRegion2Part4Length
 
-theorem region2Part5Length : (target5Region2.map Setup.Block.length).sum = 1504 := by decide +kernel
+theorem region2Part5Length : (target5Region2.map Setup.Block.length).sum = 1504 := checkedRegion2Part5Length
 
-theorem region2Part6Length : (target6Region2.map Setup.Block.length).sum = 19760 := by decide +kernel
+theorem region2Part6Length : (target6Region2.map Setup.Block.length).sum = 19760 := checkedRegion2Part6Length
 
-theorem region2Part7Length : (target7Region2.map Setup.Block.length).sum = 768 := by decide +kernel
+theorem region2Part7Length : (target7Region2.map Setup.Block.length).sum = 768 := checkedRegion2Part7Length
 
 theorem regionLength2 : ((Verification.byteXorData.columns[(2 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by
   rw [regionShape2]
   simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, region2Part0Length, region2Part1Length, region2Part2Length, region2Part3Length, region2Part4Length, region2Part5Length, region2Part6Length, region2Part7Length]
   rfl
 
-theorem region3Part7Length : (target7Region3.map Setup.Block.length).sum = 20288 := by decide +kernel
+theorem region3Part7Length : (target7Region3.map Setup.Block.length).sum = 20288 := checkedRegion3Part7Length
 
-theorem region3Part8Length : (target8Region3.map Setup.Block.length).sum = 1460 := by decide +kernel
+theorem region3Part8Length : (target8Region3.map Setup.Block.length).sum = 1460 := checkedRegion3Part8Length
 
-theorem region3Part9Length : (target9Region3.map Setup.Block.length).sum = 2700 := by decide +kernel
+theorem region3Part9Length : (target9Region3.map Setup.Block.length).sum = 2700 := checkedRegion3Part9Length
 
-theorem region3Part10Length : (target10Region3.map Setup.Block.length).sum = 16000 := by decide +kernel
+theorem region3Part10Length : (target10Region3.map Setup.Block.length).sum = 16000 := checkedRegion3Part10Length
 
-theorem region3Part11Length : (target11Region3.map Setup.Block.length).sum = 3040 := by decide +kernel
+theorem region3Part11Length : (target11Region3.map Setup.Block.length).sum = 3040 := checkedRegion3Part11Length
 
-theorem region3Part12Length : (target12Region3.map Setup.Block.length).sum = 1488 := by decide +kernel
+theorem region3Part12Length : (target12Region3.map Setup.Block.length).sum = 1488 := checkedRegion3Part12Length
 
-theorem region3Part13Length : (target13Region3.map Setup.Block.length).sum = 19280 := by decide +kernel
+theorem region3Part13Length : (target13Region3.map Setup.Block.length).sum = 19280 := checkedRegion3Part13Length
 
-theorem region3Part14Length : (target14Region3.map Setup.Block.length).sum = 1280 := by decide +kernel
+theorem region3Part14Length : (target14Region3.map Setup.Block.length).sum = 1280 := checkedRegion3Part14Length
 
 theorem regionLength3 : ((Verification.byteOrData.columns[(2 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by
   rw [regionShape3]
   simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, region3Part7Length, region3Part8Length, region3Part9Length, region3Part10Length, region3Part11Length, region3Part12Length, region3Part13Length, region3Part14Length]
   rfl
 
-theorem region4Part14Length : (target14Region4.map Setup.Block.length).sum = 20160 := by decide +kernel
+theorem region4Part14Length : (target14Region4.map Setup.Block.length).sum = 20160 := checkedRegion4Part14Length
 
-theorem region4Part15Length : (target15Region4.map Setup.Block.length).sum = 1580 := by decide +kernel
+theorem region4Part15Length : (target15Region4.map Setup.Block.length).sum = 1580 := checkedRegion4Part15Length
 
-theorem region4Part16Length : (target16Region4.map Setup.Block.length).sum = 2644 := by decide +kernel
+theorem region4Part16Length : (target16Region4.map Setup.Block.length).sum = 2644 := checkedRegion4Part16Length
 
-theorem region4Part17Length : (target17Region4.map Setup.Block.length).sum = 15808 := by decide +kernel
+theorem region4Part17Length : (target17Region4.map Setup.Block.length).sum = 15808 := checkedRegion4Part17Length
 
-theorem region4Part18Length : (target18Region4.map Setup.Block.length).sum = 3280 := by decide +kernel
+theorem region4Part18Length : (target18Region4.map Setup.Block.length).sum = 3280 := checkedRegion4Part18Length
 
-theorem region4Part19Length : (target19Region4.map Setup.Block.length).sum = 1472 := by decide +kernel
+theorem region4Part19Length : (target19Region4.map Setup.Block.length).sum = 1472 := checkedRegion4Part19Length
 
-theorem region4Part20Length : (target20Region4.map Setup.Block.length).sum = 18800 := by decide +kernel
+theorem region4Part20Length : (target20Region4.map Setup.Block.length).sum = 18800 := checkedRegion4Part20Length
 
-theorem region4Part21Length : (target21Region4.map Setup.Block.length).sum = 1792 := by decide +kernel
+theorem region4Part21Length : (target21Region4.map Setup.Block.length).sum = 1792 := checkedRegion4Part21Length
 
 theorem regionLength4 : ((Verification.byteAndData.columns[(2 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by
   rw [regionShape4]
   simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, region4Part14Length, region4Part15Length, region4Part16Length, region4Part17Length, region4Part18Length, region4Part19Length, region4Part20Length, region4Part21Length]
   rfl
 
-theorem region5Part21Length : (target21Region5.map Setup.Block.length).sum = 65536 := by decide +kernel
+theorem region5Part21Length : (target21Region5.map Setup.Block.length).sum = 65536 := checkedRegion5Part21Length
 
 theorem regionLength5 : ((Verification.byteTruncateData.columns[(2 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by
   rw [regionShape5]

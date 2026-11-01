@@ -1,27 +1,4 @@
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part0
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part1
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part2
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part3
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part4
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part5
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part6
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part7
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part8
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part9
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part10
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part11
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part12
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part13
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part14
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part15
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part16
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part17
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part18
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part19
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part20
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part21
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part22
-import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column5.Part23
+import Airbender.Proofs.GKRProtocol.ShiftPrefixChecks.Column5.Projected
 import Airbender.Review.Helpers.Tables.Bytes
 import Airbender.Import.GKRProtocol.BlockCoverageImport
 
@@ -30,7 +7,6 @@ open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 131072
-set_option maxHeartbeats 16000000
 
 column_blocks_part suffix from Data.GKRSetup.ShiftBinop.setupColumn5 start 24544 stop 24546
 noncomputable def originals : List (List Setup.Block) := [original0, original1, original2, original3, original4, original5, original6, original7, original8, original9, original10, original11, original12, original13, original14, original15, original16, original17, original18, original19, original20, original21, original22, original23, original24, original25, original26, original27, original28, original29, original30, original31, original32, original33, original34, original35, original36, original37, original38, original39, original40, original41, original42, original43, original44, original45, original46, original47, original48, original49, original50, original51, original52, original53, original54, original55, original56, original57, original58, original59, original60, original61, original62, original63, original64, original65, original66, original67, original68, original69, original70, original71, original72, original73, original74, original75, original76, original77, original78, original79, original80, original81, original82, original83, original84, original85, original86, original87, original88, original89, original90, original91, original92, original93, original94, original95, original96, original97, original98, original99, original100, original101, original102, original103, original104, original105, original106, original107, original108, original109, original110, original111, original112, original113, original114, original115, original116, original117, original118, original119, original120, original121, original122, original123, original124, original125, original126, original127, original128, original129, original130, original131, original132, original133, original134, original135, original136, original137, original138, original139, original140, original141, original142, original143, original144, original145, original146, original147, original148, original149, original150, original151, original152, original153, original154, original155, original156, original157, original158, original159, original160, original161, original162, original163, original164, original165, original166, original167, original168, original169, original170, original171, original172, original173, original174, original175, original176, original177, original178, original179, original180, original181, original182, original183, original184, original185, original186, original187, original188, original189, original190, original191]
@@ -68,42 +44,42 @@ theorem prefixLength : (originals.flatten.map Setup.Block.length).sum = 524545 :
   simp only [originals, List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, chunkLength0, chunkLength1, chunkLength2, chunkLength3, chunkLength4, chunkLength5, chunkLength6, chunkLength7, chunkLength8, chunkLength9, chunkLength10, chunkLength11, chunkLength12, chunkLength13, chunkLength14, chunkLength15, chunkLength16, chunkLength17, chunkLength18, chunkLength19, chunkLength20, chunkLength21, chunkLength22, chunkLength23, chunkLength24, chunkLength25, chunkLength26, chunkLength27, chunkLength28, chunkLength29, chunkLength30, chunkLength31, chunkLength32, chunkLength33, chunkLength34, chunkLength35, chunkLength36, chunkLength37, chunkLength38, chunkLength39, chunkLength40, chunkLength41, chunkLength42, chunkLength43, chunkLength44, chunkLength45, chunkLength46, chunkLength47, chunkLength48, chunkLength49, chunkLength50, chunkLength51, chunkLength52, chunkLength53, chunkLength54, chunkLength55, chunkLength56, chunkLength57, chunkLength58, chunkLength59, chunkLength60, chunkLength61, chunkLength62, chunkLength63, chunkLength64, chunkLength65, chunkLength66, chunkLength67, chunkLength68, chunkLength69, chunkLength70, chunkLength71, chunkLength72, chunkLength73, chunkLength74, chunkLength75, chunkLength76, chunkLength77, chunkLength78, chunkLength79, chunkLength80, chunkLength81, chunkLength82, chunkLength83, chunkLength84, chunkLength85, chunkLength86, chunkLength87, chunkLength88, chunkLength89, chunkLength90, chunkLength91, chunkLength92, chunkLength93, chunkLength94, chunkLength95, chunkLength96, chunkLength97, chunkLength98, chunkLength99, chunkLength100, chunkLength101, chunkLength102, chunkLength103, chunkLength104, chunkLength105, chunkLength106, chunkLength107, chunkLength108, chunkLength109, chunkLength110, chunkLength111, chunkLength112, chunkLength113, chunkLength114, chunkLength115, chunkLength116, chunkLength117, chunkLength118, chunkLength119, chunkLength120, chunkLength121, chunkLength122, chunkLength123, chunkLength124, chunkLength125, chunkLength126, chunkLength127, chunkLength128, chunkLength129, chunkLength130, chunkLength131, chunkLength132, chunkLength133, chunkLength134, chunkLength135, chunkLength136, chunkLength137, chunkLength138, chunkLength139, chunkLength140, chunkLength141, chunkLength142, chunkLength143, chunkLength144, chunkLength145, chunkLength146, chunkLength147, chunkLength148, chunkLength149, chunkLength150, chunkLength151, chunkLength152, chunkLength153, chunkLength154, chunkLength155, chunkLength156, chunkLength157, chunkLength158, chunkLength159, chunkLength160, chunkLength161, chunkLength162, chunkLength163, chunkLength164, chunkLength165, chunkLength166, chunkLength167, chunkLength168, chunkLength169, chunkLength170, chunkLength171, chunkLength172, chunkLength173, chunkLength174, chunkLength175, chunkLength176, chunkLength177, chunkLength178, chunkLength179, chunkLength180, chunkLength181, chunkLength182, chunkLength183, chunkLength184, chunkLength185, chunkLength186, chunkLength187, chunkLength188, chunkLength189, chunkLength190, chunkLength191]
   rfl
 
-theorem region0Part0Length : (target0Region0.map Setup.Block.length).sum = 1 := by decide +kernel
+theorem region0Part0Length : (target0Region0.map Setup.Block.length).sum = 1 := checkedRegion0Part0Length
 
 theorem regionLength0 : ((Verification.byteZeroData.columns[(5 : Nat)]).blocks.toList.map Setup.Block.length).sum = 1 := by
   rw [regionShape0]
   simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, region0Part0Length]
   rfl
 
-theorem region1Part0Length : (target0Region1.map Setup.Block.length).sum = 256 := by decide +kernel
+theorem region1Part0Length : (target0Region1.map Setup.Block.length).sum = 256 := checkedRegion1Part0Length
 
 theorem regionLength1 : ((Verification.byteSignData.columns[(5 : Nat)]).blocks.toList.map Setup.Block.length).sum = 256 := by
   rw [regionShape1]
   simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, region1Part0Length]
   rfl
 
-theorem region2Part0Length : (target0Region2.map Setup.Block.length).sum = 65536 := by decide +kernel
+theorem region2Part0Length : (target0Region2.map Setup.Block.length).sum = 65536 := checkedRegion2Part0Length
 
 theorem regionLength2 : ((Verification.byteXorData.columns[(5 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by
   rw [regionShape2]
   simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, region2Part0Length]
   rfl
 
-theorem region3Part0Length : (target0Region3.map Setup.Block.length).sum = 65536 := by decide +kernel
+theorem region3Part0Length : (target0Region3.map Setup.Block.length).sum = 65536 := checkedRegion3Part0Length
 
 theorem regionLength3 : ((Verification.byteOrData.columns[(5 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by
   rw [regionShape3]
   simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, region3Part0Length]
   rfl
 
-theorem region4Part0Length : (target0Region4.map Setup.Block.length).sum = 65536 := by decide +kernel
+theorem region4Part0Length : (target0Region4.map Setup.Block.length).sum = 65536 := checkedRegion4Part0Length
 
 theorem regionLength4 : ((Verification.byteAndData.columns[(5 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by
   rw [regionShape4]
   simp only [List.flatten_cons, List.flatten_nil, List.map_append, List.sum_append, List.map_nil, List.sum_nil, region4Part0Length]
   rfl
 
-theorem region5Part0Length : (target0Region5.map Setup.Block.length).sum = 65536 := by decide +kernel
+theorem region5Part0Length : (target0Region5.map Setup.Block.length).sum = 65536 := checkedRegion5Part0Length
 
 theorem regionLength5 : ((Verification.byteTruncateData.columns[(5 : Nat)]).blocks.toList.map Setup.Block.length).sum = 65536 := by
   rw [regionShape5]

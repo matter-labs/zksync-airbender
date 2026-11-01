@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 from gkr_shift_prefix_instances import LEAN, plans, REGIONS, PER_MODULE
+from gkr_packed_shift_prefix import ADOPTED
 
 
 def module(artifact, column):
@@ -12,11 +13,13 @@ def module(artifact, column):
     target = f'Airbender.Proofs.GKRProtocol.ShiftPrefixNative.Column{column}'
     text = ''.join(f'import Airbender.Proofs.GKRProtocol.ShiftPrefixParts.Column{column}.Part{i}\n'
                    for i in range((len(chunks) + PER_MODULE - 1) // PER_MODULE))
+    if column in ADOPTED:
+        text = f'import Airbender.Proofs.GKRProtocol.ShiftPrefixChecks.Column{column}.Projected\n'
     text += 'import Airbender.Review.Helpers.Tables.Bytes\nimport Airbender.Import.GKRProtocol.BlockCoverageImport\n\n'
     text += (f'namespace Airbender.Compiler.ShiftPrefixNative.Column{column}\n'
              'open Airbender Airbender.Compiler\nset_option warningAsError true\n'
              'set_option Elab.async false\nset_option maxRecDepth 131072\n'
-             'set_option maxHeartbeats 16000000\n\n')
+             + ('' if column in ADOPTED else 'set_option maxHeartbeats 16000000\n') + '\n')
     full = f'Data.GKRSetup.ShiftBinop.setupColumn{column}'
     text += f'column_blocks_part suffix from {full} start {stop} stop {len(artifact["columns"][column]["blocks"])}\n'
     for name, stem in [('originals','original'), ('targets','target')]:
@@ -45,7 +48,8 @@ def module(artifact, column):
             lo,hi=chunk[2:4]
             span=min(hi,region['offset']+region['length'])-max(lo,region['offset'])
             check=f'region{k}Part{i}Length'
-            text += f'theorem {check} : (target{i}Region{k}.map Setup.Block.length).sum = {span} := by decide +kernel\n\n'
+            proof = f'checkedRegion{k}Part{i}Length' if column in ADOPTED else 'by decide +kernel'
+            text += f'theorem {check} : (target{i}Region{k}.map Setup.Block.length).sum = {span} := {proof}\n\n'
             checks.append(check)
         text += (f'theorem regionLength{k} : ({cols[k]}.blocks.toList.map Setup.Block.length).sum = {length} := by\n'
                  f'  rw [regionShape{k}]\n'
