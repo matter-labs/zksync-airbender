@@ -1,16 +1,18 @@
-import Airbender.Proofs.GKRProtocol.CleanGenericArgumentsParts.WordMemoryUncached.Part0
+import Airbender.Proofs.GKRProtocol.CleanArgumentChecks.WordMemoryUncached.Certificate
 
-namespace Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryUncached.native
+namespace Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryUncached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
-noncomputable def genericExpressions0 : Vector (_root_.Expression Source.BaseField) 9 :=
-  #v[part0.genericExpression0_0, part0.genericExpression0_1, part0.genericExpression0_2, part0.genericExpression0_3, part0.genericExpression0_4, part0.genericExpression0_5, part0.genericExpression0_6, part0.genericExpression0_7, part0.genericExpression0_8]
+import_clean_generic_arguments native from "artifacts/compiler/word-memory-uncached.json"
+  certificate "artifacts/compiler/lookup/word-memory-uncached.json"
+  clean_model Airbender.Compiler.CleanArithmeticNative.WordMemoryUncached.native
+  base_model Airbender.Compiler.FullArithmeticNative.WordMemoryUncached.native
+  lookup_model Airbender.Compiler.LookupNative.WordMemoryUncached.native
+  query_model Airbender.Compiler.LookupSourceNative.WordMemoryUncached.native
+  links_model Airbender.Compiler.FunctionalLinksNative.WordMemoryUncached.native
+  start 0 stop 1 part_size 8 phase 1 using_checks Airbender.Compiler.CleanArgumentChecks.WordMemoryUncached
 
-noncomputable def genericExpressions : List (Vector (_root_.Expression Source.BaseField) 9) :=
-  [genericExpressions0]
-
-end Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryUncached.native
+end Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryUncached
