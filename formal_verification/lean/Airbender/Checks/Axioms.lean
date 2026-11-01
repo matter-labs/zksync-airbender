@@ -1,3 +1,5 @@
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.AddSubUncached.Certificate
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.AddSubCached.Certificate
 import Airbender.Proofs.Tables.AlignedSampleChecks.Certificate
 import Airbender.Proofs.GKRProtocol.SubwordRegionLengths.Column8
 import Airbender.Proofs.GKRProtocol.SubwordRegionLengths.Column7
@@ -75734,3 +75736,25 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Verification.AlignedSampleChecks.positionFact
 #print axioms Airbender.Verification.AlignedSampleChecks.conditionalBlocks
 #print axioms Airbender.Verification.AlignedSampleChecks.positionBlocks
+
+#print axioms Airbender.Compiler.NumericQueryFrameChecks.Capture
+#print axioms Airbender.Compiler.NumericQueryFrameChecks.lookup
+#print axioms Airbender.Compiler.NumericQueryFrameChecks.untouched
+#print axioms Airbender.Compiler.NumericQueryFrameChecks.fieldCheck
+#print axioms Airbender.Compiler.NumericQueryFrameChecks.check
+#print axioms Airbender.Compiler.NumericQueryFrameChecks.ofTyped
+#print axioms Airbender.Compiler.NumericQueryFrameChecks.lookup_ofFn
+#print axioms Airbender.Compiler.NumericQueryFrameChecks.contains_val
+#print axioms Airbender.Compiler.NumericQueryFrameChecks.untouched_encode
+#print axioms Airbender.Compiler.NumericQueryFrameChecks.roundTrips_sound
+#print axioms Airbender.Compiler.NumericQueryFrameChecks.field_sound
+#print axioms Airbender.Compiler.NumericQueryFrameChecks.check_sound
+#print axioms Airbender.Compiler.NumericQueryFrameChecks.check_sound_of_binding
+#print axioms Airbender.Compiler.QueryFrameChecks.AddSubCached.data
+#print axioms Airbender.Compiler.QueryFrameChecks.AddSubCached.source_binding
+#print axioms Airbender.Compiler.QueryFrameChecks.AddSubCached.checked
+#print axioms Airbender.Compiler.QueryFrameChecks.AddSubCached.originalChecked
+#print axioms Airbender.Compiler.QueryFrameChecks.AddSubUncached.data
+#print axioms Airbender.Compiler.QueryFrameChecks.AddSubUncached.source_binding
+#print axioms Airbender.Compiler.QueryFrameChecks.AddSubUncached.checked
+#print axioms Airbender.Compiler.QueryFrameChecks.AddSubUncached.originalChecked

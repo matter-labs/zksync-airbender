@@ -25,13 +25,14 @@ private def emitChecked (command : Syntax) : CommandElabM Unit := do
 syntax (name := importQueryFrame) "import_query_frame " ident " certificate " str
   " queries " term " base_model " ident " lookup_model " ident " query_model " ident " source_model " ident
   " history_model " ident " helper_model " ident " counter_model " ident " inputs " num
-  " phase " num " start " num " stop " num : command
+  " phase " num " start " num " stop " num (" using_check " term)? : command
 
 elab_rules : command
   | `(import_query_frame $name:ident certificate $path:str queries $queryTerm:term
       base_model $baseName:ident lookup_model $lookupName:ident query_model $queryName:ident source_model $sourceName:ident
       history_model $historyName:ident helper_model $helperName:ident counter_model $counterName:ident
-      inputs $arityNumber:num phase $phaseNumber:num start $startNumber:num stop $stopNumber:num) => do
+      inputs $arityNumber:num phase $phaseNumber:num start $startNumber:num stop $stopNumber:num
+      $[using_check $wholeCheck:term]?) => do
     let cert ← match Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := LookupImport.LookupCertificate)) with
       | .ok cert => pure cert | .error error => throwError "{error}"
     let size := cert.rows.foldl (fun count row => count + row.fields.size) 0
@@ -54,7 +55,7 @@ elab_rules : command
     let queryList := fieldName name "queries"
     let fields := fieldName name "fields"
     let coordinates := fieldName name "coordinates"
-    if phaseIndex == 0 || phaseIndex == 3 then
+    if phaseIndex == 0 || (phaseIndex == 3 && wholeCheck.isNone) then
       emitChecked (← `(noncomputable def $queryList : List SourceLookupQuery := $queryTerm))
       emitChecked (← `(noncomputable def $fields : List Source.EncodedField := ($queryList).flatMap SourceLookupQuery.usedFields))
       emitChecked (← `(def $coordinates : List (Fin $(quote arityNumber.getNat)) :=
@@ -67,7 +68,11 @@ elab_rules : command
       let mut proofs := #[]
       for index in [firstIndex:finalIndex] do
         let itemChecked := fieldName name s!"checked{index}"
-        emitChecked (← `(theorem $itemChecked : ($predicate) (($fields).get ⟨$(quote index), by decide⟩) = true := by decide +kernel))
+        if let some complete := wholeCheck then
+          emitChecked (← `(theorem $itemChecked : ($predicate) (($fields).get ⟨$(quote index), by decide⟩) = true :=
+            List.all_eq_true.mp $complete _ (List.get_mem $fields ⟨$(quote index), by decide⟩)))
+        else
+          emitChecked (← `(theorem $itemChecked : ($predicate) (($fields).get ⟨$(quote index), by decide⟩) = true := by decide +kernel))
         proofs := proofs.push (← `($itemChecked))
       if phaseIndex == 1 then
         let block := fieldName name s!"block{firstIndex}"
@@ -77,8 +82,11 @@ elab_rules : command
         emitChecked (← `(theorem $blockChecked : ($block).all $predicate = true :=
           BoolChecks.all_true (predicate := $predicate) (items := $block) $(← checksSyntax proofs)))
       else
-        emitChecked (← `(theorem $checked : ($fields).all $predicate = true :=
-          BoolChecks.all_true (predicate := $predicate) (items := $fields) $(← checksSyntax proofs)))
+        if let some complete := wholeCheck then
+          emitChecked (← `(theorem $checked : ($fields).all $predicate = true := $complete))
+        else
+          emitChecked (← `(theorem $checked : ($fields).all $predicate = true :=
+            BoolChecks.all_true (predicate := $predicate) (items := $fields) $(← checksSyntax proofs)))
     if phaseIndex == 0 || phaseIndex == 1 then return
     if phaseIndex == 2 then
       let mut blocks : Array (TSyntax `term) := #[]
