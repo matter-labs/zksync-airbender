@@ -7,11 +7,26 @@ from gkr_packed_special_spans import capture_plan
 from gkr_packed_rotate_boundary import preflight
 from gkr_rom_columns import length
 
-COLUMNS=(2,3,4,5,6,7)
+COLUMNS=(1,2,3,4,5,6,7,8)
 
 
 def metadata_plan(column):
     artifact,_,_,stop,groups,_=plans(column)
+    if column==1:
+        from gkr_packed_column1_spans import capture_plan as column1_plan
+        chosen=set(column1_plan()[2])
+        entries=[]
+        for region,table in enumerate(artifact['tables']):
+            if table['id']==34:continue
+            for part,(index,target,entry) in enumerate((i,j,e) for i,group in enumerate(groups) for j,e in enumerate(group) if e['region']==region):
+                owner='Airbender.Compiler.UnifiedFixedSpans.'+('RotateBoundary' if index==14 else 'Column1')
+                known=index in chosen or index==14
+                entries.append(dict(region=region,part=part,kind='known' if known else 'extra',
+                    piece=f'Airbender.Compiler.UnifiedPrefixNative.Column1.part{index}_{target}',rows=length(entry['block']),
+                    view=f'{owner}.target{target}' if index==14 else f'{owner}.target{index}_{target}',
+                    binding=f'{owner}.targets_binding' if index==14 else f'{owner}.targets{index}_binding',
+                    index=index,target=target,table=table['id'],block=entry['target']))
+        return entries
     chosen=set(capture_plan(column)[3]);equal={};offset=0
     for start in range(0,stop,CHUNK):
         end=min(start+CHUNK,stop)
@@ -51,7 +66,13 @@ def modules(column):
     owner=f'Airbender.Compiler.UnifiedRegionLengths.Column{column}'
     header=(f'namespace {owner}\nopen Airbender Airbender.Compiler\nopen PackedSetupEquality PackedSetupLengths\n'
             'set_option warningAsError true\nset_option Elab.async false\nset_option maxRecDepth 8192\n\n')
-    data=f'import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column{column}.Bindings\n'
+    if column==1:
+        data=('import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column1.Bindings\n'
+              'import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.RotateBoundary.Bindings\n'+
+              ''.join(f'import Airbender.Proofs.GKRProtocol.UnifiedPrefixParts.Column1.Unit{index}\n' for index in [12,13,33]))
+    elif column==8:
+        data='import Airbender.Proofs.GKRProtocol.UnifiedSpecialParts.Column8.Chunk0.Part0\n'
+    else:data=f'import Airbender.Proofs.GKRProtocol.UnifiedFixedSpans.Column{column}.Bindings\n'
     if column in PACKED_COLUMNS:data+=f'import Airbender.Proofs.GKRProtocol.UnifiedEqualParts.Column{column}.Projected\n'
     data+=('import Airbender.Import.PackedSetupEmbed\nimport Airbender.Proofs.GKRProtocol.PackedSetupLengths\n\n'+header)
     extras=[(ordinal,entry) for ordinal,entry in enumerate(entries) if entry['kind']=='extra']
@@ -66,9 +87,10 @@ def modules(column):
         data+=f'noncomputable def view{ordinal} : List BlockCode := {view}\n'
         binding=f'{entry["piece"]} = view{ordinal}.map BlockCode.decode'
         if entry['kind']=='known':
+            source_binding=entry.get('binding',f'Airbender.Compiler.UnifiedFixedSpans.Column{column}.targets{entry["index"]}_binding')
             bindings+=(f'theorem binding{ordinal} : {binding} :=\n'
                      f'  congrArg (fun blocks : List Setup.Block => (blocks.drop {entry["target"]}).take 1) '
-                     f'Airbender.Compiler.UnifiedFixedSpans.Column{column}.targets{entry["index"]}_binding\n\n')
+                     f'{source_binding}\n\n')
         else:bindings+=f'numeric_data_binding binding{ordinal} : {binding}\n\n'
     data+='\n-- These views support kernel proofs. They do not need runtime compilation.\n'
     data+='noncomputable def requests : List Request := [\n  '+',\n  '.join(
