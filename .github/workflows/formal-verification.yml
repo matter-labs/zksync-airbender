@@ -337,6 +337,9 @@ jobs:
           fv shift-metadata-generator-controls python3 -m unittest discover -s scripts -p test_shift_metadata.py
           fv shift-metadata-kernel-controls python3 scripts/check_shift_metadata_controls.py
           fv natural-setup-kernel-controls python3 scripts/check_natural_setup_controls.py
+          fv fixed-subword-freshness python3 scripts/gkr_subword_prefix.py --check
+          fv fixed-subword-generator-controls python3 -m unittest discover -s scripts -p test_packed_subword_prefix.py
+          fv fixed-subword-kernel-controls python3 scripts/check_subword_fixed_controls.py
           fv fixed-special-freshness python3 scripts/gkr_unified_special_chunks.py --check
           fv fixed-special-length-freshness python3 scripts/gkr_unified_chunk_lengths.py --check
           fv fixed-special-consumer-freshness python3 scripts/gkr_unified_prefix_assembly.py --check

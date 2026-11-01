@@ -13,46 +13,21 @@ column_blocks_part original0 from Data.GKRSetup.SubwordMemory.setupColumn8 start
 column_blocks_part target0Region0 from (Verification.subwordZeroData.columns[(8 : Nat)]) start 0 stop 1
 noncomputable def target0 : List Setup.Block := target0Region0
 
-theorem chunkChecked0 : normalizeSetupBlocks original0 = normalizeSetupBlocks target0 := by
-  exact congrArg normalizeSetupBlocks (show original0 = target0 from rfl)
-
-theorem chunkLength0 : (original0.map Setup.Block.length).sum = 1 := by decide +kernel
-
 column_blocks_part original1 from Data.GKRSetup.SubwordMemory.setupColumn8 start 1 stop 2
 column_blocks_part target1Region1 from (Verification.storePlaceData.columns[(8 : Nat)]) start 0 stop 1
 noncomputable def target1 : List Setup.Block := target1Region1
-
-theorem chunkChecked1 : normalizeSetupBlocks original1 = normalizeSetupBlocks target1 := by
-  exact congrArg normalizeSetupBlocks (show original1 = target1 from rfl)
-
-theorem chunkLength1 : (original1.map Setup.Block.length).sum = 131072 := by decide +kernel
 
 column_blocks_part original2 from Data.GKRSetup.SubwordMemory.setupColumn8 start 2 stop 3
 column_blocks_part target2Region2 from (Verification.storeClearData.columns[(8 : Nat)]) start 0 stop 1
 noncomputable def target2 : List Setup.Block := target2Region2
 
-theorem chunkChecked2 : normalizeSetupBlocks original2 = normalizeSetupBlocks target2 := by
-  exact congrArg normalizeSetupBlocks (show original2 = target2 from rfl)
-
-theorem chunkLength2 : (original2.map Setup.Block.length).sum = 131072 := by decide +kernel
-
 column_blocks_part original3 from Data.GKRSetup.SubwordMemory.setupColumn8 start 3 stop 4
 column_blocks_part target3Region3 from (Verification.loadHalfData.columns[(8 : Nat)]) start 0 stop 1
 noncomputable def target3 : List Setup.Block := target3Region3
 
-theorem chunkChecked3 : normalizeSetupBlocks original3 = normalizeSetupBlocks target3 := by
-  exact congrArg normalizeSetupBlocks (show original3 = target3 from rfl)
-
-theorem chunkLength3 : (original3.map Setup.Block.length).sum = 131072 := by decide +kernel
-
 column_blocks_part original4 from Data.GKRSetup.SubwordMemory.setupColumn8 start 4 stop 5
 column_blocks_part target4Region4 from (Verification.loadByteData.columns[(8 : Nat)]) start 0 stop 1
 noncomputable def target4 : List Setup.Block := target4Region4
-
-theorem chunkChecked4 : normalizeSetupBlocks original4 = normalizeSetupBlocks target4 := by
-  exact congrArg normalizeSetupBlocks (show original4 = target4 from rfl)
-
-theorem chunkLength4 : (original4.map Setup.Block.length).sum = 262144 := by decide +kernel
 
 column_blocks_part original5 from Data.GKRSetup.SubwordMemory.setupColumn8 start 5 stop 6
 column_blocks_part target5Region5 from (Verification.subwordROMHalfData.columns[(8 : Nat)]) start 0 stop 1
