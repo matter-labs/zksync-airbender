@@ -9,7 +9,8 @@ from gkr_packed_functional_steps import balanced
 from gkr_packed_query_frame import capture_name, merge_slices
 from gkr_packed_rotate_boundary import preflight
 
-CASES = ('WordMemoryCached', 'WordMemoryUncached')
+PILOT_CASES = ('WordMemoryCached', 'WordMemoryUncached')
+CASES = PILOT_CASES + ('BlakeRoundCached', 'BlakeRoundUncached')
 
 
 def metadata(case):
@@ -177,11 +178,23 @@ def modules(case):
         'theorem checked : NumericFunctionalBaseChecks.check babyBearModulus data = true := by decide +kernel\n',
         'theorem originalChecked : originalEntries.all NumericFunctionalBaseChecks.Typed.check = true :=\n'
         '  NumericFunctionalBaseChecks.check_sound originalEntries data source_binding checked\n']
+    if len(rows) >= 32:
+        for first in range(0, len(rows), 8):
+            width = min(8, len(rows) - first)
+            chunk = f'entries{first}'
+            lines.append(f'noncomputable def {chunk} := [\n  ' + ',\n  '.join(row[1] for row in rows[first:first + width]) + ']\n')
+            lines.append(f'theorem {chunk}_binding : ((originalEntries.drop {first}).take {width}) = {chunk} := by rfl\n')
+            lines.append(f'theorem {chunk}_checked : {chunk}.all NumericFunctionalBaseChecks.Typed.check = true := by\n'
+                f'  rw [← {chunk}_binding]\n'
+                f'  exact NumericCleanArgumentChecks.checked_window originalChecked {first} {width}\n')
     for index, (fact, row, predicate) in enumerate(rows):
+        source = f'entries{index // 8 * 8}' if len(rows) >= 32 else 'originalEntries'
+        offset = index % 8 if len(rows) >= 32 else index
+        checked = source + '_checked' if len(rows) >= 32 else 'originalChecked'
         lines.append(f'theorem {fact} : {predicate} = true := by\n'
             f'  have item : ({row}).check = true :=\n'
-            f'    List.all_eq_true.mp originalChecked (originalEntries.get ⟨{index}, by decide +kernel⟩)\n'
-            f'      (List.get_mem originalEntries ⟨{index}, by decide +kernel⟩)\n'
+            f'    List.all_eq_true.mp {checked} ({source}.get ⟨{offset}, by decide +kernel⟩)\n'
+            f'      (List.get_mem {source} ⟨{offset}, by decide +kernel⟩)\n'
             '  simpa only [NumericCleanArgumentChecks.ofNative_check] using item\n')
     yield stem + '.Certificate', (f'import {stem}.Bindings\n\n' + header + '\n'.join(lines) + end)
 

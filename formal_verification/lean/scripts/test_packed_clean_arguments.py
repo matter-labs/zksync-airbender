@@ -13,11 +13,14 @@ import gkr_clean_generic_arguments as generic
 
 class CleanArgumentTests(unittest.TestCase):
     def test_all_three_predicate_families(self):
-        self.assertEqual(generator.CASES, ('WordMemoryCached', 'WordMemoryUncached'))
+        self.assertEqual(generator.PILOT_CASES, ('WordMemoryCached', 'WordMemoryUncached'))
         for case in generator.CASES:
             descriptors = generator.descriptors(case)
-            self.assertEqual(len(descriptors), 20)
-            for family, count in [('rangeChecked', 3), ('timestampChecked', 8), ('genericChecked', 9)]:
+            dense = case.startswith('BlakeRound')
+            counts = [('rangeChecked', 0), ('timestampChecked', 89), ('genericChecked', 1152)] if dense else [
+                ('rangeChecked', 3), ('timestampChecked', 8), ('genericChecked', 9)]
+            self.assertEqual(len(descriptors), 1241 if dense else 20)
+            for family, count in counts:
                 self.assertEqual(sum(row[0].startswith(family) for row in descriptors), count)
             generated = dict(generator.modules(case))
             stem = 'Airbender.Proofs.GKRProtocol.CleanArgumentChecks.' + case
@@ -35,8 +38,14 @@ class CleanArgumentTests(unittest.TestCase):
             for fact, _, predicate in descriptors:
                 self.assertIn(f'theorem {fact} : {predicate} = true', certificate)
             self.assertEqual(certificate.count('theorem checked :'), 1)
+            if dense:
+                self.assertEqual(certificate.count(' := by rfl\n'), 156)
+                self.assertEqual(certificate.count('NumericCleanArgumentChecks.checked_window originalChecked'), 156)
+                self.assertNotIn('originalEntries.get', certificate)
+                self.assertIn('(originalEntries.drop 1240).take 1', certificate)
             self.assertNotIn('maxHeartbeats', ''.join(generated.values()))
-            _, scalar_source = scalar.module('word-memory', 'WordMemory', 'cached' if case.endswith('Cached') else 'uncached')
+            _, scalar_source = scalar.module('blake-round' if dense else 'word-memory',
+                'BlakeRound' if dense else 'WordMemory', 'cached' if case.endswith('Cached') else 'uncached')
             self.assertIn('phase 1 using_checks', scalar_source)
             targets = list(generic.modules(generator.capture_name(case), case))
             self.assertEqual(len(targets), 1)
