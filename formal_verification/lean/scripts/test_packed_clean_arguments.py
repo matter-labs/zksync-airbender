@@ -14,12 +14,19 @@ import gkr_clean_generic_arguments as generic
 class CleanArgumentTests(unittest.TestCase):
     def test_all_three_predicate_families(self):
         self.assertEqual(generator.PILOT_CASES, ('WordMemoryCached', 'WordMemoryUncached'))
+        self.assertEqual(len(set(generator.CASES)), 22)
+        counts_by_stem = {
+            'AddSub': (6, 8, 0), 'JumpBranch': (4, 8, 40), 'MulDiv': (8, 8, 72),
+            'ShiftBinop': (2, 8, 50), 'WordMemory': (3, 8, 9), 'SubwordMemory': (5, 8, 18),
+            'Unified': (13, 8, 50), 'Bigint': (32, 41, 183), 'BlakeG': (0, 21, 171),
+            'BlakeRound': (0, 89, 1152), 'Keccak': (0, 30, 328),
+        }
         for case in generator.CASES:
             descriptors = generator.descriptors(case)
-            dense = case.startswith('BlakeRound')
-            counts = [('rangeChecked', 0), ('timestampChecked', 89), ('genericChecked', 1152)] if dense else [
-                ('rangeChecked', 3), ('timestampChecked', 8), ('genericChecked', 9)]
-            self.assertEqual(len(descriptors), 1241 if dense else 20)
+            mode = 'cached' if case.endswith('Cached') else 'uncached'
+            circuit_stem = case[:-len(mode.title())]
+            counts = list(zip(['rangeChecked', 'timestampChecked', 'genericChecked'], counts_by_stem[circuit_stem]))
+            self.assertEqual(len(descriptors), sum(counts_by_stem[circuit_stem]))
             for family, count in counts:
                 self.assertEqual(sum(row[0].startswith(family) for row in descriptors), count)
             generated = dict(generator.modules(case))
@@ -38,18 +45,21 @@ class CleanArgumentTests(unittest.TestCase):
             for fact, _, predicate in descriptors:
                 self.assertIn(f'theorem {fact} : {predicate} = true', certificate)
             self.assertEqual(certificate.count('theorem checked :'), 1)
-            if dense:
-                self.assertEqual(certificate.count(' := by rfl\n'), 156)
-                self.assertEqual(certificate.count('NumericCleanArgumentChecks.checked_window originalChecked'), 156)
+            if len(descriptors) >= 32:
+                windows = (len(descriptors) + 7) // 8
+                self.assertEqual(certificate.count(' := by rfl\n'), windows)
+                self.assertEqual(certificate.count('NumericCleanArgumentChecks.checked_window originalChecked'), windows)
                 self.assertNotIn('originalEntries.get', certificate)
-                self.assertIn('(originalEntries.drop 1240).take 1', certificate)
+                first = (len(descriptors) - 1) // 8 * 8
+                self.assertIn(f'(originalEntries.drop {first}).take {len(descriptors) - first}', certificate)
             self.assertNotIn('maxHeartbeats', ''.join(generated.values()))
-            _, scalar_source = scalar.module('blake-round' if dense else 'word-memory',
-                'BlakeRound' if dense else 'WordMemory', 'cached' if case.endswith('Cached') else 'uncached')
+            family = generator.capture_name(case).removesuffix('-' + mode)
+            _, scalar_source = scalar.module(family, circuit_stem, mode)
             self.assertIn('phase 1 using_checks', scalar_source)
             targets = list(generic.modules(generator.capture_name(case), case))
-            self.assertEqual(len(targets), 1)
-            self.assertIn('part_size 8 phase 1 using_checks', targets[0][1])
+            self.assertEqual(len(targets), 1 if counts_by_stem[circuit_stem][2] else 0)
+            if targets:
+                self.assertIn('part_size 8 phase 1 using_checks', targets[0][1])
 
     def test_legacy_paths_stay_available(self):
         with patch.object(generator, 'CASES', ()):
