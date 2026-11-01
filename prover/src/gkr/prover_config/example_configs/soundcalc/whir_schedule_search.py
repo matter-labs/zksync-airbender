@@ -3,7 +3,7 @@ Run: PYTHONPATH=<soundcalc clone> python3.11 whir_schedule_search.py   (python >
 The shapes under __main__ are the EthproofsSoundnessCalc entries of ../ethproofs_soundcalc.rs.
 Constraints: BabyBear^4, sec 100, base LDE 2, ONE OOD sample per oracle (+ OOD PoW), folding PoW allowed
 (cap FOLD_CAP per sumcheck round), query PoW <= LATER_POW after the base round (the query count is sized
-against that cap, then the PoW is lowered to the smallest value that still reaches the target), base query PoW 28.
+against that cap, then the PoW is lowered to the smallest value that still reaches the target), base query PoW 27 (so no round of the mode grinds more than 27 bits).
 Virtual packing (fold_log2 = 0) is emulated with log_degree + 1 and k_0 = 1 (soundcalc needs k >= 1):
 the batched polynomial of size 2^m is then re-committed as the first internal oracle at size 2^m,
 which is exactly the virtual-packing shape; the emulated base code is 2x larger than the real one,
@@ -115,14 +115,14 @@ def solve(label, msg_log2, folds, n_cols, base_pow, base_queries=None, virtual=F
 if __name__ == "__main__":
     # The entries of `example_configs/ethproofs_soundcalc.rs`, keyed by (message size, virtual packing).
     # The committed-polynomial ceiling is the entry's `max_committed_polys`; it only sets the batching PoW.
-    solve("2^23, fold_log2 1, ceiling 128 (unified_reduced_machine 106 columns, mul_div_unsigned 59)", 23, [1,5,5,5,4], 128, 28,
+    solve("2^23, fold_log2 1, ceiling 128 (unified_reduced_machine 106 columns, mul_div_unsigned 59)", 23, [1,5,5,5,4], 128, 27,
           today="folds [1,5,5,5,4], lde_log2 [4,9,14,19], queries [89,23,10,7,5], qPoW [26,24,25,19,21]")
-    solve("2^24, fold_log2 1, ceiling 128 (add_sub, inits_and_teardowns, jump_branch, load_store x2, shift_binary: <= 68 columns)", 24, [1,5,5,5,4,3], 128, 28,
+    solve("2^24, fold_log2 1, ceiling 128 (add_sub, inits_and_teardowns, jump_branch, load_store x2, shift_binary: <= 68 columns)", 24, [1,5,5,5,4,3], 128, 27,
           today="folds [1,5,5,5,4,3], lde_log2 [4,9,14,19,19], queries [89,23,10,7,5,5], qPoW [26,24,25,19,21,21]")
-    solve("2^22, virtual packing, ceiling 512 (bigint 260, keccak_* <= 274, blake2_g_function 121 columns; blake2_with_compression 769/4 = 194 packed)", 22, [0,6,5,5,5], 512, 28, virtual=True,
+    solve("2^22, virtual packing, ceiling 512 (bigint 260, keccak_* <= 274, blake2_g_function 121 columns; blake2_with_compression 769/4 = 194 packed)", 22, [0,6,5,5,5], 512, 27, virtual=True,
           today="virtual twin folds [0,6,5,5,5], lde_log2 [5,11,15,19], queries [89,15,8,6,5], qPoW [26,25,27,25,21]")
-    solve("2^20, fold_log2 1, ceiling 1024 (blake2_with_extended_control test circuit, 769 columns)", 20, [1,5,5,4,4], 1024, 28,
+    solve("2^20, fold_log2 1, ceiling 1024 (blake2_with_extended_control test circuit, 769 columns)", 20, [1,5,5,4,4], 1024, 27,
           today="folds [1,5,5,4,4], lde_log2 [8,13,15,19], queries [89,11,7,6,5], qPoW [26,27,25,25,21]")
-    solve("2^20, virtual packing, ceiling 1024 (blake2_with_extended_control test circuit)", 20, [0,6,5,4,4], 1024, 28, virtual=True,
+    solve("2^20, virtual packing, ceiling 1024 (blake2_with_extended_control test circuit)", 20, [0,6,5,4,4], 1024, 27, virtual=True,
           today="virtual twin folds [0,6,5,4,4], lde_log2 [7,13,15,19], queries [89,13,7,6,5], qPoW [26,27,25,25,21]")
     solve("2^23, fold_log2 1, base round kept at 89 queries / PoW 26 (what today's base round certifies)", 23, [1,5,5,5,4], 128, 26, base_queries=89)

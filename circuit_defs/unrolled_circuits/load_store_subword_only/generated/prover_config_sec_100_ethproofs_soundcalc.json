@@ -11,8 +11,8 @@
       "fold_log2": 1,
       "batching_pow_bits": 9,
       "folding_pow_bits": 0,
-      "num_queries": 174,
-      "queries_pow_bits": 28
+      "num_queries": 176,
+      "queries_pow_bits": 27
     },
     "internal_rounds": [
       {

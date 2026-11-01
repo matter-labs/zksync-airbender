@@ -37,7 +37,7 @@ PYTHONPATH=/tmp/soundcalc python3.11 late_round_rebalance.py      # JBR-rebalanc
   whose fold terms can be lifted to the target with ≤ `FOLD_CAP` (24) bits of
   folding PoW per sumcheck step and whose OOD term with ≤ `LATER_POW` (27)
   bits of OOD PoW, and picks the fewest queries (then the least grinding,
-  then the best rate). Query PoW is 28 in the base round; afterwards the
+  then the best rate). Query PoW is 27 in the base round (176 unique-decoding queries; no round of the mode grinds more than 27 bits); afterwards the
   query count is sized against a 27-bit cap and the PoW is then lowered to
   the smallest grind that still lifts the round's query term to the target
   (12 queries at 6.28 bits each are 75 bits, so 25 bits of grind, not 27).

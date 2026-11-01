@@ -50,8 +50,9 @@
 //! 100 bits. These are WHIR PCS component bounds, not whole-system or GKR
 //! soundness claims, and the 62-bit figure applies specifically to unique
 //! decoding. The selected unique-decoding base needs
-//! `ceil((100 − 28) / 0.415) = 174` queries at 28 PoW bits for its 100-bit query
-//! term (base LDE factor and round-0 fold unchanged). Every later round keeps
+//! `ceil((100 − 27) / 0.415) = 176` queries at 27 PoW bits for its 100-bit query
+//! term (base LDE factor and round-0 fold unchanged; no round grinds more than
+//! 27 bits anywhere in this mode). Every later round keeps
 //! its fold; the second oracle keeps its LDE factor, the later ones move to a
 //! better rate at the cost of a few queries.
 //!
@@ -353,8 +354,8 @@ impl EthproofsSoundcalcEntry {
             out,
             "The base round cannot stay at the ladder's 89 queries / 26 PoW bits: under both accepted \
              regimes a query into the rate-1/2 base oracle is worth at most 0.415 bits, so that base round \
-             certifies 62 bits whatever the later rounds do; 100 bits need ceil((100 − 28) / 0.415) = 174 \
-             queries at 28 PoW bits with the base LDE factor and round-0 fold unchanged. The later oracles' \
+             certifies 62 bits whatever the later rounds do; 100 bits need ceil((100 − 27) / 0.415) = 176 \
+             queries at 27 PoW bits (the mode's grinding cap) with the base LDE factor and round-0 fold unchanged. The later oracles' \
              LDE factors are cut because the Johnson-bound fold term grows with n / ρ^1.5 and must stay \
              within a 24-bit folding grind."
         );
@@ -365,13 +366,13 @@ impl EthproofsSoundcalcEntry {
 const BASE_UDR: RoundAnalysis = RoundAnalysis {
     regime: ProximityRegime::UniqueDecoding,
     bits_per_query: 0.415,
-    unique_decoding_queries: 174,
+    unique_decoding_queries: 176,
     folding_pow_bits_per_step: &[],
     reason: "unique decoding is the only regime certifiable at rate 1/2: the Johnson-bound batching \
              term of the committed columns is 73–90 bits for any multiplicity and cannot be lifted \
              within any sane batching PoW, and the Johnson radius at rate 1/2 (0.28–0.48 bits/query) \
-             is below the unique-decoding one (0.415) anyway; 174 queries at 28 PoW bits put the base \
-             query term at exactly 100 bits (no folding PoW needed: the unique-decoding fold term is \
+             is below the unique-decoding one (0.415) anyway; 176 queries at 27 PoW bits (no round of this \
+             mode grinds more than 27) put the base query term at exactly 100 bits (no folding PoW needed: the unique-decoding fold term is \
              above 100 by itself)",
 };
 
@@ -430,8 +431,8 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
         max_committed_polys: 128,
         certified_bits: 100,
         binding_term: "OOD(i=1)",
-        base_num_queries: 174,
-        base_queries_pow_bits: 28,
+        base_num_queries: 176,
+        base_queries_pow_bits: 27,
         base_analysis: BASE_UDR,
         rounds: &[
             round(5, 5, 31, 27, 8, jbr(5, 2.36, 77, &[22, 21, 20, 19, 18],
@@ -453,8 +454,8 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
         max_committed_polys: 128,
         certified_bits: 100,
         binding_term: "OOD(i=1)",
-        base_num_queries: 174,
-        base_queries_pow_bits: 28,
+        base_num_queries: 176,
+        base_queries_pow_bits: 27,
         base_analysis: BASE_UDR,
         rounds: &[
             round(4, 5, 39, 26, 9, jbr(8, 1.91, 80, &[24, 23, 22, 21, 20],
@@ -478,8 +479,8 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
         max_committed_polys: 512,
         certified_bits: 100,
         binding_term: "OOD(i=1)",
-        base_num_queries: 174,
-        base_queries_pow_bits: 28,
+        base_num_queries: 176,
+        base_queries_pow_bits: 27,
         base_analysis: BASE_UDR,
         rounds: &[
             round(5, 6, 31, 27, 8, jbr(5, 2.36, 77, &[22, 21, 20, 19, 18, 17],
@@ -501,8 +502,8 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
         max_committed_polys: 1024,
         certified_bits: 100,
         binding_term: "OOD(i=1)",
-        base_num_queries: 174,
-        base_queries_pow_bits: 28,
+        base_num_queries: 176,
+        base_queries_pow_bits: 27,
         base_analysis: BASE_UDR,
         rounds: &[
             round(8, 5, 20, 25, 6, jbr(3, 3.78, 74, &[23, 22, 21, 20, 19],
@@ -524,8 +525,8 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
         max_committed_polys: 1024,
         certified_bits: 100,
         binding_term: "OOD(i=1)",
-        base_num_queries: 174,
-        base_queries_pow_bits: 28,
+        base_num_queries: 176,
+        base_queries_pow_bits: 27,
         base_analysis: BASE_UDR,
         rounds: &[
             round(7, 6, 22, 27, 7, jbr(4, 3.33, 74, &[24, 23, 22, 21, 20, 19],
@@ -603,8 +604,8 @@ mod tests {
                 Some(entry.batching_pow_bits())
             );
             assert_eq!(schedule.base_round.folding_pow_bits, 0);
-            assert_eq!(schedule.base_round.num_queries, 174);
-            assert_eq!(schedule.base_round.queries_pow_bits, 28);
+            assert_eq!(schedule.base_round.num_queries, 176);
+            assert_eq!(schedule.base_round.queries_pow_bits, 27);
             for (round, certified) in schedule.internal_rounds.iter().zip(entry.rounds) {
                 assert_eq!(round.num_ood_samples, 1);
                 assert!((24..=27).contains(&round.queries_pow_bits));
@@ -698,7 +699,8 @@ mod tests {
                 packing,
                 Some(&columns),
             );
-            assert_eq!(config.whir_schedule.base_round.num_queries, 174);
+            assert_eq!(config.whir_schedule.base_round.num_queries, 176);
+            assert_eq!(config.whir_schedule.base_round.queries_pow_bits, 27);
         }
     }
 
