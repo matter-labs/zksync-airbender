@@ -18,12 +18,13 @@ private def emitChecked (command : Syntax) : CommandElabM Unit := do
 syntax (name := importMemoryFrame) "import_memory_frame " ident " from " str
   " base_model " ident " memory_model " ident " source_model " ident " history_model " ident
   " helper_model " ident " counter_model " ident " inputs " num
-  " phase " num " start " num " stop " num : command
+  " phase " num " start " num " stop " num (" using_check " term)? : command
 
 elab_rules : command
   | `(import_memory_frame $name:ident from $path:str base_model $baseName:ident memory_model $memoryName:ident
       source_model $sourceName:ident history_model $historyName:ident helper_model $helperName:ident
-      counter_model $counterName:ident inputs $arityNumber:num phase $phaseNumber:num start $startNumber:num stop $stopNumber:num) => do
+      counter_model $counterName:ident inputs $arityNumber:num phase $phaseNumber:num start $startNumber:num stop $stopNumber:num
+      $[using_check $wholeCheck:term]?) => do
     let snapshot ← match Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Source.Snapshot)) with
       | .ok snapshot => pure snapshot | .error error => throwError "{error}"
     let requests ← match Source.memoryRequests snapshot.semantic_inputs with
@@ -59,7 +60,7 @@ elab_rules : command
     let baseline := fieldName name "sourceMemoryValues"
     let finiteActive := fieldName name "finite_active_frame"
     let finiteAll := fieldName name "finite_frame"
-    if phaseIndex == 0 || phaseIndex == 3 then
+    if phaseIndex == 0 || (phaseIndex == 3 && wholeCheck.isNone) then
       emitChecked (← `(def $activeCoordinates : List (Fin $(quote arityNumber.getNat)) :=
         List.ofFn $borrows ++ List.ofFn $counters))
       emitChecked (← `(def $allCoordinates : List (Fin $(quote arityNumber.getNat)) := $histories ++ $activeCoordinates))
@@ -100,8 +101,17 @@ elab_rules : command
          ("execute", ← `([$sourceExecute]), 1, allCoordinates, finiteAll, false)] do
       let fields := fieldName name s!"{stem}Fields"
       let checked := fieldName name s!"{stem}Checked"
-      if phaseIndex == 0 || phaseIndex == 3 then
+      if phaseIndex == 0 || (phaseIndex == 3 && wholeCheck.isNone) then
         emitChecked (← `(noncomputable def $fields : List Source.MemoryField := $terms))
+      let length := fieldName name s!"{stem}FieldsLength"
+      if phaseIndex == 0 then
+        emitChecked (← `(theorem $length : ($fields).length = $(quote fieldCount) := by decide +kernel))
+      let complete ← match wholeCheck with
+        | none => pure none
+        | some result =>
+            let proof ← if stem == "ram" then `(($result).1)
+              else if stem == "initialization" then `(($result).2.1) else `(($result).2.2)
+            pure (some proof)
       let predicate ← `(fun field : Source.MemoryField => field.baseFrameCheck $placement $nativeBank $coordinates $inputBank $fullBank)
       if phaseIndex == 1 || phaseIndex == 3 then
         if stem == "ram" || phaseIndex == 3 || firstIndex == 0 then
@@ -110,7 +120,12 @@ elab_rules : command
           let mut proofs := #[]
           for index in [sliceStart:sliceStop] do
             let itemChecked := fieldName name s!"{stem}Checked{index}"
-            emitChecked (← `(theorem $itemChecked : ($predicate) (($fields).get ⟨$(quote index), by decide⟩) = true := by decide +kernel))
+            if let some result := complete then
+              let bound ← `(by rw [$length:ident]; decide)
+              emitChecked (← `(theorem $itemChecked : ($predicate) (($fields).get ⟨$(quote index), $bound⟩) = true :=
+                List.all_eq_true.mp $result _ (List.get_mem $fields ⟨$(quote index), $bound⟩)))
+            else
+              emitChecked (← `(theorem $itemChecked : ($predicate) (($fields).get ⟨$(quote index), by decide⟩) = true := by decide +kernel))
             proofs := proofs.push (← `($itemChecked))
           if phaseIndex == 1 && stem == "ram" then
             let block := fieldName name s!"ramBlock{firstIndex}"
@@ -120,8 +135,25 @@ elab_rules : command
             emitChecked (← `(theorem $blockChecked : ($block).all $predicate = true :=
               BoolChecks.all_true (predicate := $predicate) (items := $block) $(← checksSyntax proofs)))
           else
-            emitChecked (← `(theorem $checked : ($fields).all $predicate = true :=
-              BoolChecks.all_true (predicate := $predicate) (items := $fields) $(← checksSyntax proofs)))
+            if let some result := complete then
+              emitChecked (← `(theorem $checked : ($fields).all $predicate = true := $result))
+            else
+              emitChecked (← `(theorem $checked : ($fields).all $predicate = true :=
+                BoolChecks.all_true (predicate := $predicate) (items := $fields) $(← checksSyntax proofs)))
+      if phaseIndex == 3 && stem == "ram" && ramCount > 256 then
+        if let some result := complete then
+          let mut blocks : Array (TSyntax `term) := #[]
+          for first in (List.range ((ramCount + 63) / 64)).map (· * 64) do
+            let block := fieldName name s!"ramBlock{first}"
+            let blockChecked := fieldName name s!"ramBlockChecked{first}"
+            let partCount := min 64 (ramCount - first)
+            emitChecked (← `(noncomputable def $block : List Source.MemoryField :=
+              (($fields).drop $(quote first)).take $(quote partCount)))
+            emitChecked (← `(theorem $blockChecked : ($block).all $predicate = true :=
+              QueryFrameImport.all_slice_true $fields $predicate $(quote first) $(quote partCount) $result))
+            blocks := blocks.push (← `($block))
+          let flattened := fieldName name "ramBlocksFlatten"
+          emitChecked (← `(theorem $flattened : ([$blocks,*] : List (List Source.MemoryField)).flatten = $fields := by rfl))
       if phaseIndex == 0 || phaseIndex == 1 then continue
       if phaseIndex == 2 && stem == "ram" then
         let mut blocks : Array (TSyntax `term) := #[]

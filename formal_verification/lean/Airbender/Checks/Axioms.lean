@@ -1,3 +1,5 @@
+import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.AddSubUncached.Certificate
+import Airbender.Proofs.GKRProtocol.MemoryFrameChecks.AddSubCached.Certificate
 import Airbender.Proofs.GKRProtocol.QueryFrameChecks.KeccakUncached.Certificate
 import Airbender.Proofs.GKRProtocol.QueryFrameChecks.KeccakCached.Certificate
 import Airbender.Proofs.GKRProtocol.QueryFrameChecks.BlakeGUncached.Certificate
@@ -77979,3 +77981,33 @@ import Airbender.Proofs.FullUnsigned.NativeSoundness
 #print axioms Airbender.Compiler.QueryFrameChecks.KeccakUncached.indexedChecked
 #print axioms Airbender.Compiler.QueryFrameChecks.KeccakUncached.checked
 #print axioms Airbender.Compiler.QueryFrameChecks.KeccakUncached.originalChecked
+
+#print axioms Airbender.Compiler.NumericMemoryFrameChecks.independent
+#print axioms Airbender.Compiler.NumericMemoryFrameChecks.independent_addressCode
+#print axioms Airbender.Compiler.NumericMemoryFrameChecks.addressCode_beq
+#print axioms Airbender.Compiler.NumericMemoryFrameChecks.Capture
+#print axioms Airbender.Compiler.NumericMemoryFrameChecks.ofTyped
+#print axioms Airbender.Compiler.NumericMemoryFrameChecks.valid
+#print axioms Airbender.Compiler.NumericMemoryFrameChecks.portCheck
+#print axioms Airbender.Compiler.NumericMemoryFrameChecks.polynomialCheck
+#print axioms Airbender.Compiler.NumericMemoryFrameChecks.check
+#print axioms Airbender.Compiler.NumericMemoryFrameChecks.valid_sound
+#print axioms Airbender.Compiler.NumericMemoryFrameChecks.bound_lookup
+#print axioms Airbender.Compiler.NumericMemoryFrameChecks.portCheck_eq
+#print axioms Airbender.Compiler.NumericMemoryFrameChecks.fields_sound
+#print axioms Airbender.Compiler.NumericMemoryFrameChecks.check_sound
+#print axioms Airbender.Compiler.NumericMemoryFrameChecks.check_sound_of_binding
+#print axioms Airbender.Compiler.MemoryFrameChecks.AddSubCached.data
+#print axioms Airbender.Compiler.MemoryFrameChecks.AddSubCached.source_binding
+#print axioms Airbender.Compiler.MemoryFrameChecks.AddSubCached.checked
+#print axioms Airbender.Compiler.MemoryFrameChecks.AddSubCached.originalChecked
+#print axioms Airbender.Compiler.MemoryFrameNative.AddSubCached.native.ramFieldsLength
+#print axioms Airbender.Compiler.MemoryFrameNative.AddSubCached.native.initializationFieldsLength
+#print axioms Airbender.Compiler.MemoryFrameNative.AddSubCached.native.executeFieldsLength
+#print axioms Airbender.Compiler.MemoryFrameChecks.AddSubUncached.data
+#print axioms Airbender.Compiler.MemoryFrameChecks.AddSubUncached.source_binding
+#print axioms Airbender.Compiler.MemoryFrameChecks.AddSubUncached.checked
+#print axioms Airbender.Compiler.MemoryFrameChecks.AddSubUncached.originalChecked
+#print axioms Airbender.Compiler.MemoryFrameNative.AddSubUncached.native.ramFieldsLength
+#print axioms Airbender.Compiler.MemoryFrameNative.AddSubUncached.native.initializationFieldsLength
+#print axioms Airbender.Compiler.MemoryFrameNative.AddSubUncached.native.executeFieldsLength
