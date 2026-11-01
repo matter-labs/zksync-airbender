@@ -1,4 +1,4 @@
-import Airbender.Import.GKRProtocol.CounterFrameImport
+import Airbender.Proofs.GKRProtocol.CounterFrameChecks.BlakeGUncached.Certificate
 import Airbender.Proofs.GKRProtocol.HelperValidityNative.BlakeGUncached
 import Airbender.Proofs.GKRProtocol.TableNative.BlakeGUncached
 
@@ -7,12 +7,12 @@ open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_counter_frame native from "artifacts/compiler/blake-g-uncached.json"
   base_model Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native
   table_model Airbender.Compiler.TableNative.BlakeGUncached.native
   helper_model Airbender.Compiler.HelperNative.BlakeGUncached.native inputs 112
+  phase 1 using_check Airbender.Compiler.CounterFrameChecks.BlakeGUncached.originalChecked
 
 theorem counter_graph_extends {R : Type} [CommRing R]
     (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)

@@ -5068,3 +5068,46 @@ environment audit and baseline refresh, full transitive replay, cold full
 measurements and Linux qualification did not run. They remain pending for
 implementation review. The known aggregate ownership collision stays deferred.
 No aggregate import pass is claimed.
+
+## Complete counter-frame family
+
+All 22 counter-frame captures now use one complete kernel result per capture.
+The other 20 captures use the qualified numeric checker and exact source
+binding. All six original predicates remain exact. Each source and helper
+polynomial keeps every term, coordinate and zero coefficient. The original
+assignment and semantic finalizers stay unchanged. No caller premise changes.
+Both cache modes stay required. Every counter-frame module uses default
+heartbeats. The two pilot outputs stay unchanged.
+
+All 260 original public declarations in the remaining captures stay
+available. A kernel control accepts all 220 old theorem types. All
+40 imported data Expr values are identical. All 200 selected modules pass
+source checks and replay. They include 100 direct query, memory and oracle
+consumers. Replay uses the standard 32 MiB stack. It skips no safe dependency.
+All 820 focused axiom checks use only the three allowed axioms. Sixty exact
+source controls pass. The kernel rejects all sixty mutations. The shared exact
+controls, opaque-data rejection and legacy importer retain their pilot results.
+All three expanded Python generator controls pass.
+
+The six larger source captures take 166.39 s and peak at
+1,955.09 MiB. Their qualification takes 320.64 s and peaks at
+2,282.42 MiB. The other fourteen source captures take 294.55 s and
+peak at 941.73 MiB. Their qualification takes 561.47 s and peaks at
+2,276.60 MiB. All guards clean their owned workers. Source and interface
+freshness, static checks, source-layer checks and workflow syntax pass. CI checks
+the complete family. No cold full-build gain is claimed.
+
+The explicit inventory has 82,290 roots. It retains all 82,210 prior roots
+and every established root. Original objects remain in
+counter-frame-remaining-original-oleans. Evidence prefixes are
+counter-frame-remaining-dense and counter-frame-remaining-ordinary. The complete
+dense prototypes remain in counter-frame-blake-prototype. Canonical source and
+replay replace those temporary source paths for adoption.
+
+Item 3 remains open. History erasure and numerical argument checks remain.
+Parametric semantic proofs need a scope check. Decoder interpretation and
+program-dependent setup stay excluded. The hourly follow-up stays active. Full
+frontend validation, environment audit and baseline refresh, full transitive
+replay, cold full measurements and Linux qualification did not run. They remain
+pending for implementation review. The known aggregate ownership collision
+stays deferred. No aggregate import pass is claimed.
