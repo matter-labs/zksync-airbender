@@ -1,12 +1,12 @@
 import Airbender.Import.GKRProtocol.QueryFrameImport
 import Airbender.Proofs.GKRProtocol.CounterFrameNative.UnifiedCached
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.UnifiedCached.Certificate
 
 namespace Airbender.Compiler.QueryFrameNative.UnifiedCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_query_frame native certificate "artifacts/compiler/lookup/unified-cached.json"
   queries (Airbender.Compiler.LookupSourceNative.UnifiedCached.native.genericQueries ++ Airbender.Compiler.LookupSourceNative.UnifiedCached.native.range16Queries)
@@ -17,5 +17,6 @@ import_query_frame native certificate "artifacts/compiler/lookup/unified-cached.
   history_model Airbender.Compiler.HistoryErasureNative.UnifiedCached.native
   helper_model Airbender.Compiler.HelperValidityNative.UnifiedCached.native
   counter_model Airbender.Compiler.CounterFrameNative.UnifiedCached.native inputs 137 phase 3 start 0 stop 74
+  using_check Airbender.Compiler.QueryFrameChecks.UnifiedCached.originalChecked
 
 end Airbender.Compiler.QueryFrameNative.UnifiedCached

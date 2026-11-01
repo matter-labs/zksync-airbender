@@ -1,12 +1,12 @@
 import Airbender.Import.GKRProtocol.QueryFrameImport
 import Airbender.Proofs.GKRProtocol.CounterFrameNative.ShiftBinopUncached
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.ShiftBinopUncached.Certificate
 
 namespace Airbender.Compiler.QueryFrameNative.ShiftBinopUncached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_query_frame native certificate "artifacts/compiler/lookup/shift-binop-uncached.json"
   queries (Airbender.Compiler.LookupSourceNative.ShiftBinopUncached.native.genericQueries ++ Airbender.Compiler.LookupSourceNative.ShiftBinopUncached.native.range16Queries)
@@ -17,5 +17,6 @@ import_query_frame native certificate "artifacts/compiler/lookup/shift-binop-unc
   history_model Airbender.Compiler.HistoryErasureNative.ShiftBinopUncached.native
   helper_model Airbender.Compiler.HelperValidityNative.ShiftBinopUncached.native
   counter_model Airbender.Compiler.CounterFrameNative.ShiftBinopUncached.native inputs 98 phase 3 start 0 stop 63
+  using_check Airbender.Compiler.QueryFrameChecks.ShiftBinopUncached.originalChecked
 
 end Airbender.Compiler.QueryFrameNative.ShiftBinopUncached

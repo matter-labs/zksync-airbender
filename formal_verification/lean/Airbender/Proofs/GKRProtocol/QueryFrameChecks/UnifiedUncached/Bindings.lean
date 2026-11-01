@@ -1,0 +1,14 @@
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.UnifiedUncached.PlacementBindings
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.UnifiedUncached.NativeAddressBindings
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.UnifiedUncached.ReturnedAddressBindings
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.UnifiedUncached.FieldsBindings
+
+namespace Airbender.Compiler.QueryFrameChecks.UnifiedUncached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+numeric_data_binding coordinates_binding : data.coordinates = Airbender.Compiler.QueryFrameNative.UnifiedUncached.native.coordinates.map Fin.val
+
+end Airbender.Compiler.QueryFrameChecks.UnifiedUncached

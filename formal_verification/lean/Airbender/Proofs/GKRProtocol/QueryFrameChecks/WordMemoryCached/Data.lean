@@ -1,0 +1,12 @@
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.WordMemoryCachedInputs
+import Airbender.Import.GKRProtocol.NumericQueryFrameImport
+
+namespace Airbender.Compiler.QueryFrameChecks.WordMemoryCached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+numeric_query_frame_capture data := NumericQueryFrameChecks.ofTyped Airbender.Compiler.QueryFrameNative.WordMemoryCached.native.fields Airbender.Compiler.QueryFrameNative.WordMemoryCached.native.coordinates
+  Airbender.Compiler.FullArithmeticNative.WordMemoryCached.native.originalProjection Airbender.Compiler.LookupNative.WordMemoryCached.native.sourcePlacement Airbender.Compiler.FullArithmeticNative.WordMemoryCached.native.inputBank Airbender.Compiler.LookupSourceNative.WordMemoryCached.native.bank
+end Airbender.Compiler.QueryFrameChecks.WordMemoryCached

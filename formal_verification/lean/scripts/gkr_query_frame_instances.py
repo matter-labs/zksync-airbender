@@ -13,6 +13,8 @@ from gkr_wiring_instances import CASES
 def module(name, case, phase=3, start=0, stop=None):
     from gkr_packed_query_frame import CASES as PACKED_CASES
     packed=case in PACKED_CASES
+    if packed and phase in [1,2]:
+        raise ValueError('complete query frames do not use proof shards')
     root = LEAN / 'artifacts/compiler'
     arity = len(synthesize(json.loads((root / (name + '.json')).read_text()),
                            json.loads((root / (name + '-source.json')).read_text()))['inputs'])

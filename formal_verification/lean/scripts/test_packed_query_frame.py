@@ -11,7 +11,11 @@ import gkr_query_frame_instances as interface
 
 class NumericQueryFrameTests(unittest.TestCase):
     def test_complete_both_cache_modes(self):
-        self.assertEqual(generator.CASES,('AddSubCached','AddSubUncached','BlakeRoundCached','BlakeRoundUncached'))
+        self.assertEqual(len(generator.CASES),22)
+        self.assertEqual(len(set(generator.CASES)),22)
+        for stem in generator.CIRCUIT_CASES:
+            self.assertIn(stem+'Cached',generator.CASES)
+            self.assertIn(stem+'Uncached',generator.CASES)
         for case in generator.CASES:
             modules=dict(generator.modules(case));stem='Airbender.Proofs.GKRProtocol.QueryFrameChecks.'+case
             self.assertEqual(modules[stem+'.Certificate'].count(':= by decide +kernel'),1)
@@ -23,7 +27,7 @@ class NumericQueryFrameTests(unittest.TestCase):
                 self.assertIn('numeric_data_binding source_binding : data =',modules[stem+'.Bindings'])
             for field in ['fields','coordinates','originalProjection','sourcePlacement','inputBank','bank']:
                 self.assertIn('.'+field,generator.source(case))
-            _,source=interface.module(('blake-round-' if case in generator.LARGE_CASES else 'add-sub-')+('cached' if case.endswith('Cached') else 'uncached'),case)
+            _,source=interface.module(generator.capture_name(case),case)
             self.assertIn('using_check Airbender.Compiler.QueryFrameChecks.'+case+'.originalChecked',source)
             self.assertNotIn('maxHeartbeats',source)
 
@@ -38,15 +42,24 @@ class NumericQueryFrameTests(unittest.TestCase):
                 starts=[int(value) for value in re.findall(r'numeric_data_binding '+field+r'Leaf(\d+)',source)]
                 self.assertEqual(starts,list(range(0,total,width)))
                 self.assertIn('complete_binding',source)
+            _,source=interface.module(generator.capture_name(case),case)
+            self.assertIn('using_check',source)
+            self.assertIn('phase 3 start 0 stop '+str(size),source)
+            self.assertNotIn('maxHeartbeats',source)
+            self.assertNotIn('Part',source)
             for phase in [1,2]:
-                _,source=interface.module('blake-round-'+('cached' if case.endswith('Cached') else 'uncached'),case,phase=phase,start=0,stop=64 if phase==1 else size)
-                self.assertIn('using_check',source)
-                self.assertNotIn('maxHeartbeats',source)
+                with self.assertRaisesRegex(ValueError,'do not use proof shards'):
+                    interface.module(generator.capture_name(case),case,phase=phase)
 
-    def test_unadopted_interface_stays_the_same(self):
-        name,source=interface.module('jump-branch-cached','JumpBranchCached')
-        self.assertNotIn('using_check',source)
-        self.assertEqual((interface.LEAN/(name.replace('.','/')+'.lean')).read_text(),source)
+    def test_materializer_budgets_are_scoped(self):
+        for case in generator.CASES:
+            source=dict(generator.modules(case))['Airbender.Proofs.GKRProtocol.QueryFrameChecks.'+case+'.Data']
+            if case in generator.MATERIALIZATION_BUDGET_CASES:
+                self.assertIn('set_option maxHeartbeats 2000000 in\nnumeric_query_frame_capture',source)
+            else:
+                self.assertNotIn('maxHeartbeats',source)
+            _,wrapper=interface.module(generator.capture_name(case),case)
+            self.assertNotIn('Part',wrapper)
 
     def test_untracked_capture_and_inputs_stop_before_writes(self):
         for inputs in [False,True]:

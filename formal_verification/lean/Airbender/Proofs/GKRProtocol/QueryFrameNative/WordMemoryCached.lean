@@ -1,12 +1,12 @@
 import Airbender.Import.GKRProtocol.QueryFrameImport
 import Airbender.Proofs.GKRProtocol.CounterFrameNative.WordMemoryCached
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.WordMemoryCached.Certificate
 
 namespace Airbender.Compiler.QueryFrameNative.WordMemoryCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_query_frame native certificate "artifacts/compiler/lookup/word-memory-cached.json"
   queries (Airbender.Compiler.LookupSourceNative.WordMemoryCached.native.genericQueries ++ Airbender.Compiler.LookupSourceNative.WordMemoryCached.native.range16Queries)
@@ -17,5 +17,6 @@ import_query_frame native certificate "artifacts/compiler/lookup/word-memory-cac
   history_model Airbender.Compiler.HistoryErasureNative.WordMemoryCached.native
   helper_model Airbender.Compiler.HelperValidityNative.WordMemoryCached.native
   counter_model Airbender.Compiler.CounterFrameNative.WordMemoryCached.native inputs 52 phase 3 start 0 stop 22
+  using_check Airbender.Compiler.QueryFrameChecks.WordMemoryCached.originalChecked
 
 end Airbender.Compiler.QueryFrameNative.WordMemoryCached

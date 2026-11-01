@@ -1,12 +1,12 @@
 import Airbender.Import.GKRProtocol.QueryFrameImport
 import Airbender.Proofs.GKRProtocol.CounterFrameNative.BigintCached
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.BigintCached.Certificate
 
 namespace Airbender.Compiler.QueryFrameNative.BigintCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_query_frame native certificate "artifacts/compiler/lookup/bigint-cached.json"
   queries (Airbender.Compiler.LookupSourceNative.BigintCached.native.genericQueries ++ Airbender.Compiler.LookupSourceNative.BigintCached.native.range16Queries)
@@ -17,5 +17,6 @@ import_query_frame native certificate "artifacts/compiler/lookup/bigint-cached.j
   history_model Airbender.Compiler.HistoryErasureNative.BigintCached.native
   helper_model Airbender.Compiler.HelperValidityNative.BigintCached.native
   counter_model Airbender.Compiler.CounterFrameNative.BigintCached.native inputs 276 phase 3 start 0 stop 215
+  using_check Airbender.Compiler.QueryFrameChecks.BigintCached.originalChecked
 
 end Airbender.Compiler.QueryFrameNative.BigintCached

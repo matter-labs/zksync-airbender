@@ -1,0 +1,12 @@
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BlakeGUncachedInputs
+import Airbender.Import.GKRProtocol.NumericQueryFrameImport
+
+namespace Airbender.Compiler.QueryFrameChecks.BlakeGUncached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+numeric_query_frame_capture data := NumericQueryFrameChecks.ofTyped Airbender.Compiler.QueryFrameNative.BlakeGUncached.native.fields Airbender.Compiler.QueryFrameNative.BlakeGUncached.native.coordinates
+  Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.originalProjection Airbender.Compiler.LookupNative.BlakeGUncached.native.sourcePlacement Airbender.Compiler.FullArithmeticNative.BlakeGUncached.native.inputBank Airbender.Compiler.LookupSourceNative.BlakeGUncached.native.bank
+end Airbender.Compiler.QueryFrameChecks.BlakeGUncached

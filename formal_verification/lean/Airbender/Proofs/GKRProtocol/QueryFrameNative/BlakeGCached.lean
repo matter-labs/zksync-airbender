@@ -1,12 +1,12 @@
 import Airbender.Import.GKRProtocol.QueryFrameImport
 import Airbender.Proofs.GKRProtocol.CounterFrameNative.BlakeGCached
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.BlakeGCached.Certificate
 
 namespace Airbender.Compiler.QueryFrameNative.BlakeGCached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_query_frame native certificate "artifacts/compiler/lookup/blake-g-cached.json"
   queries (Airbender.Compiler.LookupSourceNative.BlakeGCached.native.genericQueries)
@@ -17,5 +17,6 @@ import_query_frame native certificate "artifacts/compiler/lookup/blake-g-cached.
   history_model Airbender.Compiler.HistoryErasureNative.BlakeGCached.native
   helper_model Airbender.Compiler.HelperValidityNative.BlakeGCached.native
   counter_model Airbender.Compiler.CounterFrameNative.BlakeGCached.native inputs 112 phase 3 start 0 stop 171
+  using_check Airbender.Compiler.QueryFrameChecks.BlakeGCached.originalChecked
 
 end Airbender.Compiler.QueryFrameNative.BlakeGCached

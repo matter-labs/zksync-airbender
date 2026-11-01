@@ -1,0 +1,12 @@
+import Airbender.Proofs.GKRProtocol.QueryFrameNative.BigintUncachedInputs
+import Airbender.Import.GKRProtocol.NumericQueryFrameImport
+
+namespace Airbender.Compiler.QueryFrameChecks.BigintUncached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+numeric_query_frame_capture data := NumericQueryFrameChecks.ofTyped Airbender.Compiler.QueryFrameNative.BigintUncached.native.fields Airbender.Compiler.QueryFrameNative.BigintUncached.native.coordinates
+  Airbender.Compiler.FullArithmeticNative.BigintUncached.native.originalProjection Airbender.Compiler.LookupNative.BigintUncached.native.sourcePlacement Airbender.Compiler.FullArithmeticNative.BigintUncached.native.inputBank Airbender.Compiler.LookupSourceNative.BigintUncached.native.bank
+end Airbender.Compiler.QueryFrameChecks.BigintUncached

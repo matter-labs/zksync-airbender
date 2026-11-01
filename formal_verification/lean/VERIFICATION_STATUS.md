@@ -4580,3 +4580,45 @@ remain open. Full frontend validation, the environment audit and baseline refres
 full transitive replay, cold full measurements, and Linux runtime and warm-cache
 qualification remain pending for review. The known aggregate ownership collision
 remains deferred. This checkpoint does not establish an aggregate import pass.
+
+### Complete native query-frame family (2026-11-01)
+
+All 22 cached and uncached captures now use complete query-frame checks. The
+AddSub pilot keeps its original layout. The other 20 captures use the proved
+indexed checker and complete source bindings. No query-frame proof shard remains.
+The generator rejects shard phases for adopted captures. The original semantic
+finalizers and exact premises remain.
+
+The last 18 captures preserve all 2,236 original public declarations. The kernel
+accepts all 2,170 old theorem types. All 66 imported data values have identical
+Expr values. The old Keccak block data and flattening theorems remain. The last
+12 old proof shards are gone. Every new capture uses default heartbeats. Only
+the two previously qualified BlakeRound materializers need a scoped override.
+
+All 198 selected modules pass source checks and kernel replay. They include all
+18 direct witness consumers. Each replay uses the standard 32 MiB stack. No safe
+dependency is skipped. These checks trust imported objects. All 3,592 focused
+axiom checks use only the three allowed axioms. All 84 exact controls pass. The
+kernel rejects all 84 mutations. The legacy finalizer passes. Both importers
+reject opaque payloads. These controls cover each complete check, each coordinate
+binding and the final field and placement windows. Earlier controls for AddSub
+and BlakeRound remain qualified. Four generator controls pass for all 22 captures.
+Capture, interface and inventory freshness pass. Static checks, workflow syntax
+and the source import graph pass. The inventory has 76,263 roots. It retains all
+74,907 prior roots and every established root.
+
+The Keccak and Bigint source and replay batch takes 239.81 s. It peaks at
+1150.84 MiB. The other 14 captures take 614.17 s and peak at 984.09 MiB.
+Qualification takes 508.51 s and peaks at 844.81 MiB. Each guard cleans its owned
+workers. The first generalized preservation script used a reserved binder name.
+The corrected script passes. Each capture has a separate preservation and axiom
+query. This checkpoint does not establish an aggregate import pass or a cold
+full-build gain.
+
+Other frame and argument families remain open. MemoryFrame still checks RAM,
+initialization and execute fields per index. Its source-port predicate is the
+next concrete family. Counter, oracle and history metadata also need a scope
+check. Full frontend validation, the environment audit and baseline refresh,
+full transitive replay, cold full measurements, and Linux runtime and warm-cache
+qualification remain pending for review. The known aggregate ownership collision
+remains deferred.

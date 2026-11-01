@@ -1,19 +1,12 @@
 import Airbender.Import.GKRProtocol.QueryFrameImport
 import Airbender.Proofs.GKRProtocol.CounterFrameNative.KeccakUncached
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.KeccakUncachedInputs
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.KeccakUncachedPart0
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.KeccakUncachedPart1
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.KeccakUncachedPart2
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.KeccakUncachedPart3
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.KeccakUncachedPart4
-import Airbender.Proofs.GKRProtocol.QueryFrameNative.KeccakUncachedPart5
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.KeccakUncached.Certificate
 
 namespace Airbender.Compiler.QueryFrameNative.KeccakUncached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_query_frame native certificate "artifacts/compiler/lookup/keccak-uncached.json"
   queries (Airbender.Compiler.LookupSourceNative.KeccakUncached.native.genericQueries)
@@ -23,6 +16,7 @@ import_query_frame native certificate "artifacts/compiler/lookup/keccak-uncached
   source_model Airbender.Compiler.SourceContractNative.KeccakUncached.native
   history_model Airbender.Compiler.HistoryErasureNative.KeccakUncached.native
   helper_model Airbender.Compiler.HelperValidityNative.KeccakUncached.native
-  counter_model Airbender.Compiler.CounterFrameNative.KeccakUncached.native inputs 266 phase 2 start 0 stop 328
+  counter_model Airbender.Compiler.CounterFrameNative.KeccakUncached.native inputs 266 phase 3 start 0 stop 328
+  using_check Airbender.Compiler.QueryFrameChecks.KeccakUncached.originalChecked
 
 end Airbender.Compiler.QueryFrameNative.KeccakUncached
