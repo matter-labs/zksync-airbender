@@ -1423,12 +1423,13 @@ fn load_and_validate_program(
 }
 
 pub fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &Path) {
-    let mut dst = std::fs::File::create(filename).unwrap();
+    let mut dst = std::io::BufWriter::new(std::fs::File::create(filename).unwrap());
     serde_json::to_writer_pretty(&mut dst, el).unwrap();
+    std::io::Write::flush(&mut dst).unwrap();
 }
 
 pub fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-    let src = std::fs::File::open(filename).expect(filename);
+    let src = std::io::BufReader::new(std::fs::File::open(filename).expect(filename));
     serde_json::from_reader(src).unwrap()
 }
 
@@ -1743,5 +1744,33 @@ mod trusted_selection_tests {
         );
         assert_ne!(a, b);
         assert_eq!(a.selection.security_level, selection.security_level);
+    }
+}
+
+#[cfg(test)]
+mod artifact_file_tests {
+    use super::*;
+
+    #[test]
+    fn artifact_files_hold_pretty_json_and_round_trip() {
+        let value: Vec<(String, Vec<u32>)> =
+            vec![("a".into(), vec![1, 2, 3]), ("b".into(), vec![])];
+        let path = std::env::temp_dir().join(format!(
+            "prover_pipeline_artifact_file_{}.json",
+            std::process::id()
+        ));
+        serialize_to_file(&value, &path);
+        let bytes = std::fs::read(&path).unwrap();
+        let decoded: Vec<(String, Vec<u32>)> = deserialize_from_file(path.to_str().unwrap());
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(bytes, serde_json::to_vec_pretty(&value).unwrap());
+        assert_eq!(decoded, value);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[should_panic(expected = "StorageFull")]
+    fn artifact_write_errors_are_not_dropped() {
+        serialize_to_file(&[0u32; 4], Path::new("/dev/full"));
     }
 }
