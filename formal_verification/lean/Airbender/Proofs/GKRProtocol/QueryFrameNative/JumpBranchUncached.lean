@@ -1,12 +1,12 @@
 import Airbender.Import.GKRProtocol.QueryFrameImport
 import Airbender.Proofs.GKRProtocol.CounterFrameNative.JumpBranchUncached
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.JumpBranchUncached.Certificate
 
 namespace Airbender.Compiler.QueryFrameNative.JumpBranchUncached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_query_frame native certificate "artifacts/compiler/lookup/jump-branch-uncached.json"
   queries (Airbender.Compiler.LookupSourceNative.JumpBranchUncached.native.genericQueries ++ Airbender.Compiler.LookupSourceNative.JumpBranchUncached.native.range16Queries)
@@ -17,5 +17,6 @@ import_query_frame native certificate "artifacts/compiler/lookup/jump-branch-unc
   history_model Airbender.Compiler.HistoryErasureNative.JumpBranchUncached.native
   helper_model Airbender.Compiler.HelperValidityNative.JumpBranchUncached.native
   counter_model Airbender.Compiler.CounterFrameNative.JumpBranchUncached.native inputs 55 phase 3 start 0 stop 55
+  using_check Airbender.Compiler.QueryFrameChecks.JumpBranchUncached.originalChecked
 
 end Airbender.Compiler.QueryFrameNative.JumpBranchUncached

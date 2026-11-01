@@ -4,7 +4,10 @@ import argparse
 from export_gkr_translations import LEAN
 from gkr_packed_rotate_boundary import preflight
 
-LARGE_CASES=('BlakeRoundCached','BlakeRoundUncached')
+from gkr_wiring_instances import CASES as CIRCUIT_CASES
+
+LARGE_CASES=tuple(stem+mode for stem in CIRCUIT_CASES if stem!='AddSub' for mode in ['Cached','Uncached'])
+MATERIALIZATION_BUDGET_CASES=('BlakeRoundCached','BlakeRoundUncached')
 CASES=('AddSubCached','AddSubUncached')+LARGE_CASES
 
 
@@ -42,13 +45,15 @@ def small_modules(case):
         '    source_binding checked\n\nend '+owner+'\n')
 
 
-def capture_shape(case):
+def capture_name(case):
     from export_gkr_translations import FAMILIES
-    from gkr_wiring_instances import CASES as STEMS
+    family=next(family for family,stem in zip(FAMILIES,CIRCUIT_CASES,strict=True) if case in (stem+'Cached',stem+'Uncached'))
+    return family+'-'+('cached' if case.endswith('Cached') else 'uncached')
+
+
+def capture_shape(case):
     import json
-    family=next(family for family,stem in zip(FAMILIES,STEMS,strict=True) if case in (stem+'Cached',stem+'Uncached'))
-    mode='cached' if case.endswith('Cached') else 'uncached'
-    payload=json.loads((LEAN/'artifacts/compiler/lookup'/(family+'-'+mode+'.json')).read_text())
+    payload=json.loads((LEAN/'artifacts/compiler/lookup'/(capture_name(case)+'.json')).read_text())
     return len(payload['addresses']),sum(len(row['fields']) for row in payload['rows'])
 
 
@@ -79,7 +84,8 @@ def large_modules(case):
         'import Airbender.Import.GKRProtocol.NumericArithmeticDataImport\n\n')
     yield stem+'.Data',(f'import Airbender.Proofs.GKRProtocol.QueryFrameNative.{case}Inputs\n'
         'import Airbender.Import.GKRProtocol.NumericQueryFrameImport\n\n'+header+
-        'set_option maxHeartbeats 2000000 in\nnumeric_query_frame_capture data := '+source(case)+end)
+        ('set_option maxHeartbeats 2000000 in\n' if case in MATERIALIZATION_BUDGET_CASES else '')+
+        'numeric_query_frame_capture data := '+source(case)+end)
     sources=[('placement',f'(fun wire : Fin {arity} => ({base}.inputBank.placement ({bank}.address wire)).val)'),
         ('nativeAddress',f'(fun wire : Fin {arity} => AddressUniqueChecks.addressCode ({bank}.address wire))'),
         ('returnedAddress',f'(fun wire : Fin {arity} => AddressUniqueChecks.addressCode ({base}.inputBank.address ({base}.inputBank.placement ({bank}.address wire))))')]

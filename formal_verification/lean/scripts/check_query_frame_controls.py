@@ -3,15 +3,15 @@
 from pathlib import Path
 import subprocess
 import tempfile
+import argparse
 from unittest.mock import patch
 import gkr_packed_query_frame
 from gkr_query_frame_instances import module
 
 ROOT=Path(__file__).resolve().parents[1]
-PREFIX='''import Airbender.Proofs.GKRProtocol.QueryFrameChecks.AddSubCached.Certificate
-import Airbender.Proofs.GKRProtocol.QueryFrameChecks.AddSubUncached.Certificate
-import Airbender.Proofs.GKRProtocol.QueryFrameChecks.BlakeRoundCached.Certificate
-import Airbender.Proofs.GKRProtocol.QueryFrameChecks.BlakeRoundUncached.Certificate
+PREFIX='''import Airbender.Proofs.GKRProtocol.NumericQueryFrameIndexedChecks
+import Airbender.Proofs.GKRProtocol.NumericQueryFrameBindings
+import Airbender.Import.GKRProtocol.NumericArithmeticDataImport
 open Airbender Airbender.Compiler NumericQueryFrameChecks
 namespace QueryFrameControl
 set_option maxRecDepth 8192
@@ -26,13 +26,17 @@ def run(source):
 
 
 def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--case',choices=gkr_packed_query_frame.CASES,action='append')
+    args=parser.parse_args()
+    selected=args.case or gkr_packed_query_frame.CASES
     exact='NumericQueryFrameChecks.check tiny = true'
     changes=[('erasure','{tiny with coordinates := [0]}'),('placement','{tiny with placement := [1]}'),
              ('round trip','{tiny with returnedAddress := [8]}'),
              ('coefficient','{tiny with fields := [([(1, [0]), (0, [])], [(2, [0]), (0, [])])]}'),
              ('complete terms','{tiny with fields := [([(1, [0]), (0, [])], [(1, [0])])]}')]
     cases=[(label,exact,f'NumericQueryFrameChecks.check ({changed}) = true') for label,changed in changes]
-    for case in gkr_packed_query_frame.CASES:
+    for case in selected:
         owner='Airbender.Compiler.QueryFrameChecks.'+case
         if case in gkr_packed_query_frame.LARGE_CASES:
             cases.append((case,f'indexedCheck {owner}.views {owner}.data.fields = true',
@@ -73,7 +77,9 @@ def main():
         '(index tiny).coordinates + 1 = coordinateMask tiny.coordinates'))
     for label,exact,changed in cases:
         for mutated,statement in [(False,exact),(True,changed)]:
-            result=run(PREFIX+f'numeric_data_binding result : {statement}\nend QueryFrameControl\n')
+            capture=next((case for case in selected if label.startswith(case)),None)
+            imports=('import Airbender.Proofs.GKRProtocol.QueryFrameChecks.'+capture+'.Certificate\n') if capture else ''
+            result=run(imports+PREFIX+f'numeric_data_binding result : {statement}\nend QueryFrameControl\n')
             if not mutated and result.returncode:raise SystemExit(f'Exact {label} failed:\n'+result.stdout[-2000:])
             if mutated and (not result.returncode or '(kernel) declaration type mismatch' not in result.stdout.lower()):
                 raise SystemExit(f'Changed {label} did not fail in the kernel:\n'+result.stdout[-2000:])

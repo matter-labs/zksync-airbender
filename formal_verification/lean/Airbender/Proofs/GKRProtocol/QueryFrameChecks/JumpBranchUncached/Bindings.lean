@@ -1,0 +1,14 @@
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.JumpBranchUncached.PlacementBindings
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.JumpBranchUncached.NativeAddressBindings
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.JumpBranchUncached.ReturnedAddressBindings
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.JumpBranchUncached.FieldsBindings
+
+namespace Airbender.Compiler.QueryFrameChecks.JumpBranchUncached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 8192
+
+numeric_data_binding coordinates_binding : data.coordinates = Airbender.Compiler.QueryFrameNative.JumpBranchUncached.native.coordinates.map Fin.val
+
+end Airbender.Compiler.QueryFrameChecks.JumpBranchUncached

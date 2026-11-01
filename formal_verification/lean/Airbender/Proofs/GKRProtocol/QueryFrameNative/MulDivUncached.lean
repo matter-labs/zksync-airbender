@@ -1,12 +1,12 @@
 import Airbender.Import.GKRProtocol.QueryFrameImport
 import Airbender.Proofs.GKRProtocol.CounterFrameNative.MulDivUncached
+import Airbender.Proofs.GKRProtocol.QueryFrameChecks.MulDivUncached.Certificate
 
 namespace Airbender.Compiler.QueryFrameNative.MulDivUncached
 open Airbender Airbender.Compiler
 set_option warningAsError true
 set_option Elab.async false
 set_option maxRecDepth 32768
-set_option maxHeartbeats 4000000
 
 import_query_frame native certificate "artifacts/compiler/lookup/mul-div-uncached.json"
   queries (Airbender.Compiler.LookupSourceNative.MulDivUncached.native.genericQueries ++ Airbender.Compiler.LookupSourceNative.MulDivUncached.native.range16Queries)
@@ -17,5 +17,6 @@ import_query_frame native certificate "artifacts/compiler/lookup/mul-div-uncache
   history_model Airbender.Compiler.HistoryErasureNative.MulDivUncached.native
   helper_model Airbender.Compiler.HelperValidityNative.MulDivUncached.native
   counter_model Airbender.Compiler.CounterFrameNative.MulDivUncached.native inputs 71 phase 3 start 0 stop 90
+  using_check Airbender.Compiler.QueryFrameChecks.MulDivUncached.originalChecked
 
 end Airbender.Compiler.QueryFrameNative.MulDivUncached
