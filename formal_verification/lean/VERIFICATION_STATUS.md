@@ -874,6 +874,35 @@ The old unit has no heartbeat override. Its new data importer has a stated limit
 Other fixed setup spans and table metadata still need migration.
 The final full validation remains pending for implementation review.
 
+### Complete Shift output extents
+
+All four Shift output extent families now use complete numeric checks.
+Each check covers all sixteen original partitions.
+The checker uses the adopted packed source encodings.
+Exact bindings assemble each partition from its existing source leaves.
+The public extent and coverage statements stay the same.
+All 68 original theorem types pass a kernel preservation control.
+The source partitions and imported encoding values do not change.
+
+All fifteen selected modules pass source checks and kernel replay.
+They include all four public output finalizers and the column coverage consumer.
+Each replay uses the standard 32 MiB stack. No safe dependency is skipped.
+The rollout batch takes 43.74 s and peaks at 1598.70 MiB.
+The consumer batch takes 43.94 s and peaks at 1084.93 MiB.
+The final qualification takes 20.37 s and peaks at 1159.21 MiB.
+These checks trust imported objects. All guards clean their owned workers.
+
+All 213 focused axiom checks use only the three allowed axioms.
+Four exact controls pass. The kernel rejects all four mutations.
+A raw literal binding mutation exceeded the memory cap.
+The adopted control tests a dropped binding and stays within the cap.
+Three generator controls preserve the public contracts and untracked files.
+Capture and inventory freshness pass. CI requires these controls.
+The inventory has 59,972 roots. It retains all 59,827 established roots.
+The old per-part literal simplification proofs are gone.
+Other fixed setup spans and table metadata still need migration.
+The final full validation remains pending for implementation review.
+
 ## Rebase checks
 
 The branch now uses base `c1a662222cafcd96db4383dce737edb79fa62b09` from
