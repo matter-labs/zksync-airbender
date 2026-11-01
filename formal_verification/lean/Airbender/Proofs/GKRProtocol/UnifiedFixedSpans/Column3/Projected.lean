@@ -14,4 +14,3 @@ theorem length0 : (target0.map Setup.Block.length).sum = source0.length :=
   (PackedSetupSpans.check_sound_bound_at Airbender.Compiler.UnifiedFixedSpans.Column3.requests Airbender.Compiler.UnifiedFixedSpans.Column3.checked ⟨0, by decide +kernel⟩ source0 target0 Airbender.Compiler.UnifiedFixedSpans.Column3.source0_binding Airbender.Compiler.UnifiedFixedSpans.Column3.targets0_binding).1
 
 end Airbender.Compiler.UnifiedSpecialChunks.Column3.Chunk0
-
