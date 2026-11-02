@@ -5,13 +5,30 @@ on:
   schedule:
     - cron: '0 2 * * *'
   workflow_dispatch:
+    inputs:
+      cold_build:
+        description: Build every project module without restored Lean objects
+        type: boolean
+        default: false
+      refresh_axiom_baseline:
+        description: Export a refreshed baseline after the passing environment audit
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      cold_build:
+        type: boolean
+        default: false
+      refresh_axiom_baseline:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 # Serialize each ref; each actual worker also takes the host lock.
 concurrency:
-  group: formal-verification-${{ github.workflow }}-${{ github.ref }}
+  group: formal-verification-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -142,6 +159,7 @@ jobs:
           echo "replay=$replay-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v4
         id: lean-cache
+        if: inputs.cold_build != true
         timeout-minutes: 20
         with:
           # Keep mutable build progress separate from the checked replay ledger.
@@ -198,7 +216,7 @@ jobs:
           git diff --quiet -- lake-manifest.json lean-toolchain
           FV_STAGE
       - name: Save bootstrap progress even after a bounded failure
-        if: always() && steps.lean-cache.outcome == 'success' && steps.bootstrap.outcome != 'skipped'
+        if: always() && steps.cache-keys.outcome == 'success' && steps.bootstrap.outcome != 'skipped'
         timeout-minutes: 20
         uses: actions/cache/save@v4
         with:
@@ -272,6 +290,54 @@ jobs:
             ${{ env.CARGO_TARGET_DIR }}
             ${{ env.FV_COMPILER_TARGET_DIR }}
           key: ${{ steps.cache-keys.outputs.native }}-compiler
+      - name: Cold project source build and module resource table
+        if: inputs.cold_build == true
+        timeout-minutes: 910
+        run: |
+          source "$FV_ROOT/guard.sh"
+          fv_stage cold-source-build 54000 python3 - <<'PY'
+          import json, os, platform, time
+          from pathlib import Path
+          from scripts import check_lean as frontend
+          root = Path.cwd()
+          output = Path(os.environ['FV_ROOT']) / 'cold-build'
+          existing = list((root / '.lake/build/lib/lean/Airbender').rglob('*.olean'))
+          if existing:
+              raise SystemExit('Cold source build requires no existing Airbender objects')
+          runner = frontend.Runner(root, root / 'scripts/bounded_fv.py', output, workers=1)
+          sources = frontend.discover(root)
+          names = sorted(sources)
+          values = runner.query('project-imports', ['+' + name + ':imports' for name in names])
+          queue = frontend.ordered(names, dict(zip(names, values)))
+          frontend.write_json(output / 'source-queue.json', queue)
+          started, records = time.monotonic(), []
+          for index, module in enumerate(queue):
+              target = '+' + module + ':olean'
+              label = 'module-' + str(index)
+              runner.run(label, ['lake', '--no-cache', 'build', target],
+                         review=target in frontend.SOURCE_REVIEW_TARGETS)
+              metric = runner.records[label]['metrics'][0]
+              record = {'module': module, 'seconds': metric['seconds'],
+                        'footprint_peak_mib': metric['footprint_peak_mib'],
+                        'resident_peak_mib': metric['resident_peak_mib'],
+                        'log': runner.records[label]['log']}
+              records.append(record)
+              with (output / 'modules.jsonl').open('a') as stream:
+                  stream.write(json.dumps(record) + '\n')
+              print(str(index + 1) + '/' + str(len(queue)) + ' ' + module, flush=True)
+          result = {'passed': True, 'platform': platform.platform(), 'modules': len(queue),
+                    'wall_seconds': time.monotonic() - started,
+                    'module_seconds_total': sum(row['seconds'] for row in records),
+                    'footprint_peak_mib': max(row['footprint_peak_mib'] for row in records),
+                    'records': records}
+          frontend.write_json(output / 'result.json', result)
+          lines = ['| Module | Time (s) | Peak footprint (MiB) |', '| --- | ---: | ---: |']
+          lines += ['| ' + row['module'] + ' | ' + str(row['seconds']) + ' | '
+                    + str(row['footprint_peak_mib']) + ' |' for row in records]
+          lines += ['| Total | ' + str(round(result['module_seconds_total'], 2)) + ' | '
+                    + str(result['footprint_peak_mib']) + ' |']
+          (output / 'modules.md').write_text('\n'.join(lines) + '\n')
+          PY
       - name: Complete serial Lean source and runtime verification
         id: lean-verification
         timeout-minutes: 910
@@ -280,7 +346,7 @@ jobs:
           # No outer guard: the frontend guards each real child and checks reap metadata.
           fv_stage lean-verification 54000 python3 scripts/check_lean.py --guard scripts/bounded_fv.py --output "$FV_ROOT/lean"
       - name: Save Lean build progress even after a bounded failure
-        if: always() && steps.lean-cache.outcome == 'success' && steps.lean-verification.outcome != 'skipped'
+        if: always() && steps.cache-keys.outcome == 'success' && steps.lean-verification.outcome != 'skipped'
         timeout-minutes: 20
         uses: actions/cache/save@v4
         with:
@@ -336,8 +402,15 @@ jobs:
         run: |
           source "$FV_ROOT/guard.sh"
           sysroot="$(lean --print-prefix)"
+          refresh=()
+          if [[ '${{ inputs.refresh_axiom_baseline }}' == true ]]; then
+            refresh=(--refresh-baseline)
+          fi
           fv_stage axiom-audit 10800 python3 scripts/check_axioms.py --guard scripts/bounded_fv.py \
-            --sysroot "$sysroot" --output "$FV_ROOT/axioms"
+            --sysroot "$sysroot" --output "$FV_ROOT/axioms" "${refresh[@]}"
+          if [[ '${{ inputs.refresh_axiom_baseline }}' == true ]]; then
+            cp scripts/axiom_baseline.json "$FV_ROOT/axioms/refreshed-baseline.json"
+          fi
       - name: Independent kernel replay of the complete compiled dependency DAG
         id: kernel-replay
         timeout-minutes: 910
