@@ -26,6 +26,10 @@ Their focused source builds pass.
 Item 3 has stopped. No more fact families will be converted.
 FV CI runs nightly and on manual dispatch, on the large runner.
 One freshness step checks all 52 generator routes.
+It also requires tracked Airbender imports to resolve to tracked sources.
+The cold source queue includes the top-level `Airbender.lean` module.
+Its focused source build passes after the stale imports are removed.
+The tracked-import check covers 12,078 imports in 4,212 Lean files.
 The earlier log is in [VERIFICATION_HISTORY.md](VERIFICATION_HISTORY.md).
 The final axiom inventory and baseline refresh remain pending.
 

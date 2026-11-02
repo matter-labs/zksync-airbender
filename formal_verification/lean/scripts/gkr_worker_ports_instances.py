@@ -14,7 +14,7 @@ def module(family, mode):
     stem, model, kind = FAMILIES[family]
     case = stem + mode.title()
     text = (LEAN / 'scripts/templates/gkr_worker_ports.lean').read_text()
-    text = text.replace('BigintUncached', case).replace('Airbender.Bigint.', 'Airbender.' + model + '.')
+    text = text.replace('BigintCached', case).replace('Airbender.Bigint.', 'Airbender.' + model + '.')
     text = text.replace('.bigint, assignment', '.' + kind + ', assignment')
     stop = text.index('end Airbender.Compiler.WorkerPortsNative.')
     text = text[:stop]

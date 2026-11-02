@@ -7,11 +7,60 @@ The compiler subcommand explicitly invokes the Rust capture producer.
 """
 import argparse
 from pathlib import Path
+import re
 import subprocess
 import sys
 
 SCRIPTS = Path(__file__).resolve().parent
 LEAN = SCRIPTS.parent
+
+
+def airbender_imports(text):
+    """Read import commands outside strings and nested Lean comments."""
+    token = re.compile(r'/-|--[^\n]*|"(?:\\.|[^"\\])*"', re.S)
+    delimiter = re.compile(r'/-|-/')
+    pieces, position = [], 0
+    while match := token.search(text, position):
+        first, last = match.span()
+        if match.group() == '/-':
+            depth = 1
+            while depth:
+                boundary = delimiter.search(text, last)
+                if boundary is None:
+                    raise ValueError('Unclosed Lean block comment')
+                depth += 1 if boundary.group() == '/-' else -1
+                last = boundary.end()
+        pieces.append(text[position:first])
+        pieces.append(re.sub(r'[^\n]', ' ', text[first:last]))
+        position = last
+    pieces.append(text[position:])
+    code = ''.join(pieces)
+    command = re.compile(r'(?m)^[ \t]*(?:(?:public|private|meta)[ \t]+)*import(?:[ \t]+all)?[ \t\r\n]+([^\n]+)')
+    module = re.compile(r"(?<![\w.])Airbender(?:\.(?:«[^»]+»|[^\W\d][\w']*))*(?![\w.])")
+    for header in command.finditer(code):
+        for imported in module.finditer(header[1]):
+            line = code.count('\n', 0, header.start(1) + imported.start()) + 1
+            parts = [quoted or plain for quoted, plain in
+                     re.findall(r'«([^»]+)»|([^ .\t]+)', imported.group())]
+            yield imported.group(), parts, line
+
+
+def check_tracked_imports(repo=LEAN.parents[1]):
+    """Require every tracked Lean Airbender import to have a tracked source."""
+    names = subprocess.check_output(['git', 'ls-files', '-z', '--', '*.lean'],
+                                    cwd=repo, text=True).split('\0')
+    tracked = {name for name in names if name and (repo / name).is_file()}
+    prefix = LEAN.relative_to(repo).as_posix()
+    missing, count = [], 0
+    for name in sorted(tracked):
+        for module, parts, line in airbender_imports((repo / name).read_text()):
+            count += 1
+            target = prefix + '/' + '/'.join(parts) + '.lean'
+            if target not in tracked:
+                missing.append(f'{name}:{line}: {module} -> {target}')
+    if missing:
+        raise ValueError('Unresolved tracked Airbender imports:\n' + '\n'.join(missing))
+    print(f'PASS {count} Airbender imports in {len(tracked)} tracked Lean files', flush=True)
 
 # Preserve dependency order from the established generated-source gate.
 GENERATORS = (
@@ -91,6 +140,8 @@ def main():
             command += ["--output", str(args.output.resolve())]
         subprocess.run(command, cwd=LEAN, check=True)
         return
+    if not args.write:
+        check_tracked_imports()
     count = 0
     for group, script, options in GENERATORS:
         if args.command not in ("all", "check", group):

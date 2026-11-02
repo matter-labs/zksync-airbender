@@ -1,6 +1,6 @@
 # Compiler preservation
 
-<!-- lean-context: Airbender.Proofs.GKRProtocol.ProgramNativeTransport.AddSubUncached -->
+<!-- lean-context: Airbender.Proofs.GKRProtocol.NativeMachineAcceptance -->
 
 Start with the three [machine targets](MachineTargets.lean). Each target lists
 its public setup, native acceptance and exact matching premises. The
